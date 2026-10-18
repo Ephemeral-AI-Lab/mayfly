@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-schedule'
 import type { ScheduleRecord } from '@deepseek-ai/dsh-schedule/client'
-import { ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyLocaleId, MayflyTranslate } from '../frontend/locale.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
@@ -98,7 +98,7 @@ export function scheduleNode(records: readonly ScheduleRecord[] | undefined, now
     badge: Date.parse(record.scheduledAt) <= now ? t('Overdue') : t('Scheduled'),
     detail: `${formatReminderFrequency(record, t)}${'timeZone' in record ? ` · ${record.timeZone}` : ''} · ${formatReminderLocalTime(record.scheduledAt, locale)} · ${formatReminderRelative(record.scheduledAt, now, t)}`,
   }))
-  return ui.surface({ title: t('Reminders'), chrome: 'overlay', child: ui.stack.column([
+  return panel({ title: t('Reminders'), escapeLabel: 'back', body: ui.stack.column([
     ui.text(t('Reminders follow their original session, even when no Agent is running. Create or cancel reminders through the conversation.')),
     ...(records === undefined ? [ui.empty({ title: t('Schedule unavailable'), description: t('The Schedule capability is a Host service; enable it in profile files.') })] : [ui.list({ id: 'reminders', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items, empty: ui.empty({ title: t('No active reminders') }) })]),
   ]) })

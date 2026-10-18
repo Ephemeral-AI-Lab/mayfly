@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { inc } from 'semver'
 import { Context } from '@deepseek-ai/cordis'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
+import { DECISION_NO, DECISION_YES } from '@ephemeral-ai/mayfly-ui'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
@@ -740,7 +741,7 @@ describe('/update confirm and swap', () => {
     const confirmation = world.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.update.confirm')!
     const context = { surfaceId: confirmation.id, operationId: 'direct', source: confirmation.source, revision: confirmation.revision, signal: new AbortController().signal, report: vi.fn() }
     expect(await confirmation.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, context)).toEqual({ kind: 'completed' })
-    const decline = { kind: 'activate' as const, pagePath: [], controlId: 'update-confirm-actions', actionId: 'no' }
+    const decline = { kind: 'activate' as const, pagePath: [], controlId: 'update-confirm-actions', actionId: DECISION_NO }
     expect(await confirmation.definition.onEvent!.action!(decline, context)).toEqual({ kind: 'completed', dismiss: true })
     expect(await confirmation.definition.onEvent!.action!(decline, context)).toEqual({ kind: 'completed', dismiss: true })
     await expect(pending).resolves.toMatchObject({ result: { kind: 'success', text: 'update cancelled' } })
@@ -748,7 +749,7 @@ describe('/update confirm and swap', () => {
 
     const next = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const model = await world.waitSurface('mayfly.update.confirm')
-    model.invoke('yes')
+    model.invoke(DECISION_YES)
     const progress = await world.waitSurface('mayfly.update.progress')
     const progressEntry = world.ctx.mayflyOverlays.list().find(entry => entry.id === 'mayfly.update.progress')!
     const progressContext = { ...context, surfaceId: progressEntry.id, source: progressEntry.source, revision: progressEntry.revision }
@@ -776,7 +777,7 @@ describe('/update confirm and swap', () => {
     }) as typeof updaterInternals.spawnOnce
     const pending = world.ctx.commands.execute(world.agent, '/update', [], new AbortController().signal)
     const confirmation = await world.waitSurface('mayfly.update.confirm')
-    confirmation.invoke('yes')
+    confirmation.invoke(DECISION_YES)
     const progress = await world.waitSurface('mayfly.update.progress')
     progress.requestClose()
     await flush()

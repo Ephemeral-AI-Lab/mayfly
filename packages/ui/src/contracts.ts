@@ -124,7 +124,9 @@ export interface MayflyUiChild {
 export interface MayflyStackNode {
   readonly kind: 'stack'
   readonly direction: 'row' | 'column'
-  readonly gap?: 0 | 1 | 2
+  readonly gap?: 0 | 1 | 2 | 3
+  /** Draw a vertical column rule in the gaps between children (a browser or rail). */
+  readonly rule?: 'column'
   readonly align?: 'stretch' | 'start' | 'center' | 'end'
   readonly children: readonly MayflyUiChild[]
 }
@@ -134,6 +136,8 @@ export interface MayflySurfaceNode {
   readonly subtitle?: string
   readonly badges?: readonly MayflyInlineSpan[]
   readonly chrome?: 'none' | 'lane' | 'surface' | 'overlay'
+  /** A lane that takes the whole editor slot and hides the status row (a panel, not a decision card). */
+  readonly coverStatus?: boolean
   readonly padding?: 0 | 1 | 2
   readonly child: MayflyUiNode
   readonly footer?: MayflyUiNode
@@ -144,7 +148,7 @@ export interface MayflySurfaceNode {
   /** The border tone; the chrome's own (focus color for an overlay, quiet for a surface) otherwise. */
   readonly border?: MayflyTone
   /** What `Esc` does, as the hint row names it; `reject` dismisses as a rejection. */
-  readonly escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'
+  readonly escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave' | 'no'
   /** `none` draws no key-hint row, `completions` draws one only while the editor's completion list is open. */
   readonly hint?: 'auto' | 'none' | 'completions'
 }
@@ -320,7 +324,7 @@ export interface MayflyListNode {
    * `'band'` draws no arrow: the cursor row, and its body, take the palette's selected background across the row while the list has focus.
    */
   readonly marker?: 'cursor' | 'selection' | 'band'
-  /** Draw `●` `○` on a single choose list. */
+  /** Draw `●` `○` on a multiple choose list; single choose lists never draw the check column. */
   readonly marks?: boolean
   /** Show at most this many rows, windowed around the cursor, with an `↑ n more · ↓ n more` row. */
   readonly maxRows?: number
@@ -367,7 +371,7 @@ export type MayflyFormField = MayflyFormFieldBase & (
   | { readonly kind: 'number', readonly value: number | null, readonly min?: number, readonly max?: number, readonly step?: number, readonly unit?: string }
   | { readonly kind: 'select', readonly value: string | null, readonly options: readonly MayflyListItem[] }
   | { readonly kind: 'multiselect', readonly value: readonly string[], readonly options: readonly MayflyListItem[], readonly minSelected?: number, readonly maxSelected?: number }
-  | { readonly kind: 'toggle', readonly value: boolean }
+  | { readonly kind: 'toggle', readonly value: boolean | null }
 )
 export interface MayflyFormNode {
   readonly kind: 'form'
@@ -380,6 +384,8 @@ export interface MayflyFormNode {
   /** Button text for `cancelActionId`; defaults to a localized "Cancel". */
   readonly cancelLabel?: string
   readonly enterSubmits?: string
+  /** With `enterSubmits`, only the last field submits; other fields commit and move on. */
+  readonly submitOnLastField?: boolean
   /** The form's first field takes focus first when its surface opens (or when a republish brings the form in). */
   readonly autofocus?: boolean
 }
@@ -474,6 +480,8 @@ export interface MayflyShedNode {
 export interface MayflySpacerNode { readonly kind: 'spacer', readonly size?: 1 | 2 }
 export interface MayflyDividerNode {
   readonly kind: 'divider'
+  /** A horizontal rule (default) or a column-filling vertical line between two panes. */
+  readonly orientation?: 'horizontal' | 'vertical'
   readonly label?: string
   /** `center`: the label sits in the middle of the rule, with a rule on each side (default: at the start). */
   readonly align?: 'start' | 'center'

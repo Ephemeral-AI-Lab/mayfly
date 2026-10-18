@@ -1,7 +1,7 @@
 /** Renderer-neutral `/help` document built from live commands and key actions.
  * @module @ephemeral-ai/mayfly/interaction/help
  */
-import { ui, type MayflyInlineSpan, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, type MayflyInlineSpan, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 
 /** One help entry. */
@@ -30,11 +30,10 @@ export function helpNode(
       spans.push({ text: `  ${t(row.description)}`, tone: 'muted' })
     }
   }
-  return ui.surface({
+  return panel({
     title: t('Help'),
-    chrome: 'overlay',
-    padding: 1,
-    child: ui.stack.column([
+    escapeLabel: 'back',
+    body: ui.stack.column([
       ui.child(ui.scroll(ui.richText(spans), { id: 'help-document', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
     ]),
   })

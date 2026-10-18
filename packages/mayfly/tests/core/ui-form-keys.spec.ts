@@ -240,12 +240,12 @@ describe('ui.save', () => {
     expect(none.submitted()).toHaveLength(0)
   })
 
-  it('submits from the Save button a multi-field form draws', async () => {
+  it('submits from Ctrl+S on a multi-field form without drawing a button', async () => {
     const { press, render, submitted } = open(ui.form({ id: 'form', submitActionId: 'save', fields: [
       { kind: 'input', id: 'name', label: 'Name', value: 'x' },
       { kind: 'input', id: 'other', label: 'Other', value: '' },
     ] }))
-    expect(render()).toContain('[ Save ]')
+    expect(render()).not.toContain('[ Save ]')
     press(DOWN, DOWN)
     press(CTRL_S)
     await vi.waitFor(() => expect(submitted()).toHaveLength(1))
@@ -258,15 +258,12 @@ describe('buttons', () => {
     { kind: 'input' as const, id: 'other', label: 'Other', value: '' },
   ]
 
-  it('draws one primary Save, worded by submitLabel, and never a Cancel', () => {
+  it('draws no visible Save or Cancel for any form', () => {
     const named = open(ui.form({ id: 'form', submitActionId: 'save', submitLabel: 'Apply', cancelActionId: 'close', cancelLabel: 'Never', fields: pair }))
-    expect(named.render()).toContain('[ Apply ]')
+    expect(named.render()).not.toContain('[ Apply ]')
     expect(named.render()).not.toContain('Never')
     expect(named.render()).not.toContain('Cancel')
-    expect(open(ui.form({ id: 'form', submitActionId: 'save', fields: pair })).render()).toContain('[ Save ]')
-    expect(open(ui.form({ id: 'form', submitActionId: 'save', fields: [] })).render()).toContain('[ Save ]')
-    expect(open(ui.form({ id: 'form', submitActionId: 'save', fields: [pair[0]!] })).render()).not.toContain('Save')
-    expect(open(ui.form({ id: 'form', fields: pair })).render()).not.toContain('Save')
+    expect(open(ui.form({ id: 'form', submitActionId: 'save', fields: pair })).render()).not.toContain('[ Save ]')
   })
 
   it('runs cancelActionId as the outermost Escape, asking first when there are edits', () => {
@@ -372,7 +369,7 @@ describe('the hint row in each form state', () => {
     { kind: 'select', id: 'mode', label: 'Mode', value: 'a', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] },
     { kind: 'multiselect', id: 'tags', label: 'Tags', value: [], options: [{ id: 'a', label: 'A' }] },
     { kind: 'toggle', id: 'on', label: 'On', value: false },
-  ], submitActionId: 'save' })
+  ], submitActionId: 'save', submitOnLastField: true })
 
   it('words each state the way the kit does', () => {
     const { press, hint } = open(kinds)
@@ -392,9 +389,7 @@ describe('the hint row in each form state', () => {
     press(ENTER)
     expect(hint()).toBe('  Space toggle · Enter apply · Esc cancel')
     press(ESC, DOWN)
-    expect(hint()).toBe('  ↑/↓ fields · Enter toggle · Esc close')
-    press(DOWN)
-    expect(hint()).toBe('  ↑/↓ fields · Enter submit · Esc close')
+    expect(hint()).toBe('  ↑/↓ fields · Enter continue · Esc close')
   })
 
   it('names Delete reset for an edited field and keeps it narrow-safe', () => {

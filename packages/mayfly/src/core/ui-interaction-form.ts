@@ -149,7 +149,7 @@ function fieldChange(field: UiFieldState, value: MayflyFieldValue, reset: boolea
 
 function validDraft(field: MayflyFormField, value: MayflyFieldValue): boolean {
   switch (field.kind) {
-    case 'toggle': return typeof value === 'boolean'
+    case 'toggle': return value === null || typeof value === 'boolean'
     case 'select': return value === null || typeof value === 'string'
     case 'multiselect': return Array.isArray(value) && value.every(id => typeof id === 'string') && new Set(value).size === value.length
     default: return typeof value === 'string'

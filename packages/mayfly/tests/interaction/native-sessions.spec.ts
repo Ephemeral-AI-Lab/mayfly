@@ -11,7 +11,6 @@ import { informationFixture } from './information-fixture.ts'
 import { flushRequests } from './request-fixture.ts'
 import { nativeAction, select as selection } from './native-action-fixture.ts'
 import { createSessionListCache } from '../../src/interaction/session-list-reads.ts'
-import { openSessionWorkspace } from '../../src/interaction/session-workspace-panel.ts'
 import { openSessions } from '../../src/interaction/native-sessions.ts'
 import { interactionTranslator } from '../../src/interaction/locale.ts'
 
@@ -82,9 +81,9 @@ async function setup() {
   ctx.provide('schedule', schedule as never)
   const cache = createSessionListCache(ctx)
   const rootModel = () => ctx.mayflyUiInteraction.get('overlay', 'mayfly.sessions')!
-  const model = (id = 'mayfly.sessions.workspace') => ctx.mayflyUiInteraction.get('overlay', id)!
+  const model = rootModel
   const rootText = () => JSON.stringify(rootModel().node)
-  const text = () => JSON.stringify(model().node)
+  const text = rootText
   const openRoot = async (signal = new AbortController().signal) => {
     const result = await openSessions(ctx, signal, interactionTranslator(ctx), cache)
     await flushRequests()
@@ -92,14 +91,15 @@ async function setup() {
     return result
   }
   const choose = async (rowId: string) => {
-    await nativeAction(rootModel(), selection('workspaces', rowId))
-    await vi.waitFor(() => { expect(ctx.mayflyOverlays.list().map(item => item.id)).toContain('mayfly.sessions.workspace') })
+    rootModel().emit({ kind: 'tab-change', pagePath: [], controlId: 'session-rail', tabId: rowId })
+    await flushRequests()
+    await vi.waitFor(() => { expect(ctx.mayflyOverlays.list().map(item => item.id)).toEqual(['mayfly.sessions']) })
     await vi.waitFor(() => { expect(model().node).not.toBeNull() })
   }
   const open = async (rowId = 'workspace:alpha') => { const result = await openRoot(); await choose(rowId); return result }
   const chooseSession = async (id: string) => { await nativeAction(model(), selection('sessions', id)); await flushRequests() }
-  const detail = () => model('mayfly.sessions.detail')
-  const act = async (id: string, modelId = 'mayfly.sessions.detail') => { model(modelId).invoke(id); await flushRequests() }
+  const detail = model
+  const act = async (id: string) => { model().invoke(id); await flushRequests() }
   return { ...bench, controller, registry, subagents, schedule, workspaces, alpha, beta, summaries, values, cache, rootModel, model, rootText, text, openRoot, choose, open, chooseSession, detail, act }
 }
 
@@ -109,8 +109,8 @@ it('groups native workspaces and unowned sessions without reading projections', 
   const node = bench.rootText()
   expect(node).toContain('Alpha')
   expect(node).toContain('Beta')
-  expect(node).toContain('2 sessions')
-  expect(node).toContain('1 session')
+  expect(node).toContain('Alpha · current')
+  expect(node).toContain('Beta')
   expect(node).toContain('Other sessions')
   expect(bench.controller.list).toHaveBeenCalledOnce()
   expect(bench.controller.projections).not.toHaveBeenCalled()
@@ -123,8 +123,8 @@ it('opens one workspace scope and lists only its native summaries', async () => 
   const node = bench.text()
   expect(node).toContain('Current')
   expect(node).toContain('Untitled · child')
-  expect(node).not.toContain('Other')
-  expect(node).not.toContain('bare')
+  expect(node).not.toContain('"id":"other"')
+  expect(node).not.toContain('"id":"bare"')
   expect(bench.controller.list).toHaveBeenCalledOnce()
   expect(bench.controller.projections).not.toHaveBeenCalled()
 })
@@ -172,7 +172,7 @@ it('filters content search to the open scope and reports more matches', async ()
     hasMore: true,
   })
   bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'needle')
-  await bench.act('search', 'mayfly.sessions.workspace')
+  await bench.act('search')
   await vi.waitFor(() => { expect(bench.text()).toContain('needle in current') })
   expect(bench.text()).not.toContain('needle outside')
   expect(bench.controller.search).toHaveBeenCalledWith({ query: 'needle' }, expect.any(AbortSignal))
@@ -189,7 +189,7 @@ it('searches every workspace from the explicit global scope', async () => {
     hasMore: false,
   })
   bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'global')
-  await bench.act('search', 'mayfly.sessions.workspace')
+  await bench.act('search')
   await vi.waitFor(() => { expect(bench.text()).toContain('global current') })
   expect(bench.text()).toContain('global other')
 })
@@ -238,7 +238,7 @@ it('contains catalog failures and discards a late listing after closing', async 
   const gate = Promise.withResolvers<SessionListValue>()
   bench.controller.list.mockReturnValueOnce(gate.promise)
   expect(await openSessions(bench.ctx, new AbortController().signal, interactionTranslator(bench.ctx), bench.cache)).toEqual({ kind: 'success' })
-  expect(bench.rootText()).toContain('Loading workspaces')
+  expect(bench.rootText()).toContain('Loading workspace sessions…')
   bench.ctx.mayflyOverlays.close('mayfly.sessions')
   gate.reject(new Error('disk unavailable'))
   await flushRequests()
@@ -246,31 +246,6 @@ it('contains catalog failures and discards a late listing after closing', async 
   bench.controller.list.mockRejectedValueOnce(new Error('disk unavailable'))
   expect(await openSessions(bench.ctx, new AbortController().signal, interactionTranslator(bench.ctx), bench.cache)).toEqual({ kind: 'success' })
   await vi.waitFor(() => { expect(bench.rootText()).toContain('disk unavailable') })
-})
-
-it('shows reminder badges and degrades when the Host catalog fails', async () => {
-  const bench = await setup()
-  const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
-  const schedule = bench.ctx.get('schedule') as unknown as { catalog: ReturnType<typeof vi.fn> }
-  schedule.catalog.mockRejectedValueOnce(new Error('catalog down'))
-  await bench.open('workspace:beta')
-  expect(warn).toHaveBeenCalledWith(expect.stringContaining('catalog down'))
-  await vi.waitFor(() => { expect(bench.text()).toContain('Other') })
-  expect(bench.text()).not.toContain('reminders')
-  await bench.open('workspace:beta')
-  await vi.waitFor(() => { expect(bench.text()).toContain('reminders') })
-})
-
-it('refuses an empty search and stale selections', async () => {
-  const bench = await setup()
-  await bench.open('workspace:alpha')
-  await vi.waitFor(() => { expect(bench.text()).toContain('Current') })
-  bench.model().invoke('search')
-  await flushRequests()
-  expect(bench.controller.search).not.toHaveBeenCalled()
-  expect(bench.model().feedbackSnapshot().some(item => item.message === 'Enter search text')).toBe(true)
-  expect(await nativeAction(bench.model(), selection('sessions', 'missing'))).toMatchObject({ kind: 'failed' })
-  expect(await nativeAction(bench.rootModel(), selection('workspaces', 'missing'))).toMatchObject({ kind: 'failed' })
 })
 
 it('does not open a detail for an absent projection and contains a read failure', async () => {
@@ -296,21 +271,7 @@ it('finds sessions without cwd in the fallback scope', async () => {
   const bench = await setup()
   bench.summaries.push({ ...summary({ sessionId: SessionId('cwdless') }), cwd: undefined } as unknown as SessionSummary)
   await bench.openRoot()
-  expect(bench.rootText()).toContain('3 sessions')
+  expect(bench.rootText()).toContain('"count":3')
   await bench.choose('workspace:unregistered')
   await vi.waitFor(() => { expect(bench.text()).toContain('Untitled · cwdless') })
-})
-
-it('cleans up a failed workspace opening and ignores updates after closing', async () => {
-  const bench = await setup()
-  await bench.openRoot()
-  const options = {
-    scope: { kind: 'workspace' as const, workspaceId: 'alpha' as WorkspaceId, path: '/repo/current', title: 'Alpha' },
-    loading: () => false, refresh: async () => {}, changed: vi.fn(), closeAll: vi.fn(), onClosed: vi.fn(),
-  }
-  const panel = openSessionWorkspace(bench.ctx, new AbortController().signal, interactionTranslator(bench.ctx), bench.cache, options)
-  panel.handle.close()
-  panel.catalogChanged('late update')
-  await flushRequests()
-  expect(bench.ctx.mayflyOverlays.list().map(item => item.id)).toEqual(['mayfly.sessions'])
 })

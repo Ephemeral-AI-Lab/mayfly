@@ -619,7 +619,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     // A panel stands in for the editor and the status rows, whatever its root node is (a plain stack, an empty state, a
     // surface); only a decision card (a lane) keeps the status rows.
     const root = editor?.interaction.node
-    const panel = editor !== undefined && !(root?.kind === 'surface' && root.chrome === 'lane')
+    const panel = editor !== undefined && (root?.kind !== 'surface' || root.chrome !== 'lane' || root.coverStatus === true)
     if (panel !== panelOpen) {
       panelOpen = panel
       ctx.mayflyScreen.setStatusHidden(panel)

@@ -30,16 +30,15 @@ const widthOperators = new Set([
 
 const approvedWidthMath = new Set([
   // A digit count of a line number for the edit gutter (an ASCII numeral, not display width); the painter owns the gutter.
+  'packages/mayfly/src/interaction/deliverables-command.ts:const numberWidth = diff.hunks.reduce((width, hunk) => Math.max(width, String(hunk.oldStart + hunk.oldLines - 1).length, String(hunk.newStart + hunk.newLines - 1).length), 1)',
   'packages/mayfly/src/transcript/tool-calls.ts:const width = String(preview.at(-1)?.number ?? 0).length',
 ])
 
 const approvedPresentation = new Set([
-  "border:packages/mayfly/src/components/marketplace.ts:separator: ui.text(Array.from({ length: height }, () => '\u2502').join('\\n'), { tone: 'muted' }),",
   "border:packages/mayfly/src/components/tool-line.ts:{ text: last ? '  \u2514 ' : '  \u251c ', tone: 'muted' },",
   "border:packages/mayfly/src/components/transcript-view.ts:const guide = span(last ? '      ' : '  \u2502   ', 'muted')",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:export function agentTreeBranch(last: boolean): '\u2514\u2500' | '\u251c\u2500' {",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:return last ? '\u2514\u2500' : '\u251c\u2500'",
-  "padding:packages/mayfly/src/components/marketplace.ts:const padEnd = (text: string, width: number): string => `${text}${' '.repeat(Math.max(0, width - cells(text)))}`",
   "padding:packages/mayfly/src/interaction/stats-account.ts:const total = BigInt(leftWhole + leftFraction.padEnd(scale, '0')) + BigInt(rightWhole + rightFraction.padEnd(scale, '0'))",
   "padding:packages/mayfly/src/transcript/splash.ts:' '.repeat(Math.max(0, Math.floor((width - deps.visibleWidth(text)) / 2))) + text",
   "padding:packages/mayfly/src/transcript/splash.ts:const age = ' '.repeat(Math.max(0, AGE_WIDTH - deps.visibleWidth(session.age))) + (session.live ? colors.success : colors.textMuted)(session.age)",
@@ -47,7 +46,7 @@ const approvedPresentation = new Set([
   "padding:packages/mayfly/src/transcript/splash.ts:return gap < 2 ? deps.truncate(left, width) : left + ' '.repeat(gap) + right",
   "padding:packages/mayfly/src/transcript/splash.ts:text + ' '.repeat(Math.max(0, width - deps.visibleWidth(text)))",
   "padding:packages/mayfly/src/transcript/tool-calls.ts:const lead = names[index]!.padEnd(wide)",
-  "pointer:packages/mayfly/src/interaction/update-command.ts:ui.text([`v${fromVersion} \u2192 v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' \u00b7 '), { tone: 'warning' }),",
+  "pointer:packages/mayfly/src/interaction/update-command.ts:detail: [`v${fromVersion} \u2192 v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' \u00b7 '),",
   "pointer:packages/mayfly/src/interaction/update-command.ts:{ kind: 'divider', label: `v${fromVersion} \u2192 v${toVersion}` },",
   "pointer:packages/mayfly/src/transcript/stream-facts.ts:const tokens = mark?.before !== undefined && mark.after !== undefined ? `${approx(mark.before)} \u2192 ${approx(mark.after)} ${t('tokens')}`",
   "pointer:packages/mayfly/src/transcript/tool-calls.ts:if (mcp !== null) return `${mcp[1]!} \u203a ${mcp[2]!}`",

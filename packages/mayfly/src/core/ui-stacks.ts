@@ -15,6 +15,11 @@ import { allocateStackSizes, visibleStackEntries } from '@earendil-works/pi-tui/
 import { blankRows, concatRows, declaredWidthOf, isVirtualRows, rowSourceOf, sliceRows, virtualRows } from './ui-rows.ts'
 import { visibleWidth } from './width.ts'
 
+/** A leaf that can fill the height a row settles on, used by a vertical divider between columns. */
+export interface FillHeightComponent {
+  renderHeight?: (height: number, width: number) => string[]
+}
+
 /** How many composited rows one stack remembers before its next render starts over. */
 export const ROW_STACK_ENTRIES = 4096
 
@@ -97,6 +102,8 @@ export class RowStack extends HStack {
   /** Composited rows by the column they were spliced into, then by the row under them, then by the row spliced in. */
   private readonly composited = new Map<string, Map<string, Map<string, string>>>()
   private remembered = 0
+  /** A pre-painted column rule placed in each gap, or undefined for none. */
+  rule: string | undefined
 
   override render(width: number): string[] {
     const safeWidth = Math.max(1, width)
@@ -110,8 +117,12 @@ export class RowStack extends HStack {
     // Only a child sized by its content is rendered to be measured; a fixed basis is the size whatever the content.
     const intrinsic = entries.map(entry => typeof entry.basis === 'number' ? 0 : this.widestRow(entry.component.render(safeWidth)))
     const widths = allocateStackSizes(entries, intrinsic, safeWidth, this.gap)
-    const rendered = entries.map((entry, index) => widths[index] === 0 ? [] : entry.component.render(widths[index]!))
-    const height = rendered.reduce((max, lines) => Math.max(max, lines.length), 0)
+    const measured = entries.map((entry, index) => widths[index] === 0 ? [] : entry.component.render(widths[index]!))
+    const height = measured.reduce((max, lines) => Math.max(max, lines.length), 0)
+    const rendered = measured.map((lines, index) => {
+      const fill = (entries[index]!.component as FillHeightComponent).renderHeight
+      return fill === undefined || widths[index] === 0 ? lines : fill(height, widths[index]!)
+    })
     const columns: number[] = []
     {
       let column = 0
@@ -135,7 +146,7 @@ export class RowStack extends HStack {
             if (source < 0 || source >= lines.length) continue
             base = this.splice(this.splices(`${String(columns[index])}|${String(widths[index])}|${String(safeWidth)}`), base, lines[source]!, columns[index]!, widths[index]!, safeWidth)
           }
-          return base
+          return this.rule === undefined ? base : this.applyRule(base, columns, safeWidth)
         },
       })
     }
@@ -146,7 +157,18 @@ export class RowStack extends HStack {
       const splices = this.splices(`${String(columns[index])}|${String(childWidth)}|${String(safeWidth)}`)
       for (const [row, line] of lines.entries()) result[row + offset] = this.splice(splices, result[row + offset]!, line, columns[index]!, childWidth, safeWidth)
     }
-    return result
+    return this.rule === undefined ? result : result.map(row => this.applyRule(row, columns, safeWidth))
+  }
+
+  /** Place the column rule in each gap between visible children, on one composited row. */
+  private applyRule(row: string, columns: readonly number[], width: number): string {
+    if (this.rule === undefined || this.gap === 0) return row
+    let painted = row
+    for (const column of columns.slice(1)) {
+      if (column <= 0) continue
+      painted = compositeTuiLine(painted, this.rule, column - Math.ceil(this.gap / 2), 1, width)
+    }
+    return painted
   }
 
   private widestRow(lines: readonly string[]): number {

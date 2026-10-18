@@ -318,7 +318,7 @@ const SCRIPTS = {
     play('splash'), wait(500), checkpoint('splash'),
     // `↑` on the empty prompt walks the recent list; `Esc` gives the keyboard back.
     key('up'), checkpoint('browse'), key('down'), checkpoint('browse-2'), key('esc'), wait(200),
-    ...open('/settings', 'Settings'), type('/mayfly'), key('enter'), until('Update check'), key('down', { repeat: 40 }), until('On start'), checkpoint('settings'),
+    ...open('/settings', 'Settings'), key('down', { repeat: 24 }), until('Update check'), key('right'), key('down', { repeat: 40 }), until('On start'), checkpoint('settings'),
     // Esc leaves the namespace, then the search, then the panel.
     key('esc'), wait(300), key('esc'), wait(300), key('esc'), wait(300),
     resize(60, 30), checkpoint('narrow-60'),
@@ -359,9 +359,9 @@ const SCRIPTS = {
     ...open('/model', 'Select a model'), checkpoint('model'), key('esc'),
     ...open('/effort', 'Effort'), checkpoint('effort'), key('esc'),
     ...open('/stats', 'Stats'), checkpoint('stats-session'),
-    key('right'), checkpoint('stats-account'),
-    key('right'), wait(1000), until('Less'), wait(1000), checkpoint('stats-history'),
-    key('right'), wait(1000), checkpoint('stats-models'), key('esc'),
+    key('alt+right'), checkpoint('stats-account'),
+    key('alt+right'), wait(1000), until('Less'), wait(1000), checkpoint('stats-history'),
+    key('alt+right'), wait(1000), checkpoint('stats-models'), key('esc'),
     ...open('/plugin', 'Plugin marketplace'), until('Browse'), wait(500), checkpoint('plugin'),
     key('alt+left'), wait(500), checkpoint('plugin-updates'), key('esc'),
     ...open('/agents', 'Subagents'), checkpoint('agents'), key('esc'),
@@ -381,9 +381,9 @@ const SCRIPTS = {
   mergeHeights: [
     play('ready'),
     ...open('/stats', 'Stats'), checkpoint('stats-session'),
-    key('right'), checkpoint('stats-account'),
-    key('right'), wait(1000), until('Less'), wait(1000), checkpoint('stats-history'),
-    key('right'), wait(1000), checkpoint('stats-models'), key('esc'),
+    key('alt+right'), checkpoint('stats-account'),
+    key('alt+right'), wait(1000), until('Less'), wait(1000), checkpoint('stats-history'),
+    key('alt+right'), wait(1000), checkpoint('stats-models'), key('esc'),
     ...open('/plugin', 'Plugin marketplace'), until('Browse'), checkpoint('plugin-browse'),
     key('alt+left'), checkpoint('plugin-updates'),
     key('alt+left'), checkpoint('plugin-installed'),
@@ -636,6 +636,49 @@ const APP = {
   },
 }
 
+/**
+ * The compose review scene: the unified Panel, Rail, Browser, DecisionLane, and keys-only behaviour on the panels built
+ * from the `compose` layer. It reuses the merge panels replay (one stored session per stats seed, a reviewer, a watcher,
+ * and a question), then opens the rail and browser panels at 120, 70, and 40 columns. This is a live review scene, not a
+ * golden: `demo` keeps it out of the scenario comparison while `pnpm run scenario composeDemo` and `pnpm run frame
+ * composeDemo` can still play it.
+ */
+const DEMO = {
+  composeDemo: {
+    demo: true,
+    summary: 'the compose layer: the /settings rail, the /plugin browser, /tools, /mcp and /jobs panels, the shared stop confirmation in the views, /agents, /help, the model picker, /stats, the settings rail at 70 and 40 columns, and the question lane',
+    source: { replay: 'mergePanels' },
+    covers: [
+      ...PANELS, `${INTERACTION}native-sessions.ts`, `${INTERACTION}session-*.ts`, `${INTERACTION}deliverables-command.ts`, `${INTERACTION}skills-command.ts`,
+      `${INTERACTION}tools-commands.ts`, `${INTERACTION}mcp-*.ts`, `${INTERACTION}jobs.ts`, `${INTERACTION}plugin-commands.ts`, `${INTERACTION}settings*.ts`,
+    ],
+    sizes: [[120, 40]],
+    market: { installed: 'full' },
+    account: { balance: 'ok' },
+    workspace: {
+      'src/hero.ts': "export const hero = 'Ship agent UI in a keystroke'\n",
+      'README.md': '# Mayfly compose demo\n\nOne panel, one rail, one browser.\n',
+    },
+    script: [
+      play('ready'), checkpoint('ready'),
+      ...open('/settings', 'Settings'), checkpoint('settings'),
+      key('esc'),
+      ...open('/plugin', 'Plugin marketplace'), until('Browse'), wait(300), checkpoint('plugin-browser'), key('esc'), wait(300),
+      ...open('/tools', 'Tools'), checkpoint('tools'), key('esc'), wait(300),
+      ...open('/mcp', 'MCP'), checkpoint('mcp'), key('esc'), wait(300),
+      ...open('/jobs', 'Jobs'), checkpoint('jobs'), key('esc'), wait(300),
+      key('alt+down'), key('right'), checkpoint('view-jobs'), key('x'), checkpoint('confirm'), key('n'), checkpoint('declined'), key('esc'),
+      ...open('/agents', 'Subagents'), checkpoint('agents'), key('esc'),
+      ...open('/help', 'Help'), checkpoint('help'), key('esc'),
+      ...open('/model', 'Select a model'), checkpoint('model'), key('esc'),
+      ...open('/stats', 'Stats'), checkpoint('stats'), key('esc'),
+      resize(70, 24), ...open('/settings', 'Settings'), checkpoint('settings-70'), key('esc'),
+      resize(40, 24), ...open('/settings', 'Settings'), checkpoint('settings-40'), key('esc'),
+      resize(120, 40), play(), until('Which runtime'), checkpoint('question'), key('1'), wait(500), checkpoint('answered'),
+    ],
+  },
+}
+
 const SENTENCE = 'the quick brown fox jumps over the lazy dog and keeps typing until the prompt wraps onto a second row of the editor'
 /** Open a panel by its command, measure its cursor keys, and close it. */
 const nav = command => [type(command), key('enter'), measure(`nav ${command}`, [key('down', { repeat: 20 }), key('up', { repeat: 20 })]), key('esc'), key('esc'), key('ctrl+c')]
@@ -772,6 +815,7 @@ const PERF = {
 export const CATALOG = Object.freeze({
   ...Object.fromEntries(Object.entries(REPLAYS).map(([name, replay]) => [name, replayScenario(name, replay)])),
   ...APP,
+  ...DEMO,
   ...PERF,
 })
 
@@ -779,7 +823,7 @@ export const CATALOG = Object.freeze({
 export const APP_SHOTS = Object.freeze(Object.entries(CATALOG).flatMap(([name, scenario]) => Object.entries(scenario.shots ?? {}).map(([checkpointName, id]) => ({ id, scenario: name, checkpoint: checkpointName, cols: scenario.sizes[0][0], rows: scenario.sizes[0][1] }))))
 
 /** The scenarios checked against goldens, and the perf scenarios. */
-export const GOLDEN_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf === undefined)
+export const GOLDEN_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf === undefined && CATALOG[name].demo !== true)
 export const PERF_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf !== undefined)
 
 /**

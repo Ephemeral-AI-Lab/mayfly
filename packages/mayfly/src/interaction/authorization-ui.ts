@@ -4,7 +4,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { AuthorizationDeclinedError, type AuthorizationNotice, type AuthorizationPrompt } from '@deepseek-ai/dsh-authorization'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
-import { ui, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { openUiOverlay } from './ui-overlay.ts'
 import { interactionTranslator } from './locale.ts'
 
@@ -37,17 +37,21 @@ export function openAuthorization(ctx: Context, route: string, onAuthorized: () 
   }
   const copyActions = () => ui.actions({ id: 'authorization-copy', items: [
     ...(notice?.url === undefined ? [] : [{ id: 'copy-url', label: t('Copy URL'), hintLabel: t('copy URL'), key: 'u', hidden: true }]),
-    ...(notice?.code === undefined ? [] : [{ id: 'copy-code', label: t('Copy code'), hintLabel: t('copy code'), semantic: 'copy' as const, hidden: true }]),
+    ...(notice?.code === undefined ? [] : [{ id: 'copy-code', label: t('Copy code'), hintLabel: t('copy code'), key: 'c', hidden: true }]),
   ] })
   const view = () => {
     const running = authorization.describe(credentialKey('llm-pi-ai', route))?.inFlight === true
-    return ui.stack.column([
-    instructions(notice), copyActions(),
-    ...(running ? [ui.loader({ message: t('Waiting for authorization') })] : []),
-    ui.actions({ id: 'authorization-actions', items: [
-      ...finished ? [] : [{ id: 'start', label: t(authorized ? 'Finish setup' : 'Sign in'), hintLabel: t(authorized ? 'finish setup' : 'sign in'), key: 's', hidden: true, disabled: running }],
-    ] }),
-    ])
+    return panel({
+      title: t('Authorize {route}', { route }),
+      escapeLabel: 'cancel',
+      body: ui.stack.column([
+        instructions(notice), copyActions(),
+        ...(running ? [ui.loader({ message: t('Waiting for authorization') })] : []),
+        ui.actions({ id: 'authorization-actions', items: [
+          ...finished ? [] : [{ id: 'start', label: t(authorized ? 'Finish setup' : 'Sign in'), hintLabel: t(authorized ? 'finish setup' : 'sign in'), key: 's', hidden: true, disabled: running }],
+        ] }),
+      ]),
+    })
   }
   let handle!: MayflyOverlayHandle
   const refresh = () => { handle.set(view()); prompt?.refresh() }
@@ -68,16 +72,20 @@ export function openAuthorization(ctx: Context, route: string, onAuthorized: () 
       answer = undefined
       child.close()
     }
-    const promptView = () => ui.stack.column([
-      instructions(notice), copyActions(),
-      ui.text(request.message),
-      request.kind === 'select'
-        ? ui.list({ id: 'authorization-options', role: 'choose', numbered: true, selectedIds: answer === undefined ? [] : [answer.value], minSelected: 1, items: request.options.map(option => ({ id: option.id, label: option.label, ...(option.description === undefined ? {} : { detail: option.description }) })), empty: ui.empty({ title: t('No authorization options are available') }) })
-        : ui.form({ id: 'authorization-answer', enterSubmits: 'submit-answer', fields: [{ kind: request.kind === 'secret' ? 'secret' : 'input', id: 'answer', label: t('Answer'), value: '', required: true, ...(request.placeholder === undefined ? {} : { placeholder: request.placeholder }) }] }),
-      ui.actions({ id: 'authorization-prompt-actions', items: [
-        ...(request.kind === 'select' ? [] : [{ id: 'submit-answer', label: t('Continue'), hintLabel: t('continue'), hidden: true, submit: [{ pagePath: [], formId: 'authorization-answer' }] }]),
-      ] }),
-    ])
+    const promptView = () => panel({
+      title: t('Sign in'),
+      escapeLabel: 'cancel',
+      body: ui.stack.column([
+        instructions(notice), copyActions(),
+        ui.text(request.message),
+        request.kind === 'select'
+          ? ui.list({ id: 'authorization-options', role: 'choose', numbered: true, selectedIds: answer === undefined ? [] : [answer.value], minSelected: 1, items: request.options.map(option => ({ id: option.id, label: option.label, ...(option.description === undefined ? {} : { detail: option.description }) })), empty: ui.empty({ title: t('No authorization options are available') }) })
+          : ui.form({ id: 'authorization-answer', enterSubmits: 'submit-answer', fields: [{ kind: request.kind === 'secret' ? 'secret' : 'input', id: 'answer', label: t('Answer'), value: '', required: true, ...(request.placeholder === undefined ? {} : { placeholder: request.placeholder }) }] }),
+        ui.actions({ id: 'authorization-prompt-actions', items: [
+          ...(request.kind === 'select' ? [] : [{ id: 'submit-answer', label: t('Continue'), hintLabel: t('continue'), hidden: true, submit: [{ pagePath: [], formId: 'authorization-answer' }] }]),
+        ] }),
+      ]),
+    })
     child = openUiOverlay(ctx, {
       id: promptId, title: t('Sign in'), presentation: 'editor', capturing: true,
       scope: { kind: 'app', targetId: `authorization/${route}` },

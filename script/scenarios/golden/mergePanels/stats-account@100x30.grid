@@ -1,4 +1,5 @@
 grid 100x30 cursor none
+|  ● Goal set · Refresh the landing page hero and keep every test green
 |
 |  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
 |
@@ -14,8 +15,7 @@ grid 100x30 cursor none
 |━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 |  Stats
 |
-|  Session   Account   History   Models
-|            ━━━━━━━
+|  Session    Account    History   Models
 |
 |  Provider: DeepSeek (deepseek-official)
 |  Key:      configured (DEEPSEEK_API_KEY)
@@ -28,21 +28,21 @@ grid 100x30 cursor none
 |
 |
 |
-|  ←/→ tabs · Enter open · Esc close
+|  Enter open · Alt+←/→ tabs · Esc close
 styles
-1: 2-3 fg:#ededf2
-3: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
-5: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
-7: 2-3 fg:#ededf2
-11: 2-29 fg:#9aa3b8
-12: 0-99 fg:#9a86e6
-13: 2-6 fg:#9a86e6 b
-15: 2-8 fg:#9aa3b8; 12-18 fg:#9a86e6 b; 22-28 fg:#9aa3b8; 32-37 fg:#9aa3b8
-16: 12-18 fg:#9a86e6 b
+0: 2-99 fg:#c9c0f0
+2: 2-3 fg:#ededf2
+4: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+6: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+8: 2-3 fg:#ededf2
+12: 2-29 fg:#9aa3b8
+13: 0-99 fg:#9a86e6
+14: 2-6 fg:#9a86e6 b
+16: 2-8 fg:#9aa3b8; 12-20 fg:#9a86e6 b r; 24-30 fg:#9aa3b8; 34-39 fg:#9aa3b8
 18: 2-10 fg:#9aa3b8; 12-39 fg:#ededf2
 19: 2-10 fg:#9aa3b8; 12-40 fg:#ededf2
 20: 2-10 fg:#9aa3b8; 12-55 fg:#ededf2
 21: 2-10 fg:#9aa3b8; 12-47 fg:#ededf2
 22: 2-10 fg:#9aa3b8; 12-46 fg:#ededf2
 23: 2-10 fg:#9aa3b8; 12-19 fg:#9aa3b8
-29: 2-4 fg:#ededf2; 6-12 fg:#5c6476; 13-17 fg:#ededf2; 19-25 fg:#5c6476; 26-28 fg:#ededf2; 30-34 fg:#5c6476
+29: 2-6 fg:#ededf2; 8-14 fg:#5c6476; 15-21 fg:#ededf2; 23-29 fg:#5c6476; 30-32 fg:#ededf2; 34-38 fg:#5c6476

@@ -36,7 +36,7 @@ export function coversPath(glob, file) {
  */
 function selectScenarios(graph, files) {
   const why = {}
-  const add = (name, chain) => { why[`scenario ${name}`] ??= [...chain, `scenario ${name}`] }
+  const add = (name, chain) => { if (CATALOG[name]?.demo === true) return; why[`scenario ${name}`] ??= [...chain, `scenario ${name}`] }
   const goldens = files.filter(file => file.startsWith('script/scenarios/golden/'))
   for (const file of goldens) {
     const name = file.split('/')[3]

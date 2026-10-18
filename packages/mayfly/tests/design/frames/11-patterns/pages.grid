@@ -50,24 +50,22 @@ styles
 2: 60-66 fg:muted; 68-84 fg:success
 3: 0-1 fg:textMuted; 2-4 fg:text; 6-15 fg:textMuted; 16-20 fg:text; 22-28 fg:textMuted; 29-31 fg:text; 33-37 fg:textMuted
 ## ctrl+n
-grid 80x11 cursor 4,10
+grid 80x10 cursor none
 |━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 |  Status
 |
-|  Overview   Usage   Account !
-|  ━━━━━━━━
+|   Overview    Usage   Account !
 |
 |  Provider: DeepSeek
 |  Balance:  ⚠ ¥ 6.20 low balance
 |  Checked:  2 min ago · r refresh
 |
-|  ←/→ tabs · Enter open · Esc close
+|  Enter open · Alt+←/→ tabs · Esc close
 styles
 0: 0-79 fg:primary
 1: 2-7 fg:primary b
-3: 2-9 fg:primary b; 13-17 fg:muted; 21-27 fg:muted; 29 fg:warning b
-4: 2-9 fg:primary b
-6: 2-10 fg:muted; 12-19 fg:text
-7: 2-10 fg:muted; 12-19 fg:warning; 20-31 fg:muted
-8: 2-10 fg:muted; 12-32 fg:muted
-10: 2-4 fg:text; 6-12 fg:textMuted; 13-17 fg:text; 19-25 fg:textMuted; 26-28 fg:text; 30-34 fg:textMuted
+3: 2-11 fg:primary b r; 15-19 fg:muted; 23-29 fg:muted; 31 fg:warning b
+5: 2-10 fg:muted; 12-19 fg:text
+6: 2-10 fg:muted; 12-19 fg:warning; 20-31 fg:muted
+7: 2-10 fg:muted; 12-32 fg:muted
+9: 2-6 fg:text; 8-14 fg:textMuted; 15-21 fg:text; 23-29 fg:textMuted; 30-32 fg:text; 34-38 fg:textMuted

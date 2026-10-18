@@ -27,7 +27,7 @@ grid 100x30 cursor none
 |  Shift+Tab  let the agent plan first; you approve before it acts
 |
 |  → Start chatting
-|  ↑/↓ options · Enter choose · ←/→ step · Esc back
+|  ↑/↓ options · Enter choose · Alt+←/→ step · Esc back
 |✓ DeepSeek API key saved
 styles
 0: 45-46 fg:#9a86e6; 50-51 fg:#9a86e6
@@ -52,5 +52,5 @@ styles
 24: 2-44 fg:#ededf2
 25: 2-64 fg:#ededf2
 27: 2 fg:#9a86e6 b; 4-17 fg:#f5f5f7 b
-28: 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-20 fg:#ededf2; 22-30 fg:#5c6476; 31-33 fg:#ededf2; 35-41 fg:#5c6476; 42-44 fg:#ededf2; 46-49 fg:#5c6476
+28: 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-20 fg:#ededf2; 22-30 fg:#5c6476; 31-37 fg:#ededf2; 39-45 fg:#5c6476; 46-48 fg:#ededf2; 50-53 fg:#5c6476
 29: 0-1 fg:#4ec87e; 2-23 fg:#ededf2

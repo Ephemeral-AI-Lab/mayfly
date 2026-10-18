@@ -13,7 +13,7 @@ import {
 } from './key-actions.ts'
 
 /** The layer one Escape press leaves, innermost first. */
-export type EscapeStep = 'collapse' | 'cancel' | 'done' | 'end-search' | 'back' | 'close' | 'leave'
+export type EscapeStep = 'collapse' | 'cancel' | 'done' | 'end-search' | 'back' | 'close' | 'leave' | 'no'
   /** Escape cancels the work a loader shows; the surface's own `escapeLabel` words the rest, and the host closes it. */
   | 'cancel-work' | 'reject' | 'surface-back' | 'surface-cancel'
   /** Focus is on a control other than the surface's home control: Escape returns to it before it leaves anything. */
@@ -196,7 +196,7 @@ export interface GrammarBinding {
 
 const ESCAPE_LABEL: Readonly<Record<EscapeStep, string>> = {
   collapse: 'collapse', cancel: 'cancel', done: 'done', 'end-search': 'end search', back: 'back', close: 'close', leave: 'leave',
-  'cancel-work': 'cancel', reject: 'reject', 'surface-back': 'back', 'surface-cancel': 'cancel', home: 'back',
+  'cancel-work': 'cancel', reject: 'reject', no: 'no', 'surface-back': 'back', 'surface-cancel': 'cancel', home: 'back',
 }
 
 /** Hint priorities: Escape is reserved, then the primary operation, then navigation; digits repeat Enter, so they yield to arrows. */
@@ -223,7 +223,7 @@ function groupMoves(bindings: GrammarBinding[]): void {
 
 function tabSwitches(bindings: GrammarBinding[], state: GrammarState, hinted: boolean): void {
   if (!state.tabs) return
-  const hint = hinted ? { id: 'tabs', label: state.tabsLabel ?? 'tabs', priority: PRIORITY.secondary, actions: [ACTION_PREV_TAB, ACTION_NEXT_TAB], compact: 'Alt+←→' } : undefined
+  const hint = hinted ? { id: 'tabs', label: state.tabsLabel ?? 'tabs', priority: PRIORITY.accelerator + 1, actions: [ACTION_PREV_TAB, ACTION_NEXT_TAB], compact: 'Alt+←→' } : undefined
   push(bindings, action(ACTION_PREV_TAB), { kind: 'tab-switch', delta: -1 }, hint)
   push(bindings, action(ACTION_NEXT_TAB), { kind: 'tab-switch', delta: 1 })
 }
@@ -338,9 +338,6 @@ function listText(bindings: GrammarBinding[], state: GrammarState): void {
 }
 
 /** A plain row (no segment, branch, or body) under a horizontal tab strip gives `←`/`→` to the strip. */
-function arrowsSwitchTabs(state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'row' }>): boolean {
-  return state.tabs && state.railBack !== true && state.list?.searching !== true && control.segment === undefined && !control.tree && control.expandable !== true
-}
 
 function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'row' }>): void {
   // While a search is typing, arrows still move the cursor, but the hint names only what ends or clears the search.
@@ -358,10 +355,6 @@ function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: E
     if (!stuck) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'branch', expand: false }, branch)
     push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'branch', expand: true }, stuck ? branch : undefined)
     if (stuck) railLeft(bindings, state)
-  } else if (arrowsSwitchTabs(state, control)) {
-    // A plain row under a horizontal tab strip has no use for `←`/`→`: they switch the tab, as on the strip itself.
-    push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'tab-switch', delta: -1 }, { id: 'tabs', label: state.tabsLabel ?? 'tabs', priority: PRIORITY.accelerator + 1, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
-    push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'tab-switch', delta: 1 })
   } else {
     // Rows move vertically; left/right leave the list for the nearest control beside it.
     if (!railLeft(bindings, state)) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'navigate', direction: 'left' })
@@ -464,7 +457,8 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
     push(bindings, { kind: 'digit' }, { kind: 'numbered' }, { id: 'numbered', keys: list.numbered.count === 1 ? '1' : `1-${String(list.numbered.count)}`, label: list.numbered.accept ? 'choose' : 'focus', priority: PRIORITY.numbered })
   }
   // A search in progress hints only what ends or clears it.
-  tabSwitches(bindings, state, control.kind !== 'tab' && list?.searching !== true && !(control.kind === 'row' && arrowsSwitchTabs(state, control)))
+  const onRail = control.kind === 'tab' && control.vertical === true
+  tabSwitches(bindings, state, !onRail && state.railBack !== true && list?.searching !== true)
   /* Outside editing, arrows leave a control at its edge, Alt+↑/↓ hop between groups and Esc goes home: Tab has nothing left to add. */
   focusLevels(bindings)
   if (list?.searching === true) push(bindings, { kind: 'backspace' }, { kind: 'search-type' })
@@ -550,10 +544,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
         push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'swallow' })
         break
       }
-      push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'tab-move', delta: -1 }, { id: 'navigate', label: 'tabs', priority: PRIORITY.navigate, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
-      push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'tab-move', delta: 1 })
       push(bindings, action(ACTION_SUBMIT), { kind: 'tab-descend' }, { id: 'activate', label: 'open', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
-      navigation(bindings, state, ['up', 'down'], 'tabs')
       break
     case 'toggle':
     case 'submit':

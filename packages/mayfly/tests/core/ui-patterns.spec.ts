@@ -65,30 +65,34 @@ describe('private UI pattern painters', () => {
     }
   })
 
-  it('draws the active tab with an underline, folds a strip that does not fit, and marks wizard steps', () => {
+  it('draws the selected tab as an inverse chip, folds a strip that does not fit, and marks wizard steps', () => {
     const node = ui.tabs({ id: 'tabs', activeId: 'a', items: [
       { id: 'a', label: 'Alpha', count: 12 },
       { id: 'b', label: 'Beta', disabled: true, count: 3 },
       { id: 'c', label: 'Gamma', count: 4 },
     ] })
-    expect(plain(renderTabs(node, 80, idle, colors))).toEqual(['Alpha 12   Beta 3   Gamma 4', '━━━━━━━━'])
+    // A normal strip is one row: the selected tab is primary + inverse + strong, with no underline.
+    expect(plain(renderTabs(node, 80, idle, colors))).toEqual([' Alpha 12    Beta 3   Gamma 4'])
     const focused = renderTabs({ ...node, activeId: 'c' }, 80, { key: 'c', focused: true, marker: '|' }, colors)
-    expect(plain(focused)).toEqual(['Alpha 12   Beta 3   Gamma 4', `${' '.repeat(20)}━━━━━━━|`])
-    expect(focused[0]).toContain('\x1b[1mGamma\x1b[22m')
-    expect(focused[1]).toContain('\x1b[1m━━━━━━━\x1b[22m')
-    expect(plain(renderTabs(node, 16, idle, colors))).toEqual(['‹ Alpha 12  +2 ›'])
-    expect(plain(renderTabs({ ...node, activeId: 'c' }, 16, idle, colors))).toEqual(['‹ Gamma 4  +2 ›'])
-    expect(plain(renderTabs({ ...node, activeId: 'missing' }, 80, idle, colors))[1]).toBe('━━━━━━━━')
+    expect(plain(focused)).toEqual(['Alpha 12   Beta 3    Gamma 4 '])
+    expect(focused[0]).toContain('\x1b[1m')
+    expect(focused[0]).toContain('\x1b[7m')
+    expect(focused[0]).not.toContain('━')
+    // Selection does not depend on focus: the idle frame paints the same chip.
+    expect(renderTabs({ ...node, activeId: 'c' }, 80, idle, colors)).toEqual(focused)
+    expect(plain(renderTabs(node, 16, idle, colors))).toEqual(['‹  Alpha 12   +2'])
+    expect(plain(renderTabs({ ...node, activeId: 'c' }, 16, idle, colors))).toEqual(['‹  Gamma 4   +2 '])
+    expect(plain(renderTabs({ ...node, activeId: 'missing' }, 80, idle, colors))).toEqual([' Alpha 12    Beta 3   Gamma 4'])
     const primary = vi.fn(identity)
     const muted = vi.fn(identity)
     const palette = new Proxy(colors, { get: (target, key, receiver) => key === 'primary' ? primary : key === 'muted' ? muted : Reflect.get(target, key, receiver) })
     renderTabs(node, 80, idle, palette)
-    expect(primary).toHaveBeenCalledWith('Alpha')
+    expect(primary).toHaveBeenCalledWith(' Alpha 12 ')
     expect(muted).toHaveBeenCalledWith('Gamma')
 
-    // Two tabs that do not fit fold with nothing hidden; a strip without tabs paints an empty rule.
-    expect(plain(renderTabs(ui.tabs({ id: 'pair', activeId: 'x', items: [{ id: 'x', label: 'Extended' }, { id: 'y', label: 'Yonder' }] }), 12, idle, colors))).toEqual(['‹ Extended  ›'.slice(0, 12)])
-    expect(plain(renderTabs({ ...node, items: [] }, 20, idle, colors))).toEqual(['', ''])
+    // Two tabs that do not fit fold with nothing hidden; a strip without tabs paints an empty row.
+    expect(plain(renderTabs(ui.tabs({ id: 'pair', activeId: 'x', items: [{ id: 'x', label: 'Extended' }, { id: 'y', label: 'Yonder' }] }), 12, idle, colors))).toEqual(['‹  Extended '])
+    expect(plain(renderTabs({ ...node, items: [] }, 20, idle, colors))).toEqual([''])
     const wizard = ui.tabs({ id: 'steps', mode: 'wizard', activeId: 'two', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }, { id: 'three', label: 'Three' }] })
     const wizardRows = plain(renderTabs(wizard, 80, idle, colors, ['one', 'two']))
     expect(wizardRows[0]).toMatch(/^✓ One  ›  ● Two  ›  ○ Three\s+2\/3$/u)

@@ -103,7 +103,7 @@ function spansText(spans: readonly MayflyInlineSpan[], colors: MayflySemanticCol
 
 /** The check column of a row: `●` chosen, `○` not, `◐` for a parent with some of its children chosen. */
 function checkOf(node: ListNodeView, spec: ListRowSpec, selected: boolean, selectedIds: readonly string[]): string {
-  if (node.mode !== 'multiple' && node.marks !== true) return ''
+  if (node.mode !== 'multiple') return ''
   if (node.mode === 'multiple' && node.tree === true) {
     const children = node.items.filter(child => child.parentId === spec.item.id)
     if (children.length > 0) {

@@ -2,7 +2,7 @@ grid 100x30 cursor none
 |
 |    ▗▘   ▝▖     mayfly scenario
 | ▄▄▖█▛███▜█▗▄▄  ephemeral agents, enduring works
-|  ▄▖█▙███▟█▗▄   deepseek-v4-pro · deepseek-official
+|  ▄▖█▙███▟█▗▄   deepseek-flash · deepseek-official
 |    ▝▜▀▀▀▛▘     ~/workspace
 |
 |  » Check the minimal tool surface.
@@ -21,25 +21,26 @@ grid 100x30 cursor none
 |
 |
 |
-|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-|  Permissions
 |
-|    1. read-only           sandbox read-only · approval ask
-|  → 2. workspace-write ✓   sandbox workspace-write · approval ask
-|    3. danger-full-access  sandbox danger-full-access · approval never
-|
+|                                                                  Alt+↑ conversation · Alt+↓ view
+|── Permissions ─────────────────────────────────────────────────────────────────────────────────────
+|  1. read-only           sandbox read-only · approval ask
+|→ 2. workspace-write ✓   sandbox workspace-write · approval ask
+|  3. danger-full-access  sandbox danger-full-access · approval never
 |  ↑/↓ options · 1-3 choose · Enter choose · Esc close
+| deepseek-official/deepseek-flash  ~/workspace                                    ctx ▱▱▱▱▱▱▱▱▱▱ 1%
 styles
 1: 4-5 fg:#9a86e6; 9-10 fg:#9a86e6; 16-21 fg:#9a86e6 b; 22-30 fg:#5c6476
 2: 1-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-13 fg:#cfc6f5; 16-47 fg:#c9c0f0
-3: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-50 fg:#e9e6f4
+3: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-49 fg:#e9e6f4
 4: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
 6: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
 8: 2-3 fg:#ededf2
 11: 2-29 fg:#9aa3b8
-22: 0-99 fg:#9a86e6
-23: 2-12 fg:#9a86e6 b
-25: 4-5 fg:#9aa3b8; 7-15 fg:#ededf2; 27-58 fg:#9aa3b8
-26: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 7-21 fg:#9a86e6 b; 23 fg:#9a86e6; 27-64 fg:#9aa3b8
-27: 4-5 fg:#9aa3b8; 7-24 fg:#ededf2; 27-69 fg:#9aa3b8
-29: 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-18 fg:#ededf2; 20-28 fg:#5c6476; 29-33 fg:#ededf2; 35-43 fg:#5c6476; 44-46 fg:#ededf2; 48-52 fg:#5c6476
+23: 66-96 fg:#9aa3b8
+24: 0-99 fg:#9aa3b8
+25: 2-3 fg:#9aa3b8; 5-13 fg:#ededf2; 25-56 fg:#9aa3b8
+26: 0 fg:#9a86e6 b; 2-3 fg:#9aa3b8; 5-19 fg:#9a86e6 b; 21 fg:#9a86e6; 25-62 fg:#9aa3b8
+27: 2-3 fg:#9aa3b8; 5-22 fg:#ededf2; 25-67 fg:#9aa3b8
+28: 0-1 fg:#5c6476; 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-18 fg:#ededf2; 20-28 fg:#5c6476; 29-33 fg:#ededf2; 35-43 fg:#5c6476; 44-46 fg:#ededf2; 48-52 fg:#5c6476
+29: 1-32 fg:#ededf2; 35-45 fg:#9aa3b8; 82-85 fg:#ededf2; 86-95 fg:#9aa3b8; 96-98 fg:#ededf2

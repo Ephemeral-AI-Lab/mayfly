@@ -29,6 +29,7 @@ import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/u
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { renderRequest } from './request-fixture.ts'
 import { withOverrides, type Overrides } from '../fixture-fields.ts'
+import { plainText } from '../helpers.ts'
 
 /** The real seams, restored after every test. */
 const REAL = { ...updaterInternals }
@@ -228,10 +229,14 @@ async function mountWorld(options: WorldOptions = {}) {
     const existing = drivers.get(model)
     if (existing !== undefined) return existing
     let compiled: ReturnType<typeof renderRequest> | undefined
+    let compiledWidth = 0
+    let compiledRows = 0
     let compiledRevision = -1
-    const sync = (width = 80) => {
-      if (compiled === undefined || compiledRevision !== model.revision) {
-        compiled = renderRequest(model, { columns: width, rows: 24 }, compiled?.runtime)
+    const sync = (width = 80, rows = 24) => {
+      if (compiled === undefined || compiledRevision !== model.revision || compiledWidth !== width || compiledRows !== rows) {
+        compiled = renderRequest(model, { columns: width, rows }, compiled?.runtime)
+        compiledWidth = width
+        compiledRows = rows
         compiledRevision = model.revision
       }
       return compiled
@@ -239,7 +244,7 @@ async function mountWorld(options: WorldOptions = {}) {
     const driver: BrowserPanel = {
       handleInput: data => sync().input(data),
       currentNode: () => model.node,
-      render: width => sync(width).component.render(width),
+      render: (width, rows = 24) => sync(width, rows).component.render(width),
     }
     drivers.set(model, driver)
     return driver
@@ -273,7 +278,7 @@ type World = Awaited<ReturnType<typeof mountWorld>>
 interface BrowserPanel {
   handleInput(data: string): void
   currentNode(): unknown
-  render(width: number): string[]
+  render(width: number, rows?: number): string[]
 }
 
 /** Address the controls inside the active marketplace tab. */
@@ -283,8 +288,14 @@ function marketPage(model: UiSurfaceModel) {
 }
 
 /** Compile and paint the panel once so its responsive list and detail are addressable. */
-function renderMarket(world: World): void {
-  ;(world.overlay() as BrowserPanel | undefined)?.render(80)
+function renderMarket(world: World, width = 80, rows = 24): void {
+  ;(world.overlay() as BrowserPanel | undefined)?.render(width, rows)
+}
+
+/** Paint the current marketplace panel and return its ANSI-free visible text. */
+function marketText(world: World, width = 80, rows = 24): string {
+  renderMarket(world, width, rows)
+  return plainText((world.overlay() as BrowserPanel | undefined)?.render(width, rows).join('\n') ?? '')
 }
 
 /** Select one browser tab through shared tab state. */
@@ -322,6 +333,14 @@ async function openMarket(world: World): Promise<UiSurfaceModel> {
     expect(model).toBeDefined()
     expect(JSON.stringify(model!.node)).not.toContain('loading catalog...')
   })
+  renderMarket(world)
+  return world.surface()!
+}
+
+/** Open `/plugin info` on the marketplace's detail page and return its root model. */
+async function openInfo(world: World, id: string): Promise<UiSurfaceModel> {
+  expect(await world.run(`/plugin info ${id}`)).toEqual({ kind: 'success' })
+  await vi.waitFor(() => { expect(world.surface()).toBeDefined() })
   renderMarket(world)
   return world.surface()!
 }
@@ -757,18 +776,21 @@ describe('/plugin catalog and refresh', () => {
   })
 })
 
-describe('/plugin detail panel', () => {
-  it('opens the detail with catalog display metadata and no CLI install command', async () => {
+describe('/plugin detail page', () => {
+  it('opens the detail page with catalog display metadata and no CLI install command', async () => {
     const world = await mountWorld({ index: [entry()] })
-    expect(await world.run('/plugin info loop')).toEqual({ kind: 'success' })
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('Loop')
-    expect(json).toContain('loop_create')
-    expect(json).toContain('/loop')
-    expect(json).toContain('dsh >=0.1.0-rc.5')
-    expect(json).not.toContain('Install command')
-    expect(json).not.toContain('dsh plugin --profile')
-    expect(json).not.toContain('running')
+    world.screen.rows = 60
+    await openInfo(world, 'loop')
+    const text = marketText(world, 80, 60)
+    expect(text).toContain('Loop')
+    expect(text).toContain('loop_create')
+    expect(text).toContain('/loop')
+    expect(text).toContain('dsh >=0.1.0-rc.5')
+    expect(text).not.toContain('Install command')
+    expect(text).not.toContain('dsh plugin --profile')
+    expect(text).not.toContain('running')
+    expect(JSON.stringify(world.surface()!.node)).toContain('"escapeLabel":"back"')
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeUndefined()
     world.dispose()
   })
 
@@ -778,23 +800,11 @@ describe('/plugin detail panel', () => {
       install: { rows: [{ name: '@deepseek-ai/dsh-acp', npm: { spec: '@deepseek-ai/dsh-acp' } }] },
     })
     const world = await mountWorld({ index: [acp] })
-    await world.run('/plugin info acp')
-    const json = JSON.stringify((world.overlay() as { currentNode(): unknown }).currentNode())
-    expect(json).toContain('dedicated non-Mayfly profile')
-    expect(json).not.toContain('Install command')
-    world.dispose()
-  })
-
-  it('contains detail creation after the browse parent closes', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    await openMarket(world)
-    const root = world.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.plugin-market')!
-    const context = { surfaceId: root.id, operationId: 'detail', source: root.source, revision: root.revision, signal: new AbortController().signal, report: vi.fn() }
-    const pending = root.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'plugins-browse', selectedIds: ['loop'] }, context)
-    world.ctx.mayflyOverlays.close(root.id)
-    await pending
-    await new Promise(resolve => setImmediate(resolve))
-    expect(world.ctx.mayflyOverlays.list()).toEqual([])
+    world.screen.rows = 40
+    await openInfo(world, 'acp')
+    const text = marketText(world, 80, 40)
+    expect(text.replace(/\s+/gu, ' ')).toContain('dedicated non-Mayfly profile')
+    expect(text).not.toContain('Install command')
     world.dispose()
   })
 })
@@ -973,17 +983,19 @@ describe('/plugin argument verbs and detail actions', () => {
     world.dispose()
   })
 
-  it('installs, updates, and removes from the detail panel', async () => {
+  it('installs, updates, and removes from the detail page', async () => {
     const world = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })] })
-    expect(await world.run('/plugin info loop')).toEqual({ kind: 'success' })
-    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
-    detail.invoke('install')
+    const model = await openInfo(world, 'loop')
+    expect(JSON.stringify(model.node)).toContain('"escapeLabel":"back"')
+    invokeMarketAction(world, 'install')
     await vi.waitFor(() => { expect(world.calls.install).toHaveLength(1) })
-    await vi.waitFor(() => { expect(detail.feedbackSnapshot().at(-1)?.message).toContain('restart Mayfly') })
-    detail.invoke('remove')
-    expect(JSON.stringify(detail.decisionNode)).toContain('Remove the selected plugin?')
-    detail.answerDecision(true)
+    await vi.waitFor(() => { expect(marketFeedback(model)).toContain('restart Mayfly') })
+    invokeMarketAction(world, 'remove')
+    expect(JSON.stringify(model.decisionNode)).toContain('Remove the selected plugin?')
+    model.answerDecision(true)
     await vi.waitFor(() => { expect(world.calls.remove).toEqual(['dsh-loop']) })
+    expect(world.ctx.mayflyOverlays.list().map(item => item.id)).toEqual(['mayfly.plugin-market'])
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeUndefined()
     world.dispose()
   })
 
@@ -992,24 +1004,26 @@ describe('/plugin argument verbs and detail actions', () => {
       index: [entry()], bundles: [bundle({ name: 'dsh-loop', version: '0.1.3' })],
       installResult: () => { throw new Error('network down') },
     })
-    await world.run('/plugin info loop')
-    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
-    detail.invoke('install')
-    await vi.waitFor(() => { expect(detail.feedbackSnapshot().at(-1)?.message).toContain('network down') })
-    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeDefined()
-    detail.requestClose()
-    await new Promise(resolve => setImmediate(resolve))
-    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeUndefined()
+    const model = await openInfo(world, 'loop')
+    invokeMarketAction(world, 'install')
+    await vi.waitFor(() => { expect(marketFeedback(model)).toContain('network down') })
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-market')).toBeDefined()
+    // The first dismiss leaves the narrow detail page; the second closes the panel.
+    model.requestClose()
+    await vi.waitFor(() => { expect(JSON.stringify(world.surface()!.node)).toContain('"escapeLabel":"close"') })
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-market')).toBeDefined()
+    model.requestClose()
+    await vi.waitFor(() => { expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-market')).toBeUndefined() })
     world.dispose()
   })
 
-  it('republishes the detail panel when the locale changes', async () => {
+  it('republishes the marketplace detail when the locale changes', async () => {
     const world = await mountWorld({ index: [entry()] })
-    await world.run('/plugin info loop')
-    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
-    const before = detail.revision
+    const model = await openInfo(world, 'loop')
+    const before = model.revision
     world.locale!.setPreference('zh')
-    await vi.waitFor(() => { expect(detail.revision).toBeGreaterThan(before) })
+    await vi.waitFor(() => { expect(model.revision).toBeGreaterThan(before) })
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-market')).toBe(model)
     world.dispose()
   })
 })
@@ -1122,22 +1136,31 @@ describe('/plugin market edge operations', () => {
     noSource.dispose()
   })
 
-  it('reports missing and non-removable rows through the market actions', async () => {
-    const world = await mountWorld({ index: [entry()] })
-    await openMarket(world)
-    expect((await prepareMarket(world, rowSelection('missing'))).reply).toMatchObject({ kind: 'failed', message: 'plugin operation failed' })
-    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'remove', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['loop'] }] } })).reply).toMatchObject({ kind: 'failed' })
-    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install', inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['acp'] }] } })).reply).toBeDefined()
-    world.dispose()
+  it('reports an empty tab and a protected row through the market actions', async () => {
+    const empty = await mountWorld({ index: [entry()] })
+    await openMarket(empty)
+    await prepareMarket(empty, { kind: 'tab-change', tabId: 'installed' })
+    expect((await prepareMarket(empty, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-installed', actionId: 'remove' })).reply).toMatchObject({ kind: 'completed' })
+    empty.dispose()
+
+    const protectedWorld = await mountWorld({ index: [entry()], bundles: [bundle({ name: 'dsh-loop', removable: false })] })
+    await openMarket(protectedWorld)
+    await prepareMarket(protectedWorld, { kind: 'tab-change', tabId: 'installed' })
+    await prepareMarket(protectedWorld, { kind: 'focus-change', controlId: 'plugins-installed', itemId: 'loop' })
+    expect((await prepareMarket(protectedWorld, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-installed', actionId: 'remove' })).reply).toMatchObject({
+      kind: 'failed', message: 'the plugin manager does not allow removing this bundle',
+    })
+    protectedWorld.dispose()
   })
 
-  it('does nothing for actions without an id or with an unknown action id', async () => {
+  it('does nothing for an unknown action, an unknown selection, or an empty tab', async () => {
     const world = await mountWorld({ index: [entry()] })
     await openMarket(world)
-    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'install' })).reply).toMatchObject({ kind: 'completed' })
-    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'bogus' })).reply).toMatchObject({ kind: 'completed' })
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-browse', actionId: 'bogus' })).reply).toMatchObject({ kind: 'completed' })
     expect((await prepareMarket(world, { kind: 'selection-accept', pagePath: [], controlId: 'plugins-browse', selectedIds: [] })).reply).toMatchObject({ kind: 'completed' })
     expect((await prepareMarket(world, { kind: 'selection-accept', pagePath: [], controlId: 'plugins-browse', selectedIds: ['gone'] })).reply).toMatchObject({ kind: 'completed' })
+    await prepareMarket(world, { kind: 'tab-change', tabId: 'installed' })
+    expect((await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-installed', actionId: 'install' })).reply).toMatchObject({ kind: 'completed' })
     world.dispose()
   })
 
@@ -1339,19 +1362,15 @@ describe('/plugin operation lifetimes', () => {
     const lost = await mountWorld({ index: [entry()] })
     await openMarket(lost)
     lost.ctx.set('pluginManager', undefined as never)
-    const lostReply = await prepareMarket(lost, {
-      kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install',
-      inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['loop'] }] },
-    })
+    const lostReply = await prepareMarket(lost, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-browse', actionId: 'install' })
     expect(lostReply.reply).toMatchObject({ kind: 'failed', message: 'plugin manager is unavailable: the native plugin service is not mounted' })
     lost.dispose()
 
     const unlisted = await mountWorld({ index: [], bundles: [bundle({ name: 'custom-plugin' })] })
     await openMarket(unlisted)
-    const unlistedReply = await prepareMarket(unlisted, {
-      kind: 'activate', pagePath: [], controlId: 'plugins-installed', actionId: 'install',
-      inputs: { selections: [{ controlId: 'plugins-installed', pagePath: [], selectedIds: ['unlisted:custom-plugin'] }] },
-    })
+    await prepareMarket(unlisted, { kind: 'tab-change', tabId: 'installed' })
+    await prepareMarket(unlisted, { kind: 'focus-change', controlId: 'plugins-installed', itemId: 'unlisted:custom-plugin' })
+    const unlistedReply = await prepareMarket(unlisted, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-installed', actionId: 'install' })
     expect(unlistedReply.reply).toMatchObject({ kind: 'failed', message: 'this bundle is not listed in the marketplace index' })
     unlisted.dispose()
 
@@ -1360,10 +1379,8 @@ describe('/plugin operation lifetimes', () => {
       install: { rows: [{ name: '@deepseek-ai/dsh-acp', npm: { spec: '@deepseek-ai/dsh-acp' } }] },
     })] })
     await openMarket(blocked)
-    const blockedReply = await prepareMarket(blocked, {
-      kind: 'activate', pagePath: [], controlId: 'plugins-browse', actionId: 'install',
-      inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['acp'] }] },
-    })
+    await prepareMarket(blocked, { kind: 'focus-change', controlId: 'plugins-browse', itemId: 'acp' })
+    const blockedReply = await prepareMarket(blocked, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-browse', actionId: 'install' })
     expect(blockedReply.reply).toMatchObject({ kind: 'failed', message: expect.stringContaining('owns stdio') })
     blocked.dispose()
   })
@@ -1453,12 +1470,17 @@ describe('/plugin branch edges', () => {
     world.dispose()
   })
 
-  it('finds a removed entry the profile does not carry for the detail panel', async () => {
+  it('opens a removed entry the profile still carries on the detail page', async () => {
     const world = await mountWorld({
       index: [entry(), entry({ id: 'gone', displayName: 'Gone', status: 'removed', statusNote: 'compromised' })],
+      bundles: [bundle({ name: 'dsh-loop' })],
     })
-    expect(await world.run('/plugin info gone')).toEqual({ kind: 'success' })
-    expect(JSON.stringify(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!.node)).toContain('Gone')
+    world.screen.rows = 40
+    const model = await openInfo(world, 'gone')
+    const text = marketText(world, 80, 40)
+    expect(text).toContain('Gone')
+    expect(text).toContain('compromised')
+    expect(JSON.stringify(model.node)).toContain('"escapeLabel":"back"')
     world.dispose()
   })
 
@@ -1480,12 +1502,11 @@ describe('/plugin branch edges', () => {
     // A focus change on a tab that is not active does not repaint.
     await prepareMarket(world, { kind: 'focus-change', controlId: 'plugins-updates', itemId: 'gh' })
     focusBrowserRow(world, 'gh')
-    const switched = await prepareMarket(world, {
-      kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'source',
-      inputs: { selections: [{ controlId: 'plugins-browse', pagePath: [], selectedIds: ['gh'] }] },
-    })
+    const switched = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-browse', actionId: 'source' })
     expect(switched.reply).toMatchObject({ kind: 'accepted', feedback: { message: 'install source: npm' } })
-    const missingId = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-actions', actionId: 'source' })
+    // The source key is declared with the tab; an empty tab has no row to switch.
+    await prepareMarket(world, { kind: 'tab-change', tabId: 'installed' })
+    const missingId = await prepareMarket(world, { kind: 'activate', pagePath: [], controlId: 'plugin-keys-installed', actionId: 'source' })
     expect(missingId.reply).toMatchObject({ kind: 'completed' })
     world.dispose()
   })
@@ -1545,14 +1566,17 @@ describe('/plugin branch edges', () => {
     world.dispose()
   })
 
-  it('dismisses an unlisted detail after its successful removal', async () => {
+  it('returns an unlisted detail to the list after its successful removal', async () => {
     const world = await mountWorld({ index: [], bundles: [bundle({ name: 'custom-plugin' })] })
-    expect(await world.run('/plugin info custom-plugin')).toEqual({ kind: 'success' })
-    const detail = world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')!
-    detail.invoke('remove')
-    detail.answerDecision(true)
+    const model = await openInfo(world, 'custom-plugin')
+    expect(JSON.stringify(model.node)).toContain('"escapeLabel":"back"')
+    invokeMarketAction(world, 'remove')
+    expect(JSON.stringify(model.decisionNode)).toContain('Remove the selected plugin?')
+    model.answerDecision(true)
     await vi.waitFor(() => { expect(world.calls.remove).toEqual(['custom-plugin']) })
-    await vi.waitFor(() => { expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeUndefined() })
+    await vi.waitFor(() => { expect(JSON.stringify(world.surface()!.node)).toContain('"escapeLabel":"close"') })
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-market')).toBeDefined()
+    expect(world.ctx.mayflyUiInteraction.get('overlay', 'mayfly.plugin-detail')).toBeUndefined()
     world.dispose()
   })
 })

@@ -17,8 +17,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
-import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { ui } from '@ephemeral-ai/mayfly-ui'
+import { DECISION_NO, DECISION_YES, decisionStrip, panel, ui, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { interactionTranslator } from './locale.ts'
@@ -100,20 +99,17 @@ export function updatePanelModel(
       { kind: 'text', content: t('nothing was changed'), tone: 'muted' },
     )
   }
-  return ui.surface({
+  return panel({
     title: t('Update Mayfly'),
-    chrome: 'overlay',
-    padding: 1,
-    child: ui.stack.column([
-      ...nodes,
-    ]),
+    escapeLabel: 'close',
+    body: ui.stack.column(nodes),
   })
 }
 
 /**
- * Mount an explicit Yes/No confirmation and
- * await the answer.
- * @param display - the display services.
+ * Mount the shared Yes/No decision and await the answer. `y` confirms, `n`
+ * and `Esc` cancel.
+ * @param ctx - plugin context.
  * @param fromVersion - the running version.
  * @param toVersion - the target version.
  * @param detail - the subtitle detail line (publish age, host line).
@@ -131,19 +127,20 @@ function confirmUpdate(ctx: Context, fromVersion: string, toVersion: string, det
       off()
       resolve(confirmed)
     }
-    const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Update Mayfly'), scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
+    const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
       if (event.kind === 'dismiss') { finish(false); return { kind: 'cancelled' as const, dismiss: true } }
-      if (event.kind === 'activate' && (event.actionId === 'yes' || event.actionId === 'no')) {
-        finish(event.actionId === 'yes')
+      if (event.kind === 'activate' && (event.actionId === DECISION_YES || event.actionId === DECISION_NO)) {
+        finish(event.actionId === DECISION_YES)
         return { kind: 'completed' as const, dismiss: true }
       }
       return { kind: 'completed' as const }
-    } } }, ui.surface({ chrome: 'overlay', title: t('Update Mayfly'), child: ui.stack.column([
-      ui.text(t('Update to v{version}?', { version: toVersion })),
-      ui.text([`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '), { tone: 'warning' }),
-      /* Same keys as the shared decision: `y` yes, `n` no, Esc cancels. */
-      ui.actions({ id: 'update-confirm-actions', items: [{ id: 'yes', label: t('Yes'), hintLabel: t('yes'), key: 'y', hidden: true }, { id: 'no', label: t('No'), hintLabel: t('no'), key: 'n', hidden: true }] }),
-    ]) }), { reopen: 'replace' })
+    } } }, decisionStrip({
+      title: t('Update to v{version}?', { version: toVersion }),
+      detail: [`v${fromVersion} → v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' · '),
+      yesLabel: t('Yes'),
+      noLabel: t('No'),
+      actionsId: 'update-confirm-actions',
+    }), { reopen: 'replace' })
     off = ctx.mayflyOverlays.subscribe(delta => {
       if (delta.kind === 'remove' && delta.id === id) finish(false)
     })
@@ -174,7 +171,7 @@ async function runSwapPanel(
   const bootMarker = ctx.get('agentDefaultModel')?.currentSelection().model
   const state = createUpdateProgressState()
   const id = 'mayfly.update.progress'
-  const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Update Mayfly'), scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
+  const handle = openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', scope: { kind: 'app', targetId: id }, onEvent: { action: event => {
     if (event.kind === 'dismiss') {
       return state.outcome === undefined && state.blockedMessage === undefined
         ? { kind: 'failed' as const, message: t('The update is still running') }
@@ -421,5 +418,5 @@ function mountBlockedPanel(
   const t = interactionTranslator(ctx)
   const state = createUpdateProgressState()
   state.blockedMessage = message
-  openUiOverlay(ctx, { id: 'mayfly.update.blocked', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Update Mayfly'), scope: { kind: 'app', targetId: 'update-blocked' } }, updatePanelModel(state, fromVersion, target, t), { reopen: 'replace' })
+  openUiOverlay(ctx, { id: 'mayfly.update.blocked', presentation: 'editor', capturing: true, dismissal: 'discard', scope: { kind: 'app', targetId: 'update-blocked' } }, updatePanelModel(state, fromVersion, target, t), { reopen: 'replace' })
 }

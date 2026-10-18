@@ -19,8 +19,8 @@ describe('native settings projections', () => {
     })
     const projection = project(schema, { required: 'set', choice: 2, readonlyValue: { private: 'opaque-value' } })
     const fields = [...projection.bindings.values()].map(binding => binding.field)
-    expect(fields.find(field => field.id === settingsField('optional').fieldId)).toMatchObject({ kind: 'select', value: null, resetValue: null })
-    expect(project(schema, { optional: true, required: 'set' }).bindings.get(settingsField('optional').fieldId)!.field).toMatchObject({ kind: 'select', value: 'true' })
+    expect(fields.find(field => field.id === settingsField('optional').fieldId)).toMatchObject({ kind: 'toggle', value: null, resetValue: null })
+    expect(project(schema, { optional: true, required: 'set' }).bindings.get(settingsField('optional').fieldId)!.field).toMatchObject({ kind: 'toggle', value: true })
     expect(fields.find(field => field.id === settingsField('required').fieldId)).not.toHaveProperty('resetValue')
     expect(fields.find(field => field.id === settingsField('readonly', 'child').fieldId)).toMatchObject({ disabled: true })
     expect(fields.find(field => field.id === settingsField('many').fieldId)).toMatchObject({ kind: 'multiselect', minSelected: 1, maxSelected: 2 })
@@ -47,9 +47,10 @@ describe('native settings projections', () => {
     expect('options' in malformedChoice ? malformedChoice.options : []).toEqual([{ id: '"a"', label: 'a' }, { id: '"b"', label: 'b' }])
     expect(malformedChoice).toMatchObject({ kind: 'select', value: null })
     expect(malformed.bindings.get(settingsField('many').fieldId)!.field).toMatchObject({ kind: 'multiselect', value: [] })
-    // A non-boolean stored value does not masquerade as an On/Off option id.
+    // A non-boolean stored value is not a toggle level: the field projects the
+    // unset state instead of masquerading as an On/Off option id.
     const booleanSchema = Schema.object({ flag: Schema.boolean() })
-    expect(project(booleanSchema, { flag: 'yes' }).bindings.get(settingsField('flag').fieldId)!.field).toMatchObject({ kind: 'select', value: null })
+    expect(project(booleanSchema, { flag: 'yes' }).bindings.get(settingsField('flag').fieldId)!.field).toMatchObject({ kind: 'toggle', value: null })
   })
 
   it('never projects secrets hidden inside unsupported schema containers or secret defaults', () => {

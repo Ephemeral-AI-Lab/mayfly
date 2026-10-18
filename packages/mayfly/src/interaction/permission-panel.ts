@@ -24,7 +24,7 @@ import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { PermissionCatalog, PresetOption, PresetSpec } from '@deepseek-ai/dsh-permission-presets'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { ui, type MayflyListItem, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
+import { decisionLane, ui, type MayflyListItem, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator } from './locale.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { openUiOverlay } from './ui-overlay.ts'
@@ -107,7 +107,10 @@ export function openPermissionPanel(ctx: Context): void {
   }
   const view = () => {
     const current = presets.current(agent.session)
-    return ui.surface({ chrome: 'overlay', title: t('Permissions'), child: ui.list({ id: 'permissions', role: 'choose', numbered: true, selectedIds: current === 'custom' ? [] : [current], items: rows() }) })
+    return decisionLane({
+      id: 'permissions', title: t('Permissions'), escapeLabel: 'close',
+      body: ui.list({ id: 'permissions', role: 'choose', numbered: true, selectedIds: current === 'custom' ? [] : [current], items: rows() }),
+    })
   }
 
   let picker: MayflyOverlayHandle | undefined

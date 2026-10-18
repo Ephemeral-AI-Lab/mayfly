@@ -96,6 +96,18 @@ describe('RowStack', () => {
     expect(new RowStack().render(10)).toEqual([])
   })
 
+  it('draws a full-height column rule in each gap when the stack names one', () => {
+    const stack = new RowStack([], { gap: 3 })
+    stack.rule = '│'
+    stack.addChild(rows('a', 'b', 'c'), { basis: 3 })
+    stack.addChild(rows('d'), { basis: 3 })
+    const lines = stack.render(10)
+    expect(lines).toHaveLength(3)
+    for (const line of lines) expect(line).toContain('│')
+    expect(lines[0]).toContain('a')
+    expect(lines[0]).toContain('d')
+  })
+
   it('does not render a child of fixed basis to measure it, and measures a content-sized child once per rows', () => {
     const fixed = rows('fixed')
     const sized = rows('sized by content')

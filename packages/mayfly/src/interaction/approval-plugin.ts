@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { patterns, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
+import { decisionArmMs, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
 import { DecisionCard } from '../components/decision-card.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { interactionTranslator, mountInteractionLocale } from './locale.ts'
@@ -123,7 +123,7 @@ export function apply(ctx: Context): void {
         ctx.emit('mayfly/decision-wait-changed', { kind: 'approval' })
         const prompt = requestOverlay(ctx, {
           id: `mayfly.approval.${++sequence}`, title: () => t('Approve {tool}?', { tool: request.toolName }), agent: request.agent, dismissal: 'discard',
-          bare: true, contentScroll: true, armMs: patterns.decisionArmMs,
+          bare: true, contentScroll: true, armMs: decisionArmMs,
           ...request.signal === undefined ? {} : { signal: request.signal },
           view: () => card(request, roster.length > 1 ? t('{index} of {total} waiting', { index: 1, total: roster.length }) : undefined, t), answer,
           onAction: (event, context) => event.kind === 'activate' && event.actionId === 'open' ? openInEditor(ctx, documentOf(request), t, context.signal) : undefined,

@@ -29,10 +29,10 @@ import {
   newerVersion, rowName, rowSpec, tabRows, usefulInTui,
   type GroupMode, type InstallSource, type MarketRow, type MarketTab,
 } from './plugin-market/model.ts'
-import { detailFacts, groupModeLabel, tabFacts, unavailableKeys, type FactsEnv } from './plugin-market/facts.ts'
+import { detailFacts, groupModeLabel, tabFacts, type FactsEnv } from './plugin-market/facts.ts'
 import type { MarketEntry, MarketInstallRow } from './plugin-market/types.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
-import { listId, PluginDetailPanel, PluginMarketplace, PluginMarketplaceLoading, PluginMarketplaceOffline, PluginMarketplaceUnavailable } from '../components/marketplace.ts'
+import { listId, MARKET_BREAKPOINT, PluginMarketplace, PluginMarketplaceLoading, PluginMarketplaceOffline, PluginMarketplaceUnavailable } from '../components/marketplace.ts'
 
 /** Command outcome reused by every early-exit branch. */
 type CommandOutcome = { readonly kind: 'success', readonly text?: string } | { readonly kind: 'error', readonly text: string }
@@ -445,47 +445,22 @@ export function registerPluginCommand(ctx: Context): () => void {
     return { ok, message }
   }
 
-  /** Open the detail panel of one row: above the marketplace, or alone for `/plugin info`. */
-  function openDetail(first: MarketRow, parent: 'market' | 'app', signal: AbortSignal | undefined, changed: () => void): void {
-    const rowId = first.id
-    let offLocale: (() => void) | undefined
-    const view = (): MayflyUiNode => {
-      const row = rows().find(item => item.id === rowId) ?? first
-      const reasons = unavailableKeys(t, row)
-      const can = { install: reasons.install === undefined, update: reasons.update === undefined, remove: reasons.remove === undefined }
-      return PluginDetailPanel(detailFacts(env(), row, row.entry === undefined ? undefined : sources.get(row.entry.id)), rowName(row), {
-        install: t('install'), update: t('update'), remove: t('remove'), can,
-        removeConfirm: { title: t('Remove the selected plugin?'), detail: t('Removal applies after restarting Mayfly and starting a new session.'), confirmLabel: t('Remove'), tone: 'danger' },
-      })
-    }
-    const handle = openUiOverlay(ctx, {
-      id: 'mayfly.plugin-detail', presentation: 'editor', capturing: true, dismissal: 'discard', title: rowName(first),
-      scope: parent === 'market' ? { kind: 'panel', parent: { kind: 'overlay', id: 'mayfly.plugin-market' } } : { kind: 'app', targetId: `plugin/${first.id}` },
-      onEvent: {
-        action: async (event, context): Promise<MayflyUiActionReply> => {
-          if (event.kind !== 'activate' || (event.actionId !== 'install' && event.actionId !== 'update' && event.actionId !== 'remove')) return { kind: 'completed' }
-          const result = await rowAction(rowId, event.actionId, context)
-          changed()
-          if (!result.ok) return { kind: 'failed', message: result.message, node: view(), source: [] }
-          return rows().some(item => item.id === rowId)
-            ? { kind: 'accepted', node: view(), source: [], feedback: { severity: 'success', message: result.message } }
-            : { kind: 'completed', dismiss: true, feedback: { severity: 'success', message: result.message } }
-        },
-      },
-    }, view(), { reopen: 'replace', ...signal === undefined ? {} : { signal }, onClosed: () => offLocale?.() })
-    offLocale = observeInteractionLocale(ctx, () => { if (!handle.closed) handle.set(view()) })
-  }
-
-  /** Open the marketplace panel on a tab. */
-  function openBrowse(initialTab: MarketTab): CommandOutcome {
+  /** Open the marketplace panel on a tab, optionally on one row's detail page. */
+  function openBrowse(initialTab: MarketTab, options: { readonly focusId?: string, readonly detail?: boolean } = {}): CommandOutcome {
     if (ctx.get('mayflyOverlays') === undefined) return { kind: 'error', text: t('plugin browser is unavailable: the Mayfly UI registry is not mounted') }
     const manager = pluginManagerOf(ctx)
     const lifetime = new AbortController()
     let activeTab: MarketTab = initialTab
     let groupMode: GroupMode = 'category'
     const focused: Partial<Record<MarketTab, string>> = {}
+    if (options.focusId !== undefined) focused[initialTab] = options.focusId
+    let narrow: 'list' | 'detail' = options.detail === true ? 'detail' : 'list'
     let focusRequest: { readonly tab: MarketTab, readonly id: string, readonly rev: number } | undefined
     let focusRev = 0
+    /** The visible columns: the compose browser splits at {@link MARKET_BREAKPOINT} and pages below it. */
+    const columns = (): number => ctx.get('mayflyScreen')?.columns ?? MARKET_BREAKPOINT
+    /** The plugin body's room under the transcript and above the panel hint; keeps the browser's column rule full. */
+    const detailRows = (): number => Math.max(6, (ctx.get('mayflyScreen')?.rows ?? 40) - 18)
 
     const subtitle = (current: Extract<CatalogResult, { index: unknown }>): string => {
       const generated = current.index.generatedAt === undefined ? Number.NaN : Date.parse(current.index.generatedAt)
@@ -508,10 +483,17 @@ export function registerPluginCommand(ctx: Context): () => void {
       const tabs = MARKET_TABS.map(tab => tabFacts(e, all, tab, groupMode, focusRequest?.tab === tab ? focusRequest : undefined))
       const ordered = groupRows(tabRows(all, activeTab), groupMode)
       const row = ordered.find(item => item.id === focused[activeTab]) ?? ordered[0]
+      // A named row may live outside the active tab's visible rows; show it when the caller names one.
+      const named = options.focusId === undefined ? undefined : findRow(options.focusId)
+      const shown = named ?? row
       return PluginMarketplace({
         title, subtitle: subtitle(catalog), tabs, activeTab,
-        detail: row === undefined ? undefined : detailFacts(e, row, row.entry === undefined ? undefined : sources.get(row.entry.id)),
+        detail: shown === undefined ? undefined : detailFacts(e, shown, shown.entry === undefined ? undefined : sources.get(shown.entry.id)),
         noDetail: t('No plugin selected'),
+        detailHeight: detailRows(),
+        focusedRowId: row?.id,
+        narrow,
+        escapeLabel: narrow === 'detail' && columns() < MARKET_BREAKPOINT ? 'back' : 'close',
         keys: {
           install: t('install'), update: t('update'), remove: t('remove'), source: t('source'),
           group: t('group: {mode}', { mode: groupModeLabel(t, groupMode) }), refresh: t('refresh'), updateAll: t('update all'),
@@ -558,6 +540,11 @@ export function registerPluginCommand(ctx: Context): () => void {
       return { kind: 'accepted', node: node(), source: [], feedback: { severity: 'success', message: t('updated {count} plugins; restart Mayfly and start a new session to apply', { count: targets.length }) } }
     }
 
+    const activeRowId = (): string | undefined => {
+      const ordered = groupRows(tabRows(rows(), activeTab), groupMode)
+      return ordered.find(item => item.id === focused[activeTab])?.id ?? ordered[0]?.id
+    }
+
     const handle: MayflyOverlayHandle = openUiOverlay(ctx, {
       id: 'mayfly.plugin-market', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Plugin marketplace'),
       scope: { kind: 'app', targetId: 'plugin-market' },
@@ -565,7 +552,7 @@ export function registerPluginCommand(ctx: Context): () => void {
         observe: (event: MayflyUiObservationEvent) => {
           if (event.kind === 'tab-change') {
             const tab = MARKET_TABS.find(id => id === event.tabId)
-            if (tab !== undefined && tab !== activeTab) { activeTab = tab; publish() }
+            if (tab !== undefined && tab !== activeTab) { activeTab = tab; narrow = 'list'; publish() }
           } else if (event.kind === 'focus-change' && event.itemId !== undefined) {
             const tab = MARKET_TABS.find(id => listId(id) === event.controlId)
             if (tab !== undefined && focused[tab] !== event.itemId) {
@@ -575,25 +562,39 @@ export function registerPluginCommand(ctx: Context): () => void {
           }
         },
         action: async (event: MayflyUiActionEvent, context): Promise<MayflyUiActionReply> => {
+          if (event.kind === 'dismiss') {
+            if (narrow === 'detail' && columns() < MARKET_BREAKPOINT) {
+              narrow = 'list'
+              publish()
+              return { kind: 'completed', dismiss: false }
+            }
+            return { kind: 'completed' }
+          }
           if (event.kind === 'selection-accept') {
             const selected = event.selectedIds[0] === undefined ? undefined : findRow(event.selectedIds[0])
-            if (selected !== undefined) openDetail(selected, 'market', lifetime.signal, publish)
+            if (selected !== undefined) {
+              focused[activeTab] = selected.id
+              narrow = 'detail'
+              publish()
+            }
             return { kind: 'completed' }
           }
           if (event.kind !== 'activate') return { kind: 'completed' }
-          const id = event.inputs?.selections?.[0]?.selectedIds[0]
           switch (event.actionId) {
             case 'install':
             case 'update':
             case 'remove': {
+              const id = activeRowId()
               if (id === undefined) return { kind: 'completed' }
               const result = await rowAction(id, event.actionId, context)
+              if (!rows().some(item => item.id === id)) narrow = 'list'
               return result.ok
                 ? { kind: 'accepted', node: node(), source: [], feedback: { severity: 'success', message: result.message } }
                 : { kind: 'failed', node: node(), source: [], message: result.message }
             }
             case 'source': {
-              const row = id === undefined ? undefined : rows().find(item => item.id === id)
+              const rowId = activeRowId()
+              const row = rowId === undefined ? undefined : rows().find(item => item.id === rowId)
               if (row?.entry === undefined) return { kind: 'completed' }
               const current = sources.get(row.entry.id) ?? defaultInstallSource(row.entry)
               const next: InstallSource = current === 'npm' ? 'github' : 'npm'
@@ -674,8 +675,8 @@ export function registerPluginCommand(ctx: Context): () => void {
         if (unloaded) return { kind: 'success' }
         const row = findRow(id)
         if (row === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
-        openDetail(row, 'app', undefined, () => {})
-        return { kind: 'success' }
+        const tab = MARKET_TABS.find(candidate => tabRows(rows(), candidate).some(item => item.id === row.id)) ?? 'browse'
+        return openBrowse(tab, { focusId: row.id, detail: true })
       }
       if (verb === 'install' || verb === 'uninstall') {
         if (id === undefined) {

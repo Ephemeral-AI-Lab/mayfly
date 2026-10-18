@@ -1,8 +1,4 @@
 grid 100x30 cursor none
-|  ● Goal set · Refresh the landing page hero and keep every test green
-|
-|  ● A reviewer runs in the background, the todo list is set, and a watcher rebuilds the styles.
-|
 |  ✓ Subagent(Audit the hero copy) · 0.6s
 |
 |  ✓ TodoWrite · 0.2s
@@ -16,37 +12,42 @@ grid 100x30 cursor none
 |  Plugin marketplace
 |  index updated 26h ago · 14 entries
 |
-|  Installed 0   Updates 0   Browse 13
-|                            ━━━━━━━━━
+|  Installed 0   Updates 0    Browse 13
 |
-|  Integration · 3                                                   │  ACP Server
-|  →   ACP Server                          official   ·   ·          │  Integration
-|     … +15 more                                                     │  automation-only ACP server
-|                                                                    │  owns stdio; install it in a
-|                                                                    │  dedicated non-Mayfly
-|                                                                    │  profile
-|                                                                    │  An automation-only Agent
-|  ! deprecated
+|    (1/13)                                                         │ ACP Server
+|  →   ACP Serverofficial   TUI WEB                                 │ Integration
+|     … +9 more                                                     │ automation-only ACP server
+|  ! deprecated                                                     │ owns stdio; install it in a
+|                                                                   │ dedicated non-Mayfly profile
+|                                                                   │ An automation-only Agent
+|                                                                   │ Client Protocol server.
+|                                                                   │
+|                                                                   │ Author: Acme
+|                                                                   │
+|                                                                   │
+|                                                                   │
 |
-|  g group: category · / filter · ←/→ tabs · Esc close
+|
+|  Enter open · / filter · Alt+←/→ tabs · Esc close
 styles
-0: 2-99 fg:#c9c0f0
-2: 2-3 fg:#ededf2
-4: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
-6: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
-8: 2-3 fg:#ededf2
-12: 2-29 fg:#9aa3b8
-13: 0-99 fg:#9a86e6
-14: 2-19 fg:#9a86e6 b
-15: 2-35 fg:#9aa3b8
-17: 2-10 fg:#9aa3b8; 12 fg:#9aa3b8; 16-22 fg:#9aa3b8; 24 fg:#9aa3b8; 28-33 fg:#9a86e6; 35-36 fg:#9a86e6
-18: 28-36 fg:#9aa3b8
-20: 2-16 fg:#9aa3b8; 68 fg:#9aa3b8; 71-80 fg:#ededf2 b
-21: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 6-15 fg:#ededf2; 42-50 fg:#9aa3b8; 51-52 fg:#ededf2; 53-55 fg:#9aa3b8; 56 fg:#ededf2; 57-59 fg:#9aa3b8; 60-65 fg:#ededf2; 68 fg:#9aa3b8; 71-81 fg:#ededf2
-22: 5-14 fg:#9aa3b8; 68 fg:#9aa3b8; 71-96 fg:#e8a838
-23: 68 fg:#9aa3b8; 71-97 fg:#e8a838
-24: 68 fg:#9aa3b8; 71-90 fg:#e8a838
-25: 68 fg:#9aa3b8; 71-77 fg:#e8a838
-26: 68 fg:#9aa3b8; 71-94 fg:#9aa3b8
-27: 2 fg:#e8a838; 3-13 fg:#9aa3b8
-29: 2 fg:#ededf2; 4-21 fg:#5c6476; 22 fg:#ededf2; 24-32 fg:#5c6476; 33-35 fg:#ededf2; 37-43 fg:#5c6476; 44-46 fg:#ededf2; 48-52 fg:#5c6476
+0: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-31 fg:#c9c0f0; 32-39 fg:#9aa3b8
+2: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
+4: 2-3 fg:#ededf2
+8: 2-29 fg:#9aa3b8
+9: 0-99 fg:#9a86e6
+10: 2-19 fg:#9a86e6 b
+11: 2-35 fg:#9aa3b8
+13: 2-10 fg:#9aa3b8; 12 fg:#9aa3b8; 16-22 fg:#9aa3b8; 24 fg:#9aa3b8; 28-38 fg:#9a86e6 b r
+15: 2-9 fg:#5c6476; 67 fg:#45406b; 69-78 fg:#ededf2 b
+16: 2 fg:#9a86e6 b; 4-5 fg:#9aa3b8; 6-15 fg:#ededf2; 16-23 fg:#9aa3b8; 27-29 fg:#9aa3b8; 30 fg:#ededf2; 31-33 fg:#9aa3b8; 67 fg:#45406b; 69-79 fg:#ededf2
+17: 5-13 fg:#9aa3b8; 67 fg:#45406b; 69-94 fg:#e8a838
+18: 2 fg:#e8a838; 3-13 fg:#9aa3b8; 67 fg:#45406b; 69-95 fg:#e8a838
+19: 67 fg:#45406b; 69-96 fg:#e8a838
+20: 67 fg:#45406b; 69-92 fg:#9aa3b8
+21: 67 fg:#45406b; 69-91 fg:#9aa3b8
+22: 67 fg:#45406b
+23: 67 fg:#45406b; 69-75 fg:#9aa3b8; 77-80 fg:#ededf2
+24: 67 fg:#45406b
+25: 67 fg:#45406b
+26: 67 fg:#45406b
+29: 2-6 fg:#ededf2; 8-14 fg:#5c6476; 15 fg:#ededf2; 17-25 fg:#5c6476; 26-32 fg:#ededf2; 34-40 fg:#5c6476; 41-43 fg:#ededf2; 45-49 fg:#5c6476

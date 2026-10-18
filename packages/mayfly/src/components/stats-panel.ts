@@ -1,5 +1,5 @@
 /**
- * The stats panel: four tabs over one `patterns.statusPage`. Session is the live session as aligned rows; Account is the
+ * The stats panel: four tabs over one `compose.statusPage`. Session is the live session as aligned rows; Account is the
  * provider of the current model (its key or sign-in, balance and links, read-only); History is the
  * activity heatmap (the weeks that fit), the date range, two columns of figures, and the token line; Models is the
  * tokens and cost per day as stacked columns, one colour per model, beside each model's share. The panel has no buttons: `r` cycles the range
@@ -9,7 +9,7 @@
  * @module components/stats-panel
  */
 
-import { patterns, ui, type MayflyInlineSpan, type MayflySurfaceNode, type MayflyTone, type MayflyUiChild, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, statusPage, ui, type MayflyInlineSpan, type MayflySurfaceNode, type MayflyTone, type MayflyUiChild, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 
 /** One labelled row. */
 export interface StatsRow {
@@ -272,8 +272,8 @@ function modelsPage(facts: ModelsTabFacts): MayflyUiNode {
     ui.child(rangeLine(facts)),
     ui.child(ui.spacer(), { when: ROOMY }),
     ...facts.empty === undefined ? [
-      ui.child(ui.stack.column(pairs.map(pair => ui.child(ui.stack.row(pair.map((model, index) => ui.child(modelBlock(model), { grow: COLUMN_GROW[index]!, basis: 0 })), { gap: 2 })))), { when: { minWidth: TWO_COLUMNS_FROM } }),
-      ui.child(ui.stack.column(facts.models.map(model => ui.child(modelBlock(model)))), { when: { maxWidth: TWO_COLUMNS_FROM - 1 } }),
+      ...pairs.map(pair => ui.child(ui.stack.row(pair.map((model, index) => ui.child(modelBlock(model), { grow: COLUMN_GROW[index]!, basis: 0 })), { gap: 2 }), { when: { minWidth: TWO_COLUMNS_FROM } })),
+      ...facts.models.map(model => ui.child(modelBlock(model), { when: { maxWidth: TWO_COLUMNS_FROM - 1 } })),
     ] : [ui.child(ui.text(facts.empty, { tone: 'muted', overflow: 'wrap' }))],
     ...status(facts).map(node => ui.child(node)),
   ]), keysNode('stats-keys-models', facts.keys))
@@ -285,8 +285,9 @@ function modelsPage(facts: ModelsTabFacts): MayflyUiNode {
  * @returns the overlay surface.
  */
 export function StatsPanel(facts: StatsFacts): MayflySurfaceNode {
-  return patterns.statusPage({
-    title: facts.title,
+  return panel({
+    title: facts.title, escapeLabel: 'close',
+    body: statusPage({
     tabs: { id: TABS_ID, activeId: facts.activeTab, hintLabel: 'tabs', items: [
       { id: 'session', label: facts.tabs.session },
       { id: 'account', label: facts.tabs.account, ...facts.accountAttention ? { attention: true } : {} },
@@ -299,5 +300,5 @@ export function StatsPanel(facts: StatsFacts): MayflySurfaceNode {
       history: historyPage(facts.history),
       models: modelsPage(facts.models),
     },
-  })
+  }) })
 }

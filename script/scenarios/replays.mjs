@@ -443,7 +443,7 @@ const mergePanels = {
 /** Pages switched in place keep one height: the tallest page's (component-development-spec §1 rule 13). */
 const mergeHeights = {
   summary: 'one height for pages switched in place: the /stats tabs, the /plugin tabs, the question wizard\'s steps and review, and the views of the status row (Agents, Jobs, Goal, Todo); the rows around them never move, and a shorter terminal lowers the height',
-  items: panelItems('Refresh the landing page hero.', 'Switch pages and watch the rows under each panel: /stats (←/→), /plugin (Alt+←/→), the views (Alt+↓ then ←/→). None of them moves.', MERGE_QUESTIONS),
+  items: panelItems('Refresh the landing page hero.', 'Switch pages and watch the rows under each panel: /stats (Alt+←/→), /plugin (Alt+←/→), the views (Alt+↓ then ←/→). None of them moves.', MERGE_QUESTIONS),
 }
 
 /**

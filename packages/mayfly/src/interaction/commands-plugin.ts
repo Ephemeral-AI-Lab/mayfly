@@ -15,7 +15,7 @@ import type { CommandResult } from '@deepseek-ai/dsh-commands'
 // merges and the `'mayfly/request-*'` Events merges this plugin emits.
 import type {} from '../app/index.ts'
 import { conversationId } from '../app/conversation-views.ts'
-import { ui } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui } from '@ephemeral-ai/mayfly-ui'
 import type { HelpSection } from './help.ts'
 import { helpNode } from './help.ts'
 import { cycleMode } from './mode-commands.ts'
@@ -89,13 +89,13 @@ export function apply(ctx: Context): void {
     if (candidates.length === 0) return { kind: 'success', text: t('no user turns to rewind') }
     const first = candidates[0]!
     const id = 'mayfly.rewind'
-    openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Rewind current session'), scope: { kind: 'session', sessionId: active.id }, onEvent: { action: event => {
+    openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', scope: { kind: 'session', sessionId: active.id }, onEvent: { action: event => {
       if (event.kind === 'selection-accept' && event.selectedIds[0] !== undefined) {
         ctx.emit('mayfly/request-rewind', String(active.id), Number(event.selectedIds[0]))
         return { kind: 'completed' as const, dismiss: true }
       }
       return { kind: 'completed' as const }
-    } } }, ui.surface({ chrome: 'overlay', title: t('Rewind current session'), child: ui.stack.column([
+    } } }, panel({ title: t('Rewind current session'), escapeLabel: 'close', body: ui.stack.column([
       ui.list({ id: 'rewind-candidates', role: 'choose', selectedIds: [String(first.boundarySeq)], filterable: true, items: candidates.map(candidate => ({ id: String(candidate.boundarySeq), label: t('Turn {turn} · {prompt}', { turn: candidate.turn, prompt: candidate.prompt }), detail: `${candidate.response === undefined ? '' : `↳ ${candidate.response} · `}${t('rewinds')} ${t(candidate.discarded === 1 ? '{count} message' : '{count} messages', { count: candidate.discarded })}` })) }),
       ui.text(t('The original session stays available in /sessions.'), { tone: 'muted' }),
     ]) }), { reopen: 'focus' })
@@ -144,7 +144,7 @@ export function apply(ctx: Context): void {
     ]
     const view = () => helpNode(sections(), t)
     let offLocale: (() => void) | undefined
-    const handle = openUiOverlay(ctx, { id: 'mayfly.help', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Help'), scope: { kind: 'app', targetId: 'help' } }, view(), { reopen: 'focus', onClosed: () => offLocale?.() })
+    const handle = openUiOverlay(ctx, { id: 'mayfly.help', presentation: 'editor', capturing: true, dismissal: 'discard', scope: { kind: 'app', targetId: 'help' } }, view(), { reopen: 'focus', onClosed: () => offLocale?.() })
     if (handle === undefined) return { kind: 'success' }
     offLocale = observeInteractionLocale(ctx, () => { handle.set(view()) })
     return { kind: 'success' }

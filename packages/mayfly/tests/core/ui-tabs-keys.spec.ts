@@ -55,16 +55,16 @@ describe('the hint row of a tab strip, a wizard, and a rail', () => {
     ui.tabs({ id: 'strip', activeId: 'a', items: STRIP, ...extra }), ui.child(ui.list({ id: 'l', role: 'browse', selectedIds: [], items: [{ id: 'x', label: 'X' }] }), { tab: { controlId: 'strip', itemId: 'a' } }),
   ])
 
-  it('names the arrows, Enter, and Esc on a focused strip, and Alt+←/→ with the strip\'s own word from the content', () => {
+  it('names Alt+←/→ on a strip and from the content, with the strip\'s own word', () => {
     const view = open(strip())
-    expect(view.hint()).toBe('←/→ tabs · Enter open · Esc close')
+    expect(view.hint()).toBe('Enter open · Alt+←/→ tabs · Esc close')
     view.press(KEY.enter)
-    expect(view.hint()).toBe('↑/↓ options · Enter open · ←/→ tabs · Esc back')
-    expect(open(strip({ hintLabel: 'views' })).surface.press(KEY.enter).map(plainText).some(row => row.includes('←/→ views'))).toBe(true)
+    expect(view.hint()).toBe('↑/↓ options · Enter open · Alt+←/→ tabs · Esc back')
+    expect(open(strip({ hintLabel: 'views' })).surface.press(KEY.enter).map(plainText).some(row => row.includes('Alt+←/→ views'))).toBe(true)
   })
 
   it('words a wizard\'s Escape back, and names the vertical rail\'s own keys', () => {
-    expect(open(ui.tabs({ id: 'steps', mode: 'wizard', activeId: 'a', items: STRIP.slice(0, 2) })).hint()).toBe('←/→ tabs · Enter open · Esc back')
+    expect(open(ui.tabs({ id: 'steps', mode: 'wizard', activeId: 'a', items: STRIP.slice(0, 2) })).hint()).toBe('Enter open · Alt+←/→ tabs · Esc back')
     expect(open(settings(selectPage)).hint()).toBe('↑/↓ labels · → open · Esc close')
   })
 })
@@ -102,12 +102,14 @@ describe('the rail', () => {
     }
   })
 
-  it('becomes the horizontal strip below 60 columns, with ←/→ and Enter', () => {
+  it('becomes the horizontal strip below 60 columns, with Alt+←/→ and Enter', () => {
     const view = open(settings(selectPage), 58)
-    expect(view.hint()).toBe('←/→ tabs · Enter open · Esc close')
+    expect(view.hint()).toBe('Enter open · Alt+←/→ tabs · Esc close')
     view.press(KEY.right)
+    expect(view.tabs()).toEqual([])
+    view.press(KEY.altRight)
     expect(view.tabs()).toEqual(['perm'])
-    view.press(KEY.left, KEY.left)
+    view.press(KEY.altLeft, KEY.altLeft)
     expect(view.tabs()).toEqual(['perm', 'model', 'general'])
   })
 })

@@ -11,6 +11,8 @@ The current runtime is described by three architecture documents:
   confirmation and availability contract for panes, overlays, and editor
   extensions.
 
+The UI composition layer is [design/compose.md](./design/compose.md).
+
 The UI design is [design/component-library.md](./design/component-library.md): the
 target visual language, key grammar, basic components (the UI API), and the Mayfly
 components built from them, reviewed before the implementation. It is the starting

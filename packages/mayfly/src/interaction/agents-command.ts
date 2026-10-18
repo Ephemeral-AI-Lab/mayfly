@@ -9,7 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import type { WorkflowAgentInfo } from '@deepseek-ai/dsh-workflow'
-import { ui, type MayflyListItem, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, type MayflyListItem, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { formatTokens } from './usage.ts'
@@ -228,7 +228,7 @@ export function apply(ctx: Context): void {
       if (next !== parent) close()
     }))
     const stopBlocked = (entry: Extract<MayflySubagentTreeEntry, { readonly kind: 'child' }>): string | undefined => stopBlockedReason(ctx, t, entries, entry)
-    const view = () => ui.surface({ title: t('Subagents'), chrome: 'overlay', child: ui.stack.column([
+    const view = () => panel({ title: t('Subagents'), escapeLabel: 'close', body: ui.stack.column([
       ui.list({ id: 'subagents', role: 'browse', tree: true, selectedIds: [], filterable: true, filterMode: 'slash', items: agentTreeItems(entries, Date.now(), stopBlocked) }),
       ui.actions({ id: 'subagent-actions', items: [
         { id: 'stop', label: t('Stop selected'), hintLabel: t('stop'), key: 'x', hidden: true, intent: 'danger', confirm: { title: t('Stop selected subagent?'), detail: t('Its live Agent shuts down; the stored conversation stays browsable.'), confirmLabel: t('Stop'), tone: 'danger' }, selections: [{ pagePath: [], controlId: 'subagents' }] },
@@ -254,7 +254,7 @@ export function apply(ctx: Context): void {
       listed = next
       publish(false)
     }
-    handle = openUiOverlay(ctx, { id: 'mayfly.agents', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Subagents'), scope: { kind: 'session', sessionId: parent.id }, onEvent: { action: async (event, context) => {
+    handle = openUiOverlay(ctx, { id: 'mayfly.agents', presentation: 'editor', capturing: true, dismissal: 'discard', scope: { kind: 'session', sessionId: parent.id }, onEvent: { action: async (event, context) => {
       if (event.kind === 'selection-accept') {
         const selectedId = event.selectedIds[0]
         const entry = selectedId === undefined ? undefined : byId.get(selectedId)

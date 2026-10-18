@@ -28,7 +28,7 @@ grid 100x30 cursor none
 |╭───────────────────────────────────────────────────────────────────────── Show me every color the ╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-v4-pro  ~/workspace                  cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
+| deepseek-official/deepseek-flash  ~/workspace                   cache ▰▰▱▱▱ 42%  ctx ▰▱▱▱▱▱▱▱▱▱ 5%
 styles
 1: 4-10 fg:#54546d
 2: 6-18 fg:#fb3c36
@@ -53,4 +53,4 @@ styles
 26: 0-74 fg:#54546d; 75-97 fg:#dcd7ba b; 98-99 fg:#54546d
 27: 0 fg:#54546d; 2-3 fg:#dcd7ba; 4 r; 5-60 fg:#727169; 99 fg:#54546d
 28: 0-99 fg:#54546d
-29: 1-33 fg:#dcd7ba; 36-46 fg:#938aa9; 65-70 fg:#dcd7ba; 71-72 fg:#ff9e3b; 73-75 fg:#938aa9; 76-79 fg:#dcd7ba; 82-85 fg:#dcd7ba; 86 fg:#7e9cd8; 87-95 fg:#938aa9; 96-98 fg:#dcd7ba
+29: 1-32 fg:#dcd7ba; 35-45 fg:#938aa9; 65-70 fg:#dcd7ba; 71-72 fg:#ff9e3b; 73-75 fg:#938aa9; 76-79 fg:#dcd7ba; 82-85 fg:#dcd7ba; 86 fg:#7e9cd8; 87-95 fg:#938aa9; 96-98 fg:#dcd7ba

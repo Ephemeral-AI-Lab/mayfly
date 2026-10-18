@@ -7,7 +7,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-session-title/types'
-import { ui } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
@@ -43,7 +43,6 @@ export function registerRenameCommand(ctx: Context): () => void {
       const currentTitle = ctx.sessionProjections.snapshot(agent.session, ['title']).values.title ?? ''
       openUiOverlay(ctx, {
         id: 'mayfly.rename',
-        title: t('Rename session'),
         presentation: 'editor',
         capturing: true,
         scope: { kind: 'session', sessionId: String(agent.id) },
@@ -55,12 +54,14 @@ export function registerRenameCommand(ctx: Context): () => void {
           const result = await rename(agent, value.trim())
           return result.kind === 'error' ? { kind: 'failed', message: result.text } : { kind: 'completed', dismiss: true }
         } },
-      }, ui.surface({ title: t('Rename session'), chrome: 'overlay', child: ui.stack.column([
-        ui.form({ id: RENAME_FORM, enterSubmits: 'save', fields: [{ kind: 'input', id: 'title', label: t('Session name'), value: currentTitle }] }),
-        ui.actions({ id: 'rename-actions', items: [
+      }, panel({
+        title: t('Rename session'),
+        escapeLabel: 'cancel',
+        body: ui.form({ id: RENAME_FORM, enterSubmits: 'save', fields: [{ kind: 'input', id: 'title', label: t('Session name'), value: currentTitle }] }),
+        footer: ui.actions({ id: 'rename-actions', items: [
           { id: 'save', label: t('Rename'), hintLabel: t('rename'), hidden: true, read: [{ pagePath: [], formId: RENAME_FORM }] },
         ] }),
-      ]) }), { reopen: 'focus' })
+      }), { reopen: 'focus' })
       return { kind: 'success' }
     },
   })

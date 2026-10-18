@@ -3,7 +3,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { UserQuestionError } from '@deepseek-ai/dsh-user-questions'
-import { freezeWire, patterns } from '@ephemeral-ai/mayfly-ui'
+import { decisionArmMs, freezeWire } from '@ephemeral-ai/mayfly-ui'
 import { openInEditor } from './decision-actions.ts'
 import { planReviewAction, planReviewAnswer, planReviewCard, planReviewChoices } from './plan-review-panel.ts'
 import { questionnaireAnswer, questionnaireView } from './questionnaire.ts'
@@ -29,7 +29,7 @@ export function apply(ctx: Context): void {
     ctx.emit('mayfly/decision-wait-changed', { kind: review ? 'approval' : 'answer' })
     return requestOverlay(ctx, {
       id, title: () => review ? single.header ?? t('Plan review') : t('Questions'),
-      ...review ? { dismissal: 'discard', bare: true, contentScroll: true, armMs: patterns.decisionArmMs } : { bare: true },
+      ...review ? { dismissal: 'discard', bare: true, contentScroll: true, armMs: decisionArmMs } : { bare: true },
       ...request.agent === undefined ? {} : { agent: request.agent },
       ...request.signal === undefined ? {} : { signal: request.signal },
       view: () => review ? planReviewCard(t) : questionnaireView(questions, t),

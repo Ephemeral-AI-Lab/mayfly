@@ -43,6 +43,8 @@ export function tabsShape(node: MayflyTabsNode, columns: number): MayflyTabsNode
 }
 
 const strong = (text: string): string => `\x1b[1m${text}\x1b[22m`
+/** A selected tab is the status row's inverse mode chip: the theme color becomes the cell background. */
+const selectedChip = (text: string, colors: MayflySemanticColors): string => `\x1b[1m\x1b[7m${colors.primary(` ${text} `)}\x1b[27m\x1b[22m`
 const safeWidth = (width: number): number => Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
 const fit = (value: string, width: number): string => visibleWidth(value) <= width ? value : sliceByColumn(value, 0, width, true)
 
@@ -66,9 +68,11 @@ function paintStrip(node: MayflyTabsNode, width: number, focus: TabsFocus, color
         : active ? `${colors.primary('●')} ${strong(colors.primary(item.label))}` : colors.muted(plain)
       return { plain, text }
     }
-    const label = active ? colors.primary(item.label) : colors.muted(item.label)
-    const mark = badge === '' ? '' : ` ${item.attention === true ? strong(colors.warning(badge)) : (active ? colors.primary : colors.muted)(badge)}`
-    return { plain: `${item.label}${badge === '' ? '' : ` ${badge}`}`, text: `${active && focused ? strong(label) : label}${mark}` }
+    const plain = `${item.label}${badge === '' ? '' : ` ${badge}`}`
+    // A selected tab is a mode chip even when the strip is not focused; the underline is gone.
+    if (active) return { plain: ` ${plain} `, text: selectedChip(plain, colors) }
+    const mark = badge === '' ? '' : ` ${item.attention === true ? strong(colors.warning(badge)) : colors.muted(badge)}`
+    return { plain, text: `${colors.muted(item.label)}${mark}` }
   })
   const wizard = node.mode === 'wizard'
   const separator = wizard ? colors.muted('  ›  ') : ' '.repeat(TAB_GAP)
@@ -83,7 +87,9 @@ function paintStrip(node: MayflyTabsNode, width: number, focus: TabsFocus, color
   const line = tokens.map(token => token.text).join(separator)
   // The `n/m` of the questions sits at the right edge when the strip leaves room for it.
   const gap = width - total - visibleWidth(progress)
-  return [gap >= 2 && progress !== '' ? `${line}${' '.repeat(gap)}${colors.muted(progress)}` : line, fit(underline, width)]
+  const row = gap >= 2 && progress !== '' ? `${line}${' '.repeat(gap)}${colors.muted(progress)}` : line
+  // Normal tabs are one row of mode chips; the wizard keeps its step rule.
+  return wizard ? [row, fit(underline, width)] : [row]
 }
 
 /** `2/3`: the current step over the steps that ask something; the review page, which asks nothing, has none. */

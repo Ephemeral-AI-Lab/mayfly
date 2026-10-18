@@ -9,7 +9,7 @@
  * @module components/model-picker
  */
 
-import { ui, type MayflyListItem, type MayflySurfaceNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, ui, type MayflyListItem, type MayflySurfaceNode } from '@ephemeral-ai/mayfly-ui'
 
 /** The thinking control of one row. */
 export interface ModelPickerStrip {
@@ -88,9 +88,9 @@ function rowItem(row: ModelPickerRow, thinking: string): MayflyListItem {
  * @returns the overlay surface around one browse list.
  */
 export function ModelPicker(facts: ModelPickerFacts): MayflySurfaceNode {
-  return ui.surface({
-    chrome: 'overlay', title: facts.title, subtitle: facts.description,
-    child: ui.list({
+  return panel({
+    title: facts.title, subtitle: facts.description, escapeLabel: 'close',
+    body: ui.list({
       id: 'selection', role: 'browse', acceptVerb: 'choose', numbered: 'focus', selectedIds: facts.live === undefined ? [] : [facts.live], filterable: true,
       items: facts.rows.map(row => rowItem(row, facts.thinking)),
       empty: ui.empty({ title: facts.empty }),
@@ -124,9 +124,9 @@ export function EffortPicker(facts: EffortPickerFacts): MayflySurfaceNode {
   const known = (id: string | undefined): string | undefined => id !== undefined && facts.levels.includes(id) ? id : undefined
   const inherited = known(facts.inherited)
   const pinned = known(facts.pinned)
-  return ui.surface({
-    chrome: 'overlay', title: facts.title, subtitle: facts.description, escapeLabel: 'cancel',
-    child: ui.stack.column([
+  return panel({
+    title: facts.title, subtitle: facts.description, escapeLabel: 'cancel',
+    body: ui.stack.column([
       ui.spacer(),
       ui.slider({
         id: 'effort', autofocus: true,

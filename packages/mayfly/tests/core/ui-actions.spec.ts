@@ -244,9 +244,10 @@ describe('effective keys', () => {
     expect(second.hint()).toContain('d remove')
     const tabs = surface(ui.stack.column([ui.tabs({ id: 'pages', activeId: 'a', items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }), ui.actions({ id: 'acts', items: [{ id: 'go', label: 'Go' }] })]), { keymap })
     tabs.press('\t')
-    expect(tabs.hint()).toContain('←/→ tabs')
+    expect(tabs.hint()).toContain('Alt+←/→ tabs')
+    // A user who reaches for the plain F2/F3 alternative sees those keys lead the same meaning.
     keymap.setPreferPlain(true)
-    expect(tabs.hint()).toContain('←/→ tabs')
+    expect(tabs.hint()).toContain('F2/F3 tabs')
   })
 })
 

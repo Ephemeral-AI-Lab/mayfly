@@ -19,8 +19,8 @@ grid 100x30 cursor none
 |╭────────────────────────────────────────────────────────────────── Refresh the landing page hero. ╮
 |│ >  Type a follow-up to queue it · @ files · # skills                                             │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-v4-pro   view   workspace  ● agents 0/1  ● jobs 1  ○ goal 0/8  ● todo 1/4          ctx 2%
-|                                     ━━━━━━━━━━━━
+| deepseek-flash   view   workspace  ● agents 0/1  ● jobs 1  ○ goal 0/8  ● todo 1/4           ctx 2%
+|                                    ━━━━━━━━━━━━
 | → ● Audit the hero copy  Thinking…                                               ↓11  3 tok/s · 5s
 |
 |
@@ -43,7 +43,7 @@ styles
 17: 0-67 fg:#9aa3b8; 68-97 fg:#f5f5f7 b; 98-99 fg:#9aa3b8
 18: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-53 fg:#5c6476; 99 fg:#9aa3b8
 19: 0-99 fg:#9aa3b8
-20: 1-15 fg:#ededf2; 18-23 fg:#9a86e6 b r; 26-34 fg:#9aa3b8; 37 fg:#c9c0f0; 38 fg:#ededf2; 39-45 fg:#9aa3b8; 46-48 fg:#ededf2; 51 fg:#c9c0f0; 52 fg:#ededf2; 53-57 fg:#9aa3b8; 58 fg:#ededf2; 61 fg:#9aa3b8; 62 fg:#ededf2; 63-67 fg:#9aa3b8; 68-70 fg:#ededf2; 73 fg:#c9c0f0; 74 fg:#ededf2; 75-79 fg:#9aa3b8; 80-82 fg:#ededf2; 93-98 fg:#ededf2
-21: 1-48 fg:#9a86e6
+20: 1-14 fg:#ededf2; 17-22 fg:#9a86e6 b r; 25-33 fg:#9aa3b8; 36 fg:#c9c0f0; 37 fg:#ededf2; 38-44 fg:#9aa3b8; 45-47 fg:#ededf2; 50 fg:#c9c0f0; 51 fg:#ededf2; 52-56 fg:#9aa3b8; 57 fg:#ededf2; 60 fg:#9aa3b8; 61 fg:#ededf2; 62-66 fg:#9aa3b8; 67-69 fg:#ededf2; 72 fg:#c9c0f0; 73 fg:#ededf2; 74-78 fg:#9aa3b8; 79-81 fg:#ededf2; 93-98 fg:#ededf2
+21: 1-47 fg:#9a86e6
 22: 1 fg:#9a86e6 b; 3 fg:#c9c0f0; 4 fg:#ededf2; 5-23 fg:#c9c0f0; 26-34 fg:#ededf2; 82-98 fg:#9aa3b8
 29: 1-2 fg:#5c6476; 3-5 fg:#ededf2; 7-16 fg:#5c6476; 17-21 fg:#ededf2; 23-29 fg:#5c6476; 30 fg:#ededf2; 32-38 fg:#5c6476; 39-41 fg:#ededf2; 43-47 fg:#5c6476

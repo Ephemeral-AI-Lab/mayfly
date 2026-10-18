@@ -67,7 +67,7 @@ describe('list rows', () => {
     expect(cut).toContain('…')
   })
 
-  it('draws the check column for choose lists, marks on a single list, and a tri-state parent of a multiple tree', () => {
+  it('draws the check column for multiple choose lists and a tri-state parent, and never for a single list', () => {
     const items: MayflyListItem[] = [
       { id: 'p', label: 'parent' },
       { id: 'c1', label: 'one', parentId: 'p' },
@@ -76,14 +76,12 @@ describe('list rows', () => {
     ]
     const tree = ui.list({ id: 'tree', role: 'choose', mode: 'multiple', tree: true, selectedIds: ['c1'], items })
     expect(plain(renderList(tree, 40, 10, idle, colors, 0, undefined, { rows: specs(items) }))).toEqual(['  ◐ parent', '  ○ one'.replace('○', '●'), '  ○ two', '  ○ solo'])
-    const marks = ui.list({ id: 'marks', role: 'choose', marks: true, selectedIds: ['q'], items })
-    expect(plain(renderList(marks, 40, 10, idle, colors, 0, undefined, { rows: specs(items) }))[3]).toBe('  ● solo')
-    expect(plain(renderList(marks, 40, 10, idle, colors, 0, undefined, { rows: specs(items) }))[0]).toBe('  ○ parent')
-    expect(renderList(marks, 40, 10, idle, tagged, 0, undefined, { rows: specs(items) })[3]).toContain('<primary>●</>')
-    expect(renderList(marks, 40, 10, idle, tagged, 0, undefined, { rows: specs(items) })[0]).toContain('<muted>○</>')
-    // A disabled row never takes the cursor, and its mark is muted.
+    const single = ui.list({ id: 'single', role: 'choose', marks: true, selectedIds: ['q'], items })
+    expect(plain(renderList(single, 40, 10, idle, colors, 0, undefined, { rows: specs(items) }))[3]).toBe('  solo')
+    expect(plain(renderList(single, 40, 10, idle, colors, 0, undefined, { rows: specs(items) }))[0]).toBe('  parent')
+    // A disabled row never takes the cursor; a multiple list still paints its check muted.
     const disabled = [{ id: 'x', label: 'X', disabled: true }] satisfies MayflyListItem[]
-    expect(renderList(ui.list({ id: 'd', role: 'choose', marks: true, selectedIds: ['x'], items: disabled }), 40, 10, on('x'), tagged, 0, undefined, { rows: specs(disabled), cursorId: 'x' })[0]).toContain('<muted>●</>')
+    expect(renderList(ui.list({ id: 'd', role: 'choose', mode: 'multiple', marks: true, selectedIds: ['x'], items: disabled }), 40, 10, on('x'), tagged, 0, undefined, { rows: specs(disabled), cursorId: 'x' })[0]).toContain('<muted>●</>')
   })
 
   it('numbers every visible row by its position', () => {

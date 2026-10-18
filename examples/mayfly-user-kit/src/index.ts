@@ -3,7 +3,7 @@
  *
  * @module @mayfly-example/user-kit
  */
-import { defineMayflyComponent, patterns, ui } from '@ephemeral-ai/mayfly-ui'
+import { compose, defineMayflyComponent, ui } from '@ephemeral-ai/mayfly-ui'
 
 /** Compact label/value row suitable for a pane header or inspector. */
 export const summaryMetric = defineMayflyComponent<{
@@ -28,7 +28,7 @@ export const summaryMetric = defineMayflyComponent<{
 })
 
 /** The `armMs` an overlay sets when it shows {@link approvalCard} unprompted, so a stray key grants nothing. */
-export const APPROVAL_ARM_MS = patterns.decisionArmMs
+export const APPROVAL_ARM_MS = compose.decisionArmMs
 
 /** A grant-first approval: the common grant is row 1 and focused, digits choose, `Esc` rejects. */
 export const approvalCard = defineMayflyComponent<{
@@ -37,14 +37,22 @@ export const approvalCard = defineMayflyComponent<{
   readonly detail: string
 }>({
   id: '@mayfly-example/approval-card',
-  render: props => patterns.decisionPanel({
+  render: props => compose.decisionLane({
     id: 'approval',
     title: props.title,
-    preview: [ui.text(props.command, { overflow: 'middle' }), ui.text(props.detail, { tone: 'muted' })],
-    options: [
-      { id: 'once', label: 'Allow once' },
-      { id: 'session', label: 'Allow for this session' },
-      { id: 'reject', label: 'Reject' },
-    ],
+    body: ui.stack.column([
+      ui.text(props.command, { overflow: 'middle' }),
+      ui.text(props.detail, { tone: 'muted' }),
+      ui.list({
+        id: 'approval-options', role: 'choose', numbered: true, autofocus: true, selectedIds: [],
+        acceptActionId: 'approval.choose',
+        items: [
+          { id: 'once', label: 'Allow once' },
+          { id: 'session', label: 'Allow for this session' },
+          { id: 'reject', label: 'Reject' },
+        ],
+      }),
+      ui.actions({ id: 'approval-keys', items: [{ id: 'approval.choose', label: 'choose', hidden: true, selections: [{ pagePath: [], controlId: 'approval-options' }] }] }),
+    ]),
   }),
 })

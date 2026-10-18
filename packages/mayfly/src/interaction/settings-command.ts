@@ -6,7 +6,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { SettingsConflictError, type SettingsDescriptor } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-permission-presets'
-import { ui, type MayflyOverlayHandle, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, rail, ui, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
@@ -16,8 +16,20 @@ import { settingsOperations, settingsProjection, type SettingsChoices, type Sett
 export const name = 'mayfly-settings-command'
 export const inject = ['commands', 'settings', 'mayflyOverlays', 'mayflyInteractionState']
 const ROOT_ID = 'mayfly.settings'
-const namespaceId = (ns: string) => `${ROOT_ID}.${Buffer.from(ns).toString('hex')}`
-const source = (descriptor: SettingsDescriptor, projection: SettingsProjection) => [{ resourceId: `settings/${descriptor.ns}`, revision: descriptor.revision }, { resourceId: `settings/${descriptor.ns}/fields`, revision: projection.revision }]
+const RAIL_ID = 'namespaces'
+
+/** One live namespace page of the settings rail. */
+interface SettingsEntry {
+  readonly ns: string
+  readonly descriptor: SettingsDescriptor
+  readonly projection: SettingsProjection
+}
+
+interface SettingsSnapshot {
+  readonly node: MayflyUiNode
+  readonly source: readonly MayflySourceStamp[]
+  readonly entries: readonly SettingsEntry[]
+}
 
 async function choices(ctx: Context): Promise<SettingsChoices> {
   const permission = ctx.get('permissionPresets')?.names
@@ -26,89 +38,128 @@ async function choices(ctx: Context): Promise<SettingsChoices> {
   return { ...permission === undefined ? {} : { permission }, ...agentPresets === undefined ? {} : { agentPresets } }
 }
 
-/** One namespace is one native transaction; shared UI owns every field draft. */
-export async function openSettingsNamespace(ctx: Context, ns: string, callerSignal?: AbortSignal): Promise<boolean> {
+/** Open the one settings rail, focused on `initialNs` when one is named. */
+async function openSettings(ctx: Context, callerSignal?: AbortSignal, initialNs?: string): Promise<boolean> {
   if (callerSignal?.aborted) return false
   const registry = ctx.mayflyOverlays
-  const id = namespaceId(ns)
-  if (registry.focus(id)) return true
   const lifetime = new AbortController()
   const signal = callerSignal === undefined ? lifetime.signal : AbortSignal.any([lifetime.signal, callerSignal])
   const releaseLifetime = ctx.effect(() => () => lifetime.abort())
   const settings = ctx.settings
   const t = interactionTranslator(ctx)
-  const descriptor = () => settings.describe({ redactSecrets: true }).find(item => String(item.ns) === ns)
   let dynamic = await choices(ctx)
   if (signal.aborted) { releaseLifetime(); return false }
-  const initial = descriptor()
-  if (initial === undefined) { releaseLifetime(); return false }
-  if (registry.focus(id)) { releaseLifetime(); return true }
+  const describe = (): readonly SettingsDescriptor[] => settings.describe({ redactSecrets: true })
+  if (initialNs !== undefined && !describe().some(item => String(item.ns) === initialNs)) { releaseLifetime(); return false }
+  /* A namespace open focuses the live rail instead of stacking a second overlay. */
+  if (registry.focus(ROOT_ID)) {
+    releaseLifetime()
+    if (initialNs !== undefined) ctx.mayflyUiInteraction.get('overlay', ROOT_ID)?.emit({ kind: 'tab-change', pagePath: [], controlId: RAIL_ID, tabId: initialNs })
+    return true
+  }
+  let active = initialNs ?? String(describe()[0]?.ns ?? '')
   let handle!: MayflyOverlayHandle
   let refreshSequence = 0
-  const snapshot = (value: SettingsDescriptor) => {
-    const projection = settingsProjection(value, settings.writable, dynamic, t)
-    const node: MayflyUiNode = ui.surface({ child: projection.node, title: t('settings › {namespace}', { namespace: ns }), chrome: 'overlay', padding: 1 })
-    return { projection, node, source: source(value, projection) }
+  const snapshot = (): SettingsSnapshot => {
+    const entries = describe().flatMap((descriptor): SettingsEntry[] => {
+      const ns = String(descriptor.ns)
+      const projection = settingsProjection(descriptor, settings.writable, dynamic, t, [{ controlId: RAIL_ID, itemId: ns }])
+      return projection.bindings.size === 0 ? [] : [{ ns, descriptor, projection }]
+    })
+    if (!entries.some(entry => entry.ns === active)) active = entries[0]?.ns ?? ''
+    const body: MayflyUiNode = entries.length === 0
+      ? ui.empty({ title: t('No settings namespaces') })
+      : rail({
+          rail: { id: RAIL_ID, activeId: active, items: entries.map(entry => ({ id: entry.ns, label: entry.ns })) },
+          pages: Object.fromEntries(entries.map(entry => [entry.ns, entry.projection.node])),
+        })
+    return {
+      node: panel({
+        title: t('Settings'),
+        escapeLabel: 'close',
+        body,
+        footer: ui.actions({ id: 'settings-global-actions', items: [
+          { id: 'open-file', label: t('Open settings.yaml in $EDITOR'), hintLabel: 'settings.yaml', semantic: 'external', hidden: true, disabled: !settings.writable },
+        ] }),
+      }),
+      source: entries.flatMap(entry => [
+        { resourceId: `settings/${entry.ns}`, revision: entry.descriptor.revision },
+        { resourceId: `settings/${entry.ns}/fields`, revision: entry.projection.revision },
+      ]),
+      entries,
+    }
   }
   const refresh = async (): Promise<void> => {
     const sequence = ++refreshSequence
     const next = await choices(ctx)
-    if (handle.closed || signal?.aborted || sequence !== refreshSequence) return
+    if (handle.closed || signal.aborted || sequence !== refreshSequence) return
     dynamic = next
-    const value = descriptor()
-    if (value === undefined) { handle.close(); return }
-    const nextSnapshot = snapshot(value)
+    const nextSnapshot = snapshot()
     handle.set(nextSnapshot.node, { reason: 'data', source: nextSnapshot.source })
   }
-  const initialSnapshot = snapshot(initial)
+  const initialSnapshot = snapshot()
   let teardown: (() => void) | undefined
   const opened = openUiOverlay(ctx, {
-    id, presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: `settings/${ns}` }, source: initialSnapshot.source,
-    onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
-      if (event.kind === 'activate' && event.actionId === 'refresh') { await refresh(); return { kind: 'completed' } }
-      if (event.kind !== 'submit') return { kind: 'completed' }
-      if (context.signal.aborted || signal?.aborted) return { kind: 'cancelled' }
-      const current = descriptor()
-      if (current === undefined) return { kind: 'cancelled', dismiss: true }
-      const currentSnapshot = snapshot(current)
-      const expected = event.submission.source.find(stamp => stamp.resourceId === `settings/${ns}`)?.revision
-      const expectedFields = event.submission.source.find(stamp => stamp.resourceId === `settings/${ns}/fields`)?.revision
-      if (expected !== current.revision || expectedFields !== currentSnapshot.projection.revision) return { kind: 'conflict', node: currentSnapshot.node, source: currentSnapshot.source, message: t('Settings changed elsewhere; review before saving') }
-      try {
-        const form = event.submission.forms.find(form => form.formId === 'settings-form' && form.pagePath.length === 0)
-        if (form === undefined) throw new Error('Missing settings form')
-        const operations = settingsOperations(currentSnapshot.projection, form)
-        if (operations.length > 0) await settings.mutate(ns, operations, current.revision)
-        if (context.signal.aborted || signal?.aborted) return { kind: 'cancelled' }
-        const saved = descriptor()
-        if (saved === undefined) return { kind: 'cancelled', dismiss: true }
-        const savedSnapshot = snapshot(saved)
-        return { kind: 'accepted', node: savedSnapshot.node, source: savedSnapshot.source, feedback: { severity: 'success', message: t('Settings saved') } }
-      } catch (error) {
-        if (context.signal.aborted || signal?.aborted) return { kind: 'cancelled' }
-        const latest = descriptor()
-        if (latest === undefined) return { kind: 'cancelled', dismiss: true }
-        const { node, source } = snapshot(latest)
-        return error instanceof SettingsConflictError
-          ? { kind: 'conflict', node, source, message: t('Settings changed elsewhere; review before saving') }
-          : { kind: 'failed', node, source, message: t('Settings could not be saved') }
-      }
-    } },
+    id: ROOT_ID, title: t('Settings'), presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: 'settings' }, source: initialSnapshot.source,
+    onEvent: {
+      observe: event => {
+        if (event.kind === 'tab-change' && event.pagePath.length === 0 && event.controlId === RAIL_ID) active = event.tabId
+      },
+      action: async (event, context): Promise<MayflyUiActionReply> => {
+        if (event.kind === 'activate' && event.actionId === 'refresh') { await refresh(); return { kind: 'completed' } }
+        if (event.kind === 'activate' && event.actionId === 'open-file') return editDocument(ctx, context.signal)
+        if (event.kind !== 'submit') return { kind: 'completed' }
+        if (context.signal.aborted || signal.aborted) return { kind: 'cancelled' }
+        const form = event.submission.forms.find(candidate => candidate.formId === 'settings-form')
+        const ns = form?.pagePath.find(segment => segment.controlId === RAIL_ID)?.itemId
+        if (form === undefined || ns === undefined) return { kind: 'failed', message: t('Settings could not be saved') }
+        const current = describe().find(item => String(item.ns) === ns)
+        if (current === undefined) return { kind: 'cancelled', dismiss: true }
+        const currentSnapshot = snapshot()
+        const entry = currentSnapshot.entries.find(candidate => candidate.ns === ns)
+        if (entry === undefined) return { kind: 'cancelled', dismiss: true }
+        const expected = event.submission.source.find(stamp => stamp.resourceId === `settings/${ns}`)?.revision
+        const expectedFields = event.submission.source.find(stamp => stamp.resourceId === `settings/${ns}/fields`)?.revision
+        if (expected !== current.revision || expectedFields !== entry.projection.revision) return { kind: 'conflict', node: currentSnapshot.node, source: currentSnapshot.source, message: t('Settings changed elsewhere; review before saving') }
+        try {
+          const operations = settingsOperations(entry.projection, form)
+          if (operations.length > 0) await settings.mutate(ns, operations, current.revision)
+          if (context.signal.aborted || signal.aborted) return { kind: 'cancelled' }
+          if (describe().length === 0) return { kind: 'cancelled', dismiss: true }
+          const savedSnapshot = snapshot()
+          return { kind: 'accepted', node: savedSnapshot.node, source: savedSnapshot.source, feedback: { severity: 'success', message: t('Settings saved') } }
+        } catch (error) {
+          if (context.signal.aborted || signal.aborted) return { kind: 'cancelled' }
+          if (describe().length === 0) return { kind: 'cancelled', dismiss: true }
+          const latest = snapshot()
+          return error instanceof SettingsConflictError
+            ? { kind: 'conflict', node: latest.node, source: latest.source, message: t('Settings changed elsewhere; review before saving') }
+            : { kind: 'failed', node: latest.node, source: latest.source, message: t('Settings could not be saved') }
+        }
+      },
+    },
   }, initialSnapshot.node, { signal, reopen: 'focus', onClosed: () => teardown?.() })
   /* no await between the focus check and open; only a re-entrant listener could land a same-id overlay here */
   if (opened === undefined) { releaseLifetime(); return true }
   handle = opened
   let scheduled = false
-  const schedule = () => {
+  const schedule = (): void => {
     if (scheduled || handle.closed) return
     scheduled = true
     queueMicrotask(() => { scheduled = false; if (!handle.closed) void refresh() })
   }
-  const offDocument = ctx.on('settings/document-updated', changed => { if (String(changed) === ns) schedule() })
+  const offDocument = ctx.on('settings/document-updated', schedule)
   const offLocale = observeInteractionLocale(ctx, schedule)
   const dynamicFibers = ['permissionPresets', 'agentPresets'].map(name => ctx.inject([name], owner => { schedule(); owner.effect(() => () => schedule()) }))
   teardown = () => { offDocument(); offLocale(); for (const fiber of dynamicFibers) void fiber.dispose(); releaseLifetime() }
   return true
+}
+
+/** Open the settings rail on one namespace; the rail replaces a namespace overlay, so a live panel is focused and switched. */
+export async function openSettingsNamespace(ctx: Context, ns: string, callerSignal?: AbortSignal): Promise<boolean> {
+  if (callerSignal?.aborted) return false
+  if (!ctx.settings.describe({ redactSecrets: true }).some(item => String(item.ns) === ns)) return false
+  return await openSettings(ctx, callerSignal, ns)
 }
 
 async function editDocument(ctx: Context, signal: AbortSignal): Promise<MayflyUiActionReply> {
@@ -138,29 +189,10 @@ export function apply(ctx: Context): void {
   mountInteractionLocale(ctx)
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort())
-  const t = interactionTranslator(ctx)
   registerOwnedCommand(ctx, {
     name: 'settings', description: 'Edit user settings by namespace',
-    handler: () => {
-      const view = () => ui.surface({ child: ui.stack.column([
-        ui.list({ id: 'namespaces', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash', items: ctx.settings.describe({ redactSecrets: true }).map(item => ({ id: String(item.ns), label: String(item.ns) })), empty: ui.empty({ title: t('No settings namespaces') }) }),
-        ui.actions({ id: 'browser-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }, { id: 'open-file', label: t('Open settings.yaml in $EDITOR'), hintLabel: 'settings.yaml', semantic: 'external', hidden: true, disabled: !ctx.settings.writable }] }),
-      ]), title: t('Settings'), chrome: 'overlay', padding: 1 })
-      let teardown: (() => void) | undefined
-      const opened = openUiOverlay(ctx, {
-        id: ROOT_ID, presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: 'settings' },
-        onEvent: { action: async (event, context) => {
-          if (event.kind === 'selection-accept') return await openSettingsNamespace(ctx, event.selectedIds[0]!, lifetime.signal) ? { kind: 'completed' } : { kind: 'failed', message: t('Settings namespace is unavailable') }
-          if (event.kind === 'activate' && event.actionId === 'open-file') return editDocument(ctx, context.signal)
-          if (event.kind === 'activate' && event.actionId === 'refresh') opened?.set(view())
-          return { kind: 'completed' }
-        } },
-      }, view(), { signal: lifetime.signal, reopen: 'focus', onClosed: () => teardown?.() })
-      if (opened === undefined) return { kind: 'success' }
-      const refresh = () => { opened.set(view()) }
-      const offDocument = ctx.on('settings/document-updated', refresh)
-      const offLocale = observeInteractionLocale(ctx, refresh)
-      teardown = () => { offDocument(); offLocale() }
+    handler: async () => {
+      await openSettings(ctx, lifetime.signal)
       return { kind: 'success' }
     },
   })

@@ -1,13 +1,12 @@
 /**
  * Component tests for the plugin marketplace surface: the row columns and
  * their wide-character padding, grouped/attention tabs, the detail viewport,
- * the keyed detail panel, and the loading, unavailable, and offline states.
+ * and the loading, unavailable, and offline states.
  */
 
 import { describe, expect, it } from 'vitest'
 import {
   PluginDetail,
-  PluginDetailPanel,
   PluginMarketplace,
   PluginMarketplaceLoading,
   PluginMarketplaceOffline,
@@ -124,27 +123,6 @@ describe('PluginMarketplace', () => {
     // The titled view has its heading; the panel's untitled body does not.
     expect(empty).toContain('Loop')
     expect(JSON.stringify(PluginDetail(detail([]), 10, false))).not.toContain('"Loop","styles":["strong"]')
-  })
-})
-
-describe('PluginDetailPanel', () => {
-  it('renders read-only without a key row and with only the permitted keys', () => {
-    const readOnly = JSON.stringify(PluginDetailPanel(detail(), 'Loop'))
-    expect(readOnly).toContain('Loop')
-    expect(readOnly).not.toContain('plugin-detail-keys')
-
-    const noAction = JSON.stringify(PluginDetailPanel(detail(), 'Loop', {
-      install: 'install', update: 'update', remove: 'remove',
-      removeConfirm: KEYS.removeConfirm, can: { install: false, update: false, remove: false },
-    }))
-    expect(noAction).toContain('plugin-detail-keys')
-    expect(noAction).not.toContain('"id":"install"')
-
-    const permitted = JSON.stringify(PluginDetailPanel(detail(), 'Loop', {
-      install: 'install', update: 'update', remove: 'remove',
-      removeConfirm: KEYS.removeConfirm, can: { install: true, update: true, remove: true },
-    }))
-    for (const id of ['install', 'update', 'remove']) expect(permitted).toContain(`"id":"${id}"`)
   })
 })
 

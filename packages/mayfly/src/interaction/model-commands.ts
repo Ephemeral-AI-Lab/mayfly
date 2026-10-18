@@ -381,8 +381,7 @@ async function commitPickerRow(
  * the row's pinned thinking level as `segmentId` (absent while unpinned), straight to the action handler.
  * @param ctx - plugin context.
  * @param agent - the exact Agent the overlay is scoped to.
- * @param node - the picker surface.
- * @param title - the overlay title.
+ * @param node - the picker surface, whose title is authoritative.
  * @param signal - the dispatching UI request's cancellation signal.
  * @param commit - turns the accepted row into a reply.
  * @returns the overlay handle.
@@ -391,11 +390,10 @@ function openModelOverlay(
   ctx: Context,
   agent: Agent | null,
   node: MayflyUiNode,
-  title: string,
   signal: AbortSignal,
   commit: (scope: Context, selectedId: string | undefined, segmentId: string | undefined, eventSignal: AbortSignal) => Promise<MayflyUiActionReply>,
 ): Promise<MayflyOverlayHandle | undefined> {
-  return openAgentOverlay(ctx, agent, { id: 'mayfly.models', title, presentation: 'editor', capturing: true }, node, scope => async (event, context) => {
+  return openAgentOverlay(ctx, agent, { id: 'mayfly.models', presentation: 'editor', capturing: true }, node, scope => async (event, context) => {
     if (event.kind !== 'selection-accept') return { kind: 'completed' }
     return commit(scope, event.selectedIds[0], event.segmentId, context.signal)
   }, { signal, reopen: 'focus' })
@@ -406,8 +404,7 @@ function openModelOverlay(
  * follows the provider default) straight to the action handler.
  * @param ctx - plugin context.
  * @param agent - the exact Agent the overlay is scoped to.
- * @param node - the slider panel.
- * @param title - the overlay title.
+ * @param node - the slider panel, whose title is authoritative.
  * @param signal - the dispatching UI request's cancellation signal.
  * @param commit - turns the accepted level into a reply.
  * @returns the overlay handle.
@@ -416,11 +413,10 @@ function openEffortOverlay(
   ctx: Context,
   agent: Agent | null,
   node: MayflyUiNode,
-  title: string,
   signal: AbortSignal,
   commit: (scope: Context, value: string | null, eventSignal: AbortSignal) => Promise<MayflyUiActionReply>,
 ): Promise<MayflyOverlayHandle | undefined> {
-  return openAgentOverlay(ctx, agent, { id: 'mayfly.effort', title, presentation: 'editor', capturing: true }, node, scope => async (event, context) => {
+  return openAgentOverlay(ctx, agent, { id: 'mayfly.effort', presentation: 'editor', capturing: true }, node, scope => async (event, context) => {
     if (event.kind !== 'slider-accept') return { kind: 'completed' }
     return commit(scope, event.value, context.signal)
   }, { signal, reopen: 'focus' })
@@ -466,7 +462,7 @@ export async function openModelPicker(ctx: Context, signal: AbortSignal, filterP
     await openModelOverlay(ctx, agent, ModelPicker({
       title: t('Select a model'), description: t('Your pick becomes the default for new sessions.'), thinking: t('Thinking'), rows, empty: t('No models advertised'),
       live: liveItem === undefined ? undefined : JSON.stringify([liveItem.provider, liveItem.id]),
-    }), t('Select a model'), signal, (scope, selectedId, segmentId, eventSignal) =>
+    }), signal, (scope, selectedId, segmentId, eventSignal) =>
       commitPickerRow(scope, selectedId === undefined ? undefined : byId.get(selectedId), segmentId, eventSignal, t))
     return { kind: 'success' }
   } catch (error) {
@@ -564,7 +560,7 @@ export function registerModelCommands(ctx: Context): () => void {
         description: inherited === undefined ? model : t('{model} · provider default: {level}', { model, level: inherited }),
         levels, inherited, pinned: current.reasoningEffort === undefined ? undefined : String(current.reasoningEffort),
         startCaption: t('Faster'), endCaption: t('Smarter'),
-      }), t('Effort'), signal, (scope, value, eventSignal) =>
+      }), signal, (scope, value, eventSignal) =>
         commitAndReport(scope, { provider: current.provider, model: current.model, ...(value === null ? {} : { reasoningEffort: ReasoningEffortId(value) }) }, eventSignal))
       return opened !== undefined ? { kind: 'success' } : { kind: 'error', text: t('model picker is unavailable') }
     }

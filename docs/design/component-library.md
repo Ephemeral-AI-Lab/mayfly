@@ -63,14 +63,14 @@ The design aims to be four things, and each aim is a rule:
    after `/` on a panel with bare-letter keys, §3.4).
    No second dialog or second `Enter` where an inline answer suffices.
 4. **Safe by position.** The focused default is the least destructive choice, every
-   Yes/No question is the same `[No] [Yes]` decision with No focused first, and a
+   Yes/No question is the same lane with hidden `y`/`n`, No by `Esc`, and a
    surface that opens unprompted must not let a stray key grant anything (§5.7).
 5. **Hints never lie.** The hint row is derived from the bindings that dispatch keys,
    so a displayed key always works, and it names the real effect (§3.2).
 6. **Stable geometry.** Moving focus never changes the number of rows a surface
    paints. Per-row controls render on their row and fold before they wrap.
 7. **Recognition over recall.** Current state is visible without opening anything:
-   `[current]` on the live row, `(inherited)` on a field, the active token of a strip,
+   `✓` on the live row, `(inherited)` on a field, the active token of a strip,
    a select's value beside its label.
 8. **Preview, then commit.** Navigation and adjustment never write. Only `Enter`, a
    declared accelerator, or (where the surface allows it) a digit commits, and every
@@ -130,11 +130,11 @@ add a third meaning to a glyph.
 | `→` muted + bold | the persistent selection: the same arrow, muted once focus has moved on | rails, and browse lists whose detail follows them |
 | inverse | a selected token | prompt tokens (`[Image #1 ×]` after the first `Backspace`) |
 | `▸` `▾` | closed / open disclosure | tree branches, accordions, folded turns and blocks |
-| `‹ v ›` | `←`/`→` changes this value | select, number, tab strip, segment |
-| `●` `○` `◐` | chosen, not chosen, some children chosen | single and multiple choose lists, multiselect, trees, wizard steps |
+| `‹ v ›` | `←`/`→` changes this value | select, number, segment |
+| `●` `○` `◐` | chosen, not chosen, some children chosen | multiple choose lists, multiselect, trees, wizard steps; single lists use the cursor and primary label, never a circle |
 | `[on]` `[off]` | a toggle's value | toggle fields only |
 | `•` | an edited field (an implicit override) | forms |
-| `[current]` | the current choice, always this muted badge | pickers |
+| `✓` | the current choice, a primary label plus a check | pickers |
 | `— reason` | disabled, with its reason after a dash | actions, rows, options |
 | `! text` | a field error, indented under the field | forms |
 | `+N` | N tokens folded by a narrow width | actions, tabs, strips |
@@ -159,15 +159,17 @@ add a third meaning to a glyph.
 | `↻` | applies after a restart |
 | `↗` | opens in the external editor |
 | `▰` `▱` | determinate progress cells |
-| `━` `─` | heavy and light rule: tab underline, todo and goal progress |
+| `━` `─` | heavy and light rule: current wizard step, todo and goal progress |
 | `░▒▓█` | activity intensity (heatmap), four steps after `·` for none |
 
 `●` and `▸` appear in both a control context and a transcript context; position and
 tone tell them apart (a check right after the cursor versus a block marker at the line start versus an inline
 status).
 
-Marker rules: the live row is always `[current]`; every choice, single or multiple, uses `●` for chosen and `○`
-for not chosen (`◐` for a parent with some children chosen), never `[x] [ ]`; a toggle uses `[on] [off]`.
+Marker rules: the live row carries `✓` on a primary label; every multiple choice uses `●` for chosen and `○` for not
+chosen (`◐` for a parent with some children chosen), never `[x] [ ]`; a single choice draws no check column and relies on
+the cursor, its primary label, and the value shown in its field. A toggle uses `[on] [off]` and `[not set]` for an unset
+optional value.
 
 ### 2.3 Motion
 
@@ -262,7 +264,7 @@ into a *mode*; `Esc` always leaves exactly one mode, and the hint row names whic
 | SEARCHING | typing or `/` on a filterable list | choose the focused match | `end search` (query kept) | `Ctrl+U` clear, `Backspace` |
 | EDITING | `Enter` or typing on a text field | `next`, or `submit` on a single-field form | `done` (draft kept) | `Tab` commits and moves, `Alt+Enter` newline |
 | PICKER | `Enter` on a select or multiselect | `apply` | `cancel` | `↑`/`↓` candidate, `Space` toggles (multi) |
-| DECIDING | an action or row that asks first | the focused of `[No] [Yes]` | answers No | `←`/`→` switch |
+| DECIDING | a Yes/No strip | `y` answers yes | answers No | `y`/`n` |
 | BUSY | an action whose handler is in flight | ignored on the busy action | `close` | the busy action shows `…` and is skipped by navigation |
 | EXPANDED | `Ctrl+E` on a scroll region | — | `collapse` | scroll keys |
 
@@ -296,11 +298,11 @@ Representative rows:
 ```
 action group focused    ↑/↓/←/→ actions · Enter run · Tab/Shift+Tab groups · Esc close
 single action           Enter run · Esc close
-tab strip focused       ←/→ tabs · Enter open · Esc close
+tab strip focused       Enter open · Alt+←/→ tabs · Esc close
 select picker open      ↑/↓ options · Enter apply · Tab/Shift+Tab groups · Esc cancel
 text field, editing     Enter next · Tab/Shift+Tab groups · Esc done
 list, filtering         Enter choose · Ctrl+U clear · Esc end search
-list row with strip     ←/→ thinking · Enter choose · Type filter · Esc close
+list row with strip     Alt+←/→ tabs · Enter choose · Type filter · Esc close
 ```
 
 Per-state footers for one surface (computed, shown here for the design):
@@ -763,7 +765,7 @@ real range:
   Enter choose · 1-3 choose · Esc cancel
 ```
 
-Choose lists mark the chosen row `●` and the rest `○` (single or multiple, §2.2), and a minimum and maximum bound a
+Multiple choose lists mark the chosen row `●` and the rest `○`; single choose lists draw no check column (§2.2), and a minimum and maximum bound a
 multiple set:
 
 ```
@@ -837,22 +839,23 @@ ui.tabs({ id, items: [{ id, label, count?, attention?, disabled?, group?, clip? 
          mode?: 'tabs' | 'wizard', orientation?: 'horizontal' | 'vertical', hintLabel? })
 ```
 
-**Text color, never a filled background.** The focused tab is bold `primary` with a
-heavy `━` rule beneath it; without focus it keeps its color but loses weight and the
-rule dims; idle tabs and counts are muted; `!` is warning. Contrast is a design rule:
-every tab text color is at least 4.5:1 against its theme background (a guard test in the
-implementation asserts it).
+**The selected tab is a filled chip.** It uses the status row's inverse mode chip:
+`primary` + `inverse` + `strong`, so the theme color becomes the cell background. Idle
+tabs and counts are muted; `!` is warning. There is no underline and no blank row where
+the underline used to be; one blank row separates the strip from its page. Selection does
+not depend on focus. Contrast is a design rule: every tab text color is at least 4.5:1
+against its theme background (a guard test in the implementation asserts it).
 
 ```
   Overview   Usage 3   Connections !   Skills 12   About
-             ━━━━━━━
   ✓ Kind  ›  ✓ Connection  ›  ● Models  ›  ○ Review             wizard steps
   ‹ Usage 3  Connections !  +3 ›                                 narrow: the active tab stays visible
 ```
 
-`←`/`→` move along a focused strip and `Enter` descends into the page; `Alt+←`/`Alt+→`
-switch tabs from anywhere outside text editing and open pickers. A **wizard** is an
-ordered strip with step marks derived from position (done, current, to come); `Esc`
+`Alt+←`/`Alt+→` switch tabs from anywhere outside text editing and open pickers; plain
+`←`/`→` stay with the page (lists, scroll, search, detail). `Enter` on a focused strip
+descends into the page; the strip's selected chip does not change when focus leaves it.
+A **wizard** keeps its ordered step marks and heavy rule and is not an ordinary tab. `Esc`
 walks back, and a forward switch runs the same validation as the step's own Next, so an
 invalid step cannot be skipped by any path.
 
@@ -1749,10 +1752,13 @@ button.
 - **Queue.** Pending requests are first in, first out. The card shows the first, and the request row reads
   `1 of 3 waiting`. An approval allowance lives until that agent ends.
 - **Permission preset** is a *preference*, not a grant, and is not part of a conversation turn: it stays an overlay
-  surface (`/settings` and the first run open it). Digits choose at once, the current preset carries `[current]`,
+  surface (`/settings` and the first run open it). Digits choose at once, the current preset carries `✓`,
   and `Full access` asks the shared Yes/No first.
 
 ### 5.8 Questions
+
+Questions takes the whole editor slot and hides the status row (`coverStatus: true`): the question is the only
+thing on screen below the conversation, with no status facts under it.
 
 **Built from:** `surface`, `tabs` (wizard), `list` (numbered or multiple), `form` (Other), `text`. Scene: Questions.
 
@@ -1764,7 +1770,8 @@ section describes the question case of that pattern.
 A multi-question prompt is one wizard step per question plus a **Review** page; a single
 question drops the strip. Digits answer at once (a question is a preference, not a grant),
 `Enter` accepts and advances, and on the last page `Enter` submits every answer as one
-action. A choice is `●` chosen and `○` not (a multi-select question uses the same marks and `Space`), and `Other` is a free-text
+action. A multiple-select question marks its choices `●`/`○` and toggles with `Space`; a single-select question draws
+no circles. `Other` is a free-text
 row typed in place.
 
 ```
@@ -1802,7 +1809,7 @@ on one line:
 ```
 
 The label is `<provider>/<model>`; the detail is `<context> context`; a badge follows the
-label (`[current]`, or `[current · high]` on the live row so the running effort is
+label (`✓`, or `✓ high` on the live row so the running effort is
 visible before focusing it). Group headers stay (they aid scanning) and so does the
 provider prefix (it disambiguates filter results). The focused row is inverted; only it
 shows a strip, and only the active token is violet.
@@ -1865,7 +1872,7 @@ The result is confirmed by a notice: `Switched to deepseek-v4-pro (DeepSeek) · 
 high`, or `Thinking set to high` when only the level changed. `Esc` leaves the model
 untouched. `/effort` is the same component reduced to one model: the overlay title is the
 current model, the rows are `Provider default (high)` and then each real level, numbered,
-with `[current]` on the live one, and no buttons. `/effort <level>` and `/model <id>` switch
+with `✓` on the live one, and no buttons. `/effort <level>` and `/model <id>` switch
 without opening anything; `Alt+M` keeps cycling.
 
 ### 5.10 `/sessions`, `/settings`, and `/status`
@@ -2294,7 +2301,7 @@ baseline verified against `main` when this was written; *new* means nothing like
 
 | Area | Today | Design |
 | --- | --- | --- |
-| Marks | multiple lists use `●`/`○`; theme and permission pickers use `[← current]`, the model picker `[current]` | `●` `○` `◐` for every choice (single and multiple), one `[current]` badge, `→` cursor, `▸ ▾` disclosure only (§2.2) |
+| Marks | multiple lists use `●`/`○`; theme and permission pickers use `✓`, the model picker `✓` | `●` `○` `◐` for multiple choices, no check column on single choices, one `✓` on a primary label, `→` cursor, `▸ ▾` disclosure only (§2.2) |
 | Chrome | inline surfaces use square corners | rounded frames everywhere; overlay in the focus color, surface in the quiet color (§2.1) |
 | Motion | a two-cell wave ripple (120 ms) and a braille spinner (80 ms), label `Deep diving` | bloom, fill, shimmer, breath, and gap; one motion channel per row; the label stays `Deep diving`; the ripple and the `tide` loader retire (§2.3) |
 | Status | one row; goal and jobs are chips in it; a `SHELL` chip | **one row** of facts (`provider/model Effort`, mode chips, context, directory, git, balance) and items (agents, jobs, goal, todo), shedding detail in a set order when it is crowded (§5.1) |

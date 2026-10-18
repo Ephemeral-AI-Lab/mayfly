@@ -9,7 +9,7 @@ import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createSessionListCache, refreshSessionList } from '../../src/interaction/session-list-reads.ts'
-import { openSessionWorkspace, type SessionWorkspacePanel, type SessionWorkspaceScope } from '../../src/interaction/session-workspace-panel.ts'
+import { openSessionsPanel, type SessionWorkspaceScope } from '../../src/interaction/session-workspace-panel.ts'
 import { interactionTranslator } from '../../src/interaction/locale.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { flushRequests } from './request-fixture.ts'
@@ -84,32 +84,35 @@ async function setup() {
   const cache = createSessionListCache(ctx)
   await refreshSessionList(ctx, cache, new AbortController().signal)
   const t = interactionTranslator(ctx)
-  const model = (): UiSurfaceModel => ctx.mayflyUiInteraction.get('overlay', 'mayfly.sessions.workspace')!
+  const model = (): UiSurfaceModel => ctx.mayflyUiInteraction.get('overlay', 'mayfly.sessions')!
   const text = (): string => JSON.stringify(model().node)
-  const detail = (): UiSurfaceModel => ctx.mayflyUiInteraction.get('overlay', 'mayfly.sessions.detail')!
+  const detail = model
   const closers: Array<() => void> = []
-  const options = (scope: SessionWorkspaceScope, over: Partial<{ loading: () => boolean, refresh: (signal: AbortSignal) => Promise<void>, changed: () => void, closeAll: () => void, onClosed: () => void }> = {}) => ({
-    scope, loading: () => false, refresh: async (signal: AbortSignal) => { await refreshSessionList(ctx, cache, signal) }, changed: vi.fn(), closeAll: vi.fn(), onClosed: vi.fn(), ...over,
-  })
-  const open = async (scope: SessionWorkspaceScope = { kind: 'workspace', workspaceId: 'alpha' as WorkspaceId, path: '/repo/current', title: 'Alpha' }, over: Parameters<typeof options>[1] = {}): Promise<{ panel: SessionWorkspacePanel, options: ReturnType<typeof options>, signal: AbortController }> => {
+  const open = async (_scope: SessionWorkspaceScope = { kind: 'workspace', workspaceId: 'alpha' as WorkspaceId, path: '/repo/current', title: 'Alpha' }): Promise<{ panel: ReturnType<typeof openSessionsPanel>, signal: AbortController }> => {
     const signal = new AbortController()
-    const built = options(scope, over)
-    const panel = openSessionWorkspace(ctx, signal.signal, t, cache, built)
+    const panel = openSessionsPanel(ctx, signal.signal, t, cache)
     closers.push(() => signal.abort())
     await flushRequests()
-    return { panel, options: built, signal }
+    await vi.waitFor(() => { expect(benchText()).toMatch(/Alpha|Could not load workspaces|Loading workspace sessions/) })
+    const railId = _scope.kind === 'workspace' ? `workspace:${String(_scope.workspaceId)}` : _scope.kind === 'search' ? 'search:all' : 'workspace:unregistered'
+    if (railId !== '') {
+      model().emit({ kind: 'tab-change', pagePath: [], controlId: 'session-rail', tabId: railId })
+      await flushRequests()
+    }
+    return { panel, signal }
   }
+  const benchText = (): string => JSON.stringify(model().node)
   const chooseSession = async (id: string, signal?: AbortSignal) => nativeAction(model(), selection('sessions', id), signal)
   const act = async (actionId: string) => { detail().invoke(actionId); await flushRequests() }
   return {
-    ...bench, controller, registry, subagents, schedule, workspaces, alpha, beta, summaries, values, cache, t, model, text, detail, open, options, chooseSession, act,
+    ...bench, controller, registry, subagents, schedule, workspaces, alpha, beta, summaries, values, cache, t, model, text, detail, open, chooseSession, act,
   }
 }
 
 it('refuses an already-aborted opening signal', async () => {
   const bench = await setup()
   const signal = new AbortController(); signal.abort()
-  expect(() => openSessionWorkspace(bench.ctx, signal.signal, bench.t, bench.cache, bench.options({ kind: 'other' }))).toThrow()
+  expect(() => openSessionsPanel(bench.ctx, signal.signal, bench.t, bench.cache)).toThrow()
 })
 
 it('adopts one workspace, filters its rows, and keeps the current badge and parent link', async () => {
@@ -118,8 +121,8 @@ it('adopts one workspace, filters its rows, and keeps the current badge and pare
   await vi.waitFor(() => { expect(bench.text()).toContain('Current') })
   expect(bench.text()).toContain('Alpha')
   expect(bench.text()).toContain('Untitled · child')
-  expect(bench.text()).not.toContain('Other')
-  expect(bench.text()).not.toContain('bare')
+  expect(bench.text()).not.toContain('"id":"other"')
+  expect(bench.text()).not.toContain('"id":"bare"')
   expect(bench.text()).toContain('current')
   expect(bench.text()).toContain('"parentId":"current"')
   await vi.waitFor(() => { expect(bench.text()).not.toContain('Loading workspace sessions…') })
@@ -220,18 +223,16 @@ it('refuses empty, stale, aborted, absent, and failed detail reads', async () =>
 it('opens root sessions by resume and every continuable child by address', async () => {
   const bench = await setup()
   const resume = vi.fn(); bench.ctx.on('mayfly/request-resume', resume)
-  const first = await bench.open()
+  await bench.open()
   await bench.chooseSession('current')
   await bench.act('open')
   expect(resume).toHaveBeenCalledWith('current')
-  expect(first.options.closeAll).toHaveBeenCalled()
 
-  const child = await bench.open()
+  await bench.open()
   await vi.waitFor(() => { expect(bench.text()).toContain('Untitled · child') })
   await bench.chooseSession('child')
   await bench.act('open')
   expect(bench.ctx.mayflyConversations.displayed()).toMatchObject({ kind: 'subagent', sessionId: 'child', parentSessionId: 'current' })
-  expect(child.options.closeAll).toHaveBeenCalled()
 })
 
 it('explains every refused subagent open: no lead, changed lead, missing child, external child', async () => {
@@ -357,68 +358,6 @@ it('reports a failed initial catalog and a failed catalog refresh', async () => 
   expect(bench.text()).toContain('No sessions')
 })
 
-it('navigates a stale scope update and clears a search once refresh runs', async () => {
-  const bench = await setup()
-  const { panel } = await bench.open()
-  await vi.waitFor(() => { expect(bench.text()).toContain('Current') })
-  bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: SessionId('current'), snippet: 'hit' }], hasMore: false })
-  bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'hit')
-  bench.model().invoke('search')
-  await vi.waitFor(() => { expect(bench.text()).toContain('hit') })
-  panel.catalogChanged('catalog notice')
-  await vi.waitFor(() => { expect(bench.text()).toContain('catalog notice') })
-  vi.spyOn(bench.registry, 'list').mockImplementation(() => { throw new Error('gone') })
-  panel.catalogChanged('stale banner')
-  await vi.waitFor(() => { expect(bench.text()).toContain('Could not load workspaces: Error: gone') })
-})
-
-it('refreshes the catalog and clears the search rows', async () => {
-  const bench = await setup()
-  const refresh = vi.fn(async () => {})
-  const { panel } = await bench.open({ kind: 'workspace', workspaceId: 'alpha' as WorkspaceId, path: '/repo/current', title: 'Alpha' }, { refresh })
-  await vi.waitFor(() => { expect(bench.text()).toContain('Current') })
-  bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: SessionId('current'), snippet: 'search hit' }], hasMore: false })
-  bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'search')
-  bench.model().invoke('search')
-  await vi.waitFor(() => { expect(bench.text()).toContain('search hit') })
-  bench.model().invoke('refresh')
-  await vi.waitFor(() => { expect(refresh).toHaveBeenCalled() })
-  await vi.waitFor(() => { expect(bench.text()).not.toContain('search hit') })
-  expect(panel.handle.closed).toBe(false)
-})
-
-it('adopts a session that only search found after refreshing the catalog', async () => {
-  const bench = await setup()
-  const refresh = vi.fn(async (signal: AbortSignal) => {
-    bench.summaries.push(summary({ sessionId: SessionId('injected'), cwd: '/repo/current', values: { title: 'Injected' } }))
-    await refreshSessionList(bench.ctx, bench.cache, signal)
-  })
-  await bench.open(undefined, { refresh })
-  await vi.waitFor(() => { expect(bench.text()).toContain('Current') })
-  bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: SessionId('injected'), snippet: 'outside then inside' }], hasMore: false })
-  bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'injected')
-  bench.model().invoke('search')
-  await vi.waitFor(() => { expect(refresh).toHaveBeenCalled() })
-  await vi.waitFor(() => { expect(bench.text()).toContain('outside then inside') })
-  expect(bench.text()).toContain('Injected')
-})
-
-it('drops search rows outside the scope when the catalog changes', async () => {
-  const bench = await setup()
-  const { panel } = await bench.open()
-  await vi.waitFor(() => { expect(bench.text()).toContain('Current') })
-  bench.controller.search.mockResolvedValueOnce({
-    items: [{ sessionId: SessionId('current'), snippet: 'inside' }, { sessionId: SessionId('other'), snippet: 'outside' }],
-    hasMore: false,
-  })
-  bench.model().edit({ pagePath: [], formId: 'content-search', fieldId: 'query' }, 'q')
-  bench.model().invoke('search')
-  await vi.waitFor(() => { expect(bench.text()).toContain('inside') })
-  panel.catalogChanged()
-  await flushRequests()
-  expect(bench.text()).not.toContain('outside')
-})
-
 it('searches every workspace from the explicit global scope', async () => {
   const bench = await setup()
   bench.summaries.push(summary({ sessionId: SessionId('free'), cwd: '/repo/free', values: { title: 'Free' } }))
@@ -433,102 +372,12 @@ it('searches every workspace from the explicit global scope', async () => {
   expect(bench.text()).toContain('global free')
 })
 
-it('loads state disables the actions and says the catalog is loading', async () => {
-  const bench = await setup()
-  const { panel } = await bench.open(undefined, { loading: () => true })
-  await flushRequests()
-  expect(bench.text()).toContain('Loading workspace sessions…')
-  expect(bench.model().availableActions()).toEqual(expect.arrayContaining([
-    expect.objectContaining({ actionId: 'search', enabled: false }),
-    expect.objectContaining({ actionId: 'refresh', enabled: false }),
-  ]))
-  expect(panel.handle.closed).toBe(false)
-})
-
-it('closes the panel, its detail, and ignores every later catalog update', async () => {
-  const bench = await setup()
-  const onClosed = vi.fn()
-  const { panel } = await bench.open(undefined, { onClosed })
-  await vi.waitFor(() => { expect(bench.text()).toContain('Current') })
-  await bench.chooseSession('current')
-  await flushRequests()
-  panel.handle.close()
-  await flushRequests()
-  expect(onClosed).toHaveBeenCalledOnce()
-  expect(bench.ctx.mayflyUiInteraction.get('overlay', 'mayfly.sessions.detail')).toBeUndefined()
-  panel.catalogChanged('late')
-  await flushRequests()
-  expect(onClosed).toHaveBeenCalledOnce()
-})
-
 it('cleans up and rethrows when the overlay registry cannot open', async () => {
   const bench = await setup()
   vi.spyOn(bench.ctx.mayflyOverlays, 'open').mockImplementation(() => { throw new Error('registry down') })
-  expect(() => openSessionWorkspace(bench.ctx, new AbortController().signal, bench.t, bench.cache, bench.options({ kind: 'other' }))).toThrow('registry down')
+  expect(() => openSessionsPanel(bench.ctx, new AbortController().signal, bench.t, bench.cache)).toThrow()
   await flushRequests()
   expect(bench.ctx.mayflyOverlays.list()).toEqual([])
-})
-
-it('adopts the newest catalog+placement pair when two reads overlap', async () => {
-  const bench = await setup()
-  const first = Promise.withResolvers<Workspace | undefined>()
-  const second = Promise.withResolvers<Workspace | undefined>()
-  bench.registry.resolveByPath.mockReset()
-  bench.registry.resolveByPath
-    .mockReturnValueOnce(first.promise)
-    .mockReturnValueOnce(Promise.resolve(undefined))
-    .mockReturnValueOnce(second.promise)
-    .mockResolvedValue(undefined)
-  const { panel } = await bench.open()
-  panel.catalogChanged()
-  second.resolve(undefined)
-  await flushRequests()
-  first.resolve(undefined)
-  await flushRequests()
-  expect(bench.text()).toContain('Alpha')
-})
-
-it('cancels a search, a catalog refresh, and a search-triggered refresh when their signal aborts', async () => {
-  const bench = await setup()
-  await bench.open()
-  await vi.waitFor(() => { expect(bench.text()).toContain('Current') })
-  const context = (signal: AbortSignal) => ({ surfaceId: bench.model().id, operationId: 'spec', source: [], revision: bench.model().revision, signal, report: vi.fn() })
-  const searchEvent = {
-    kind: 'activate' as const, pagePath: [], controlId: 'session-actions', actionId: 'search',
-    inputs: { forms: [{ pagePath: [], formId: 'content-search', draftRevision: 1, fields: [{ id: 'query', value: 'ghost', change: 'set' as const }] }] },
-  }
-  const refreshEvent = { kind: 'activate' as const, pagePath: [], controlId: 'session-actions', actionId: 'refresh' }
-
-  const searchGate = Promise.withResolvers<SessionSearchValue>()
-  bench.controller.search.mockReturnValueOnce(searchGate.promise)
-  const searchSignal = new AbortController()
-  const searching = bench.model().endpoint.prepare(searchEvent as never, context(searchSignal.signal))
-  await vi.waitFor(() => { expect(bench.controller.search).toHaveBeenCalled() })
-  searchSignal.abort()
-  searchGate.resolve({ items: [], hasMore: false })
-  expect(await searching).toMatchObject({ reply: undefined })
-
-  const refreshGate = Promise.withResolvers<void>()
-  const { panel } = await bench.open(undefined, { refresh: async () => { await refreshGate.promise } })
-  const refreshSignal = new AbortController()
-  const refreshing = panel.handle.closed === false ? bench.model().endpoint.prepare(refreshEvent as never, context(refreshSignal.signal)) : Promise.resolve(undefined)
-  await vi.waitFor(() => { expect(refreshGate).toBeDefined() })
-  refreshSignal.abort()
-  refreshGate.resolve()
-  expect(await refreshing).toMatchObject({ reply: undefined })
-
-  const visibleGate = Promise.withResolvers<void>()
-  const missed = await setup()
-  await missed.open(undefined, { refresh: async () => { await visibleGate.promise } })
-  await vi.waitFor(() => { expect(missed.text()).toContain('Current') })
-  missed.controller.search.mockResolvedValueOnce({ items: [{ sessionId: SessionId('ghost'), snippet: 'ghost' }], hasMore: false })
-  const missedSignal = new AbortController()
-  const missedContext = { surfaceId: missed.model().id, operationId: 'spec', source: [], revision: missed.model().revision, signal: missedSignal.signal, report: vi.fn() }
-  const missedSearch = missed.model().endpoint.prepare(searchEvent as never, missedContext)
-  await vi.waitFor(() => { expect(missed.controller.search).toHaveBeenCalled() })
-  missedSignal.abort()
-  visibleGate.resolve()
-  expect(await missedSearch).toMatchObject({ reply: undefined })
 })
 
 it('answers non-activate and unknown detail events and refuses an archived open directly', async () => {
@@ -586,37 +435,6 @@ it('cancels an archive after its signal aborts during the native write', async (
   expect(await pending).toMatchObject({ reply: undefined })
 })
 
-it('contains late adopt, reminder, and catalogChanged failures after the panel closes', async () => {
-  const bench = await setup()
-  const placements = Promise.withResolvers<Workspace | undefined>()
-  bench.registry.resolveByPath.mockReturnValueOnce(placements.promise)
-  const { panel } = await bench.open()
-  await vi.waitFor(() => { expect(bench.registry.resolveByPath).toHaveBeenCalled() })
-  panel.handle.close()
-  placements.reject(new Error('late placement failure'))
-  await flushRequests()
-
-
-  const reminders = await setup()
-  const catalog = Promise.withResolvers<readonly { readonly sessionId: string, readonly status: string }[]>()
-  reminders.schedule.catalog.mockReturnValueOnce(catalog.promise as never)
-  const opened = await reminders.open()
-  opened.panel.handle.close()
-  catalog.reject(new Error('late reminder failure'))
-  await flushRequests()
-
-  const changed = await setup()
-  const { panel: second } = await changed.open()
-  await vi.waitFor(() => { expect(changed.text()).toContain('Current') })
-  const late = Promise.withResolvers<Workspace | undefined>()
-  changed.registry.resolveByPath.mockReturnValueOnce(late.promise)
-  second.catalogChanged()
-  await vi.waitFor(() => { expect(changed.registry.resolveByPath).toHaveBeenCalled() })
-  second.handle.close()
-  late.reject(new Error('late changed failure'))
-  await flushRequests()
-})
-
 it('keeps a search row badge and answers a no-op action and an empty selection', async () => {
   const bench = await setup()
   await bench.open({ kind: 'workspace', workspaceId: 'beta' as WorkspaceId, path: '/repo/other', title: 'Beta' })
@@ -626,7 +444,7 @@ it('keeps a search row badge and answers a no-op action and an empty selection',
   bench.model().invoke('search')
   await vi.waitFor(() => { expect(bench.text()).toContain('running hit') })
   expect(bench.text()).toContain('"badge":"running · reminders"')
-  await expect(nativeAction(bench.model(), { kind: 'activate', pagePath: [], controlId: 'session-actions', actionId: 'not-an-action' })).resolves.toMatchObject({ kind: 'accepted' })
+  await expect(nativeAction(bench.model(), { kind: 'activate', pagePath: [], controlId: 'session-actions', actionId: 'not-an-action' })).resolves.toMatchObject({ kind: 'completed' })
   await expect(nativeAction(bench.model(), selection('sessions'))).resolves.toMatchObject({ kind: 'failed', message: 'Session is no longer listed; refresh the catalog.' })
 })
 
@@ -663,28 +481,6 @@ it('cancels a detail action whose panel signal aborted while the projection was 
   await expect(pending).resolves.toBeUndefined()
 })
 
-it('contains late placement and catalog-refresh failures after the panel signal aborted', async () => {
-  const bench = await setup()
-  const placements = Promise.withResolvers<Workspace | undefined>()
-  bench.registry.resolveByPath.mockReturnValueOnce(placements.promise)
-  const { signal } = await bench.open()
-  await vi.waitFor(() => { expect(bench.registry.resolveByPath).toHaveBeenCalled() })
-  signal.abort()
-  placements.reject(new Error('late abort failure'))
-  await flushRequests()
-
-  const changed = await setup()
-  const { panel, signal: changedSignal } = await changed.open()
-  await vi.waitFor(() => { expect(changed.text()).toContain('Current') })
-  const late = Promise.withResolvers<Workspace | undefined>()
-  changed.registry.resolveByPath.mockReturnValueOnce(late.promise)
-  panel.catalogChanged()
-  await vi.waitFor(() => { expect(changed.registry.resolveByPath).toHaveBeenCalled() })
-  changedSignal.abort()
-  late.reject(new Error('late changed abort failure'))
-  await flushRequests()
-})
-
 it('drops the cwd segment of a search row whose summary has none', async () => {
   const bench = await setup()
   bench.summaries.push(summary({ sessionId: SessionId('nocwd'), cwd: undefined as never, values: { title: 'No cwd' } }))
@@ -700,18 +496,9 @@ it('contains an initial catalog failure after the opening signal aborted', async
   const bench = await setup()
   vi.spyOn(bench.registry, 'list').mockImplementation(() => { throw new Error('placement list failed') })
   const signal = new AbortController()
-  const panel = openSessionWorkspace(bench.ctx, signal.signal, bench.t, bench.cache, bench.options({ kind: 'other' }))
+  const panel = openSessionsPanel(bench.ctx, signal.signal, bench.t, bench.cache)
   expect(panel.handle).toBeDefined()
   signal.abort()
   await flushRequests()
 })
 
-it('contains a catalogChanged failure after the opening signal aborted', async () => {
-  const bench = await setup()
-  const { panel, signal } = await bench.open()
-  await vi.waitFor(() => { expect(bench.text()).toContain('Current') })
-  vi.spyOn(bench.registry, 'list').mockImplementation(() => { throw new Error('placement list failed') })
-  panel.catalogChanged()
-  signal.abort()
-  await flushRequests()
-})

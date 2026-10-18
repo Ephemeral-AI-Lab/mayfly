@@ -28,7 +28,7 @@ grid 100x30 cursor none
 |╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-v4-pro  ~/workspace
+| deepseek-official/deepseek-flash  ~/workspace
 styles
 6: 44 fg:#9a86e6; 53 fg:#9a86e6
 7: 43 fg:#9a86e6; 54 fg:#9a86e6
@@ -46,4 +46,4 @@ styles
 26: 0-99 fg:#45406b
 27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
 28: 0-99 fg:#45406b
-29: 1-33 fg:#ededf2; 36-46 fg:#9aa3b8
+29: 1-32 fg:#ededf2; 35-45 fg:#9aa3b8

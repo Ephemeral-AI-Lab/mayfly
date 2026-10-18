@@ -2,7 +2,7 @@ grid 100x30 cursor none
 |
 |    ▗▘   ▝▖     mayfly scenario
 | ▄▄▖█▛███▜█▗▄▄  ephemeral agents, enduring works
-|  ▄▖█▙███▟█▗▄   deepseek-v4-pro · deepseek-official
+|  ▄▖█▙███▟█▗▄   deepseek-flash · deepseek-official
 |    ▝▜▀▀▀▛▘     ~/workspace
 |
 |
@@ -28,14 +28,14 @@ grid 100x30 cursor none
 |╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-| deepseek-official/deepseek-v4-pro  ~/workspace
+| deepseek-official/deepseek-flash  ~/workspace
 styles
 1: 4-5 fg:#9a86e6; 9-10 fg:#9a86e6; 16-21 fg:#9a86e6 b; 22-30 fg:#5c6476
 2: 1-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-13 fg:#cfc6f5; 16-47 fg:#c9c0f0
-3: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-50 fg:#e9e6f4
+3: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-49 fg:#e9e6f4
 4: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
 25: 75-96 fg:#ededf2
 26: 0-99 fg:#45406b
 27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
 28: 0-99 fg:#45406b
-29: 1-33 fg:#ededf2; 36-46 fg:#9aa3b8
+29: 1-32 fg:#ededf2; 35-45 fg:#9aa3b8

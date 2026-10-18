@@ -10,7 +10,7 @@ import type { SessionStatsProjection } from '@deepseek-ai/dsh-session-stats'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-session-title'
 import type {} from '@deepseek-ai/dsh-token-meter'
-import { ui, type MayflyField, type MayflyInlineSpan, type MayflyListItem, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyField, type MayflyListCell, type MayflyListItem, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { shortenCwd } from '../transcript/status-cwd.ts'
 import { formatCreated } from './session-info-model.ts'
@@ -148,13 +148,13 @@ export function sessionLabel(facts: SessionListFacts, t: MayflyTranslate): strin
  * @returns the list item.
  */
 export function sessionListItem(facts: SessionListFacts, now: number, home: string, t: MayflyTranslate, showCwd = true): MayflyListItem {
-  const segments: MayflyInlineSpan[] = []
   const tokens = facts.tokens === undefined ? 0 : totalTokens(facts.tokens)
-  if (tokens > 0) segments.push({ text: `${formatTokens(tokens)} tok` })
-  if (facts.lastActiveAt !== undefined) segments.push({ text: formatAgo(now - facts.lastActiveAt, t), tone: 'muted' })
-  if (showCwd && facts.cwd !== undefined) segments.push({ text: shortenCwd(facts.cwd, home), tone: 'muted' })
+  const cells: MayflyListCell[] = [
+    { spans: tokens > 0 ? [{ text: `${formatTokens(tokens)} tok` }] : [], align: 'right', shed: 1 },
+    { spans: facts.lastActiveAt === undefined ? [] : [{ text: formatAgo(now - facts.lastActiveAt, t), tone: 'muted' }], align: 'right', shed: 2 },
+    ...showCwd ? [{ spans: facts.cwd === undefined ? [] : [{ text: shortenCwd(facts.cwd, home), tone: 'muted' as const }], max: 48, shed: 3 }] : [],
+  ]
   const badges = [
-    ...(facts.current ? [t('current')] : []),
     ...(facts.running ? [t('running')] : []),
     ...(facts.migrationRequired ? [t('migration required')] : []),
     ...(facts.archived ? [t('archived')] : []),
@@ -164,9 +164,10 @@ export function sessionListItem(facts: SessionListFacts, now: number, home: stri
   return {
     id: facts.id,
     label,
-    detailSpans: segments.flatMap((segment, index) => index === 0 ? [segment] : [{ text: ' · ', tone: 'muted' as const }, segment]),
+    cells,
     searchText: `${label} ${facts.id} ${facts.cwd ?? ''}`,
     ...(badges.length === 0 ? {} : { badge: badges.join(' · ') }),
+    ...(facts.current ? { current: true } : {}),
     ...(facts.parentId === undefined ? {} : { parentId: facts.parentId }),
   }
 }
