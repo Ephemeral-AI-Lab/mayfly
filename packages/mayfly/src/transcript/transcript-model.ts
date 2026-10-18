@@ -60,6 +60,8 @@ export interface TranscriptControllerOptions {
     readonly setTimeout: (callback: () => void, ms: number) => unknown
     readonly clearTimeout: (handle: unknown) => void
   }
+  /** The duration of the publish that just finished, for the adaptive window; specs inject a fixed cost. */
+  readonly publishCost?: () => number
 }
 
 /**
@@ -595,7 +597,7 @@ export class TranscriptController {
       this.publishFacts(now)
     } finally {
       this.dirty = false
-      this.publishCostMs = performance.now() - started
+      this.publishCostMs = this.options.publishCost?.() ?? performance.now() - started
       this.lastPublishAt = this.nowMs()
     }
   }

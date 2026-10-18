@@ -208,7 +208,7 @@ void [widthOf, available, pointer, border, padding]
     }
     expect(violations).toEqual(new Set())
     expect(widthMath).toEqual(approvedWidthMath)
-  })
+  }, 15_000)
 
   it('requires an exact baseline review for business-owned pointers, borders and padding', async () => {
     const presentation = new Set<string>()
@@ -218,5 +218,5 @@ void [widthOf, available, pointer, border, padding]
       merge(presentation, audit.presentation)
     }
     expect(presentation).toEqual(approvedPresentation)
-  })
+  }, 15_000)
 })

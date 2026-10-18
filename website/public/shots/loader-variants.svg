@@ -12,7 +12,7 @@
 <text x="188.4" y="90" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#5c6476">12s</text>
 <text x="28.8" y="109" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">Esc</text>
 <text x="62.4" y="109" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#9aa3b8">cancel</text>
-<text x="12" y="128" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#6c6d92">●</text>
+<text x="12" y="128" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#5c6476">●</text>
 <text x="28.8" y="128" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#ededf2">Waiting</text>
 <text x="96" y="128" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">for</text>
 <text x="129.6" y="128" textLength="109.2" lengthAdjust="spacingAndGlyphs" fill="#ededf2">authorization</text>

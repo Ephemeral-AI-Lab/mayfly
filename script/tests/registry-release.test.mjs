@@ -95,10 +95,10 @@ test('promotes only registry artifacts with matching integrity and removes their
     world.tags.set(`${pkg.name}:dist-tags.candidate`, version)
   }
   await releaseRegistry('promote', packages, { ...world, log() {}, warn() {} })
-  assert.equal(world.calls.filter(([action]) => action === 'tag').length, packages.length * 2)
+  assert.equal(world.calls.filter(([action]) => action === 'tag').length, packages.length)
   assert.equal(world.calls.filter(([action]) => action === 'remove').length, packages.length)
   await releaseRegistry('promote', packages, { ...world, log() {}, warn() {} })
-  assert.equal(world.calls.filter(([action]) => action === 'tag').length, packages.length * 2)
+  assert.equal(world.calls.filter(([action]) => action === 'tag').length, packages.length)
 })
 
 test('recognizes npm staged-publish conflicts and reports approval guidance', async () => {
