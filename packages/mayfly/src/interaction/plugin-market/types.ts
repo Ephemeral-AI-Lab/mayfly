@@ -11,6 +11,7 @@
  */
 
 import { z } from 'zod'
+import { formatError } from '../../internal/format.ts'
 
 /** One install unit of a marketplace entry. */
 export interface MarketInstallRow {
@@ -172,7 +173,7 @@ export function parseMarketIndex(text: string): MarketIndex {
     parsed = JSON.parse(text)
   } catch (error) {
     /* JSON.parse only throws SyntaxError instances */
-    throw new Error(`market index is not valid JSON: ${error instanceof Error ? error.message : String(error)}`)
+    throw new Error(`market index is not valid JSON: ${formatError(error)}`)
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('market index is not an object')
   const record = parsed as Record<string, unknown>

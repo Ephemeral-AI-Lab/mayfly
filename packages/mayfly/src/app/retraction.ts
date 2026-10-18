@@ -11,6 +11,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createDeveloperMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { MayflyRequestController, MayflyRequestRef } from './request-lifecycle.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Identity of one live turn removed from Mayfly's visible conversation. */
 export interface MayflyTurnRetraction {
@@ -117,7 +118,7 @@ export function installRetractionService(
           sourceEventSeqs: nodes,
         })
       } catch (error) {
-        report(`could not persist message retraction: ${error instanceof Error ? error.message : String(error)}`)
+        report(`could not persist message retraction: ${formatError(error)}`)
       }
     })
   }

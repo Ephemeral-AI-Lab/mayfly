@@ -23,6 +23,7 @@ import { armExitEpitaph, epitaphFor } from './exit-epitaph.ts'
 import { profileNameFromArgv } from '../internal/profile.ts'
 import { createMayflyRequestController } from './request-lifecycle.ts'
 import { installRetractionService } from './retraction.ts'
+import { formatError } from '../internal/format.ts'
 
 export { MayflyCurrentAgentService } from './current-agent.ts'
 export { MayflySessionStartService } from './session-start.ts'
@@ -78,10 +79,6 @@ interface MayflyIo {
 
 /** Process-facing diagnostic stream; tests may replace it. */
 export const internals: { stderr: MayflyIo['stderr'] } = { stderr: process.stderr }
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 function resolvedAgent(result: Awaited<ReturnType<SessionController['resolveAgent']>>): Agent {
   if ('error' in result) throw result.error
@@ -162,7 +159,7 @@ export function apply(ctx: Context, config: Config): void {
   const enqueue = (operation: () => Promise<void>): void => {
     chain = chain.then(() => (live ? operation() : undefined)).catch((error: unknown) => {
       if (!live) return
-      io.stderr.write(`dsh: ${describe(error)}\n`)
+      io.stderr.write(`dsh: ${formatError(error)}\n`)
     })
   }
 
@@ -203,7 +200,7 @@ export function apply(ctx: Context, config: Config): void {
         if (current.primary() !== agent) select(agent)
         resolveStart(agent)
       } catch (error) {
-        reject(error instanceof Error ? error : new Error(describe(error)))
+        reject(error instanceof Error ? error : new Error(formatError(error)))
       } finally {
         waiting.delete(reject)
       }
@@ -231,7 +228,7 @@ export function apply(ctx: Context, config: Config): void {
       // An unloaded fiber drops the failure: a late io.exit(1) during an app
       // reload would kill a process that is not actually exiting.
       if (!live) return
-      io.stderr.write(`dsh: ${describe(error)}\n`)
+      io.stderr.write(`dsh: ${formatError(error)}\n`)
       io.exit(1)
     } finally {
       // The launch values are applied (or absent): the post-boot signal the
@@ -244,7 +241,7 @@ export function apply(ctx: Context, config: Config): void {
     enqueue(async () => {
       conversations.closeSides()
       try { select(await resolve(sessionId)) }
-      catch (error) { io.stderr.write(`dsh: could not resume session ${sessionId}: ${describe(error)}\n`) }
+      catch (error) { io.stderr.write(`dsh: could not resume session ${sessionId}: ${formatError(error)}\n`) }
     })
   })
 
@@ -270,7 +267,7 @@ export function apply(ctx: Context, config: Config): void {
         const forked = await controller.fork({ sessionId: agent.id })
         select(await resolve(String(forked.sessionId)))
       } catch (error) {
-        io.stderr.write(`dsh: could not fork session ${String(agent.id)}: ${describe(error)}\n`)
+        io.stderr.write(`dsh: could not fork session ${String(agent.id)}: ${formatError(error)}\n`)
       }
     })
   })
@@ -287,7 +284,7 @@ export function apply(ctx: Context, config: Config): void {
         const forked = await controller.fork({ sessionId: agent.id, atSeq })
         select(await resolve(String(forked.sessionId)))
       } catch (error) {
-        io.stderr.write(`dsh: could not rewind session ${sessionId}: ${describe(error)}\n`)
+        io.stderr.write(`dsh: could not rewind session ${sessionId}: ${formatError(error)}\n`)
       }
     })
   })

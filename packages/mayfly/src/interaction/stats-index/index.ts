@@ -9,6 +9,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionQueryEngine, SessionRecord } from '@deepseek-ai/dsh-session-query'
 import { foldDigest, type SessionDigest } from './digest.ts'
+import { formatError } from '../../internal/format.ts'
 
 /** Sessions read per refresh, newest first; older ones are counted but not read. */
 export const INDEX_SESSION_LIMIT = 300
@@ -95,7 +96,7 @@ export async function refreshStatsIndex(ctx: Context, index: StatsIndex, cwd: st
       } catch (error) {
         if (retired()) return
         failed += 1
-        ctx.logger.warn(`stats: could not read session ${id}: ${error instanceof Error ? error.message : String(error)}`)
+        ctx.logger.warn(`stats: could not read session ${id}: ${formatError(error)}`)
       }
       done += 1
       onProgress({ done, total: wanted.length, skipped, failed })

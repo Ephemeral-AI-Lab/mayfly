@@ -18,6 +18,7 @@ import { agentDirectory } from '../internal/session-directory.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { copyTextToClipboard } from './clipboard-write.ts'
 import { interactionTranslator } from './locale.ts'
+import { formatError } from '../internal/format.ts'
 
 export const name = 'mayfly-deliverables-command'
 export const inject = ['commands', 'sessionProjections', 'sessionController', 'mayflyCurrentAgent', 'mayflyOverlays']
@@ -143,11 +144,6 @@ function diffContent(diff: WorkspaceFileDiff | undefined): MayflyUiNode {
     nodes.push(ui.diff(sides.before, sides.after, { start: hunk.newStart, beforeStart: hunk.oldStart, hunkHeader: true, context: 3, numberWidth }))
   }
   return ui.stack.column(nodes)
-}
-
-/** Render a thrown value for a failed action. */
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function field(label: string, value: string, tone: 'default' | 'muted' | 'danger' = 'default'): MayflyField {
@@ -303,7 +299,7 @@ export function apply(ctx: Context): void {
         }
       } catch (error) {
         if (signal.aborted || generation !== loadGeneration || ctx.mayflyCurrentAgent.current() !== agent) return
-        detail = row.kind === 'delivered' ? { kind: 'delivered', error: describe(error) } : { kind: 'changed', error: describe(error) }
+        detail = row.kind === 'delivered' ? { kind: 'delivered', error: formatError(error) } : { kind: 'changed', error: formatError(error) }
       }
       publish()
     }

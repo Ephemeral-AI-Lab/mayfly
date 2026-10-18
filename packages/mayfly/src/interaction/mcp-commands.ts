@@ -11,6 +11,7 @@ import { listMcpResources, readMcpResource, resourceItems } from './mcp-resource
 import { firstSentence } from './tools-commands.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
+import { formatError } from '../internal/format.ts'
 
 export const name = 'mayfly-mcp-command'
 export const inject = ['commands', 'tools', 'mayflyCurrentAgent', 'mayflyOverlays']
@@ -19,7 +20,6 @@ const STATUS_TONE: Readonly<Record<McpStatus, MayflyTone>> = { synced: 'success'
 const SERVER_TABS = ['tools', 'config', 'resources'] as const
 type ServerTab = typeof SERVER_TABS[number]
 type Page = 'list' | 'server' | 'tool' | 'resource' | 'body'
-const describe = (error: unknown) => error instanceof Error ? error.message : String(error)
 
 export function serverItems(catalog: McpCatalog, t: MayflyTranslate): readonly MayflyListItem[] {
   return catalog.servers.toSorted((left, right) => STATUS_ORDER.indexOf(left.status) - STATUS_ORDER.indexOf(right.status) || left.serverName.localeCompare(right.serverName)).map(server => ({
@@ -221,7 +221,7 @@ export function apply(ctx: Context): void {
           resource.loaded = true
           resource.error = undefined
         } catch (error) {
-          if (current() && handle?.closed === false && revision === resourceGeneration && state.resource === resource) resource.error = describe(error)
+          if (current() && handle?.closed === false && revision === resourceGeneration && state.resource === resource) resource.error = formatError(error)
         } finally {
           if (current() && handle?.closed === false && revision === resourceGeneration && state.resource === resource) { resource.loading = false; publish() }
         }
@@ -256,7 +256,7 @@ export function apply(ctx: Context): void {
           state.page = 'body'
           publish()
           return { kind: 'completed' }
-        } catch (error) { return { kind: 'failed', message: describe(error) } }
+        } catch (error) { return { kind: 'failed', message: formatError(error) } }
       }
       const back = (): MayflyUiActionReply => {
         if (state.page === 'body') { state.page = 'resource'; publish(); return { kind: 'completed', dismiss: false } }
@@ -278,7 +278,7 @@ export function apply(ctx: Context): void {
         if (event.kind === 'dismiss') return back()
         if (event.kind === 'activate') {
           if (event.actionId === 'refresh') {
-            try { await refresh(); return { kind: 'completed' } } catch (error) { return { kind: 'failed', message: describe(error) } }
+            try { await refresh(); return { kind: 'completed' } } catch (error) { return { kind: 'failed', message: formatError(error) } }
           }
           if (event.actionId === 'resources') { openResources(false); return { kind: 'completed' } }
           if (event.actionId === 'templates') { openResources(true); return { kind: 'completed' } }
@@ -287,7 +287,7 @@ export function apply(ctx: Context): void {
           return { kind: 'completed' }
         }
         if (event.kind === 'selection-accept' && event.controlId === 'servers') {
-          try { await refresh() } catch (error) { return { kind: 'failed', message: describe(error) } }
+          try { await refresh() } catch (error) { return { kind: 'failed', message: formatError(error) } }
           const server = catalog.servers.find(item => item.entryId === event.selectedIds[0])
           if (server === undefined) return { kind: 'failed', message: t('The MCP server is no longer available') }
           state.page = 'server'
@@ -338,6 +338,6 @@ export function apply(ctx: Context): void {
       cleanup = () => { offTools(); offLocale(); offAgent() }
       await refresh()
       return { kind: 'success' }
-    } catch (error) { return current() ? { kind: 'error', text: describe(error) } : { kind: 'success' } }
+    } catch (error) { return current() ? { kind: 'error', text: formatError(error) } : { kind: 'success' } }
   } })
 }

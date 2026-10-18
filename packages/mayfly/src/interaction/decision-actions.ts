@@ -10,6 +10,7 @@ import { DECISION } from '../components/decision-card.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { copyTextToClipboard } from './clipboard-write.ts'
 import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
+import { formatError } from '../internal/format.ts'
 
 /** What the card's events say: the choice made (absent for the note's Enter) and the note typed, trimmed. */
 export interface DecisionRead {
@@ -67,6 +68,6 @@ export async function copyDocument(text: string, done: string, failed: string): 
     await copyTextToClipboard(text)
     return { kind: 'completed', feedback: { message: done, severity: 'success' } }
   } catch (error) {
-    return { kind: 'completed', feedback: { message: failed, severity: 'error', detail: error instanceof Error ? error.message : String(error) } }
+    return { kind: 'completed', feedback: { message: failed, severity: 'error', detail: formatError(error) } }
   }
 }

@@ -39,6 +39,7 @@ import {
   TRANSCRIPT_LOCALE,
   transcriptTranslator,
 } from './locale.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-transcript'
@@ -113,7 +114,7 @@ export function apply(ctx: Context): void {
     copy: (text, mode) => {
       copyTextToClipboard(text).then(
         (method) => { rowNotices.report('copy', { message: t(mode === 'raw' ? (method === 'native' ? 'Copied {count} characters of JSON' : 'Copied {count} characters of JSON (unverified)') : (method === 'native' ? 'Copied {count} characters' : 'Copied {count} characters (unverified)'), { count: text.length }), severity: 'success' }) },
-        (error: unknown) => { rowNotices.report('copy', { message: t('Could not copy'), severity: 'error', detail: error instanceof Error ? error.message : String(error) }) },
+        (error: unknown) => { rowNotices.report('copy', { message: t('Could not copy'), severity: 'error', detail: formatError(error) }) },
       )
     },
     open: (text) => {

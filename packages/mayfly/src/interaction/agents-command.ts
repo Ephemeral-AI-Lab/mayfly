@@ -15,7 +15,8 @@ import { openUiOverlay } from './ui-overlay.ts'
 import { formatTokens } from './usage.ts'
 import { compactElapsedMs } from '../transcript/agent-presentation.ts'
 import { outputCounter } from '../transcript/output-rate.ts'
-import { stopBlockedReason, stopSubagent, describe, type AgentStopResult } from './agents-stop.ts'
+import { stopBlockedReason, stopSubagent, type AgentStopResult } from './agents-stop.ts'
+import { formatError } from '../internal/format.ts'
 import { conversationId } from '../app/conversation-views.ts'
 
 /** Stable Cordis plugin name. */
@@ -89,11 +90,6 @@ function listedDescendants(entries: readonly SubagentDescendantListEntry[]): rea
   return entries.filter(entry => entry.kind !== 'child' || entry.label !== BTW_LABEL)
 }
 
-/** Elapsed format used by agent browser rows. */
-export function formatAgentElapsed(ms: number): string {
-  return compactElapsedMs(ms)
-}
-
 /** Optional live-output, tool, token, and elapsed summary. */
 export function agentMetricsText(
   entry: { readonly tokens?: number | undefined, readonly toolCount?: number | undefined, readonly liveChars?: number | undefined, readonly settledMs?: number | undefined, readonly activeSince?: number | undefined },
@@ -105,7 +101,7 @@ export function agentMetricsText(
   if (entry.toolCount !== undefined) parts.push(`${String(entry.toolCount)} ${entry.toolCount === 1 ? 'tool' : 'tools'}`)
   if (entry.tokens !== undefined) parts.push(`${formatTokens(entry.tokens)} tok`)
   const elapsed = entry.activeSince !== undefined ? now - entry.activeSince : entry.settledMs
-  if (elapsed !== undefined) parts.push(formatAgentElapsed(elapsed))
+  if (elapsed !== undefined) parts.push(compactElapsedMs(elapsed))
   return parts.join(' · ')
 }
 
@@ -203,7 +199,7 @@ export function apply(ctx: Context): void {
     try {
       listed = listedDescendants(await ctx.subagents.listDescendants(parent.id, signal))
     } catch (error) {
-      return { kind: 'error', text: describe(error) }
+      return { kind: 'error', text: formatError(error) }
     }
     if (unloaded || ctx.mayflyCurrentAgent.current() !== parent) return { kind: 'success' }
     if (listed.length === 0) return { kind: 'success', text: t('no subagents in this session') }

@@ -31,6 +31,7 @@ import { LANGUAGES, STARTUPS, THEMES, commitLanguage, commitStartup, initialChoi
 import { themeLabel, themeName } from './theme-names.ts'
 import type { PermissionPresetsService } from './permission-panel.ts'
 import { interactionTranslator } from './locale.ts'
+import { formatError } from '../internal/format.ts'
 
 export const DEEPSEEK_KEY = 'DEEPSEEK_API_KEY'
 /** The provider route that reads `DEEPSEEK_API_KEY`. */
@@ -330,7 +331,7 @@ export function apply(ctx: Context): void {
           try {
             presets.set(agent.session, chosen)
           } catch (error) {
-            return { kind: 'failed', message: t('permission dispatch failed: {error}', { error: error instanceof Error ? error.message : String(error) }) }
+            return { kind: 'failed', message: t('permission dispatch failed: {error}', { error: formatError(error) }) }
           }
         }
         state.preset = presets.optionOf(chosen).name

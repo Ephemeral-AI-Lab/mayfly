@@ -10,6 +10,7 @@ import { panel, ui, type MayflyContentChunk, type MayflyListItem, type MayflyOve
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
+import { formatError } from '../internal/format.ts'
 
 export const name = 'mayfly-jobs'
 export const inject = ['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyOverlays']
@@ -284,13 +285,13 @@ export function apply(ctx: Context): void {
             page = { kind: 'output', id: page.id }
             refresh()
             return { kind: 'completed' }
-          } catch (error) { return { kind: 'failed', message: error instanceof Error ? error.message : String(error) } }
+          } catch (error) { return { kind: 'failed', message: formatError(error) } }
         }
         if (event.kind === 'activate' && page.kind === 'detail' && event.actionId === 'stop') {
           try {
             if (jobs.get(page.id, agent.id).status !== 'running') return { kind: 'completed' }
             jobs.kill(page.id, agent.id, 'stopped from the Mayfly /jobs view')
-          } catch (error) { return { kind: 'failed', message: error instanceof Error ? error.message : String(error) } }
+          } catch (error) { return { kind: 'failed', message: formatError(error) } }
           refresh()
           return { kind: 'completed' }
         }
