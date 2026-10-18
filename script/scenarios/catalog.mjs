@@ -395,8 +395,8 @@ const SCRIPTS = {
   // leaves after 5 s on screen; the next arrival is left unread and scrolled past, and a second Ctrl+↓ follows the tail; 60 columns.
   newMessages: [
     play('history'), checkpoint('history'),
-    wheel('up', { count: 12 }), checkpoint('away'),
-    play('first'), checkpoint('arrived'),
+    wheel('up', { count: 12 }),
+    play('first'),
     key('ctrl+down'), checkpoint('jumped'),
     wait(6000), checkpoint('expired'),
     play('second'), checkpoint('second'),
