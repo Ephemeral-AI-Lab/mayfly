@@ -351,6 +351,8 @@ export class SurfaceManager {
   private revision = 0
   /** Bumped when a pane's own rows change without a registry/layout change; the bottom plan keys on it. */
   private contentRevisionValue = 0
+  /** Bumped when a bottom pane's moving cell asks for the next clock frame; the bottom plan keys on it too. */
+  private animationRevisionValue = 0
   private readonly activePlacements: Partial<Record<SurfacePlacement, string>> = {}
   private focusedIdValue: string | undefined
   private activeIdValue: string | undefined
@@ -384,6 +386,15 @@ export class SurfaceManager {
 
   /** The revision of pane content replaced in place; a change invalidates the bottom lane plan, not the layout. */
   get contentRevision(): number { return this.contentRevisionValue }
+
+  /**
+   * The revision of a bottom pane's clock frame. Unlike {@link contentRevision}, it does not touch the layout: the lane
+   * plan alone is recomputed, so a moving cell paints the frame the clock asked for.
+   */
+  get animationRevision(): number { return this.animationRevisionValue }
+
+  /** A bottom pane's moving cell asked for the next frame: the bottom lane replans its rows on the next paint. */
+  animationFrame(): void { this.animationRevisionValue += 1 }
 
   get empty(): boolean {
     return this.visibleEntries().length === 0

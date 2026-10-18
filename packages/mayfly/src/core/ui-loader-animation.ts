@@ -14,8 +14,11 @@ import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 /** One clock step: every channel moves on it. */
 export const LOADER_FRAME_MS = 100
 
-/** The longest a step waits for a slow frame: below one frame a second the motion is no longer worth its repaint. */
-export const LOADER_MAX_FRAME_MS = 1000
+/** The longest a step waits for a slow frame: past it the motion is no longer worth its repaint. */
+export const LOADER_MAX_FRAME_MS = 400
+
+/** The most glyph steps one late tick may jump, so a long stall cannot spin the table (the phase still lands on time). */
+export const LOADER_MAX_CATCH_UP = 8
 
 /** The frames of the three stepping variants, one cell each. */
 const LOADER_FRAMES: Readonly<Record<'bloom' | 'fill' | 'gap', readonly string[]>> = Object.freeze({
@@ -108,34 +111,47 @@ export function shimmerText(text: string, frame: number, colors: Pick<MayflySema
 export class UiAnimationClock {
   private timer: ReturnType<typeof setTimeout> | undefined
   private readonly armed = new Set<UiLoaderAnimation>()
-  /** When the last tick asked for a repaint, until that repaint paints a moving cell. */
+  /** When the tick asked for the repaint that is landing now, until that repaint paints a moving cell. */
   private askedAt: number | undefined
+  /** When the last tick fired: the glyph phase follows wall time, so a slow frame skips steps instead of stretching them. */
+  private lastTickAt = 0
 
   /** @param counters - a caller's work sink; it counts the ticks that asked for a repaint. */
   constructor(private readonly counters?: MayflyWorkCounters) {}
 
   /**
-   * Joins the next tick, starting the timer when none is pending. The first cell to paint after a tick shows what that
-   * tick's frame cost; the next step waits at least twice as long, so a frame slower than half a step slows the motion
-   * down instead of leaving the terminal no time between two repaints to read a key.
+   * Joins the next tick, starting the timer when none is pending. The glyph phase is counted from the clock's own start,
+   * not from how often a paint happened: a tick advances by however many steps the wall clock passed, so a slow frame
+   * drops glyphs instead of slowing the cycle. Only the tick's own request-to-paint lag may stretch the next wait (up to
+   * {@link LOADER_MAX_FRAME_MS}), and a paint that answered no tick never counts.
    */
   arm(member: UiLoaderAnimation): void {
     this.armed.add(member)
     if (this.timer !== undefined) return
-    const cost = this.askedAt === undefined ? 0 : performance.now() - this.askedAt
-    this.askedAt = undefined
+    const now = performance.now()
+    let delay = LOADER_FRAME_MS
+    if (this.askedAt !== undefined) {
+      const lag = now - this.askedAt
+      this.askedAt = undefined
+      if (lag > LOADER_FRAME_MS) delay = Math.min(LOADER_MAX_FRAME_MS, lag)
+    }
     this.timer = setTimeout(() => {
       this.timer = undefined
+      const fired = performance.now()
+      const elapsed = this.lastTickAt === 0 ? LOADER_FRAME_MS : fired - this.lastTickAt
+      // Cap one catch-up so a long stall cannot spin the glyph table; the phase still lands on the current step.
+      const steps = Math.max(1, Math.min(LOADER_MAX_CATCH_UP, Math.round(elapsed / LOADER_FRAME_MS)))
+      this.lastTickAt = fired
       const due = [...this.armed]
       this.armed.clear()
       let asked = false
       for (const animation of due) {
-        if (!animation.fire()) continue
+        if (!animation.fire(steps)) continue
         asked = true
         countWork(this.counters, 'clockTicks')
       }
       if (asked) this.askedAt = performance.now()
-    }, Math.max(LOADER_FRAME_MS, Math.min(LOADER_MAX_FRAME_MS, cost * 2)))
+    }, delay)
   }
 
   /** Leaves the next tick; the timer is cancelled once nothing is armed. */
@@ -149,7 +165,7 @@ export class UiAnimationClock {
   }
 
   /**
-   * The frame a tick asked for painted no moving cell (the cell scrolled out of view): the tick has no cost to report,
+   * The frame a tick asked for painted no moving cell (the cell scrolled out of view): the tick has no lag to report,
    * and the time until a cell shows again is not one.
    */
   forget(): void {
@@ -192,12 +208,13 @@ export class UiLoaderAnimation {
 
   /**
    * Called by the clock on a tick: a surface that did not paint since its last frame stays out of the next one.
+   * @param steps - glyph steps the wall clock passed since the previous tick; a late frame skips them instead of slowing.
    * @returns whether the tick asked for a repaint.
    */
-  fire(): boolean {
+  fire(steps = 1): boolean {
     if (!this.painted) return false
     this.painted = false
-    this.frameValue++
+    this.frameValue += Math.max(1, Math.floor(steps))
     this.awaited = 2
     this.requestRender()
     return true

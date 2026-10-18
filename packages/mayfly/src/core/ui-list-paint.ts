@@ -564,6 +564,21 @@ function paintItemEntries(context: ListPaintContext, spec: ListRowSpec, group: s
   return { entries, group, focusedWithout, footerFor }
 }
 
+/** The selected background over one row's content, one column in from each edge of the list. */
+function bandRow(line: string, available: number, colors: MayflySemanticColors): string {
+  return ` ${colors.selectedBg(sliceByColumn(padTo(line, available), 1, Math.max(0, available - 2), true))} `
+}
+
+/**
+ * Lay the cursor block's band over the entries it covers. A whole-paint list and the virtual row source share this, so
+ * a focused `band` list looks the same whether or not it materializes every row.
+ */
+function applyBand(entries: readonly Entry[], available: number, colors: MayflySemanticColors): Entry[] {
+  return entries.map((entry): Entry => entry.kind !== 'item' && entry.kind !== 'body'
+    ? entry
+    : entry.banded ? { ...entry, lines: mapRows(entry.lines, line => bandRow(line, available, colors)) } : entry)
+}
+
 /**
  * The lines of a list, windowed to `height`. `node` carries the list's presentation fields; `options.rows` are the
  * materialized visible rows in order. The painted rows come from the memo when an item's state bits are unchanged.
@@ -600,13 +615,13 @@ export function paintList(node: ListNodeView, width: number, height: number, col
 
   // The search marks go on last, with the current match (inside the cursor's block) drawn stronger; then the band.
   const current = find === undefined ? undefined : currentMatch(entries, find, node.highlight?.current)
-  const laid = entries.map((entry, index): Entry => {
+  const highlighted = entries.map((entry, index): Entry => {
     if (entry.kind !== 'item' && entry.kind !== 'body') return entry
     const at = current?.entry === index ? current : undefined
-    const marked = find === undefined ? entry.lines : mapRows(entry.lines, (line, row) => highlightLine(line, find, at?.line === row ? at.within : undefined))
-    const lines = entry.banded ? mapRows(marked, line => ` ${colors.selectedBg(sliceByColumn(padTo(line, available), 1, Math.max(0, available - 2), true))} `) : marked
-    return { ...entry, lines }
+    const lines = find === undefined ? entry.lines : mapRows(entry.lines, (line, row) => highlightLine(line, find, at?.line === row ? at.within : undefined))
+    return lines === entry.lines ? entry : { ...entry, lines }
   })
+  const laid = applyBand(highlighted, available, colors)
 
   // maxRows windows over entries (a group heading and an open body each count as one), with the rest counted as hidden.
   let shown: readonly Entry[] = laid
@@ -803,11 +818,14 @@ export class FlowListPainter implements RowSource {
     const numbered = node.numbered !== undefined && node.numbered !== false
     const digits = String(items.length).length
     const prefixGuess = 2 + (numbered ? digits + 2 : 0)
+    // Which item each row sits under, so a band can follow the chain from a body to its call to the head.
+    const parents = new Map<string, string>()
+    for (const item of items) if (item.under !== undefined) parents.set(item.id, item.under)
     const context: ListPaintContext = {
       node, width: available, colors, options, numbered, digits,
       column: Math.min(labelColumn(node.items), Math.max(8, Math.floor((available - prefixGuess) * COLUMN_SHARE))),
       plan: cellPlanOf(node, available, colors),
-      parents: new Map(),
+      parents,
     }
     const touched = new Set<number>()
     const build = (index: number, group: string | undefined): FlowBlock => {
@@ -816,11 +834,13 @@ export class FlowListPainter implements RowSource {
       const spec = model.specAt(index)
       const painted = paintItemEntries(context, spec, group)
       const find = highlightPattern(node.highlight)
-      const entries = find === undefined
+      const marked = find === undefined
         ? painted.entries
         : painted.entries.map((entry): Entry => entry.kind !== 'item' && entry.kind !== 'body'
           ? entry
           : { ...entry, lines: mapRows(entry.lines, line => highlightLine(line, find, undefined)) })
+      // A focused band list paints its cursor block here too: the whole-paint path's band is not reached from a virtual row.
+      const entries = applyBand(marked, available, colors)
       let height = 0
       for (const entry of entries) height += entry.lines.length
       const item = spec.item

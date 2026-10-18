@@ -6,7 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
-import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
+import { LiveAssistantStreamService, type LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import { OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
 import type { LiveDraftSource } from '../../src/transcript/conversation-feed.ts'
@@ -325,5 +325,27 @@ describe('live draft overlays', () => {
     facts.dispose()
     live.dispose()
     await ctx.fiber.dispose()
+  })
+
+  it('keeps the live channel when the Agent carries a same-id replacement Session', () => {
+    const projections = new ProjectionFake()
+    const base = fakeAgent([])
+    const session = { ...base.session, id: 'same-session-object' } as unknown as Session
+    const agent = { ...base, id: 'same-session-object', session: { ...session } } as unknown as Agent
+    projections.set(session, { mayflyConversation: projection([
+      { kind: 'user', id: 'user:1', seq: 1, updatedSeq: 1, turn: 1, text: 'question', images: [] },
+    ], true) })
+    const draft = {
+      sessionId: 'same-session-object', attemptId: 'a', revision: 1, turn: 1, step: 0, phase: 'composing',
+      reasoning: '', text: 'live text', outputProgress: undefined, chars: 9, updatedAt: 1,
+    } as unknown as LiveAssistantDraft
+    const source = new OfficialConversationModelSource(projections as never, { get: () => undefined }, () => {}, {
+      subscribe: () => () => {},
+      get: target => target === agent ? draft : undefined,
+    })
+    source.attach(session, undefined, agent)
+    // The Agent's Session object is a clone: the identity that matters is the session id, not the instance.
+    expect(JSON.stringify(materializeTranscriptEntries(source.snapshot()))).toContain('live text')
+    source.dispose()
   })
 })

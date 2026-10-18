@@ -420,7 +420,11 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   const addPane = (entry: MayflyPaneEntry): void => {
     let record!: PaneRecord
     const interaction = ctx.mayflyUiInteraction.get('pane', entry.id)!
-    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images, () => { runtime.requestRender() }, content), component: new PaneComponent(ctx.mayflyTheme.colors, contextHints?.translate ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1, panelReady: false }
+    // The bottom lane memoizes its painted rows; a moving cell's clock frame must also ask the lane to replan them.
+    const requestFrame = entry.definition.placement === 'bottom'
+      ? (): void => { runtime.surfaces.animationFrame(); runtime.requestRender() }
+      : (): void => { runtime.requestRender() }
+    record = { entry, interaction, runtime: new MayflyUiSurfaceRuntime(interaction, () => { record.component.invalidate(); runtime.requestRender() }, clock, images, requestFrame, content), component: new PaneComponent(ctx.mayflyTheme.colors, contextHints?.translate ?? interpolateLocaleMessage), registration: undefined, renderedRevision: -1, panelReady: false }
     panes.set(entry.id, record)
     if (entry.definition.placement === 'views') {
       record.component.view = runtime.surfaces.views.register({

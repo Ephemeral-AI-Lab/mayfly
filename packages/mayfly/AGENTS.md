@@ -28,7 +28,11 @@ slots, never arbitrary root components.
   `registerOwnedCommand` (`interaction/sessionless-commands.ts`) and must
   not read `invocation.agent`.
   Interrupt descendants through native ancestor authority without draining
-  retained Activations/inbox.
+  retained Activations/inbox. A settled abort or failed turn can leave queued
+  input in an idle Agent (the loop only re-wakes on `wakeRequested`); the
+  app-owned `inbox-wake.ts` re-submits the oldest pending message through the
+  public inbox and Agent API, and retires when the Harness wakes that input
+  itself.
 - `frontend/index.ts` owns `mayflyUiInteraction` and independent consumer Fibers.
   Its models are implemented in `core/ui-interaction-*.ts` but survive core-only
   reload. Renderer teardown releases editors/handles, not drafts or choice state.
@@ -81,6 +85,9 @@ slots, never arbitrary root components.
   The controller publishes a changing model at most once per window
   (`PUBLISH_INTERVAL_MS`, longer while a publish is costly): the first change of a
   quiet period publishes at once, the rest of a burst become one trailing publish.
+  A live turn uses the fixed `LIVE_PUBLISH_MS` budget, keeps a
+  `STREAM_WATCHDOG_MS` floor for a lost notification, and publishes at once when
+  the projection settles the live step or closes its turn.
   Durable sequence numbers and transient presentation revisions are separate.
   Live overlays share stable history; completion comes from explicit settled
   steps, never a reasoning block's animation flag. Verify through the actual

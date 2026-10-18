@@ -66,6 +66,7 @@ function harness(options: Partial<TranscriptControllerOptions> = {}, attach = tr
     spotlight: () => {},
     track: () => {},
     trackedRow: () => undefined,
+    cursorRow: () => undefined,
     setMarked: () => {},
   } as unknown as MayflyNodeSlot
   const lines: { options: MayflySearchLineOptions, disposed: boolean, status: string[] }[] = []

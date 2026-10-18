@@ -70,6 +70,7 @@ class FakeScreen implements MayflyScreen {
       setTurns: () => {},
       track: () => {},
       trackedRow: () => undefined,
+      cursorRow: () => undefined,
       setMarked: () => {},
       focus: () => {},
       release: () => {},

@@ -23,6 +23,7 @@ import { armExitEpitaph, epitaphFor } from './exit-epitaph.ts'
 import { profileNameFromArgv } from '../internal/profile.ts'
 import { createMayflyRequestController } from './request-lifecycle.ts'
 import { installRetractionService } from './retraction.ts'
+import * as inboxWake from './inbox-wake.ts'
 
 export { MayflyCurrentAgentService } from './current-agent.ts'
 export { MayflySessionStartService } from './session-start.ts'
@@ -97,6 +98,8 @@ export function apply(ctx: Context, config: Config): void {
   const current = new MayflyCurrentAgentService(ctx, conversations)
   const requests = createMayflyRequestController(ctx)
   const controller = ctx.sessionController
+  // A settled abort or failed turn can leave queued input in an idle Agent; the nudge is Fiber-owned.
+  ctx.plugin(inboxWake)
   let selectedRevision = current.revision()
   const offSelection = current.subscribe((_agent, revision) => {
     if (revision === selectedRevision) return
