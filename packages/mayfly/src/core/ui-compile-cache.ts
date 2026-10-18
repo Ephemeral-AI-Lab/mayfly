@@ -2,7 +2,6 @@
  * @module @ephemeral-ai/mayfly/core/ui-compile-cache
  */
 import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from './types.ts'
-import type { MayflyWorkCounters } from './ui-work-counters.ts'
 
 /**
  * What a reusable leaf reads from the surface that compiled it; it is re-pointed at the newest surface on every reuse.
@@ -13,7 +12,6 @@ import type { MayflyWorkCounters } from './ui-work-counters.ts'
 export interface PaintOptions {
   readonly components: MayflyComponents
   readonly colors: MayflySemanticColors
-  readonly counters?: MayflyWorkCounters | undefined
   readonly reportRuntimeFailure: (message: string) => void
 }
 
@@ -53,7 +51,6 @@ export class MayflyCompileCache {
     const paint: PaintOptions = {
       components: options.components,
       colors: options.colors,
-      get counters() { return holder.options.counters },
       reportRuntimeFailure: message => { holder.options.reportRuntimeFailure(message) },
     }
     const component = build(paint)

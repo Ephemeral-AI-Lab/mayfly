@@ -10,7 +10,6 @@
 import type { MayflyTabItem, MayflyTabsNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from './types.ts'
 import { UiRowCache } from './ui-row-cache.ts'
-import type { MayflyWorkCounters } from './ui-work-counters.ts'
 import { OVERFLOW_ELLIPSIS, sliceByColumn, truncateMiddle, visibleWidth } from './width.ts'
 
 /** What the painter needs to know about focus: whether the surface holds it, which item is current, and the cursor mark. */
@@ -20,10 +19,9 @@ export interface TabsFocus {
   readonly marker: string
 }
 
-/** The row cache and counters a rail paints through; a strip is two rows and keeps no cache. */
+/** The row cache a rail paints through; a strip is two rows and keeps no cache. */
 export interface TabsPaintOptions {
   readonly cache?: UiRowCache
-  readonly counters?: MayflyWorkCounters | undefined
 }
 
 /** Gap between two tabs of a strip. */
@@ -151,7 +149,7 @@ function paintRail(node: MayflyTabsNode, width: number, focus: TabsFocus, colors
     if (heading) group = item.group
     const state = { active: item.id === node.activeId, focused: focus.focused && focus.key !== '', marker: focus.marker }
     const key = `${String(width)}\0${state.active ? 'a' : 'i'}${state.active && state.focused ? `f${state.marker}` : ''}${heading ? 'h' : ''}`
-    rows.push(...cache.readLines(colors, item, key, () => paintRailItem(item, heading, state, width, colors), options.counters))
+    rows.push(...cache.readLines(colors, item, key, () => paintRailItem(item, heading, state, width, colors)))
   }
   return rows
 }
@@ -164,7 +162,7 @@ function paintRail(node: MayflyTabsNode, width: number, focus: TabsFocus, colors
  * @param focus - whether the surface has focus and which item holds it.
  * @param colors - the semantic palette.
  * @param completed - the wizard steps already left behind.
- * @param options - the row cache and counters a rail paints through.
+ * @param options - the row cache a rail paints through.
  * @returns the painted rows.
  */
 export function paintTabs(node: MayflyTabsNode, width: number, focus: TabsFocus, colors: MayflySemanticColors, completed: readonly string[] = [], options: TabsPaintOptions = {}): string[] {

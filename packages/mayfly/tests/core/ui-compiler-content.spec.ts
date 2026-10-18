@@ -7,7 +7,7 @@ import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
 import type { MayflyPresentation } from '../../src/core/presentation.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
+import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import { probeComponents } from '../design/probe.ts'
 import { plainColors, plainText } from '../helpers.ts'
 
@@ -32,7 +32,6 @@ interface MountOptions {
   readonly clock?: boolean
   /** No interaction model: events reach the compile options' `emit`, as in a plain compile. */
   readonly modelless?: boolean
-  readonly counters?: ReturnType<typeof createWorkCounters>
 }
 
 /** A focused surface a host republishes: one model and runtime, the node replaced by `publish`. */
@@ -53,7 +52,6 @@ function mount(initial: MayflyUiNode, options: MountOptions = {}) {
       emit: event => events.push(event), contextHints: { enabled: true, focusWithoutControls: true }, surfaceRuntime: runtime,
       ...(options.escape === undefined ? {} : { onUnhandledEscape: options.escape, escapeHint: 'close' as const }),
       ...(options.completionsOpen === undefined ? {} : { completionsOpen: options.completionsOpen }),
-      ...(options.counters === undefined ? {} : { counters: options.counters }),
     })
     if (!result.ok) throw new Error(result.message)
     result.value.focusTarget!.focused = true
@@ -219,18 +217,16 @@ describe('the scroll region', () => {
     expect(surface.render().filter(row => row.includes('log line')).map(row => row.trim())[0]).toContain('log line 2')
   })
 
-  it('works on a narrow width and an id with a document, and counts its rows', () => {
-    const counters = createWorkCounters()
-    const surface = mount(region(10, { id: 'log' }), { width: 2, counters })
+  it('works on a narrow width and an id with a document', () => {
+    const surface = mount(region(10, { id: 'log' }), { width: 2 })
     expect(surface.render()).toHaveLength(4)
-    const wide = mount(region(10, { id: 'log' }), { counters })
+    const wide = mount(region(10, { id: 'log' }))
     wide.render()
     wide.press(KEYS.up)
     wide.press(KEYS.pageUp)
     wide.press(KEYS.home)
     wide.press(KEYS.end)
     expect(wide.render()[3]).toContain('log line 10')
-    expect(counters.rowsPainted).toBeGreaterThan(0)
     wide.publish(region(14, { id: 'log' }))
     expect(wide.render()[3]).toContain('log line 14')
     wide.press(KEYS.up)
@@ -352,24 +348,25 @@ describe('content nodes in a plain compile', () => {
   })
 
   it('leaves a main-mode render a facade, painting only the rows a consumer reads', () => {
-    const counters = createWorkCounters()
+    const put = vi.spyOn(MayflyContentCache.prototype, 'put')
     const compile = (node: MayflyUiNode) => {
-      const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 80, rows: 20 }), bounded: false, counters })
+      const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 80, rows: 20 }), bounded: false })
       if (!result.ok) throw new Error(result.message)
       return result.value.component
     }
     const after = Array.from({ length: 25000 }, (_, index) => `line ${index} content`).join('\n')
     const rendered = compile(ui.sections([{ title: 'f', body: ui.diff('', after) }])).render(80)
     expect(rendered.length).toBeGreaterThan(25000)
-    expect(counters.rowsPainted).toBe(0)
+    expect(put).not.toHaveBeenCalled()
     const window = rendered.slice(0, 11)
-    expect(counters.rowsPainted).toBeLessThan(200)
+    expect(put.mock.calls.length).toBeLessThan(200)
     expect(window[0]).toContain('f')
     const markdown = compile(ui.markdown(`# T\n\n${Array.from({ length: 5000 }, (_, index) => `paragraph ${index} `.repeat(4)).join('\n\n')}`)).render(80)
-    expect(counters.rowsPainted).toBeLessThan(200)
+    expect(put.mock.calls.length).toBeLessThan(200)
     expect(markdown.length).toBeGreaterThan(5000)
     markdown.slice(0, 5)
-    expect(counters.rowsPainted).toBeLessThan(400)
+    expect(put.mock.calls.length).toBeLessThan(400)
+    put.mockRestore()
   })
 })
 

@@ -41,7 +41,6 @@ import { concatSources, mapSource, rowsSource, type RowSource } from './ui-rows.
 import { paintedRowsBytes, type MayflyContentCache } from './ui-content-cache.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 import { truncateMiddle } from './width.ts'
-import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** The leaf kinds this module paints; `MayflySectionContentNode` covers `sections` bodies. */
 export type WindowedContentNode = MayflySectionContentNode | Extract<MayflyContentNode, { readonly kind: 'rich-text' | 'markdown' }>
@@ -50,7 +49,6 @@ export type WindowedContentNode = MayflySectionContentNode | Extract<MayflyConte
 export interface ContentRowsEnv {
   readonly components: MayflyComponents
   readonly colors: MayflySemanticColors
-  readonly counters?: MayflyWorkCounters | undefined
   readonly cache: MayflyContentCache
   /** Whether the outside-window elision applies (the alternate screen); the main screen prints every row. */
   readonly bounded: boolean
@@ -165,8 +163,6 @@ class SegmentedContent implements RowSource {
     if (rows === undefined) {
       rows = this.paintSafely(segment)
       this.env.cache.put(this.cacheKey(segment), rows, paintedRowsBytes(rows))
-      countWork(this.env.counters, 'segmentsPainted')
-      countWork(this.env.counters, 'rowsPainted', rows.length)
     }
     if (this.counts[segment] !== rows.length) {
       this.tree.add(segment, rows.length - this.counts[segment]!)
@@ -203,7 +199,6 @@ class SegmentedContent implements RowSource {
       const segment = this.tree.locate(index)
       const rows = this.segmentRows(segment)
       if (this.changes !== settled) continue
-      countWork(this.env.counters, 'rowsMaterialized')
       return rows[index - this.tree.sum(segment - 1)] ?? ''
     }
   }
@@ -257,7 +252,6 @@ function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: '
     const before = sanitizePluginText(requireText(node.before, 'diff before'))
     const after = sanitizePluginText(requireText(node.after, 'diff after'))
     const ops = alignDiffLines(before, after)
-    countWork(env.counters, 'linesEstimated', ops.length)
     const language = node.language === undefined ? '' : sanitizePluginText(requireText(node.language, 'diff language'))
     // The code of each side is highlighted as one block, so a token that spans lines keeps its color; past the byte cap, plain.
     const lit = highlightable(language) && Buffer.byteLength(before, 'utf8') + Buffer.byteLength(after, 'utf8') <= CODE_HIGHLIGHT_MAX_BYTES
@@ -345,8 +339,6 @@ class DiffRowsSource implements RowSource {
     if (rows === undefined) {
       rows = this.paintSafely(chunk)
       this.env.cache.put(this.cacheKey(chunk), rows, paintedRowsBytes(rows))
-      countWork(this.env.counters, 'segmentsPainted')
-      countWork(this.env.counters, 'rowsPainted', rows.length)
     }
     if (this.counts[chunk] !== rows.length) {
       this.tree.add(chunk, rows.length - this.counts[chunk]!)
@@ -377,7 +369,6 @@ class DiffRowsSource implements RowSource {
       const chunk = this.tree.locate(index)
       const rows = this.chunkRows(chunk)
       if (this.changes !== settled) continue
-      countWork(this.env.counters, 'rowsMaterialized')
       return rows[index - this.tree.sum(chunk - 1)] ?? ''
     }
   }
@@ -503,7 +494,7 @@ class MarkdownRowSource implements RowSource {
   private linesChild(unit: number, text: string): RowSource {
     let child = this.children.get(unit)
     if (child === undefined) {
-      const index = indexContent(text, lines => countWork(this.env.counters, 'linesEstimated', lines))
+      const index = indexContent(text)
       child = new SegmentedContent(index, () => text, this.width, (segment, at) => {
         const rows: string[] = []
         const paint = (start: number, end: number, cut: boolean): void => {
@@ -564,8 +555,6 @@ class MarkdownRowSource implements RowSource {
       }
       rows = painted
       this.env.cache.put(this.cacheKey(at), rows, paintedRowsBytes(rows))
-      countWork(this.env.counters, 'segmentsPainted')
-      countWork(this.env.counters, 'rowsPainted', rows.length)
     }
     this.syncCount(at, rows.length)
     return rows
@@ -588,7 +577,6 @@ class MarkdownRowSource implements RowSource {
         this.syncCount(at, child.length)
       }
       if (this.changes !== settled) continue
-      countWork(this.env.counters, 'rowsMaterialized')
       return row
     }
   }
@@ -669,7 +657,6 @@ function markdownSource(node: MayflyMarkdownNode, width: number, env: ContentRow
   let prepared = preparedMarkdowns.get(node)
   if (prepared === undefined) {
     prepared = scanOf(fieldText(node.source))
-    countWork(env.counters, 'linesEstimated', prepared.scanned)
     preparedMarkdowns.set(node, prepared)
   }
   return new MarkdownRowSource(prepared, Math.max(1, width), env, keyOf(node, env))
@@ -728,19 +715,18 @@ function extendedField(field: readonly { readonly text: string }[], text: string
  * per-chunk scans, each computed once per chunk identity; one that extends a field indexed before (a growing stream)
  * adds only the scans of its new chunks to that index, so an append costs the appended lines, not the stream.
  */
-function indexedField(node: object, field: MayflyContentField | (() => string), env: ContentRowsEnv): IndexedField {
+function indexedField(node: object, field: MayflyContentField | (() => string)): IndexedField {
   let held = indexedFields.get(node)
   if (held === undefined) {
-    const onLines = (lines: number): void => { countWork(env.counters, 'linesEstimated', lines) }
     if (typeof field === 'function') {
       const text = field()
-      held = { text, index: indexContent(text, onLines) }
+      held = { text, index: indexContent(text) }
     } else if (typeof field === 'string') {
-      held = { text: field, index: indexContent(field, onLines) }
+      held = { text: field, index: indexContent(field) }
     } else {
       const text = fieldText(field)
       const extended = extendedField(field, text)
-      held = { text, index: extended === undefined ? indexMergedLines(field.map(chunkScan), text, onLines) : extendMergedLines(extended.known.index, extended.appended, text, onLines) }
+      held = { text, index: extended === undefined ? indexMergedLines(field.map(chunkScan), text) : extendMergedLines(extended.known.index, extended.appended, text) }
       if (field.length > 0) indexedTails.set(field[field.length - 1]!, held)
     }
     indexedFields.set(node, held)
@@ -771,9 +757,8 @@ function keyOf(node: object, env: ContentRowsEnv): string {
   return `n${String(idOf(node))}p${paintKey(env)}`
 }
 
-/** Already-painted rows as a source, counting what the old per-width memo would have counted. */
-function eager(rows: string[], env: ContentRowsEnv): RowSource {
-  countWork(env.counters, 'rowsPainted', rows.length)
+/** Already-painted rows as a source. */
+function eager(rows: string[]): RowSource {
   return rowsSource(rows)
 }
 
@@ -782,7 +767,7 @@ function eager(rows: string[], env: ContentRowsEnv): RowSource {
  * was cut to, and a leaf with no declared width reads as that full width, so a status item would claim the whole row.
  */
 function eagerRow(row: string, env: ContentRowsEnv): RowSource {
-  const source = eager([row], env)
+  const source = eager([row])
   return { ...source, declaredWidth: env.components.visibleWidth(stripEscapeSequences(row).trimEnd()) }
 }
 
@@ -893,9 +878,9 @@ function textSource(node: Extract<MayflySectionContentNode, { readonly kind: 'te
   if (node.overflow !== undefined && node.overflow !== 'wrap') {
     const content = fieldText(node.content)
     if (node.overflow === 'truncate') return eagerRow(painted(truncatedRow(sanitizePluginText(content), width, env.components)), env)
-    return eager([painted(truncateMiddle(sanitizePluginText(content).replace(/[\r\n\t]+/gu, ' '), width, node.overflow))], env)
+    return eager([painted(truncateMiddle(sanitizePluginText(content).replace(/[\r\n\t]+/gu, ' '), width, node.overflow))])
   }
-  const { text: content, index } = indexedField(node, node.content, env)
+  const { text: content, index } = indexedField(node, node.content)
   return new SegmentedContent(index, () => content, width, (segment, at) => {
     const rows: string[] = []
     const paint = (start: number, end: number, cut: boolean): void => {
@@ -924,7 +909,7 @@ function codePaints(env: ContentRowsEnv): CodePaints {
 }
 
 function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'code' }>, width: number, env: ContentRowsEnv): RowSource {
-  const { text: code, index } = indexedField(node, node.code, env)
+  const { text: code, index } = indexedField(node, node.code)
   const language = node.language === undefined ? '' : sanitizePluginText(requireText(node.language, 'code language'))
   const startAt = node.start ?? 1
   const digits = node.numbered === true ? String(index.lines + startAt - 1).length : 0
@@ -972,7 +957,6 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
     return rows
   }, env, keyOf(node, env), gutter)
   if (language.length === 0 || node.label === false) return body
-  countWork(env.counters, 'rowsPainted', 1)
   const label = env.colors.muted(language)
   // The label row heads the body; both are sanitized, so the whole block stays marker-free and declares its width.
   // The anchor's text space is `language\ncode`: the label row covers the prefix, the body maps the rest.
@@ -1022,7 +1006,7 @@ function fieldsSource(node: Extract<MayflySectionContentNode, { readonly kind: '
   }
   const { labels, pads, values, raw } = prepared
   // The estimate indexes one synthetic document whose lines have the painted column shape.
-  const index = indexedField(node, () => raw, env).index
+  const index = indexedField(node, () => raw).index
   const spansOf = (line: number): SanitizedSpan[] => [
     { tone: 'muted', text: `${labels[line]!}${pads[line]!}` },
     { raw: true, text: ' ' },
@@ -1075,7 +1059,7 @@ function richTextSource(node: MayflyRichTextNode, width: number, env: ContentRow
   })
   if (node.overflow === 'truncate') return eagerRow(truncatedRow(spans.map(span => paintSpan(span, env.colors)).join(''), width, env.components), env)
   const raw = spans.map(span => span.text).join('')
-  const index = indexedField(node, () => raw, env).index
+  const index = indexedField(node, () => raw).index
   return new SegmentedContent(index, () => raw, width, (segment, at) => {
     const [start, end] = index.segmentText(segment)
     const joined = clipSpans(spans, start, end).map(span => paintSpan(span, env.colors)).join('')
@@ -1149,7 +1133,6 @@ function clampedSource(source: RowSource, width: number, env: ContentRowsEnv): R
       // A source that declares its width inside the leaf's guarantees every row fits; the measure is the backstop
       // for painters that cannot say so (eager rows, or a declared width past the leaf's).
       if (source.declaredWidth !== undefined && source.declaredWidth <= width) return row
-      countWork(env.counters, 'stringsMeasured')
       return env.components.visibleWidth(row) > width ? env.components.truncateToWidth(row, width) : row
     },
   }

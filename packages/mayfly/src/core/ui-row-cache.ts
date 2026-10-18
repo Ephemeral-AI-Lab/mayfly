@@ -1,8 +1,6 @@
 /** Painted list rows, remembered per admitted item and the state each was painted in.
  * @module @ephemeral-ai/mayfly/core/ui-row-cache
  */
-import { isVirtualRows } from './ui-rows.ts'
-import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** How many painted variants of one item are kept: its focused, resting, and selected looks at the widths in use. */
 const ROW_VARIANTS = 8
@@ -22,13 +20,13 @@ export class UiRowCache {
     this.rows = new WeakMap()
   }
 
-  /** The painted row for `item` in the state named by `key`; `paint` runs, and is counted, only on a miss. */
-  read(colors: object, item: object, key: string, paint: () => string, counters?: MayflyWorkCounters): string {
-    return this.readLines(colors, item, key, () => [paint()], counters)[0]!
+  /** The painted row for `item` in the state named by `key`; `paint` runs only on a miss. */
+  read(colors: object, item: object, key: string, paint: () => string): string {
+    return this.readLines(colors, item, key, () => [paint()])[0]!
   }
 
   /** The painted lines of `item` (a row with a wrapped label or a body is several) in the state named by `key`. */
-  readLines(colors: object, item: object, key: string, paint: () => readonly string[], counters?: MayflyWorkCounters): readonly string[] {
+  readLines(colors: object, item: object, key: string, paint: () => readonly string[]): readonly string[] {
     if (this.colors !== colors) {
       this.colors = colors
       this.rows = new WeakMap()
@@ -41,9 +39,6 @@ export class UiRowCache {
     const known = variants.get(key)
     if (known !== undefined) return known
     const rows = paint()
-    // A virtual body paints through its source when the window reads it; the facade's length is an estimate, not
-    // painted work, so real rows count here and facades count there.
-    countWork(counters, 'rowsPainted', isVirtualRows(rows) ? 0 : rows.length)
     if (variants.size >= ROW_VARIANTS) variants.delete(variants.keys().next().value!)
     variants.set(key, rows)
     return rows

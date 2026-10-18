@@ -22,11 +22,10 @@ import {
   validateMayflyStatusNode,
   validateMayflyUiNode,
 } from '../../src/core/ui-validator.ts'
-import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyAdmissionCache } from '../../src/core/ui-validator.ts'
 
-function accepted(value: unknown, counters?: MayflyWorkCounters, cache?: MayflyAdmissionCache): unknown {
-  const result = validateMayflyUiNode(value, counters, cache)
+function accepted(value: unknown, cache?: MayflyAdmissionCache): unknown {
+  const result = validateMayflyUiNode(value, cache)
   expect(result).toMatchObject({ ok: true })
   if (!result.ok) throw new Error(result.message)
   return result.value
@@ -291,25 +290,20 @@ describe('validateMayflyUiNode', () => {
 
   it('replays a settled chunk from the admission memo and validates only appended pieces', () => {
     const cache = createAdmissionCache()
-    const counters = createWorkCounters()
     // Chunks must be snapshots of the same builders module the validator checks `isWireSnapshot` against.
     const first = uiLib.chunk('a\n')
     const second = uiLib.chunk('b')
-    const one = accepted(uiLib.code([first], { language: 'ts' }), counters, cache) as { code: readonly { text: string }[] }
-    const validated = counters.nodesValidated
-    expect(validated).toBeGreaterThan(0)
+    const one = accepted(uiLib.code([first], { language: 'ts' }), cache) as { code: readonly { text: string }[] }
     // The republish shares the settled piece: the memo returns it untouched and only the new chunk validates.
-    const two = accepted(uiLib.code([first, second], { language: 'ts' }), counters, cache) as { code: readonly { text: string }[] }
+    const two = accepted(uiLib.code([first, second], { language: 'ts' }), cache) as { code: readonly { text: string }[] }
     expect(two.code[0]).toBe(one.code[0])
-    // One node + one new chunk; the settled piece replays from the memo without a count.
-    expect(counters.nodesValidated - validated).toBe(2)
     // A fresh cache validates both pieces again — the memo is scoped to the surface's admission.
-    const other = accepted(uiLib.code([first, second], { language: 'ts' }), counters, createAdmissionCache()) as { code: readonly { text: string }[] }
+    const other = accepted(uiLib.code([first, second], { language: 'ts' }), createAdmissionCache()) as { code: readonly { text: string }[] }
     expect(other.code[0]).not.toBe(one.code[0])
     // Untrusted chunk objects are cloned, never memo-keyed: equal shape, no shared identity.
     const untrusted = { code: [{ text: 'x' }] }
-    const a = accepted({ kind: 'code', ...untrusted }, counters, cache) as { code: readonly { text: string }[] }
-    const b = accepted({ kind: 'code', ...untrusted }, counters, cache) as { code: readonly { text: string }[] }
+    const a = accepted({ kind: 'code', ...untrusted }, cache) as { code: readonly { text: string }[] }
+    const b = accepted({ kind: 'code', ...untrusted }, cache) as { code: readonly { text: string }[] }
     expect(a.code[0]).not.toBe(b.code[0])
   })
 
@@ -869,12 +863,6 @@ describe('list rows and bodies', () => {
     const segment = (inheritedId?: string) => ({ id: 'a', label: 'A', segment: { options: [{ id: 'x', label: 'x' }, { id: 'y', label: 'y' }], ...(inheritedId === undefined ? {} : { inheritedId }) } })
     expect(itemOf(segment('y'))).toMatchObject({ segment: { inheritedId: 'y' } })
     expect(validateMayflyUiNode(rows([segment('nope')]))).toMatchObject({ ok: false, message: expect.stringContaining('inheritedId is not an option') })
-  })
-
-  it('counts the nodes of a body toward validation work', () => {
-    const counters = createWorkCounters()
-    validateMayflyUiNode(rows([{ id: 'a', label: 'A', body: ui.stack.column([ui.text('x'), ui.text('y')]) }]), counters)
-    expect(counters.nodesValidated).toBe(1 + 1 + 3)
   })
 })
 

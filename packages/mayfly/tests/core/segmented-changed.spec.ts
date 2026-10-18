@@ -8,7 +8,6 @@ import { contentNodeSource, type ContentRowsEnv } from '../../src/core/content-r
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import { virtualRows } from '../../src/core/ui-rows.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 
@@ -16,7 +15,7 @@ const components = { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth }
 
 function envOf(changed: () => void): ContentRowsEnv {
   return {
-    components, colors: DARK_COLORS, counters: createWorkCounters(), cache: new MayflyContentCache(), bounded: false, viewportRows: () => 0,
+    components, colors: DARK_COLORS, cache: new MayflyContentCache(), bounded: false, viewportRows: () => 0,
     elide: hidden => `…${String(hidden)}`, errorRows: message => [message], changed,
   }
 }

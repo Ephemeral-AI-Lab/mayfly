@@ -24,7 +24,6 @@ import {
 } from './conversation-feed.ts'
 import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptFileChangeModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type ToolInterruption, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
 import { diffChangeCounts } from '../core/diff-align.ts'
-import { countWork, type MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
 import { toolDetail } from '../conversation/activity-detail.ts'
@@ -258,8 +257,7 @@ function readCallModel(resolved: ResolvedTool): ReadCallModel {
 }
 
 /** Fold a run of resolved read entries into one group model. */
-function readGroupModel(run: readonly ResolvedTool[], counters?: MayflyWorkCounters, renderRevision?: string): TranscriptReadGroupModel {
-  countWork(counters, 'toolModelsBuilt')
+function readGroupModel(run: readonly ResolvedTool[], renderRevision?: string): TranscriptReadGroupModel {
   const first = run[0]!
   const updatedSeq = Math.max(...run.map(item => item.entry.updatedSeq))
   return {
@@ -308,8 +306,7 @@ function searchCallModel(resolved: ResolvedTool): SearchCallModel {
 }
 
 /** Fold a run of resolved search entries into one group model. */
-function searchGroupModel(run: readonly ResolvedTool[], counters?: MayflyWorkCounters, renderRevision?: string): TranscriptSearchGroupModel {
-  countWork(counters, 'toolModelsBuilt')
+function searchGroupModel(run: readonly ResolvedTool[], renderRevision?: string): TranscriptSearchGroupModel {
   const first = run[0]!
   const updatedSeq = Math.max(...run.map(item => item.entry.updatedSeq))
   return {
@@ -386,8 +383,7 @@ function commandCallModel(resolved: ResolvedTool): CommandCallModel {
 }
 
 /** Fold a run of resolved command entries into one group model. */
-function commandGroupModel(run: readonly ResolvedTool[], counters?: MayflyWorkCounters, renderRevision?: string): TranscriptCommandGroupModel {
-  countWork(counters, 'toolModelsBuilt')
+function commandGroupModel(run: readonly ResolvedTool[], renderRevision?: string): TranscriptCommandGroupModel {
   const first = run[0]!
   const updatedSeq = Math.max(...run.map(item => item.entry.updatedSeq))
   return {
@@ -469,7 +465,7 @@ function headLines(text: string, max: number): { readonly text: string, readonly
  * The change an edit or write made, from the result's diff view (the applied hunks) and, for a write, the call's content.
  * An edit that failed, or a call that still runs, has none: its line gives the reason and the activity row names it.
  */
-function fileChangeModel(resolved: ResolvedTool, counters?: MayflyWorkCounters): TranscriptFileChangeModel | undefined {
+function fileChangeModel(resolved: ResolvedTool): TranscriptFileChangeModel | undefined {
   const { entry, outcome, call, result } = resolved
   if (entry.result === undefined || entry.result.isError) return undefined
   const diffs = result?.card === 'diff' ? result.diffs : call?.card === 'diff' ? call.diffs : undefined
@@ -486,14 +482,12 @@ function fileChangeModel(resolved: ResolvedTool, counters?: MayflyWorkCounters):
   if (!created) {
     for (const diff of diffs) {
       const trimmed = trimContext(diff.oldText ?? '', diff.newText)
-      countWork(counters, 'diffsComputed')
       const counts = diffChangeCounts(trimmed.before, trimmed.after)
       added += counts.added
       removed += counts.removed
       const cutBefore = headLines(trimmed.before, FILE_CHANGE_HUNK_LINES)
       const cutAfter = headLines(trimmed.after, FILE_CHANGE_HUNK_LINES)
       if (cutBefore.cut || cutAfter.cut) {
-        countWork(counters, 'diffsComputed')
         const kept = diffChangeCounts(cutBefore.text, cutAfter.text)
         hidden += counts.added + counts.removed - kept.added - kept.removed
       }
@@ -514,15 +508,14 @@ function fileChangeModel(resolved: ResolvedTool, counters?: MayflyWorkCounters):
   }
 }
 
-function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, counters?: MayflyWorkCounters, renderRevision?: string, caches?: TranscriptModelCaches): TranscriptEntryModel {
+function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, renderRevision?: string, caches?: TranscriptModelCaches): TranscriptEntryModel {
   const revision = entryRevision(renderRevision, resolved.entry.updatedSeq)
   const cached = caches?.models.get(resolved)
   if (cached !== undefined && cached.renderRevision === revision) return cached
-  countWork(counters, 'toolModelsBuilt')
   const { entry, call } = resolved
   const terminal = terminalModel(resolved)
   const web = webModel(resolved)
-  const change = family === 'edit' || resolved.entry.name === 'write' ? fileChangeModel(resolved, counters) : undefined
+  const change = family === 'edit' || resolved.entry.name === 'write' ? fileChangeModel(resolved) : undefined
   const model: TranscriptEntryModel = {
     kind: 'transcript-tool',
     id: entry.id,
@@ -624,7 +617,6 @@ export function conversationTranscriptModel(
   generation = 0,
   renderRevision?: string,
   caches?: TranscriptModelCaches,
-  counters?: MayflyWorkCounters,
 ): TranscriptModel {
   const entries: TranscriptEntryModel[] = []
   let run: ResolvedTool[] = []
@@ -637,9 +629,9 @@ export function conversationTranscriptModel(
     const cached = caches?.groups.get(first)
     if (cached !== undefined && cached.revision === revision && cached.members.length === run.length
       && cached.members.every((member, index) => member === run[index])) return cached.model
-    const model = family === 'search' ? searchGroupModel(run, counters, renderRevision)
-      : family === 'command' ? commandGroupModel(run, counters, renderRevision)
-        : readGroupModel(run, counters, renderRevision)
+    const model = family === 'search' ? searchGroupModel(run, renderRevision)
+      : family === 'command' ? commandGroupModel(run, renderRevision)
+        : readGroupModel(run, renderRevision)
     caches?.groups.set(first, { members: [...run], revision, model })
     return model
   }
@@ -647,7 +639,7 @@ export function conversationTranscriptModel(
     if (run.length === 0) return
     /* A single command keeps its lone card — the output preview carries more
        than a one-member group header would. */
-    if (runFamily === 'command' && run.length === 1) entries.push(toolModel(run[0]!, 'command', counters, renderRevision, caches))
+    if (runFamily === 'command' && run.length === 1) entries.push(toolModel(run[0]!, 'command', renderRevision, caches))
     else entries.push(groupModel(runFamily === 'search' ? 'search' : runFamily === 'command' ? 'command' : 'read'))
     run = []
     runFamily = undefined
@@ -660,7 +652,6 @@ export function conversationTranscriptModel(
       if (entry.kind !== 'thinking' || (run.length > 0 && run.at(-1)!.entry.step !== entry.step)) flushRun()
       let model = caches?.entries.get(entry)
       if (model === undefined) {
-        countWork(counters, 'entriesMapped')
         model = entryModel(entry)
         caches?.entries.set(entry, model)
       }
@@ -671,7 +662,6 @@ export function conversationTranscriptModel(
        an entry-keyed cache re-resolves only the calls that changed. */
     let resolved = caches?.tools.get(entry)
     if (resolved === undefined) {
-      countWork(counters, 'entriesMapped')
       resolved = resolveTool(entry, tools)
       caches?.tools.set(entry, resolved)
     }
@@ -685,7 +675,7 @@ export function conversationTranscriptModel(
       runFamily = family
       continue
     }
-    entries.push(toolModel(resolved, family, counters, renderRevision, caches))
+    entries.push(toolModel(resolved, family, renderRevision, caches))
   }
   flushRun()
   const turns: TranscriptTurnModel[] = (projection.turns ?? []).map(turn => ({
@@ -772,7 +762,6 @@ export class OfficialConversationModelSource {
     private readonly publish: () => void,
     private readonly live?: LiveDraftSource,
     private readonly t: MayflyTranslate = interpolateLocaleMessage,
-    private readonly counters?: MayflyWorkCounters,
   ) {}
 
   /** Convert the latest unread value once, then reuse its model; convert stashed tools lazily. */
@@ -787,7 +776,7 @@ export class OfficialConversationModelSource {
         this.watermark = pending.seq
         feed.settle(pending.seq)
         this.lastVisible = visible
-        this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, undefined, this.caches, this.counters)
+        this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, undefined, this.caches)
         this.toolsStale = false
         this.dispatchedCalls = new Set(visible.entries.flatMap(entry => entry.kind === 'tool' ? [entry.callId] : []))
         this.settledSteps = new Set(visible.settledSteps)
@@ -827,7 +816,7 @@ export class OfficialConversationModelSource {
   private rebuildTools(): void {
     const visible = this.lastVisible
     if (visible === undefined) return
-    this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, `tools:${String(this.toolsRevision)}`, this.caches, this.counters)
+    this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, `tools:${String(this.toolsRevision)}`, this.caches)
     const draft = this.feed?.draft()
     this.lastDraft = draft
     this.model = withLiveDraft(this.durableModel, this.settledSteps, draft, this.liveSeq, this.watermark, this.dispatchedCalls)

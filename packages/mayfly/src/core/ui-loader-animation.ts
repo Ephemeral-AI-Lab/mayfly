@@ -9,7 +9,6 @@
 import type { MayflyLoaderVariant } from '@ephemeral-ai/mayfly-ui'
 import { ASCII_SPINNER_FRAMES, type MayflyGlyphMode } from './glyphs.ts'
 import type { MayflySemanticColors } from './types.ts'
-import { countWork, type MayflyWorkCounters } from './ui-work-counters.ts'
 
 /** One clock step: every channel moves on it. */
 export const LOADER_FRAME_MS = 100
@@ -111,9 +110,6 @@ export class UiAnimationClock {
   /** When the last tick asked for a repaint, until that repaint paints a moving cell. */
   private askedAt: number | undefined
 
-  /** @param counters - a caller's work sink; it counts the ticks that asked for a repaint. */
-  constructor(private readonly counters?: MayflyWorkCounters) {}
-
   /**
    * Joins the next tick, starting the timer when none is pending. The first cell to paint after a tick shows what that
    * tick's frame cost; the next step waits at least twice as long, so a frame slower than half a step slows the motion
@@ -132,7 +128,6 @@ export class UiAnimationClock {
       for (const animation of due) {
         if (!animation.fire()) continue
         asked = true
-        countWork(this.counters, 'clockTicks')
       }
       if (asked) this.askedAt = performance.now()
     }, Math.max(LOADER_FRAME_MS, Math.min(LOADER_MAX_FRAME_MS, cost * 2)))

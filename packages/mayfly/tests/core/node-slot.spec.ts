@@ -12,7 +12,6 @@ import { visibleWidth } from '../../src/core/width.ts'
 import { NodeSlotHost, type MayflyNodeSlotCompiler, type MayflyNodeSlotOptions } from '../../src/core/node-slot.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyKeymap, MayflyScreenSlot } from '../../src/core/types.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import {
   COMPONENTS,
@@ -548,17 +547,6 @@ describe('node slot lease: routes and re-leases', () => {
     expect(heard).toEqual([])
     await after.endpoint.prepare(dismiss, context())
     expect(heard).toEqual(['dismiss'])
-  })
-
-  it('counts the work of a slot through the compiler\'s counters', async () => {
-    const counters = createWorkCounters()
-    const bare = bareHost(undefined, { counters })
-    const { lease, component } = bare.lease('transcript.conversation', { region: 'content' })
-    lease.set(streamList(streamItems(3)))
-    bare.host.bind(bare.compiler)
-    expect(component.render(80).join('')).toContain('Item number 0')
-    expect(counters.nodesValidated).toBeGreaterThan(0)
-    expect(counters.unitsCompiled).toBeGreaterThan(0)
   })
 
   it('shows a compile failure as an error row instead of throwing', () => {
