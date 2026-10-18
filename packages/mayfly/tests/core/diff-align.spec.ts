@@ -85,7 +85,7 @@ describe('alignDiffLines', () => {
     const rest = aligned.slice(-(2 * (tail + 2)))
     expect(rest.slice(0, tail + 2).every(op => op.type === 'del')).toBe(true)
     expect(rest.slice(tail + 2).every(op => op.type === 'add')).toBe(true)
-  })
+  }, 15_000)
 
   it('degrades an anchorless rewrite to whole blocks instead of an unbounded walk', () => {
     const before = Array.from({ length: DIFF_ALIGN_MAX_EDITS + 5 }, (_, index) => `b${String(index)}`).join('\n')

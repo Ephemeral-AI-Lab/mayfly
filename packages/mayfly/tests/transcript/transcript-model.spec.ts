@@ -105,7 +105,8 @@ function bench(entries: TranscriptEntryModel[] = [user(1, 'one')], queued: { id:
   let model = createTranscriptModel('a', entries)
   const { clock, advance, timers } = fakeClock()
   const controller = new TranscriptController({
-    t: interpolateLocaleMessage, queued: () => queued, ...(useClock ? { clock } : {}), focusRow: row => { focusRows.push(row) },
+    t: interpolateLocaleMessage, queued: () => queued, ...(useClock ? { clock } : {}), publishCost: () => 0,
+    focusRow: row => { focusRows.push(row) },
     rows: { copy: vi.fn(), open: vi.fn(), queued: vi.fn() },
   })
   controller.setView('main', () => model)

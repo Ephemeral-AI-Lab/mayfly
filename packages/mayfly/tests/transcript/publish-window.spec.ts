@@ -60,7 +60,9 @@ function bench(initial: TranscriptEntryModel[] | TranscriptModel = [user(1, 'one
   const tick = { subscribe: (listener: (now: number) => void) => { listeners.add(listener); return () => { listeners.delete(listener) } } }
   const fire = (at: number): void => { for (const listener of [...listeners]) listener(at) }
   let model = Array.isArray(initial) ? createTranscriptModel('a', initial) : initial
-  const controller = new TranscriptController({ t: key => key, queued: () => [], clock, tick })
+  // The adaptive window grows with the measured publish cost; a spec owns the
+  // clock, so it must own the cost too or coverage timing changes the verdict.
+  const controller = new TranscriptController({ t: key => key, queued: () => [], clock, tick, publishCost: () => 0 })
   controller.setView('main', () => model)
   controller.show('main')
   controller.attach(screen)

@@ -59,7 +59,7 @@ function fakeClock() {
   }
 }
 
-const options = { t: (key: string) => key, queued: () => [] as { id: string, text: string, lane: 'turn' | 'step' }[] }
+const options = { t: (key: string) => key, queued: () => [] as { id: string, text: string, lane: 'turn' | 'step' }[], publishCost: () => 0 }
 
 describe('TranscriptController', () => {
   it('mounts the conversation node slot in the content region and publishes the displayed view', () => {

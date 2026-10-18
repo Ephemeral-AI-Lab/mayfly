@@ -115,8 +115,14 @@ describe('SessionConversationFeed', () => {
     changed!(session, 'other', stored, 5)
     changed!(session, 'mayflyConversation', stored, 2)
     expect(notify).not.toHaveBeenCalled()
-    changed!(session, 'mayflyConversation', stored, 5)
-    changed!(session, 'mayflyConversation', stored, 6)
+    // The registry memoizes a whole projection value: an unchanged value is
+    // the same object and must not wake the feed again. A committed change
+    // arrives as a new object, even when its visible content is equal.
+    const next = { ...stored }
+    const newer = { ...stored }
+    changed!(session, 'mayflyConversation', stored, 3)
+    changed!(session, 'mayflyConversation', next, 5)
+    changed!(session, 'mayflyConversation', newer, 6)
     expect(notify).toHaveBeenCalledOnce()
     expect(feed.take()?.seq).toBe(6)
     expect(feed.draft()).toBeUndefined()
