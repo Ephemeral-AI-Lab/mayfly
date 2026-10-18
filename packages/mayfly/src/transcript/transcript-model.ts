@@ -17,7 +17,7 @@ import type { MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
-import { NO_DISCLOSURE, toggleCall, toggleGroup, toggleRows, toggleTurn, type Disclosure } from './disclosure.ts'
+import { NO_DISCLOSURE, toggleCall, toggleGroup, toggleRecent, toggleRows, toggleTurn, type Disclosure } from './disclosure.ts'
 import type { CopyMode } from './row-text.ts'
 import { findHits, readPattern, type SearchPattern, type SearchResult } from './search.ts'
 import { messageRowIds, NewMessages, type NewMessagesHost } from './new-messages.ts'
@@ -355,16 +355,17 @@ export class TranscriptController {
     this.requestPublish()
   }
 
-  /** Ctrl-O: open or close the Verbose tier of the newest turns. @returns whether they are open now. */
+  /** Ctrl-O: open or close the Verbose tier of the newest turns, the ones Enter folded included. @returns whether they are open now. */
   toggleRecent(): boolean {
-    this.disclosure = { ...this.disclosure, recent: !this.disclosure.recent }
+    this.disclosure = toggleRecent(this.disclosure)
     this.publish()
     return this.disclosure.recent
   }
 
-  /** Enter on a turn header: flip that turn against what the level and Ctrl-O give. */
+  /** Enter on a turn header: fold the turn if it is drawn open, open it if not, whatever the level and Ctrl-O give. */
   toggleTurn(turn: number): void {
-    this.disclosure = toggleTurn(this.disclosure, turn)
+    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+    this.disclosure = toggleTurn(this.disclosure, turn, facts?.reach() ?? new Set())
     this.publish()
   }
 

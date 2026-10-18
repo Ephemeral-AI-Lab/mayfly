@@ -184,6 +184,8 @@ export class StreamFacts {
   private rows = new Map<string, StreamRow>()
   private turns = new Map<string, StreamTurn>()
   private queued = new Map<string, StreamQueued>()
+  /** The turns Ctrl-O reached on the last pass. */
+  private reached: ReadonlySet<number> = new Set()
   /** The last durable entry array mapped to its turn index; one entry, because the displayed view publishes one model at a time. */
   private index: TurnIndex | undefined
   /** The last facts object, reused when an unchanged pass produced the same turns and queued rows by identity. */
@@ -211,6 +213,7 @@ export class StreamFacts {
     const turns = new Map<string, StreamTurn>()
     const queued = new Map<string, StreamQueued>()
     const owners = new Map<string, RowOwner>()
+    this.reached = new Set()
     const nextTurns = model === null ? [] : this.turnsOf(model, inputs, rows, turns, owners)
     const nextQueued = this.queuedOf(inputs, queued)
     const previous = this.lastFacts
@@ -224,6 +227,14 @@ export class StreamFacts {
     this.turns = turns
     this.queued = queued
     return facts
+  }
+
+  /**
+   * The turns Ctrl-O reached on the last pass (the newest few), for Enter on a header to flip a turn from how it was drawn.
+   * @returns the turn numbers.
+   */
+  reach(): ReadonlySet<number> {
+    return this.reached
   }
 
   /**
@@ -263,6 +274,7 @@ export class StreamFacts {
     const visible = new Set([...turnNumbers.slice(-policy.windowTurns), ...inputs.disclosure.forced])
     const entries = visibleEntries(index, visible)
     const reach = new Set(turnNumbers.slice(-policy.expandTurns))
+    this.reached = reach
     const runnable = new Set<string>()
     for (const entry of entries) if (isSemantic(entry) && isToolLike(entry) && !isUnmerged(entry)) runnable.add(entry.id)
     const display = buildDisplay({
@@ -273,7 +285,8 @@ export class StreamFacts {
       open: openTurns(inputs.disclosure, reach),
       // A call of a tool that merges into runs opens in place inside its run, so it keeps its tier (it must not leave the run).
       rows: new Set([...inputs.disclosure.rows].filter(id => !runnable.has(id))),
-      scope: reach,
+      // While the reach is open, Ctrl-O closes it: no turn may name the key as the one that opens it.
+      scope: inputs.disclosure.recent ? new Set() : reach,
       flat: model.streaming === undefined,
       runningHeader: inputs.liveTurnHeader,
     })

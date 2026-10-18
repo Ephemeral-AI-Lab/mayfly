@@ -83,11 +83,11 @@ interface DisplayInput {
   /** The running turn, or `undefined` when every turn has ended. */
   readonly runningTurn: number | undefined
   readonly turns?: readonly TranscriptTurnModel[] | undefined
-  /** Turns drawn at their Verbose tier: Ctrl-O's reach, flipped by Enter on a header, plus the turns a search holds open. */
+  /** Turns drawn at their Verbose tier: Ctrl-O's reach, the turns Enter on a header opened or folded, plus the turns a search holds open. */
   readonly open: ReadonlySet<number>
   /** Entries the reader opened one by one: each draws its Verbose tier with every row it carries. */
   readonly rows: ReadonlySet<string>
-  /** Turns within Ctrl-O's reach, so hints may name the key. */
+  /** Turns the next Ctrl-O opens (its reach while it is off, none while it is on), so hints may name the key. */
   readonly scope: ReadonlySet<number>
   /** Plain or hand-built models: entries only, no headers, groups, or folds. */
   readonly flat: boolean

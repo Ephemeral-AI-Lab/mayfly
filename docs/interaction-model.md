@@ -159,6 +159,12 @@ older ones, as a regular expression with smart case, in a line above the editor.
 from the cursor, `↑`/`↓` and `n`/`N` walk every occurrence, and `Esc` ends the search (a second `Esc` returns to the
 prompt).
 
+`Ctrl+O` opens or closes the newest turns whole at Verbose. `Enter` on a turn
+header sets that turn apart from what `Ctrl+O` gives: a turn folded by hand
+stays folded while newer turns move the reach on, and a turn opened by hand
+stays open through `Ctrl+O` and back. The next `Ctrl+O` opens or closes the
+newest turns whole again, the turns `Enter` folded included.
+
 ## Hints
 
 The hint row shows up to three fragments below 80 columns and four from 80.
