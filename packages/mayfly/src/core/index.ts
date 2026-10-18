@@ -119,8 +119,6 @@ export type {
   MayflyKeymap,
   MayflyKeyScope,
   MayflySeenAction,
-  MayflyMarkdown,
-  MayflyMarkdownOptions,
   MayflyOverlayAnchor,
   MayflyOverlayHandle,
   MayflyOverlayOptions,
@@ -130,13 +128,10 @@ export type {
   MayflyScreen,
   MayflyScreenSlot,
   MayflySelectItem,
-  MayflySelectList,
-  MayflySelectListOptions,
   MayflySemanticColors,
   MayflySubmittedDraft,
   MayflyTerminalInfo,
   MayflyTheme,
-  MayflyTopRuleOptions,
 } from './types.ts'
 
 /** Stable Cordis plugin name. */

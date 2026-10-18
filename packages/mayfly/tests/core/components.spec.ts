@@ -4,8 +4,8 @@
  * re-exported width helpers' parity with pi-tui, and the S14 completion
  * polish on the editor — the wrapping slash dropdown (vs. the stock list on
  * other prefixes), Enter accepting-and-submitting a slash completion, the
- * bold leading slash token, the argument-hint ghost, and the fuzzy
- * re-exports. The S22 mention additions: the editor adapter's mention
+ * bold leading slash token, the argument-hint ghost, and the fuzzy-match
+ * re-export. The S22 mention additions: the editor adapter's mention
  * drill-down reopen hook.
  */
 
@@ -24,7 +24,6 @@ import {
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { ui } from '../../../ui/src/index.ts'
 import { MayflyComponentsService } from '../../src/core/components.ts'
-import * as richDocument from '../../src/core/rich-document.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import type {
   MayflyAutocompleteItem,
@@ -159,8 +158,6 @@ describe('MayflyComponentsService registration', () => {
     const { tui, stop } = bootTui()
     const components = createService(tui)
     expect(components.strong('strong')).toBe('\x1b[1mstrong\x1b[22m')
-    expect(components.italic('italic')).toBe('\x1b[3mitalic\x1b[23m')
-    expect(components.strike('strike')).toBe('\x1b[9mstrike\x1b[29m')
     stop()
   })
 })
@@ -740,178 +737,6 @@ describe('createEditor', () => {
   })
 })
 
-describe('createMarkdown', () => {
-  it.each(['plain **text**', '```mermaid\ngraph LR; A --> B\n```'])('segments each text revision once across repaint and resize: %s', text => {
-    const { tui, stop } = bootTui()
-    const split = vi.spyOn(richDocument, 'splitRichDocument')
-    try {
-      const markdown = createService(tui).createMarkdown({ text })
-      const rows = markdown.render(80)
-      expect(markdown.render(80)).toBe(rows)
-      markdown.setText(text)
-      expect(markdown.render(80)).toBe(rows)
-      markdown.render(40)
-      markdown.invalidate()
-      markdown.render(40)
-      expect(split).toHaveBeenCalledTimes(1)
-      markdown.setText(`${text}\nchanged`)
-      expect(markdown.render(40).join('\n')).toContain('changed')
-      expect(split).toHaveBeenCalledTimes(2)
-    } finally {
-      split.mockRestore()
-      stop()
-    }
-  })
-  it('maps the palette onto markdown constructs', () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const markdown = components.createMarkdown({
-      text: '# Title\n\n**strong** and *em* and ~~gone~~ and `code`\n\n- item\n\n> quote\n\n---\n\n[link](https://example.com)\n\n```js\nconst x = 1\n```\n',
-      paddingX: 1,
-      paddingY: 0,
-    })
-    const output = markdown.render(60).join('\n')
-    // Headings carry their level through bold on top of the palette color.
-    expect(output).toContain('\x1b[1m«mdHeading:')
-    expect(output).toContain('«textStrong:strong»')
-    expect(output).toContain('«mdCode:code»')
-    // Unordered markers are normalized to `•` before the palette runs.
-    expect(output).toContain('«mdListBullet:• ')
-    expect(output).toContain('«mdQuote:')
-    expect(output).toContain('«mdHr:')
-    expect(output).toContain('«mdLink:')
-    expect(output).toContain('«mdLinkUrl:')
-    expect(output).toContain('«mdCodeBlockBorder:')
-    // The js fence goes through cli-highlight: plain runs take the palette
-    // tag while keyword runs carry cli-highlight SGR; line count is kept.
-    expect(output).toContain('const')
-    markdown.invalidate()
-    stop()
-  })
-
-  it('streams via setText with internal caching, defaulting to empty', () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const markdown = components.createMarkdown()
-    expect(markdown.render(40).join('\n').trim()).toBe('')
-    markdown.setText('first chunk')
-    expect(markdown.render(40).join('\n')).toContain('first chunk')
-    markdown.setText('first chunk second')
-    expect(markdown.render(40).join('\n')).toContain('first chunk second')
-    stop()
-  })
-
-  it('renders closed Mermaid fences and keeps streaming or unsafe fences as source', () => {
-    const { tui, stop } = bootTui()
-    const markdown = createService(tui).createMarkdown({ text: 'before\n```mermaid\ngraph LR; A --> B' })
-    const streaming = markdown.render(80).join('\n')
-    expect(streaming).toContain('graph LR')
-
-    markdown.setText('before\n```mermaid\ngraph LR; A --> B\n```\nafter')
-    const rendered = markdown.render(80)
-    expect(rendered.join('\n')).toContain('before')
-    expect(rendered.join('\n')).toContain('after')
-    expect(rendered.join('\n')).not.toContain('graph LR')
-    expect(rendered.some(line => line.includes('┌') || line.includes('┏'))).toBe(true)
-    expect(markdown.render(80)).toBe(rendered)
-    expect(markdown.render(30).every(line => piVisibleWidth(line) <= 30)).toBe(true)
-
-    markdown.setText('```mermaid\ngraph LR\n  A[中文] --> B\n```')
-    expect(markdown.render(80).join('\n')).toContain('中文')
-    markdown.setText('```mermaid\nnot a diagram\n```')
-    expect(markdown.render(80).join('\n')).toContain('not a diagram')
-
-    const padded = createService(tui).createMarkdown({
-      text: '```mermaid\ngraph LR; A --> B\n```',
-      paddingX: 1,
-      paddingY: 1,
-    })
-    const paddedRows = padded.render(40)
-    expect(paddedRows[0]).toBe('')
-    expect(paddedRows.at(-1)).toBe('')
-    expect(paddedRows.slice(1, -1).every(line => line.startsWith(' '))).toBe(true)
-    expect(padded.render(Number.NaN).every(line => piVisibleWidth(line) <= 1)).toBe(true)
-    stop()
-  })
-
-  it('re-paints the width-capped horizontal rule to the full render width', () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const markdown = components.createMarkdown({
-      text: `---\n\nplain body\n\n\`\`\`js\n${'─'.repeat(80)}\n\`\`\`\n`,
-    })
-    const output = markdown.render(100).join('\n')
-    // pi-tui caps the rule at 80; the adapter re-paints it to the render
-    // width (the user's S17 dogfood ruling: the rule spans the body text).
-    expect(output).toContain(`«mdHr:${'─'.repeat(100)}»`)
-    // A fenced code line of exactly 80 dashes keeps its own highlight
-    // styling — the exact-match path never touches it.
-    expect(output).not.toContain(`«mdHr:${'─'.repeat(80)}»`)
-    expect(output).toContain('plain body')
-    // Below the 80-column cap the rule passes through unchanged. The
-    // tagged test theme adds visible width, so pi-tui wraps the rule at
-    // the render width here (in production the SGR wrap is zero-width);
-    // the joined lines reassemble the full tag.
-    const narrow = markdown.render(60).join('\n').replaceAll('\n', '')
-    expect(narrow).toContain(`«mdHr:${'─'.repeat(60)}»`)
-    stop()
-  })
-})
-
-describe('createSelectList', () => {
-  const items = [
-    { value: '1', label: 'One', description: 'first' },
-    { value: '2', label: 'Two', description: 'second' },
-  ]
-
-  it('wires selection callbacks and renders the palette', () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const selected: string[] = []
-    const changed: string[] = []
-    let cancelled = 0
-    const list = components.createSelectList({
-      items,
-      maxVisible: 5,
-      onSelect: item => selected.push(item.value),
-      onCancel: () => cancelled++,
-      onSelectionChange: item => changed.push(item.value),
-    })
-
-    const output = list.render(80).join('\n')
-    expect(output).toContain('One')
-    // The selected row takes primary; the unselected row's description is
-    // textMuted.
-    expect(output).toMatch(/«textMuted:\s*second»/)
-    expect(output).toContain('«primary:')
-
-    expect(list.getSelectedItem()?.value).toBe('1')
-    list.handleInput!('\x1b[B')
-    expect(changed).toEqual(['2'])
-    expect(list.getSelectedItem()?.value).toBe('2')
-
-    list.handleInput!('\r')
-    expect(selected).toEqual(['2'])
-    list.handleInput!('\x1b')
-    expect(cancelled).toBe(1)
-
-    list.invalidate()
-    stop()
-  })
-
-  it('works without callbacks and reports null for an empty list', () => {
-    const { tui, stop } = bootTui()
-    const components = createService(tui)
-    const list = components.createSelectList({ items: [] })
-    expect(list.getSelectedItem()).toBeNull()
-    list.handleInput!('\x1b[B')
-    list.handleInput!('\r')
-    list.handleInput!('\x1b')
-    list.render(40)
-    stop()
-  })
-})
-
 describe('createImage', () => {
   it('renders the styled text fallback on a terminal without an image protocol', () => {
     const { tui, stop } = bootTui()
@@ -972,7 +797,7 @@ describe('imageDimensions', () => {
 })
 
 describe('fuzzy helpers', () => {
-  it('re-export pi-tui fuzzyMatch and fuzzyFilter semantics', () => {
+  it('re-exports pi-tui fuzzyMatch semantics', () => {
     const { tui, stop } = bootTui()
     const components = createService(tui)
     // Subsequence match with a lower-is-better score; a miss scores 0.
@@ -980,22 +805,6 @@ describe('fuzzy helpers', () => {
     expect(hit.matches).toBe(true)
     expect(hit.score).toBeLessThan(0)
     expect(components.fuzzyMatch('zz', '/btw')).toEqual({ matches: false, score: 0 })
-
-    // All whitespace-separated tokens must match; survivors sort ascending
-    // by score (better first), ties keeping input order.
-    const filtered = components.fuzzyFilter(
-      [{ n: '/theme' }, { n: '/btw' }, { n: '/sessions' }],
-      'th',
-      item => item.n,
-    )
-    expect(filtered.map(item => item.n)).toEqual(['/theme'])
-
-    const ordered = components.fuzzyFilter(
-      [{ n: '/a ab' }, { n: '/ab a' }, { n: '/zz' }],
-      'a ab',
-      item => item.n,
-    )
-    expect(ordered.map(item => item.n)).toEqual(['/ab a', '/a ab'])
     stop()
   })
 })
@@ -1010,7 +819,6 @@ describe('width helpers', () => {
     expect(components.wrapText(styled, 5)).toEqual(wrapTextWithAnsi(styled, 5))
     expect(components.truncateToWidth(styled, 8)).toBe(piTruncateToWidth(styled, 8))
     expect(components.truncateToWidth(styled, 8, '…')).toBe(piTruncateToWidth(styled, 8, '…'))
-    expect(components.topRule(12, { title: ' t ', hint: ' h ' })).toBe('╭ t ─  h ──╮')
     stop()
   })
 })

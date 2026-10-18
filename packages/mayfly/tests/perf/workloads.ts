@@ -63,10 +63,6 @@ const components = {
   truncateToWidth,
   sliceByColumn,
   createEditor: createFakeEditor,
-  createMarkdown: (options?: { text?: string }) => {
-    let value = options?.text ?? ''
-    return { setText: (text: string) => { value = text }, render: (width: number) => wrapTextWithAnsi(value, width), invalidate: () => {} }
-  },
 } as unknown as MayflyComponents
 
 const WIDTH = 100

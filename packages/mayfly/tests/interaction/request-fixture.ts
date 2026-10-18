@@ -12,14 +12,14 @@ import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
-import type { MayflyComponents, MayflyMarkdownOptions } from '../../src/core/types.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
 import { visibleWidth, truncateToWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from '../core/fake-editor.ts'
-import { FakeMayflyComponents, FakeMayflyMarkdown, FakeScreen, FakeTheme } from './fakes.ts'
+import { FakeMayflyComponents, FakeScreen, FakeTheme } from './fakes.ts'
 import { plainColors } from '../helpers.ts'
 
 const colors = plainColors()
-const components = { createEditor: createFakeEditor, createMarkdown: (options: MayflyMarkdownOptions) => new FakeMayflyMarkdown(options), visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as unknown as MayflyComponents
+const components = { createEditor: createFakeEditor, visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as unknown as MayflyComponents
 export const flushRequests = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
 export async function requestFixture(ctx = new Context()) {
