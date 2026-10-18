@@ -18,6 +18,22 @@ Current architecture: [docs/README.md](docs/README.md). Consult the
 and [pi-tui docs](https://pi.dev/docs/latest/tui) rather than guessing APIs.
 History and release notes do not define current behavior.
 
+## Cleanup mode (temporary)
+
+This branch runs the approved cleanup plan. The rules in
+[`docs/cleanup-runbook.md`](docs/cleanup-runbook.md) override the Round
+workflow for cleanup lanes:
+
+- Every commit that lands on `refactor/cleanup` passes `pnpm run check`; lanes
+  use the L0/L1 split in the runbook.
+- The Round workflow's "run no check tier, no specs, no scenario goldens" does
+  not apply here. Run the gates the runbook names.
+- Only the oracle lane runs `dsh`, `pnpm run scenarios`, `pnpm run frame`,
+  `script/install-dev.sh`, or `--update`.
+- Never delete tests by line range. Every deletion is classified by title and
+  reviewed by QA.
+- Delete this section and the runbook in the final cleanup commit.
+
 ## Architecture
 
 - Consume native dsh services directly. Mayfly UI contributions use only
