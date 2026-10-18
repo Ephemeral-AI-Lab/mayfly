@@ -660,4 +660,28 @@ const harnessAlignment = {
   ],
 }
 
-export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages, brandThemes, startSplash, harnessAlignment }
+/**
+ * The fix round: a live answer paused mid-text, its settled turn, the conversation cursor band over the answer and its
+ * tool block, and a queued message that starts the next turn after Esc, then the views and a narrow width.
+ */
+const liveQueue = {
+  summary: 'a streamed answer paused mid-text (the live tail follows), the settled turn, the Alt+↑ cursor band over an answer and its tool block, and a queued message that starts the next turn after Esc; the views and 60 columns',
+  items: [
+    turn('Rewrite the parser entry point around the token stream.', [
+      step({
+        reasoning: 'Read the current entry point, then rewrite it around the token stream.',
+        text: reply(),
+        textMs: 6000,
+        chunk: 24,
+        marks: [{ name: 'live', block: 'text', at: 0.5 }],
+        usage: { inputTokens: 5200, outputTokens: 1800, cacheReadTokens: 4200 },
+        tools: [tool('read', { file_path: 'src/parser.ts' }, { result: lines(12, row => `export const parserRow${String(row)} = ${String(row)}`), runMs: 600 })],
+      }),
+      step({ text: 'The parser now builds on the token stream and the suite is green.' }),
+    ]),
+    mark('settled'),
+    pause(DWELL),
+  ],
+}
+
+export const REPLAYS = { mergeDock, mergeConversations, mergePanels, mergeHeights, mergeEsc, viewItems, newMessages, brandThemes, startSplash, harnessAlignment, liveQueue }

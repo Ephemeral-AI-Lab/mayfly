@@ -64,6 +64,15 @@ const COVERS = {
     `${TRANSCRIPT}pane-todo.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, 'packages/mayfly/src/conversation/', 'packages/mayfly/src/internal/session-directory.ts',
     'packages/mayfly/src/core/', 'packages/mayfly/src/frontend/',
   ],
+  // The fix round: the cursor band in the virtual flow list, the live publish budget/watchdog, the Activity clock, the
+  // queued-message wake after an interrupt, the production output optimizer, and the transport notice.
+  liveQueue: [
+    'packages/mayfly/src/core/ui-list-paint.ts', 'packages/mayfly/src/core/ui-loader-animation.ts', 'packages/mayfly/src/core/output-optimizer.ts',
+    'packages/mayfly/src/core/index.ts', 'packages/mayfly/src/transcript/transcript-model.ts', 'packages/mayfly/src/transcript/conversation-feed.ts',
+    'packages/mayfly/src/transcript/official-model.ts', 'packages/mayfly/src/transcript/conversation-slots.ts', 'packages/mayfly/src/transcript/pane-activity.ts',
+    'packages/mayfly/src/transcript/notices.ts', 'packages/mayfly/src/app/inbox-wake.ts', 'packages/mayfly/src/app/index.ts',
+    ...STREAM, 'packages/mayfly/src/core/views-lane.ts',
+  ],
 }
 
 /**
@@ -196,15 +205,15 @@ const REVIEW = {
     scene: 15,
     reference: 'docs/interaction-model.md, Interrupt scope · Phase 4 round 3, kept by the merge of Phase 6',
     implemented: [
-      'Esc, or Ctrl+C on an empty prompt, stops the current turn of the conversation on screen and nothing else: background and continuable subagents, jobs and their watchers, the goal, todos, and the queued messages stay (the queue is sent next).',
+      'Esc, or Ctrl+C on an empty prompt, stops the current turn of the conversation on screen and nothing else: background and continuable subagents, jobs and their watchers, the goal, and the todos stay, and the queued messages start their own turns as soon as the aborted turn settles (the queue is not left parked).',
       'Esc on an open panel closes the panel only; the turn under it keeps running.',
       'The one accepted limit: a foreground subagent is the turn\'s own tool call, and Harness stops it with the turn.',
     ],
     focus: [
       { look: 'Your turn running beside a real background subagent and the watcher', how: 'checkpoint `running` (`spawn:… child-hold:240000` starts the child)' },
       { look: 'A message typed while it runs, queued', how: 'checkpoint `queued`' },
-      { look: 'Esc: the turn stops; agents and jobs stay ● in the status row; the queued message is sent next', how: 'checkpoints `interrupted`, `agents-live`' },
-      { look: 'The kept message on its row; `s` sends it now', how: 'checkpoints `kept`, `sent`' },
+      { look: 'Esc: the turn stops; agents and jobs stay ● in the status row', how: 'checkpoint `interrupted`' },
+      { look: 'The queued message starts its own turn without `s`', how: 'checkpoint `queue-sent`' },
       { look: 'Esc on /help closes the panel; the turn keeps running; a second Esc stops it', how: 'checkpoints `panel`, `panel-closed`, `interrupted-again`' },
       { look: 'A foreground subagent stops with the turn', how: 'checkpoints `foreground`, `foreground-stopped`' },
     ],
@@ -412,10 +421,10 @@ const SCRIPTS = {
     play('ready'), checkpoint('ready'),
     type('spawn:Background reviewer child-hold:240000 review the README'), key('enter'), wait(3000), checkpoint('running'),
     type('Then bump the version'), key('enter'), wait(400), checkpoint('queued'),
-    key('esc'), wait(1000), checkpoint('interrupted'),
-    wait(300), key('alt+down'), checkpoint('agents-live'), key('esc'), wait(150),
-    // The kept message, sent now from its row, is a turn that runs (the stub holds every prompt of this conversation).
-    key('alt+up'), checkpoint('kept'), key('s'), wait(1000), key('esc'), wait(150), checkpoint('sent'),
+    // Esc parks the turn's queue for the nudge: it starts the next turn on its own, without a row command.
+    key('esc'), wait(200), checkpoint('interrupted'),
+    wait(1800), checkpoint('queue-sent'),
+    key('alt+down'), checkpoint('agents-live'), key('esc'), wait(150),
     ...open('/help', 'Help'), checkpoint('panel'), key('esc'), wait(400), checkpoint('panel-closed'),
     key('esc'), wait(1000), checkpoint('interrupted-again'),
     type('spawn-fg:Foreground checker child-hold:240000 check the links'), key('enter'), wait(3000), checkpoint('foreground'),
@@ -507,6 +516,21 @@ const SCRIPTS = {
     resize(100, 30),
     type('/permissions'), key('enter'), wait(1000), checkpoint('permissions'),
   ],
+  // The fix round: the live answer pauses mid-text, the settled turn, the Alt+↑ band over the answer and its tool
+  // block, a real turn held open with a message queued behind it, Esc, and the queued message starting the next turn.
+  liveQueue: [
+    play('live'), checkpoint('live'),
+    play('settled'), wait(600), checkpoint('settled'),
+    key('alt+up'), wait(300), checkpoint('band'),
+    key('up'), checkpoint('band-moved'),
+    key('esc'), wait(200),
+    type('hold:4000 keep the parser open'), key('enter'), wait(900), checkpoint('running'),
+    type('queued follow-up: run the suite'), key('enter'), wait(500), checkpoint('queued'),
+    // The stub's hold has to drain before the aborted turn settles; the nudge then starts the queued message's turn.
+    key('esc'), wait(6000), checkpoint('queue-sent'),
+    key('alt+down'), wait(300), key('right'), checkpoint('views'),
+    resize(60, 30), checkpoint('narrow-60'),
+  ],
 }
 
 /** Replays that run at a size of their own. */
@@ -521,12 +545,15 @@ const SIZES = {
   mergeDock: [[100, 30]],
   mergeConversations: [[100, 30]],
   harnessAlignment: [[100, 30]],
+  liveQueue: [[120, 40], [60, 30]],
 }
 
 /** What a replay's session needs beyond the replay: the /plugin catalog of the bench profile, a DeepSeek balance. */
 const OPTIONS = {
   // No session exists until the script sends a message; the setting pinned here asks for the launch screen.
   startSplash: { sessionless: true, firstRun: true, config: { mayfly: { startup: 'splash' } } },
+  // Esc's frames mark the interrupt states; the rotating teaching tip and hint would make a later frame depend on wall time.
+  mergeEsc: { config: { mayfly: { quietHints: 'off' } } },
   mergePanels: { market: { installed: 'full' }, account: { balance: 'ok' } },
   mergeHeights: { market: { installed: 'full' }, account: { balance: 'ok' } },
   // The Host Schedule service is inserted disabled; this scenario turns it on to compare standard and minimal.

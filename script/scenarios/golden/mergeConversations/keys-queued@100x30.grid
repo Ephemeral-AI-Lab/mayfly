@@ -40,7 +40,7 @@ styles
 12: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22 fg:#9aa3b8
 14: 2-3 fg:#9a86e6; 4-32 fg:#9a86e6 b; 33-99 fg:#9aa3b8
 16: 2-3 fg:#9a86e6; 4-44 fg:#9a86e6 b; 45-99 fg:#9aa3b8
-18: 2-3 fg:#9a86e6; 4-54 fg:#9a86e6 b; 55-99 fg:#9aa3b8
+18: 1 bg:#2b2b30; 2-3 fg:#9a86e6 bg:#2b2b30; 4-54 fg:#9a86e6 bg:#2b2b30 b; 55-96 fg:#9aa3b8 bg:#2b2b30; 97-99 fg:#9aa3b8
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 24: 0-35 fg:#9aa3b8
 25: 2-7 fg:#9aa3b8; 9-20 fg:#9aa3b8; 22-31 fg:#9aa3b8; 33-46 fg:#9aa3b8; 48-55 fg:#9aa3b8; 57-68 fg:#9aa3b8; 70-79 fg:#9aa3b8

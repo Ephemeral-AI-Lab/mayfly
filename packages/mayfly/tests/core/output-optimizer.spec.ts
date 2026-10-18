@@ -33,6 +33,20 @@ function primed(columns: number, lines: readonly string[]): { readonly host: Fak
 }
 
 describe('createOutputOptimizer', () => {
+  it('invalidates the shadow when a direct screen mutation writes outside the frame grammar', () => {
+    const { host, optimizer } = primed(20, ['alpha', 'beta'])
+    const mark = host.written.length
+    optimizer.clearLine()
+    expect(optimizer.diagnostics.shadow).toEqual([])
+    // The next partial frame is not reconstructed from a screen the clear changed: it passes through untouched.
+    optimizer.write(frame([row(1, 'changed')], HIDE))
+    expect(host.written.slice(mark).join('')).toContain('changed')
+    expect(optimizer.diagnostics.shadow).toEqual([])
+    // A frame that rewrites every row starts a new trusted screen.
+    optimizer.write(fullFrame(['one', 'two']))
+    expect(optimizer.diagnostics.shadow).toEqual(['one', 'two'])
+  })
+
   it('drops a no-op frame without writing a row, and drops an empty one entirely', () => {
     const lines = ['alpha', 'beta', 'gamma', 'delta']
     const { host, optimizer } = primed(20, lines)

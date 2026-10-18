@@ -77,6 +77,18 @@ const PUBLISH_COST_FACTOR = 3
 /** The longest the window grows to. */
 const PUBLISH_INTERVAL_MAX_MS = 200
 
+/**
+ * The most a live turn's publish waits. A live turn is what the reader is watching, so it keeps a short, fixed budget
+ * instead of growing with the mapping cost; the trailing publish still carries the newest model.
+ */
+export const LIVE_PUBLISH_MS = 50
+
+/**
+ * The longest a live turn may stand still, even when a live notification is lost or coalesced away. The watchdog asks
+ * for one publish only when a change is still pending, and only while the model carries a live turn.
+ */
+export const STREAM_WATCHDOG_MS = 250
+
 /** What a row under the cursor can be sent to: the clipboard, or the editor. */
 export interface StreamRowActions {
   /** Copy the row's content; `raw` is the model's JSON. */
@@ -215,6 +227,14 @@ export class TranscriptController {
   private trailing: unknown
   /** The tick time a trailing publish carries, when the request came from the clock; a refresh publishes at its own fire time. */
   private trailingNow: number | undefined
+  /** The displayed model carries a live turn: it publishes on the fixed live budget and keeps the watchdog armed. */
+  private streaming = false
+  /** A change arrived since the last publish; the watchdog publishes only when one did. */
+  private dirty = false
+  /** The model the last publish read: the watchdog compares it to catch a live notification that never arrived. */
+  private publishedModel: TranscriptModel | null = null
+  /** The watchdog's next check while a live turn is displayed. */
+  private watchdog: unknown
 
   constructor(private readonly options: TranscriptControllerOptions) {}
 
@@ -259,23 +279,34 @@ export class TranscriptController {
     }
   }
 
-  /** The displayed model changed: publish it. The screen follows the tail, or counts what arrived below a view scrolled away. */
-  refresh(): void {
-    this.requestPublish()
+  /**
+   * The displayed model changed: publish it. The screen follows the tail, or counts what arrived below a view scrolled away.
+   * `force` bypasses the publish window: a settlement has already waited for the window and must not wait for it again.
+   */
+  refresh(force = false): void {
+    this.dirty = true
+    this.requestPublish(undefined, force)
   }
 
   /**
    * Publish a change at the end of the window after the last publish, or at once outside one. The first change of a
    * quiet period is immediate; the ones inside a burst become one trailing publish with the newest model. A tick's
-   * `now` rides along so the trailing publish reads the time the tick named.
+   * `now` rides along so the trailing publish reads the time the tick named. A live turn uses the fixed live budget
+   * instead of the adaptive one; `force` publishes now and drops the trailing publish.
    */
-  private requestPublish(now?: number): void {
+  private requestPublish(now?: number, force = false): void {
     if (this.active === undefined || this.screen === undefined) return
+    if (force) {
+      this.publishNow(now)
+      return
+    }
     if (this.trailing !== undefined) {
       if (now !== undefined) this.trailingNow = now
       return
     }
-    const window = Math.min(PUBLISH_INTERVAL_MAX_MS, Math.max(PUBLISH_INTERVAL_MS, this.publishCostMs * PUBLISH_COST_FACTOR))
+    const window = this.streaming
+      ? LIVE_PUBLISH_MS
+      : Math.min(PUBLISH_INTERVAL_MAX_MS, Math.max(PUBLISH_INTERVAL_MS, this.publishCostMs * PUBLISH_COST_FACTOR))
     const wait = this.lastPublishAt + window - (now ?? this.nowMs())
     if (wait <= 0) {
       this.publishNow(now)
@@ -312,6 +343,7 @@ export class TranscriptController {
 
   /** Something other than the model moved (the queued messages): publish again without announcing new content. */
   republish(): void {
+    this.dirty = true
     this.requestPublish()
   }
 
@@ -541,6 +573,9 @@ export class TranscriptController {
 
   dispose(): void {
     this.cancelTrailing()
+    this.stopWatchdog()
+    this.streaming = false
+    this.dirty = false
     this.offTick?.()
     this.offTick = undefined
     this.unmount()
@@ -565,24 +600,34 @@ export class TranscriptController {
     try {
       this.publishFacts(now)
     } finally {
+      this.dirty = false
       this.publishCostMs = performance.now() - started
       this.lastPublishAt = this.nowMs()
     }
+  }
+
+  /** The displayed view's current model, or `null` when no view is displayed. */
+  private currentModel(): TranscriptModel | null {
+    const view = this.active === undefined ? undefined : this.views.get(this.active)
+    return view === undefined ? null : typeof view.source === 'function' ? view.source() : view.source
   }
 
   private publishFacts(now: number): void {
     const slot = this.slot
     if (slot === undefined) return
     const view = this.active === undefined ? undefined : this.views.get(this.active)
-    const model = view === undefined ? null : typeof view.source === 'function' ? view.source() : view.source
+    const model = this.currentModel()
+    this.publishedModel = model
     this.syncSearch(model)
     if (view === undefined || model === null) {
+      this.setStreaming(false)
       slot.set(null)
       slot.track(STREAM.list, undefined)
       slot.setMarked(false)
       slot.setTurns(0)
       return
     }
+    this.setStreaming(model.streaming === true || model.live !== undefined)
     const built = view.facts.build(model, {
       policy: this.presentationPolicy(),
       disclosure: this.disclosure,
@@ -610,8 +655,40 @@ export class TranscriptController {
       slot.focusRow(STREAM.list, target)
     }
     this.keepTime(facts)
+    // A live tail grows below the view; a reader already at the tail keeps seeing it, one scrolled away keeps the marker.
+    if (this.streaming && this.screen?.contentTail()?.away !== true) this.screen?.followContent()
     // A queued row can leave or change lanes under a cursor that does not move: the keys follow what the row is now.
     if (this.focused) this.cursorRow(slot.cursor(STREAM.list))
+  }
+
+  /** Enter or leave the live-turn mode: the publish budget and the watchdog follow it. */
+  private setStreaming(next: boolean): void {
+    if (next === this.streaming) return
+    this.streaming = next
+    if (next) this.armWatchdog()
+    else this.stopWatchdog()
+  }
+
+  /** Keep a floor under a live turn: a lost live notification costs at most {@link STREAM_WATCHDOG_MS}. */
+  private armWatchdog(): void {
+    if (this.watchdog !== undefined || !this.streaming) return
+    const fire = (): void => {
+      this.watchdog = undefined
+      if (!this.streaming || this.screen === undefined) return
+      // A scheduled trailing publish already reads the newest model; only a lost wake needs the floor's own publish.
+      if (this.trailing === undefined && (this.dirty || this.currentModel() !== this.publishedModel)) this.requestPublish(undefined, true)
+      // The publish may have ended the live turn (its settlement): only a still-live model keeps the floor.
+      if (this.streaming) this.armWatchdog()
+    }
+    this.watchdog = this.options.clock?.setTimeout(fire, STREAM_WATCHDOG_MS) ?? setTimeout(fire, STREAM_WATCHDOG_MS)
+    if (this.options.clock === undefined && typeof (this.watchdog as { unref?: unknown }).unref === 'function') (this.watchdog as { unref(): void }).unref()
+  }
+
+  private stopWatchdog(): void {
+    if (this.watchdog === undefined) return
+    if (this.options.clock === undefined) clearTimeout(this.watchdog as ReturnType<typeof setTimeout>)
+    else this.options.clock.clearTimeout(this.watchdog)
+    this.watchdog = undefined
   }
 
   /** A conversation that moved on while a search is open: its hits are found again, and the line says how many there are now. */
@@ -804,6 +881,8 @@ export class TranscriptController {
 
   private unmount(): void {
     this.cancelTrailing()
+    this.stopWatchdog()
+    this.streaming = false
     this.offLayout?.()
     this.offLayout = undefined
     for (const view of this.views.values()) view.fresh.reset()

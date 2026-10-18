@@ -314,8 +314,10 @@ export function apply(ctx: Context): void {
     offTick = tick.subscribe((now) => {
       tickNow = now
       ticks += 1
-      if (ticks % TIP_TICKS === 0) nextTip()
-      publish()
+      const rotate = ticks % TIP_TICKS === 0
+      if (rotate) nextTip()
+      // A tool or stopping row carries no time tail: only a rotated tip changes its node, so it keeps the pane.
+      if (rotate || (state.mode !== 'tool' && state.mode !== 'stopping')) publish()
     })
   }
 

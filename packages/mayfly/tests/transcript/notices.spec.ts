@@ -352,6 +352,24 @@ describe('notices from the session facts', () => {
     await harness.dispose()
   })
 
+  it('reports a transport failure with its cause chain, and retires it when a turn runs again', async () => {
+    const harness = await boot()
+    const transport = Object.assign(new Error('DeepSeek Messages transport failed'), {
+      code: 'TRANSPORT',
+      cause: Object.assign(new Error('other side closed'), { code: 'ECONNRESET' }),
+    })
+    harness.ctx.emit('agent/error', { agent: harness.facts.currentAgent as never, turn: 1, step: 0, error: transport })
+    expect(harness.notices()).toEqual({ 'notice/transport': 'Transport failed · other side closed' })
+    expect(harness.lane.notificationSnapshot()[0]).toMatchObject({ severity: 'error' })
+    // Another failure code says nothing: the durable turn error is the record, not a second notice.
+    harness.ctx.emit('agent/error', { agent: harness.facts.currentAgent as never, turn: 1, step: 0, error: Object.assign(new Error('server blew up'), { code: 'SERVER' }) })
+    expect(harness.notices()).toEqual({ 'notice/transport': 'Transport failed · other side closed' })
+    // The next running turn retires the diagnostic; the durable error row stays in the transcript.
+    harness.facts.set({ active: true })
+    expect(harness.notices()).toEqual({})
+    await harness.dispose()
+  })
+
   it('reports a goal that is already blocked when the Agent switches to its session', async () => {
     const harness = await boot()
     harness.facts.currentGoal = { goal: { id: 'g', revision: 1, objective: 'o', phase: 'blocked', blockedReason: { code: 'cap', message: 'round cap reached' }, maxGoalRounds: 8 }, roundsStarted: 8, createdAt: 1, updatedAt: 2 } as unknown as GoalProjection

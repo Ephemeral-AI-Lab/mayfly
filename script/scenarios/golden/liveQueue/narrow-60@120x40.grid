@@ -1,0 +1,48 @@
+grid 60x30 cursor none
+|
+|    The renderer walks the tree once per frame and only
+|    repaints rows whose content changed since the last
+|    frame. This paragraph is long enough to wrap at
+|    ordinary widths, with inline code, emphasis, and a
+|    link (https://example.com/8) to exercise the inline
+|    painter.
+|
+|  ✓ Read(src/parser.ts)
+|
+|  ● The parser now builds on the token stream and the
+|    suite is green.
+|
+|  » hold:4000 keep the parser open
+|
+|  ■ interrupted
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » queued follow-up: run the suite
+|
+|  ● This is a replay session: the model is a stub. Type
+|    nothing; the conversation above is scripted.
+|
+|  ✻ Worked for 0s · done 09:00
+|                          Alt+↑ conversation · Alt+↓ view
+|╭────────────────────────── Rewrite the parser entry point ╮
+|│ >  Ask anything · / commands · @ files · # skills        │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-v4-pro  workspace               ctx ▱▱▱▱▱▱▱▱▱▱ 1%
+styles
+1: 8-15 fg:#f5f5f7
+4: 26-36 fg:#c9c0f0; 39-46 fg:#ededf2
+5: 4-7 fg:#ededf2; 8-31 fg:#5c6476
+8: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22 fg:#9aa3b8
+10: 2-3 fg:#ededf2
+13: 2-3 fg:#9a86e6; 4-59 fg:#9a86e6 b
+15: 2-14 fg:#e8a838
+17: 2-29 fg:#9aa3b8
+19: 2-3 fg:#9a86e6; 4-59 fg:#9a86e6 b
+21: 2-3 fg:#ededf2
+24: 2-29 fg:#9aa3b8
+25: 26-56 fg:#9aa3b8
+26: 0-27 fg:#45406b; 28-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-15 fg:#ededf2; 18-26 fg:#9aa3b8; 42-45 fg:#ededf2; 46-55 fg:#9aa3b8; 56-58 fg:#ededf2

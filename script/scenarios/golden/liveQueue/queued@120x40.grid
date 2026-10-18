@@ -1,0 +1,67 @@
+grid 120x40 cursor none
+|        return rows.map(row => row.padEnd(width, ' '))
+|      }
+|    ```
+|
+|    ┌──────────┬───────────┬──────────┬──────┐
+|    │ workload │ validated │ compiled │ rows │
+|    ├──────────┼───────────┼──────────┼──────┤
+|    │ W1       │ 2         │ 2        │ 2    │
+|    ├──────────┼───────────┼──────────┼──────┤
+|    │ W2       │ 0         │ 0        │ 1    │
+|    ├──────────┼───────────┼──────────┼──────┤
+|    │ W3       │ 0         │ 0        │ 2    │
+|    └──────────┴───────────┴──────────┴──────┘
+|
+|    ```python
+|      def wrap(lines, width):
+|          rows = []
+|          for line in lines:
+|              if not line:
+|                  rows.append('')
+|                  continue
+|              rows.extend(line[i:i + width] for i in range(0, len(line), width))
+|          return rows
+|    ```
+|
+|  ✓ Read(src/parser.ts)
+|
+|  ● The parser now builds on the token stream and the suite is green.
+|
+|  ✻ Worked for 0s · done 09:00
+|
+|  » queued follow-up: run the suite  ⏎ queued
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: Ctrl+O to expand tool details
+|                                                                                      Alt+↑ conversation · Alt+↓ view
+|╭────────────────────────────────────────────────────────────────────────────────────── Rewrite the parser entry point ╮
+|│ >  Type a follow-up to queue it · @ files · # skills                                                                 │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+| deepseek-official/deepseek-v4-pro  ~/workspace                                      cache ▰▰▱▱▱ 44%  ctx ▱▱▱▱▱▱▱▱▱▱ 1%
+styles
+0: 6-7 fg:#ededf2; 8-13 fg:#9a86e6; 14-26 fg:#ededf2; 30-48 fg:#ededf2; 49-51 fg:#4ec87e; 52-53 fg:#ededf2
+1: 6 fg:#ededf2
+2: 4-6 fg:#45406b
+5: 6-13 fg:#f5f5f7; 17-25 fg:#f5f5f7; 29-36 fg:#f5f5f7; 40-43 fg:#f5f5f7
+14: 4-12 fg:#45406b
+15: 6-8 fg:#9a86e6; 10-13 fg:#c9c0f0; 15-26 fg:#ededf2
+16: 6-18 fg:#ededf2
+17: 6-9 fg:#ededf2; 10-12 fg:#9a86e6; 13-18 fg:#ededf2; 19-20 fg:#9a86e6; 21-27 fg:#ededf2
+18: 6-13 fg:#ededf2; 14-15 fg:#9a86e6; 16 fg:#ededf2; 17-19 fg:#9a86e6; 20-25 fg:#ededf2
+19: 6-29 fg:#ededf2; 30-31 fg:#4ec87e; 32 fg:#ededf2
+20: 6-17 fg:#ededf2; 18-25 fg:#9a86e6
+21: 6-43 fg:#ededf2; 44-46 fg:#9a86e6; 47-49 fg:#ededf2; 50-51 fg:#9a86e6; 52 fg:#ededf2; 53-57 fg:#c9c0f0; 58 fg:#ededf2; 59 fg:#e8a838; 60-61 fg:#ededf2; 62-64 fg:#c9c0f0; 65-79 fg:#ededf2
+22: 6-9 fg:#ededf2; 10-15 fg:#9a86e6; 16-20 fg:#ededf2
+23: 4-6 fg:#45406b
+25: 2-3 fg:#4ec87e; 4-7 fg:#ededf2 b; 8 fg:#9aa3b8; 9-21 fg:#c9c0f0; 22 fg:#9aa3b8
+27: 2-3 fg:#ededf2
+29: 2-29 fg:#9aa3b8
+31: 2-3 fg:#9a86e6; 4-34 fg:#9a86e6 b; 35-119 fg:#9aa3b8
+33: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+34: 0-39 fg:#9aa3b8
+35: 86-116 fg:#9aa3b8
+36: 0-87 fg:#45406b; 88-117 fg:#f5f5f7 b; 118-119 fg:#45406b
+37: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-53 fg:#5c6476; 119 fg:#45406b
+38: 0-119 fg:#45406b
+39: 1-33 fg:#ededf2; 36-46 fg:#9aa3b8; 85-90 fg:#ededf2; 91-92 fg:#e8a838; 93-95 fg:#9aa3b8; 96-99 fg:#ededf2; 102-105 fg:#ededf2; 106-115 fg:#9aa3b8; 116-118 fg:#ededf2

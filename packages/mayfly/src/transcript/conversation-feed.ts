@@ -69,6 +69,26 @@ const READY: ConversationFeedState = Object.freeze({ kind: 'ready' })
 const LOADING: ConversationFeedState = Object.freeze({ kind: 'loading' })
 
 /**
+ * Whether a new whole projection value settles the current live step or closes its turn. Such a value must publish
+ * immediately: it is the durable text the live draft was standing in for, and its turn boundary is what stops the
+ * stream. The live frames themselves may already have been dropped by the publish window.
+ * @param value - the admitted whole projection value.
+ * @param draft - the Agent's current live draft, when one is streaming.
+ * @returns whether the value ends what the draft was showing.
+ */
+function settlesLive(value: unknown, draft: LiveAssistantDraft | undefined): boolean {
+  if (draft === undefined || value === null || typeof value !== 'object') return false
+  const record = value as { readonly settledSteps?: unknown, readonly turns?: unknown }
+  if (Array.isArray(record.settledSteps) && record.settledSteps.includes(`${String(draft.turn)}:${String(draft.step)}`)) return true
+  if (!Array.isArray(record.turns)) return false
+  return record.turns.some((turn) => {
+    if (turn === null || typeof turn !== 'object') return false
+    const row = turn as { readonly turn?: unknown, readonly endedAt?: unknown }
+    return row.turn === draft.turn && row.endedAt !== undefined
+  })
+}
+
+/**
  * Follow one live Session through the native projection registry. Native
  * changes are complete, validated values: only the newest is kept until the
  * owner reads it, so a token burst never maps history per delta.
@@ -86,13 +106,14 @@ export class SessionConversationFeed implements ConversationFeed {
     session: Session,
     private readonly agent: Agent | undefined,
     private readonly live: LiveDraftSource | undefined,
-    notify: () => void,
+    notify: (force?: boolean) => void,
   ) {
     this.offChanged = projections.onChanged((target, key, value, seq) => {
       if (this.disposed || target !== session || key !== 'mayflyConversation' || seq <= Math.max(this.watermark, this.pending?.seq ?? -1)) return
       const first = this.pending === undefined
       this.pending = { value, seq }
-      if (first) notify()
+      const force = settlesLive(value, this.agent === undefined ? undefined : this.live?.get(this.agent))
+      if (first || force) notify(force)
     })
     // Live notifications cover every Agent. Wake only when this exact Agent's
     // draft identity changed, so unrelated child streams never repaint here.

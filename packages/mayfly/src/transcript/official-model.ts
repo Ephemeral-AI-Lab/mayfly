@@ -780,7 +780,7 @@ export class OfficialConversationModelSource {
   constructor(
     private readonly projections: ConversationProjectionSource,
     private readonly tools: ToolPresentationSource,
-    private readonly publish: () => void,
+    private readonly publish: (force?: boolean) => void,
     private readonly live?: LiveDraftSource,
     private readonly t: MayflyTranslate = interpolateLocaleMessage,
     private readonly counters?: MayflyWorkCounters,
@@ -847,12 +847,15 @@ export class OfficialConversationModelSource {
   /** Follow one live Session, clearing stale content first. */
   attach(session: Session | null, historyFloorSeq?: number, agent?: Agent): void {
     if (this.disposed) return
+    // A resumed or reloaded Agent may carry a different Session object for the same identity: the live channel follows
+    // the identity, not the object, or a replacement would silently lose the transient draft.
+    const bound = agent !== undefined && session !== null && String(agent.session.id) === String(session.id) ? agent : undefined
     this.attachFeed(session === null ? undefined : new SessionConversationFeed(
       this.projections,
       session,
-      agent?.session === session ? agent : undefined,
+      bound,
       this.live,
-      () => this.publish(),
+      (force) => this.publish(force),
     ), historyFloorSeq)
   }
 

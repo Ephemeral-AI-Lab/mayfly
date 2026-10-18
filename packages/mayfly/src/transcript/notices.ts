@@ -11,10 +11,12 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-agent'
 import type { ContextPressureProjection } from '@deepseek-ai/dsh-token-meter'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { ConversationFacts } from '../conversation/types.ts'
+import { sanitizePluginText } from '../core/plugin-view.ts'
 import { createInteractionNotificationOwner } from '../interaction/notifications.ts'
 import type { SessionFactsService } from './session-facts.ts'
 import { contextPercent } from './status-context.ts'
@@ -29,6 +31,40 @@ const RETRY = 'notice/retry'
 const CONTEXT = 'notice/context'
 const RESUMED = 'notice/resumed'
 const GOAL = 'notice/goal'
+const TRANSPORT = 'notice/transport'
+
+/** The provider-neutral failure code of a live provider error, when it carries the normalized facts. */
+function failureCode(error: unknown): string | undefined {
+  if (error === null || typeof error !== 'object') return undefined
+  const failure = (error as { readonly failure?: { readonly code?: unknown } }).failure
+  const code = failure?.code ?? (error as { readonly code?: unknown }).code
+  return typeof code === 'string' ? code : undefined
+}
+
+/**
+ * The cause chain under a provider failure, as one bounded line. The durable error record keeps only the top-level
+ * message, so this is the only place the underlying transport error (a reset, a proxy refusal, a closed stream) shows.
+ * @param error - the live error from `agent/error`.
+ * @returns the sanitized chain, or `undefined` when the failure carries none.
+ */
+function causeDetail(error: unknown): string | undefined {
+  const parts: string[] = []
+  const seen = new Set<unknown>()
+  let cause = error !== null && typeof error === 'object' ? (error as { readonly cause?: unknown }).cause : undefined
+  while (cause !== undefined && parts.length < 3 && !seen.has(cause)) {
+    seen.add(cause)
+    if (cause instanceof Error) {
+      if (cause.message !== '') parts.push(cause.message)
+      cause = cause.cause
+    } else {
+      parts.push(String(cause))
+      break
+    }
+  }
+  if (parts.length === 0) return undefined
+  const line = sanitizePluginText(parts.join(' · ')).replace(/\s+/gu, ' ').trim()
+  return line === '' ? undefined : line.slice(0, 160)
+}
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
@@ -150,8 +186,19 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
     fresh = true
     pressure = readPressure()
   })
+  // A transport failure is the one error whose cause never reaches the durable record: report the chain while it is live.
+  const offTransport = ctx.on('agent/error', ({ agent, error }) => {
+    if (agent !== factsService.currentAgent || failureCode(error) !== 'TRANSPORT') return
+    const detail = causeDetail(error)
+    owner.report(TRANSPORT, {
+      severity: 'error',
+      message: detail === undefined ? t('Transport failed') : t('Transport failed · {cause}', { cause: detail }),
+    })
+  })
   const offFacts = factsService.subscribe((next) => {
     facts = next
+    // A turn that runs again (a retry or the next message) retires the transport notice; the durable error row stays.
+    if (facts.active) owner.clear(TRANSPORT)
     sync()
   })
   // The native occupancy can move without a presentation-facts change
@@ -165,6 +212,7 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
     offAgent()
     offGoal()
     offFacts()
+    offTransport()
     offPressure?.()
     stopTick()
   })
