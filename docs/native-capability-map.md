@@ -123,9 +123,9 @@ mounted.
 | `mayflyConversationFacts` | `conversation/facts.ts` | presentation-only facts: phase, activity, output progress, retries, per-step measurements, approvals, compactions, run outcome, spawn calls |
 | `mayflyDeliverables` | `conversation/deliverables.ts` | latest `deliverables/presented` files; Harness has the event but no projection key |
 
-`mayflyConversationFacts` no longer carries `todos`, `contextTokens`,
-`contextWindow`, `flowUp`, `model`, `provider`, or `reasoningEffort`; those
-are native values.
+`mayflyConversationFacts` carries presentation-only values only. Native values
+such as todos, context tokens and window, model, provider, and reasoning effort
+stay in their native projections.
 
 ## Command ownership
 

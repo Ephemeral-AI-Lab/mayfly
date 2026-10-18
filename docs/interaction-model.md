@@ -1,8 +1,8 @@
 # Mayfly interaction model
 
 This document defines how panes, overlays, and editor extensions take input,
-hold focus, and report user intent. It describes the current implementation;
-the public types in `packages/ui/src/contracts.ts` and the tests under
+hold focus, and report user intent. It describes current behavior; the public
+types in `packages/ui/src/contracts.ts` and the tests under
 `packages/mayfly/tests/core/` are the executable authority.
 
 ## Layers
@@ -10,10 +10,10 @@ the public types in `packages/ui/src/contracts.ts` and the tests under
 | Layer | Owner | Holds |
 | --- | --- | --- |
 | Wire contract | `@ephemeral-ai/mayfly-ui` | Readonly `MayflyUiNode` trees, action items, confirmations, and structured event/reply types |
-| Interaction state | frontend `mayflyUiInteraction` (`core/ui-interaction-*.ts`) | Per-registration `UiSurfaceModel`: form drafts, choice state, tabs, page path, open decision, operations, and feedback |
-| Key grammar | `core/ui-key-grammar.ts` | One ordered binding list per focus state: key match → intent → optional hint |
-| Compiler | `core/ui-compiler.ts` | Focus geometry, control groups, rendering, and dispatch of grammar intents onto the model |
-| Host routing | `core/screen.ts`, `core/index.ts` | Which surface receives a key, global keymap actions, and the prompt editor |
+| Interaction state | frontend `mayflyUiInteraction` (core `ui/state`) | Per-registration `UiSurfaceModel`: form drafts, choice state, tabs, page path, open decision, operations, and feedback |
+| Key grammar | core `keys/` | One ordered binding list per focus state: key match → intent → optional hint |
+| Compiler | core `ui/compile` | Focus geometry, control groups, rendering, and dispatch of grammar intents onto the model |
+| Host routing | core `hosts/` | Which surface receives a key, global keymap actions, and the prompt editor |
 
 Plugins publish nodes and answer structured actions. They never see focus,
 keys, or renderer objects, and a core/theme reload re-projects the same
@@ -76,13 +76,14 @@ block of both Website key references against it.
   first enabled option and `←` the last. `Enter` opens the option list. A
   multiselect opens with `Enter` or `Space` and never implicitly. A focused
   select that can cycle renders its value as `‹ value ›`.
-- **Field reset.** Fields with an `origin` show `(inherited)` or `(override)` after the value;
-  editing an inherited value overrides it. `Delete` on a focused, non-editing
-  field whose value is changed or overriding returns it to `resetValue` (the
-  inherited value when the field has an origin). The binding and its hint exist
-  only while a reset would change something and no declared accelerator owns
-  `Delete`. Forms render no inline override or reset buttons; the only inline
-  field choices are **Use current value** / **Keep my changes** on a conflict.
+- **Field reset.** Fields with an `origin` show `(inherited)` or `(override)`
+  after the value; editing an inherited value overrides it. `Delete` on a
+  focused, non-editing field whose value is changed or overriding returns it to
+  `resetValue` (the inherited value when the field has an origin). The binding
+  and its hint exist only while a reset would change something and no declared
+  accelerator owns `Delete`. Forms render no inline override or reset buttons;
+  the only inline field choices are **Use current value** / **Keep my changes**
+  on a conflict.
 - **Pickers.** Arrows move the candidate, `Space` toggles in a multiselect,
   `Enter` applies, and `Tab`/`Shift+Tab` apply the candidate (or toggled set)
   before moving to the next group.
@@ -114,7 +115,7 @@ asks "Discard unsaved changes?" unless its definition declares
 
 ## Focus invariants
 
-- Choice reducers (`core/ui-interaction-choice.ts`) only focus enabled rows:
+- Choice reducers in core `ui/state` only focus enabled rows:
   movement, edges, query changes, creation, and reconciliation step over
   disabled rows, and a list with no enabled row has no focus. `Enter` can
   therefore never accept a disabled row.
@@ -136,36 +137,41 @@ list, so typed text always reaches the filter.
 
 `numbered: true` maps `1`–`9` to the visible (filtered) rows; the labels stay
 stable while the list scrolls. A digit chooses the row. `numbered: 'focus'`
-only moves the cursor, so a gate that opens unprompted and is not an overlay with an
-arm delay still requires `Enter`. The decision card (approval, plan review) uses
-`numbered: true`: a digit chooses at once, and the overlay ignores every key but
-`Esc` for 300 ms after it opens (`armMs`), so a stray key grants nothing. The
-hint shows the real range (`1`, `1-3`, …) and is omitted while searching.
+only moves the cursor, so a gate that opens unprompted and is not an overlay
+with an arm delay still requires `Enter`. The decision card (approval, plan
+review) uses `numbered: true`: a digit chooses at once, and the overlay ignores
+every key but `Esc` for 300 ms after it opens (`armMs`), so a stray key grants
+nothing. The hint shows the real range (`1`, `1-3`, …) and is omitted while
+searching.
 
 ### Decision card
 
-The approval and plan review cards (`components/decision-card.ts`) sit in the editor's place. A digit or `Enter`
-on the focused row chooses it. A note under the choices (`Feedback:` or `Revise:`) is edited with `↓` from the
-last choice; its `Enter` settles the card: an approval rejects with the note, a plan sends it as the revision. `Esc`
-rejects (a plan declines, with no note). `Ctrl+G` opens the request in `$EDITOR`, and a plan's `c` copies it. For
-300 ms after the card takes focus (`armMs`), every key but `Esc` is swallowed.
+The approval and plan review cards (`components/decision-card.ts`) sit in the
+editor's place. A digit or `Enter` on the focused row chooses it. A note under
+the choices (`Feedback:` or `Revise:`) is edited with `↓` from the last choice;
+its `Enter` settles the card: an approval rejects with the note, a plan sends
+it as the revision. `Esc` rejects (a plan declines, with no note). `Ctrl+G`
+opens the request in `$EDITOR`, and a plan's `c` copies it. For 300 ms after the
+card takes focus (`armMs`), every key but `Esc` is swallowed.
 
 ## Stream selection and search
 
-`Alt+↑` (or `F4`) with an empty prompt moves focus to the newest row of the conversation stream, and `Alt+↓`
-or `Esc` returns to the prompt. On a row, `Enter` opens or folds it, `c` copies its text, `Ctrl+C` copies its raw
-JSON, and `Ctrl+G` opens it in `$EDITOR`. In conversation mode `/` searches toward the newer rows and `?` toward the
-older ones, as a regular expression with smart case, in a line above the editor. `Enter` selects the first match
-from the cursor, `↑`/`↓` and `n`/`N` walk every occurrence, and `Esc` ends the search (a second `Esc` returns to the
-prompt).
+`Alt+↑` (or `F4`) with an empty prompt moves focus to the newest row of the
+conversation stream, and `Alt+↓` or `Esc` returns to the prompt. On a row,
+`Enter` opens or folds it, `c` copies its text, `Ctrl+C` copies its raw JSON,
+and `Ctrl+G` opens it in `$EDITOR`. In conversation mode `/` searches toward
+the newer rows and `?` toward the older ones, as a regular expression with
+smart case, in a line above the editor. `Enter` selects the first match from
+the cursor, `↑`/`↓` and `n`/`N` walk every occurrence, and `Esc` ends the search
+(a second `Esc` returns to the prompt).
 
 ## Hints
 
 The hint row shows up to three fragments below 80 columns and four from 80.
 Escape has the highest priority and is always shown when Escape does
 something; then the primary operation, declared accelerators, adjustment,
-navigation, digit ranges, secondary keys, and group moves. Labels are translated through the
-core `core-context-hints` catalog.
+navigation, digit ranges, secondary keys, and group moves. Labels are
+translated through the core `core-context-hints` catalog.
 
 ## Contract rules
 
@@ -206,10 +212,8 @@ core `core-context-hints` catalog.
 ## Interrupt scope
 
 `Esc`, or `Ctrl+C` on an empty prompt, interrupts **the current turn of the
-Agent whose conversation is displayed, and nothing else** (owner decision,
-Phase 4 round 3; `app/agent-interrupt.ts`). A change that also touches
-interruption (for example one that stops interrupting subagents) merges toward
-this contract.
+Agent whose conversation is displayed, and nothing else**
+(`app/agent-interrupt.ts`).
 
 - **Subagents are not interrupted.** Running children of the displayed Agent
   keep their turns and Activations. A displayed *continuable* child is itself
@@ -221,25 +225,22 @@ this contract.
   Activation.
 - **Queued and steering messages are kept** (`agent.cancel({ kind: 'user' },
   { keepInbox: true })`) and are sent now: Harness's driver starts the next turn
-  from the pending inbox as soon as the aborted turn has settled (the
-  `turn()` loop in `dsh-agent-loop` continues while the inbox has pending
-  input). Nothing the user queued is discarded by an interrupt; the user
-  cancels a message with `d` on its row of the stream.
+  from the pending inbox as soon as the aborted turn has settled. Nothing the
+  user queued is discarded by an interrupt; the user cancels a message with `d`
+  on its row of the stream.
 - **A flow in progress** (the test that makes `Esc` interrupt instead of
   clearing the draft, and that holds the `■ interrupting…` latch open) is the
   displayed Agent running, not a descendant. With only a subagent running,
   `Esc` behaves as at rest.
 
-Surfaces: `interruptAgent` and `isAgentRunning` in `app/agent-interrupt.ts`
-(the former tree walk and `hasRunningAgentWork` are gone), the `interrupt` and
-`sessionFlowInProgress` functions of `interaction/input-plugin.ts`, the
-retraction callback and the `agent/status` stop latch in `app/index.ts`.
+Surfaces: `interruptAgent` and `isAgentRunning` in `app/agent-interrupt.ts`,
+the `interrupt` and `sessionFlowInProgress` functions of
+`interaction/input-plugin.ts`, the retraction callback and the `agent/status`
+stop latch in `app/index.ts`.
 
-The one accepted limit (owner decision at the merge of Phase 6): a tool call
-the interrupted turn itself is running, a *foreground* subagent or a
-foreground `bash` command, is part of that turn, and Harness aborts it with the
-turn through the call's `exec.signal`. Harness has no option to detach it.
-Background and continuable subagents, background jobs and their watchers, and
-schedules run on signals of their own and are never touched; Mayfly adds no
-cancellation of its own to any child. The `mergeEsc` scenario shows both
-sides.
+The one accepted limit: a tool call the interrupted turn itself is running, a
+*foreground* subagent or a foreground `bash` command, is part of that turn, and
+Harness aborts it with the turn through the call's `exec.signal`. Harness has no
+option to detach it. Background and continuable subagents, background jobs and
+their watchers, and schedules run on signals of their own and are never
+touched; Mayfly adds no cancellation of its own to any child.
