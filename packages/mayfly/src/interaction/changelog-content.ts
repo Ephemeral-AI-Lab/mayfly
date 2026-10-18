@@ -22,6 +22,23 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.4-rc.1',
+    summary: 'Align with Harness 0.2.1-rc.2, add the compose layer and the themed launch surfaces, and finish the Phase 7 performance pass with live-stream and transcript fixes.',
+    highlights: [
+      'Harness 0.2.1-rc.2 - consume native current-state projections, session browsing, subagent and job activations, settings, MCP, permission surfaces, the plugin manager, and file references through the pinned native services.',
+      'Compose layer - introduce the shared compose layer and unify panels so every overlay and pane uses one layout, focus, and key model.',
+      'Component-library rounds - the status area and views, the editor and command palette, first-run onboarding and account sign-in, /stats, the plugin marketplace, the launch screen, and the theme picker.',
+      'Themes and banner - 32 named palettes grouped by terminal, the fly-in banner, and a blank row above it.',
+      'Live stream and transcript - paint the cursor band, bound live publishes, wake parked queues, keep the last rows of a long Markdown answer, show a sent prompt while its turn runs, and add the new-messages rule with two-stage Ctrl+Down.',
+      'Phase 7 performance - incremental transcript conversion, tail-anchored stream facts, virtual flow lists, fan-out cuts, alternate-screen output optimization, and the W28-W35 work budgets.',
+      'Launcher and packaging - ship the pinned Harness runtime as plain files for Windows, keep the CLI dependency-free, and verify the packed tarballs with provenance.',
+    ],
+    knownIssues: [
+      'This RC precedes the final visual acceptance of the component-library rounds: a few scenario goldens and the /settings key latency are still in review.',
+      'Windows account sign-in - the system browser opener can drop authorize URL query parameters; use Copy link or the paste-back fallback.',
+    ],
+  },
+  {
     version: '0.1.3-rc.2',
     summary: 'Sign in to a DeepSeek account from the terminal with a guided first run, on Harness 0.2.0-rc.2, and close out the render-path hot spots.',
     highlights: [

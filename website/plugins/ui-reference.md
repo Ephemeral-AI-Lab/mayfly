@@ -56,7 +56,7 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
   `memo: true`。`memo` 按引用比较 props，只有每个 prop 都稳定才会命中，包括以
   `MayflyTranslate` 传入的翻译函数；见 [公共 UI kit](/plugins/ui-kit)。
 
-下面的“默认”描述 `0.1.3-rc.2` 当前 Mayfly TUI。wire contract 只承诺字段语义，
+下面的“默认”描述 `0.1.4-rc.1` 当前 Mayfly TUI。wire contract 只承诺字段语义，
 不会承诺具体边框字符、颜色值或按键绑定。
 
 ### 从 alpha.3 迁移
