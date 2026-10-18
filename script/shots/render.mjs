@@ -99,14 +99,6 @@ const components = {
   wrapText: wrapTextWithAnsi,
   truncateToWidth,
   createEditor: createTestEditor,
-  createMarkdown: (options) => {
-    let value = options?.text ?? ''
-    return {
-      setText: text => { value = text },
-      render: width => wrapTextWithAnsi(value, width),
-      invalidate: () => {},
-    }
-  },
 }
 
 /**
@@ -144,7 +136,7 @@ export async function renderScenario(scenario, ui, defineMayflyComponent, patter
       components,
       colors: DARK_COLORS,
       getViewport: () => ({ columns: width, rows: scenario.height ?? 24 }),
-      screenMode: 'alternate',
+      bounded: true,
       contextHints: { enabled: true },
       emit: event => { model.emit(event) },
       onUnhandledEscape: () => { model.emit({ kind: 'dismiss', pagePath: [] }) },
