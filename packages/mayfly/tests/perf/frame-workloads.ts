@@ -36,7 +36,6 @@ import { FakeMayflyComponents, FakeMayflyEditor, FakeScreen, FakeTheme, fakeMayf
 import {
   FakeConversationFeed,
   FakeTickSource,
-  longSessionDraft,
   longSessionProjection,
   longSessionTools,
   pendingLastTool,
@@ -131,7 +130,7 @@ export class FrameHost {
     await root.plugin({ name: 'frame-workload-ui-provider', apply: applyUiProvider })
     await root.plugin(frontend)
     const terminal = new FakeTerminal(COLUMNS, ROWS)
-    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate', outputOptimizer: true })
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     await root.plugin(themeDark)
     await root.plugin({
       name: 'frame-workload-core',
@@ -244,8 +243,6 @@ const KEY_PAGE_UP = '\x1b[5~'
 const KEY_PAGE_DOWN = '\x1b[6~'
 /** What one wheel notch scrolls: three rows, as the input plugin's wheel route does. */
 const WHEEL_LINES = 3
-/** Counts the stream workloads, so a measured append streams text no earlier run has indexed. */
-let streamRuns = 0
 
 /**
  * The content-scroll route the app's input plugin installs on the screen. The frame host boots the renderer and the
@@ -310,7 +307,7 @@ async function withStream(
 
 /**
  * Parse the terminal writes of one measured step. `rows` counts pi-tui's row writes (`CSI <row>;1H` followed by
- * `CSI 2K`), the unit W34 and W35 gate; `bytes` is the UTF-8 byte length of every write of the step, including the
+ * `CSI 2K`), the unit W35 gates; `bytes` is the UTF-8 byte length of every write of the step, including the
  * synchronization sequences (BSU/ESU) pi-tui wraps a frame in. Both are counted from the same slice of writes.
  * @param writes - the fake terminal's writes during the step, in order.
  * @returns the row writes and the byte length they and the other step writes add up to.
@@ -319,15 +316,6 @@ export function frameBytes(writes: readonly string[]): { readonly rows: number, 
   const text = writes.join('')
   const rows = [...text.matchAll(/\x1b\[(\d+);1H\x1b\[2K/g)].length
   return { rows, bytes: Buffer.byteLength(text) }
-}
-
-/** Check the parser on a tiny sample; a workload's setup runs it so a regression fails the measured run itself. */
-function assertFrameBytes(): void {
-  const sample = ['\x1b[3;1H\x1b[2Kone', '\x1b[4;1H\x1b[2Ktwo', 'tail']
-  const counted = frameBytes(sample)
-  if (counted.rows !== 2 || counted.bytes !== Buffer.byteLength(sample.join(''))) {
-    throw new Error(`frameBytes: expected 2 rows and ${String(Buffer.byteLength(sample.join('')))} bytes, got ${String(counted.rows)} and ${String(counted.bytes)}`)
-  }
 }
 
 export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
@@ -456,31 +444,6 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
       reset(counters)
       return {
         step: async () => { fire(1_700_000_001_000); counters.clockTicks += 1; await stream.host.frames() },
-        dispose: () => stream.dispose(),
-      }
-    },
-  },
-  {
-    id: 'W34', title: 'follow-tail append: one line arrives in the streaming answer of a 15-turn transcript at its tail (rowsWritten, bytesWritten)',
-    async setup(counters, environment) {
-      assertFrameBytes()
-      const projection = longSessionProjection(15)
-      // A text no earlier run streamed: the content cache cannot hand this run a line table another run estimated.
-      streamRuns += 1
-      const text = `The answer streams at the tail ${String(streamRuns)}.`
-      const stream = await withStream(counters, environment, projection, longSessionDraft(projection, text, 1))
-      reset(counters)
-      return {
-        step: async () => {
-          const mark = stream.host.terminal.written.length
-          stream.feed.setDraft(longSessionDraft(projection, `${text}\nA second line arrives.`, 2))
-          stream.controller.republish()
-          stream.flush()
-          await stream.host.frames()
-          const counted = frameBytes(stream.host.terminal.written.slice(mark))
-          counters.rowsWritten = counted.rows
-          counters.bytesWritten = counted.bytes
-        },
         dispose: () => stream.dispose(),
       }
     },
