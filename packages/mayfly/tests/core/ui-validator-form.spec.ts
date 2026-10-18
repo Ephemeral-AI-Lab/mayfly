@@ -1,8 +1,8 @@
 /** Admission of the optional form-field properties of slice 1.6: help, group, pattern, patternMessage, and suggestions. */
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyFormField, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
-import { PATTERN_SOURCE_MAX, SUGGESTIONS_MAX, compilePattern, patternMatcher } from '../../src/core/ui-validator-form.ts'
+import { validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
+import { PATTERN_SOURCE_MAX, SUGGESTIONS_MAX, compilePattern, patternMatcher } from '../../src/core/ui/admit/ui-validator-form.ts'
 
 const form = (...fields: unknown[]) => ({ kind: 'form', id: 'form', fields })
 const field = (extra: Record<string, unknown>) => ({ kind: 'input', id: 'name', label: 'Name', value: '', ...extra })

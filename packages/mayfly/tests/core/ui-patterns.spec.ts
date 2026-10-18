@@ -12,11 +12,11 @@ import {
   renderSurfaceTail,
   renderTabs,
   type PatternFocus,
-} from '../../src/core/ui-patterns.ts'
-import { paintFormField } from '../../src/core/ui-form-paint.ts'
+} from '../../src/core/ui/state/ui-patterns.ts'
+import { paintFormField } from '../../src/core/ui/state/ui-form-paint.ts'
 import type { MayflyFormField } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { visibleWidth } from '../../src/core/width.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 import { identity, plain, plainColors, plainText } from '../helpers.ts'
 
 /** One field's rows through the production painter. */

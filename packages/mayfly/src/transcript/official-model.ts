@@ -23,7 +23,7 @@ import {
   type LiveDraftSource,
 } from './conversation-feed.ts'
 import { freezeModel, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptFileChangeModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type ToolInterruption, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
-import { diffChangeCounts } from '../core/diff-align.ts'
+import { diffChangeCounts } from '../core/content/diff-align.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
 import { toolDetail } from '../conversation/activity-detail.ts'

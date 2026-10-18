@@ -1,7 +1,7 @@
 /** Admission of the optional tab fields of slice 1.5: counts, attention, groups, clip, orientation, and the hint word. */
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
+import { validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
 
 function accepted(value: unknown): MayflyUiNode {
   const result = validateMayflyUiNode(value)

@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyFocusIdentity, MayflySemanticColors } from '../../src/core/types.ts'
-import { VIEWS_FOCUS_ID, ViewsLane, type ViewRegistration, type ViewsLaneHost } from '../../src/core/views-lane.ts'
+import { VIEWS_FOCUS_ID, ViewsLane, type ViewRegistration, type ViewsLaneHost } from '../../src/core/ui/state/views-lane.ts'
 import { plain } from '../helpers.ts'
 
 const PRIMARY = '\x1b[35m'

@@ -3,7 +3,7 @@
  * @module @ephemeral-ai/mayfly/tests/core/chart-format
  */
 import { describe, expect, it } from 'vitest'
-import { compactChartNumber, formatChartNumber } from '../../src/core/chart-format.ts'
+import { compactChartNumber, formatChartNumber } from '../../src/core/content/chart-format.ts'
 
 describe('formatChartNumber', () => {
   it('keeps integers exact and rounds a fraction to four significant digits', () => {

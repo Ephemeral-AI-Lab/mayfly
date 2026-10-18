@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/tests/core/ui-key-grammar
  */
 import { describe, expect, it } from 'vitest'
-import { ACTION_FOCUS_NEXT, ACTION_FOCUS_PREV, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SUBMIT, printableKey } from '../../src/core/key-actions.ts'
+import { ACTION_FOCUS_NEXT, ACTION_FOCUS_PREV, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SUBMIT, printableKey } from '../../src/core/keys/key-actions.ts'
 import { grammarHints, keyGrammar, type GrammarControl, type GrammarState } from '../../src/core/ui-key-grammar.ts'
 
 function state(overrides: Partial<GrammarState>): GrammarState {

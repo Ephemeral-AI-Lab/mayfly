@@ -6,9 +6,9 @@
 import { describe, expect, it } from 'vitest'
 import type { MayflyInlineSpan, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import { StatsPanel, type StatsFacts, type StatsRow } from '../../src/components/stats-panel.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { plainColors, plainText } from '../helpers.ts'
 
 const components = { visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as unknown as MayflyComponents

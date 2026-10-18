@@ -4,7 +4,7 @@
  * @module @ephemeral-ai/mayfly/tests/core/editor-tokens
  */
 import { describe, expect, it } from 'vitest'
-import { expandPastes, findTokenRanges, foldSegments, paintTokenRows } from '../../src/core/editor-tokens.ts'
+import { expandPastes, findTokenRanges, foldSegments, paintTokenRows } from '../../src/core/ui/compile/editor-tokens.ts'
 
 const paints = {
   label: (text: string) => `<L>${text}</L>`,

@@ -5,12 +5,12 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { MayflyKeymapService } from '../../src/core/keymap.ts'
-import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { MayflyKeymapService } from '../../src/core/keys/keymap.ts'
+import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
 import * as keys from '../../src/interaction/keys.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS, type MayflySettings } from '../../src/interaction/settings.ts'
-import { ACTION_SUBMIT, displayKey, keyActionKeys, matchesKeyAction } from '../../src/core/key-actions.ts'
+import { ACTION_SUBMIT, displayKey, keyActionKeys, matchesKeyAction } from '../../src/core/keys/key-actions.ts'
 
 describe('interaction keys', () => {
   it('normalizes paging, boundary, deletion, and Agent-view keys', () => {

@@ -16,8 +16,8 @@ import {
   type DiffPaintColors,
   type DiffPaintOptions,
   type DiffWidthHelpers,
-} from '../../src/core/diff-align.ts'
-import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
+} from '../../src/core/content/diff-align.ts'
+import { truncateToWidth, visibleWidth } from '../../src/core/text/width.ts'
 import { plainText } from '../helpers.ts'
 
 const ops = (before: string, after: string): Array<[string, string]> =>

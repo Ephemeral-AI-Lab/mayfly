@@ -5,9 +5,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { GutterComponent } from '../../src/core/gutter.ts'
+import { GutterComponent } from '../../src/core/text/gutter.ts'
 import type { MayflyComponent } from '../../src/core/types.ts'
-import { visibleWidth } from '../../src/core/width.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 
 /** A fixed-rows child recording renders and invalidations. */
 function child(rows: string[]): MayflyComponent & { invalidated: number } {

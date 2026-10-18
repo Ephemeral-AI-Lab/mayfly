@@ -4,7 +4,7 @@
  * @module @ephemeral-ai/mayfly/core/tests/fake-editor
  */
 import type { MayflyEditor } from '../../src/core/types.ts'
-import { truncateToWidth } from '../../src/core/width.ts'
+import { truncateToWidth } from '../../src/core/text/width.ts'
 
 /** Create a deterministic editor with the form compiler's required semantics. */
 export function createFakeEditor(): MayflyEditor {

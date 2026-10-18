@@ -5,8 +5,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
+import { UiAnimationClock } from '../../src/core/ui/paint/ui-loader-animation.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { PROBE_PALETTE, caption, expectFrames, paint, probeComponents } from './probe.ts'
 import { sceneWalks, stepLabel } from './walks.ts'
 

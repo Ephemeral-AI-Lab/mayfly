@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { COMPACTION_BAR_MIN_WIDTH, COMPACTION_DRAIN_MS, CompactionRow, type CompactionFacts } from '../../src/components/compaction-row.ts'
 import { ADVERSARIAL, expectLinesFit } from '../core/width-scan.ts'
 import { fakeMayflyComponents } from '../transcript/helpers.ts'

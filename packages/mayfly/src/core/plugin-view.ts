@@ -11,7 +11,7 @@
  */
 
 import type { MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
-import { stripTerminalText } from './escape-sequences.ts'
+import { stripTerminalText } from './terminal/escape-sequences.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
 /** A code block highlights at most this many rows; the rest are plain text. */

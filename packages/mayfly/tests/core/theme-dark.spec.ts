@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { apply, MayflyThemeService, name } from '../../src/core/theme-dark.ts'
+import { apply, MayflyThemeService, name } from '../../src/core/theme/theme-dark.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 
 // The provider paints truecolor unless the host asks for no color; pin the

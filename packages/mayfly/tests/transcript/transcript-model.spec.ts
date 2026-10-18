@@ -7,8 +7,8 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { MayflyListNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
-import type { MayflySearchLine, MayflySearchLineOptions } from '../../src/core/search-line.ts'
+import type { MayflyNodeSlot } from '../../src/core/hosts/node-slot.ts'
+import type { MayflySearchLine, MayflySearchLineOptions } from '../../src/core/ui/state/search-line.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { STREAM } from '../../src/components/transcript-view.ts'

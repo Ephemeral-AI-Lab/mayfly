@@ -14,12 +14,12 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { MayflyComponentsService } from './components.ts'
-import { MayflyKeymapService } from './keymap.ts'
-import { MayflyScreenService } from './screen.ts'
-import { MayflyTerminalInfoService, backgroundFromRgb, probeTerminalBackground } from './terminal-info.ts'
-import { startMayflyTerminal, type MayflyTerminalRuntime } from './terminal.ts'
-import { mountMayflySurfaceRenderer } from './surface-renderer.ts'
-import { contextHintTranslator, mountContextHintLocale } from './context-hint-locale.ts'
+import { MayflyKeymapService } from './keys/keymap.ts'
+import { MayflyScreenService } from './hosts/screen.ts'
+import { MayflyTerminalInfoService, backgroundFromRgb, probeTerminalBackground } from './terminal/terminal-info.ts'
+import { startMayflyTerminal, type MayflyTerminalRuntime } from './terminal/terminal.ts'
+import { mountMayflySurfaceRenderer } from './hosts/surface-renderer.ts'
+import { contextHintTranslator, mountContextHintLocale } from './ui/compile/context-hint-locale.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-core'

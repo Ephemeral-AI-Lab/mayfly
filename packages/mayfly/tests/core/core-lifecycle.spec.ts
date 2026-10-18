@@ -30,13 +30,13 @@ vi.mock('@earendil-works/pi-tui', async importOriginal => {
   }
 })
 
-vi.mock('../../src/core/terminal-info.ts', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../src/core/terminal-info.ts')>()
+vi.mock('../../src/core/terminal/terminal-info.ts', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../src/core/terminal/terminal-info.ts')>()
   return { ...actual, probeTerminalBackground: hoisted.probe }
 })
 
-vi.mock('../../src/core/context-hint-locale.ts', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../src/core/context-hint-locale.ts')>()
+vi.mock('../../src/core/ui/compile/context-hint-locale.ts', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../src/core/ui/compile/context-hint-locale.ts')>()
   return { ...actual, mountContextHintLocale: hoisted.mountHints }
 })
 

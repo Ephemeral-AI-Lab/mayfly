@@ -5,7 +5,7 @@
  */
 import { describe, it } from 'vitest'
 import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { PROBE_PALETTE, caption, expectFrames, paint, probeComponents, type Frame } from './probe.ts'
 import { LEFT, RIGHT, sceneWalks, stepLabel, type Step } from './walks.ts'
 

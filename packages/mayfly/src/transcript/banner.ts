@@ -33,9 +33,9 @@
 import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { GutterComponent } from '../core/gutter.ts'
-import { readPresentation } from '../core/presentation.ts'
-import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS, flyInRows, markColumns, restRows, type MarkTextRun } from '../core/quad-mark.ts'
+import { GutterComponent } from '../core/text/gutter.ts'
+import { readPresentation } from '../core/theme/presentation.ts'
+import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS, flyInRows, markColumns, restRows, type MarkTextRun } from '../core/text/quad-mark.ts'
 import type { MayflyColorFn, MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
 // Empty type import carries the `agentDefaultModel` Context merge this
 // plugin's inject resolves.

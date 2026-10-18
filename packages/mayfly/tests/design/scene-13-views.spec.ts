@@ -7,9 +7,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { MayflyStatusEntry } from '../../../ui/src/index.ts'
-import { ViewsLane } from '../../src/core/views-lane.ts'
+import { ViewsLane } from '../../src/core/ui/state/views-lane.ts'
 import type { MayflyFocusable } from '../../src/core/types.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { buildStatusFooter } from '../../src/transcript/status-rows.ts'
 import { PROBE_PALETTE, expectFrames, probeComponents, type Frame } from './probe.ts'
 import { ALT_DOWN, sceneWalks, stepLabel } from './walks.ts'

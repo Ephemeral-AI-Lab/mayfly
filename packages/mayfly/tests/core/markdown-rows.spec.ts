@@ -10,16 +10,16 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { Markdown, type MarkdownTheme } from '@earendil-works/pi-tui'
-import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
-import { virtualRows } from '../../src/core/ui-rows.ts'
-import { expandMarkdownRules, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit } from '../../src/core/markdown-rows.ts'
-import { renderMermaidRows, splitRichDocument } from '../../src/core/rich-document.ts'
-import { CONTENT_SEGMENT_UNITS } from '../../src/core/content-segments.ts'
-import { DARK_COLORS } from '../../src/core/theme-dark.ts'
+import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content/content-rows.ts'
+import { virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
+import { expandMarkdownRules, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit } from '../../src/core/content/markdown-rows.ts'
+import { renderMermaidRows, splitRichDocument } from '../../src/core/content/rich-document.ts'
+import { CONTENT_SEGMENT_UNITS } from '../../src/core/content/content-segments.ts'
+import { DARK_COLORS } from '../../src/core/theme/theme-dark.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
-import { isVirtualRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui-rows.ts'
+import { isVirtualRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui/paint/ui-rows.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 
 /** The leaf's rows materialized through its production row source. */
 const contentNodeRows = (node: WindowedContentNode, width: number, env: ContentRowsEnv): string[] =>

@@ -1,2 +1,2 @@
 /** @module @ephemeral-ai/mayfly/theme-builtin */
-export * from './core/theme-builtin.ts'
+export * from './core/theme/theme-builtin.ts'

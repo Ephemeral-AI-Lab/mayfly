@@ -36,7 +36,7 @@ import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { activeAtToken, formatFileMention, type FileReferenceCandidate } from '@deepseek-ai/dsh-file-reference'
-import { GutterComponent, STREAM_GUTTER } from '../core/gutter.ts'
+import { GutterComponent, STREAM_GUTTER } from '../core/text/gutter.ts'
 import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import {

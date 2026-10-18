@@ -18,7 +18,7 @@
  * @module @ephemeral-ai/mayfly/transcript/splash
  */
 
-import { FLY_IN_TOTAL_MS, markColumns, scaleRows, stageRows } from '../core/quad-mark.ts'
+import { FLY_IN_TOTAL_MS, markColumns, scaleRows, stageRows } from '../core/text/quad-mark.ts'
 import type { MayflyColorFn, MayflySemanticColors } from '../core/types.ts'
 import { MARK_BEAT, MARK_ROWS } from './banner-art.ts'
 

@@ -7,13 +7,13 @@
 import { ScrollView, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { describe, expect, it } from 'vitest'
-import { clampRowsToWidth, padColumns } from '../../src/core/chrome.ts'
-import { glyphRows } from '../../src/core/glyphs.ts'
-import { ScrollRegion, type ScrollMemory } from '../../src/core/ui-scroll-region.ts'
-import { ColumnStack, RowStack } from '../../src/core/ui-stacks.ts'
-import { isVirtualRows, materializedRows, virtualRows } from '../../src/core/ui-rows.ts'
+import { clampRowsToWidth, padColumns } from '../../src/core/text/chrome.ts'
+import { glyphRows } from '../../src/core/text/glyphs.ts'
+import { ScrollRegion, type ScrollMemory } from '../../src/core/ui/paint/ui-scroll-region.ts'
+import { ColumnStack, RowStack } from '../../src/core/ui/paint/ui-stacks.ts'
+import { isVirtualRows, materializedRows, virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth } from '../../src/core/text/width.ts'
 
 /** A leaf whose rows come from a counting source: `reads` records every row pi-tui or a pipe asked for. */
 function virtualLeaf(length: number): { readonly component: Component, readonly rows: string[], readonly reads: number[] } {

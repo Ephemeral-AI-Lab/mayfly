@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyListItem, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { createRealSurface, probeComponents, PROBE_PALETTE, type RealSurface } from '../design/probe.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { plainText } from '../helpers.ts'
 
 const KEY = { up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', enter: '\r', esc: '\x1b', space: ' ', delete: '\x1b[3~', ctrlU: '\x15', end: '\x1b[F', home: '\x1b[H', pageDown: '\x1b[6~' } as const

@@ -17,7 +17,7 @@ import {
   resetDirectMayfly,
 } from './e2e-boot.ts'
 import { plainBlock } from './helpers.ts'
-import type { ViewsLane } from '../src/core/views-lane.ts'
+import type { ViewsLane } from '../src/core/ui/state/views-lane.ts'
 
 afterEach(async () => { await resetDirectMayfly() })
 

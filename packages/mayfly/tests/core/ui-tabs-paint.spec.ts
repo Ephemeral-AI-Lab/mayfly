@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyTabItem } from '../../../ui/src/index.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { isRail, paintTabs, tabsShape, type TabsFocus } from '../../src/core/ui-tabs-paint.ts'
-import { visibleWidth } from '../../src/core/width.ts'
+import { isRail, paintTabs, tabsShape, type TabsFocus } from '../../src/core/ui/paint/ui-tabs-paint.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 import { plain, plainColors } from '../helpers.ts'
 
 /** A palette that gives each tone its own SGR color, so a row's styling is exact and its width unchanged. */

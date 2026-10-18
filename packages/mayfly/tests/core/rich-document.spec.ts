@@ -7,8 +7,8 @@ import {
   MERMAID_MAX_SOURCE_BYTES,
   renderMermaidRows,
   splitRichDocument,
-} from '../../src/core/rich-document.ts'
-import { visibleWidth } from '../../src/core/width.ts'
+} from '../../src/core/content/rich-document.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 
 describe('splitRichDocument', () => {
   it('extracts only closed Mermaid fences and normalizes the language', () => {

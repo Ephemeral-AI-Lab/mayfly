@@ -6,14 +6,14 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyUiEvent } from '../../../ui/src/index.ts'
-import { MayflyKeymapService } from '../../src/core/keymap.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
+import { MayflyKeymapService } from '../../src/core/keys/keymap.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import type { MayflyKeymap } from '../../src/core/types.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import { PROBE_PALETTE, expectFrames, probeComponents, type Frame } from './probe.ts'
 import { sceneWalks, stepLabel } from './walks.ts'
 import { plainText } from '../helpers.ts'
-import { feedbackSpans } from '../../src/core/ui-interaction-notifications.ts'
+import { feedbackSpans } from '../../src/core/ui/state/ui-interaction-notifications.ts'
 
 /** The scene's node, as `ui-preview.mjs` builds it, with the real builders. */
 function sceneNode(reply?: string) {

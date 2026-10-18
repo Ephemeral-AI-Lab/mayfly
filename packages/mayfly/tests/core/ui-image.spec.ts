@@ -3,10 +3,10 @@ import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { FakeMayflyComponents } from '../interaction/fakes.ts'
-import { UiImagePainter } from '../../src/core/ui-image.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
-import { documentBlocks, documentBlockText } from '../../src/core/ui-interaction-document.ts'
-import { MAYFLY_UI_IMAGE_CACHE, MayflyUiImagesService, type MayflyUiImageBytes, type MayflyUiImageLoader } from '../../src/core/ui-images.ts'
+import { UiImagePainter } from '../../src/core/ui/paint/ui-image.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { documentBlocks, documentBlockText } from '../../src/core/ui/state/ui-interaction-document.ts'
+import { MAYFLY_UI_IMAGE_CACHE, MayflyUiImagesService, type MayflyUiImageBytes, type MayflyUiImageLoader } from '../../src/core/ui/paint/ui-images.ts'
 import {
   MAYFLY_UI_MAX_ATTACHMENT_ID,
   MAYFLY_UI_MAX_IMAGES,
@@ -15,7 +15,7 @@ import {
   validateMayflyStatusNode,
   validateMayflyUiNode,
   createAdmissionCache,
-} from '../../src/core/ui-validator.ts'
+} from '../../src/core/ui/admit/ui-validator.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import { flush, identity } from '../helpers.ts'
 

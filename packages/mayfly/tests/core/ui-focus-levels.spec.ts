@@ -1,6 +1,6 @@
 /** The pure decisions of the `←` ladder: where an unused ← goes, and whether a stepped control has ← left to use. */
 import { describe, expect, it } from 'vitest'
-import { canStepLeft, railGroupFor, type LevelControl } from '../../src/core/ui-focus-levels.ts'
+import { canStepLeft, railGroupFor, type LevelControl } from '../../src/core/ui/state/ui-focus-levels.ts'
 
 const rail = (group: string): LevelControl => ({ group, tabs: { rail: true, wizard: false, count: 3 } })
 const strip = (group: string): LevelControl => ({ group, tabs: { rail: false, wizard: false, count: 3 } })

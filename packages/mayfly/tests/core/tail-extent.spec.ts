@@ -6,8 +6,8 @@
  * @module @ephemeral-ai/mayfly/core/tests/tail-extent
  */
 import { describe, expect, it } from 'vitest'
-import { startMayflyTerminal } from '../../src/core/terminal.ts'
-import { virtualRows, type RowSource } from '../../src/core/ui-rows.ts'
+import { startMayflyTerminal } from '../../src/core/terminal/terminal.ts'
+import { virtualRows, type RowSource } from '../../src/core/ui/paint/ui-rows.ts'
 import { AltScreenTerminal } from './alt-screen-terminal.ts'
 import { waitForRender } from './fake-terminal.ts'
 

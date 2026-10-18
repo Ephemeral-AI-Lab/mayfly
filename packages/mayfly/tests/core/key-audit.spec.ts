@@ -6,8 +6,8 @@
 import { Context } from '@deepseek-ai/cordis'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { MayflyKeymapService } from '../../src/core/keymap.ts'
-import { DEFAULT_ACTION_KEYS, keyActionKeys, printableKey } from '../../src/core/key-actions.ts'
+import { MayflyKeymapService } from '../../src/core/keys/keymap.ts'
+import { DEFAULT_ACTION_KEYS, keyActionKeys, printableKey } from '../../src/core/keys/key-actions.ts'
 import { keyGrammar, type EscapeStep, type GrammarBinding, type GrammarControl, type GrammarState } from '../../src/core/ui-key-grammar.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import { ACTION_IMAGE_PASTE } from '../../src/interaction/paste-image.ts'
@@ -16,8 +16,8 @@ import type { MayflyKeyAction, MayflyKeyScope } from '../../src/core/types.ts'
 
 /** Defaults registered inline by their owners; `drift` proves this table still matches the source text. */
 const PRODUCT_KEY_ACTIONS: readonly (MayflyKeyAction & { readonly source: string, readonly handler?: () => void })[] = [
-  { id: 'mayfly.surface.next', keys: 'f6', source: '../../src/core/surface-renderer.ts', handler: () => {} },
-  { id: 'mayfly.surface.previous', keys: 'shift+f6', source: '../../src/core/surface-renderer.ts', handler: () => {} },
+  { id: 'mayfly.surface.next', keys: 'f6', source: '../../src/core/hosts/surface-renderer.ts', handler: () => {} },
+  { id: 'mayfly.surface.previous', keys: 'shift+f6', source: '../../src/core/hosts/surface-renderer.ts', handler: () => {} },
   { id: ACTION_IMAGE_PASTE, keys: 'ctrl+v', source: '../../src/interaction/paste-image.ts' },
   { id: ACTION_TOGGLE_COLLAPSE, keys: 'ctrl+o', source: '../../src/transcript/index.ts', handler: () => {} },
 ]

@@ -1,12 +1,12 @@
 /** The list painter: rows from their state bits, bodies, wrapping, windowing over rows of varying height, and the strip ladder. */
 import { describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyListItem, type MayflyListSegment } from '../../../ui/src/index.ts'
-import { renderList, type ListRenderExtras, type PatternFocus } from '../../src/core/ui-patterns.ts'
-import { FlowListPainter, flowListCanVirtualize, type ListRowSpec } from '../../src/core/ui-list-paint.ts'
-import { UiRowCache } from '../../src/core/ui-row-cache.ts'
-import { isVirtualRows, virtualRows } from '../../src/core/ui-rows.ts'
+import { renderList, type ListRenderExtras, type PatternFocus } from '../../src/core/ui/state/ui-patterns.ts'
+import { FlowListPainter, flowListCanVirtualize, type ListRowSpec } from '../../src/core/ui/paint/ui-list-paint.ts'
+import { UiRowCache } from '../../src/core/ui/paint/ui-row-cache.ts'
+import { isVirtualRows, virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { visibleWidth } from '../../src/core/width.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 import { identity, plain, plainColors } from '../helpers.ts'
 
 const colors = plainColors()

@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import type { MayflyFormField } from '../../../ui/src/index.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { editorWidth, formHeading, formLabelWidth, matchingSuggestions, paintFormField, type FieldDecor, type FormFieldPaint } from '../../src/core/ui-form-paint.ts'
-import { visibleWidth } from '../../src/core/width.ts'
+import { editorWidth, formHeading, formLabelWidth, matchingSuggestions, paintFormField, type FieldDecor, type FormFieldPaint } from '../../src/core/ui/state/ui-form-paint.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 import { identity, plain, plainColors } from '../helpers.ts'
 
 const colors = plainColors()
