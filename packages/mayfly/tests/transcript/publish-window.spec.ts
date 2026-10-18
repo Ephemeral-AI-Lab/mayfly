@@ -7,8 +7,8 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
-import type { TranscriptEntryModel } from '../../src/frontend/models.ts'
-import { createTranscriptModel, PUBLISH_INTERVAL_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
+import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
+import { createTranscriptModel, LIVE_PUBLISH_MS, PUBLISH_INTERVAL_MS, STREAM_WATCHDOG_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
 const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, images: [] })
 
@@ -18,14 +18,27 @@ const pending = (id: string): TranscriptEntryModel => ({
   detail: 'ls', arguments: '{}', startedAt: 0,
 } as unknown as TranscriptEntryModel)
 
+/** A model carrying one live attempt: the durable step is open and the draft holds its text. */
+const liveModel = (text: string): TranscriptModel => ({
+  kind: 'transcript', id: 'a', generation: 0,
+  entries: [user(1, 'go')],
+  streaming: true,
+  live: {
+    turn: 1,
+    step: 0,
+    entries: [{ kind: 'transcript-assistant', id: 'assistant:1:0', seq: 9, updatedSeq: 9, renderRevision: `live:${text}`, turn: 1, step: 0, text, streaming: true }],
+  },
+  turns: [{ turn: 1, startedAt: 0 }],
+})
+
 /** A controller over a screen that counts publishes, and a clock the test moves. */
-function bench(initial: TranscriptEntryModel[] = [user(1, 'one')]) {
+function bench(initial: TranscriptEntryModel[] | TranscriptModel = [user(1, 'one')]) {
   const published: unknown[] = []
   const lease = {
     id: 'transcript.conversation', disposed: false,
     set: (node: unknown) => { published.push(node) }, setTurns: () => {}, setMarked: () => {}, track: () => {},
     focus: () => {}, release: () => {}, setKeys: () => {}, spotlight: () => {}, focusRow: () => {}, cursor: () => undefined,
-    trackedRow: () => undefined, dispose: () => {},
+    trackedRow: () => undefined, cursorRow: () => undefined, dispose: () => {},
   } as unknown as MayflyNodeSlot
   const screen = {
     mountNodeSlot: () => lease, followContent: vi.fn(), requestRender: vi.fn(), watchContentTail: () => () => {},
@@ -46,13 +59,13 @@ function bench(initial: TranscriptEntryModel[] = [user(1, 'one')]) {
   const listeners = new Set<(now: number) => void>()
   const tick = { subscribe: (listener: (now: number) => void) => { listeners.add(listener); return () => { listeners.delete(listener) } } }
   const fire = (at: number): void => { for (const listener of [...listeners]) listener(at) }
-  let model = createTranscriptModel('a', initial)
+  let model = Array.isArray(initial) ? createTranscriptModel('a', initial) : initial
   const controller = new TranscriptController({ t: key => key, queued: () => [], clock, tick })
   controller.setView('main', () => model)
   controller.show('main')
   controller.attach(screen)
   published.length = 0
-  return { controller, published, screen, advance, timers, fire, setModel: (next: TranscriptEntryModel[]) => { model = createTranscriptModel('a', next) } }
+  return { controller, published, screen, advance, timers, fire, setModel: (next: TranscriptEntryModel[] | TranscriptModel) => { model = Array.isArray(next) ? createTranscriptModel('a', next) : next } }
 }
 
 describe('the stream publish window', () => {
@@ -120,5 +133,37 @@ describe('the stream publish window', () => {
     // A tick after the quiet period publishes at once, as before.
     fire(2_000)
     expect(published).toHaveLength(2)
+  })
+
+  it('publishes a live turn on the live budget, forces a settlement, and catches a wake that never arrived', () => {
+    const { controller, published, advance, setModel } = bench()
+    setModel(liveModel('one'))
+    controller.refresh()
+    advance(PUBLISH_INTERVAL_MS)
+    expect(published).toHaveLength(1)
+    // The next deltas coalesce into one publish at the live budget.
+    setModel(liveModel('two'))
+    controller.refresh()
+    setModel(liveModel('three'))
+    controller.refresh()
+    expect(published).toHaveLength(1)
+    advance(LIVE_PUBLISH_MS)
+    expect(published).toHaveLength(2)
+    // A settlement bypasses the window.
+    setModel(liveModel('settled'))
+    controller.refresh(true)
+    expect(published).toHaveLength(3)
+    // A source that moved without a wake is what the watchdog floor catches.
+    setModel(liveModel('lost'))
+    advance(STREAM_WATCHDOG_MS)
+    expect(published).toHaveLength(4)
+    // Leaving the live turn stops the floor: no more watchdog publishes while it is quiet.
+    setModel(createTranscriptModel('a', [user(1, 'done')], false))
+    controller.refresh()
+    advance(LIVE_PUBLISH_MS)
+    expect(published).toHaveLength(5)
+    advance(STREAM_WATCHDOG_MS * 4)
+    expect(published).toHaveLength(5)
+    controller.dispose()
   })
 })

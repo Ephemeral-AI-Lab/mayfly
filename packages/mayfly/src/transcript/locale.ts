@@ -195,6 +195,8 @@ export const ACTIVITY_LOCALE = identityCatalog({
   'Running {count} tools': '正在运行 {count} 个工具',
   'Rate limited': '请求被限流',
   'Provider error': '服务商出错',
+  'Transport failed': '传输失败',
+  'Transport failed · {cause}': '传输失败 · {cause}',
   'retrying in {seconds}s · {attempt}': '{seconds} 秒后重试 · {attempt}',
   'retrying {attempt}…': '正在重试 {attempt}…',
   'Context {percent}% full · /compact now': '上下文已用 {percent}% · 可立即 /compact',

@@ -1,0 +1,52 @@
+grid 60x30 cursor none
+|
+|    ▗▘   ▝▖     mayfly scenario
+| ▄▄▖█▛███▜█▗▄▄  ephemeral agents, enduring works
+|  ▄▖█▙███▟█▗▄   deepseek-v4-pro · deepseek-official
+|    ▝▜▀▀▀▛▘     ~/workspace
+|
+|  » Rewrite the parser entry point around the token
+|    stream.
+|
+|  ▾ 1 tool call · Ctrl+O to expand
+|
+|  ✻ Thinking · 1s
+|    Read the current entry point, then rewrite it around …
+|
+|  ● Section 1: rendering pipeline notes
+|
+|    The renderer walks the tree once per frame and only
+|    repaints rows whose content changed since the last
+|    frame. This paragraph is long enough to wrap at
+|    ordinary widths, with inline code, emphasis, and a
+|    link (https://example.com/1) to exercise the inline
+|    painter.
+|
+|  ⡀ Deep diving · 0s
+|    ⎿ Tip: Ctrl+O to expand tool details
+|                  Back to bottom · Ctrl+↓  Alt+↑ convers…
+|╭────────────────────────── Rewrite the parser entry point ╮
+|│ >  Type a follow-up to queue it · @ files · # skills     │
+|╰──────────────────────────────────────────────────────────╯
+| deepseek-v4-pro  workspace               ctx ▱▱▱▱▱▱▱▱▱▱ 1%
+styles
+1: 4-5 fg:#9a86e6; 9-10 fg:#9a86e6; 16-21 fg:#9a86e6 b; 22-30 fg:#5c6476
+2: 1-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-13 fg:#cfc6f5; 16-47 fg:#c9c0f0
+3: 2-3 fg:#cfc6f5; 4-10 fg:#9a86e6; 11-12 fg:#cfc6f5; 16-50 fg:#e9e6f4
+4: 4-10 fg:#9a86e6; 16-26 fg:#9aa3b8
+6: 2-3 fg:#9a86e6; 4-59 fg:#9a86e6 b
+7: 4-59 fg:#9a86e6 b
+9: 2-33 fg:#9aa3b8
+11: 2-16 fg:#9aa3b8
+12: 2-3 fg:#ededf2; 4-57 fg:#9aa3b8
+14: 2-3 fg:#ededf2; 4-38 fg:#f5f5f7 b
+16: 8-15 fg:#f5f5f7
+19: 26-36 fg:#c9c0f0; 39-46 fg:#ededf2
+20: 4-7 fg:#ededf2; 8-31 fg:#5c6476
+23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
+24: 0-39 fg:#9aa3b8
+25: 17-41 fg:#ededf2 r; 43-55 fg:#9aa3b8
+26: 0-27 fg:#45406b; 28-57 fg:#f5f5f7 b; 58-59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-53 fg:#5c6476; 59 fg:#45406b
+28: 0-59 fg:#45406b
+29: 1-15 fg:#ededf2; 18-26 fg:#9aa3b8; 42-45 fg:#ededf2; 46-55 fg:#9aa3b8; 56-58 fg:#ededf2

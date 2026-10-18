@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { MayflyListNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
 import type { TranscriptEntryModel } from '../../src/frontend/models.ts'
-import { createTranscriptModel, PUBLISH_INTERVAL_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
+import { createTranscriptModel, LIVE_PUBLISH_MS, PUBLISH_INTERVAL_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
 const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, images: [] })
 
@@ -18,7 +18,7 @@ function fakeScreen() {
   const lease: MayflyNodeSlot = {
     id: 'transcript.conversation', get disposed() { return slot.disposed },
     set: (node) => { slot.published.push(node) }, setTurns: (latest) => { slot.turns = latest }, setMarked: () => {},
-    focus: () => {}, release: () => {}, setKeys: () => {}, spotlight: () => {}, focusRow: () => {}, track: () => {}, trackedRow: () => undefined, cursor: () => undefined,
+    focus: () => {}, release: () => {}, setKeys: () => {}, spotlight: () => {}, focusRow: () => {}, track: () => {}, trackedRow: () => undefined, cursorRow: () => undefined, cursor: () => undefined,
     dispose: () => { slot.disposed = true },
   }
   const mounted: { id: string, region: string }[] = []
@@ -111,15 +111,17 @@ describe('TranscriptController', () => {
     // A data-driven republish waits for the publish window; the newest queue arrives with the trailing publish.
     queued.push({ id: 'q', text: 'later', lane: 'turn' })
     controller.republish()
-    expect(timers.size).toBe(1)
+    // The trailing publish and the live-turn watchdog the streaming model armed.
+    expect(timers.size).toBe(2)
     expect(latest()!.items.at(-1)!.label).not.toContain('later')
-    advance(PUBLISH_INTERVAL_MS)
+    advance(LIVE_PUBLISH_MS)
     expect(latest()!.items.at(-1)!.label).toContain('later')
-    // A key-driven disclosure change publishes at once instead of waiting.
+    // A key-driven disclosure change publishes at once instead of waiting; the watchdog stays armed.
     controller.toggleRecent()
-    expect(timers.size).toBe(0)
+    expect(timers.size).toBe(1)
     controller.republish()
     controller.dispose()
+    expect(timers.size).toBe(0)
     expect(slot.disposed).toBe(true)
   })
 })

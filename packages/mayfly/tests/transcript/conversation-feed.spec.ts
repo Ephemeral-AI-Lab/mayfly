@@ -128,6 +128,34 @@ describe('SessionConversationFeed', () => {
     expect(notify).toHaveBeenCalledOnce()
   })
 
+  it('wakes at once when a projection value settles the live step or closes its turn', () => {
+    const session = { id: 'settle' } as unknown as Session
+    const agent = { id: SessionId('settle'), session } as unknown as Agent
+    let changed: ((target: Session, key: string, value: unknown, seq: number) => void) | undefined
+    const notify = vi.fn()
+    const feed = new SessionConversationFeed(
+      { snapshot: () => ({ asOfSeq: 0, values: {} }), onChanged: listener => { changed = listener; return () => {} } },
+      session,
+      agent,
+      { subscribe: () => () => {}, get: () => ({ turn: 1, step: 0 }) as LiveAssistantDraft },
+      notify,
+    )
+    feed.take()
+    notify.mockClear()
+    // The durable answer for the live step lands: a forced wake, not a coalescable data change.
+    changed!(session, 'mayflyConversation', { entries: [], streaming: true, settledSteps: ['1:0'], turns: [] }, 5)
+    expect(notify).toHaveBeenCalledWith(true)
+    feed.take()
+    notify.mockClear()
+    changed!(session, 'mayflyConversation', { entries: [], streaming: true, settledSteps: [], turns: [{ turn: 1, startedAt: 0, endedAt: 9 }] }, 6)
+    expect(notify).toHaveBeenCalledWith(true)
+    feed.take()
+    notify.mockClear()
+    changed!(session, 'mayflyConversation', { entries: [], streaming: true, settledSteps: [], turns: [{ turn: 1, startedAt: 0 }] }, 7)
+    expect(notify).toHaveBeenCalledWith(false)
+    feed.dispose()
+  })
+
   it('wakes only for its exact Agent draft and forgets it once disposed', () => {
     const session = { id: 'live' } as unknown as Session
     const agent = { id: SessionId('live'), session } as unknown as Agent

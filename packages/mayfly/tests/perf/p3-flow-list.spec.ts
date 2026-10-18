@@ -90,6 +90,30 @@ describe('the flow list row source', () => {
     expect(painted(prepended, cache)).toEqual(whole(prepended, cache))
   })
 
+  it('bands the cursor block of a focused flow list exactly as a whole paint does', () => {
+    const cache = new UiRowCache()
+    const band = { ...plainColors(), selectedBg: (text: string) => `\u001b[48;5;236m${text}\u001b[49m` }
+    const list = [
+      freezeWire({ id: 'head', label: 'head' }),
+      freezeWire({ id: 'call', label: 'call', under: 'head' }),
+      freezeWire({ id: 'other', label: 'other' }),
+    ]
+    const options = (rows: readonly ListRowSpec[]): ListPaintOptions => ({ ...paintOptions(cache, rows), cursorId: 'head', focused: true })
+    const listNode = ui.list({ id: 'stream', role: 'browse', selectedIds: [], marker: 'band', items: list })
+    const wholeRows = paintList(listNode, WIDTH, Number.MAX_SAFE_INTEGER, band, { ...options(specs(list)), total: list.length, before: 0, after: 0 })
+    const painter = new FlowListPainter()
+    painter.sync({ node: listNode, model: model(list), width: WIDTH, colors: band, options: options([]) })
+    const rows = Array.from({ length: painter.length }, (_, index) => painter.row(index))
+    expect(rows).toEqual(wholeRows)
+    // The band covers the cursor row and the rows under it (a tool run's calls), not the rest of the list.
+    expect(rows.filter(row => row.includes('\u001b[48;5;236m'))).toHaveLength(2)
+    // Moving the cursor rebuilds the source: only the new block keeps the band.
+    const moved = new FlowListPainter()
+    moved.sync({ node: listNode, model: model(list), width: WIDTH, colors: band, options: { ...options([]), cursorId: 'other' } })
+    const movedRows = Array.from({ length: moved.length }, (_, index) => moved.row(index))
+    expect(movedRows.filter(row => row.includes('\u001b[48;5;236m'))).toHaveLength(1)
+  })
+
   it('locates the line of an item and reports the whole content height', () => {
     const list = items()
     const cache = new UiRowCache()

@@ -540,11 +540,17 @@ describe('mayfly-pane-activity', () => {
     await harness.dispose()
   })
 
-  it('reads a missing in-flight list defensively when a tick republishes the tool row', async () => {
+  it('reads a missing in-flight list defensively when a tick rotation repaints the tool row', async () => {
     const harness = await bootFacts({ phase: 'tool', inFlight: [{ callId: 'c1', name: 'bash', detail: 'one' }] })
     harness.mutateFacts({ inFlight: undefined })
+    // A tool row carries no time tail: the ordinary ticks leave it alone, and the fifteen-tick tip rotation repaints it.
+    const revision = (): number => harness.ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')!.revision
+    const before = revision()
     harness.tick.fire(NOW + 1_000)
-    expect(rows(harness.screen)[0]).toContain('Running commands')
+    expect(revision()).toBe(before)
+    for (let tick = 2; tick <= 15; tick += 1) harness.tick.fire(NOW + tick * 1_000)
+    expect(revision()).toBeGreaterThan(before)
+    expect(rows(harness.screen).some(row => row.includes('Running commands'))).toBe(true)
     await harness.dispose()
   })
 

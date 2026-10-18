@@ -70,6 +70,7 @@ function bench(entries: TranscriptEntryModel[] = [user(1, 'one')], queued: { id:
     setKeys: (keys: Record<string, string>) => { state.keys.push(keys) },
     spotlight: (on: boolean) => { state.spotlit.push(on) },
     trackedRow: () => trackedRow,
+    cursorRow: () => undefined,
     dispose: () => {},
   } as unknown as MayflyNodeSlot
   const tail = { away: false, top: 0, viewport: 10 }

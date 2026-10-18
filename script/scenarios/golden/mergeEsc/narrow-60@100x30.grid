@@ -26,7 +26,7 @@ grid 60x30 cursor none
 |  ✻ Stopped after 0s · done 09:00
 |                                      interrupt requested
 |╭─────────────────────────────── Watch the styles while we ╮
-|│ >  Ask anything · / commands · @ files · # skills        │
+|│ >                                                        │
 |╰──────────────────────────────────────────────────────────╯
 | deepseek-flash  workspace  ● agents 0/2  ● jobs 1   ctx 1%
 styles
@@ -46,6 +46,6 @@ styles
 24: 2-32 fg:#9aa3b8
 25: 38-56 fg:#ededf2
 26: 0-32 fg:#45406b; 33-57 fg:#f5f5f7 b; 58-59 fg:#45406b
-27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-50 fg:#5c6476; 59 fg:#45406b
+27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 59 fg:#45406b
 28: 0-59 fg:#45406b
 29: 1-14 fg:#ededf2; 17-25 fg:#9aa3b8; 28 fg:#c9c0f0; 29 fg:#ededf2; 30-36 fg:#9aa3b8; 37-39 fg:#ededf2; 42 fg:#c9c0f0; 43 fg:#ededf2; 44-48 fg:#9aa3b8; 49 fg:#ededf2; 53-58 fg:#ededf2

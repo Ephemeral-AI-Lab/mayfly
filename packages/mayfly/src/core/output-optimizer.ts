@@ -349,6 +349,8 @@ export function createOutputOptimizer(
       return terminal.kittyProtocolActive
     },
     moveBy(lines) {
+      // A direct cursor movement writes outside the frame grammar: the shadow screen is no longer knowable.
+      invalidate()
       terminal.moveBy(lines)
     },
     hideCursor() {
@@ -358,12 +360,15 @@ export function createOutputOptimizer(
       terminal.showCursor()
     },
     clearLine() {
+      invalidate()
       terminal.clearLine()
     },
     clearFromCursor() {
+      invalidate()
       terminal.clearFromCursor()
     },
     clearScreen() {
+      invalidate()
       terminal.clearScreen()
     },
     setTitle(title) {
