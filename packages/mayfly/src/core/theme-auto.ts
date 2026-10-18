@@ -11,7 +11,7 @@
  */
 
 import type { Context, Fiber } from '@deepseek-ai/cordis'
-import { paletteColors, paletteModel } from './palettes.ts'
+import { paletteColors } from './palettes.ts'
 import { defineThemeService } from './theme-palette.ts'
 // Empty type imports carry the `mayflyTerminalInfo` Context merge and the
 // `mayfly/terminal-theme-changed` Events merge used below.
@@ -25,7 +25,6 @@ export const name = 'mayfly-theme-auto'
 export const inject = ['mayflyTerminalInfo']
 
 const PALETTES = { dark: paletteColors('dark'), light: paletteColors('light') } as const
-const MODELS = { dark: paletteModel('dark'), light: paletteModel('light') } as const
 
 /**
  * Provide the scheme-matching built-in palette as `ctx.mayflyTheme`, swapping
@@ -34,7 +33,7 @@ const MODELS = { dark: paletteModel('dark'), light: paletteModel('light') } as c
  */
 export function apply(ctx: Context): void {
   let current: 'dark' | 'light' = ctx.mayflyTerminalInfo.background ?? 'dark'
-  let fiber: Fiber = ctx.plugin(defineThemeService(PALETTES[current], MODELS[current]))
+  let fiber: Fiber = ctx.plugin(defineThemeService(PALETTES[current]))
   // Swaps serialize through this chain so rapid scheme reports cannot
   // interleave a remount with the previous dispose.
   let swap: Promise<void> = Promise.resolve()
@@ -45,7 +44,7 @@ export function apply(ctx: Context): void {
       // Dispose before remounting: Cordis rejects a second `mayflyTheme`
       // registration while the previous provider is still live.
       await fiber.dispose()
-      fiber = ctx.plugin(defineThemeService(PALETTES[scheme], MODELS[scheme]))
+      fiber = ctx.plugin(defineThemeService(PALETTES[scheme]))
       await fiber
     })
     return swap

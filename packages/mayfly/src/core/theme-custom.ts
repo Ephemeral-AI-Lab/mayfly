@@ -14,8 +14,8 @@
 import { readFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { PALETTE_KEYS, paletteColors, paletteOf, type MayflyPaletteKey } from './palettes.ts'
-import { BACKGROUND_TOKENS, LOGO_INK_COUNT, backgroundColor, defineThemeService, foregroundColor, themeModel } from './theme-palette.ts'
+import { PALETTE_KEYS, paletteColors, type MayflyPaletteKey } from './palettes.ts'
+import { BACKGROUND_TOKENS, LOGO_INK_COUNT, backgroundColor, defineThemeService, foregroundColor } from './theme-palette.ts'
 import type { MayflyColorFn, MayflySemanticColors } from './types.ts'
 
 /** Stable Cordis plugin name. */
@@ -45,24 +45,21 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
   const logger = ctx.logger(name)
-  const palette = paletteOf(config.base)
   const base = paletteColors(config.base)
-  const baseModel = themeModel('custom', 'Custom', palette.dark, palette.foregrounds, palette.backgrounds)
   let parsed: unknown
   try {
     parsed = JSON.parse(await readFile(config.path, 'utf8'))
   } catch {
     logger.warn('cannot load theme file %s; using the %s base palette', config.path, config.base)
-    ctx.plugin(defineThemeService(base, baseModel))
+    ctx.plugin(defineThemeService(base))
     return
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     logger.warn('theme file %s is not a token object; using the %s base palette', config.path, config.base)
-    ctx.plugin(defineThemeService(base, baseModel))
+    ctx.plugin(defineThemeService(base))
     return
   }
   const overrides: Record<string, MayflyColorFn | readonly MayflyColorFn[]> = {}
-  const rawOverrides: Record<string, string> = {}
   for (const [token, value] of Object.entries(parsed)) {
     if (!Object.hasOwn(base, token)) {
       logger.warn('ignoring unknown theme token %s', token)
@@ -81,7 +78,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       continue
     }
     overrides[token] = BACKGROUND_TOKENS.has(token) ? backgroundColor(value) : foregroundColor(value)
-    rawOverrides[token] = value
   }
-  ctx.plugin(defineThemeService(Object.freeze({ ...base, ...overrides }) as MayflySemanticColors, { ...baseModel, colors: Object.freeze({ ...baseModel.colors, ...rawOverrides }) }))
+  ctx.plugin(defineThemeService(Object.freeze({ ...base, ...overrides }) as MayflySemanticColors))
 }

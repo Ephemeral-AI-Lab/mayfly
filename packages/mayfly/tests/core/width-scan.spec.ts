@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import { clampRowsToWidth } from '../../src/core/chrome.ts'
 import { renderChartRows } from '../../src/core/chart-renderer.ts'
-import { alignDiffLines, paintDiffRows } from '../../src/core/diff-align.ts'
+import { alignDiffLines, diffModel, paintDiffSegment } from '../../src/core/diff-align.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { GutterComponent } from '../../src/core/gutter.ts'
 import { renderMermaidRows } from '../../src/core/rich-document.ts'
@@ -247,8 +247,10 @@ describe('core width-scan', () => {
     it(`diff band painter survives ${name}`, () => {
       // Real SGR bands: padding must land exactly on the width, never past it.
       const ops = alignDiffLines(`keep\n${text}\nkeep`, `keep\nadded ${text}\nkeep`)
+      const model = diffModel(ops)
       for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`DiffBands/${name}`, paintDiffRows(ops, width, { visibleWidth, truncateToWidth }, DARK_COLORS), width)
+        const rows = model.segments.flatMap(segment => paintDiffSegment(segment, model.digits, width, { visibleWidth, truncateToWidth }, DARK_COLORS, { numbered: true, start: 1, beforeStart: 1 }))
+        expectLinesFit(`DiffBands/${name}`, rows, width)
       }
     })
 

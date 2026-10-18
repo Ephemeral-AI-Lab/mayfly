@@ -3,7 +3,7 @@
  */
 import type { MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import { admittedListExpanded, admittedListIndex, admittedListItem } from './ui-validator.ts'
-import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
+import { untranslated, type UiTranslate } from './ui-interaction-surface.ts'
 import { listSelectedIds } from './ui-list-selection.ts'
 
 export interface UiChoiceState {

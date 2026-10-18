@@ -10,7 +10,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { PALETTE_KEYS, paletteColors, paletteModel, type MayflyPaletteKey } from './palettes.ts'
+import { PALETTE_KEYS, paletteColors, type MayflyPaletteKey } from './palettes.ts'
 import { defineThemeService } from './theme-palette.ts'
 
 /** Stable Cordis plugin name. */
@@ -32,5 +32,5 @@ export const Config: z<Config> = z.object({
  * @param config - validated plugin config.
  */
 export function apply(ctx: Context, config: Config): void {
-  ctx.plugin(defineThemeService(paletteColors(config.palette), paletteModel(config.palette)))
+  ctx.plugin(defineThemeService(paletteColors(config.palette)))
 }

@@ -95,14 +95,6 @@ const components = {
   wrapText: wrapTextWithAnsi,
   truncateToWidth,
   createEditor: createTestEditor,
-  createMarkdown: (options?: { text?: string }) => {
-    let value = options?.text ?? ''
-    return {
-      setText: (text: string) => { value = text },
-      render: (width: number) => wrapTextWithAnsi(value, width),
-      invalidate: () => {},
-    }
-  },
 } as MayflyComponents
 
 function fixture(overrides: Partial<MayflyUiCompilerOptions> = {}): { options: MayflyUiCompilerOptions, events: unknown[], viewport: { columns: number, rows: number } } {

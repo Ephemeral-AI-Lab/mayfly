@@ -1,6 +1,6 @@
 /**
  * The shared chrome helper layer (D25): pure `string[]` post-processing of
- * pi-tui's editor rows and the panel rules. Everything here is theme-agnostic
+ * pi-tui's editor rows and rendered blocks. Everything here is theme-agnostic
  * math — callers inject the paint function — so the module carries no pi-tui
  * component machinery and no lifecycle. The module is core-private; renderer
  * adapters use narrow `MayflyComponents` methods rather than importing its
@@ -11,9 +11,8 @@
  * @module mayfly-core/chrome
  */
 
-import { sliceByColumn, truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
+import { sliceByColumn, visibleWidth } from '@earendil-works/pi-tui'
 import { mapRows } from './ui-rows.ts'
-import { OVERFLOW_ELLIPSIS } from './width.ts'
 
 // oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match ANSI SGR escape sequences
 const ANSI_SGR = /\x1b\[[0-9;]*m/g
@@ -172,54 +171,6 @@ export function splitEditorRows(rows: readonly string[]): { readonly content: st
   const bottom = rows.findIndex((row, index) => index > 0 && isRule(row))
   if (bottom < 0) return { content: rows.slice(1), list: [] }
   return { content: rows.slice(1, bottom), list: rows.slice(bottom + 1) }
-}
-
-const identity = (text: string): string => text
-
-/** Options for {@link topRule}. */
-interface TopRuleOptions {
-  /** Title text rendered after the left corner, typically pre-styled (e.g. bold ` BTW `). */
-  readonly title?: string
-  /** Styling for the title; defaults to unstyled. */
-  readonly titlePaint?: (text: string) => string
-  /** Hint text rendered after the title and a `─ ` joiner, typically pre-styled. */
-  readonly hint?: string
-  /** Styling for the hint; defaults to unstyled. */
-  readonly hintPaint?: (text: string) => string
-  /** Styling for the corners, the joiner, and the dash fill; defaults to unstyled. */
-  readonly paint?: (text: string) => string
-}
-
-/**
- * Render a panel's top border with an in-border title — the kimi
- * `╭ BTW ─ Esc close ────╮` row. The joiner `─ ` appears only when both a
- * title and a hint are present; the composite title+hint is clipped
- * ANSI-safe (styled text is never cut mid-SGR) with the dash fill taking the
- * remainder of the inner width. Callers guard `width >= 4` before invoking.
- * @param width - the full render width of the panel row.
- * @param options - the title, hint, and their paints.
- * @returns the single top-border row.
- */
-export function topRule(width: number, options: TopRuleOptions = {}): string {
-  const paint = options.paint ?? identity
-  const innerWidth = Math.max(1, width - 2)
-  const title = options.title
-  const hint = options.hint
-  const composite =
-    title !== undefined && hint !== undefined
-      ? `${(options.titlePaint ?? identity)(title)}${paint('─ ')}${(options.hintPaint ?? identity)(hint)}`
-      : title !== undefined
-        ? (options.titlePaint ?? identity)(title)
-        : hint !== undefined
-          ? (options.hintPaint ?? identity)(hint)
-          : ''
-  const clipped =
-    composite === ''
-      ? ''
-      : visibleWidth(composite) > innerWidth
-        ? truncateToWidth(composite, innerWidth, OVERFLOW_ELLIPSIS)
-        : composite
-  return paint('╭') + clipped + paint('─'.repeat(Math.max(0, innerWidth - visibleWidth(clipped)))) + paint('╮')
 }
 
 /**

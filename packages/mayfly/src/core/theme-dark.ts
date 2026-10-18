@@ -10,7 +10,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { paletteColors, paletteModel, paletteOf } from './palettes.ts'
+import { paletteColors, paletteOf } from './palettes.ts'
 import { defineThemeService } from './theme-palette.ts'
 import type { MayflySemanticColors } from './types.ts'
 
@@ -27,7 +27,7 @@ export const DARK_COLORS: MayflySemanticColors = paletteColors('dark')
  * The default `mayflyTheme` provider. Exposes the frozen semantic color
  * table; unregistered automatically when the plugin's fiber unloads.
  */
-export class MayflyThemeService extends defineThemeService(DARK_COLORS, paletteModel('dark')) {}
+export class MayflyThemeService extends defineThemeService(DARK_COLORS) {}
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-theme-dark'

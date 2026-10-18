@@ -3,7 +3,6 @@ import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 
 export type Action = Readonly<{ readonly kind: string; readonly [key: string]: unknown }>
 export interface ToolPresentationModel { readonly kind: 'tool'; readonly id: string; readonly name: string; readonly call?: MayflyUiNode; readonly result?: MayflyUiNode; readonly expanded?: boolean; readonly action?: Action }
-export interface ThemeModel { readonly kind: 'theme'; readonly id: string; readonly name: string; readonly colors: Readonly<Record<string, string>>; readonly dark: boolean }
 export interface TranscriptImageModel { readonly attachmentId: string; readonly mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; readonly bytes: number; readonly width: number; readonly height: number; readonly name?: string | undefined; readonly originalDimensions?: Readonly<{ readonly width: number; readonly height: number }> | undefined }
 interface TranscriptEntryBase {
   readonly id: string

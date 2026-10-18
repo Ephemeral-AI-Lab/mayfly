@@ -16,9 +16,18 @@ import { admittedListIndex, admittedListItem, createAdmissionCache, validateMayf
 import type { MayflyWorkCounters } from './ui-work-counters.ts'
 import { moveDocument, reconcileDocument, type UiDocumentAnchor, type UiDocumentState } from './ui-interaction-document.ts'
 import { admitNotificationMessage, UiNotificationStore } from './ui-interaction-notifications.ts'
-import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
+import { interpolateLocaleMessage } from '../frontend/locale.ts'
 import { listSelectedIds } from './ui-list-selection.ts'
 import { visibleWidth } from './width.ts'
+
+/** Values interpolated into core-owned interaction strings. */
+export type UiTranslateValues = Readonly<Record<string, string | number>>
+
+/** One core-owned string lookup: the bound interaction locale, or the English interpolation fallback. */
+export type UiTranslate = (key: string, values?: UiTranslateValues) => string
+
+/** Interpolate `{name}` placeholders without a catalog. */
+export const untranslated: UiTranslate = (key, values) => interpolateLocaleMessage(key, values)
 
 export interface UiSurfaceSnapshot {
   readonly id: string

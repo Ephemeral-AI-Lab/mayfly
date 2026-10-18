@@ -22,7 +22,7 @@ const promptStandIn = (): MayflyFocusable => ({ focused: false, render: () => ['
 import { FakeTerminal } from './fake-terminal.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
-import { untranslated } from '../../src/core/ui-interaction-locale.ts'
+import { untranslated } from '../../src/core/ui-interaction-surface.ts'
 
 class Scope {
   private readonly cleanups: Array<() => void> = []

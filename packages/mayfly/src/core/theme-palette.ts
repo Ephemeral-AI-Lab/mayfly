@@ -10,7 +10,6 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { MayflyColorFn, MayflySemanticColors, MayflyTheme } from './types.ts'
-import type { ThemeModel } from '../frontend/models.ts'
 import { presentedColors, readPresentation } from './presentation.ts'
 
 /**
@@ -55,11 +54,6 @@ export type MayflyBackgroundHexes = Record<typeof BACKGROUND_TOKEN_NAMES[number]
  */
 export type MayflyForegroundHexes = Record<Exclude<keyof MayflySemanticColors, keyof MayflyBackgroundHexes | 'logoInks'>, string>
 
-/** Build the renderer-neutral companion model for a semantic palette. */
-export function themeModel(id: string, name: string, dark: boolean, foregrounds: MayflyForegroundHexes, backgrounds: MayflyBackgroundHexes): Omit<ThemeModel, 'colors'> & { readonly colors: Readonly<Record<string, string>> } {
-  return { kind: 'theme', id, name, dark, colors: Object.freeze({ ...foregrounds, ...backgrounds }) }
-}
-
 /**
  * Build the frozen semantic color table from palette hexes.
  * @param foregrounds - one hex per foreground token.
@@ -85,7 +79,7 @@ type MayflyThemeServiceClass = new (ctx: Context) => Service & MayflyTheme
  * @param colors - the frozen semantic color table to expose.
  * @returns a Service subclass mountable via `ctx.plugin`.
  */
-export function defineThemeService(colors: MayflySemanticColors, model?: Omit<ThemeModel, 'colors'> & { readonly colors: Readonly<Record<string, string>> }): MayflyThemeServiceClass {
+export function defineThemeService(colors: MayflySemanticColors): MayflyThemeServiceClass {
   return class extends Service implements MayflyTheme {
     readonly colors: MayflySemanticColors
 
@@ -97,8 +91,6 @@ export function defineThemeService(colors: MayflySemanticColors, model?: Omit<Th
     constructor(ctx: Context) {
       super(ctx, 'mayflyTheme')
       this.colors = presentedColors(colors, readPresentation(ctx))
-      const models = ctx.get('mayflyThemeModels')
-      if (models !== undefined && model !== undefined) ctx.effect(() => models.register(model))
     }
   }
 }

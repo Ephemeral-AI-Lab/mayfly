@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 import { CONTENT_SEGMENT_LINES } from '../../src/core/content-segments.ts'
 import { charWrap, contentNodeSource, documentRowsSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
 import { virtualRows } from '../../src/core/ui-rows.ts'
-import { alignDiffLines, diffModel, paintDiffRows } from '../../src/core/diff-align.ts'
+import { alignDiffLines, diffModel, paintDiffSegment } from '../../src/core/diff-align.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { paletteColors } from '../../src/core/palettes.ts'
 import { MAYFLY_CONTENT_CACHE_BYTES, MayflyContentCache } from '../../src/core/ui-content-cache.ts'
@@ -354,8 +354,9 @@ describe('contentNodeSource', () => {
     const at = CONTENT_SEGMENT_LINES + 5
     expect(plainText(rows[at]!)).toContain(`old ${String(at)}`)
     expect(env.counters.segmentsPainted).toBe(1)
-    // The whole materialized facade is row-for-row the eager painter's output.
-    const eager = paintDiffRows(alignDiffLines(before, after), 40, components, DARK_COLORS)
+    // The whole materialized facade is row-for-row the eager segment painter's output.
+    const model = diffModel(alignDiffLines(before, after), {})
+    const eager = model.segments.flatMap(segment => paintDiffSegment(segment, model.digits, 40, components, DARK_COLORS, { numbered: true, start: 1, beforeStart: 1 }))
     for (const [index, row] of [...rows].entries()) expect(row).toBe(eager[index])
   })
 
