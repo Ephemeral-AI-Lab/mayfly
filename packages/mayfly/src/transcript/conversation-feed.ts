@@ -72,27 +72,38 @@ const LOADING: ConversationFeedState = Object.freeze({ kind: 'loading' })
  * Follow one live Session through the native projection registry. Native
  * changes are complete, validated values: only the newest is kept until the
  * owner reads it, so a token burst never maps history per delta.
+ *
+ * The registry notifies the units of one committed event in turn, and a
+ * listener that snapshots the registry meanwhile advances every later unit
+ * past that event, so the registry skips their notifications (a status row
+ * re-reading the context keys swallowed the `user/message` of each new turn
+ * until the turn ended). Any other unit's change for this Session proves a
+ * committed event, so the feed reads its own value again once the
+ * notifications are over and keeps it when it moved.
  */
 export class SessionConversationFeed implements ConversationFeed {
   private pending: PendingProjection | undefined
   private watermark: number
+  /** The newest value held or handed out; the registry memoizes views, so an unchanged value is the same object. */
+  private latest: unknown
+  /** A read after the current notifications is queued. */
+  private recheck = false
   private lastDraft: LiveAssistantDraft | undefined
   private disposed = false
   private readonly offChanged: () => void
   private readonly offLive: () => void
 
   constructor(
-    projections: ConversationProjectionSource,
-    session: Session,
+    private readonly projections: ConversationProjectionSource,
+    private readonly session: Session,
     private readonly agent: Agent | undefined,
     private readonly live: LiveDraftSource | undefined,
-    notify: () => void,
+    private readonly notify: () => void,
   ) {
     this.offChanged = projections.onChanged((target, key, value, seq) => {
-      if (this.disposed || target !== session || key !== 'mayflyConversation' || seq <= Math.max(this.watermark, this.pending?.seq ?? -1)) return
-      const first = this.pending === undefined
-      this.pending = { value, seq }
-      if (first) notify()
+      if (this.disposed || target !== session) return
+      if (key === 'mayflyConversation') this.offer(value, seq)
+      else this.scheduleRecheck()
     })
     // Live notifications cover every Agent. Wake only when this exact Agent's
     // draft identity changed, so unrelated child streams never repaint here.
@@ -101,7 +112,29 @@ export class SessionConversationFeed implements ConversationFeed {
     })
     const snapshot = projections.snapshot(session, ['mayflyConversation'])
     this.watermark = snapshot.asOfSeq
-    this.pending = { value: snapshot.values.mayflyConversation, seq: snapshot.asOfSeq }
+    this.latest = snapshot.values.mayflyConversation
+    this.pending = { value: this.latest, seq: snapshot.asOfSeq }
+  }
+
+  /** Hold a value newer than every one already held or admitted, and wake the owner for the first one it has not read. */
+  private offer(value: unknown, seq: number): void {
+    if (seq <= Math.max(this.watermark, this.pending?.seq ?? -1) || value === this.latest) return
+    const first = this.pending === undefined
+    this.pending = { value, seq }
+    this.latest = value
+    if (first) this.notify()
+  }
+
+  /** Read this Session's value in a microtask: never inside the registry's notifications, once per burst of them. */
+  private scheduleRecheck(): void {
+    if (this.recheck) return
+    this.recheck = true
+    queueMicrotask(() => {
+      this.recheck = false
+      if (this.disposed) return
+      const snapshot = this.projections.snapshot(this.session, ['mayflyConversation'])
+      this.offer(snapshot.values.mayflyConversation, snapshot.asOfSeq)
+    })
   }
 
   take(): PendingProjection | undefined {

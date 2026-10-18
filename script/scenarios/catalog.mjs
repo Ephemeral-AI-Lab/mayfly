@@ -36,6 +36,7 @@ const COVERS = {
     `${TRANSCRIPT}new-messages.ts`, `${TRANSCRIPT}transcript-model.ts`, ...STREAM, `${INTERACTION}input-plugin.ts`,
     'packages/mayfly/src/core/terminal.ts', 'packages/mayfly/src/core/node-slot.ts', 'packages/mayfly/src/core/ui-list-paint.ts', 'packages/mayfly/src/core/surface-renderer.ts',
   ],
+  livePrompts: [`${TRANSCRIPT}conversation-feed.ts`, `${TRANSCRIPT}official-model.ts`, `${TRANSCRIPT}transcript-model.ts`, `${TRANSCRIPT}status-context.ts`, 'packages/mayfly/src/conversation/projection.ts', ...STREAM],
   mergePanels: [...PANELS, `${TRANSCRIPT}status-*.ts`, 'packages/mayfly/src/core/views-lane.ts', `${INTERACTION}questions-plugin.ts`],
   mergeHeights: [...PANELS, 'packages/mayfly/src/core/views-lane.ts', `${TRANSCRIPT}view-items.ts`, `${TRANSCRIPT}status-*.ts`, `${TRANSCRIPT}pane-todo.ts`, `${INTERACTION}questions-plugin.ts`],
   mergeEsc: ['packages/mayfly/src/app/agent-interrupt.ts', 'packages/mayfly/src/app/index.ts', `${INTERACTION}input-plugin.ts`, `${TRANSCRIPT}status-agents.ts`, `${TRANSCRIPT}status-jobs.ts`, ...NOTIFICATION],
@@ -191,6 +192,21 @@ const REVIEW = {
     ],
     differs: [],
     pending: ['The rule is the muted tone of the goal round rule; the owner may choose another tone.'],
+  },
+  livePrompts: {
+    reference: 'component-library §5.6, The stream\'s turns, prompts, answers, and reasoning · transcript/conversation-feed.ts',
+    implemented: [
+      'A prompt you send shows in the stream at once and stays there while its turn runs; it used to appear only when the turn ended, so with a real model every prompt after the first seemed never to arrive.',
+      'Cause: the context status row re-read the projections while the Harness was still announcing the `user/message` event, which made the registry skip the conversation\'s own announcement. The conversation feed now reads its value again after any other change of the same session.',
+      'A prompt sent while a turn runs waits as a queued row, then shows as the next turn\'s prompt when that turn starts.',
+    ],
+    focus: [
+      { look: 'The prompt above the activity row while its turn runs', how: 'checkpoints `first-running`, `second-running`' },
+      { look: 'The prompt sent meanwhile: a queued row, then the next turn\'s prompt while that turn runs', how: 'checkpoints `queued`, `third-running`' },
+      { look: 'Every turn keeps its prompt once settled, also at 60 columns', how: 'checkpoints `settled`, `narrow-60`' },
+    ],
+    differs: [],
+    pending: ['The Harness registry should not drop a unit\'s notification when a listener reads during its notifications; until it does, every Mayfly listener that re-reads the registry is a candidate for the same miss (see the PR).'],
   },
   mergeEsc: {
     scene: 15,
@@ -405,6 +421,21 @@ const SCRIPTS = {
     key('ctrl+down'), key('ctrl+down'), checkpoint('tail'),
     resize(60, 30), checkpoint('narrow-60'),
     resize(100, 30),
+  ],
+  // Prompts typed into the live session: a quick first turn, then turns the stub holds 4 s (it takes the first `hold:` of
+  // the conversation for every later turn too), so each prompt can be looked at while its turn runs; a prompt sent
+  // meanwhile is queued and becomes the next turn's prompt; 60 columns.
+  livePrompts: [
+    wait(1000), checkpoint('empty'),
+    type('Summarise the release plan.'), key('enter'), wait(3000), checkpoint('history'),
+    type('hold:4000 Check the changelog next.'), key('enter'), wait(1200), checkpoint('first-running'),
+    wait(5000), checkpoint('first-done'),
+    type('Then the migration guide.'), key('enter'), wait(1200), checkpoint('second-running'),
+    type('And the README badges.'), key('enter'), wait(800), checkpoint('queued'),
+    wait(3000), checkpoint('third-running'),
+    wait(5000), checkpoint('settled'),
+    resize(60, 40), checkpoint('narrow-60'),
+    resize(100, 40),
   ],
   // Esc stops your turn only: a real background subagent, the watcher, and a queued message stay; Esc on a panel closes it;
   // a foreground subagent stops with the turn.
@@ -776,9 +807,22 @@ const PERF = {
   },
 }
 
-/** The catalog, by scenario name: the replays, the Website's app shots, and the perf scenarios. */
+/** Scenarios of the live session with no replay: what you type goes through the real agent loop and the stub model. */
+const LIVE = {
+  livePrompts: {
+    summary: 'prompts typed into a live session: each one shows in the stream as soon as it is sent and stays there while its turn runs, a prompt sent meanwhile waits as a queued row, and the later turns keep their prompts',
+    source: { idle: true },
+    covers: COVERS.livePrompts,
+    sizes: [[100, 40]],
+    review: REVIEW.livePrompts,
+    script: SCRIPTS.livePrompts,
+  },
+}
+
+/** The catalog, by scenario name: the replays, the live-session scenarios, the Website's app shots, and the perf scenarios. */
 export const CATALOG = Object.freeze({
   ...Object.fromEntries(Object.entries(REPLAYS).map(([name, replay]) => [name, replayScenario(name, replay)])),
+  ...LIVE,
   ...APP,
   ...DEMO,
   ...PERF,
