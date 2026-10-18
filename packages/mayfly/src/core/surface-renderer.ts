@@ -403,7 +403,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
         component: record.component,
         focusTarget: compiled.focusTarget === null ? null : record.component,
       })
-    } else record.registration.replace(record.component, compiled.focusTarget === null ? null : record.component)
+    } else record.registration.replace(record.component, compiled.focusTarget === null ? null : record.component, true)
     runtime.requestRender()
   }
 

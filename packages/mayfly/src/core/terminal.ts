@@ -183,6 +183,7 @@ class SurfaceLaneContainer implements Component {
     readonly width: number
     readonly layout: SurfaceLayout
     readonly maxRows: number
+    readonly contentRevision: number
     readonly rows: number
     readonly plan?: BottomLanePlan
   } | undefined
@@ -200,19 +201,20 @@ class SurfaceLaneContainer implements Component {
     if (this.placement === 'bottom' && lane !== undefined) {
       const maxRows = this.maxRows()
       const measured = this.measured
+      const contentRevision = this.manager.contentRevision
       // pi-tui measures the lane and then lays it out in the same frame; the plan renders every passive pane. Reuse
-      // it while the layout, width, and budget are unchanged instead of planning the same rows twice.
-      const plan = measured?.layout === layout && measured.width === width && measured.maxRows === maxRows && measured.plan !== undefined
+      // it while the layout, width, budget, and pane content are unchanged instead of planning the same rows twice.
+      const plan = measured?.layout === layout && measured.width === width && measured.maxRows === maxRows && measured.contentRevision === contentRevision && measured.plan !== undefined
         ? measured.plan
         : planBottomLane(lane, width, maxRows)
-      this.measured = { width, layout, maxRows, rows: plan.rows, plan }
+      this.measured = { width, layout, maxRows, contentRevision, rows: plan.rows, plan }
       return bottomLaneRows(plan)
     }
     // The row that holds a side lane gives it its height, so pi-tui's measure of one is never used: its pane is not
     // rendered for it, and prepares itself when the native layout reaches it.
     if (this.placement === 'left' || this.placement === 'right') return NO_ROWS
     const rows = renderSurfaceLane(lane, width, this.maxRows())
-    this.measured = { width, layout, maxRows: this.maxRows(), rows: rows.length }
+    this.measured = { width, layout, maxRows: this.maxRows(), contentRevision: this.manager.contentRevision, rows: rows.length }
     return rows
   }
 
@@ -226,7 +228,7 @@ class SurfaceLaneContainer implements Component {
     const layout = this.getLayout()
     if (layout[this.placement] === undefined) return 0
     const measured = this.measured
-    return measured?.width === width && measured.layout === layout && measured.maxRows === this.maxRows() ? measured.rows : this.render(width).length
+    return measured?.width === width && measured.layout === layout && measured.maxRows === this.maxRows() && measured.contentRevision === this.manager.contentRevision ? measured.rows : this.render(width).length
   }
 
   invalidate(): void {
@@ -244,7 +246,7 @@ class SurfaceLaneContainer implements Component {
       const measured = this.measured
       /* a bottom measurement always carries a plan and precedes any layout */
       const maxRows = this.maxRows()
-      const plan = measured?.layout === layout && measured.maxRows === maxRows && measured.plan !== undefined
+      const plan = measured?.layout === layout && measured.maxRows === maxRows && measured.contentRevision === this.manager.contentRevision && measured.plan !== undefined
         ? measured.plan
         : planBottomLane(lane, measured?.width ?? 1, maxRows)
       const fixed = (size: number) => ({ basis: size, grow: 0, shrink: 1, minSize: 0, maxSize: size })
