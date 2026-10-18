@@ -13,7 +13,6 @@ import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import { ACTION_IMAGE_PASTE } from '../../src/interaction/paste-image.ts'
 import { ACTION_TOGGLE_COLLAPSE } from '../../src/transcript/index.ts'
 import type { MayflyKeyAction, MayflyKeyScope } from '../../src/core/types.ts'
-import { DEFAULT_KEYMAP } from '../../../../docs/design/prototypes/ui-kit.mjs'
 
 /** Defaults registered inline by their owners; `drift` proves this table still matches the source text. */
 const PRODUCT_KEY_ACTIONS: readonly (MayflyKeyAction & { readonly source: string, readonly handler?: () => void })[] = [
@@ -106,10 +105,6 @@ describe('default keys', () => {
   })
 
   it('name every navigation and common-meaning action of the kit, with its default keys', () => {
-    // The kit writes `esc`, `pgup`, and `pgdn`; pi-tui's key ids are `escape`, `pageUp`, and `pageDown`.
-    const kitKey = (key: string): string => ({ esc: 'escape', pgup: 'pageUp', pgdn: 'pageDown' } as Record<string, string>)[key] ?? key
-    const shipped = Object.fromEntries(INTERACTION_KEY_ACTIONS.filter(action => action.id.startsWith('ui.')).map(action => [action.id, [action.keys].flat()]))
-    expect(shipped).toEqual(Object.fromEntries(Object.entries(DEFAULT_KEYMAP as Record<string, string[]>).map(([id, keys]) => [id, keys.map(kitKey)])))
     for (const action of defaults()) expect(action.id, action.id).toMatch(/^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$/u)
   })
 

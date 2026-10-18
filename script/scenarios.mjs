@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Check the catalog scenarios against their goldens: each scenario runs against the real product at its sizes (four at
- * a time by default; `--parallel N` boots more, and every checkpoint is compared with `script/scenarios/golden/`. `--update` accepts what the product paints
- * now (and removes goldens no checkpoint writes when every scenario runs at every size), and repaints the Website app
- * shots painted from an accepted golden (`script/shots/app.mjs`). The results, with the rows of
- * each difference, go to `.artifacts/verify/scenarios.json` for `pnpm run check`. `--png` renders each checkpoint that
+ * Check the catalog scenarios against their goldens: each scenario runs against the real product at its sizes (one at
+ * a time by default; `--parallel N` boots more, and every checkpoint is compared with `script/scenarios/golden/`.
+ * `--update` accepts what the product paints now (and removes goldens no checkpoint writes when every scenario runs at
+ * every size), and repaints the Website app shots painted from an accepted golden (`script/shots/app.mjs`). The results,
+ * with the rows of each difference, go to `.artifacts/verify/scenarios.json`. `--png` renders each checkpoint that
  * differs or has no golden in xterm.js in headless Chrome, beside the same checkpoint of the merge-base build, into
  * `.artifacts/verify/shots/` with a contact sheet (`index.html`); the pictures are for a reader and gate nothing.
  *
@@ -16,8 +16,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defaultBase } from './change-files.mjs'
-import { commitOf, ensureBaseline, mergeBaseOf } from './scenarios/baseline.mjs'
+import { commitOf, defaultBase, ensureBaseline, mergeBaseOf } from './scenarios/baseline.mjs'
 import { findChrome } from './scenarios/browser.mjs'
 import { APP_SHOTS, CATALOG, GOLDEN_SCENARIOS, scenarioNamed } from './scenarios/catalog.mjs'
 import { compareGolden, goldenPath, orphanGoldens, removeGoldens, writeGolden } from './scenarios/golden.mjs'
@@ -119,8 +118,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const run = await runScenario(name, { root, dshBin, cols, rows })
     run.screen.dispose()
     const checkpoints = run.checkpoints.map(({ name: checkpoint, grid }) => {
-      if (options.update) { writeGolden(name, checkpoint, cols, rows, grid); return { checkpoint, status: 'updated', diff: [] } }
-      return { checkpoint, ...compareGolden(name, checkpoint, cols, rows, grid) }
+      if (options.update) { writeGolden(name, checkpoint, cols, rows, grid); return { checkpoint, grid, status: 'updated', diff: [] } }
+      return { checkpoint, grid, ...compareGolden(name, checkpoint, cols, rows, grid) }
     })
     const ok = run.failures.length === 0 && checkpoints.every(entry => entry.status === 'same' || entry.status === 'updated')
     const label = `${name} ${String(cols)}x${String(rows)}`

@@ -66,15 +66,28 @@ grids and `MAYFLY_UI_VERIFY_MEMO=1`.
 Only the oracle lane runs this, from the integration worktree:
 
 ```sh
-pnpm run scenarios -- --parallel 4
+rm -rf .artifacts/bench/homes .artifacts/bench/work .artifacts/scenarios .artifacts/verify/scenarios.json
+pnpm run scenarios
+cp .artifacts/verify/scenarios.json .artifacts/oracle/wave-<n>-scenarios.json
+node script/cleanup/compare-scenarios.mjs .artifacts/oracle/baseline-scenarios.json .artifacts/oracle/wave-<n>-scenarios.json
 pnpm run frame composeDemo
 pnpm run check:lib
 pnpm run check:examples
 pnpm run perf -- --runs 3
 ```
 
-`pnpm run scenarios` must show zero diff/new/orphan against the 166 committed
-goldens. `composeDemo` is diffed against `.artifacts/oracle/composeDemo/`.
+Run scenarios serially. The throwaway bench profile shares its settings, and
+the `/model` scenes change the default; `--parallel` reorders that state and
+produces false diffs. Reset the profile before each capture so the run starts
+from the same state every time.
+
+The committed goldens are not fully green on this environment: six scenarios
+(`viewItems`, `harnessAlignment`, `app-conversation`, `app-permission`,
+`app-agents`, `app-sessions`) show model/timing rows because the bench profile
+starts at `deepseek-flash` while the goldens were captured from
+`deepseek-v4-pro`. Treat the W0 grid capture as the visual baseline: the
+differential must be zero, and a scenario that matched its golden must keep
+matching it. `composeDemo` is diffed against `.artifacts/oracle/composeDemo/`.
 `check:lib` and `check:examples` run only when the wave touches the public
 surface or examples.
 

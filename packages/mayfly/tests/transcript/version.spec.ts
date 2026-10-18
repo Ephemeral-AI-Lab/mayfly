@@ -161,12 +161,10 @@ describe('the harness dependency line', () => {
     expect(source).not.toContain("MAYFLY_VERSION.split('-')")
   })
 
-  it('ci.yml derives the CLI pin from HARNESS_LINE, not a literal', () => {
-    // Single-sourcing (R1): a literal version here would drift off this
-    // gate, and an automation push touching a workflow file is rejected
-    // by GitHub outright (GITHUB_TOKEN cannot update workflows).
+  it('ci.yml pins no second Harness version', () => {
+    // The CI check no longer installs a CLI; HARNESS_LINE is single-sourced
+    // in session-commands.ts and the workspace exclusions above.
     const ci = readFileSync(new URL('../../../../.github/workflows/ci.yml', import.meta.url), 'utf8')
-    expect(ci).toContain('$(node script/harness-line.mjs)')
-    expect(ci).not.toContain(`@deepseek-ai/dsh@${HARNESS_LINE}`)
+    expect(ci).not.toContain('@deepseek-ai/dsh@')
   })
 })

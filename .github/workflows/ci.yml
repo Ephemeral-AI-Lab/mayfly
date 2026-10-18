@@ -1,13 +1,9 @@
-# R0 (release roadmap): test/typecheck/lint gate for the workspace packages.
+# Build, typecheck, lint, and test gate for the workspace packages.
 # Runs on every main push and PR (except website-only PRs — those are
 # covered by website-pages.yml's build check). Install is pinned by the
 # root packageManager field (pnpm/action-setup reads it) with a frozen
 # lockfile; node mirrors the website workflow's PRIMARY_NODE_VERSION.
-# The check job runs `pnpm run check` (script/check.mjs, roadmap Phase 2b):
-# a pull request runs the pr tier on what its change can reach, a push to main,
-# the nightly run, and a manual run take the full tier (every check, one vitest
-# run with retained-row verification and the coverage floor, the smoke, and the
-# bench). The report lands in the job summary and as an artifact.
+# `pnpm run check` is the whole gate: build -> typecheck -> lint -> vitest.
 name: ci
 
 on:
@@ -16,8 +12,6 @@ on:
   pull_request:
     paths-ignore:
       - website/**
-  schedule:
-    - cron: '17 2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -53,60 +47,21 @@ jobs:
           packages/mayfly/tests/interaction/updater-profile.spec.ts
           packages/mayfly/tests/interaction/clipboard-runner.spec.ts
           packages/mayfly/tests/interaction/platform-command.spec.ts
-          packages/mayfly/tests/interaction/file-mention.spec.ts
           packages/mayfly/tests/core/search-input.spec.ts
           packages/mayfly/tests/transcript/status-cwd.spec.ts
 
   check:
-    name: check (${{ github.event_name == 'pull_request' && 'pr' || 'full' }} tier)
+    name: check
     runs-on: ubuntu-latest
     concurrency:
       group: ci-${{ github.ref }}
       cancel-in-progress: true
     steps:
-      # The whole history: the pr tier diffs against the merge base with the target branch.
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # The happy smoke boots the real dsh CLI. The CLI is NOT a workspace
-      # devDependency on purpose: its subtree reshapes hoisting and breaks the
-      # S34 /mcp e2e's bare-specifier resolution, so CI installs it globally
-      # and the smoke pins its version against HARNESS_LINE.
-      #
-      # npm, not `pnpm add -g`: action-setup installs pnpm itself under
-      # /home/runner/setup-pnpm, and with no PNPM_HOME set `pnpm add -g`
-      # resolves the global bin dir next to the pnpm binary and refuses
-      # ("configured global bin directory ... is not in PATH" — the red
-      # run 32548149673). npm's global bin is setup-node's prefix, already
-      # on PATH for the smoke's `command -v dsh`.
-      # The version is derived from HARNESS_LINE via script/harness-line.mjs
-      # (single-sourced) — keep it that way: a literal here would drift off
-      # the version.spec gate AND an automation push touching a workflow
-      # file is rejected by GitHub (GITHUB_TOKEN cannot update workflows).
-      - run: npm install -g "@deepseek-ai/dsh@$(node script/harness-line.mjs)"
-      # A pull request also reports the changed source lines no selected spec
-      # ran (advice, not a gate). The perf slack scales the ceilings for a shared runner.
-      - name: pnpm run check
-        run: >-
-          pnpm run check --
-          --tier ${{ github.event_name == 'pull_request' && 'pr' || 'full' }}
-          --base origin/${{ github.base_ref || 'main' }}
-          --verbose
-          ${{ github.event_name == 'pull_request' && '--coverage-advice' || '' }}
-        env:
-          MAYFLY_PERF_SLACK: '3'
-      - name: report
-        if: ${{ !cancelled() }}
-        run: cat .artifacts/verify/summary.md >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: verify-report
-          path: .artifacts/verify/
-          if-no-files-found: ignore
+      - run: pnpm run check

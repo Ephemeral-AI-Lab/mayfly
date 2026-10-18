@@ -1,9 +1,9 @@
 // Shared bootstrap for the smoke scripts (D48): dsh discovery and version
 // alignment, the throwaway-profile install chain, output cleaning, and the
 // polling and node-pty loading every real-process smoke drives.
-// smoke-happy.mjs (CI, pipe stdio), smoke-pty-output-recovery.mjs (full
-// tier), smoke-pty.mjs (manual), and smoke-platform-pty.mjs (release) boot
-// the same real process through these helpers.
+// smoke-happy.mjs (CI, pipe stdio), smoke-pty-output-recovery.mjs (release),
+// and smoke-platform-pty.mjs (release) boot the same real process through
+// these helpers.
 
 import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
