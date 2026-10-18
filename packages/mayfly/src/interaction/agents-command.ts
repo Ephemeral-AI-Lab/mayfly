@@ -9,9 +9,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import type { WorkflowAgentInfo } from '@deepseek-ai/dsh-workflow'
-import { panel, ui, type MayflyListItem, type MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyListItem, MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+import { listPanel } from './panel.ts'
 import { formatTokens } from './usage.ts'
 import { compactElapsedMs } from '../transcript/agent-presentation.ts'
 import { outputCounter } from '../transcript/output-rate.ts'
@@ -224,12 +225,14 @@ export function apply(ctx: Context): void {
       if (next !== parent) close()
     }))
     const stopBlocked = (entry: Extract<MayflySubagentTreeEntry, { readonly kind: 'child' }>): string | undefined => stopBlockedReason(ctx, t, entries, entry)
-    const view = () => panel({ title: t('Subagents'), escapeLabel: 'close', body: ui.stack.column([
-      ui.list({ id: 'subagents', role: 'browse', tree: true, selectedIds: [], filterable: true, filterMode: 'slash', items: agentTreeItems(entries, Date.now(), stopBlocked) }),
-      ui.actions({ id: 'subagent-actions', items: [
+    const view = () => listPanel({
+      title: t('Subagents'), escapeLabel: 'close',
+      id: 'subagents', role: 'browse', tree: true, selectedIds: [], filterable: true, filterMode: 'slash',
+      items: agentTreeItems(entries, Date.now(), stopBlocked),
+      actions: { id: 'subagent-actions', items: [
         { id: 'stop', label: t('Stop selected'), hintLabel: t('stop'), key: 'x', hidden: true, intent: 'danger', confirm: { title: t('Stop selected subagent?'), detail: t('Its live Agent shuts down; the stored conversation stays browsable.'), confirmLabel: t('Stop'), tone: 'danger' }, selections: [{ pagePath: [], controlId: 'subagents' }] },
-      ] }),
-    ]) })
+      ] },
+    })
     const publish = (force: boolean): void => {
       /* every publish caller is closed-fenced already; these checks only narrow the handle for the view write and fence a host-driven close race */
       if (closed || handle === undefined || handle.closed) return

@@ -6,9 +6,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import { SettingsConflictError, type SettingsDescriptor } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-permission-presets'
-import { panel, rail, ui, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { rail, ui, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+import { panelActions, panelFrame } from './panel.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { settingsOperations, settingsProjection, type SettingsChoices, type SettingsProjection } from './settings-model.ts'
@@ -72,11 +73,11 @@ async function openSettings(ctx: Context, callerSignal?: AbortSignal): Promise<b
           pages: Object.fromEntries(entries.map(entry => [entry.ns, entry.projection.node])),
         })
     return {
-      node: panel({
+      node: panelFrame({
         title: t('Settings'),
         escapeLabel: 'close',
         body,
-        footer: ui.actions({ id: 'settings-global-actions', items: [
+        footer: panelActions({ id: 'settings-global-actions', items: [
           { id: 'open-file', label: t('Open settings.yaml in $EDITOR'), hintLabel: 'settings.yaml', semantic: 'external', hidden: true, disabled: !settings.writable },
         ] }),
       }),
