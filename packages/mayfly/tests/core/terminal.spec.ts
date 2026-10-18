@@ -790,6 +790,26 @@ describe('alternate-screen runtime', () => {
     terminal.dispose()
   })
 
+  it('repaints a bottom pane when its own rows change through replace', async () => {
+    const terminal = new AltScreenTerminal(40, 12)
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
+    runtime.addChild(textComponent('transcript'))
+    let rows = ['spin 0s']
+    const live = { render: () => rows, invalidate: () => {} } as MayflyComponent
+    const registration = runtime.surfaces.register({ id: 'activity', placement: 'bottom', priority: 10, size: { max: 1 }, component: live })
+    runtime.requestRender(true)
+    await waitForRender()
+    expect((await terminal.screen()).join('\n')).toContain('spin 0s')
+    rows = ['spin 1s']
+    // The pane keeps its component identity; its node, not the component, changed.
+    registration.replace(live, undefined, true)
+    runtime.requestRender(true)
+    await waitForRender()
+    expect((await terminal.screen()).join('\n')).toContain('spin 1s')
+    await runtime.stop()
+    terminal.dispose()
+  })
+
   it('reports measured lane viewports without recursive surface rendering', async () => {
     const terminal = new AltScreenTerminal(120, 12)
     const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })

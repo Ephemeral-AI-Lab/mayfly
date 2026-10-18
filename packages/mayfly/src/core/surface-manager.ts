@@ -61,7 +61,7 @@ export interface SurfaceLayout {
 export interface SurfaceRegistration {
   readonly disposed: boolean
   setHidden(hidden: boolean): void
-  replace(component: MayflyComponent, focusTarget?: MayflyFocusable | null): void
+  replace(component: MayflyComponent, focusTarget?: MayflyFocusable | null, rowsChanged?: boolean): void
   dispose(): void
 }
 
@@ -349,6 +349,8 @@ export class SurfaceManager {
   /** The views of the status row: no lane rows of their own, but a focus of their own (`VIEWS_FOCUS_ID`). */
   readonly views = new ViewsLane()
   private revision = 0
+  /** Bumped when a pane's own rows change without a registry/layout change; the bottom plan keys on it. */
+  private contentRevisionValue = 0
   private readonly activePlacements: Partial<Record<SurfacePlacement, string>> = {}
   private focusedIdValue: string | undefined
   private activeIdValue: string | undefined
@@ -375,9 +377,13 @@ export class SurfaceManager {
 
   /** Invalidate memoized layouts, then notify the renderer. */
   private changed(): void {
+    this.contentRevisionValue += 1
     this.touch()
     this.options.onChange?.()
   }
+
+  /** The revision of pane content replaced in place; a change invalidates the bottom lane plan, not the layout. */
+  get contentRevision(): number { return this.contentRevisionValue }
 
   get empty(): boolean {
     return this.visibleEntries().length === 0
@@ -414,12 +420,21 @@ export class SurfaceManager {
         }
         this.changed()
       },
-      replace: (component, focusTarget) => {
+      replace: (component, focusTarget, rowsChanged = false) => {
         const previous = contributionFocusTarget(registered.contribution)
         const next = focusTarget === undefined
           ? typeof (component as MayflyComponent & { focused?: unknown }).focused === 'boolean' ? component as MayflyFocusable : null
           : focusTarget
-        if (disposed || (registered.contribution.component === component && previous === next)) return
+        if (disposed) return
+        // The same component can carry new rows (the activity row updates its
+        // node every tick), so a flagged replace invalidates the lane plan only.
+        if (registered.contribution.component === component && previous === next) {
+          if (rowsChanged) {
+            this.contentRevisionValue += 1
+            this.options.onChange?.()
+          }
+          return
+        }
         const { focusTarget: _previousTarget, ...metadata } = registered.contribution
         registered.contribution = focusTarget === undefined
           ? { ...metadata, component }
