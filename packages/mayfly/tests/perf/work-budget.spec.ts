@@ -19,6 +19,12 @@ import type { MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { FRAME_WORKLOADS, measureFrameWorkload } from './frame-workloads.ts'
 import { WORKLOADS, measureWorkload, swarmWorkload } from './workloads.ts'
 
+// The frame byte budgets are measured in the no-color presentation. Pin it so
+// an ambient NO_COLOR/FORCE_COLOR (a local shell vs a CI runner) cannot change
+// the measured bytes.
+process.env.NO_COLOR = '1'
+delete process.env.FORCE_COLOR
+
 const BASELINE = new URL('./baseline.json', import.meta.url)
 const BUDGETS = new URL('./budgets.json', import.meta.url)
 type Budget = Partial<MayflyWorkCounters>
