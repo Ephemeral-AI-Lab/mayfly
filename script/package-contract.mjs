@@ -22,9 +22,9 @@ export function releaseRepository(relativeDir) {
   return { type: 'git', url: REPOSITORY_URL, directory: relativeDir }
 }
 
-/** Final npm dist-tags for one verified release version. */
+/** Final npm dist-tags for one verified release version. An RC never moves `latest`. */
 export function releaseDistTags(version) {
-  return /-rc(?:\.|$)/u.test(version) ? ['rc', 'latest'] : ['latest']
+  return /-rc(?:\.|$)/u.test(version) ? ['rc'] : ['latest']
 }
 
 /** Publish order is dependency order; the launcher is always last. */

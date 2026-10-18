@@ -1,6 +1,6 @@
 # Mayfly package and release workflow
 
-Mayfly publishes three packages as one `0.1.3-rc.2` lockstep release:
+Mayfly publishes three packages as one `0.1.4-rc.1` lockstep release:
 `@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`, and
 `@ephemeral-ai/mayfly-cli`. The exact release order lives in
 `script/package-contract.mjs`. The supported Harness line is `0.2.1-rc.2`.
@@ -15,7 +15,7 @@ After preparing a new release and writing its changelog entry, set `VERSION`
 to that release and run:
 
 ```sh
-VERSION=0.1.3-rc.2
+VERSION=0.1.4-rc.1
 pnpm run check -- --tier full --plan
 pnpm release:preflight "$VERSION"
 pnpm run check -- --tier full
@@ -77,8 +77,9 @@ candidate publish and the staged approval keep a human gate.
 
 Tags execute the CI release workflow after acceptance: publish verified artifacts to
 `candidate`, install the exact registry versions on Linux/macOS/Windows, then
-promote alpha and stable versions to `latest`, and RC versions to both `rc`
-and `latest`. The workflow validates release metadata and artifact versions
+promote alpha and stable versions to `latest`, and RC versions to `rc` only;
+`latest` stays on the previous line until a stable release. The workflow
+validates release metadata and artifact versions
 before publishing or promotion. Local release commands must not publish.
 Promote-only dispatch requires the original release run ID and
 must be started from the same release commit; the referenced run must have

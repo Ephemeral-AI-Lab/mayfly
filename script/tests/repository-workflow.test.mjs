@@ -55,9 +55,9 @@ describe('change impact planning', () => {
     for (const check of ['build', 'checkLib', 'examples', 'pack']) assert.equal(plan.checks[check], true, check)
   })
 
-  test('promotes alpha and stable releases to latest while retaining the RC tag', () => {
+  test('keeps RC releases off latest while alpha and stable releases promote it', () => {
     assert.deepEqual(releaseDistTags('0.1.0-alpha.1'), ['latest'])
-    assert.deepEqual(releaseDistTags('0.1.0-rc.1'), ['rc', 'latest'])
+    assert.deepEqual(releaseDistTags('0.1.0-rc.1'), ['rc'])
     assert.deepEqual(releaseDistTags('0.1.0'), ['latest'])
   })
 
