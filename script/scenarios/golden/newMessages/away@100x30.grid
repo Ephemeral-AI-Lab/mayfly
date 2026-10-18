@@ -24,7 +24,7 @@ grid 100x30 cursor none
 |      entry                                                                                        ░
 |    • Release step 13: confirm the package 13 builds, passes its specs, and has its changelog      ░
 |      entry                                                                                        ░
-|                                                                  Alt+↑ conversation · Alt+↓ view
+|                                      Back to bottom · Ctrl+↓     Alt+↑ conversation · Alt+↓ view
 |╭───────────────────────────────────────────────────────────────────── Walk me through the release ╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -55,7 +55,7 @@ styles
 22: 99 fg:#9aa3b8
 23: 4-5 fg:#c9c0f0; 99 fg:#9aa3b8
 24: 99 fg:#9aa3b8
-25: 66-96 fg:#9aa3b8
+25: 37-61 fg:#ededf2 r; 66-96 fg:#9aa3b8
 26: 0-70 fg:#45406b; 71-97 fg:#f5f5f7 b; 98-99 fg:#45406b
 27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
 28: 0-99 fg:#45406b

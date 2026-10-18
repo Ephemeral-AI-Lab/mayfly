@@ -24,7 +24,7 @@ grid 100x30 cursor none
 |  » Then bump the version  ⏎ queued
 |
 |
-|                                                                              interrupt requested
+|  e edit · s send now · d cancel · Enter expand · c copy · ↑/↓ select · Esc back interrupt reque…
 |╭─────────────────────────────────────────────────────────────────────── Watch the styles while we ╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -43,7 +43,7 @@ styles
 18: 2-14 fg:#e8a838
 20: 2-29 fg:#9aa3b8
 22: 2-3 fg:#9a86e6; 4-24 fg:#9a86e6 b; 25-99 fg:#9aa3b8
-25: 78-96 fg:#ededf2
+25: 2-7 fg:#9aa3b8; 9-20 fg:#9aa3b8; 22-31 fg:#9aa3b8; 33-46 fg:#9aa3b8; 48-55 fg:#9aa3b8; 57-68 fg:#9aa3b8; 70-79 fg:#9aa3b8; 81-95 fg:#ededf2
 26: 0-72 fg:#9aa3b8; 73-97 fg:#f5f5f7 b; 98-99 fg:#9aa3b8
 27: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#9aa3b8
 28: 0-99 fg:#9aa3b8

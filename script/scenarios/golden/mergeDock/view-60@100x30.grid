@@ -15,7 +15,7 @@ grid 60x30 cursor none
 |
 |  ⡀ Deep diving · 0s
 |    ⎿ Tip: @: mention files
-|                             Shift+Tab plan · Alt+M model
+|
 |╭────────────────────────── Refresh the landing page hero. ╮
 |│ >  Type a follow-up to queue it · @ files · # skills     │
 |╰──────────────────────────────────────────────────────────╯
@@ -40,7 +40,6 @@ styles
 12: 2-29 fg:#9aa3b8
 14: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 15: 0-26 fg:#9aa3b8
-16: 29-56 fg:#9aa3b8
 17: 0-27 fg:#9aa3b8; 28-57 fg:#f5f5f7 b; 58-59 fg:#9aa3b8
 18: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-53 fg:#5c6476; 59 fg:#9aa3b8
 19: 0-59 fg:#9aa3b8

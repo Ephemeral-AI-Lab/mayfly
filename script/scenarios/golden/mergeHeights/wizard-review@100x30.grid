@@ -12,7 +12,7 @@ grid 100x30 cursor none
 |
 |  ● AskUserQuestion(Which auth method should the CLI use?) · 1s
 |
-|  ● Waiting for your answer · 0s
+|  ● Waiting for your answer · 1s
 |    ⎿ Tip: Ctrl+O to expand tool details
 |━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 |  Questions

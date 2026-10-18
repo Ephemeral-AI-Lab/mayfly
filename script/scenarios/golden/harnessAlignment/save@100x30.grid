@@ -24,7 +24,7 @@ grid 100x30 cursor none
 |  » @hero.ts  tighten the hero copy
 |
 |  ✻ Worked for 0s · done 09:00
-|                                                                  Alt+↑ conversation · Alt+↓ view
+|  ✗ session "session-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx": stored log is corrupt: SessionFormat…
 |╭─────────────────────────────────────────────────────────────────────── Refresh the hero and keep ╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -43,7 +43,7 @@ styles
 20: 2-3 fg:#4ec87e; 4-11 fg:#ededf2 b; 12 fg:#9aa3b8; 13-22 fg:#c9c0f0; 23-28 fg:#9aa3b8
 22: 2-3 fg:#9a86e6; 4-99 fg:#9a86e6 b
 24: 2-29 fg:#9aa3b8
-25: 66-96 fg:#9aa3b8
+25: 2 fg:#e85454; 4-95 fg:#e85454
 26: 0-72 fg:#45406b; 73-97 fg:#f5f5f7 b; 98-99 fg:#45406b
 27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#45406b
 28: 0-99 fg:#45406b

@@ -24,7 +24,7 @@ grid 100x30 cursor none
 |    that turn while the reviewer and the watcher go on.
 |
 |  ✻ Worked for 6s · done 09:00
-|                                                                  Alt+↑ conversation · Alt+↓ view
+|                                                                 Ctrl+G opens · Backspace removes
 |╭────────────────────────────────────────────────────────────────── Refresh the landing page hero. ╮
 |│ > compare [paste #1 +12 lines]                                                                   │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -45,7 +45,7 @@ styles
 20: 34-55 fg:#c9c0f0
 21: 41 fg:#c9c0f0; 62-66 fg:#c9c0f0; 84-86 fg:#c9c0f0
 24: 2-29 fg:#9aa3b8
-25: 66-96 fg:#9aa3b8
+25: 65-96 fg:#9aa3b8
 26: 0-67 fg:#45406b; 68-97 fg:#f5f5f7 b; 98-99 fg:#45406b
 27: 0 fg:#45406b; 2-3 fg:#ededf2; 12-31 r; 99 fg:#45406b
 28: 0-99 fg:#45406b

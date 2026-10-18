@@ -24,7 +24,7 @@ grid 100x30 cursor none
 |
 |  ⡀ Deep diving · 0s
 |    ⎿ Tip: /plugin to browse and install plugins
-|                                                                               F7 main · F8 close
+|                                                               F7 main · F8 close   ↑ history 1/1
 |╭───────────────────────────────────────────────────────────────────── Refactor the parser, I will ╮
 |│ > hold:240000 and the WSL line?                                                                  │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -43,7 +43,7 @@ styles
 21: 2-29 fg:#9aa3b8
 23: 0-1 fg:#ededf2; 2 fg:#9a86e6; 3-14 fg:#ededf2; 16-19 fg:#9aa3b8
 24: 0-47 fg:#9aa3b8
-25: 79-96 fg:#9aa3b8
+25: 63-82 fg:#9aa3b8; 84-96 fg:#9aa3b8
 26: 0-70 fg:#45406b; 71-97 fg:#f5f5f7 b; 98-99 fg:#45406b
 27: 0 fg:#45406b; 2-3 fg:#ededf2; 4 r; 99 fg:#45406b
 28: 0-99 fg:#45406b

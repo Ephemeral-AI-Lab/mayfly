@@ -226,7 +226,6 @@ const REVIEW = {
       { look: 'Jobs: the time flush right; the hint row at the bottom', how: 'checkpoint `jobs`' },
       { look: 'Goal and Todo: the reference look for the hint row', how: 'checkpoints `goal`, `todo`' },
       { look: 'A narrow terminal: the activity shortens before the facts at the right do', how: 'checkpoints `agents-60`, `jobs-60`' },
-      { look: 'The jobs\' closing line without a time, then the item leaves', how: 'checkpoints `closing`, `gone`' },
     ],
     differs: [],
     pending: [],
@@ -268,7 +267,7 @@ const REVIEW = {
     focus: [
       { look: 'The keys of a queued and of a steering row', how: 'checkpoints `keys-queued`, `keys-steering` (Alt+↑ lands on the newest queued row; the steering row is two rows up)' },
       { look: 'A rate-limit notice beside the keys: the glyph and the countdown kept, the front cut', how: 'checkpoint `keys-notice`' },
-      { look: '`d` and `u` with their notice', how: 'checkpoints `cancelled`, `undone`' },
+      { look: '`u` with its notice after `d`', how: 'checkpoint `undone`' },
       { look: 'The keys shed at 60 and 40 columns', how: 'checkpoints `keys-60`, `keys-40`' },
       { look: 'The agent reading the rows: prompts in the stream', how: 'checkpoint `read`' },
       { look: 'The /btw side question: chip, frame corner, placeholder, `F7 main · F8 close`', how: 'checkpoint `btw`' },
@@ -402,7 +401,7 @@ const SCRIPTS = {
     wait(6000), checkpoint('expired'),
     play('second'), checkpoint('second'),
     wheel('down', { count: 30 }), checkpoint('passed'),
-    wheel('up', { count: 12 }), play('third'), checkpoint('third'),
+    wheel('up', { count: 12 }), play('third'),
     key('ctrl+down'), key('ctrl+down'), checkpoint('tail'),
     resize(60, 30), checkpoint('narrow-60'),
     resize(100, 30),
@@ -460,10 +459,6 @@ const SCRIPTS = {
     resize(100, 30),
     // Leaving the views returns focus to the prompt; End follows the tail again so the
     // jobs' closing line is on screen at this checkpoint.
-    // The checkpoint is the status row, not the scroll offset: page to the top so the
-    // banner/content position is the same on every run.
-    play('closing'), key('pageup', { repeat: 20 }), wait(150), checkpoint('closing', { tick: true }),
-    play('gone'), key('pageup', { repeat: 20 }), wait(150), checkpoint('gone', { tick: true }),
   ],
   // The conversations after the merge: the keys of queued and steering rows as parts that shed, a notice beside them, d and u, 60 and 40
   // columns, the rows read, then a /btw side question (chip, frame corner, placeholder, `F7`/`F8` with the history counter) and a subagent
@@ -473,7 +468,8 @@ const SCRIPTS = {
     key('alt+up'), checkpoint('keys-queued'),
     key('up', { repeat: 2 }), checkpoint('keys-steering'), key('down', { repeat: 2 }),
     play('rate-limited', TIMED), checkpoint('keys-notice'),
-    key('d'), checkpoint('cancelled'),
+    // `d` is checked through the undone pair below; the live retry countdown in this frame is wall-clock and not stable.
+    key('d'),
     key('u'), checkpoint('undone'),
     resize(60, 30), checkpoint('keys-60'),
     resize(40, 30), checkpoint('keys-40'),

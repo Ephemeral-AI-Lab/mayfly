@@ -15,7 +15,7 @@ grid 100x30 cursor none
 |    (Alt+↓ then ←/→). None of them moves.
 |
 |  ✻ Worked for 4s · done 09:00
-|                                                                  Alt+↑ conversation · Alt+↓ view
+|
 |╭────────────────────────────────────────────────────────────────── Refresh the landing page hero. ╮
 |│ >  Ask anything · / commands · @ files · # skills · ! shell                                      │
 |╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -38,7 +38,6 @@ styles
 10: 2-3 fg:#4ec87e; 4-12 fg:#ededf2 b; 13-19 fg:#9aa3b8
 12: 2-3 fg:#ededf2
 15: 2-29 fg:#9aa3b8
-16: 66-96 fg:#9aa3b8
 17: 0-67 fg:#9aa3b8; 68-97 fg:#f5f5f7 b; 98-99 fg:#9aa3b8
 18: 0 fg:#9aa3b8; 2-3 fg:#ededf2; 4 r; 5-60 fg:#5c6476; 99 fg:#9aa3b8
 19: 0-99 fg:#9aa3b8
