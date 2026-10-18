@@ -6,6 +6,7 @@ export const advertisedVersionFiles = [
   'docs/package-release.md',
   'packages/mayfly/presets/mayfly-cordis/skills/mayfly-plugin-development/SKILL.md',
   'packages/mayfly/tests/transcript/version.spec.ts',
+  'packages/mayfly/tests/transcript/banner.spec.ts',
   'website/.vitepress/config.ts',
   'website/index.md',
   'website/en/index.md',

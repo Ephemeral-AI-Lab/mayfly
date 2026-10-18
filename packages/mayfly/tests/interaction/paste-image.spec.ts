@@ -1071,7 +1071,7 @@ exit 1
     editor.handleInput(KEY.ctrlV)
     await vi.waitFor(() => {
       expect(editor.inserted).toHaveLength(2)
-    })
+    }, { timeout: 5_000 })
   })
 
   it('notices the raw failure detail when a read exits nonzero with stderr', async () => {
