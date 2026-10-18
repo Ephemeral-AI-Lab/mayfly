@@ -13,7 +13,7 @@
  * @module @ephemeral-ai/mayfly/core/palettes
  */
 
-import { colorsFromForegrounds, themeModel, type MayflyBackgroundHexes, type MayflyForegroundHexes } from './theme-palette.ts'
+import { colorsFromForegrounds, type MayflyBackgroundHexes, type MayflyForegroundHexes } from './theme-palette.ts'
 import type { MayflySemanticColors } from './types.ts'
 
 /** One built-in palette. */
@@ -568,10 +568,4 @@ const COLORS: ReadonlyMap<string, MayflySemanticColors> = new Map(PALETTES.map(p
 /** A built-in palette as a frozen semantic color table; the same table on every call. */
 export function paletteColors(key: MayflyPaletteKey): MayflySemanticColors {
   return COLORS.get(key)!
-}
-
-/** The renderer-neutral model of a built-in palette, registered in `mayflyThemeModels` by its provider. */
-export function paletteModel(key: MayflyPaletteKey): ReturnType<typeof themeModel> {
-  const palette = paletteOf(key)
-  return themeModel(palette.key, palette.name, palette.dark, palette.foregrounds, palette.backgrounds)
 }

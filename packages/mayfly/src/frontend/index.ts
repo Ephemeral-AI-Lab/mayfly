@@ -24,7 +24,6 @@ import { MayflyTickService } from '../transcript/tick.ts'
 import * as assistantStreamRecovery from './assistant-stream.ts'
 
 export * from './models.ts'
-export * from './theme.ts'
 export * from './locale.ts'
 export * from './common-locale.ts'
 

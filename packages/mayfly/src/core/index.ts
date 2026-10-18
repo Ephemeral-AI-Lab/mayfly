@@ -20,7 +20,6 @@ import { MayflyTerminalInfoService, backgroundFromRgb, probeTerminalBackground }
 import { startMayflyTerminal, type MayflyTerminalRuntime } from './terminal.ts'
 import { mountMayflySurfaceRenderer } from './surface-renderer.ts'
 import { contextHintTranslator, mountContextHintLocale } from './context-hint-locale.ts'
-import { ThemeModelService } from '../frontend/theme.ts'
 
 export { MayflyComponentsService, type MayflyComponentsDeps } from './components.ts'
 export { GutterComponent } from './gutter.ts'
@@ -145,7 +144,6 @@ export const name = 'mayfly-core'
  * @param ctx - plugin context.
  */
 export async function apply(ctx: Context): Promise<void> {
-  ctx.plugin(ThemeModelService)
   // The terminal's owner is registered before the probe acquires anything.
   // Terminal restore starts first at unload and is awaited by the Fiber; the
   // Fiber's children dispose concurrently with it and must tolerate a
