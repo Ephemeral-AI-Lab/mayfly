@@ -5,6 +5,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionController, SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
+import { sameService } from '../internal/service-identity.ts'
 
 /** One native catalog row: the Session Controller summary itself. */
 export type SessionListRow = SessionSummary
@@ -41,7 +42,7 @@ export function createSessionListCache(ctx: Context): SessionListCache {
 /** Retire a snapshot bound to another controller instance. */
 function bindSource(ctx: Context, cache: SessionListCache): void {
   const controller = ctx.get('sessionController')
-  if (cache.source === controller) return
+  if (sameService(cache.source, controller)) return
   cache.source = controller
   cache.stored = undefined
   cache.generation += 1
@@ -63,9 +64,9 @@ export async function refreshSessionList(ctx: Context, cache: SessionListCache, 
   const value = await controller.list({}, signal)
   signal.throwIfAborted()
   if (!cache.active
-    || cache.source !== controller
+    || !sameService(cache.source, controller)
     || cache.generation !== generation
-    || ctx.get('sessionController') !== controller) return
+    || !sameService(ctx.get('sessionController'), controller)) return
   cache.stored = value.items
 }
 

@@ -1,7 +1,7 @@
 /** Native Session Controller catalog retention and scope filtering.
  * @module @ephemeral-ai/mayfly/tests/interaction/session-list-reads
  */
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -27,6 +27,15 @@ function controllerOf(items: readonly SessionSummary[] = []) {
   return { list: vi.fn(async () => ({ items })) }
 }
 
+/** A real Cordis service: `ctx.get` returns a fresh traceable proxy per read. */
+class TraceableController extends Service {
+  readonly list = vi.fn(async () => ({ items: [] as readonly SessionSummary[] }))
+  constructor(ctx: Context, items: readonly SessionSummary[] = [summary()]) {
+    super(ctx, 'sessionController')
+    this.list.mockResolvedValue({ items })
+  }
+}
+
 async function setup(items: readonly SessionSummary[] = [summary()]) {
   const ctx = new Context()
   roots.push(ctx)
@@ -45,6 +54,35 @@ describe('refreshSessionList', () => {
     expect(bench.controller.list).toHaveBeenCalledWith({}, expect.any(AbortSignal))
     expect(bench.cache.stored).toBe(rows)
     expect(sessionListRows(bench.ctx, bench.cache).map(row => String(row.sessionId))).toEqual(['session-two', 'session-one'])
+  })
+
+  it('retains the catalog through Cordis per-access service proxies', async () => {
+    const ctx = new Context()
+    roots.push(ctx)
+    const controller = new TraceableController(ctx)
+    const cache = createSessionListCache(ctx)
+    await refreshSessionList(ctx, cache, signal())
+    expect(controller.list).toHaveBeenCalledOnce()
+    expect(cache.stored).toHaveLength(1)
+    expect(sessionListRows(ctx, cache).map(row => String(row.sessionId))).toEqual(['session-one'])
+  })
+
+  it('still retires retained rows when a traceable controller is replaced', async () => {
+    const ctx = new Context()
+    roots.push(ctx)
+    let first!: TraceableController
+    const owner = await ctx.plugin({ name: 'first-controller', apply(scope: Context) { first = new TraceableController(scope) } })
+    const cache = createSessionListCache(ctx)
+    await refreshSessionList(ctx, cache, signal())
+    expect(first.list).toHaveBeenCalledOnce()
+    expect(sessionListRows(ctx, cache)).toHaveLength(1)
+    await owner.dispose()
+    let replacement!: TraceableController
+    await ctx.plugin({ name: 'replacement-controller', apply(scope: Context) { replacement = new TraceableController(scope, [summary({ sessionId: SessionId('session-new') })]) } })
+    expect(sessionListRows(ctx, cache)).toEqual([])
+    await refreshSessionList(ctx, cache, signal())
+    expect(replacement.list).toHaveBeenCalledOnce()
+    expect(sessionListRows(ctx, cache).map(row => String(row.sessionId))).toEqual(['session-new'])
   })
 
   it('filters by exact cwd and explicit ids without a second read', async () => {

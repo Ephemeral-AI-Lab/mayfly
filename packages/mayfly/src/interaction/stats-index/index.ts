@@ -8,6 +8,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionQueryEngine, SessionRecord } from '@deepseek-ai/dsh-session-query'
+import { sameService } from '../../internal/service-identity.ts'
 import { foldDigest, type SessionDigest } from './digest.ts'
 
 /** Sessions read per refresh, newest first; older ones are counted but not read. */
@@ -63,9 +64,9 @@ export function readDigests(index: StatsIndex, cwd: string | undefined): readonl
 export async function refreshStatsIndex(ctx: Context, index: StatsIndex, cwd: string | undefined, signal: AbortSignal, onProgress: (progress: IndexProgress) => void): Promise<void> {
   const query = ctx.get('sessionQuery')
   if (query === undefined) return
-  if (index.source !== query) { index.source = query; index.listed = undefined; index.digests.clear() }
+  if (!sameService(index.source, query)) { index.source = query; index.listed = undefined; index.digests.clear() }
   const source = query
-  const retired = (): boolean => signal.aborted || !index.active || index.source !== source || ctx.get('sessionQuery') !== source
+  const retired = (): boolean => signal.aborted || !index.active || !sameService(index.source, source) || !sameService(ctx.get('sessionQuery'), source)
   const records = await source.listSessions(signal)
   if (retired()) return
   const matching = records
