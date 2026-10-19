@@ -70,6 +70,8 @@ slots, never arbitrary root components.
   into the fixed editor host; preserve and restore the prompt lease.
 - `/sessions` retains only the native Session Controller catalog rows one
   listing returned and fences refreshes by controller instance and generation.
+  Cordis returns a fresh traceable proxy per `ctx.get`, so compare services
+  through `internal/service-identity.ts`, never by proxy reference.
   Group the picker by native `workspaceRegistry` identity; a summary carries
   its title, model, usage, and `formatStatus` hints without reading a log.
   Opening a Session reads `sessionController.projections`: a `sequenced` result

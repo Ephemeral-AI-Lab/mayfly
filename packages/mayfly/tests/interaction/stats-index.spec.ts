@@ -1,7 +1,7 @@
 /** Cross-session `/stats` indexing through the native Session Query service.
  * @module @ephemeral-ai/mayfly/tests/interaction/stats-index
  */
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import type { SessionObservation, SessionRecord } from '@deepseek-ai/dsh-session-query'
 import { afterEach, expect, it, vi } from 'vitest'
 import { dayKey } from '../../src/interaction/stats-index/digest.ts'
@@ -51,6 +51,24 @@ it('lists once, observes each wanted session, and keeps the folded digests newes
   expect(readDigests(bench.index, undefined).map(digest => digest.id)).toEqual(['b', 'a'])
   expect(readDigests(bench.index, '/repo')).toHaveLength(2)
   expect(readDigests(bench.index, '/elsewhere')).toEqual([])
+})
+
+it('keeps the index through Cordis per-access service proxies', async () => {
+  const ctx = new Context(); roots.push(ctx)
+  /** A real Cordis service: `ctx.get` returns a fresh traceable proxy per read. */
+  class TraceableQuery extends Service {
+    listSessions = vi.fn(async () => [record('a')])
+    observeSession = vi.fn(async () => observation(record('a').header, 'r1'))
+    constructor() {
+      super(ctx, 'sessionQuery')
+    }
+  }
+  const query = new TraceableQuery()
+  const index = createStatsIndex(ctx)
+  await refreshStatsIndex(ctx, index, undefined, signal(), () => {})
+  expect(query.listSessions).toHaveBeenCalledOnce()
+  expect(query.observeSession).toHaveBeenCalledOnce()
+  expect(readDigests(index, undefined).map(digest => digest.id)).toEqual(['a'])
 })
 
 it('refolds a cold log only when its durable revision moves', async () => {
