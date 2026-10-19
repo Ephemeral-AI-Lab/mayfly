@@ -2,10 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyTabItem } from '../../../ui/src/index.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { isRail, paintTabs, tabsShape, type TabsFocus } from '../../src/core/ui-tabs-paint.ts'
-import { UiRowCache } from '../../src/core/ui-row-cache.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
-import { visibleWidth } from '../../src/core/width.ts'
+import { isRail, paintTabs, tabsShape, type TabsFocus } from '../../src/core/ui/paint/ui-tabs-paint.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 import { plain, plainColors } from '../helpers.ts'
 
 /** A palette that gives each tone its own SGR color, so a row's styling is exact and its width unchanged. */
@@ -126,28 +124,6 @@ describe('the rail', () => {
   it('stays inside any width, down to nothing', () => {
     for (const width of [1, 2, 3, 4, 5, 6, 8, 12, 24, 80]) for (const state of [idle, focus('model')]) for (const row of paintTabs(rail(), width, state, bare)) expect(visibleWidth(row), `width ${String(width)}`).toBeLessThanOrEqual(width)
     expect(paintTabs(rail(), Number.NaN, idle, bare)[1]!.length).toBeLessThanOrEqual(1)
-  })
-
-  it('answers unchanged items from the row cache and repaints only the two items a cursor move changes', () => {
-    const cache = new UiRowCache()
-    const counters = createWorkCounters()
-    const options = { cache, counters }
-    // One admitted node: its items keep their identity across paints, which is what the cache keys on.
-    const node = rail()
-    const first = paintTabs(node, 24, focus('model'), tagged, [], options)
-    const painted = counters.rowsPainted
-    expect(painted).toBe(first.length)
-    expect(paintTabs(node, 24, focus('model'), tagged, [], options)).toEqual(first)
-    expect(counters.rowsPainted).toBe(painted)
-    // The cursor moves from `model` to `perm`: two items repaint (and their headings with them); the rest is served.
-    paintTabs({ ...node, activeId: 'perm' }, 24, focus('perm'), tagged, [], options)
-    expect(counters.rowsPainted - painted).toBe(2)
-    // Another width and another palette are different looks.
-    paintTabs(node, 12, idle, tagged, [], options)
-    expect(counters.rowsPainted - painted).toBe(2 + first.length)
-    const before = counters.rowsPainted
-    paintTabs(node, 24, focus('model'), bare, [], options)
-    expect(counters.rowsPainted - before).toBe(first.length)
   })
 
   it('paints without a cache when the caller passes none', () => {

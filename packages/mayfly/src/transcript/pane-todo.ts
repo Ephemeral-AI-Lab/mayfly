@@ -17,8 +17,6 @@ import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import type { SessionFactsService } from './session-facts.ts'
-import type { TickSource } from './tick.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { followViewHistory, itemSummary, viewPanel } from './view-items.ts'
 
@@ -120,7 +118,7 @@ export function apply(ctx: Context): void {
     readonly panel: MayflyUiNode | null
   } | undefined
   const t = transcriptTranslator(ctx, 'transcript')
-  const tick = ctx.get('mayflyTick') as TickSource | undefined
+  const tick = ctx.mayflyTick
   const pane = ctx.mayflyPanes.register({ id: TODO_VIEW_ID, title: t('Todo'), placement: 'views', priority: VIEW_PRIORITY }, null)
   const view = followViewHistory(ctx, () => publish())
   // The clock runs while the closing line is up; the view keeps no timer of its own.
@@ -176,8 +174,8 @@ export function apply(ctx: Context): void {
     publish()
   }
 
-  const facts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
-  let session: Session | undefined = facts?.currentAgent?.session
+  const facts = ctx.mayflySessionFacts
+  let session: Session | undefined = facts.currentAgent?.session
   /* The native `todos` projection is the whole list, or null before the first
      write and after the next turn clears it. */
   const readTodos = (target: Session | undefined): readonly TodoItem[] => {

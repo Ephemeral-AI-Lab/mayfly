@@ -11,7 +11,6 @@ import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MayflyDecisionRequest } from '../core/types.ts'
 import { textOf, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { sanitizePluginText } from '../core/plugin-view.ts'
-import { countWork, type MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { materializeTranscriptEntries, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import { queuedIdOf, type StreamMood, type StreamQueued, type StreamRow, type StreamTurn, type TranscriptViewFacts } from '../components/transcript-view.ts'
@@ -189,9 +188,6 @@ export class StreamFacts {
   /** The last facts object, reused when an unchanged pass produced the same turns and queued rows by identity. */
   private lastFacts: { readonly turns: readonly StreamTurn[], readonly queued: readonly StreamQueued[], readonly facts: TranscriptViewFacts } | undefined
 
-  /** @param counters - optional work sink; production constructs without one. */
-  constructor(private readonly counters?: MayflyWorkCounters) {}
-
   /** Forget every kept row (a locale or policy change rewrites texts under the same ids). */
   reset(): void {
     this.rows = new Map()
@@ -284,7 +280,6 @@ export class StreamFacts {
     runsOf(display, inputs.t, inputs.now, asked).forEach((item, position) => {
       const turn = turnOf(item)
       const built = this.rowsOf(item, inputs, position, asked)
-      countWork(this.counters, 'streamRowsBuilt', built.length)
       const mapped = built.map(row => this.intern(row, kept))
       if (mapped.length === 0) return
       for (const row of mapped) {
@@ -313,7 +308,6 @@ export class StreamFacts {
     // A request that names no call (a hook asked) has no block to become: it is a block of its own at the end of the stream.
     const nameless = inputs.requests?.[0]
     if (nameless !== undefined && nameless.callId === undefined && buckets.length > 0) {
-      countWork(this.counters, 'streamRowsBuilt')
       buckets.at(-1)!.rows.push(this.intern(namelessRequestRow(nameless, inputs.requests!.filter(request => request.type === nameless.type).length, inputs.t), kept))
     }
     return buckets.map(({ turn, rows: all }) => {

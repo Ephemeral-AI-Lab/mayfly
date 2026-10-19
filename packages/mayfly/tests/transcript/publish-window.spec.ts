@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
+import type { MayflyNodeSlot } from '../../src/core/hosts/node-slot.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
 import { createTranscriptModel, LIVE_PUBLISH_MS, PUBLISH_INTERVAL_MS, STREAM_WATCHDOG_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 

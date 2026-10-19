@@ -2,9 +2,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyListNode, type MayflyUiEvent } from '../../../ui/src/index.ts'
 import { createRealSurface, probeComponents, type RealSurface } from '../design/probe.ts'
-import { listSelectedIds } from '../../src/core/ui-list-selection.ts'
-import { createChoiceState, reduceChoice } from '../../src/core/ui-interaction-choice.ts'
-import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
+import { listSelectedIds } from '../../src/core/ui/state/ui-list-selection.ts'
+import { createChoiceState, reduceChoice } from '../../src/core/ui/state/ui-interaction-choice.ts'
+import { validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
 import { plainText } from '../helpers.ts'
 
 const items = [{ id: 'apple', label: 'Apple' }, { id: 'banana', label: 'Banana' }]

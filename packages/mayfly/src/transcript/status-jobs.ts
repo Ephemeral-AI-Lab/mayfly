@@ -22,8 +22,8 @@ import { isLiveJob, jobHistory, openJobOutput, sortJobs } from '../interaction/j
 import { compactElapsedMs } from './agent-presentation.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { DONE_LINGER_MS } from './pane-todo.ts'
-import type { TickSource } from './tick.ts'
 import { countSummary, followViewHistory, itemSummary, viewList } from './view-items.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-jobs'
@@ -132,7 +132,7 @@ export function jobsPanel(state: JobsState, t: MayflyTranslate, unavailable: (jo
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const ti = interactionTranslator(ctx)
-  const tick = ctx.get('mayflyTick') as TickSource | undefined
+  const tick = ctx.mayflyTick
   const lifetime = new AbortController()
   let unloaded = false
 
@@ -182,7 +182,7 @@ export function apply(ctx: Context): void {
       refresh()
       return { kind: 'completed', feedback: { severity: 'success', message: t('Stopping {job}', { job: job.label }) } }
     } catch (error) {
-      return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+      return { kind: 'failed', message: formatError(error) }
     }
   }
   const pane = ctx.mayflyPanes.register({ id: 'mayfly.view.jobs', placement: 'views', priority: VIEW_PRIORITY, onEvent: { action: act } }, null)
@@ -237,7 +237,7 @@ export function apply(ctx: Context): void {
       try {
         live = ctx.jobs.list(agent.id)
       } catch (error) {
-        ctx.logger.warn(`could not list background jobs for status: ${error instanceof Error ? error.message : String(error)}`)
+        ctx.logger.warn(`could not list background jobs for status: ${formatError(error)}`)
       }
       const merged = new Map(jobHistory(agent.session).map(job => [String(job.id), job]))
       for (const job of live) merged.set(String(job.id), job)

@@ -14,131 +14,12 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { MayflyComponentsService } from './components.ts'
-import { MayflyKeymapService } from './keymap.ts'
-import { MayflyScreenService } from './screen.ts'
-import { MayflyTerminalInfoService, backgroundFromRgb, probeTerminalBackground } from './terminal-info.ts'
-import { startMayflyTerminal, type MayflyTerminalRuntime } from './terminal.ts'
-import { mountMayflySurfaceRenderer } from './surface-renderer.ts'
-import { contextHintTranslator, mountContextHintLocale } from './context-hint-locale.ts'
-import { ThemeModelService } from '../frontend/theme.ts'
-
-export { MayflyComponentsService, type MayflyComponentsDeps } from './components.ts'
-export { GutterComponent } from './gutter.ts'
-export { MayflyKeymapError, MayflyKeymapService, type MayflyKeymapErrorCode } from './keymap.ts'
-export { MayflyScreenService } from './screen.ts'
-export {
-  PLUGIN_VIEW_MAX_DEPTH,
-  paintPluginTone,
-  sanitizePluginText,
-  summarizePluginView,
-} from './plugin-view.ts'
-export {
-  MayflyTerminalInfoService,
-  PROBE_TIMEOUT_MS,
-  backgroundFromRgb,
-  probeTerminalBackground,
-  type MayflyProbeProcess,
-} from './terminal-info.ts'
-export {
-  MAYFLY_UI_IMAGE_CACHE,
-  MayflyUiImagesService,
-  type MayflyUiImageBytes,
-  type MayflyUiImageLoader,
-  type MayflyUiImageSource,
-  type MayflyUiImageState,
-} from './ui-images.ts'
-export { concatRows } from './ui-rows.ts'
-export { alignDiffLines, diffChangeCounts, diffModel, paintDiffRows, paintDiffSegment, DIFF_ALIGN_MAX_EDITS, DIFF_CONTEXT_ROWS, type DiffModel, type DiffOp, type DiffPaintColors, type DiffPaintOptions, type DiffRowModel, type DiffSegment, type DiffStyle, type DiffWidthHelpers } from './diff-align.ts'
-export { WindowController, type MayflyWindow } from './window-controller.ts'
-export { visibleWidth } from './width.ts'
-export type { MayflyViewsSource } from './views-lane.ts'
-export {
-  compileMayflyEditorShellNode,
-  compileMayflyStatusNode,
-  compileMayflyUiNode,
-  type MayflyCompiledEditorShell,
-  type MayflyEditorShellComponent,
-  type MayflyCompiledStatus,
-  type MayflyEditorShellRenderOptions,
-  type MayflyEditorShellRenderResult,
-  type MayflyCompiledUi,
-  type MayflyEditorShellCompileResult,
-  type MayflyEditorShellCompilerOptions,
-  type MayflyStatusCompileFailure,
-  type MayflyStatusCompileResult,
-  type MayflyStatusCompilerOptions,
-  type MayflyStatusComponent,
-  type MayflyStatusRenderResult,
-  type MayflyUiCompileFailure,
-  type MayflyUiCompileResult,
-  type MayflyUiCompilerOptions,
-  type MayflyUiViewport,
-} from './ui-compiler.ts'
-export {
-  MAYFLY_UI_MAX_ATTACHMENT_ID,
-  MAYFLY_UI_MAX_COLLECTION,
-  MAYFLY_UI_MAX_IMAGES,
-  MAYFLY_UI_MAX_IMAGE_ROWS,
-  MAYFLY_UI_MAX_DEPTH,
-  MAYFLY_UI_MAX_ID,
-  MAYFLY_UI_MAX_LABEL,
-  MAYFLY_UI_MAX_NODES,
-  clipLabel,
-  validateMayflyEditorShellNode,
-  validateMayflyStatusNode,
-  validateMayflyUiNode,
-} from './ui-validator.ts'
-export type {
-  MayflyEditorShellNode,
-  MayflyUiErrorCode,
-  MayflyValidationResult,
-} from './ui-contracts.ts'
-export {
-  TITLE_MAX_CHARS,
-  buildClipboardOsc52,
-  buildTitleOsc0,
-  emitClipboardOsc52,
-  sanitizeTitleText,
-  type MayflyEscapeProcess,
-} from './terminal-escape.ts'
-export type {
-  MayflyAutocompleteItem,
-  MayflyAutocompleteProvider,
-  MayflyAutocompleteSuggestions,
-  MayflyColorFn,
-  MayflyComponent,
-  MayflyComponents,
-  MayflyEditor,
-  MayflyEditorOptions,
-  MayflyEditorSubmitAttempt,
-  MayflyFocusable,
-  MayflyFocusIdentity,
-  MayflyImage,
-  MayflyImageOptions,
-  MayflyKeyAction,
-  MayflyKeyBinding,
-  MayflyKeymap,
-  MayflyKeyScope,
-  MayflySeenAction,
-  MayflyMarkdown,
-  MayflyMarkdownOptions,
-  MayflyOverlayAnchor,
-  MayflyOverlayHandle,
-  MayflyOverlayOptions,
-  MayflyOverlaySize,
-  MayflyOverlayUnfocusOptions,
-  MayflyRgbColor,
-  MayflyScreen,
-  MayflyScreenSlot,
-  MayflySelectItem,
-  MayflySelectList,
-  MayflySelectListOptions,
-  MayflySemanticColors,
-  MayflySubmittedDraft,
-  MayflyTerminalInfo,
-  MayflyTheme,
-  MayflyTopRuleOptions,
-} from './types.ts'
+import { MayflyKeymapService } from './keys/keymap.ts'
+import { MayflyScreenService } from './hosts/screen.ts'
+import { MayflyTerminalInfoService, backgroundFromRgb, probeTerminalBackground } from './terminal/terminal-info.ts'
+import { startMayflyTerminal, type MayflyTerminalRuntime } from './terminal/terminal.ts'
+import { mountMayflySurfaceRenderer } from './hosts/surface-renderer.ts'
+import { contextHintTranslator, mountContextHintLocale } from './ui/compile/context-hint-locale.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-core'
@@ -156,7 +37,6 @@ export const name = 'mayfly-core'
  * @param ctx - plugin context.
  */
 export async function apply(ctx: Context): Promise<void> {
-  ctx.plugin(ThemeModelService)
   // The terminal's owner is registered before the probe acquires anything.
   // Terminal restore starts first at unload and is awaited by the Fiber; the
   // Fiber's children dispose concurrently with it and must tolerate a
@@ -175,7 +55,6 @@ export async function apply(ctx: Context): Promise<void> {
     onSchemeChange: (scheme) => {
       ctx.emit('mayfly/terminal-theme-changed', scheme)
     },
-    screenMode: 'alternate',
     // A streaming tail rewrites the whole viewport through the index-aligned diff; the shadow grid turns one appended
     // row into a scroll plus only the rows it cannot explain, and unrecognized writes pass through and rebuild.
     outputOptimizer: true,

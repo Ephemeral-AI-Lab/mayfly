@@ -40,9 +40,9 @@ slots, never arbitrary root components.
   provides a loader (Fiber-owned, newest first) and core never imports the
   Harness; the wire carries only the attachment id and the alt fallback.
   A `prompt` node's draft, selected token, recall walk, and completion cursor live in
-  the surface model (`core/ui-interaction-prompt.ts`) and survive a renderer reload;
+  the surface model (`core/ui/state/ui-interaction-prompt.ts`) and survive a renderer reload;
   the runtime only leases the terminal editor that mirrors the draft
-  (`core/ui-prompt.ts`), and the prompt's keys are one `keyGrammar` arm.
+  (`core/ui/state/ui-prompt.ts`), and the prompt's keys are one `keyGrammar` arm.
   Registry observers dispose only models from registrations they own.
   Locale namespaces are refcounted shared catalogs: any surface plugin may
   register the same namespace when its catalog is equivalent, and the catalog
@@ -109,7 +109,7 @@ slots, never arbitrary root components.
 ## Node slots
 
 `screen.mountNodeSlot(id, { region: 'content' | 'dock' | 'footer' })` is a
-core-private lease (`core/node-slot.ts`) whose wire node compiles through the
+core-private lease (`core/hosts/node-slot.ts`) whose wire node compiles through the
 surface path, with the same compiler entry, runtime, and caches as a pane, into
 one of the screen's fixed hosts. Its interaction state is a `slot` model in
 `mayflyUiInteraction`, so a screen teardown revokes the lease and keeps the
@@ -156,7 +156,7 @@ without edits, and its row renderers join the owning `width-scan.spec.ts`.
 ## Views lane
 
 A `mayflyPanes` pane with `placement: 'views'` is a view of the status row, kept
-by `core/views-lane.ts` (`SurfaceManager.views`), not by a pane lane: it has no
+by `core/ui/state/views-lane.ts` (`SurfaceManager.views`), not by a pane lane: it has no
 rows of its own, its summary joins the status row through the footer, and an entered
 panel opens under the status row (which stays, with a `━` line under the active item as its second line). A view's slot lives with its `PaneComponent`. Entry keys
 are the named actions `ui.focus-next`, `ui.left`/`ui.right`, and `ui.cancel`;
@@ -167,7 +167,7 @@ through the public pane service, never through core.
 
 `mayflyKeymap` owns every dispatched key as a named action (`ui.save`,
 `ui.search`, `ui.copy`, `ui.delete`, `ui.refresh`, `ui.external`, `ui.cancel`,
-`ui.focus-next`, and the rest of `core/key-actions.ts`) with a scope: `global`,
+`ui.focus-next`, and the rest of `core/keys/key-actions.ts`) with a scope: `global`,
 `editor`, `surface`, or `stream`. A `global` action claims its key in every
 scope; within overlapping scopes a key belongs to one action, and a conflict is
 refused with the owner's name (`KEY_CONFLICT`). `bind`/`reset`/`resetAll` change
@@ -217,17 +217,14 @@ a module singleton. Only a frozen `isWireSnapshot` value is a cache key, a memo
 hit must replay every quota and duplicate check, and a subtree that carries a
 control, tab, page, action key, filter, editor slot, or responsive branch is
 admitted whole each time. Reused leaves are static painters that read only their
-node, width, colors, and components; a new palette recompiles them. The work
-budgets in `tests/perf/budgets.json` only ratchet down.
-
-An unchanged subtree costs nothing on republish, so a painter that paints rows is
-written once in its cacheable form and brings its budget row. `list` reads
+node, width, colors, and components; a new palette recompiles them. An unchanged subtree costs nothing on republish, so a painter that paints rows is
+written once in its cacheable form. `list` reads
 `selectedIds` through `listSelectedIds` (the field is optional on the wire).
 
 An unchanged surface also costs nothing per frame. pi-tui lays a pane out on every
 frame of the terminal and renders a component once per stack that measures it, so
 every component `compileNode` returns answers a repeat render from memory
-(`retain` in `core/ui-compiler.ts`), and so do the parts pi-tui lays out one by one
+(`retain` in `core/ui/compile/ui-compiler.ts`), and so do the parts pi-tui lays out one by one
 (a form's fields, a loader's row, a surface's head and tail). The rows hold for one
 epoch of the surface (`MayflyUiSurfaceRuntime.epoch`). The rules a painter lives by:
 
@@ -241,22 +238,22 @@ epoch of the surface (`MayflyUiSurfaceRuntime.epoch`). The rules a painter lives
 - A moving cell reads the clock through `loaderFrame()` or `progressValue()`. Its
   render and the renders around it hold for one animation frame, a tick asks the
   host for a frame without invalidating (`requestFrame`), and the clock is armed
-  only while the cell can be on screen (`core/ui-stacks.ts` places children; a
+  only while the cell can be on screen (`core/ui/paint/ui-stacks.ts` places children; a
   cell outside the window of its scroll view does not arm it).
 - A layout pass has one viewport, the frame the layout engine was given. A stack
   child's `visible` must not adopt the unbounded viewport of a measuring render.
 - Stacks are `ColumnStack` and `RowStack`: pi-tui's rows, the row each child
   starts at, and a horizontal stack that remembers composited rows.
 - Pages switched in place keep one height, the tallest page's at the current
-  width and viewport: `holdHeight` (`core/ui-stacks.ts`) pads the page on show
+  width and viewport: `holdHeight` (`core/ui/paint/ui-stacks.ts`) pads the page on show
   for tab pages (`PageHold`) and for the views lane. Components never pin page
   heights of their own to the same end.
 
-Every spec outside `tests/perf/` runs with `MAYFLY_UI_VERIFY_MEMO=1` (the vitest
-`suite` project): every memo hit paints again and throws when the rows differ. A
-stale row is a test failure, not a report from a screen.
+Every spec runs with `MAYFLY_UI_VERIFY_MEMO=1`: every memo hit paints again and
+throws when the rows differ. A stale row is a test failure, not a report from a
+screen.
 
-The presentation (`core/presentation.ts`: glyph mode, monochrome, reduced
+The presentation (`core/theme/presentation.ts`: glyph mode, monochrome, reduced
 motion, from the `mayfly` settings and `NO_COLOR`) is read when a theme provider
 and the components service are built, never per paint. A change restarts the
 live theme provider (`reloadTheme`), so every consumer and cached row rebuilds.
@@ -265,11 +262,9 @@ Build surfaces from the shared components (actions row, text/choice fields,
 lists, tabs, decision panels, questionnaire, loader/progress/empty). The
 [UI design](../../docs/design/component-library.md) and its prototype are the
 starting sketch; the owner's acceptance in the running terminal decides, and a
-finalized section describes accepted behavior. Its
-[implementation reference](../../docs/design/component-library-reference.md) holds
-the wire mechanics. Never hand-roll pi-tui panels outside `core/`; the editor's
-completion list is state only (`core/completion-list.ts`) and the palette that
-paints it is `core/completion-drawer.ts`. A component that replaces a surface deletes the old code in
+finalized section describes accepted behavior. Never hand-roll pi-tui panels outside `core/`; the editor's
+completion list is state only (`core/ui/compile/completion-list.ts`) and the palette that
+paints it is `core/ui/compile/completion-drawer.ts`. A component that replaces a surface deletes the old code in
 the same change; nothing is kept for a later cleanup.
 
 ## Native writes and sensitive data
@@ -308,7 +303,7 @@ the same change; nothing is kept for a later cleanup.
 
 ## Verification and composition
 
-Follow the root change-aware gate; lifecycle changes need the owning suite and
+Run `pnpm run check`; lifecycle changes need the owning suite and
 renderers need width scans. Core fixtures mount the UI provider and frontend
 owner, and test that frontend state survives core reload. New public seams need
 real consumers, replay/abort/late-result tests, width and whole-tree composition
@@ -321,32 +316,10 @@ one long scenario (root `AGENTS.md`, Round workflow), a replay of
 `script/scenarios/driver.mjs`. The Website's app shots are checkpoints of the
 `app-*` scenarios, painted from their goldens.
 
-The canonical UI pipeline takes an optional core-private work-counter sink
-(`core/ui-work-counters.ts`) through the validator and compiler options; production
-passes none and no module holds one. `tests/perf/work-budget.spec.ts` gates the
-counts of the workloads in `tests/perf/workloads.ts`, so a change under
-`src/core/ui-*.ts` keeps them within `tests/perf/baseline.json` or updates it on
-purpose. The budgets are
-the work-budget gate of the foundation: `budgets.json` may not exceed
-`baseline.json` (the work of the slice 1.0 pipeline), W1 and W4 gate again through
-the node slot (`W1-slot`, `W4-slot`), a slice that adds a painter adds its row,
-and wall-clock time from `script/audit-performance.mjs` is reported with a change
-and gates nothing. W13 to W17 (`tests/perf/frame-workloads.ts`) count a whole frame
-through the alternate layout, the lanes, and the surface renderer (leaf renders,
-control walks, reconciliations, layout passes, clock ticks, keymap snapshots): a
-budget row gates the counters it names, and a change to the frame path
-(`core/terminal.ts`, `core/surface-renderer.ts`, the keymap, the editor-extension
-runtime) runs them. `pnpm run perf -- --assert` holds the perf scenarios of the
-real terminal to the catalog's coarse ceilings in the full tier. The design scenes (`tests/design/scene-*.spec.ts`) drive
-the real renderer under the probe palette (`tests/design/probe.ts`) through the walks
-of `tests/design/walks.ts` and compare every frame with a cell-grid golden under
-`tests/design/frames/` (`script/scenarios/grid.mjs`); `vitest -u` rewrites a grid
-after review. Those grids are the visual record of Phase 1 until the foundation
-review replaces them. The prototype is a sketch and gates nothing. The owner's live
-acceptance decides a component's look, and its accepted frames become its goldens.
+The perf scenarios (`pnpm run perf`) report A/B timings against the merge base and the catalog's coarse ceilings; they gate nothing. Design frames and scenario goldens are retired; the owner's live acceptance and the six app-shot goldens decide a component's look.
 
 Patch, preset, skill, dependency, or composition edits require bundle/preset
-tests, `pnpm run check:agent-docs`, `pnpm run check -- --tier full`,
+tests, `pnpm run check:agent-docs`, `pnpm run check`,
 `pnpm run check:pack`, dedicated-profile install, PTY smoke, and human acceptance.
 Keep `HARNESS_LINE` in `interaction/session-commands.ts`, where drift/build
 scripts read it. The public side-question entry is `./btw-command`; do not restore

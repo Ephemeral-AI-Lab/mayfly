@@ -8,7 +8,7 @@
  * nothing wraps.
  *
  * When a fresh conversation first shows (startup, `/new`, its alias `/clear`)
- * the mark flies in once (`core/quad-mark.ts`): it enters from the right edge,
+ * the mark flies in once (`core/text/quad-mark.ts`): it enters from the right edge,
  * crosses the status column with the text appearing in its wake, lands, beats
  * its wings twice and rests, in 1.55 s. A conversation that already has turns
  * (a resumed or forked session) shows the mark at rest, and reduced motion
@@ -33,9 +33,9 @@
 import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { GutterComponent } from '../core/gutter.ts'
-import { readPresentation } from '../core/presentation.ts'
-import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS, flyInRows, markColumns, restRows, type MarkTextRun } from '../core/quad-mark.ts'
+import { GutterComponent } from '../core/text/gutter.ts'
+import { readPresentation } from '../core/theme/presentation.ts'
+import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS, flyInRows, markColumns, restRows, type MarkTextRun } from '../core/text/quad-mark.ts'
 import type { MayflyColorFn, MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
 // Empty type import carries the `agentDefaultModel` Context merge this
 // plugin's inject resolves.

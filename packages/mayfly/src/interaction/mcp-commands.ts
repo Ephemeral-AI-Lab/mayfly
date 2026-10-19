@@ -4,13 +4,15 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-commands'
-import { panel, ui, type MayflyField, type MayflyListItem, type MayflyOverlayHandle, type MayflySubmission, type MayflyTone, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiEventContext, type MayflyUiNode, type MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyField, type MayflyListItem, type MayflyOverlayHandle, type MayflySubmission, type MayflyTone, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiEventContext, type MayflyUiNode, type MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { collectMcpServers, type McpCatalog, type McpServerView, type McpStatus } from './mcp-servers.ts'
 import { listMcpResources, readMcpResource, resourceItems } from './mcp-resources.ts'
 import { firstSentence } from './tools-commands.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+import { formPanel, listPanel, panelActions, panelFrame } from './panel.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
+import { formatError } from '../internal/format.ts'
 
 export const name = 'mayfly-mcp-command'
 export const inject = ['commands', 'tools', 'mayflyCurrentAgent', 'mayflyOverlays']
@@ -19,7 +21,6 @@ const STATUS_TONE: Readonly<Record<McpStatus, MayflyTone>> = { synced: 'success'
 const SERVER_TABS = ['tools', 'config', 'resources'] as const
 type ServerTab = typeof SERVER_TABS[number]
 type Page = 'list' | 'server' | 'tool' | 'resource' | 'body'
-const describe = (error: unknown) => error instanceof Error ? error.message : String(error)
 
 export function serverItems(catalog: McpCatalog, t: MayflyTranslate): readonly MayflyListItem[] {
   return catalog.servers.toSorted((left, right) => STATUS_ORDER.indexOf(left.status) - STATUS_ORDER.indexOf(right.status) || left.serverName.localeCompare(right.serverName)).map(server => ({
@@ -78,13 +79,15 @@ interface ViewState {
 
 const emptyState = (): ViewState => ({ page: 'list', serverId: '', tab: 'tools', toolName: undefined, resource: undefined, resourceIndex: undefined, bodyText: undefined, bodyLabel: undefined })
 
-function listPanel(catalog: McpCatalog, available: boolean, t: MayflyTranslate): MayflyUiNode {
-  return panel({ title: t('MCP servers'), escapeLabel: 'close', body: ui.stack.column([
-    ...available ? [] : [ui.text(t('MCP catalog unavailable; showing the last snapshot'), { tone: 'danger' })],
-    ui.list({ id: 'servers', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash', items: serverItems(catalog, t), empty: ui.empty({ title: t('No MCP servers are declared') }) }),
-    ...catalog.orphanCount === 0 ? [] : [ui.text(t('{count} registered MCP tools have no declared server', { count: catalog.orphanCount }), { tone: 'muted' })],
-    ui.actions({ id: 'mcp-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
-  ]) })
+function serversPanel(catalog: McpCatalog, available: boolean, t: MayflyTranslate): MayflyUiNode {
+  return listPanel({
+    title: t('MCP servers'), escapeLabel: 'close',
+    id: 'servers', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash',
+    items: serverItems(catalog, t), empty: ui.empty({ title: t('No MCP servers are declared') }),
+    leading: available ? [] : [ui.text(t('MCP catalog unavailable; showing the last snapshot'), { tone: 'danger' })],
+    trailing: catalog.orphanCount === 0 ? [] : [ui.text(t('{count} registered MCP tools have no declared server', { count: catalog.orphanCount }), { tone: 'muted' })],
+    actions: { id: 'mcp-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] },
+  })
 }
 
 function serverPage(server: McpServerView, tab: ServerTab, resources: ResourceState | undefined, t: MayflyTranslate): MayflyUiNode {
@@ -104,7 +107,7 @@ function serverPage(server: McpServerView, tab: ServerTab, resources: ResourceSt
       ...resources.loading ? [ui.loader({})] : [],
     ])
   }
-  return panel({ title: server.serverName, escapeLabel: 'back', body: ui.stack.column([
+  return panelFrame({ title: server.serverName, escapeLabel: 'back', body: ui.stack.column([
     ui.tabs({ id: 'server-pages', activeId: tab, items: [
       { id: 'tools', label: t('Tools'), count: server.toolsVisible.length },
       { id: 'config', label: t('Configuration') },
@@ -113,7 +116,7 @@ function serverPage(server: McpServerView, tab: ServerTab, resources: ResourceSt
     ui.child(toolPage, { tab: { controlId: 'server-pages', itemId: 'tools' }, grow: 1, minSize: 1 }),
     ui.child(configPage, { tab: { controlId: 'server-pages', itemId: 'config' }, grow: 1, minSize: 1 }),
     ui.child(resourcesPage, { tab: { controlId: 'server-pages', itemId: 'resources' }, grow: 1, minSize: 1 }),
-    ui.actions({ id: 'server-actions', items: [
+    panelActions({ id: 'server-actions', items: [
       { id: 'resources', label: t('Resources'), hintLabel: t('resources'), key: 'v', hidden: true },
       { id: 'templates', label: t('Templates'), hintLabel: t('templates'), key: 't', hidden: true },
       ...tab === 'resources' && resources?.cursor !== undefined && !resources.loading ? [{ id: 'more', label: t('More'), hintLabel: t('more'), key: 'm', hidden: true }] : [],
@@ -123,7 +126,7 @@ function serverPage(server: McpServerView, tab: ServerTab, resources: ResourceSt
 }
 
 function toolPanel(server: McpServerView, schema: ToolSchema, t: MayflyTranslate): MayflyUiNode {
-  return panel({ title: schema.name, subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([
+  return panelFrame({ title: schema.name, subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([
     ui.child(ui.scroll(ui.stack.column([
       ui.fields([{ label: t('Name'), value: [{ text: schema.name }] }]),
       ui.divider({ label: t('Description') }),
@@ -131,28 +134,25 @@ function toolPanel(server: McpServerView, schema: ToolSchema, t: MayflyTranslate
       ui.divider({ label: t('Parameters') }),
       schema.parameters === undefined ? ui.text(t('(no parameters)'), { tone: 'muted' }) : ui.code(JSON.stringify(schema.parameters, null, 2), { language: 'json' }),
     ]), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
-    ui.actions({ id: 'tool-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
+    panelActions({ id: 'tool-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
   ]) })
 }
 
 function resourcePanel(server: McpServerView, resource: ResourceState, index: number, t: MayflyTranslate): MayflyUiNode {
   const item = resource.items[index]!
   const initial = String(item.uri ?? item.uriTemplate ?? '')
-  return panel({ title: String(item.name ?? initial), subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([
-    ...typeof item.description === 'string' && item.description !== '' ? [ui.text(item.description, { tone: 'muted', overflow: 'wrap' })] : [],
-    ui.form({ id: 'resource-uri', enterSubmits: 'read', fields: [{ kind: 'input', id: 'uri', label: t('Resource URI'), value: initial }] }),
-    ui.actions({ id: 'resource-actions', items: [{ id: 'read', label: t('Read'), hintLabel: t('read'), hidden: true, read: [{ pagePath: [], formId: 'resource-uri' }] }] }),
-  ]) })
+  return formPanel({
+    title: String(item.name ?? initial), subtitle: server.serverName, escapeLabel: 'back',
+    id: 'resource-uri', enterSubmits: 'read',
+    fields: [{ kind: 'input', id: 'uri', label: t('Resource URI'), value: initial }],
+    leading: typeof item.description === 'string' && item.description !== '' ? [ui.text(item.description, { tone: 'muted', overflow: 'wrap' })] : [],
+    actions: { id: 'resource-actions', items: [{ id: 'read', label: t('Read'), hintLabel: t('read'), hidden: true, read: [{ pagePath: [], formId: 'resource-uri' }] }] },
+  })
 }
 
 function resourceBodyPanel(server: McpServerView, state: ViewState, t: MayflyTranslate): MayflyUiNode {
   const text = state.bodyText ?? ''
-  return panel({ title: state.bodyLabel ?? t('Resources'), subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([ui.child(ui.scroll(ui.text(text === '' ? t('(no output)') : text, { overflow: 'wrap' }), { id: 'resource-body', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]) })
-}
-
-/** The server page with its Tools, Configuration, and Resources tabs, as its own panel. */
-export function mcpServerNode(server: McpServerView, t: MayflyTranslate): MayflyUiNode {
-  return serverPage(server, 'tools', undefined, t)
+  return panelFrame({ title: state.bodyLabel ?? t('Resources'), subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([ui.child(ui.scroll(ui.text(text === '' ? t('(no output)') : text, { overflow: 'wrap' }), { id: 'resource-body', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]) })
 }
 
 export function apply(ctx: Context): void {
@@ -177,9 +177,9 @@ export function apply(ctx: Context): void {
       const state = emptyState()
       const selectedServer = () => catalog.servers.find(item => item.entryId === state.serverId)
       const render = (): MayflyUiNode => {
-        if (state.page === 'list') return listPanel(catalog, available, t)
+        if (state.page === 'list') return serversPanel(catalog, available, t)
         const server = selectedServer()
-        if (server === undefined) return listPanel(catalog, available, t)
+        if (server === undefined) return serversPanel(catalog, available, t)
         if (state.page === 'tool') {
           const schema = server.toolsVisible.find(item => item.name === state.toolName)
           return schema === undefined ? serverPage(server, 'tools', state.resource, t) : toolPanel(server, schema, t)
@@ -226,7 +226,7 @@ export function apply(ctx: Context): void {
           resource.loaded = true
           resource.error = undefined
         } catch (error) {
-          if (current() && handle?.closed === false && revision === resourceGeneration && state.resource === resource) resource.error = describe(error)
+          if (current() && handle?.closed === false && revision === resourceGeneration && state.resource === resource) resource.error = formatError(error)
         } finally {
           if (current() && handle?.closed === false && revision === resourceGeneration && state.resource === resource) { resource.loading = false; publish() }
         }
@@ -261,7 +261,7 @@ export function apply(ctx: Context): void {
           state.page = 'body'
           publish()
           return { kind: 'completed' }
-        } catch (error) { return { kind: 'failed', message: describe(error) } }
+        } catch (error) { return { kind: 'failed', message: formatError(error) } }
       }
       const back = (): MayflyUiActionReply => {
         if (state.page === 'body') { state.page = 'resource'; publish(); return { kind: 'completed', dismiss: false } }
@@ -283,7 +283,7 @@ export function apply(ctx: Context): void {
         if (event.kind === 'dismiss') return back()
         if (event.kind === 'activate') {
           if (event.actionId === 'refresh') {
-            try { await refresh(); return { kind: 'completed' } } catch (error) { return { kind: 'failed', message: describe(error) } }
+            try { await refresh(); return { kind: 'completed' } } catch (error) { return { kind: 'failed', message: formatError(error) } }
           }
           if (event.actionId === 'resources') { openResources(false); return { kind: 'completed' } }
           if (event.actionId === 'templates') { openResources(true); return { kind: 'completed' } }
@@ -292,7 +292,7 @@ export function apply(ctx: Context): void {
           return { kind: 'completed' }
         }
         if (event.kind === 'selection-accept' && event.controlId === 'servers') {
-          try { await refresh() } catch (error) { return { kind: 'failed', message: describe(error) } }
+          try { await refresh() } catch (error) { return { kind: 'failed', message: formatError(error) } }
           const server = catalog.servers.find(item => item.entryId === event.selectedIds[0])
           if (server === undefined) return { kind: 'failed', message: t('The MCP server is no longer available') }
           state.page = 'server'
@@ -343,6 +343,6 @@ export function apply(ctx: Context): void {
       cleanup = () => { offTools(); offLocale(); offAgent() }
       await refresh()
       return { kind: 'success' }
-    } catch (error) { return current() ? { kind: 'error', text: describe(error) } : { kind: 'success' } }
+    } catch (error) { return current() ? { kind: 'error', text: formatError(error) } : { kind: 'success' } }
   } })
 }

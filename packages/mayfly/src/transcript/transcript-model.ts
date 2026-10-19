@@ -9,14 +9,13 @@
 
 import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { latestTurnOf, queuedIdOf, STREAM, streamTarget, TranscriptStream, type StreamRow, type TranscriptViewFacts } from '../components/transcript-view.ts'
-import type { MayflyNodeSlot } from '../core/node-slot.ts'
-import type { MayflySearchLine } from '../core/search-line.ts'
-import type { MayflyScreenService } from '../core/screen.ts'
+import type { MayflyNodeSlot } from '../core/hosts/node-slot.ts'
+import type { MayflySearchLine } from '../core/ui/state/search-line.ts'
+import type { MayflyScreenService } from '../core/hosts/screen.ts'
 import type { MayflyDecisionRequest, MayflyFocusMode, MayflyFocusRow, MayflyQueuedAction, MayflyScreen } from '../core/types.ts'
-import type { MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
+import { freezeModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import { NO_DISCLOSURE, toggleCall, toggleGroup, toggleRows, toggleTurn, type Disclosure } from './disclosure.ts'
 import type { CopyMode } from './row-text.ts'
 import { findHits, readPattern, type SearchPattern, type SearchResult } from './search.ts'
@@ -63,8 +62,6 @@ export interface TranscriptControllerOptions {
   }
   /** The duration of the publish that just finished, for the adaptive window; specs inject a fixed cost. */
   readonly publishCost?: () => number
-  /** Optional work sink for stream mapping and row construction; production passes none. */
-  readonly counters?: MayflyWorkCounters
 }
 
 /**
@@ -123,15 +120,6 @@ export function createTranscriptModel(
     ...(streaming === undefined ? {} : { streaming }),
     ...(turns === undefined ? {} : { turns: [...turns] }),
   })
-}
-
-/** Append one projected canonical node or semantic entry without folding events. */
-export function appendTranscriptNode(
-  model: TranscriptModel,
-  entry: MayflyUiNode | TranscriptEntryModel,
-  streaming = model.streaming,
-): TranscriptModel {
-  return createTranscriptModel(model.id, [...materializeTranscriptEntries(model), entry], streaming, model.generation, model.turns)
 }
 
 const EMPTY_RESULT: SearchResult = { hits: [], turnStart: new Map(), orders: new Map() }
@@ -258,7 +246,7 @@ export class TranscriptController {
    */
   setView(key: string, source: Source, options: TranscriptViewOptions = {}): void {
     this.views.get(key)?.fresh.reset()
-    this.views.set(key, { source, options, facts: new StreamFacts(this.options.counters), fresh: new NewMessages(this.freshHost) })
+    this.views.set(key, { source, options, facts: new StreamFacts(), fresh: new NewMessages(this.freshHost) })
     if (key === this.active) this.publish()
   }
 

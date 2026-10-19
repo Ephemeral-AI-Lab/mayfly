@@ -10,7 +10,7 @@
  * @module @ephemeral-ai/mayfly/transcript/tool-calls
  */
 
-import { alignDiffLines, diffModel } from '../core/diff-align.ts'
+import { alignDiffLines, diffModel } from '../core/content/diff-align.ts'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import { argumentDetail } from '../conversation/activity-detail.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'

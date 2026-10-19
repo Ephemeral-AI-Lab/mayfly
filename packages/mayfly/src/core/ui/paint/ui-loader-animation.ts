@@ -1,0 +1,223 @@
+/**
+ * Renderer-owned animation: one clock, the per-variant glyph tables and cadences of the design (spec §2.3), and the
+ * painters of the two motion channels (a loader glyph, a shimmering label). Only painted surfaces request another
+ * frame, one timer serves them all, and reduced motion freezes every channel on its first frame.
+ *
+ * @module @ephemeral-ai/mayfly/core/ui/paint/ui-loader-animation
+ */
+
+import type { MayflyLoaderVariant } from '@ephemeral-ai/mayfly-ui'
+import { ASCII_SPINNER_FRAMES, type MayflyGlyphMode } from '../../text/glyphs.ts'
+import type { MayflySemanticColors } from '../../types.ts'
+
+/** One clock step: every channel moves on it. */
+export const LOADER_FRAME_MS = 100
+
+/** The longest a step waits for a slow frame: past it the motion is no longer worth its repaint. */
+export const LOADER_MAX_FRAME_MS = 400
+
+/** The most glyph steps one late tick may jump, so a long stall cannot spin the table (the phase still lands on time). */
+export const LOADER_MAX_CATCH_UP = 8
+
+/** The frames of the three stepping variants, one cell each. */
+const LOADER_FRAMES: Readonly<Record<'bloom' | 'fill' | 'gap', readonly string[]>> = Object.freeze({
+  bloom: Object.freeze(['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢']),
+  fill: Object.freeze(['⡀', '⣄', '⣤', '⣦', '⣶', '⣷', '⣿', '⣷', '⣶', '⣦', '⣤', '⣄']),
+  gap: Object.freeze(['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷']),
+})
+
+/** Shades in one breath: a clock step each, so the cycle is as smooth as the clock (2.4 s at 100 ms). */
+const BREATH_SHADES = 24
+
+/** How bright each of the breath's shades is, dim to bright to dim along a cosine (1 is the tone itself, 0 the palette's muted gray). */
+const BREATH_LEVELS: readonly number[] = Object.freeze(Array.from({ length: BREATH_SHADES }, (_, index) => Number((0.5 - 0.5 * Math.cos((2 * Math.PI * index) / BREATH_SHADES)).toFixed(3))))
+
+/** From this level up the breath is also bold, so the bright half of the cycle reads at once. */
+const BREATH_BOLD_LEVEL = 0.6
+
+/** The `shimmer` window is this many letters wide, centred on the sweep. */
+const SHIMMER_WINDOW = 3
+
+/** The step of a stepping variant at a clock frame (a reduced-motion caller passes frame 0). */
+export function loaderFrameGlyph(variant: 'bloom' | 'fill' | 'gap', frame: number): string {
+  const frames = LOADER_FRAMES[variant]
+  return frames[frame % frames.length]!
+}
+
+/** Which breath shade a clock frame shows. */
+export function breathLevel(frame: number): number {
+  return BREATH_LEVELS[frame % BREATH_LEVELS.length]!
+}
+
+// oxlint-disable-next-line no-control-regex -- ESC (\x1b) opens the palette's SGR sequence
+const TRUECOLOR = /^\x1b\[38;2;(\d+);(\d+);(\d+)m/u
+
+/** The RGB a palette color function paints with, or undefined for a weight-only or non-truecolor function. */
+function rgbOf(paint: (text: string) => string): readonly [number, number, number] | undefined {
+  const match = TRUECOLOR.exec(paint('x'))
+  return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])]
+}
+
+/**
+ * The colour of a breath shade: the `primary` tone blended toward the palette's deepest gray by `level`, so the
+ * brightest shade is `primary` itself. A palette that paints no truecolor (monochrome) has no shades and alternates the tone and the muted gray.
+ */
+export function breathPaint(colors: Pick<MayflySemanticColors, 'primary' | 'textMuted'>, level: number): (text: string) => string {
+  const tone = rgbOf(colors.primary)
+  const floor = rgbOf(colors.textMuted)
+  // A palette with no truecolor has no shades: the breath alternates the tone and the muted gray instead.
+  if (tone === undefined || floor === undefined) return level >= 0.5 ? colors.primary : colors.textMuted
+  const [r, g, b] = tone.map((channel, index) => Math.round(floor[index]! + (channel - floor[index]!) * level))
+  const [open, close] = level >= BREATH_BOLD_LEVEL ? ['\x1b[1m', '\x1b[22m'] : ['', '']
+  return text => `${open}\x1b[38;2;${String(r)};${String(g)};${String(b)}m${text}\x1b[39m${close}`
+}
+
+/** What a loader cell is painted with. */
+interface LoaderCellOptions {
+  readonly colors: Pick<MayflySemanticColors, 'primary' | 'textMuted'>
+  /** The glyph vocabulary; ASCII swaps every stepping variant for `- \ | /`. */
+  readonly glyphs?: MayflyGlyphMode | undefined
+  /** Reduced motion freezes the cell on its first frame. */
+  readonly reducedMotion?: boolean | undefined
+}
+
+/** One loader cell, painted: a stepping variant's glyph in `primary`, or the breath's `●` (the pulse's `•`) in its current shade. */
+export function loaderCell(variant: MayflyLoaderVariant, frame: number, options: LoaderCellOptions): string {
+  const at = options.reducedMotion === true ? 0 : frame
+  if (variant === 'breath') return breathPaint(options.colors, breathLevel(at))('●')
+  if (variant === 'pulse') return breathPaint(options.colors, breathLevel(at))('•')
+  if (options.glyphs === 'ascii') return options.colors.primary(ASCII_SPINNER_FRAMES[at % ASCII_SPINNER_FRAMES.length]!)
+  return options.colors.primary(loaderFrameGlyph(variant, at))
+}
+
+/** The letters a shimmer window covers at a frame: one letter per step, the window sweeping in from before the first. */
+export function shimmerWindow(letters: number, frame: number): number {
+  return (frame % (letters + SHIMMER_WINDOW * 2)) - SHIMMER_WINDOW
+}
+
+/** A label with its shimmer: a three-letter `primary` bold window sweeps over muted letters. */
+export function shimmerText(text: string, frame: number, colors: Pick<MayflySemanticColors, 'primary' | 'muted'>, reducedMotion = false): string {
+  const letters = [...text]
+  const at = shimmerWindow(letters.length, reducedMotion ? 0 : frame)
+  return letters.map((letter, index) => Math.abs(index - at) <= 1 ? `\x1b[1m${colors.primary(letter)}\x1b[22m` : colors.muted(letter)).join('')
+}
+
+/**
+ * The one timer behind every animated surface of a renderer. A surface arms its animation while it paints a moving cell
+ * and leaves when it hides, so the timer exists only while something is armed. A caller that wants no sharing gives
+ * each animation its own clock.
+ */
+export class UiAnimationClock {
+  private timer: ReturnType<typeof setTimeout> | undefined
+  private readonly armed = new Set<UiLoaderAnimation>()
+  /** When the tick asked for the repaint that is landing now, until that repaint paints a moving cell. */
+  private askedAt: number | undefined
+  /** When the last tick fired: the glyph phase follows wall time, so a slow frame skips steps instead of stretching them. */
+  private lastTickAt = 0
+
+  /**
+   * Joins the next tick, starting the timer when none is pending. The glyph phase is counted from the clock's own start,
+   * not from how often a paint happened: a tick advances by however many steps the wall clock passed, so a slow frame
+   * drops glyphs instead of slowing the cycle. Only the tick's own request-to-paint lag may stretch the next wait (up to
+   * {@link LOADER_MAX_FRAME_MS}), and a paint that answered no tick never counts.
+   */
+  arm(member: UiLoaderAnimation): void {
+    this.armed.add(member)
+    if (this.timer !== undefined) return
+    const now = performance.now()
+    let delay = LOADER_FRAME_MS
+    if (this.askedAt !== undefined) {
+      const lag = now - this.askedAt
+      this.askedAt = undefined
+      if (lag > LOADER_FRAME_MS) delay = Math.min(LOADER_MAX_FRAME_MS, lag)
+    }
+    this.timer = setTimeout(() => {
+      this.timer = undefined
+      const fired = performance.now()
+      const elapsed = this.lastTickAt === 0 ? LOADER_FRAME_MS : fired - this.lastTickAt
+      // Cap one catch-up so a long stall cannot spin the glyph table; the phase still lands on the current step.
+      const steps = Math.max(1, Math.min(LOADER_MAX_CATCH_UP, Math.round(elapsed / LOADER_FRAME_MS)))
+      this.lastTickAt = fired
+      const due = [...this.armed]
+      this.armed.clear()
+      let asked = false
+      for (const animation of due) {
+        if (!animation.fire(steps)) continue
+        asked = true
+      }
+      if (asked) this.askedAt = performance.now()
+    }, delay)
+  }
+
+  /** Leaves the next tick; the timer is cancelled once nothing is armed. */
+  disarm(member: UiLoaderAnimation): void {
+    this.armed.delete(member)
+    if (this.armed.size === 0) {
+      clearTimeout(this.timer)
+      this.timer = undefined
+      this.askedAt = undefined
+    }
+  }
+
+  /**
+   * The frame a tick asked for painted no moving cell (the cell scrolled out of view): the tick has no lag to report,
+   * and the time until a cell shows again is not one.
+   */
+  forget(): void {
+    this.askedAt = undefined
+  }
+
+  /** Cancels the pending tick and forgets every member. */
+  dispose(): void {
+    this.armed.clear()
+    clearTimeout(this.timer)
+    this.timer = undefined
+    this.askedAt = undefined
+  }
+}
+
+export class UiLoaderAnimation {
+  private painted = false
+  private frameValue = 0
+  /** Frames that may still begin before the last tick's repaint is known to have painted no moving cell. */
+  private awaited = 0
+
+  constructor(private readonly requestRender: () => void, private readonly clock: UiAnimationClock = new UiAnimationClock()) {}
+
+  get frame(): number { return this.frameValue }
+
+  /** A fresh paint/rebind must encounter a loader to keep its clock running. */
+  beginFrame(): void {
+    this.painted = false
+    // The frame after the one a tick asked for begins: that one painted no moving cell, or it would have armed the clock.
+    if (this.awaited > 0 && --this.awaited === 0) this.clock.forget()
+  }
+
+  /** All loaders within one surface share a clock, independent of data updates. */
+  render(): number {
+    this.painted = true
+    this.awaited = 0
+    this.clock.arm(this)
+    return this.frameValue
+  }
+
+  /**
+   * Called by the clock on a tick: a surface that did not paint since its last frame stays out of the next one.
+   * @param steps - glyph steps the wall clock passed since the previous tick; a late frame skips them instead of slowing.
+   * @returns whether the tick asked for a repaint.
+   */
+  fire(steps = 1): boolean {
+    if (!this.painted) return false
+    this.painted = false
+    this.frameValue += Math.max(1, Math.floor(steps))
+    this.awaited = 2
+    this.requestRender()
+    return true
+  }
+
+  /** Hiding, deactivation, or renderer disposal cancels the pending repaint. */
+  stop(): void {
+    this.clock.disarm(this)
+    this.painted = false
+  }
+}

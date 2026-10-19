@@ -74,11 +74,11 @@ class HandLane {
 async function boot(current: FakeAgent | null = fakeAgent([]), lane = new HandLane(), conversations = new FakeConversations()): Promise<PanePluginHarness & { readonly lane: HandLane, readonly conversations: FakeConversations }> {
   const harness = await bootPanePlugin({
     name: 'pane-notification-under-test',
-    inject: ['mayflyConversations'],
+    inject: ['mayflyConversations', 'mayflySessionFacts', 'mayflyTick'],
     apply(ctx) {
       mountNotificationPane(ctx, transcriptTranslatorFake)
     },
-  }, current, { mayflyUiInteraction: lane, mayflyConversations: conversations })
+  }, current, { mayflyUiInteraction: lane, mayflyConversations: conversations, mayflyTick: { subscribe: () => () => {} } })
   return { ...harness, lane, conversations }
 }
 
@@ -199,11 +199,11 @@ describe('mayfly-pane-notification', () => {
   it('keeps the row and its focus keys when the editor has no lane to read', async () => {
     const harness = await bootPanePlugin({
       name: 'pane-notification-without-lane',
-      inject: ['mayflyConversations'],
+      inject: ['mayflyConversations', 'mayflySessionFacts', 'mayflyTick'],
       apply(ctx) {
         mountNotificationPane(ctx, transcriptTranslatorFake)
       },
-    }, fakeAgent([]), { mayflyConversations: new FakeConversations() })
+    }, fakeAgent([]), { mayflyConversations: new FakeConversations(), mayflyTick: { subscribe: () => () => {} } })
     expect(nodeOf(harness)).toContain('Alt+↑ conversation · Alt+↓ view')
     await harness.dispose()
   })

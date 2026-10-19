@@ -15,7 +15,7 @@ import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 registerTempDirCleanup()
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { fakeMayflyContext } from './fakes.ts'
-import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
 import { updaterInternals } from '../../src/interaction/updater/io.ts'
 import { apply as applySettings, Config as MAYFLY_SETTINGS_CONFIG, DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'

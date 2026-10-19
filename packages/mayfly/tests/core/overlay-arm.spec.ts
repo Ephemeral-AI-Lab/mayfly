@@ -6,16 +6,16 @@ import { stripTerminalSequences } from '@earendil-works/pi-tui'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apply as applyApi } from '../../../ui/src/provider.ts'
 import type { MayflyUiActionEvent, MayflyUiNode } from '../../../ui/src/contracts.ts'
-import { patterns, ui } from '../../../ui/src/index.ts'
-import { OverlayArm } from '../../src/core/overlay-arm.ts'
-import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
-import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal.ts'
+import { compose, ui } from '../../../ui/src/index.ts'
+import { OverlayArm } from '../../src/core/hosts/overlay-arm.ts'
+import { mountMayflySurfaceRenderer } from '../../src/core/hosts/surface-renderer.ts'
+import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal/terminal.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { FakeTerminal } from './fake-terminal.ts'
 import * as frontend from '../../src/frontend/index.ts'
-import { MayflyScreenService } from '../../src/core/screen.ts'
+import { MayflyScreenService } from '../../src/core/hosts/screen.ts'
 import { flush } from '../helpers.ts'
 
 const colors = new Proxy({}, { get: () => (text: string) => text }) as MayflySemanticColors
@@ -38,10 +38,16 @@ const choices = (): MayflyUiNode => ui.list({
   items: [{ id: 'once', label: 'Allow once' }, { id: 'reject', label: 'Reject' }],
 })
 
+interface Activation {
+  readonly actionId: string
+  readonly selected?: readonly string[]
+}
+
 interface Bench {
   readonly root: Context
   readonly slot: { readonly component: MayflyFocusable }
   readonly chosen: string[]
+  readonly activated: Activation[]
   readonly dismissed: string[]
   readonly rows: () => string
   open(armMs: number | undefined, node?: MayflyUiNode): ReturnType<Context['mayflyOverlays']['open']>
@@ -66,14 +72,23 @@ async function bench(): Promise<Bench> {
   const slot = root.mayflyScreen.mountDockSlot('editor.prompt', { focused: false, render: () => ['prompt'], invalidate() {}, handleInput() {} } as MayflyFocusable)
   slot.focus()
   const chosen: string[] = []
+  const activated: Activation[] = []
   const dismissed: string[] = []
   return {
-    root, slot, chosen, dismissed,
+    root, slot, chosen, activated, dismissed,
     rows: () => slot.component.render(80).map(stripTerminalSequences).join('\n'),
     open: (armMs, node = choices()) => root.mayflyOverlays.open({
       id: 'request', title: 'Approve command', presentation: 'editor', capturing: true,
       ...(armMs === undefined ? {} : { armMs }),
-      onEvent: { action: (event: MayflyUiActionEvent) => { if (event.kind === 'selection-accept') chosen.push(...event.selectedIds); if (event.kind === 'dismiss') dismissed.push(event.kind); return { kind: 'completed' } } },
+      onEvent: { action: (event: MayflyUiActionEvent) => {
+        if (event.kind === 'selection-accept') chosen.push(...event.selectedIds)
+        if (event.kind === 'activate') {
+          const selection = event.inputs?.selections?.[0]
+          activated.push({ actionId: event.actionId, ...selection === undefined ? {} : { selected: selection.selectedIds } })
+        }
+        if (event.kind === 'dismiss') dismissed.push(event.kind)
+        return { kind: 'completed' }
+      } },
     }, node),
     async dispose() { owner.dispose(); slot.dispose(); await runtime.stop(); await root.fiber.dispose() },
   }
@@ -169,18 +184,18 @@ describe('overlay arm delay', () => {
   })
 })
 
-describe('patterns.decisionPanel opened unprompted', () => {
+describe('compose.decisionLane opened unprompted', () => {
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
 
-  const decision = (instant: boolean): MayflyUiNode => patterns.decisionPanel({
-    title: 'Approve command', instant, options: [{ id: 'once', label: 'Allow once' }, { id: 'reject', label: 'Reject' }],
+  const decision = (): MayflyUiNode => compose.decisionLane({
+    title: 'Approve command', choices: [{ id: 'once', label: 'Allow once' }, { id: 'reject', label: 'Reject' }],
   })
 
-  it.each([true, false])('grants nothing for a 1 and Enter typed into the editor (instant %s), then the same keys choose', async instant => {
+  it('grants nothing for a 1 and Enter typed into the editor, then the same keys choose', async () => {
     const b = await bench()
     try {
-      const handle = b.open(patterns.decisionArmMs, decision(instant))
+      const handle = b.open(compose.decisionArmMs, decision())
       await flush(8)
       expect(b.rows()).toContain('Allow once')
       expect(b.rows()).toContain('ready in a moment')
@@ -188,13 +203,13 @@ describe('patterns.decisionPanel opened unprompted', () => {
       b.slot.component.handleInput?.('\r')
       b.slot.component.handleInput?.('2')
       await flush(8)
-      expect(b.chosen).toEqual([])
-      vi.advanceTimersByTime(patterns.decisionArmMs)
+      expect(b.activated).toEqual([])
+      vi.advanceTimersByTime(compose.decisionArmMs)
       await flush(8)
       expect(b.rows()).not.toContain('ready in a moment')
       b.slot.component.handleInput?.('\r')
       await flush(8)
-      expect(b.chosen).toEqual(['once'])
+      expect(b.activated).toEqual([{ actionId: 'decision.choose', selected: ['once'] }])
       handle.close()
     } finally { await b.dispose() }
   })
@@ -202,19 +217,19 @@ describe('patterns.decisionPanel opened unprompted', () => {
   it('chooses by digit once armed, and Esc rejects while armed', async () => {
     const b = await bench()
     try {
-      const handle = b.open(patterns.decisionArmMs, decision(true))
+      const handle = b.open(compose.decisionArmMs, decision())
       await flush(8)
       b.slot.component.handleInput?.('\x1b')
       await flush(8)
       expect(b.dismissed).toEqual(['dismiss'])
       handle.close()
-      const again = b.open(patterns.decisionArmMs, decision(true))
+      const again = b.open(compose.decisionArmMs, decision())
       await flush(8)
-      vi.advanceTimersByTime(patterns.decisionArmMs)
+      vi.advanceTimersByTime(compose.decisionArmMs)
       await flush(8)
       b.slot.component.handleInput?.('2')
       await flush(8)
-      expect(b.chosen).toEqual(['reject'])
+      expect(b.activated).toEqual([{ actionId: 'decision.choose', selected: ['reject'] }])
       again.close()
     } finally { await b.dispose() }
   })

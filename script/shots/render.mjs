@@ -99,14 +99,6 @@ const components = {
   wrapText: wrapTextWithAnsi,
   truncateToWidth,
   createEditor: createTestEditor,
-  createMarkdown: (options) => {
-    let value = options?.text ?? ''
-    return {
-      setText: text => { value = text },
-      render: width => wrapTextWithAnsi(value, width),
-      invalidate: () => {},
-    }
-  },
 }
 
 /**
@@ -117,12 +109,12 @@ const components = {
  *   frame is re-rendered so the driven state is what gets painted.
  * @param {object} ui - the built `@ephemeral-ai/mayfly-ui` builder namespace.
  * @param {Function} defineMayflyComponent - the built component factory.
- * @param {object} patterns - the built `patterns` namespace.
+ * @param {object} compose - the built `compose` namespace.
  * @returns {Promise<{ term: object, cols: number, rows: number }>}
  */
-export async function renderScenario(scenario, ui, defineMayflyComponent, patterns) {
+export async function renderScenario(scenario, ui, defineMayflyComponent, compose) {
   const width = scenario.width
-  const node = scenario.build(ui, defineMayflyComponent, patterns)
+  const node = scenario.build(ui, defineMayflyComponent, compose)
   const surfaceId = `shot.${scenario.id.toLowerCase()}`
   const ctx = new Context()
   const providerFiber = await ctx.plugin(uiProvider)
@@ -144,7 +136,7 @@ export async function renderScenario(scenario, ui, defineMayflyComponent, patter
       components,
       colors: DARK_COLORS,
       getViewport: () => ({ columns: width, rows: scenario.height ?? 24 }),
-      screenMode: 'alternate',
+      bounded: true,
       contextHints: { enabled: true },
       emit: event => { model.emit(event) },
       onUnhandledEscape: () => { model.emit({ kind: 'dismiss', pagePath: [] }) },

@@ -13,10 +13,8 @@ import type {
 } from '@deepseek-ai/dsh-workflow'
 import type { MayflyInlineSpan, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
-import type { SessionFactsService } from './session-facts.ts'
 import { agentPhasePresentation, agentTreeBranch, compactElapsedSeconds, hiddenMembersText, selectVisibleMembers } from './agent-presentation.ts'
 import { transcriptTranslator } from './locale.ts'
-import type { TickSource } from './tick.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-pane-workflow'
@@ -165,7 +163,7 @@ export function workflowNode(runs: readonly WorkflowRunState[], now: number, t: 
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const runs = new Map<string, WorkflowRunState>()
-  const tick = ctx.get('mayflyTick') as TickSource | undefined
+  const tick = ctx.mayflyTick
   let offTick: (() => void) | undefined
   let now = workflowPaneClock.now()
   let pane: ReturnType<typeof ctx.mayflyPanes.register>
@@ -272,7 +270,7 @@ export function apply(ctx: Context): void {
     ensureTick()
   })
 
-  const facts = ctx.get('mayflySessionFacts') as SessionFactsService
+  const facts = ctx.mayflySessionFacts
   let lastTurn = -1
   const offFacts = facts.subscribe(next => {
     if (next.turn > lastTurn) {

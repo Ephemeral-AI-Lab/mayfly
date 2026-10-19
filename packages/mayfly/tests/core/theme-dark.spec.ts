@@ -5,8 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { ThemeModelService } from '../../src/frontend/theme.ts'
-import { apply, MayflyThemeService, name } from '../../src/core/theme-dark.ts'
+import { apply, MayflyThemeService, name } from '../../src/core/theme/theme-dark.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 
 // The provider paints truecolor unless the host asks for no color; pin the
@@ -68,14 +67,6 @@ describe('mayfly-theme-dark plugin', () => {
       if (role === 'logoInks') expect(colors.logoInks.every(entry => typeof entry === 'function')).toBe(true)
       else expect(typeof colors[role]).toBe('function')
     }
-  })
-
-  it('publishes the semantic companion model when the frontend registry is present', async () => {
-    const ctx = new Context()
-    await ctx.plugin(ThemeModelService)
-    await ctx.plugin({ name, apply })
-    expect(ctx.mayflyThemeModels.current?.id).toBe('dark')
-    expect(ctx.mayflyThemeModels.current?.colors.primary).toBe('#9A86E6')
   })
 
   it('wraps text in truecolor foreground and background sequences', async () => {

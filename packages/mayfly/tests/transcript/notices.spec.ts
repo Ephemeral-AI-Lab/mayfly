@@ -13,8 +13,8 @@ import type { ContextPressureProjection } from '@deepseek-ai/dsh-token-meter'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import type { ConversationFacts } from '../../src/conversation/types.ts'
-import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
-import { UiNotificationStore } from '../../src/core/ui-interaction-notifications.ts'
+import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
+import { UiNotificationStore } from '../../src/core/ui/state/ui-interaction-notifications.ts'
 import { CONTEXT_WARN_PERCENT, mountNotices } from '../../src/transcript/notices.ts'
 import type { TickSource } from '../../src/transcript/tick.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
@@ -119,14 +119,14 @@ interface Harness {
 }
 
 /** Mount the notices under a plugin Fiber, with the lane, facts and tick they read. */
-async function boot(facts = new HandFacts(), provided: { readonly facts?: boolean, readonly tick?: boolean } = {}): Promise<Harness> {
+async function boot(facts = new HandFacts()): Promise<Harness> {
   const ctx = new Context()
   const lane = new UiInteractionService(ctx)
   const tick = new HandTick()
   const clock = { now: NOW }
   const pressures = new HandPressures()
-  if (provided.facts !== false) ctx.reflect.provide('mayflySessionFacts', facts)
-  if (provided.tick !== false) ctx.reflect.provide('mayflyTick', tick)
+  ctx.reflect.provide('mayflySessionFacts', facts)
+  ctx.reflect.provide('mayflyTick', tick)
   ctx.reflect.provide('sessionProjections', pressures)
   const fiber = await ctx.plugin({
     name: 'notices-under-test',
@@ -208,21 +208,6 @@ describe('notices from the session facts', () => {
     const harness = await boot()
     harness.facts.set({ retrying: retry(503, { maxRetries: Infinity, retry: 4, delayMs: 2_000 }) })
     expect(harness.notices()).toEqual({ 'notice/retry': 'Provider error · retrying in 2s · 4' })
-    await harness.dispose()
-  })
-
-  it('reports a retry once and counts nothing down when the host has no tick', async () => {
-    const harness = await boot(new HandFacts(), { tick: false })
-    harness.facts.set({ retrying: retry(429) })
-    expect(harness.notices()).toEqual({ 'notice/retry': 'Rate limited · retrying in 5s · 1/5' })
-    expect(harness.tick.listeners.size).toBe(0)
-    await harness.dispose()
-  })
-
-  it('raises nothing when the host has no session facts', async () => {
-    const harness = await boot(new HandFacts(), { facts: false })
-    expect(harness.notices()).toEqual({})
-    expect(harness.tick.listeners.size).toBe(0)
     await harness.dispose()
   })
 

@@ -1,0 +1,193 @@
+/**
+ * Admission rules for the optional fields of slice 1.3 (content, layout, and motion). The validator hands this module
+ * its primitives, so each rule reads like the ones beside it and the arms in `ui-validator.ts` stay one call each.
+ *
+ * @module @ephemeral-ai/mayfly/core/ui/admit/ui-validator-content
+ */
+
+import type { MayflyInlineSpan, MayflyProgressNode, MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
+
+/** The validator's field primitives, generic over its private state. */
+export interface AdmissionHelpers {
+  own(object: Record<string, unknown>, key: string, path: string): unknown
+  invalid(message: string): never
+  enumeration<Value extends string | number>(value: unknown, values: readonly Value[], path: string): Value
+  finiteInteger(value: unknown, path: string, minimum?: number): number
+  boolean(value: unknown, path: string): boolean
+  /** Content text: sanitized, never capped. */
+  text(value: unknown, path: string): string
+  /** A one-row label: sanitized and clipped at the label maximum. */
+  label(value: unknown, path: string): string
+  /** An id or key: sanitized and non-empty, rejected above the id maximum. */
+  identifier(value: unknown, path: string): string
+  collection(value: unknown, path: string): readonly unknown[]
+}
+
+type Fields = Record<string, unknown>
+
+const TONES = ['default', 'muted', 'primary', 'accent', 'user', 'success', 'warning', 'danger'] as const
+
+/** The tallest scroll viewport, in rows. */
+export const SCROLL_HEIGHT_MAX = 500
+
+/** The widest progress bar, in cells. */
+const PROGRESS_WIDTH_MAX = 200
+
+/** The longest progress transition, in milliseconds. */
+const PROGRESS_TRANSITION_MAX_MS = 60_000
+
+function present<Value>(key: string, value: Value | undefined): Fields {
+  return value === undefined ? {} : { [key]: value }
+}
+
+function flag(h: AdmissionHelpers, object: Fields, key: string, path: string): boolean | undefined {
+  const value = h.own(object, key, path)
+  return value === undefined ? undefined : h.boolean(value, `${path}.${key}`)
+}
+
+function integer(h: AdmissionHelpers, object: Fields, key: string, path: string, minimum: number, maximum: number): number | undefined {
+  const value = h.own(object, key, path)
+  if (value === undefined) return undefined
+  const result = h.finiteInteger(value, `${path}.${key}`, minimum)
+  if (result > maximum) h.invalid(`${path}.${key} must be at most ${String(maximum)}`)
+  return result
+}
+
+/** A text node's `styles`: each of strong, italic, and strike at most once. */
+export function admitTextStyles(h: AdmissionHelpers, object: Fields, path: string): Fields {
+  const value = h.own(object, 'styles', path)
+  if (value === undefined) return {}
+  const styles = h.collection(value, `${path}.styles`).map((style, index) => h.enumeration<MayflyTextStyle>(style, ['strong', 'italic', 'strike', 'inverse'], `${path}.styles[${String(index)}]`))
+  if (new Set(styles).size !== styles.length) h.invalid(`${path}.styles contains duplicates`)
+  return { styles }
+}
+
+/** A code node's `numbered`, `start`, and `label`. */
+export function admitCodeFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
+  return { ...present('numbered', flag(h, object, 'numbered', path)), ...present('start', integer(h, object, 'start', path, 0, 1_000_000)), ...present('label', flag(h, object, 'label', path)) }
+}
+
+/** A diff node's `start`, `beforeStart`, `numbered`, `numberWidth` (1 to 9), `hunkHeader`, `context` (0 to 3), `maxRows`, the `tail` row that ends a cut diff, and its `language`. */
+export function admitDiffFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
+  return {
+    ...present('start', integer(h, object, 'start', path, 0, 1_000_000)),
+    ...present('beforeStart', integer(h, object, 'beforeStart', path, 0, 1_000_000)),
+    ...present('numbered', flag(h, object, 'numbered', path)),
+    ...present('numberWidth', integer(h, object, 'numberWidth', path, 1, 9)),
+    ...present('hunkHeader', flag(h, object, 'hunkHeader', path)),
+    ...present('context', integer(h, object, 'context', path, 0, 3)),
+    ...present('maxRows', integer(h, object, 'maxRows', path, 1, 10_000)),
+    ...present('tail', h.own(object, 'tail', path) === undefined ? undefined : h.label(h.own(object, 'tail', path), `${path}.tail`)),
+    ...present('language', h.own(object, 'language', path) === undefined ? undefined : h.label(h.own(object, 'language', path), `${path}.language`)),
+  }
+}
+
+/** A stack child's `priority`, `band`, and `overflow`. */
+export function admitChildAdmission(h: AdmissionHelpers, object: Fields, path: string): Fields {
+  const band = h.own(object, 'band', path)
+  const overflow = h.own(object, 'overflow', path)
+  const mark = h.own(object, 'mark', path)
+  return {
+    ...present('mark', mark === undefined ? undefined : h.enumeration(mark, ['underline'] as const, `${path}.mark`)),
+    ...present('priority', integer(h, object, 'priority', path, 0, 1_000_000)),
+    ...present('band', band === undefined ? undefined : h.enumeration(band, ['left', 'center', 'right'] as const, `${path}.band`)),
+    ...present('overflow', overflow === undefined ? undefined : h.enumeration(overflow, ['truncate', 'hide'] as const, `${path}.overflow`)),
+  }
+}
+
+/** A surface's `titleAlign`, `titleCut`, `border`, `escapeLabel`, and `hint`. */
+export function admitSurfaceFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
+  const titleAlign = h.own(object, 'titleAlign', path)
+  const titleCut = h.own(object, 'titleCut', path)
+  const border = h.own(object, 'border', path)
+  const escapeLabel = h.own(object, 'escapeLabel', path)
+  const hint = h.own(object, 'hint', path)
+  return {
+    ...present('titleAlign', titleAlign === undefined ? undefined : h.enumeration(titleAlign, ['left', 'right'] as const, `${path}.titleAlign`)),
+    ...present('titleCut', titleCut === undefined ? undefined : h.enumeration(titleCut, ['start', 'end'] as const, `${path}.titleCut`)),
+    ...present('border', border === undefined ? undefined : h.enumeration<MayflyTone>(border, TONES, `${path}.border`)),
+    ...present('escapeLabel', escapeLabel === undefined ? undefined : h.enumeration(escapeLabel, ['close', 'back', 'cancel', 'reject', 'leave', 'no'] as const, `${path}.escapeLabel`)),
+    ...present('coverStatus', object.coverStatus === undefined ? undefined : h.boolean(object.coverStatus, `${path}.coverStatus`)),
+    ...present('hint', hint === undefined ? undefined : h.enumeration(hint, ['auto', 'none', 'completions'] as const, `${path}.hint`)),
+  }
+}
+
+/** A scroll's `height`, `expandedHeight` (not shorter than `height`), `fit`, `pill`, `expandable`, and `more`. */
+export function admitScrollFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
+  const height = integer(h, object, 'height', path, 1, SCROLL_HEIGHT_MAX)
+  const expandedHeight = integer(h, object, 'expandedHeight', path, 1, SCROLL_HEIGHT_MAX)
+  if (height !== undefined && expandedHeight !== undefined && expandedHeight < height) h.invalid(`${path}.expandedHeight must not be shorter than height`)
+  return { ...present('height', height), ...present('expandedHeight', expandedHeight), ...present('fit', flag(h, object, 'fit', path)), ...present('pill', flag(h, object, 'pill', path)), ...present('expandable', flag(h, object, 'expandable', path)), ...present('more', flag(h, object, 'more', path)) }
+}
+
+/**
+ * A progress node's `style`, `width`, `tone`, `showCount`, `showPercent`, and `transition`. A status node carries no
+ * motion, so it takes no transition.
+ */
+export function admitProgressFields(h: AdmissionHelpers, object: Fields, path: string, max: number, status: boolean): Fields {
+  const style = h.own(object, 'style', path)
+  const tone = h.own(object, 'tone', path)
+  const transition = h.own(object, 'transition', path)
+  let settled: MayflyProgressNode['transition']
+  if (transition !== undefined) {
+    if (status) h.invalid(`${path}.transition is not supported in a status node`)
+    const entry = transition as Fields
+    if (typeof transition !== 'object' || transition === null || Array.isArray(transition)) h.invalid(`${path}.transition must be an object`)
+    settled = {
+      from: Math.min(max, h.finiteInteger(h.own(entry, 'from', `${path}.transition`), `${path}.transition.from`)),
+      ms: integer(h, entry, 'ms', `${path}.transition`, 1, PROGRESS_TRANSITION_MAX_MS) ?? h.invalid(`${path}.transition.ms is required`),
+      rev: h.finiteInteger(h.own(entry, 'rev', `${path}.transition`), `${path}.transition.rev`),
+    }
+  }
+  return {
+    ...present('style', style === undefined ? undefined : h.enumeration(style, ['cells', 'rule'] as const, `${path}.style`)),
+    ...present('width', integer(h, object, 'width', path, 1, PROGRESS_WIDTH_MAX)),
+    ...present('tone', tone === undefined ? undefined : h.enumeration<MayflyTone>(tone, TONES, `${path}.tone`)),
+    ...present('showCount', flag(h, object, 'showCount', path)),
+    ...present('showPercent', flag(h, object, 'showPercent', path)),
+    ...present('transition', settled),
+  }
+}
+
+/** A heatmap's `cell` (1 or 2), `columnLabels`, one per column, and the `range` legend's two words. */
+export function admitHeatmapFields(h: AdmissionHelpers, object: Fields, path: string, columns: number): Fields {
+  const cell = h.own(object, 'cell', path)
+  const labels = h.own(object, 'columnLabels', path)
+  const range = h.own(object, 'range', path)
+  let rangeLegend: { less: string, more: string } | undefined
+  if (range !== undefined) {
+    if (typeof range !== 'object' || range === null || Array.isArray(range)) h.invalid(`${path}.range must be an object`)
+    const entry = range as Fields
+    rangeLegend = { less: h.label(h.own(entry, 'less', `${path}.range`), `${path}.range.less`), more: h.label(h.own(entry, 'more', `${path}.range`), `${path}.range.more`) }
+  }
+  const columnLabels = labels === undefined ? undefined : h.collection(labels, `${path}.columnLabels`).map((item, index) => h.label(item, `${path}.columnLabels[${String(index)}]`))
+  if (columnLabels !== undefined && columnLabels.length !== columns) h.invalid(`${path}.columnLabels must match columns`)
+  return { ...present('cell', cell === undefined ? undefined : h.enumeration(cell, [1, 2] as const, `${path}.cell`)), ...present('columnLabels', columnLabels), ...present('range', rangeLegend) }
+}
+
+/** A rich-text row has one motion channel: at most one span shimmers or is a loader cell. */
+export function countMotion(h: AdmissionHelpers, spans: readonly MayflyInlineSpan[], path: string): void {
+  if (spans.filter(span => span.motion !== undefined).length > 1) h.invalid(`${path} has more than one motion channel in a row`)
+}
+
+/** A line chart's `xLabels` (the text of each integer x tick), `yFormat` and `legend`. */
+export function admitLineChartFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
+  const labels = h.own(object, 'xLabels', path)
+  const format = h.own(object, 'yFormat', path)
+  const legend = h.own(object, 'legend', path)
+  return {
+    ...present('legend', legend === undefined ? undefined : h.boolean(legend, `${path}.legend`)),
+    ...present('xLabels', labels === undefined ? undefined : h.collection(labels, `${path}.xLabels`).map((item, index) => h.label(item, `${path}.xLabels[${String(index)}]`))),
+    ...present('yFormat', format === undefined ? undefined : h.enumeration(format, ['compact'] as const, `${path}.yFormat`)),
+  }
+}
+
+/** A bar chart's `yFormat` and `legend`. */
+export function admitBarChartFields(h: AdmissionHelpers, object: Fields, path: string): Fields {
+  const format = h.own(object, 'yFormat', path)
+  const legend = h.own(object, 'legend', path)
+  return {
+    ...present('yFormat', format === undefined ? undefined : h.enumeration(format, ['compact'] as const, `${path}.yFormat`)),
+    ...present('legend', legend === undefined ? undefined : h.boolean(legend, `${path}.legend`)),
+  }
+}

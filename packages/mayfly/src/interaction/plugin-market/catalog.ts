@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { updaterInternals } from '../updater/io.ts'
 import { dshHome } from '../updater/profile.ts'
 import { parseMarketIndex, type MarketIndex } from './types.ts'
+import { formatError } from '../../internal/format.ts'
 
 /** The official index, served straight from the marketplace repository. */
 export const DEFAULT_MARKET_INDEX_URL = 'https://raw.githubusercontent.com/Ephemeral-AI-Lab/dsh-plugins/main/dist/index.json'
@@ -62,7 +63,7 @@ async function fetchIndex(indexUrl: string): Promise<MarketIndex> {
     } catch (error) {
       failures.push(`${url}: ${
         /* fetch rejects with Error instances */
-        error instanceof Error ? error.message : String(error)}`)
+        formatError(error)}`)
     }
   }
   throw new Error(failures.join('; '))
@@ -111,7 +112,7 @@ export async function loadMarketCatalog(indexUrl: string, force = false): Promis
     return { status: 'fresh', index }
   } catch (error) {
     /* both fetch legs and the parser throw Error instances */
-    const message = error instanceof Error ? error.message : String(error)
+    const message = formatError(error)
     if (cached !== undefined) {
       return { status: 'stale', index: cached.index, message }
     }

@@ -13,6 +13,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import { conversationProjectionSchema } from '../conversation/projection.ts'
 import type { LiveAssistantDraft } from '../conversation/live-stream.ts'
+import { formatError } from '../internal/format.ts'
 
 /**
  * Live assistant-stream draft source. Harness publishes streaming deltas as
@@ -240,7 +241,7 @@ export class AddressConversationFeed implements ConversationFeed {
       this.current = Object.freeze({ kind: 'failed', reason: 'invalid' })
     } catch (error) {
       if (signal.aborted) return
-      this.current = Object.freeze({ kind: 'failed', reason: 'read-failed', detail: error instanceof Error ? error.message : String(error) })
+      this.current = Object.freeze({ kind: 'failed', reason: 'read-failed', detail: formatError(error) })
     }
     notify()
   }

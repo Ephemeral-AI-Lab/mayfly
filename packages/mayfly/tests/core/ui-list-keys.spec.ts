@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyListItem, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { createRealSurface, probeComponents, PROBE_PALETTE, type RealSurface } from '../design/probe.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import { plainText } from '../helpers.ts'
 
 const KEY = { up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', enter: '\r', esc: '\x1b', space: ' ', delete: '\x1b[3~', ctrlU: '\x15', end: '\x1b[F', home: '\x1b[H', pageDown: '\x1b[6~' } as const
@@ -247,7 +247,7 @@ describe('list keys', () => {
       { id: 'a', label: 'A', segment: segment({ selectedId: 'y' }) },
       { id: 'b', label: 'B', segment: segment({ inheritedId: 'x' }) },
       { id: 'c', label: 'C', segment: segment({}) },
-    ]), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 60, rows: 20 }), screenMode: 'alternate', emit: () => {} })
+    ]), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 60, rows: 20 }), bounded: true, emit: () => {} })
     if (!result.ok) throw new Error(result.message)
     result.value.focusTarget!.focused = true
     const rows = result.value.component.render(60).map(plainText)

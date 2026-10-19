@@ -6,7 +6,7 @@ import type { AskUserQuestionItem } from '@deepseek-ai/dsh-user-questions'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
 import { planReviewAction, planReviewChoices } from '../../src/interaction/plan-review-panel.ts'
-import { visibleWidth } from '../../src/core/width.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 import { requestFixture, renderRequest, flushRequests } from './request-fixture.ts'
 import type { MayflyDecisionRequest } from '../../src/core/types.ts'
 

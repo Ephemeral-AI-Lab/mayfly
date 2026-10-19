@@ -1,6 +1,6 @@
 /**
  * The `/theme` command and the provider swap behind it. The command knows
- * the ten built-in palettes of `core/palettes.ts` (the default through
+ * the ten built-in palettes of `core/theme/palettes.ts` (the default through
  * `mayfly-theme-dark`, the rest through `mayfly-theme-builtin` with the palette
  * in its config), `auto`, and `custom`, and switches by disposing the live
  * provider's fibers — `ctx.registry.delete` keys
@@ -18,15 +18,16 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { panel, ui } from '@ephemeral-ai/mayfly-ui'
-import { PALETTES, paletteOf } from '../core/palettes.ts'
-import * as themeAuto from '../core/theme-auto.ts'
-import * as themeBuiltin from '../core/theme-builtin.ts'
-import * as themeCustom from '../core/theme-custom.ts'
-import * as themeDark from '../core/theme-dark.ts'
+import { PALETTES, paletteOf } from '../core/theme/palettes.ts'
+import * as themeAuto from '../core/theme/theme-auto.ts'
+import * as themeBuiltin from '../core/theme/theme-builtin.ts'
+import * as themeCustom from '../core/theme/theme-custom.ts'
+import * as themeDark from '../core/theme/theme-dark.ts'
 import { interactionTranslator } from './locale.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { themeGroup, themeIdea, themeName } from './theme-names.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Usage text returned for malformed `/theme` invocations; bare `/theme` lists every theme with its key. */
 const USAGE = 'usage: /theme [<theme>|auto|custom <path> [<base theme>]]'
@@ -122,7 +123,7 @@ async function switchTheme(ctx: Context, next: ThemeTarget): Promise<CommandResu
     return {
       kind: 'error',
       /* mount failures are Error instances (config validation or service conflicts) */
-      text: t('failed to apply theme "{key}": {error}', { key: next.key, error: error instanceof Error ? error.message : String(error) }),
+      text: t('failed to apply theme "{key}": {error}', { key: next.key, error: formatError(error) }),
     }
   }
   ctx.mayflyInteractionState.currentThemeKey = next.key

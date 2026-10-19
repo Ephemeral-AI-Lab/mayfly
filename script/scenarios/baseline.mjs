@@ -15,6 +15,15 @@ const git = (root, args) => execFileSync('git', args, { cwd: root, encoding: 'ut
 export const commitOf = (root, ref) => git(root, ['rev-parse', '--verify', `${ref}^{commit}`])
 export const mergeBaseOf = (root, branch) => git(root, ['merge-base', branch, 'HEAD'])
 
+/** Resolve the comparison branch without requiring a network fetch. */
+export function defaultBase() {
+  try {
+    return git(process.cwd(), ['rev-parse', '--verify', 'origin/main']) === '' ? 'main' : 'origin/main'
+  } catch {
+    return 'main'
+  }
+}
+
 /**
  * Check out, install, and build a commit once.
  * @param {string} root - the repository.

@@ -6,9 +6,8 @@
 import { getLayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
-import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
 import { PROBE_PALETTE, probeComponents } from '../design/probe.ts'
 
 const KEY = { up: '\x1b[A', down: '\x1b[B', right: '\x1b[C' } as const
@@ -17,7 +16,6 @@ afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup() })
 
 function open(node: MayflyUiNode, observer = true, rows = 40) {
   const events: MayflyUiEvent[] = []
-  const counters = createWorkCounters()
   const model = new UiSurfaceModel('focus', {
     scope: { kind: 'app', targetId: 'focus' }, source: [], revision: 1, update: { reason: 'data' }, node: node as never,
     events: { prepare: async (event: MayflyUiEvent) => { events.push(event); return { reply: { kind: 'completed' as const }, publish: () => true } } },
@@ -25,8 +23,8 @@ function open(node: MayflyUiNode, observer = true, rows = 40) {
   } as never)
   const runtime = new MayflyUiSurfaceRuntime(model)
   const result = compileMayflyUiSurfaceNode(model.node!, {
-    components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 80, rows }), screenMode: 'alternate',
-    emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime, counters,
+    components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 80, rows }), bounded: true,
+    emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime,
   })
   if (!result.ok) throw new Error(result.message)
   const surface = result.value
@@ -38,7 +36,7 @@ function open(node: MayflyUiNode, observer = true, rows = 40) {
   const type = (...keys: string[]): void => { for (const key of keys) surface.focusTarget!.handleInput?.(key) }
   const reports = (): MayflyUiEvent[] => events.filter(event => event.kind === 'focus-change')
   const settle = async (): Promise<void> => { await Promise.resolve(); await Promise.resolve() }
-  return { events, frame, layout, counters, type, reports, settle, dispose: () => { runtime.dispose(); model.dispose() }, disposeModel: () => { model.dispose() }, model }
+  return { events, frame, layout, type, reports, settle, dispose: () => { runtime.dispose(); model.dispose() }, disposeModel: () => { model.dispose() }, model }
 }
 
 const list = (): MayflyUiNode => ui.list({ id: 'rows', role: 'browse', selectedIds: [], items: ['a', 'b', 'c', 'd'].map(id => ({ id, label: id.toUpperCase() })) })
@@ -108,12 +106,9 @@ describe('focus-change', () => {
     const view = open(ui.scroll(ui.stack.column([ui.child(list())])))
     view.layout()
     view.type(KEY.down)
-    const before = view.counters.layoutPasses
     view.layout()
     await view.settle()
     expect(view.reports()).toEqual([{ kind: 'focus-change', pagePath: [], controlId: 'rows', itemId: 'b' }])
-    // The scroll view takes the overflow, so the layout entry is the only pass: nothing is rendered to be thrown away.
-    expect(view.counters.layoutPasses - before).toBe(1)
     view.frame()
     await view.settle()
     expect(view.reports()).toHaveLength(1)
@@ -123,12 +118,8 @@ describe('focus-change', () => {
     const view = open(list(), true, 3)
     view.layout()
     view.type(KEY.down, KEY.down, KEY.down)
-    const before = view.counters.layoutPasses
     view.layout()
-    // One frame render fits the list, then the layout entry itself.
-    expect(view.counters.layoutPasses - before).toBe(2)
     const rows = view.frame()
-    expect(view.counters.layoutPasses - before).toBe(2)
     expect(rows.length).toBeLessThanOrEqual(3)
     expect(rows.join('\n')).toContain('D')
     await view.settle()

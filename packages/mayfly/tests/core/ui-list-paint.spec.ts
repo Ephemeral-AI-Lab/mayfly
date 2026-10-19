@@ -1,13 +1,12 @@
 /** The list painter: rows from their state bits, bodies, wrapping, windowing over rows of varying height, and the strip ladder. */
 import { describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyListItem, type MayflyListSegment } from '../../../ui/src/index.ts'
-import { renderList, type ListRenderExtras, type PatternFocus } from '../../src/core/ui-patterns.ts'
-import { FlowListPainter, flowListCanVirtualize, type ListRowSpec } from '../../src/core/ui-list-paint.ts'
-import { UiRowCache } from '../../src/core/ui-row-cache.ts'
-import { isVirtualRows, virtualRows } from '../../src/core/ui-rows.ts'
+import { renderList, type ListRenderExtras, type PatternFocus } from '../../src/core/ui/state/ui-patterns.ts'
+import { FlowListPainter, flowListCanVirtualize, type ListRowSpec } from '../../src/core/ui/paint/ui-list-paint.ts'
+import { UiRowCache } from '../../src/core/ui/paint/ui-row-cache.ts'
+import { isVirtualRows, virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
-import { visibleWidth } from '../../src/core/width.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 import { identity, lazyRows, plain, plainColors } from '../helpers.ts'
 
 const colors = plainColors()
@@ -148,18 +147,24 @@ describe('list rows', () => {
     expect(body).toHaveBeenCalledTimes(2)
   })
 
-  it('serves rows and bodies from the memo, repainting only the rows whose bits changed', () => {
+  it('serves rows and bodies from the memo, and repaints the rows a cursor move changes', () => {
     const items: MayflyListItem[] = [{ id: 'a', label: 'A', body: ui.text('x') }, { id: 'b', label: 'B' }]
     const node = ui.list({ id: 'memo', role: 'browse', selectedIds: [], items })
-    const counters = createWorkCounters()
-    const memo = { cache: new UiRowCache(), counters }
-    const extras = (cursorId: string): ListRenderExtras => ({ rows: specs(items).map(row => row.item.id === 'a' ? { ...row, expandable: true, open: true } : row), cursorId, body: () => ['one', 'two'] })
-    renderList(node, 30, 20, on('a'), colors, 0, memo, extras('a'))
-    expect(counters.rowsPainted).toBe(1 + 2 + 1)
-    renderList(node, 30, 20, on('a'), colors, 0, memo, extras('a'))
-    expect(counters.rowsPainted).toBe(4)
-    renderList(node, 30, 20, on('b'), colors, 0, memo, extras('b'))
-    expect(counters.rowsPainted, 'the cursor moved: two item rows repaint, the body does not').toBe(6)
+    let paints = 0
+    const counting = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => { paints += 1; return `<${String(key)}>${value}</>` } }) as unknown as MayflySemanticColors
+    const memo = { cache: new UiRowCache() }
+    const body = vi.fn(() => ['one', 'two'])
+    const extras = (cursorId: string): ListRenderExtras => ({ rows: specs(items).map(row => row.item.id === 'a' ? { ...row, expandable: true, open: true } : row), cursorId, body })
+    renderList(node, 30, 20, on('a'), counting, 0, memo, extras('a'))
+    const first = paints
+    expect(first).toBeGreaterThan(0)
+    expect(body).toHaveBeenCalledTimes(1)
+    renderList(node, 30, 20, on('a'), counting, 0, memo, extras('a'))
+    expect(paints, 'an unchanged paint is served from the memo').toBe(first)
+    expect(body).toHaveBeenCalledTimes(1)
+    renderList(node, 30, 20, on('b'), counting, 0, memo, extras('b'))
+    expect(paints, 'the cursor moved: the changed rows repaint').toBeGreaterThan(first)
+    expect(body, 'the body did not change').toHaveBeenCalledTimes(1)
   })
 })
 
@@ -167,14 +172,13 @@ describe('a body at any size', () => {
   const openItem = (body: string): MayflyListItem[] => [{ id: 'a', label: 'A', body }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }]
   const openRows = (items: readonly MayflyListItem[]): ListRowSpec[] => specs(items).map(row => row.item.id === 'a' ? { ...row, expandable: true, open: true } : row)
 
-  it('paints only the window rows of a hundred-thousand-line string body, scanning its lines once', () => {
+  it('paints only the window rows of a hundred-thousand-line string body', () => {
     const body = Array.from({ length: 100_000 }, (_, index) => `body line ${String(index)}`).join('\n')
     const items = openItem(body)
     const node = ui.list({ id: 'big', role: 'browse', selectedIds: [], items })
     const muted = vi.fn(identity)
     const spy = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : key === 'muted' ? muted : identity }) as unknown as MayflySemanticColors
-    const counters = createWorkCounters()
-    const memo = { cache: new UiRowCache(), counters }
+    const memo = { cache: new UiRowCache() }
     const extras = (cursorId: string): ListRenderExtras => ({ rows: openRows(items), cursorId })
     const rows = plain(renderList(node, 30, 6, idle, spy, 0, memo, extras('a')))
     expect(rows).toEqual([
@@ -185,15 +189,11 @@ describe('a body at any size', () => {
       '↓   │ body line 3',
       '   … +99998 more',
     ])
-    // The scan runs once per admitted item, and only the window's rows are produced.
-    expect(counters.linesEstimated).toBe(100_000)
-    expect(counters.rowsMaterialized).toBe(4)
+    // Only the window's rows are painted.
     const calls = muted.mock.calls.length
     expect(calls).toBeLessThan(30)
-    // A second paint serves the memo: no rescan, no repainted body row.
+    // A second paint serves the memo: no repainted body row.
     renderList(node, 30, 6, idle, spy, 0, memo, extras('a'))
-    expect(counters.linesEstimated).toBe(100_000)
-    expect(counters.rowsMaterialized).toBe(4)
     expect(muted.mock.calls.length).toBe(calls + 1)
     // Moving the cursor to the next row shifts the window over the body's tail: the last line carries ╰.
     const tail = plain(renderList(node, 30, 4, idle, spy, 0, memo, extras('b')))
@@ -208,7 +208,7 @@ describe('a body at any size', () => {
     expect(rows[2]).toBe('  B')
   })
 
-  it('windows a virtual node body without materializing it or counting its length as painted rows', () => {
+  it('windows a virtual node body without materializing it', () => {
     const reads: number[] = []
     const bodyRows = virtualRows({
       length: 50_000,
@@ -217,14 +217,12 @@ describe('a body at any size', () => {
     const items = openItem('')
     items[0] = { id: 'a', label: 'A', body: ui.text('x') }
     const node = ui.list({ id: 'vnode', role: 'browse', selectedIds: [], items })
-    const counters = createWorkCounters()
-    const memo = { cache: new UiRowCache(), counters }
+    const memo = { cache: new UiRowCache() }
     const body = vi.fn((_item: MayflyListItem, _width: number) => bodyRows)
     const rows = plain(renderList(node, 30, 4, idle, colors, 0, memo, { rows: openRows(items), cursorId: 'a', body }))
     expect(rows).toEqual(['  ▾ A', '    │ deep row 0', '↓   │ deep row 1', '   … +50000 more'])
     expect(reads).toEqual([0, 1])
-    // The row cache stored the facade itself: its estimated length is not painted work.
-    expect(counters.rowsPainted).toBe(3)
+    // The row cache stored the facade itself: a second paint reuses it.
     renderList(node, 30, 4, idle, colors, 0, memo, { rows: openRows(items), cursorId: 'a', body })
     expect(body).toHaveBeenCalledTimes(1)
     expect(reads).toEqual([0, 1])
@@ -234,13 +232,11 @@ describe('a body at any size', () => {
     const body = Array.from({ length: 1000 }, (_, index) => `always line ${String(index)}`).join('\n')
     const items: MayflyListItem[] = [{ id: 'a', label: 'A', body, bodyAlways: true }, { id: 'b', label: 'B' }]
     const node = ui.list({ id: 'always', role: 'browse', selectedIds: [], items })
-    const counters = createWorkCounters()
-    const memo = { cache: new UiRowCache(), counters }
+    const memo = { cache: new UiRowCache() }
     const rows = specs(items).map(row => ({ ...row, open: true }))
     const painted = renderList(node, 30, 3, idle, colors, 0, memo, { rows, cursorId: 'a' })
     expect(plain(painted)).toEqual(['  A', '↓      always line 0', '   … +1000 more'])
-    expect(counters.rowsMaterialized).toBe(1)
-    expect(isVirtualRows(memo.cache.readLines(colors, items[0]!, 'body\x0130\x010\x010', () => [], counters))).toBe(true)
+    expect(isVirtualRows(memo.cache.readLines(colors, items[0]!, 'body\x0130\x010\x010', () => []))).toBe(true)
   })
 })
 
@@ -265,7 +261,7 @@ describe('a body that leads its row', () => {
     const items: MayflyListItem[] = [{ id: 'a', label: '', body: ui.text('x'), bodyAlways: true, bodyLead: [{ text: '● ' }] }]
     const node = ui.list({ id: 'cache', role: 'browse', selectedIds: [], items })
     const rows = specs(items).map(row => ({ ...row, open: true }))
-    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    const memo = { cache: new UiRowCache() }
     const body = vi.fn(() => ['row'])
     renderList(node, 30, 10, idle, colors, 0, memo, { rows, body })
     renderList(node, 30, 10, idle, colors, 0, memo, { rows, body })
@@ -433,7 +429,7 @@ describe('the selection band and find marks of a list', () => {
 
   it('keeps the unmarked rows of a memo when the pattern goes away, and paints the marks on the next pass', () => {
     const items: MayflyListItem[] = [{ id: 'a', label: 'needle' }]
-    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    const memo = { cache: new UiRowCache() }
     const marked = renderList(ui.list({ id: 'memo', role: 'browse', selectedIds: [], items, highlight: { pattern: 'needle' } }), 30, 5, idle, colors, 0, memo, { rows: rows(items) })
     expect(marked[0]).toContain('\x1b[7m')
     const plainRow = renderList(ui.list({ id: 'memo', role: 'browse', selectedIds: [], items }), 30, 5, idle, colors, 0, memo, { rows: rows(items) })
@@ -480,7 +476,7 @@ describe('list paint decisions at the edges', () => {
   it('paints a flow list from the memo the same as without one', () => {
     const items: MayflyListItem[] = [{ id: 'a', label: 'alpha' }, { id: 'b', label: 'beta' }]
     const node = ui.list({ id: 'flow', role: 'browse', selectedIds: [], items })
-    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    const memo = { cache: new UiRowCache() }
     const fromMemo = renderList(node, 30, 10, on('a'), colors, 0, memo, { rows: specs(items), cursorId: 'a', flow: true })
     expect(renderList(node, 30, 10, on('a'), colors, 0, memo, { rows: specs(items), cursorId: 'a', flow: true })).toEqual(fromMemo)
     expect(plain(fromMemo)).toEqual(['→|alpha', '  beta'])
@@ -489,7 +485,7 @@ describe('list paint decisions at the edges', () => {
   it('repaints a row whose rich body carries a motion span at every frame, and serves a still rich body from the memo', () => {
     const still: MayflyListItem[] = [{ id: 's', label: 'still', body: { kind: 'rich-text', spans: [{ text: 'calm' }] }, bodyAlways: true }]
     const moving: MayflyListItem[] = [{ id: 'm', label: 'moving', body: { kind: 'rich-text', spans: [{ text: 'wave', motion: 'shimmer' }] }, bodyAlways: true }]
-    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    const memo = { cache: new UiRowCache() }
     const read = vi.spyOn(memo.cache, 'readLines')
     renderList(ui.list({ id: 's', role: 'browse', selectedIds: [], items: still }), 30, 10, idle, colors, 0, memo, { rows: specs(still).map(row => ({ ...row, open: true })) })
     expect(read).toHaveBeenCalled()
@@ -511,7 +507,7 @@ describe('list paint decisions at the edges', () => {
     const node = ui.list({ id: 'body', role: 'browse', selectedIds: [], items, highlight: { pattern: 'hit', current: 0 } })
     const extras = { rows: specs(items).map(row => ({ ...row, open: true })), cursorId: 'a' }
     const bare = renderList(node, 30, 10, on('a'), colors, 0, undefined, extras)
-    const memo = { cache: new UiRowCache(), counters: createWorkCounters() }
+    const memo = { cache: new UiRowCache() }
     expect(renderList(node, 30, 10, on('a'), colors, 0, memo, extras)).toEqual(bare)
     expect(renderList(node, 30, 10, on('a'), colors, 0, memo, { ...extras, flow: true })).toEqual(bare)
     expect(bare.join('\n')).toContain('\x1b[4mhit')

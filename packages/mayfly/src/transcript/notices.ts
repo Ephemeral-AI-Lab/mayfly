@@ -18,9 +18,7 @@ import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { ConversationFacts } from '../conversation/types.ts'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import { createInteractionNotificationOwner } from '../interaction/notifications.ts'
-import type { SessionFactsService } from './session-facts.ts'
 import { contextPercent } from './status-context.ts'
-import type { TickSource } from './tick.ts'
 
 /** The occupancy from which the context notice shows (the Harness has no threshold of its own to follow). */
 export const CONTEXT_WARN_PERCENT = 92
@@ -98,9 +96,8 @@ function ageText(ms: number, t: MayflyTranslate): string {
  * @param clock - the time source the retry countdown and the resume age are measured against.
  */
 export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => number): void {
-  const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
-  const tick = ctx.get('mayflyTick') as TickSource | undefined
-  if (factsService === undefined) return
+  const factsService = ctx.mayflySessionFacts
+  const tick = ctx.mayflyTick
   const owner = createInteractionNotificationOwner(ctx, 'mayfly.notices', 'notices')
   const projections = ctx.get('sessionProjections')
   /** The main sessions this has already looked at: a session is announced as resumed once, not each time the person switches back to it. */

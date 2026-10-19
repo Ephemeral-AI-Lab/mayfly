@@ -1,0 +1,3856 @@
+/**
+ * The sole compiler from canonical public Mayfly UI nodes into pi-tui-backed
+ * components. One outer focus target owns roving state, event dispatch,
+ * responsive reconciliation, cursor-marker insertion, and render containment.
+ *
+ * @module @ephemeral-ai/mayfly/core/ui/compile/ui-compiler
+ */
+
+import type {
+  MayflyActionItem,
+  MayflyChartNode,
+  MayflyDiagramNode,
+  MayflyImageNode,
+  MayflyPromptNode,
+  MayflySliderNode,
+  MayflyFormField,
+  MayflyInlineSpan,
+  MayflyListItem,
+  MayflyListNode,
+  MayflyTone,
+  MayflyUiEvent,
+  MayflyUiNode,
+  MayflyUiChild,
+  MayflyViewportCondition,
+  MayflyFieldAddress,
+  MayflyFieldValue,
+  MayflyPagePath,
+} from '@ephemeral-ai/mayfly-ui'
+import { textOf } from '@ephemeral-ai/mayfly-ui'
+import { CURSOR_MARKER, HStack, ScrollView, type Component } from '@earendil-works/pi-tui'
+import { renderLayoutFrame, type LayoutBox, type LayoutRect } from '@earendil-works/pi-tui/dist/layout.js'
+import { getLayoutNode, LAYOUT_NODE, type LayoutNode, type LayoutViewport } from '@earendil-works/pi-tui/dist/layout-node.js'
+import { glyphRows } from '../../text/glyphs.ts'
+import { renderChartRows } from '../../content/chart-renderer.ts'
+import { ownDataErrorMessage } from '../../text/error-message.ts'
+import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../content/content-rows.ts'
+import { paintPluginTone, sanitizePluginText, truncatedRow } from '../../plugin-view.ts'
+import { paintTone } from '../paint/ui-paint.ts'
+import type { MayflyComponent, MayflyComponents, MayflyEditor, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflySemanticColors } from '../../types.ts'
+import {
+  renderActions,
+  renderDivider,
+  renderEmpty,
+  renderList,
+  renderLoader,
+  renderOverflowRow,
+  renderProgress,
+  renderHintRow,
+  PANEL_GUTTER,
+  renderSurfaceHead,
+  renderSurfaceTail,
+  surfaceBorderPaint,
+  type HintPart,
+  renderTabs,
+  type PatternFocus,
+} from '../state/ui-patterns.ts'
+import { concatRows, findMarkerRow, isVirtualRows, mapRows, prepareRows, sameMaterializedRows, sliceRows, unclampedRows, virtualRows } from '../paint/ui-rows.ts'
+import { ColumnStack, PageGroup, PageHold, RowStack, onScreen, placeChild, type PagePeaks } from '../paint/ui-stacks.ts'
+import { sliceByColumn, truncateToWidth, visibleWidth } from '../../text/width.ts'
+import { fieldActions, fieldReset, type UiFieldAction } from '../state/ui-interaction-field-actions.ts'
+import { fieldDecor, fieldDisplayError, stepNumber } from '../state/ui-interaction-form.ts'
+import { editorWidth, formHeading, formLabelWidth, matchingSuggestions, paintFormField, type FieldDecor } from '../state/ui-form-paint.ts'
+import {
+  deferredUiNodeMayHaveControls,
+  isDeferredUiNode,
+  materializeDeferredUiNode,
+  materializedDeferredUiNode,
+  type MayflyAdmissionCache,
+  validateMayflyEditorShellNode,
+  validateMayflyUiNode,
+} from '../admit/ui-validator.ts'
+import type { MayflyEditorShellNode, MayflyUiErrorCode } from './ui-contracts.ts'
+import {
+  UiControlStore,
+  type UiControlBinding,
+  type UiListMovement,
+  type UiScrollControl,
+  type UiVirtualListEntry,
+} from '../state/ui-surface-state.ts'
+import type { UiSurfaceModel } from '../state/ui-interaction-surface.ts'
+import { feedbackSpans } from '../state/ui-interaction-notifications.ts'
+import { admittedListItem } from '../admit/ui-validator.ts'
+import { MayflyCompileCache, type PaintOptions } from './ui-compile-cache.ts'
+import { MayflyContentCache } from '../../ui-content-cache.ts'
+import { actionHintLabel, actionScopeActive, effectiveItemKeys } from '../state/ui-actions.ts'
+import { UiRowCache } from '../paint/ui-row-cache.ts'
+import { FlowListPainter, flowListCanVirtualize, type FlowListModel, type ListPaintOptions, type ListRowSpec } from '../paint/ui-list-paint.ts'
+import { canStepLeft, railGroupFor, type TabsTraits } from '../state/ui-focus-levels.ts'
+import { isRail, tabsShape } from '../paint/ui-tabs-paint.ts'
+import { UiImagePainter } from '../paint/ui-image.ts'
+import { paintHostedPrompt, paintPrompt, placeholderLadder, UiPromptEditor, type PromptPaint } from '../state/ui-prompt.ts'
+import { sliderGrammar } from '../state/ui-interaction-slider.ts'
+import { paintSlider } from '../paint/ui-slider-paint.ts'
+import { promptCompletionsOpen, promptRecallActive } from '../state/ui-interaction-prompt.ts'
+import type { MayflyUiImageSource } from '../paint/ui-images.ts'
+import { choiceError, choicePinned, choiceRow, focusableListItem, choiceSegment, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, type UiChoiceState } from '../state/ui-interaction-choice.ts'
+import { SearchInput } from '../state/search-input.ts'
+import { UiLoaderAnimation, type UiAnimationClock } from '../paint/ui-loader-animation.ts'
+import { AdmissionRow } from '../admit/ui-admission.ts'
+import { BarredScrollView, ScrollRegion, SCROLL_DEFAULT_EXPANDED_HEIGHT, SCROLL_DEFAULT_HEIGHT, type BarredScrollViewOptions, type ScrollMemory } from '../paint/ui-scroll-region.ts'
+import { hasMotion, paintMotionSpans } from '../paint/ui-motion-text.ts'
+import { UiProgressTransitions } from '../paint/ui-progress-transition.ts'
+import { untranslated, type UiTranslateValues } from '../state/ui-interaction-surface.ts'
+import { grammarHints, hintNotation, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState, type PromptOperation } from '../../ui-key-grammar.ts'
+import { documentAnchorAtRow, documentAnchorRow, documentResolver, type DocumentResolver } from '../state/ui-interaction-document.ts'
+import type { UiControlAddress } from '../state/ui-interaction-tree.ts'
+import {
+  keyActionKeys,
+  matchesKeyAction,
+  matchesKeyId,
+} from '../../keys/key-actions.ts'
+import { listSelectedIds } from '../state/ui-list-selection.ts'
+
+const FOCUS_SENTINEL = '\uf8ff'
+const ERROR_MAX_ROWS = 3
+const LAYOUT_VALUE_MAX = 1_000_000
+const INACTIVE_FIELD_CACHE_LIMIT = 64
+/** Scroll places a surface remembers: more than a tree can hold regions (`MAYFLY_UI_MAX_NODES`), so the live ones are never the oldest. */
+const SCROLL_MEMORY_LIMIT = 512
+
+/** Apply one semantic scroll movement to a scroll view. */
+function scrollBy(scroll: ScrollControl, movement: ListMovement): void {
+  switch (movement) {
+    case 'up': scroll.scrollBy(-1); return
+    case 'down': scroll.scrollBy(1); return
+    case 'page-up': scroll.scrollBy(-Math.max(1, scroll.viewportHeight)); return
+    case 'page-down': scroll.scrollBy(Math.max(1, scroll.viewportHeight)); return
+    case 'home': scroll.scrollToStart(); return
+    case 'end': scroll.scrollToEnd(); return
+  }
+}
+
+/** Pane-relative dimensions used by responsive child conditions. */
+export interface MayflyUiViewport {
+  readonly columns: number
+  readonly rows: number
+}
+
+/** Narrow runtime dependencies accepted by the canonical compiler. */
+export interface MayflyUiCompilerOptions {
+  readonly interaction?: UiSurfaceModel
+  readonly components: MayflyComponents
+  readonly colors: MayflySemanticColors
+  readonly getViewport: () => MayflyUiViewport
+  /**
+   * Whether the surrounding screen bounds the surface to its viewport rows: an
+   * alternate-screen surface does, and a surface with interaction state always
+   * does; a passive inline surface (the editor shell) does not.
+   */
+  readonly bounded: boolean
+  /** Live semantic key bindings; omitted only by isolated compiler fixtures. */
+  readonly keymap?: MayflyKeymap
+  /** Interaction-private observation of renderer focus; public UI events stay confirmation-only. */
+  readonly onFocusChange?: (identity: MayflyFocusIdentity) => void
+  /** Renderer-private contextual key hints used by official panel adapters. */
+  readonly contextHints?: {
+    readonly enabled?: boolean
+    /** `false`: a surface compiled from a node draws no key-hint row of its own (its owner shows the keys elsewhere). */
+    readonly rows?: boolean
+    readonly suppressAuto?: boolean
+    readonly focusWithoutControls?: boolean
+    readonly translate?: (key: string, values?: UiTranslateValues) => string
+    /** The locale revision behind `translate`: a frame input, so a locale turn repaints every surface that translated. */
+    readonly revision?: () => number
+    readonly extra?: () => readonly {
+      readonly id: string
+      readonly keys: string
+      readonly label?: string
+      readonly compact?: string
+      readonly priority?: number
+    }[]
+  }
+  readonly emit: (event: MayflyUiEvent) => void
+  /** Called only when Escape did not first cancel compiler-local state. */
+  readonly onUnhandledEscape?: () => void
+  /** Whether the editor's completion list is open; a surface with `hint: 'completions'` draws its key-hint row only then. */
+  readonly completionsOpen?: () => boolean
+  /** The caller's admission memo; a publish that shares subtrees with the previous one validates only what changed. */
+  readonly admission?: MayflyAdmissionCache
+  /** The caller's compile memo; static leaves of an unchanged subtree keep their components. A surface runtime brings its own. */
+  readonly reuse?: MayflyCompileCache
+  /**
+   * Paint again on every retained-row hit and throw when the rows differ: the check that nothing a retained component
+   * reads can change without moving the surface's epoch. Defaults to `MAYFLY_UI_VERIFY_MEMO=1`; production leaves it off.
+   */
+  readonly verifyRetained?: boolean
+}
+
+/** Canonical shell dependencies, including the one host-owned editing engine. */
+export interface MayflyEditorShellCompilerOptions extends MayflyUiCompilerOptions {
+  readonly editor: MayflyEditor
+}
+
+/** Core-private compiler options for one bridge-owned plugin surface. */
+interface MayflyUiSurfaceCompilerOptions extends MayflyUiCompilerOptions {
+  readonly surfaceRuntime: MayflyUiSurfaceRuntime
+  readonly title?: string
+  readonly escapeHint?: 'close' | 'leave'
+}
+
+/** Successful canonical compilation result. */
+export interface MayflyCompiledUi {
+  readonly node: MayflyUiNode
+  readonly component: MayflyComponent
+  readonly focusTarget: MayflyFocusable | null
+}
+
+/** Successful editor-shell compilation around the injected editing engine. */
+export interface MayflyCompiledEditorShell {
+  readonly node: MayflyEditorShellNode
+  readonly component: MayflyEditorShellComponent
+  readonly focusTarget: MayflyEditorShellComponent
+}
+
+/** One editor-shell render plus a contained renderer failure, when present. */
+export interface MayflyEditorShellRenderResult {
+  readonly rows: string[]
+  readonly runtimeFailure?: string
+}
+
+/** Checked-render options used before an editor provider is committed. */
+export interface MayflyEditorShellRenderOptions {
+  /** Restore composite/editor focus and roving state after the render. */
+  readonly dryRun?: boolean
+}
+
+/** Focusable editor shell with a provider-owned checked-render boundary. */
+export interface MayflyEditorShellComponent extends MayflyFocusable {
+  /**
+   * Render with structured failure reporting. A dry run restores all focus
+   * state after measuring the candidate.
+   * @param width - assigned editor-shell width.
+   * @param options - optional dry-run behavior.
+   * @returns rendered rows and the first contained runtime failure.
+   */
+  renderChecked(width: number, options?: MayflyEditorShellRenderOptions): MayflyEditorShellRenderResult
+  /** Select the host editor inside this shell without taking screen focus. */
+  focusEditor(): void
+}
+
+/** One bounded status render and whether the assigned viewport hid content. */
+export interface MayflyStatusRenderResult {
+  readonly rows: string[]
+  readonly overflowed: boolean
+  /** Renderer failure contained behind the status boundary, when present. */
+  readonly runtimeFailure?: string
+}
+
+/** Compile failure with a safe renderer-owned error surface. */
+export interface MayflyUiCompileFailure {
+  readonly ok: false
+  readonly code: MayflyUiErrorCode
+  readonly message: string
+  readonly errorComponent: MayflyComponent
+}
+
+/** Result returned by the no-bypass UI compiler. */
+export type MayflyUiCompileResult = { readonly ok: true, readonly value: MayflyCompiledUi } | MayflyUiCompileFailure
+
+/** Result returned by the no-bypass editor-shell compiler. */
+export type MayflyEditorShellCompileResult = { readonly ok: true, readonly value: MayflyCompiledEditorShell } | MayflyUiCompileFailure
+
+type CompilerMode = 'ui' | 'editor'
+
+type CompilableNode = MayflyUiNode | MayflyEditorShellNode
+
+interface RuntimeCompilerOptions extends MayflyUiCompilerOptions {
+  readonly editor?: MayflyEditor
+  readonly listRuntime: MayflyUiSurfaceRuntime
+  readonly reportRuntimeFailure: (message: string) => void
+  /** Always present while compiling: the caller's memo, else the surface runtime's own. */
+  readonly reuse: MayflyCompileCache
+}
+
+interface ControlBase {
+  readonly key: string
+  readonly renderKey: string
+  readonly identity: MayflyFocusIdentity
+  readonly preferred: boolean
+  readonly group: string
+  readonly navigation: 'horizontal' | 'vertical' | 'none'
+  /** An id an action scope may name that neither the identity nor the group carries (a scroll's own id). */
+  readonly scopeId?: string
+}
+
+/** An action item that answers keys: its effective keys are resolved through the keymap on every key and paint. */
+interface KeyedAction {
+  readonly item: MayflyActionItem
+  readonly label: string
+  /** The controls whose focus puts the item's keys in scope; the whole surface when absent. */
+  readonly scope?: readonly string[]
+}
+
+/** A hidden action's accelerator: fires its activate event without a button or focus stop. */
+interface HiddenAccelerator extends KeyedAction {
+  readonly event: MayflyUiEvent
+}
+
+type TextField = Extract<MayflyFormField, { readonly kind: 'input' | 'textarea' | 'secret' | 'number' }>
+type SelectField = Extract<MayflyFormField, { readonly kind: 'select' | 'multiselect' }>
+type ToggleField = Extract<MayflyFormField, { readonly kind: 'toggle' }>
+type FormNode = Extract<MayflyUiNode, { readonly kind: 'form' }>
+
+type ControlDescriptor =
+  | (ControlBase & {
+      readonly kind: 'event'
+      readonly role: 'tab' | 'list-single' | 'list-multiple' | 'action' | 'cancel'
+      readonly activation: 'enter' | 'space' | 'both'
+      readonly event: MayflyUiEvent
+      readonly commitEvent?: MayflyUiEvent
+      readonly listEntry?: { readonly node: MayflyListNode, readonly index: number }
+      /** Declared surface-local accelerator; fires the same activate event while the surface holds focus. */
+      readonly keyed?: KeyedAction
+      /** A loader's cancel: Escape fires it before it leaves the surface. */
+      readonly work?: true
+      /** A tab control's strip: whether it is drawn as a rail, whether it is a wizard, its tab count, and its hint word. */
+      readonly tabs?: TabsTraits
+    })
+  | (ControlBase & { readonly kind: 'text', readonly field: TextField, readonly form: FormNode })
+  | (ControlBase & { readonly kind: 'select', readonly field: SelectField, readonly form: FormNode })
+  | (ControlBase & { readonly kind: 'toggle', readonly field: ToggleField, readonly form: FormNode })
+  | (ControlBase & { readonly kind: 'submit', readonly form: FormNode })
+  | (ControlBase & { readonly kind: 'field-action', readonly address: MayflyFieldAddress, readonly action: UiFieldAction })
+  | (ControlBase & { readonly kind: 'editor' })
+  | (ControlBase & { readonly kind: 'prompt', readonly node: MayflyPromptNode })
+  | (ControlBase & { readonly kind: 'slider', readonly node: MayflySliderNode })
+  | (ControlBase & { readonly kind: 'scroll', readonly fixed?: true })
+  | (ControlBase & { readonly kind: 'list', readonly node: MayflyListNode })
+
+interface ControlGroup {
+  readonly id: string
+  readonly kind: 'tabs' | 'content'
+  readonly entries: readonly { readonly control: ControlDescriptor, readonly index: number }[]
+}
+
+type ControlBinding = UiControlBinding
+type ScrollControl = UiScrollControl
+type VirtualListEntry = UiVirtualListEntry
+type ListMovement = UiListMovement
+
+/** The outcome of one focus reconciliation, kept so that a layout pass does not repeat it for the same controls. */
+interface ReconciledFocus {
+  readonly controls: string
+  readonly activeKey: string | undefined
+  readonly desiredKey: string | undefined
+  readonly editingKey: string | undefined
+  readonly focused: boolean
+  readonly lastIndex: number
+}
+
+interface FocusState {
+  activeKey: string | undefined
+  activeGroup: string | undefined
+  desiredKey: string | undefined
+  desiredGroup: string | undefined
+  editingKey: string | undefined
+  expandedKey: string | undefined
+  readonly groupActiveKeys: Map<string, string>
+  /** The first field of each `autofocus` form that has already taken the focus: it takes it once each time it appears. */
+  readonly autofocusClaimed: Set<string>
+  readonly controlBindings: Map<string, ControlBinding>
+  readonly scrollViews: Map<string, ScrollControl>
+  lastTabGroupIndex: number
+  lastIndex: number
+  focused: boolean
+  layoutPass: boolean
+  /** The viewport this layout pass last reconciled focus for. */
+  layoutReconciled: MayflyUiViewport | undefined
+  /** What the last reconciliation saw and left: the controls it walked and the focus it settled on. */
+  reconciled: ReconciledFocus | undefined
+  /** The control walk of the current viewport. */
+  walk(): ControlWalk
+  controls(): readonly ControlDescriptor[]
+  allControls(): readonly ControlDescriptor[]
+  accelerators(): readonly HiddenAccelerator[]
+  emit(event: MayflyUiEvent): void
+  field(field: MayflyFormField, key: string): MayflyFormField
+  decor(field: MayflyFormField, key: string): FieldDecor
+  fieldValue(field: MayflyFormField, key: string): MayflyFieldValue
+  setValue(key: string, value: MayflyFieldValue): void
+  textEditor(field: TextField, key: string): MayflyEditor
+  beginSelectEditing(field: SelectField, key: string): void
+  finishSelectEditing(field: SelectField, key: string, cancel: boolean): MayflyFieldValue
+  setEditing(key: string | undefined): void
+  blurInactiveEditors(controls: readonly ControlDescriptor[]): void
+  setLayoutViewport(viewport: MayflyUiViewport): void
+  bindControls(keys: readonly string[], binding: ControlBinding): void
+  bindScroll(key: string, scroll: ScrollControl): void
+}
+
+/** Enter a layout pass; its first visible check reconciles focus again. */
+function beginLayoutPass(state: FocusState): void {
+  state.layoutPass = true
+  state.layoutReconciled = undefined
+}
+
+function sameViewport(left: MayflyUiViewport | undefined, right: MayflyUiViewport): boolean {
+  return left?.columns === right.columns && left.rows === right.rows
+}
+
+function safeViewport(getViewport: () => MayflyUiViewport): MayflyUiViewport {
+  try {
+    const viewport = getViewport()
+    const columns = Number.isFinite(viewport.columns) ? Math.max(1, Math.floor(viewport.columns)) : 1
+    const rows = Number.isFinite(viewport.rows) ? Math.max(1, Math.floor(viewport.rows)) : 1
+    return { columns, rows }
+  } catch {
+    return { columns: 1, rows: 1 }
+  }
+}
+
+function tabVisible(child: Pick<MayflyUiChild, 'tab'>, pagePath: MayflyPagePath, options: RuntimeCompilerOptions): boolean {
+  return child.tab === undefined
+    || options.listRuntime.activeTab({ pagePath, controlId: child.tab.controlId }) === child.tab.itemId
+}
+
+function conditionMatches(condition: MayflyViewportCondition | undefined, viewport: MayflyUiViewport): boolean {
+  if (condition === undefined) return true
+  return (condition.minWidth === undefined || viewport.columns >= condition.minWidth)
+    && (condition.maxWidth === undefined || viewport.columns <= condition.maxWidth)
+    && (condition.minHeight === undefined || viewport.rows >= condition.minHeight)
+    && (condition.maxHeight === undefined || viewport.rows <= condition.maxHeight)
+}
+
+function errorRows(message: string, width: number, colors: MayflySemanticColors): string[] {
+  const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
+  const source = `Mayfly UI rejected: ${message}`.replace(/[\x00-\x1f\x7f-\x9f]/gu, ' ')
+  const chunks: string[] = []
+  let remaining = source
+  while (remaining.length > 0 && chunks.length < ERROR_MAX_ROWS) {
+    let consumed = 0
+    let columns = 0
+    for (const codePoint of remaining) {
+      const codePointWidth = visibleWidth(codePoint)
+      consumed += codePoint.length
+      if (columns + codePointWidth > safeWidth) break
+      columns += codePointWidth
+      if (columns >= safeWidth) break
+    }
+    const row = sliceByColumn(remaining.slice(0, consumed), 0, safeWidth, true)
+    chunks.push(row)
+    remaining = remaining.slice(consumed)
+  }
+  return chunks.map(row => {
+    try {
+      const painted = colors.error(row)
+      return visibleWidth(painted) <= safeWidth ? painted : sliceByColumn(painted, 0, safeWidth, true)
+    } catch {
+      return row
+    }
+  })
+}
+
+class ErrorComponent implements MayflyComponent {
+  constructor(private readonly message: string, private readonly colors: MayflySemanticColors) {}
+  render(width: number): string[] { return errorRows(this.message, width, this.colors) }
+  invalidate(): void {}
+}
+
+function renderFailure(error: unknown, fallback = 'unknown render failure'): string {
+  return ownDataErrorMessage(error) ?? fallback
+}
+
+/**
+ * A component painted by a pattern painter. Its rows are shown in the presentation's glyph mode: every replacement is
+ * one cell, so the conversion runs after the painter laid the row out. Editors are not static components, so the text
+ * being typed is never converted.
+ */
+function staticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'reportRuntimeFailure'> & { readonly components?: Pick<MayflyComponents, 'presentation'> }): MayflyComponent {
+  // The presentation is fixed for the life of the components service this leaf was compiled with, so it is read once,
+  // not through the service on every paint.
+  const glyphs = options.components?.presentation?.glyphs
+  return {
+    render: width => {
+      try {
+        return glyphRows(render(width), glyphs)
+      } catch (error) {
+        const message = renderFailure(error)
+        options.reportRuntimeFailure(message)
+        return errorRows(message, width, options.colors)
+      }
+    },
+    invalidate: () => {},
+  }
+}
+
+/**
+ * A static render that depends only on its immutable node and the width.
+ * Layout frames re-render every row on each paint (spinner ticks, scroll
+ * steps); these rows answer from a per-width memo until invalidated.
+ */
+function pureStaticComponent(render: (width: number) => string[], options: Pick<PaintOptions, 'colors' | 'components' | 'reportRuntimeFailure'>): MayflyComponent {
+  // A row layout measures a leaf at several widths before it paints, so one remembered width would thrash.
+  const memo = new Map<number, string[]>()
+  const component = staticComponent(width => {
+    const known = memo.get(width)
+    if (known !== undefined) return known
+    const rows = render(width)
+    if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
+    memo.set(width, rows)
+    return rows
+  }, options)
+  // The rows are a pure function of the node, the width, and the palette this leaf was compiled with, and a new palette
+  // recompiles the leaf, so an invalidation (a loader tick, a scroll step) leaves them in place.
+  return { render: component.render, invalidate: () => {} }
+}
+
+/** How many widths a pure static leaf remembers rows for. */
+const PURE_STATIC_WIDTHS = 4
+
+/**
+ * The content-source environment of one surface: the leaves' paint (re-pointed by the compile cache) plus the
+ * surface's viewport, content cache, and bounds. Document resolvers pass `options` as the paint.
+ */
+function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, 'components' | 'colors' | 'reportRuntimeFailure'>): ContentRowsEnv {
+  return {
+    get components() { return paint.components },
+    get colors() { return paint.colors },
+    cache: options.listRuntime.content,
+    bounded: options.bounded || options.listRuntime.interaction !== undefined,
+    viewportRows: () => safeViewport(options.getViewport).rows,
+    elide: hidden => paint.colors.muted(renderOverflowRow(hidden, (key, values) => coreText(options, key, values))),
+    errorRows: (message, width) => errorRows(message, width, paint.colors),
+    report: message => { paint.reportRuntimeFailure(message) },
+    changed: () => { options.listRuntime.nudge() },
+  }
+}
+
+/**
+ * A content leaf (`text`, `fields`, `code`, `sections`, `rich-text` without motion): its rows are a virtual facade
+ * over a segmented source, so layout reads a length and a scroll reads only its window. The leaf keeps the facade
+ * memo a pure static leaf has; in the alternate screen the source clamps itself to the viewport plus an elision row
+ * that scrolls unwrap through `unclampedRows`, so the memo is keyed by the viewport height as well as the width.
+ */
+function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompilerOptions, paint: PaintOptions): MayflyComponent {
+  const glyphs = options.components.presentation?.glyphs
+  const memo = new Map<string, string[]>()
+  const env = contentEnv(options, paint)
+  return {
+    render: width => {
+      try {
+        const safeWidth = Math.max(1, Math.floor(width))
+        const key = env.bounded ? `${String(safeWidth)}x${String(env.viewportRows())}` : String(safeWidth)
+        let rows = memo.get(key)
+        if (rows === undefined) {
+          rows = glyphRows(virtualRows(contentNodeSource(node, safeWidth, env)), glyphs)
+          if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
+          memo.set(key, rows)
+        }
+        return rows
+      } catch (error) {
+        const message = renderFailure(error)
+        paint.reportRuntimeFailure(message)
+        return errorRows(message, width, paint.colors)
+      }
+    },
+    invalidate: () => {},
+  }
+}
+
+/**
+ * A ScrollView whose scrollbar columns keep laziness: the bar's track is mapped onto the child's rows as a facade, so
+ * a passive render reads only the rows someone asks for; the layout-driven frame never calls `render` at all.
+ *
+ * The child is wrapped so the outside-window elision a leaf applied is lifted (`unclampedRows`): the scroll's own
+ * window is what bounds the paint. The captured rows are `prepare`d on every layout, so the segments under the
+ * settled window paint before the frame reads them and the reported `contentHeight` is exact where it is seen.
+ */
+class WindowScrollView extends BarredScrollView {
+  private readonly held: { rows?: string[] | undefined }
+
+  constructor(component: Component, options: BarredScrollViewOptions) {
+    const held: { rows?: string[] } = {}
+    super({
+      render: (width: number): string[] => {
+        const painted = component.render(width)
+        return held.rows = unclampedRows(painted)
+      },
+      invalidate: () => component.invalidate(),
+    }, options)
+    this.held = held
+  }
+
+  /** Paint the segments under the settled window before the frame reads the rows. */
+  protected prepareWindow(): void {
+    if (this.held.rows !== undefined) prepareRows(this.held.rows, this.scrollTop, this.scrollTop + this.viewportHeight)
+  }
+
+  override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
+    super.updateLayout(contentHeight, viewportHeight, requestRender)
+    this.prepareWindow()
+  }
+
+  override render(width: number): string[] {
+    return this.children[0]!.render(width)
+  }
+}
+
+class SemanticScrollView extends WindowScrollView {
+  private width = 1
+
+  constructor(
+    component: Component,
+    options: BarredScrollViewOptions,
+    private readonly model: UiSurfaceModel,
+    private readonly address: UiControlAddress,
+    private readonly resolve: DocumentResolver,
+  ) { super(component, options) }
+
+  /** Both a render and pi-tui's native layout ask for the content width first, so the anchors learn it here. */
+  override getContentWidth(width: number): number {
+    const contentWidth = super.getContentWidth(width)
+    this.width = this.innerWidth(contentWidth)
+    return contentWidth
+  }
+
+  override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
+    super.updateLayout(contentHeight, viewportHeight, requestRender)
+    const state = this.model.document(this.address)
+    if (state?.anchor?.follow === 'end') this.quietly(() => { super.scrollToEnd() })
+    else if (state !== undefined) this.quietly(() => { super.scrollTo(documentAnchorRow(state, this.width, this.resolve), { disableFollow: true }) })
+    this.prepareWindow()
+  }
+
+  private sync(): void {
+    const state = this.model.document(this.address)
+    if (state === undefined) return
+    const anchor = documentAnchorAtRow(state, this.scrollTop, this.width, this.isFollowingEnd ? 'end' : 'none', this.resolve)
+    if (anchor !== undefined) this.model.moveDocument(this.address, anchor)
+  }
+
+  override scrollTo(scrollTop: number, options?: Parameters<ScrollView['scrollTo']>[1]): void {
+    super.scrollTo(scrollTop, options)
+    this.sync()
+  }
+  override scrollBy(lines: number): number { const remaining = super.scrollBy(lines); this.sync(); return remaining }
+  override scrollToStart(): void { super.scrollToStart(); this.sync() }
+  override scrollToEnd(): void { super.scrollToEnd(); this.sync() }
+}
+
+function diagramSource(node: MayflyDiagramNode): string {
+  const source = textOf(node.source)
+  let longest = 0
+  for (const match of source.matchAll(/`+/gu)) longest = Math.max(longest, match[0].length)
+  const fence = '`'.repeat(Math.max(3, longest + 1))
+  return `${fence}mermaid\n${source}\n${fence}`
+}
+
+/** The `markdown` node a `diagram` compiles through: its fence text once, stable for the shared-source memos. */
+const diagramMarkdownNodes = new WeakMap<MayflyDiagramNode, Extract<MayflyUiNode, { readonly kind: 'markdown' }>>()
+
+function diagramMarkdownNode(node: MayflyDiagramNode): Extract<MayflyUiNode, { readonly kind: 'markdown' }> {
+  let markdown = diagramMarkdownNodes.get(node)
+  if (markdown === undefined) {
+    markdown = { kind: 'markdown', source: diagramSource(node) }
+    diagramMarkdownNodes.set(node, markdown)
+  }
+  return markdown
+}
+
+function imageComponent(node: MayflyImageNode, options: RuntimeCompilerOptions): MayflyComponent {
+  const presentation = options.components.presentation
+  const pending = (width: number): string[] => renderLoader({ kind: 'loader', variant: 'gap', message: coreText(options, 'Loading image…') }, width, options.colors, motionFrame(options), presentation?.glyphs, presentation?.reducedMotion === true)
+  const painter = new UiImagePainter(node, options.components, options.colors, options.listRuntime.images, options.listRuntime.repaint, pending)
+  const component = staticComponent(width => painter.render(width), options)
+  return { render: component.render, invalidate: () => { painter.invalidate() } }
+}
+
+/**
+ * A `prompt`: the symbol, tokens, and rows of `ui-prompt.ts` around the one terminal editor this prompt leases from the
+ * runtime. The draft lives in the surface model; the editor mirrors it before every paint and every key, and reports its
+ * own edits back. Outside an interactive surface (no model) the prompt is read-only text.
+ */
+function promptComponent(node: MayflyPromptNode, state: FocusState, options: RuntimeCompilerOptions, key: string): MayflyComponent {
+  const runtime = options.listRuntime
+  const model = runtime.interaction
+  const address = { pagePath: runtime.pagePath(node), controlId: node.id }
+  const paint = (width: number, draft: ReturnType<UiSurfaceModel['prompt']>, buffer: PromptPaint['buffer'], focused: boolean): string[] => paintPrompt({
+    node, model: draft, width, focused, colors: options.colors, components: options.components,
+    glyphs: options.components.presentation?.glyphs, translate: text => coreText(options, text), buffer,
+  })
+  const readOnly = staticComponent(width => paint(width, undefined, undefined, false), options)
+  if (model === undefined) return readOnly
+  const component: MayflyComponent = {
+    render: width => {
+      try {
+        // A prompt the model does not hold (a branch it has not admitted yet) paints as read-only text.
+        const draft = model.prompt(address)
+        if (draft === undefined) return readOnly.render(width)
+        const editor = runtime.promptEditor(key, address)
+        editor.sync(draft.text)
+        const focused = state.focused && state.activeKey === key
+        const rows = paint(Math.max(1, width), draft, rowWidth => editor.render(rowWidth, focused), focused)
+        return rows
+      } catch (error) {
+        const message = renderFailure(error, 'unknown prompt failure')
+        options.reportRuntimeFailure(message)
+        return errorRows(message, width, options.colors)
+      }
+    },
+    invalidate: () => { runtime.promptEditor(key, address).invalidate() },
+  }
+  state.bindControls([key], { component, axis: 'none' })
+  return component
+}
+
+/**
+ * A `slider`: the rows of `ui-slider-paint.ts` over the level the surface model holds for it. Outside an interactive
+ * surface (no model) the node's own seed is drawn and the control takes no focus.
+ */
+function sliderComponent(node: MayflySliderNode, state: FocusState, options: RuntimeCompilerOptions, key: string): MayflyComponent {
+  const runtime = options.listRuntime
+  const model = runtime.interaction
+  const address = { pagePath: runtime.pagePath(node), controlId: node.id }
+  const component = staticComponent(width => paintSlider({ node, model: model?.slider(address), width, colors: options.colors }), options)
+  if (model === undefined) return component
+  state.bindControls([key], { component, axis: 'none' })
+  return component
+}
+
+/**
+ * The `prompt` of an editor shell: its symbol and frame come from the tree, while the buffer's rows (and the completion
+ * list under them) and every key belong to the host's own editor. There is no draft in a surface model: the editor is
+ * the draft, and the shell repaints it on every frame because it is volatile.
+ */
+function hostedPromptComponent(node: MayflyPromptNode, state: FocusState, options: RuntimeCompilerOptions, key: string, editor: MayflyEditor): MayflyComponent {
+  const component: MayflyComponent = {
+    render: width => {
+      try {
+        editor.focused = state.focused && state.activeKey === key
+        editor.setPlaceholder(placeholderLadder(node.placeholder))
+        const rows = paintHostedPrompt({ node, width: Math.max(1, width), colors: options.colors, components: options.components, buffer: room => editor.render(room) })
+        return rows
+      } catch (error) {
+        const message = renderFailure(error, 'unknown editor failure')
+        options.reportRuntimeFailure(message)
+        return errorRows(message, width, options.colors)
+      }
+    },
+    invalidate: () => editor.invalidate(),
+  }
+  state.bindControls([key], { component, axis: 'none' })
+  return component
+}
+
+/** A chart's rows depend on its node, the width, and the palette alone, so they are painted once per width. */
+function chartComponent(node: MayflyChartNode, options: RuntimeCompilerOptions): MayflyComponent {
+  return pureStaticComponent(width => renderChartRows(node, Math.max(1, width), options.components, options.colors), options)
+}
+
+/** A surface whose forms hold an unsaved edit says so in its head, after the badges its author gave it. */
+function withDirtyBadge<Node extends { readonly badges?: readonly MayflyInlineSpan[] }>(node: Node, options: RuntimeCompilerOptions): Node {
+  if (options.listRuntime.interaction?.formsDirty !== true) return node
+  return { ...node, badges: [...node.badges ?? [], { text: coreText(options, 'unsaved changes'), tone: 'warning' }] }
+}
+
+/** What a field needs from its form to be painted: the shared label column, and the group heading it opens. */
+interface FormFieldLayout {
+  readonly labelWidth: number
+  readonly heading?: string
+}
+
+/** The rows of one field in the form's reading, with the heading of the group it opens above them. */
+function paintField(field: MayflyFormField, key: string, width: number, state: FocusState, options: RuntimeCompilerOptions, layout: FormFieldLayout, marker: string, editing?: readonly string[]): string[] {
+  const presented = state.field(field, key)
+  const focused = state.focused && state.activeKey === key && presented.disabled !== true
+  const picker = focused && state.editingKey === key
+  const typed = editing === undefined ? undefined : editing.join('\n')
+  const completions = typed === undefined || presented.kind === 'select' || presented.kind === 'multiselect' || presented.kind === 'toggle' || presented.kind === 'number'
+    ? undefined
+    : matchingSuggestions(presented.suggestions, String(state.fieldValue(field, key)))
+  const rows = paintFormField({
+    field: presented, decor: state.decor(field, key), width, labelWidth: layout.labelWidth, colors: options.colors,
+    text: key => coreText(options, key),
+    focus: { key: presented.id, focused, marker, ...(picker ? { editing: true as const } : {}), ...pickerOption(field, key, options) },
+    ...(editing === undefined ? {} : { editing }),
+    ...(completions === undefined ? {} : { suggestions: completions }),
+  })
+  return layout.heading === undefined ? rows : [formHeading(layout.heading, width, options.colors), ...rows]
+}
+
+/** The option the open picker of a select stands on. */
+function pickerOption(field: MayflyFormField, key: string, options: RuntimeCompilerOptions): { readonly optionId?: string } {
+  if (field.kind !== 'select' && field.kind !== 'multiselect') return {}
+  const address = options.listRuntime.fieldAddress(key)!
+  const focusedId = options.listRuntime.interaction?.form(address)?.fields[field.id]?.picker?.focusedId
+  return focusedId === undefined ? {} : { optionId: focusedId }
+}
+
+function editorFieldComponent(field: TextField, key: string, state: FocusState, options: RuntimeCompilerOptions, layout: FormFieldLayout): MayflyComponent {
+  let editor: MayflyEditor | undefined
+  const currentEditor = (): MayflyEditor => editor ??= state.textEditor(field, key)
+  return {
+    render: width => {
+      try {
+        const available = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
+        const presented = state.field(field, key)
+        const focused = state.focused && state.activeKey === key && presented.disabled !== true
+        const editing = focused && state.editingKey === key
+        // Only a field being typed into asks its editor for rows; every other reading is drawn from the value.
+        let content: string[] | undefined
+        // The focused field owns its editor before it is typed into, so a construction failure shows on the first paint.
+        if (focused) currentEditor()
+        if (editing) {
+          const active = currentEditor()
+          active.focused = true
+          content = active.renderContent(editorWidth(field, available, layout.labelWidth), field.kind === 'secret')
+        } else if (editor !== undefined) editor.focused = false
+        let rows = paintField(field, key, available, state, options, layout, FOCUS_SENTINEL, content)
+        if (state.layoutPass && focused) {
+          let inserted = rows.some(row => row.includes(CURSOR_MARKER))
+          rows = rows.map(row => {
+            if (inserted || !row.includes(FOCUS_SENTINEL)) return row.replaceAll(FOCUS_SENTINEL, ' ')
+            inserted = true
+            return row.replace(FOCUS_SENTINEL, `${CURSOR_MARKER} `).replaceAll(FOCUS_SENTINEL, ' ')
+          })
+        }
+        return rows
+      } catch (error) {
+        const message = renderFailure(error, 'unknown editor failure')
+        options.reportRuntimeFailure(message)
+        return errorRows(message, width, options.colors)
+      }
+    },
+    invalidate: () => editor?.invalidate(),
+  }
+}
+
+function safePaint(colors: MayflySemanticColors, tone: MayflyTone | undefined, value: string): string {
+  return paintPluginTone(colors, tone)(value)
+}
+
+function patternFocus(state: FocusState, prefix: string): PatternFocus {
+  const controls = state.controls()
+  const active = controls.find(control => control.group === prefix && control.key === state.activeKey)
+  return {
+    key: active?.renderKey ?? '',
+    focused: state.focused,
+    marker: state.layoutPass ? `${CURSOR_MARKER} ` : FOCUS_SENTINEL,
+  }
+}
+
+/** The clock frame a moving cell paints at: reduced motion stays on the first frame and never joins the clock. */
+function motionFrame(options: RuntimeCompilerOptions): number {
+  return options.components.presentation?.reducedMotion === true ? 0 : options.listRuntime.loaderFrame()
+}
+
+function joinSpans(node: { readonly spans: readonly MayflyInlineSpan[] }, colors: MayflySemanticColors): string {
+  return node.spans.map(span => {
+    const painted = safePaint(colors, span.tone, span.text)
+    return (span.styles ?? []).reduce((value, style) => {
+      if (style === 'strong') return `\x1b[1m${value}\x1b[22m`
+      if (style === 'italic') return `\x1b[3m${value}\x1b[23m`
+      if (style === 'inverse') return `\x1b[7m${value}\x1b[27m`
+      return `\x1b[9m${value}\x1b[29m`
+    }, painted)
+  }).join('')
+}
+
+/** The one row a gutter or a padding column paints. */
+const BLANK_ROW: string[] = ['']
+
+function pad(component: Component, amount: number, options: RuntimeCompilerOptions): Component {
+  if (amount === 0) return component
+  const padded = new RowStack()
+  const spacer = (): MayflyComponent => staticComponent(() => BLANK_ROW, options)
+  padded.addChild(spacer(), { basis: amount, grow: 0, shrink: 1 })
+  padded.addChild(component, { basis: 0, grow: 1, shrink: 1, minSize: 1 })
+  padded.addChild(spacer(), { basis: amount, grow: 0, shrink: 1 })
+  return padded
+}
+
+/**
+ * The framed `surface` chrome (the editor's frame): the inset title rule, side bars, and bottom rule in the border paint, with at least one column of gutter inside each bar (`padding` 2 adds a second).
+ */
+function framedSurfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent & { [LAYOUT_NODE](): LayoutNode } {
+  const body = retain(new ColumnStack(), 'surface body', options)
+  body.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(1), options), 'surface head', options))
+  body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
+  if (footer !== undefined) body.addChild(footer)
+  if (contextHint !== undefined) body.addChild(contextHint)
+
+  const paint = surfaceBorderPaint(options.colors, node.border)
+  const glyphs = options.components.presentation?.glyphs
+  const bar = glyphRows(['│'], glyphs)[0]!
+  const gutter = Math.max(1, node.padding ?? 0)
+  let layoutRows = 1
+  const captureLayoutRows = (viewport: LayoutViewport): boolean => {
+    layoutRows = Math.min(LAYOUT_VALUE_MAX, Math.max(1, Math.floor(viewport.height)))
+    return viewport.width >= 3
+  }
+  const frameVisible = (viewport: LayoutViewport): boolean => viewport.width >= 3
+  const paddingVisible = (index: number) => (viewport: LayoutViewport): boolean => viewport.width >= 5 + index * 2
+  // The bars are as tall as the layout's frame; both sides share the rows painted for one height.
+  let bars: { readonly rows: number, readonly lines: string[] } | undefined
+  const borderRows = (): string[] => {
+    if (bars?.rows !== layoutRows) bars = { rows: layoutRows, lines: Array.from({ length: layoutRows }, () => paint(bar)) }
+    return bars.lines
+  }
+  const middle = new HStack()
+  middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
+  for (let index = 0; index < gutter; index += 1) {
+    middle.addChild(staticComponent(() => BLANK_ROW, options), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
+  }
+  middle.addChild(body, { basis: 1, grow: 1, shrink: 1, minSize: 0 })
+  for (let index = 0; index < gutter; index += 1) {
+    middle.addChild(staticComponent(() => BLANK_ROW, options), { basis: 1, grow: 0, shrink: 100, visible: paddingVisible(index) })
+  }
+  middle.addChild(staticComponent(borderRows, options), { basis: 1, grow: 0, shrink: 1, visible: captureLayoutRows })
+
+  const layout = new ColumnStack()
+  layout.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors).slice(0, 1), options), 'surface head', options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
+  layout.addChild(middle, { basis: 0, grow: 1, shrink: 1, minSize: 0 })
+  layout.addChild(retain(staticComponent(width => renderSurfaceTail(node, width, options.colors), options), 'surface tail', options), { basis: 1, grow: 0, shrink: 0, visible: frameVisible })
+
+  const framed = {
+    [LAYOUT_NODE](): LayoutNode { return layout[LAYOUT_NODE]() },
+    render(width: number): string[] {
+      const available = Math.max(1, Math.floor(width))
+      if (available < 3) return mapRows(body.render(available), row => truncateToWidth(row, available, ''))
+      const horizontalPadding = Math.min(gutter, Math.max(0, Math.floor((available - 3) / 2)))
+      const contentWidth = Math.max(1, available - 2 - horizontalPadding * 2)
+      // The frame's own rows convert to the glyph mode here; the body's painters converted theirs.
+      const head = glyphRows(renderSurfaceHead(withDirtyBadge(node, options), available, options.colors).slice(0, 1), glyphs)
+      const bodyRows = body.render(contentWidth)
+      const tail = glyphRows(renderSurfaceTail(node, available, options.colors), glyphs)
+      const border = paint(bar)
+      const inset = ' '.repeat(horizontalPadding)
+      const rows = mapRows(bodyRows, row => {
+        // A row that fits is measured once; only a row that overflows is clipped and measured again.
+        const rowWidth = visibleWidth(row)
+        if (rowWidth <= contentWidth) return `${border}${inset}${row}${' '.repeat(contentWidth - rowWidth)}${inset}${border}`
+        const clipped = truncateToWidth(row, contentWidth, '')
+        return `${border}${inset}${clipped}${' '.repeat(Math.max(0, contentWidth - visibleWidth(clipped)))}${inset}${border}`
+      }, { declaredWidth: available })
+      return concatRows(head, rows, tail)
+    },
+    invalidate(): void { layout.invalidate() },
+  }
+  // The body starts under the frame's title rule, in a render and in a layout alike.
+  placeChild(body, framed, 1)
+  return framed
+}
+
+/**
+ * A surface: the head (a panel's full-width rule, title, description, and blank row; a lane's titled rule; or the bold
+ * title) over the child, the footer, and the hint row. A panel (`overlay` chrome) is borderless: its child, footer, and
+ * hint sit inside the panel gutter (`padding` widens it), and the head's own rows carry the same indent. The `surface`
+ * chrome is the framed one.
+ */
+function surfaceComponent(node: Extract<CompilableNode, { readonly kind: 'surface' }>, child: Component, footer: Component | undefined, contextHint: Component | undefined, options: RuntimeCompilerOptions): MayflyComponent {
+  if (node.chrome === 'surface') return framedSurfaceComponent(node, child, footer, contextHint, options)
+  const panel = node.chrome === 'overlay'
+  const component = new ColumnStack()
+  component.addChild(retain(staticComponent(width => renderSurfaceHead(withDirtyBadge(node, options), width, options.colors), options), 'surface head', options))
+  const body = panel ? new ColumnStack() : component
+  body.addChild(child, options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
+  if (footer !== undefined) body.addChild(footer)
+  // A panel sets its hint row off from the content by a blank row.
+  if (panel && contextHint !== undefined) body.addChild(staticComponent(() => BLANK_ROW, options))
+  if (contextHint !== undefined) body.addChild(contextHint)
+  if (panel) component.addChild(pad(body, PANEL_GUTTER + Math.max(0, (node.padding ?? 0) - 1), options), options.listRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
+  return panel ? component : pad(component, node.padding ?? 0, options)
+}
+
+function controlKey(kind: string, controlId: string, itemId?: string, pagePath: MayflyPagePath = []): string {
+  return JSON.stringify([pagePath, kind, controlId, itemId])
+}
+
+function focusIdentity(controlId: string, itemId?: string, pagePath: MayflyPagePath = []): MayflyFocusIdentity {
+  return { controlId, pagePath, ...(itemId === undefined ? {} : { itemId }) }
+}
+
+function controlGroup(kind: string, controlId: string, pagePath: MayflyPagePath = []): string {
+  return JSON.stringify([pagePath, kind, controlId])
+}
+
+function actionGroup(node: Extract<MayflyUiNode, { readonly kind: 'actions' }>, pagePath: MayflyPagePath = []): string {
+  return JSON.stringify([pagePath, 'actions', node.id, [...node.items].map(item => item.id).sort()])
+}
+
+function fieldStateKey(key: string, kind: MayflyFormField['kind']): string {
+  return JSON.stringify(['field-state', key, kind])
+}
+
+function controlGroups(controls: readonly ControlDescriptor[]): ControlGroup[] {
+  const groups: { id: string, kind: 'tabs' | 'content', entries: { control: ControlDescriptor, index: number }[] }[] = []
+  const byId = new Map<string, (typeof groups)[number]>()
+  for (const [index, control] of controls.entries()) {
+    let group = byId.get(control.group)
+    if (group === undefined) {
+      group = {
+        id: control.group,
+        kind: control.kind === 'event' && control.role === 'tab' ? 'tabs' : 'content',
+        entries: [],
+      }
+      groups.push(group)
+      byId.set(control.group, group)
+    }
+    group.entries.push({ control, index })
+  }
+  return groups
+}
+
+/**
+ * The tab group `Alt+←/→` switches from the focused control: its own on a strip, the innermost enclosing one for content
+ * nested in a tab page, else the last tab group focused.
+ */
+function selectedTabGroup(groups: readonly ControlGroup[], active: ControlDescriptor | undefined, lastTabGroupIndex: number): ControlGroup | undefined {
+  const tabGroups = groups.filter(group => group.kind === 'tabs')
+  const onStrip = active?.kind === 'event' && active.role === 'tab'
+  const activePath = active?.identity.pagePath
+  const enclosing = onStrip || activePath === undefined || activePath.length === 0
+    ? undefined
+    : controlGroup('tabs', activePath.at(-1)!.controlId, activePath.slice(0, -1))
+  const groupIndex = onStrip
+    ? tabGroups.findIndex(candidate => candidate.id === active.group)
+    : enclosing === undefined
+      ? Math.min(lastTabGroupIndex, tabGroups.length - 1)
+      : tabGroups.findIndex(candidate => candidate.id === enclosing)
+  return tabGroups[Math.max(0, groupIndex)]
+}
+
+function sameFocusIdentity(left: MayflyFocusIdentity, right: MayflyFocusIdentity): boolean {
+  return left.controlId === right.controlId && left.itemId === right.itemId && JSON.stringify(left.pagePath) === JSON.stringify(right.pagePath ?? [])
+}
+
+function groupTarget(controls: readonly ControlDescriptor[], group: string, remembered: string | undefined): number {
+  const rememberedIndex = remembered === undefined
+    ? -1
+    : controls.findIndex(control => control.group === group && control.key === remembered)
+  if (rememberedIndex >= 0) return rememberedIndex
+  const preferred = controls.findIndex(control => control.group === group && control.preferred)
+  if (preferred >= 0) return preferred
+  return controls.findIndex(control => control.group === group)
+}
+
+interface ContextKeyHint {
+  readonly id: string
+  readonly keys: string
+  readonly label: string | undefined
+  readonly compact: string
+  readonly priority: number
+}
+
+type EscapeLabel = 'close' | 'leave' | 'reject' | 'no' | 'surface-back' | 'surface-cancel'
+
+/** The escape step a surface's `escapeLabel` names; every one hands Escape to the host's `onUnhandledEscape`. */
+const SURFACE_ESCAPE: Readonly<Record<NonNullable<Extract<MayflyUiNode, { readonly kind: 'surface' }>['escapeLabel']>, EscapeLabel>> = {
+  close: 'close', leave: 'leave', reject: 'reject', no: 'no', back: 'surface-back', cancel: 'surface-cancel',
+}
+
+/** The label of the outermost Escape: a surface's own `escapeLabel` replaces the host's, once the host handles Escape at all. */
+function surfaceEscape(node: CompilableNode, host: EscapeLabel | undefined): EscapeLabel | undefined {
+  return host === undefined || node.kind !== 'surface' || node.escapeLabel === undefined ? host : SURFACE_ESCAPE[node.escapeLabel]
+}
+
+/** Translate a core-owned string through the host catalog, falling back to English interpolation. */
+function coreText(options: Pick<MayflyUiCompilerOptions, 'contextHints'> | undefined, key: string, values?: UiTranslateValues): string {
+  try { return options?.contextHints?.translate?.(key, values) ?? untranslated(key, values) } catch { return untranslated(key, values) }
+}
+
+/** One row of a flow list: the tree and search are what keeps a list off the row source, so depth and last are flat. */
+function flowListSpec(choice: UiChoiceState | undefined, node: MayflyListNode, index: number): ListRowSpec {
+  if (choice !== undefined) {
+    const row = choiceRow(choice, index)
+    return { item: row.item, depth: row.depth, last: row.last, expandable: row.expandable, open: row.open, position: index }
+  }
+  const item = admittedListItem(node.items, index)!
+  const always = item.bodyAlways === true && item.body !== undefined
+  return { item, depth: 0, last: false, expandable: !always && item.body !== undefined, open: always || (item.body !== undefined && item.expanded === true), position: index }
+}
+
+/** The choice state a flow row paints from, besides the item: an open body, the cursor, and an input's text. */
+function flowListSignature(choice: UiChoiceState | undefined, node: MayflyListNode): string {
+  if (choice === undefined) return ''
+  return [
+    choice.query, choice.searching ? 1 : 0, choice.expandedIds.join('\x01'), choice.focusedId ?? '',
+    JSON.stringify(choice.segments ?? {}), JSON.stringify(choice.inputs ?? {}), node.expandFocused === true ? 1 : 0,
+  ].join('\x1e')
+}
+
+/** The filter row of a list: `/ query`, with the number of matches right-aligned; a long query wraps under it. */
+function listQueryRow(node: MayflyListNode, query: string, searching: boolean, count: number, width: number, focused: boolean, options: RuntimeCompilerOptions): string {
+  const slash = options.colors.muted('/')
+  const input = searching ? options.listRuntime.search(node).render(Math.max(1, width - 2), focused) : [query]
+  const right = options.colors.muted(coreText(options, count === 1 ? '{count} match' : '{count} matches', { count }))
+  const left = `${slash} ${input[0]!}`
+  const room = width - visibleWidth(left) - visibleWidth(right)
+  return room >= 2 ? `${left}${' '.repeat(room)}${right}` : sliceByColumn(left, 0, width, true)
+}
+
+/** An action a targeted selection row declares unavailable renders disabled with that row's reason. */
+function effectiveActionItem(item: MayflyActionItem, options: RuntimeCompilerOptions): MayflyActionItem {
+  const reason = options.listRuntime.interaction?.unavailableReason(item)
+  return reason === undefined ? item : { ...item, disabled: true, disabledReason: reason }
+}
+
+/** A named component action's button shows the key that answers it now; an action rebound to no key shows none. */
+function withEffectiveKey(item: MayflyActionItem, options: RuntimeCompilerOptions): MayflyActionItem {
+  if (item.action === undefined) return item
+  const [key] = effectiveItemKeys(item, options.keymap)
+  if (key === item.key) return item
+  const { key: _declared, ...rest } = item
+  return key === undefined ? rest : { ...rest, key }
+}
+
+/** Summarize the focused control and its surroundings for the shared key grammar. */
+function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined, mode: CompilerMode, escapeLabel: EscapeLabel | undefined): GrammarState {
+  const runtime = options.listRuntime
+  const interaction = runtime.interaction
+  const groups = controlGroups(controls)
+  const node = active?.kind === 'list' ? active.node : active?.kind === 'event' ? active.listEntry?.node : undefined
+  const pagePath = node === undefined ? [] : runtime.pagePath(node)
+  const choice = node === undefined ? undefined : interaction?.choice({ pagePath, controlId: node.id })
+  const editing = active !== undefined && state.editingKey === active.key
+  const expanded = state.expandedKey !== undefined && state.scrollViews.has(state.expandedKey)
+  const control = ((): GrammarControl => {
+    if (active === undefined) return { kind: 'none' }
+    switch (active.kind) {
+      case 'editor': return { kind: 'editor' }
+      /* An author's `expandable: false`, or a viewport that cannot grow, leaves Ctrl+E to others. */
+      case 'scroll': return active.fixed === true || state.scrollViews.get(active.key)?.expandable === false ? { kind: 'scroll', fixed: true } : { kind: 'scroll' }
+      case 'list': return { kind: 'empty-list' }
+      case 'prompt': return { kind: 'prompt', ...runtime.promptGrammar(active.node), ...(active.node.submitLabel === undefined ? {} : { submitLabel: active.node.submitLabel }), ...(active.node.recallLabel === undefined ? {} : { recallLabel: active.node.recallLabel }) }
+      case 'slider': {
+        const slider = interaction?.slider({ pagePath: runtime.pagePath(active.node), controlId: active.node.id })
+        const facts = slider === undefined ? undefined : sliderGrammar(slider)
+        return { kind: 'slider', label: (active.node.hintLabel ?? 'adjust').toLowerCase(), adjustable: facts?.adjustable ?? false, ...(facts?.stuckLeft === true ? { stuckLeft: true as const } : {}), ...(facts?.unpin === true ? { unpin: true } : {}) }
+      }
+      case 'toggle': return { kind: 'toggle', ...(formEnterAction(active.form, active.field) === undefined ? {} : { enterSubmits: true }) }
+      case 'submit': return { kind: 'submit' }
+      case 'field-action': return { kind: 'field-action' }
+      case 'text': {
+        const completes = editing && active.field.kind !== 'number' && matchingSuggestions(active.field.suggestions, String(state.fieldValue(active.field, active.key))).length > 0
+        return { kind: 'text', field: active.field.kind, editing, enterSubmits: formEnterAction(active.form, active.field) !== undefined, ...(completes ? { completes: true } : {}) }
+      }
+      case 'select': {
+        const field = state.field(active.field, active.key) as SelectField
+        const enabledIds = field.options.filter(option => option.disabled !== true).map(option => option.id)
+        const adjustable = enabledIds.length > 1 || (enabledIds.length === 1 && field.value === null)
+        const stuckLeft = field.kind === 'select' && adjustable && !canStepLeft(enabledIds, state.fieldValue(active.field, active.key) as string | null)
+        return { kind: 'select', multiple: field.kind === 'multiselect', picker: editing, adjustable, ...(stuckLeft ? { stuckLeft: true as const } : {}), ...(formEnterAction(active.form, active.field) === undefined ? {} : { enterSubmits: true }) }
+      }
+      case 'event': {
+        if (active.role === 'tab') return { kind: 'tab', ...(active.tabs?.rail === true ? { vertical: true } : {}) }
+        if (active.role === 'action') return { kind: 'action', decision: active.event.kind === 'activate' && active.event.actionId.startsWith('mayfly.decision.') }
+        if (active.role === 'cancel') return { kind: 'cancel', work: active.work === true }
+        const list = active.listEntry!.node
+        const item = admittedListItem(list.items, active.listEntry!.index)!
+        const segment = item.segment
+        const adjustable = segment !== undefined && segment.options.filter(option => option.disabled !== true).length > 1
+        const expandable = choice === undefined ? item.body !== undefined && item.bodyAlways !== true : choiceRow(choice, active.listEntry!.index).expandable
+        // Enter opens a body, and a branch of a multiple tree (where Space already toggles the check); a single tree keeps Enter for accepting.
+        const enterToggles = expandable && (item.body !== undefined || (list.mode === 'multiple' && list.tree === true))
+        const unpin = adjustable && segment.inheritedId !== undefined && choice !== undefined && choicePinned(choice, item.id) !== null
+        // The ladder: a strip uses `←` while an enabled option is before the current one, a branch while it is open.
+        const stuckLeft = adjustable
+          ? choice !== undefined && !canStepLeft(segment.options.filter(option => option.disabled !== true).map(option => option.id), choiceSegment(choice, item.id))
+          : (list.tree === true || expandable) && choice?.expandedIds.includes(item.id) !== true
+        return {
+          kind: 'row', role: list.role, multiple: active.role === 'list-multiple', tree: list.tree === true,
+          ...(adjustable ? { segment: (segment.label ?? 'segment').toLowerCase() } : {}),
+          ...(unpin ? { unpin: true } : {}),
+          ...(expandable ? { expandable: true } : {}),
+          ...(enterToggles ? { enterToggles: true } : {}),
+          ...(stuckLeft ? { stuckLeft: true as const } : {}),
+          ...(item.input === undefined ? {} : { input: true as const }),
+          ...(list.acceptVerb === undefined ? {} : { verb: list.acceptVerb }),
+          ...(list.hintLabel === undefined ? {} : { label: list.hintLabel }),
+        }
+      }
+    }
+  })()
+  const searching = choice?.searching === true
+  const home = homeGroup(controls)
+  const escape: EscapeStep | undefined = expanded ? 'collapse'
+    : control.kind === 'select' && control.picker ? 'cancel'
+      : control.kind === 'text' && control.editing ? 'done'
+        : searching ? 'end-search'
+          : interaction?.backTarget() !== undefined ? 'back'
+            : controls.some(candidate => candidate.kind === 'event' && candidate.work === true) ? 'cancel-work'
+              // Away from the home control, Escape returns to it before it leaves the surface (spec 3.1).
+              : active !== undefined && home !== undefined && active.group !== home ? 'home'
+                // A wizard's strip words its Escape `back`, as the kit does, whatever the surface's own word.
+                : active?.kind === 'event' && active.tabs?.wizard === true && escapeLabel !== undefined ? 'surface-back'
+                  : escapeLabel ?? (interaction?.formCancel() === undefined ? undefined : 'surface-cancel')
+  const railBack = active !== undefined && railGroupFor(controls, controls.indexOf(active)) !== undefined
+  const tabsHint = selectedTabGroup(groups, active, state.lastTabGroupIndex)?.entries[0]?.control
+  const tabsLabel = tabsHint?.kind === 'event' && tabsHint.tabs?.hintLabel !== undefined ? { tabsLabel: tabsHint.tabs.hintLabel } : {}
+  const numbered = node?.numbered
+  const fieldAddress = active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' ? runtime.fieldAddress(active.key) : undefined
+  const reset = fieldAddress === undefined ? undefined : fieldReset(interaction?.form(fieldAddress), fieldAddress.fieldId)
+  const save = (active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' || active?.kind === 'submit') && formSaveTarget(active.form, active.identity.pagePath!, interaction) !== undefined
+  return {
+    mode: mode === 'editor' ? 'editor' : 'ui',
+    expanded,
+    control,
+    ...(node === undefined ? {} : { list: {
+      /* Search state lives in the frontend choice; without it the list stays a plain roving list. */
+      filterable: node.filterable === true && choice !== undefined,
+      ...(node.filterMode === undefined ? {} : { filterMode: node.filterMode }),
+      searching,
+      query: (choice?.query ?? '').length > 0,
+      pasting: node.filterable === true && choice !== undefined && runtime.search(node).pending,
+      ...(numbered === undefined || numbered === false ? {} : { numbered: { accept: numbered === true, count: Math.min(9, choice === undefined ? node.items.length : choiceVisibleCount(choice)) } }),
+    } }),
+    keyed: [
+      ...controls.flatMap((candidate, index) => candidate.kind === 'event' && candidate.keyed !== undefined ? keyedBindings(index, candidate.keyed, active, options) : []),
+      // Hidden accelerators follow the focusable controls in the index space.
+      ...state.accelerators().flatMap((accelerator, index) => keyedBindings(controls.length + index, accelerator, active, options)),
+    ],
+    tabs: groups.some(group => group.kind === 'tabs'),
+    ...tabsLabel,
+    ...(railBack ? { railBack: true } : {}),
+    ...(active !== undefined && controls.findIndex(candidate => candidate.group === active.group) === controls.indexOf(active) ? { groupStart: true } : {}),
+    groups: groups.length,
+    siblings: active === undefined ? 0 : controls.filter(candidate => candidate.group === active.group).length,
+    escape,
+    closable: escapeLabel !== undefined && escapeLabel !== 'leave',
+    ...(reset === undefined ? {} : { reset }),
+    ...(save ? { save } : {}),
+  }
+}
+
+/** The action `Enter` submits a form through: the one it names, or the submit action of a form with a single field (which draws no button). */
+function formEnterAction(form: FormNode, field: MayflyFormField): string | undefined {
+  const action = form.enterSubmits ?? (form.fields.length === 1 || form.submitOnLastField === true ? form.submitActionId : undefined)
+  if (action === undefined) return undefined
+  if (form.fields.length === 1 || form.submitOnLastField !== true) return action
+  return form.fields.at(-1)?.id === field.id ? action : undefined
+}
+
+/** The action `ui.save` runs for a form: its own submit action, the action Enter submits through, or the action that submits it. */
+function formSaveTarget(form: FormNode, pagePath: MayflyPagePath, interaction: UiSurfaceModel | undefined): string | undefined {
+  return form.submitActionId ?? form.enterSubmits ?? interaction?.saveActionFor({ pagePath, formId: form.id })
+}
+
+/** The ids an action scope can name for the focused control: itself, the list, form, tabs, or actions group holding it, and a scroll's own id. */
+function focusScopeIds(active: ControlDescriptor | undefined): readonly string[] {
+  if (active === undefined) return []
+  const group = JSON.parse(active.group) as readonly unknown[]
+  return [active.identity.controlId, String(group[2]), ...(active.scopeId === undefined ? [] : [active.scopeId])]
+}
+
+/** One grammar entry per effective key of an in-scope keyed action; an action rebound to no key answers nothing. */
+function keyedBindings(control: number, keyed: KeyedAction, active: ControlDescriptor | undefined, options: RuntimeCompilerOptions): GrammarState['keyed'] {
+  if (keyed.scope !== undefined && !actionScopeActive(keyed.scope, focusScopeIds(active))) return []
+  return effectiveItemKeys(keyed.item, options.keymap).map(key => ({ control, key, label: keyed.label }))
+}
+
+function matchesBinding(match: GrammarMatch, data: string, keymap: MayflyKeymap | undefined): boolean {
+  switch (match.kind) {
+    case 'action': return matchesKeyAction(keymap, data, match.action)
+    case 'key': return matchesKeyId(data, match.key)
+    case 'digit': return data.length === 1 && data >= '1' && data <= '9'
+    case 'text': return (match.space || data !== ' ') && startsText(data)
+    case 'backspace': return data === '\x7f' || data === '\b'
+    case 'any': return true
+  }
+}
+
+function contextualKeyHints(state: FocusState, options: RuntimeCompilerOptions, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined, mode: CompilerMode, escapeLabel: EscapeLabel | undefined, limit: number): ContextKeyHint[] {
+  const merged = new Map<string, ContextKeyHint>()
+  const withoutControls = active === undefined && options.contextHints?.focusWithoutControls !== true
+  if (options.contextHints?.suppressAuto !== true && !withoutControls) {
+    for (const hint of grammarHints(keyGrammar(grammarStateFor(state, options, controls, active, mode, escapeLabel)))) {
+      // Literal key words (the "Type" of type-to-filter) are prose; key names are not translated.
+      const keys = hint.keys === 'Type' ? coreText(options, 'Type') : hint.keys ?? hintNotation(hint.actions!.flatMap(actionId => keyActionKeys(options.keymap, actionId).slice(0, 1)))
+      merged.set(hint.id, { id: hint.id, keys, label: hint.label, compact: hint.compact ?? keys, priority: hint.priority })
+    }
+  }
+  let extra: readonly { readonly id: string, readonly keys: string, readonly label?: string, readonly compact?: string, readonly priority?: number }[] = []
+  try { extra = options.contextHints?.extra?.() ?? [] } catch { /* official hint providers cannot break their panel */ }
+  for (const hint of extra) {
+    if (hint.id.length === 0 || hint.keys.length === 0) continue
+    merged.set(hint.id, {
+      id: hint.id,
+      keys: hint.keys,
+      label: hint.label,
+      compact: hint.compact ?? hint.keys,
+      priority: hint.priority ?? 75,
+    })
+  }
+  const indexed = [...merged.values()].map((hint, index) => ({ hint, index }))
+  const admitted = new Set(indexed
+    .toSorted((left, right) => right.hint.priority - left.hint.priority || left.index - right.index)
+    .slice(0, limit)
+    .map(entry => entry.hint.id))
+  // The kit's order (spec §3.2): navigation, adjustment, the digit range, the primary operation, accelerators, the
+  // filter and clear, tabs, group moves, and Esc last, so the row reads "what I can do … how I leave".
+  const displayOrder = (id: string): number => HINT_ORDER[id] ?? (id.startsWith('keyed:') ? HINT_ORDER.keyed! : HINT_ORDER.other!)
+  return indexed
+    .filter(entry => admitted.has(entry.hint.id))
+    .toSorted((left, right) => displayOrder(left.hint.id) - displayOrder(right.hint.id) || left.index - right.index)
+    .map(entry => entry.hint)
+}
+
+/** Where each hint fragment sits in the row, by hint id (the kit's `order`). */
+const HINT_ORDER: Readonly<Record<string, number>> = {
+  navigate: 10, adjust: 20, branch: 20, toggle: 20, numbered: 30, 'prompt-complete': 35, activate: 40, confirm: 45, keyed: 50, reset: 50,
+  expand: 50, other: 55, search: 60, clear: 60, newline: 60, complete: 65, tabs: 70, group: 80, escape: 90, dismiss: 90, labels: 20,
+}
+
+/** Hint fragments admitted at a width: three on narrow terminals, four from 80 columns, six from 100. */
+function hintLimit(width: number): number {
+  return width >= 100 ? 6 : width >= 80 ? 4 : 3
+}
+
+function contextKeyHintRows(state: FocusState, options: RuntimeCompilerOptions, width: number, mode: CompilerMode, escapeLabel: EscapeLabel | undefined, indent = 2): string[] {
+  if (!state.focused) return []
+  const controls = reconcile(state)
+  const parts = contextualKeyHints(state, options, controls, controls[state.lastIndex], mode, escapeLabel, hintLimit(width))
+  if (parts.length === 0) return []
+  const translate = (key: string): string => {
+    try { return options.contextHints?.translate?.(key) ?? key } catch { return key }
+  }
+  // Labels outrank completeness: the labeled row sheds its least important part before any part loses its label, down to two
+  // parts; only then do the bare keys of every part (and last, of one) take over.
+  const labeled: HintPart[][] = []
+  const bare: HintPart[][] = []
+  for (let count = parts.length; count > 0; count -= 1) {
+    const retained = new Set(parts
+      .map((part, index) => ({ part, index }))
+      .toSorted((left, right) => right.part.priority - left.part.priority || left.index - right.index)
+      .slice(0, count)
+      .map(entry => entry.part.id))
+    const candidate = parts.filter(part => retained.has(part.id))
+    const row = candidate.map(part => part.label === undefined ? { keys: part.keys } : { keys: part.keys, label: translate(part.label) })
+    const keys = candidate.map(part => ({ keys: part.compact }))
+    if (count >= Math.min(2, parts.length)) labeled.push(row)
+    else bare.push(row)
+    bare.push(keys)
+  }
+  const candidates = [...labeled, ...bare]
+  const safeWidth = Math.max(1, Math.floor(width))
+  // The painted row is a pure function of the translated candidates, the width, and the palette, so an unchanged hint
+  // answers from the surface's memo while the parts themselves are still read fresh on every paint.
+  const key = `${String(safeWidth)}\0${String(indent)}\0${candidates.map(candidate => candidate.map(part => `${part.keys}\x03${part.label ?? ''}`).join('\x01')).join('\x02')}`
+  const memo = options.listRuntime.hintMemo
+  if (memo !== undefined && memo.colors === options.colors && memo.key === key) return memo.rows
+  let rows: string[] = []
+  for (const candidate of candidates) {
+    const row = renderHintRow(candidate, options.colors, indent)
+    if (visibleWidth(row) <= safeWidth) { rows = [row]; break }
+  }
+  options.listRuntime.hintMemo = { colors: options.colors, key, rows }
+  return rows
+}
+
+function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOptions, mode: CompilerMode, escapeLabel: EscapeLabel | undefined, open?: () => boolean, indent = 2): Component {
+  return staticComponent(width => open?.() === false ? [] : contextKeyHintRows(state, options, width, mode, escapeLabel, indent), options)
+}
+
+/** Printable text or the opening of a bracketed paste. */
+function startsText(data: string): boolean {
+  return data.includes('\x1b[200~') || /^[^\x00-\x1f\x7f-\x9f]+$/u.test(data)
+}
+
+interface TextEditorLease {
+  readonly editor: MayflyEditor
+  onChange: MayflyEditor['onChange']
+  onSubmit: MayflyEditor['onSubmit']
+}
+
+function detachTextEditorCallbacks(lease: TextEditorLease): void {
+  if (lease.onChange !== undefined && lease.editor.onChange === lease.onChange) lease.editor.onChange = undefined
+  if (lease.onSubmit !== undefined && lease.editor.onSubmit === lease.onSubmit) lease.editor.onSubmit = undefined
+  lease.onChange = undefined
+  lease.onSubmit = undefined
+}
+
+function releaseTextEditor(lease: TextEditorLease): void {
+  lease.editor.focused = false
+  detachTextEditorCallbacks(lease)
+  lease.editor.setText('')
+}
+
+function listRowLimit(options: RuntimeCompilerOptions): number {
+  return options.listRuntime.listRowLimit(safeViewport(options.getViewport).rows)
+}
+
+/**
+ * One control-tree walk: the visible descriptors, the same walk with the
+ * conditionally hidden stack branches appended, and the hidden-action
+ * accelerators of the visible branches. The `all` set feeds order-free
+ * membership checks only (reconcile's key pruning and hidden-desired
+ * checks), so appending — not interleaving — the hidden entries keeps every
+ * visible index identical to the visible-only walk.
+ */
+interface ControlWalk {
+  readonly visible: ControlDescriptor[]
+  readonly all: ControlDescriptor[]
+  readonly accelerators: HiddenAccelerator[]
+}
+
+const EMPTY_CONTROL_WALK: ControlWalk = { visible: [], all: [], accelerators: [] }
+
+/** How many viewports a surface remembers a control walk for. */
+const CONTROL_WALK_VIEWPORTS = 16
+
+function walkControls(node: CompilableNode, options: RuntimeCompilerOptions, path = '$'): ControlWalk {
+  const visible: ControlDescriptor[] = []
+  const hidden: ControlDescriptor[] = []
+  const accelerators: HiddenAccelerator[] = []
+  const visit = (current: CompilableNode, currentPath: string, isHidden: boolean): void => {
+    const pagePath = options.listRuntime.pagePath(current)
+    const scopedControlKey = (kind: string, id: string, itemId?: string) => controlKey(kind, id, itemId, pagePath)
+    const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
+    const scopedFocusIdentity = (id: string, itemId?: string) => focusIdentity(id, itemId, pagePath)
+    const controls = isHidden ? hidden : visible
+    if (isDeferredUiNode(current as MayflyUiNode)) {
+      const admitted = materializeDeferredUiNode(current as MayflyUiNode)
+      if (admitted?.ok === true) { options.listRuntime.admitDeferred(admitted.value, pagePath); visit(admitted.value, currentPath, isHidden) }
+      return
+    }
+    switch (current.kind) {
+      case 'stack':
+        for (const [index, child] of current.children.entries()) {
+          const shown = conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
+          if (shown) {
+            visit(child.node, `${currentPath}.${String(index)}`, isHidden)
+            continue
+          }
+          // Hidden branches feed only the `all` set. A materialized
+          // responsive subtree is read as-is; activating it here would
+          // eagerly admit hidden-tab state.
+          const admitted = materializedDeferredUiNode(child.node as MayflyUiNode)
+          if (admitted?.ok === true) visit(admitted.value, `${currentPath}.${String(index)}`, true)
+          else if (!isDeferredUiNode(child.node as MayflyUiNode)) visit(child.node, `${currentPath}.${String(index)}`, true)
+        }
+        break
+      case 'surface':
+        visit(current.child, `${currentPath}.child`, isHidden)
+        if (current.footer !== undefined) visit(current.footer, `${currentPath}.footer`, isHidden)
+        break
+      case 'scroll': {
+        const before = controls.length
+        visit(current.child, `${currentPath}.scroll`, isHidden)
+        if (controls.length === before && (options.bounded || options.listRuntime.interaction !== undefined)) {
+          const key = scopedControlKey('scroll', currentPath)
+          controls.push({ kind: 'scroll', key, renderKey: currentPath, identity: scopedFocusIdentity(key), preferred: true, group: scopedControlGroup('scroll', currentPath), navigation: 'none', ...(current.expandable === false ? { fixed: true as const } : {}), ...(current.id === undefined ? {} : { scopeId: current.id }) })
+        }
+        break
+      }
+      case 'tabs':
+        {
+          const rail = isRail(current, safeViewport(options.getViewport).columns)
+          const tabs = { rail, wizard: current.mode === 'wizard', count: current.items.length, ...(current.hintLabel === undefined ? {} : { hintLabel: current.hintLabel }) }
+          for (const item of current.items) if (item.disabled !== true) controls.push({ kind: 'event', role: 'tab', activation: 'enter', key: scopedControlKey('tabs', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(current.id, item.id), preferred: item.id === (options.listRuntime.activeTab({ pagePath, controlId: current.id }) ?? current.activeId), group: scopedControlGroup('tabs', current.id), navigation: rail ? 'vertical' : 'horizontal', tabs, event: { kind: 'tab-change', pagePath, controlId: current.id, tabId: item.id } })
+        }
+        break
+      case 'list': {
+        const window = options.listRuntime.listWindow(current, listRowLimit(options))
+        if (window.length === 0) controls.push({ kind: 'list', node: current, key: scopedControlKey('empty-list', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('list', current.id), navigation: 'none' })
+        // The list's choice state is read once: it does not change between its rows.
+        const choice = options.listRuntime.interaction?.choice({ pagePath, controlId: current.id })
+        const selected = choice?.selectedIds ?? listSelectedIds(current)
+        for (const { item, index } of window) if (focusableListItem(item)) {
+          const selectedIds = current.mode === 'multiple'
+            ? selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id]
+            : [item.id]
+          controls.push({
+            kind: 'event',
+            role: current.mode === 'multiple' ? 'list-multiple' : 'list-single',
+            activation: current.mode === 'multiple' ? 'space' : 'enter',
+            key: scopedControlKey('list', current.id, item.id),
+            renderKey: item.id,
+            identity: scopedFocusIdentity(current.id, item.id),
+            preferred: choice?.focusedId === item.id,
+            group: scopedControlGroup('list', current.id),
+            navigation: 'vertical',
+            event: { kind: current.mode === 'multiple' ? 'selection-toggle' : 'selection-accept', pagePath, controlId: current.id, selectedIds },
+            listEntry: { node: current, index },
+            ...(current.mode === 'multiple' ? { commitEvent: { kind: 'selection-accept', pagePath, controlId: current.id, selectedIds: selected } as MayflyUiEvent } : {}),
+          })
+        }
+        if (current.items.length === 0 && current.empty !== undefined) visit(current.empty, `${currentPath}.empty`, isHidden)
+        break
+      }
+      case 'form':
+        for (const field of current.fields) if (field.disabled !== true) {
+          const base: ControlBase = { key: scopedControlKey('form-field', current.id, field.id), renderKey: field.id, identity: scopedFocusIdentity(field.id), preferred: false, group: scopedControlGroup('form', current.id), navigation: 'vertical' }
+          if (field.kind === 'toggle') controls.push({ ...base, kind: 'toggle', field, form: current })
+          else if (field.kind === 'select' || field.kind === 'multiselect') controls.push({ ...base, kind: 'select', field, form: current })
+          else controls.push({ ...base, kind: 'text', field, form: current })
+          const address = { pagePath, formId: current.id, fieldId: field.id }
+          for (const action of fieldActions(options.listRuntime.interaction?.form(address), field.id)) controls.push({
+            ...base, kind: 'field-action', key: scopedControlKey('field-action', current.id, `${field.id}/${action.id}`),
+            renderKey: `${field.id}/${action.id}`, identity: scopedFocusIdentity(field.id, action.id), address, action,
+          })
+        }
+        break
+      case 'prompt':
+        // The prompt of an editor shell is the host editor's face: one editor control, keyed by the prompt's id.
+        if (options.editor !== undefined) controls.push({ kind: 'editor', key: scopedControlKey('editor', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: true, group: scopedControlGroup('editor', current.id), navigation: 'none' })
+        else if (options.listRuntime.interaction !== undefined) controls.push({ kind: 'prompt', node: current, key: scopedControlKey('prompt', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: current.autofocus === true, group: scopedControlGroup('prompt', current.id), navigation: 'none' })
+        break
+      case 'slider':
+        if (options.listRuntime.interaction !== undefined) controls.push({ kind: 'slider', node: current, key: scopedControlKey('slider', current.id), renderKey: current.id, identity: scopedFocusIdentity(current.id), preferred: current.autofocus === true, group: scopedControlGroup('slider', current.id), navigation: 'none' })
+        break
+      case 'actions': {
+        const scope = current.scope === undefined ? {} : { scope: [current.scope].flat() }
+        for (const item of current.items.map(entry => effectiveActionItem(entry, options))) {
+          const keyed = item.key === undefined && item.semantic === undefined && item.action === undefined ? undefined : { item, label: actionHintLabel(item), ...scope }
+          if (item.hidden === true) {
+            // Hidden branches contribute no accelerators, matching the old
+            // visible-only accelerators walk.
+            if (isHidden !== true && item.disabled !== true && item.busy !== true && keyed !== undefined) accelerators.push({ ...keyed, event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id } })
+            continue
+          }
+          if (item.disabled !== true && item.busy !== true) controls.push({ kind: 'event', role: 'action', activation: 'both', key: scopedControlKey('action', current.id, item.id), renderKey: item.id, identity: scopedFocusIdentity(item.id), preferred: item.defaultFocus === true, group: actionGroup(current, pagePath), navigation: 'horizontal', event: { kind: 'activate', pagePath, controlId: item.id, actionId: item.id }, ...(keyed === undefined ? {} : { keyed }) })
+        }
+        break
+      }
+      case 'loader':
+        if (current.cancelActionId !== undefined) controls.push({ kind: 'event', role: 'cancel', activation: 'both', key: scopedControlKey('loader-cancel', current.cancelActionId), renderKey: 'cancel', identity: scopedFocusIdentity(current.cancelActionId), preferred: false, group: scopedControlGroup('loader', current.cancelActionId!), navigation: 'none', work: true, event: { kind: 'activate', pagePath, controlId: current.cancelActionId, actionId: current.cancelActionId } })
+        break
+      case 'empty': if (current.actions !== undefined) visit(current.actions, `${currentPath}.actions`, isHidden); break
+      default: break
+    }
+  }
+  visit(node, path, false)
+  return { visible, all: visible.concat(hidden), accelerators }
+}
+
+function containsDeferredNode(node: CompilableNode): boolean {
+  if (isDeferredUiNode(node as MayflyUiNode)) {
+    const admitted = materializedDeferredUiNode(node as MayflyUiNode)
+    if (admitted === undefined) return deferredUiNodeMayHaveControls(node as MayflyUiNode)
+    return admitted.ok && containsDeferredNode(admitted.value)
+  }
+  if (node.kind === 'stack') return node.children.some(child => containsDeferredNode(child.node))
+  if (node.kind === 'surface') return containsDeferredNode(node.child) || (node.footer !== undefined && containsDeferredNode(node.footer))
+  if (node.kind === 'scroll') return containsDeferredNode(node.child)
+  if (node.kind === 'list') return node.empty !== undefined && containsDeferredNode(node.empty)
+  return false
+}
+
+function deferredComponent(node: MayflyUiNode, state: FocusState, options: RuntimeCompilerOptions, path: string, mode: CompilerMode): MayflyComponent {
+  let component: Component | undefined
+  const current = (): Component => {
+    if (component !== undefined) return component
+    const admitted = materializeDeferredUiNode(node)!
+    if (admitted?.ok === true) {
+      options.listRuntime.admitDeferred(admitted.value, options.listRuntime.pagePath(node))
+      component = compileNode(admitted.value, state, options, path, mode)
+    } else component = new ErrorComponent(admitted.message, options.colors)
+    return component
+  }
+  return {
+    render: width => current().render(width),
+    invalidate: () => component?.invalidate?.(),
+  }
+}
+
+/** What a render in progress has learned about itself from the leaves it painted. */
+interface RenderScope {
+  /** A cell that moves with the clock was painted: the rows hold for one animation frame. */
+  animated: boolean
+  /** The render itself painted the moving cell, rather than a render inside it. */
+  moves: boolean
+  /** Something no epoch tracks was read (a live editor, a failure): the rows are not remembered. */
+  volatile: boolean
+  /** The components inside this render that painted a moving cell, with the rows each painted. */
+  readonly moving: Map<Component, number>
+}
+
+/** One remembered render. */
+interface RetainedRows {
+  readonly rows: string[]
+  readonly epoch: number
+  /** The animation frame the rows were painted at, when they hold a moving cell. */
+  readonly frame: number | undefined
+  /** The moving cells inside the rows; showing the rows again keeps the clock on those that are on screen. */
+  readonly moving: ReadonlyMap<Component, number>
+}
+
+/** How many combinations of width, pass, list row budget, and viewport a retained component remembers. */
+const RETAINED_ENTRIES = 6
+
+/** Components whose `render` already answers from a retained memo. */
+const retainedComponents = new WeakSet<object>()
+
+/**
+ * Makes a component answer a repeat render from memory. pi-tui renders a component once per ancestor stack that
+ * measures it and again on every frame of the terminal, whatever asked for the frame; a retained component paints once
+ * per width until the surface's epoch moves (focus, input, a model revision, a rebind, a new viewport) or, when it holds
+ * a moving cell, until the clock does. A render that read something the epoch does not track is not remembered, and
+ * neither is a render that contains it.
+ * @param component - the component; its `render` is replaced in place, so a layout node it exposes is untouched.
+ * @param what - the node kind, for the stale-rows error.
+ * @param volatile - the component itself reads untracked state: it always paints and marks the renders around it.
+ */
+function retain<Target extends Component>(component: Target, what: string, options: RuntimeCompilerOptions, volatile = false): Target {
+  if (retainedComponents.has(component)) return component
+  retainedComponents.add(component)
+  const runtime = options.listRuntime
+  const state = runtime.state
+  const paint = component.render.bind(component)
+  const verify = options.verifyRetained ?? process.env.MAYFLY_UI_VERIFY_MEMO === '1'
+  const memo = new Map<string, RetainedRows>()
+  const painted = (width: number): { readonly rows: string[], readonly scope: RenderScope } => {
+    const scope = runtime.beginRender()
+    try {
+      const rows = paint(width)
+      if (scope.moves) scope.moving.set(component, rows.length)
+      return { rows, scope }
+    } finally { runtime.endRender(scope) }
+  }
+  component.render = (width: number): string[] => {
+    if (volatile) {
+      runtime.markVolatile()
+      return paint(width)
+    }
+    const viewport = options.getViewport()
+    const key = `${String(width)}|${state.layoutPass ? 1 : 0}|${String(runtime.rowBudget ?? '')}|${String(viewport.columns)}x${String(viewport.rows)}`
+    const known = memo.get(key)
+    if (known !== undefined && known.epoch === runtime.epoch && (known.frame === undefined || known.frame === runtime.animationFrame)) {
+      if (verify && !sameMaterializedRows(painted(width).rows, known.rows)) throw new Error(`retained rows of a ${what} went stale: something it reads changed without moving the surface epoch`)
+      if (known.frame !== undefined) runtime.showMoving(known.moving)
+      return known.rows
+    }
+    const { rows, scope } = painted(width)
+    if (scope.volatile) memo.delete(key)
+    else {
+      if (memo.size >= RETAINED_ENTRIES && !memo.has(key)) memo.delete(memo.keys().next().value!)
+      memo.set(key, { rows, epoch: runtime.epoch, frame: scope.animated ? runtime.animationFrame : undefined, moving: scope.moving })
+    }
+    if (scope.moves) runtime.showMoving(new Map([[component, rows.length]]))
+    return rows
+  }
+  return component
+}
+
+/**
+ * Node kinds that are not retained. A pure leaf remembers its own rows for as long as it lives, Markdown and diagrams
+ * cache inside their component, and a spacer has nothing to remember.
+ */
+const UNRETAINED_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider', 'markdown', 'diagram', 'chart', 'spacer'])
+
+/**
+ * Node kinds that paint a live editing engine: they always paint, and so does whatever contains them. An image is not
+ * one of them: its bytes arrive through the surface's repaint request, which moves the epoch.
+ */
+const VOLATILE_KINDS: ReadonlySet<string> = new Set(['prompt'])
+
+/** Node kinds that paint only from their admitted node, the width, the colors, and the components. */
+const REUSABLE_KINDS: ReadonlySet<string> = new Set(['text', 'fields', 'code', 'diff', 'sections', 'rich-text', 'divider', 'markdown', 'diagram'])
+
+/** Compiles a reusable leaf and remembers it for the next publish. */
+function leaf(node: CompilableNode, options: RuntimeCompilerOptions, build: (paint: PaintOptions) => MayflyComponent): MayflyComponent {
+  return options.reuse.keep(node, options, build)
+}
+
+function compileNode(node: CompilableNode, state: FocusState, options: RuntimeCompilerOptions, path = '$', mode: CompilerMode = 'ui', contextHint?: Component): Component {
+  const component = compileUnit(node, state, options, path, mode, contextHint)
+  // Rich text that moves is retained like a loader row, so the clock follows it only while it is on screen.
+  if (UNRETAINED_KINDS.has(node.kind) && !(node.kind === 'rich-text' && hasMotion(node.spans))) return component
+  // A scroll region paints a window of its child from a position that moves under it; the child is retained, not the window.
+  return retain(component, node.kind, options, VOLATILE_KINDS.has(node.kind) || component instanceof ScrollRegion)
+}
+
+function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCompilerOptions, path: string, mode: CompilerMode, contextHint?: Component): Component {
+  const pagePath = options.listRuntime.pagePath(node)
+  const scopedControlKey = (kind: string, id: string, itemId?: string) => controlKey(kind, id, itemId, pagePath)
+  const scopedControlGroup = (kind: string, id: string) => controlGroup(kind, id, pagePath)
+  if (isDeferredUiNode(node as MayflyUiNode)) return deferredComponent(node as MayflyUiNode, state, options, path, mode)
+  if (REUSABLE_KINDS.has(node.kind)) {
+    const reused = options.reuse.take(node, options)
+    if (reused !== undefined) return reused
+  }
+  switch (node.kind) {
+    case 'text':
+    case 'fields':
+    case 'code':
+    case 'diff':
+    case 'sections': return leaf(node, options, paint => contentLeafComponent(node, options, paint))
+    case 'markdown': return leaf(node, options, paint => contentLeafComponent(node, options, paint))
+    case 'rich-text': return hasMotion(node.spans) ? staticComponent(width => {
+      // An animated row is the one row a clock tick repaints: it is not memoized, and it joins the clock while painted.
+      const presentation = options.components.presentation
+      const line = paintMotionSpans(node.spans, options.colors, motionFrame(options), { glyphs: presentation?.glyphs, reducedMotion: presentation?.reducedMotion })
+      return node.overflow === 'truncate' ? [truncatedRow(line, width, options.components)] : options.components.wrapText(line, Math.max(1, width))
+    }, options) : leaf(node, options, paint => contentLeafComponent(node, options, paint))
+    case 'stack': {
+      // A row whose children carry a priority admits them while they fit, one row of the children's first rows.
+      if (node.direction === 'row' && node.children.some(child => child.priority !== undefined)) {
+        // A shed child compiles each of its forms; any other child is its one form.
+        const compiled = node.children.map((child, index) => {
+          const at = `${path}.${String(index)}`
+          return child.node.kind === 'shed'
+            ? [{ rank: -1, component: compileNode(child.node.node, state, options, at, mode) as Component | null }, ...child.node.narrower.map((form, formIndex) => ({ rank: form.rank, component: form.node === null ? null : compileNode(form.node, state, options, `${at}.${String(formIndex)}`, mode) }))]
+            : [{ rank: -1, component: compileNode(child.node, state, options, at, mode) as Component | null }]
+        })
+        return new AdmissionRow({
+          components: options.components,
+          colors: options.colors,
+          ...(node.gap === undefined ? {} : { gap: node.gap }),
+          children: () => node.children.flatMap((child, index) => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
+            ? [{ forms: compiled[index]!, band: child.band ?? 'left', ...(child.priority === undefined ? {} : { priority: child.priority }), ...(child.overflow === undefined ? {} : { overflow: child.overflow }), ...(child.mark === undefined ? {} : { mark: child.mark }) }]
+            : []),
+        })
+      }
+      const stackOptions = {
+        ...(node.gap === undefined ? {} : { gap: node.gap }),
+        ...(node.align === undefined ? {} : { align: node.align }),
+      }
+      const spatial = options.bounded || options.listRuntime.interaction !== undefined
+      const stack = !spatial || node.direction === 'column'
+        ? new ColumnStack([], stackOptions)
+        : new RowStack([], stackOptions)
+      if (stack instanceof RowStack && node.rule === 'column') {
+        const glyph = options.components?.presentation?.glyphs === 'ascii' ? '|' : '│'
+        stack.rule = options.colors.border(glyph)
+      }
+      // The pages of one tab strip keep one height between them.
+      const groups = new Map<string, PageGroup>()
+      for (const [index, child] of node.children.entries()) {
+        let compiled = compileNode(child.node, state, options, `${path}.${String(index)}`, mode)
+        if (spatial && child.tab !== undefined) {
+          const tabs = child.tab.controlId
+          let group = groups.get(tabs)
+          if (group === undefined) {
+            group = new PageGroup(options.listRuntime.pagePeaks(`${JSON.stringify(pagePath)}\0${path}\0${tabs}`), paint => options.listRuntime.measure(paint))
+            groups.set(tabs, group)
+          }
+          const viewport = (): string => { const size = safeViewport(options.getViewport); return `${String(size.columns)}x${String(size.rows)}` }
+          compiled = new PageHold(compiled as Component, group, viewport) as unknown as typeof compiled
+        }
+        const layout = !spatial
+          ? { visible: () => conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options) }
+          : {
+              ...(child.basis === undefined || child.basis === 'auto' ? (child.basis === 'auto' ? { basis: 'auto' as const } : {}) : { basis: Math.min(child.basis, LAYOUT_VALUE_MAX) }),
+              ...(child.grow === undefined ? {} : { grow: Math.min(child.grow, LAYOUT_VALUE_MAX) }),
+              ...(child.shrink === undefined ? {} : { shrink: Math.min(child.shrink, LAYOUT_VALUE_MAX) }),
+              ...(child.minSize === undefined ? {} : { minSize: Math.min(child.minSize, LAYOUT_VALUE_MAX) }),
+              ...(child.maxSize === undefined ? {} : { maxSize: Math.min(child.maxSize, LAYOUT_VALUE_MAX) }),
+              visible: (viewport: LayoutViewport) => {
+                // A layout pass has one viewport: the frame the layout engine was given, which pi-tui passes to every
+                // stack it lays out. An unbounded height is pi-tui measuring a stack by rendering it, not a new frame,
+                // so a measure and the paint that follows it see the same viewport and the same controls.
+                if (state.layoutPass && viewport.height !== Number.MAX_SAFE_INTEGER) {
+                  const frame = { columns: viewport.width, rows: viewport.height }
+                  if (!sameViewport(state.layoutReconciled, frame)) {
+                    state.setLayoutViewport(frame)
+                    reconcileLayout(state)
+                    state.layoutReconciled = frame
+                  }
+                }
+                return conditionMatches(child.when, safeViewport(options.getViewport)) && tabVisible(child, pagePath, options)
+              },
+            }
+        stack.addChild(compiled, layout)
+      }
+      return stack
+    }
+    case 'surface': return surfaceComponent(node, compileNode(node.child, state, options, `${path}.child`, mode), node.footer === undefined ? undefined : compileNode(node.footer, state, options, `${path}.footer`, mode), contextHint, options)
+    case 'scroll': {
+      const childPath = `${path}.scroll`
+      if (!options.bounded && options.listRuntime.interaction === undefined) {
+        return compileNode(node.child, state, options, childPath, mode)
+      }
+      const child = compileNode(node.child, state, options, childPath, mode)
+      if (node.height !== undefined || node.expandedHeight !== undefined || node.fit === true || node.pill === true) {
+        // A declared viewport: the region paints its own rows, with its scrollbar, `fit`, and pill.
+        const key = scopedControlKey('scroll', path)
+        const model = options.listRuntime.interaction
+        const address = node.id === undefined || model === undefined ? undefined : { pagePath, controlId: node.id }
+        const resolve = address === undefined || model === undefined || model.document(address) === undefined ? undefined : documentResolver(contentEnv(options, options))
+        const region = new ScrollRegion({
+          child: child as Component,
+          memory: options.listRuntime.scrollMemory(key),
+          height: node.height ?? SCROLL_DEFAULT_HEIGHT,
+          expandedHeight: node.expandedHeight ?? SCROLL_DEFAULT_EXPANDED_HEIGHT,
+          fit: node.fit === true,
+          pill: node.pill === true,
+          follow: node.follow === 'end',
+          scrollbar: node.scrollbar !== false,
+          repaint: options.listRuntime.repaint,
+          expanded: () => state.expandedKey === key,
+          colors: options.colors,
+          components: options.components,
+          pillText: count => coreText(options, '↓ {count} new · End', { count }),
+          more: node.more === true,
+          moreText: count => coreText(options, '↓ {count} more', { count }),
+          anchors: resolve === undefined ? undefined : {
+            state: () => model!.document(address!),
+            rowOf: (document, width) => documentAnchorRow(document, width, resolve),
+            anchorAt: (document, row, width, follow) => documentAnchorAtRow(document, row, width, follow, resolve),
+            move: anchor => { model!.moveDocument(address!, anchor) },
+          },
+        })
+        state.bindControls([key], { component: region, axis: 'none' })
+        state.bindScroll(key, region)
+        return region
+      }
+      const scrollOptions = { follow: node.follow === 'end' ? 'end' as const : 'none' as const, primary: false, overscroll: 'contain' as const, scrollbar: node.scrollbar === true, colors: () => options.colors, focusGated: true, repaint: options.listRuntime.repaint }
+      const address = node.id === undefined ? undefined : { pagePath, controlId: node.id }
+      const model = options.listRuntime.interaction
+      const scroll = address === undefined || model === undefined || model.document(address) === undefined
+        ? new WindowScrollView(child, scrollOptions)
+        : new SemanticScrollView(child as Component, scrollOptions, model, address, documentResolver(contentEnv(options, options)))
+      // A scroll view holds one child, from its first row: what is on screen is decided against this view's window.
+      placeChild(child, scroll, 0)
+      const key = scopedControlKey('scroll', path)
+      state.bindControls([key], { component: scroll, axis: 'none' })
+      state.bindScroll(key, scroll)
+      return scroll
+    }
+    case 'tabs': {
+      const component = staticComponent(width => {
+        const completed = options.listRuntime.interaction?.completedSteps({ pagePath, controlId: node.id }) ?? []
+        const shaped = tabsShape({ ...node, activeId: options.listRuntime.activeTab({ pagePath, controlId: node.id }) ?? node.activeId }, safeViewport(options.getViewport).columns)
+        const rows = renderTabs(shaped, width, patternFocus(state, scopedControlGroup('tabs', node.id)), options.colors, completed, { cache: options.listRuntime.rows })
+        return rows
+      }, options)
+      state.bindControls(node.items.filter(item => item.disabled !== true).map(item => scopedControlKey('tabs', node.id, item.id)), { component, axis: node.orientation === 'vertical' ? 'vertical' : 'horizontal' })
+      return component
+    }
+    case 'list': {
+      const empty = node.empty === undefined ? undefined : compileNode(node.empty, state, options, `${path}.empty`, mode)
+      const { filter: _filter, ...unfiltered } = node
+      // A node body compiles once, when its row first opens; the rows it paints are kept by the row cache.
+      const bodies = new WeakMap<object, Component>()
+      const paintBody = (item: MayflyListItem, width: number): readonly string[] => {
+        // The painter asks only for the node bodies of open rows; text bodies it draws itself.
+        let body = bodies.get(item)
+        if (body === undefined) {
+          body = compileNode(item.body as MayflyUiNode, state, options, `${path}.body.${item.id}`, mode)
+          bodies.set(item, body)
+        }
+        const rows = body.render(width)
+        // The list owns the window, focused or flowing: a leaf's alternate-screen viewport bound would hide the rows
+        // below the fold and truncate a tall markdown body. The painter measures the full body and reads only the rows
+        // its window (or the outer scroll) shows, so the unclamped facade is the row source here in every list mode.
+        return unclampedRows(rows)
+      }
+      let component!: MayflyComponent
+      component = staticComponent(width => {
+        const limit = node.maxRows === undefined ? listRowLimit(options) : Math.min(node.maxRows, listRowLimit(options))
+        const entries = options.listRuntime.listWindow(node, limit)
+        const choice = options.listRuntime.interaction?.choice({ pagePath, controlId: node.id })
+        state.bindControls(entries.filter(entry => focusableListItem(entry.item)).map(entry => scopedControlKey('list', node.id, entry.item.id)), { component, axis: 'vertical' })
+        const query = choice?.query ?? node.filter ?? ''
+        const visibleCount = choice === undefined ? node.items.length : choiceVisibleCount(choice)
+        const listFocused = patternFocus(state, scopedControlGroup('list', node.id))
+        const focus = listFocused
+        // Flow content with no height window, filter, tree, or current match answers from a row source: the outer scroll
+        // windows the rows, and a repaint reconciles items instead of painting every one.
+        const flowVirtual = options.listRuntime.flow && flowListCanVirtualize(node, choice)
+        const searching = choice?.searching === true
+        const queryRows = searching || query.length > 0 ? [listQueryRow(node, query, searching, visibleCount, width, focus.focused && state.activeGroup === scopedControlGroup('list', node.id), options)] : []
+        const position = choice === undefined ? 0 : choiceVisiblePosition(choice)
+        const counter = !flowVirtual && node.maxRows === undefined && visibleCount > entries.length ? `  (${String(position + 1)}/${String(visibleCount)})` : undefined
+        const translate = (key: string, values?: UiTranslateValues): string => coreText(options, key, values)
+        const segment = (item: MayflyListItem) => {
+          if (item.segment === undefined) return undefined
+          return choice === undefined
+            ? { segment: item.segment, pinned: item.segment.selectedId ?? null, active: item.segment.selectedId ?? item.segment.inheritedId }
+            : { segment: item.segment, pinned: choicePinned(choice, item.id), active: choiceSegment(choice, item.id) }
+        }
+        // A list the owner follows reports its tracked item's line from each paint, past the rows ahead of the list's own.
+        const probe = options.listRuntime.probe
+        const following = probe.controlId === node.id
+        if (following) probe.line = undefined
+        const locate = following && probe.itemId !== undefined
+          ? { id: probe.itemId, found: (line: number | undefined) => { probe.line = line === undefined ? undefined : line + queryRows.length + (counter === undefined ? 0 : 1) } }
+          : undefined
+        let body: string[]
+        if (entries.length === 0) body = query.length > 0 ? [sliceByColumn(options.colors.textMuted(coreText(options, 'No matches')), 0, width, true)] : empty?.render(width) ?? []
+        else if (flowVirtual) {
+          const painter = options.listRuntime.flowList(node, width, {
+            items: node.items,
+            specAt: index => flowListSpec(choice, node, index),
+            signature: flowListSignature(choice, node),
+          }, {
+            rows: [],
+            cursorId: choice?.focusedId,
+            focused: focus.focused,
+            marker: focus.marker,
+            selectedIds: choice?.selectedIds ?? listSelectedIds(node),
+            inputs: choice?.inputs,
+            segment,
+            segmentLabel: coreText(options, 'Options'),
+            body: paintBody,
+            translate,
+            flow: true,
+            memo: { cache: options.listRuntime.rows },
+          })
+          if (following && probe.itemId !== undefined) {
+            const line = painter.locate(probe.itemId)
+            probe.line = line === undefined ? undefined : line + queryRows.length + (counter === undefined ? 0 : 1)
+          }
+          body = painter.rows()
+        } else {
+          // A focused flow list that cannot virtualize (filter, tree, or current match) keeps its viewport window; a
+          // focused virtual list paints from the outer row source below.
+          const fallbackLimit = options.listRuntime.flow && focus.focused ? safeViewport(options.getViewport).rows : listRowLimit(options)
+          body = renderList(
+            { ...unfiltered, items: entries.map(entry => entry.item), selectedIds: choice?.selectedIds ?? listSelectedIds(node) },
+            width,
+            Math.max(1, fallbackLimit - (counter === undefined ? 0 : 1) - queryRows.length),
+            focus,
+            options.colors,
+            entries[0]!.position,
+            { cache: options.listRuntime.rows },
+            {
+              rows: entries,
+              cursorId: choice?.focusedId,
+              before: entries[0]!.position,
+              after: visibleCount - entries.at(-1)!.position - 1,
+              total: visibleCount,
+              inputs: choice?.inputs,
+              translate,
+              flow: options.listRuntime.flow,
+              locate,
+              body: paintBody,
+              segmentLabel: coreText(options, 'Options'),
+              segment,
+            },
+          )
+        }
+        // The row cache paints the rows it has not seen; the list joins them with its own query rows.
+        return concatRows(queryRows, counter === undefined ? [] : [sliceByColumn(options.colors.textMuted(counter), 0, width, true)], body)
+      }, options)
+      const initial = options.listRuntime.listWindow(node, listRowLimit(options))
+      if (initial.length === 0) state.bindControls([scopedControlKey('empty-list', node.id)], { component, axis: 'none' })
+      state.bindControls(initial.filter(entry => focusableListItem(entry.item)).map(entry => scopedControlKey('list', node.id, entry.item.id)), { component, axis: 'vertical' })
+      return component
+    }
+    case 'form': {
+      const stack = new ColumnStack()
+      const labelWidth = formLabelWidth(node.fields)
+      let group: string | undefined
+      for (const field of node.fields) {
+        const key = scopedControlKey('form-field', node.id, field.id)
+        const heading = field.group !== undefined && field.group !== group ? field.group : undefined
+        if (field.group !== undefined) group = field.group
+        const layout: FormFieldLayout = { labelWidth, ...(heading === undefined ? {} : { heading }) }
+        // pi-tui lays a form out field by field, so each part is retained on its own, not only the form around them.
+        const component = retain(field.kind === 'input' || field.kind === 'textarea' || field.kind === 'secret' || field.kind === 'number'
+          ? editorFieldComponent(field, key, state, options, layout)
+          : staticComponent(width => paintField(field, key, width, state, options, layout, patternFocus(state, scopedControlGroup('form', node.id)).marker), options), 'form field', options)
+        stack.addChild(component)
+        if (field.disabled !== true) state.bindControls([key], { component, axis: 'none' })
+        const address = { pagePath, formId: node.id, fieldId: field.id }
+        const actions = fieldActions(options.listRuntime.interaction?.form(address), field.id)
+        if (actions.length > 0) {
+          const tools = staticComponent(width => {
+            const current = fieldActions(options.listRuntime.interaction?.form(address), field.id)
+            state.bindControls(current.map(action => scopedControlKey('field-action', node.id, `${field.id}/${action.id}`)), { component: tools, axis: 'horizontal' })
+            return renderActions({ kind: 'actions', id: field.id, items: current.map(action => ({ id: `${field.id}/${action.id}`, label: options.contextHints?.translate?.(action.label) ?? action.label })) }, width, patternFocus(state, scopedControlGroup('form', node.id)), options.colors, false)
+          }, options)
+          retain(tools, 'field actions', options)
+          stack.addChild(tools)
+          state.bindControls(actions.map(action => scopedControlKey('field-action', node.id, `${field.id}/${action.id}`)), { component: tools, axis: 'horizontal' })
+        }
+      }
+      return stack
+    }
+    case 'actions': {
+      const vertical = !options.bounded
+      /* An action with a handled invoke in flight renders as busy until the
+         reply lands, matching the disabled-side effect at control level. */
+      /* Busy and row-unavailable states follow the live model, so they are read per frame. */
+      // The runtime has now seen these component actions, so the keymap can offer them for rebinding.
+      options.keymap?.see?.(node.items.flatMap(item => item.action === undefined ? [] : [{ id: item.action, label: item.label, keys: item.key === undefined ? [] : [item.key] }]))
+      const items = () => node.items.map(entry => {
+        const item = withEffectiveKey(effectiveActionItem(entry, options), options)
+        return item.busy === true || options.listRuntime.interaction?.actionPending({ pagePath, controlId: item.id }) === true ? { ...item, busy: true as const } : item
+      }).filter(item => item.hidden !== true)
+      const bind = (current: readonly MayflyActionItem[]): void => {
+        state.bindControls(current.filter(item => item.disabled !== true && item.busy !== true).map(item => scopedControlKey('action', node.id, item.id)), { component, axis: vertical ? 'vertical' : 'horizontal' })
+      }
+      const component: MayflyComponent = staticComponent(width => {
+        const current = items()
+        bind(current)
+        return renderActions({ ...node, items: current }, width, patternFocus(state, actionGroup(node, pagePath)), options.colors, vertical)
+      }, options)
+      bind(items())
+      return component
+    }
+    case 'loader': {
+      const stack = new ColumnStack()
+      // Reduced motion freezes the channel on its first frame and never joins the clock.
+      const presentation = options.components.presentation
+      stack.addChild(retain(staticComponent(width => renderLoader(node, width, options.colors, motionFrame(options), presentation?.glyphs, presentation?.reducedMotion === true), options), 'loader row', options))
+      const cancelActionId = node.cancelActionId
+      if (cancelActionId !== undefined) {
+        // The cancel is a hint, not a button: Escape fires it (`cancel-work`), and the row only says so.
+        const component = retain(staticComponent(width => [sliceByColumn(`  ${options.colors.muted(`Esc ${(node.cancelLabel ?? coreText(options, 'Cancel')).toLowerCase()}`)}`, 0, width, true)], options), 'loader cancel', options)
+        stack.addChild(component)
+        state.bindControls([scopedControlKey('loader-cancel', cancelActionId)], { component, axis: 'none' })
+      }
+      return stack
+    }
+    case 'empty': {
+      const stack = new ColumnStack()
+      stack.addChild(retain(staticComponent(width => renderEmpty(node, width, options.colors), options), 'empty state', options))
+      if (node.actions !== undefined) stack.addChild(compileNode(node.actions, state, options, `${path}.actions`, mode))
+      return stack
+    }
+    case 'progress': return node.transition === undefined
+      ? staticComponent(width => renderProgress(node, width, options.colors), options)
+      : staticComponent(width => renderProgress(node, width, options.colors, options.listRuntime.progressValue(`${JSON.stringify(pagePath)}${path}`, node as typeof node & { readonly transition: NonNullable<typeof node.transition> }, options.components.presentation?.reducedMotion === true)), options)
+    // Outside an admission row there is nothing to shed to: a shed node is its full form.
+    case 'shed': return compileNode(node.node, state, options, `${path}.node`, mode)
+    case 'spacer': return staticComponent(() => Array.from({ length: node.size ?? 1 }, () => ''), options)
+    case 'divider': {
+      if (node.orientation === 'vertical') return leaf(node, options, paint => {
+        const glyph = options.components?.presentation?.glyphs === 'ascii' ? '|' : '│'
+        const row = node.tone === undefined ? paint.colors.border(glyph) : paintTone(node.tone, glyph, paint.colors)
+        return {
+          render: () => [row],
+          renderHeight: (height: number) => Array.from({ length: height }, () => row),
+          invalidate: () => {},
+        }
+      })
+      return leaf(node, options, paint => pureStaticComponent(width => renderDivider(node.label, width, paint.colors, node.align, node.inset, node.tone), paint))
+    }
+    case 'diagram': return leaf(node, options, paint => contentLeafComponent(diagramMarkdownNode(node), options, paint))
+    case 'chart': return chartComponent(node, options)
+    case 'image': return imageComponent(node, options)
+    case 'prompt': return options.editor === undefined ? promptComponent(node, state, options, scopedControlKey('prompt', node.id)) : hostedPromptComponent(node, state, options, scopedControlKey('editor', node.id), options.editor)
+    case 'slider': return sliderComponent(node, state, options, scopedControlKey('slider', node.id))
+    /* The surface model swaps a review for the list it reads from the drafts; without a model there are no drafts to list. */
+    case 'review': return staticComponent(() => [], options)
+  }
+}
+
+/**
+ * The group a surface opens on and `Esc` returns to: a list, prompt, slider, or form that declares `autofocus` takes focus first, then an action
+ * that declares itself the default, else the first control's group.
+ */
+function homeGroup(controls: readonly ControlDescriptor[]): string | undefined {
+  const declared = controls.find(control => (control.kind === 'event' ? control.listEntry?.node : control.kind === 'list' || control.kind === 'prompt' || control.kind === 'slider' ? control.node : control.kind === 'text' || control.kind === 'select' || control.kind === 'toggle' ? control.form : undefined)?.autofocus === true)
+    ?? controls.find(control => control.kind === 'event' && control.role === 'action' && control.preferred)
+  return declared?.group ?? controls[0]?.group
+}
+
+const controlWalkKeys = new WeakMap<ControlWalk, string>()
+
+/** The controls of a walk as one string: two viewports that show the same controls have the same one. */
+function walkKeys(walk: ControlWalk): string {
+  let keys = controlWalkKeys.get(walk)
+  if (keys === undefined) {
+    keys = `${walk.visible.map(control => control.key).join('\x01')}\x02${walk.all.map(control => control.key).join('\x01')}`
+    controlWalkKeys.set(walk, keys)
+  }
+  return keys
+}
+
+function reconcile(state: FocusState): readonly ControlDescriptor[] {
+  const controls = reconcileFocus(state)
+  state.reconciled = { controls: walkKeys(state.walk()), activeKey: state.activeKey, desiredKey: state.desiredKey, editingKey: state.editingKey, focused: state.focused, lastIndex: state.lastIndex }
+  return controls
+}
+
+/**
+ * Reconciles focus for a new layout viewport, unless that viewport shows the controls the last reconciliation walked
+ * and focus has not moved since: a layout alternates between a handful of viewports, and reconciling the same controls
+ * again changes nothing.
+ */
+function reconcileLayout(state: FocusState): void {
+  const last = state.reconciled
+  if (last !== undefined && last.controls === walkKeys(state.walk()) && last.activeKey === state.activeKey && last.desiredKey === state.desiredKey
+    && last.editingKey === state.editingKey && last.focused === state.focused && last.lastIndex === state.lastIndex) return
+  reconcile(state)
+}
+
+function reconcileFocus(state: FocusState): readonly ControlDescriptor[] {
+  const controls = state.controls()
+  const groups = controlGroups(controls)
+  const tabGroups = groups.filter(group => group.kind === 'tabs')
+  state.blurInactiveEditors(controls)
+  /* a form that declares `autofocus` takes the focus when it appears, not only when its surface opens */
+  const autofocusFields = new Map<string, ControlDescriptor>()
+  for (const control of controls) if ((control.kind === 'text' || control.kind === 'select' || control.kind === 'toggle') && control.form.autofocus === true && !autofocusFields.has(control.form.id)) autofocusFields.set(control.form.id, control)
+  const present = new Set([...autofocusFields.values()].map(control => control.key))
+  for (const key of state.autofocusClaimed) if (!present.has(key)) state.autofocusClaimed.delete(key)
+  for (const control of autofocusFields.values()) {
+    if (state.autofocusClaimed.has(control.key)) continue
+    state.autofocusClaimed.add(control.key)
+    state.desiredKey = control.key
+    state.desiredGroup = control.group
+  }
+  const allControls = state.allControls()
+  const allKeys = new Set(allControls.map(control => control.key))
+  for (const [group, key] of state.groupActiveKeys) {
+    if (!allControls.some(control => control.group === group && control.key === key)) state.groupActiveKeys.delete(group)
+  }
+  if (state.editingKey !== undefined && !allKeys.has(state.editingKey)) state.setEditing(undefined)
+  if (state.desiredKey !== undefined && !allControls.some(control => control.key === state.desiredKey)) {
+    state.desiredKey = undefined
+    state.desiredGroup = undefined
+  }
+  if (controls.length === 0) {
+    if (state.desiredKey === undefined) {
+      state.activeKey = undefined
+      state.activeGroup = undefined
+    }
+    state.lastIndex = 0
+    state.lastTabGroupIndex = 0
+    for (const scroll of state.scrollViews.values()) scroll.setScrollbarActive(false)
+    return controls
+  }
+  state.lastTabGroupIndex = Math.min(state.lastTabGroupIndex, Math.max(0, tabGroups.length - 1))
+  const syncScrollFocus = (): void => {
+    for (const [key, scroll] of state.scrollViews) scroll.setScrollbarActive(state.focused && key === state.activeKey)
+  }
+  const rememberTabGroup = (control: ControlDescriptor): void => {
+    const index = tabGroups.findIndex(group => group.id === control.group)
+    if (index >= 0) state.lastTabGroupIndex = index
+  }
+  const desired = controls.findIndex(control => control.key === state.desiredKey)
+  if (desired >= 0) {
+    state.lastIndex = desired
+    state.activeKey = controls[desired]!.key
+    state.activeGroup = controls[desired]!.group
+    state.groupActiveKeys.set(controls[desired]!.group, controls[desired]!.key)
+    rememberTabGroup(controls[desired]!)
+    syncScrollFocus()
+    return controls
+  }
+  const desiredHidden = state.desiredKey !== undefined && allControls.some(control => control.key === state.desiredKey)
+  const current = controls.findIndex(control => control.key === state.activeKey)
+  if (current >= 0) {
+    state.lastIndex = current
+    state.activeGroup = controls[current]!.group
+    if (state.desiredKey === undefined) {
+      state.desiredKey = controls[current]!.key
+      state.desiredGroup = controls[current]!.group
+    }
+    if (!desiredHidden) state.groupActiveKeys.set(controls[current]!.group, controls[current]!.key)
+    rememberTabGroup(controls[current]!)
+    syncScrollFocus()
+    return controls
+  }
+  const groupIds = groups.map(group => group.id)
+  /* the focused control is gone: a form that declares `autofocus` claims the focus before the neighbours do */
+  const claimed = controls.find(control => (control.kind === 'text' || control.kind === 'select' || control.kind === 'toggle') && control.form.autofocus === true)?.group
+  const requestedGroup = claimed ?? (desiredHidden ? state.desiredGroup : state.activeGroup)
+  const fallbackGroup = requestedGroup !== undefined && groupIds.includes(requestedGroup) ? requestedGroup : homeGroup(controls)!
+  state.lastIndex = groupTarget(controls, fallbackGroup, state.groupActiveKeys.get(fallbackGroup))
+  state.activeKey = controls[state.lastIndex]!.key
+  state.activeGroup = controls[state.lastIndex]!.group
+  if (!desiredHidden) {
+    state.desiredKey = state.activeKey
+    state.desiredGroup = state.activeGroup
+    state.groupActiveKeys.set(state.activeGroup, state.activeKey)
+  }
+  rememberTabGroup(controls[state.lastIndex]!)
+  syncScrollFocus()
+  return controls
+}
+
+type NavigationDirection = 'up' | 'down' | 'left' | 'right'
+
+function intersectRect(rect: LayoutRect, clip: LayoutRect): LayoutRect | undefined {
+  const x = Math.max(rect.x, clip.x)
+  const y = Math.max(rect.y, clip.y)
+  const right = Math.min(rect.x + rect.width, clip.x + clip.width)
+  const bottom = Math.min(rect.y + rect.height, clip.y + clip.height)
+  return right <= x || bottom <= y ? undefined : { x, y, width: right - x, height: bottom - y }
+}
+
+function layoutBoxes(root: LayoutBox): Map<Component, LayoutRect> {
+  const boxes = new Map<Component, LayoutRect>()
+  const visit = (box: LayoutBox): void => {
+    const visible = intersectRect(box.rect, box.clip)
+    if (visible !== undefined) boxes.set(box.component, visible)
+    for (const child of box.children) visit(child)
+  }
+  visit(root)
+  return boxes
+}
+
+function divideRect(rect: LayoutRect, axis: ControlBinding['axis'], index: number, count: number): LayoutRect {
+  if (axis === 'horizontal' && count > 1) {
+    const start = Math.floor(rect.width * index / count)
+    const end = Math.floor(rect.width * (index + 1) / count)
+    return { x: rect.x + start, y: rect.y, width: Math.max(1, end - start), height: rect.height }
+  }
+  if (axis === 'vertical' && count > 1) {
+    const start = Math.floor(rect.height * index / count)
+    const end = Math.floor(rect.height * (index + 1) / count)
+    return { x: rect.x, y: rect.y + start, width: rect.width, height: Math.max(1, end - start) }
+  }
+  return rect
+}
+
+function nearestDirectionalControl(
+  controls: readonly ControlDescriptor[],
+  rectangles: ReadonlyMap<string, LayoutRect>,
+  activeIndex: number,
+  direction: NavigationDirection,
+): number | undefined {
+  const active = rectangles.get(controls[activeIndex]!.key)
+  if (active === undefined) return undefined
+  const activeCenterX = active.x + active.width / 2
+  const activeCenterY = active.y + active.height / 2
+  const candidates = controls.flatMap((control, index) => {
+    if (index === activeIndex || (control.kind === 'event' && control.role === 'tab')) return []
+    const rect = rectangles.get(control.key)
+    if (rect === undefined) return []
+    const centerX = rect.x + rect.width / 2
+    const centerY = rect.y + rect.height / 2
+    const eligible = direction === 'left' ? centerX < activeCenterX
+      : direction === 'right' ? centerX > activeCenterX
+        : direction === 'up' ? centerY < activeCenterY
+          : centerY > activeCenterY
+    if (!eligible) return []
+    const horizontal = direction === 'left' || direction === 'right'
+    const overlap = horizontal
+      ? Math.min(active.y + active.height, rect.y + rect.height) > Math.max(active.y, rect.y)
+      : Math.min(active.x + active.width, rect.x + rect.width) > Math.max(active.x, rect.x)
+    const primary = horizontal ? Math.abs(centerX - activeCenterX) : Math.abs(centerY - activeCenterY)
+    const secondary = horizontal ? Math.abs(centerY - activeCenterY) : Math.abs(centerX - activeCenterX)
+    return [{ index, overlap, primary, secondary }]
+  })
+  return candidates
+    .toSorted((left, right) => left.index - right.index)
+    .toSorted((left, right) => left.secondary - right.secondary)
+    .toSorted((left, right) => left.primary - right.primary)
+    .toSorted((left, right) => Number(right.overlap) - Number(left.overlap))[0]?.index
+}
+
+/**
+ * Renderer bindings shared by compiled projections of one surface. The
+ * frontend model owns drafts and actions; this object owns only editor,
+ * focus, geometry, and admission caches for the current renderer lifetime.
+ */
+export class MayflyUiSurfaceRuntime {
+  /** The static leaves this surface compiled before; each publish of an unchanged subtree reuses them. */
+  readonly reuse = new MayflyCompileCache()
+  /** The item rows this surface's lists have painted, kept by item and state. */
+  readonly rows = new UiRowCache()
+  /** The flow lists this surface has painted, by control key: a repaint reconciles items instead of painting them all. */
+  private readonly flowLists = new Map<string, FlowListPainter>()
+  /** The painted content segments this surface's leaves produced; the renderer's one shared cache by default. */
+  readonly content: MayflyContentCache
+  /** Where this surface's scroll regions are scrolled, by control key, the least recently compiled first. */
+  private readonly scrolled = new Map<string, ScrollMemory>()
+  /** The one-shot drains of this surface's progress bars. */
+  private readonly transitions = new UiProgressTransitions()
+  /** The last key-hint row this surface painted, with what it was painted from. */
+  hintMemo: { readonly colors: object, readonly key: string, readonly rows: string[] } | undefined
+  private node: CompilableNode | undefined
+  private options: RuntimeCompilerOptions | undefined
+  private layoutViewport: ((viewport: MayflyUiViewport) => void) | undefined
+  private generation = 0
+  private live = true
+  private readonly controls = new UiControlStore()
+  private readonly fieldAddresses = new Map<string, MayflyFieldAddress>()
+  private readonly nodePages = new WeakMap<object, MayflyPagePath>()
+  private readonly tabDefinitions = new Map<string, Extract<MayflyUiNode, { readonly kind: 'tabs' }>>()
+  private readonly searches = new Map<string, SearchInput>()
+  private readonly textEditors = new Map<string, TextEditorLease>()
+  /** The terminal editor each prompt leases, by control key, and the prompts the tree now holds. */
+  private readonly promptEditors = new Map<string, UiPromptEditor>()
+  private readonly activePrompts = new Set<string>()
+  private readonly fieldKinds = new Map<string, MayflyFormField['kind']>()
+  private readonly fieldOwners = new Map<string, string>()
+  private readonly fieldRecency = new Map<string, true>()
+  private listRowBudget: number | undefined
+  /**
+   * One control walk per reconcile round (UX-34), keyed by everything the
+   * walk reads: node and options identity, the surface generation, the
+   * viewport, and the interaction revision covering choice, tab, focus, and
+   * admission state. `handleInput` → `moveTo` → render re-reads all hit the
+   * same walk instead of rewalking the tree.
+   */
+  private controlsWalkMemo: {
+    readonly node: CompilableNode
+    readonly options: RuntimeCompilerOptions
+    readonly generation: number
+    readonly revision: number
+    /** One walk per layout viewport and list row budget: a layout pass alternates between a handful of them. */
+    readonly walks: Map<string, ControlWalk>
+  } | undefined
+  /**
+   * Whether this surface is the content of an outer scroll right now (the unfocused conversation slot): the viewport
+   * bounds neither its lists nor its rows, and the scroll view windows what it paints. Its owner sets it from the
+   * surface's focus before the surface compiles, so a focused one keeps its cursor window through every recompile.
+   */
+  flow = false
+  /**
+   * The item whose line the surface's owner follows: a flow list paints its first line into `line`, relative to the top of
+   * the list node's own rows. The owner sets `controlId` and `itemId`; a list of another control never touches it.
+   */
+  readonly probe: { controlId: string, itemId: string | undefined, line: number | undefined } = { controlId: '', itemId: undefined, line: undefined }
+  /**
+   * The focused flow list's cursor line among the surface's own rows, as of the last render: its owner reveals the row in
+   * the outer scroll. `undefined` while the surface is not flow content or no cursor is painted.
+   */
+  focusedLine: number | undefined
+  /** Asks the host for another frame and nothing else (what a clock tick does). */
+  readonly nudge: () => void
+
+  readonly state: FocusState
+  private readonly loaderAnimation: UiLoaderAnimation | undefined
+  private epochValue = 0
+  /** The retained renders in progress, innermost last. */
+  private readonly renders: RenderScope[] = []
+
+  /**
+   * @param requestRender - asks the host to invalidate and repaint the surface: something of its own changed.
+   * @param requestFrame - asks the host for another frame and nothing else: the clock moved. A tick must not
+   *   invalidate, or every retained row would be painted again for one moving cell; defaults to `requestRender`.
+   */
+  constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource, requestFrame?: () => void, content?: MayflyContentCache) {
+    this.content = content ?? new MayflyContentCache()
+    const tick = requestFrame ?? requestRender
+    this.nudge = tick ?? (() => {})
+    this.loaderAnimation = tick === undefined ? undefined : new UiLoaderAnimation(tick, clock)
+    const fieldValue = (field: MayflyFormField, key: string): MayflyFieldValue => {
+      const address = this.fieldAddresses.get(key)
+      const draft = address === undefined ? undefined : this.interaction?.form(address)?.fields[address.fieldId]
+      return draft === undefined ? field.value : draft.value
+    }
+    this.state = {
+      activeKey: undefined,
+      activeGroup: undefined,
+      desiredKey: undefined,
+      desiredGroup: undefined,
+      editingKey: undefined,
+      expandedKey: undefined,
+      groupActiveKeys: new Map(),
+      autofocusClaimed: new Set(),
+      controlBindings: this.controls.bindings,
+      scrollViews: this.controls.scrolls,
+      lastTabGroupIndex: 0,
+      lastIndex: 0,
+      focused: false,
+      layoutPass: false,
+      layoutReconciled: undefined,
+      reconciled: undefined,
+      walk: () => this.walkControlsCached(),
+      controls: () => this.walkControlsCached().visible,
+      allControls: () => this.walkControlsCached().all,
+      accelerators: () => this.walkControlsCached().accelerators,
+      emit: event => {
+        if (!this.live) return
+        try {
+          if (this.interaction !== undefined) this.interaction.emit(event)
+          else this.options?.emit(event)
+        } catch { /* event failures are host-owned */ }
+      },
+      field: (field, key) => {
+        const address = this.fieldAddresses.get(key)
+        const form = address === undefined ? undefined : this.interaction?.form(address)
+        const draft = address === undefined ? undefined : form?.fields[address.fieldId]
+        const picker = draft?.picker
+        const value = picker === undefined ? fieldValue(field, key) : field.kind === 'multiselect' ? picker.selectedIds : picker.selectedIds[0] ?? null
+        const text = (key: string, values?: UiTranslateValues) => coreText(this.options, key, values)
+        const pickerError = picker === undefined ? undefined : choiceError(picker, text)
+        const error = pickerError ?? (draft?.conflict === true ? text('Resolve the changed value before saving') : fieldDisplayError(draft, text, this.state.editingKey === key))
+        const { error: _declared, ...rest } = field
+        return { ...(draft === undefined ? field : rest), value: field.kind === 'number' ? field.value : value,
+          ...(error === undefined ? {} : { error }),
+          ...(form?.pending === undefined ? {} : { disabled: true }),
+        } as MayflyFormField
+      },
+      decor: (field, key) => {
+        const address = this.fieldAddresses.get(key)!
+        return fieldDecor(field, this.interaction?.form(address)?.fields[address.fieldId])
+      },
+      fieldValue,
+      setValue: (key, value) => {
+        const address = this.fieldAddresses.get(key)
+        if (address !== undefined) this.interaction?.edit(address, value)
+      },
+      textEditor: (field, key) => this.textEditor(field, key),
+      beginSelectEditing: (_field, key) => {
+        this.state.setEditing(key)
+        const address = this.fieldAddresses.get(key)
+        if (address !== undefined) this.interaction?.updateForm(address, { kind: 'begin-picker', fieldId: address.fieldId })
+      },
+      finishSelectEditing: (field, key, cancel) => {
+        const address = this.fieldAddresses.get(key)
+        if (address !== undefined) this.interaction?.updateForm(address, { kind: 'finish-picker', fieldId: address.fieldId, cancel })
+        this.state.setEditing(undefined)
+        return fieldValue(field, key)
+      },
+      setEditing: key => {
+        if (this.state.editingKey === key) return
+        this.state.editingKey = key
+        for (const lease of this.textEditors.values()) lease.editor.focused = false
+      },
+      blurInactiveEditors: controls => {
+        const visible = new Set(controls.flatMap(control => control.kind === 'text'
+          ? [fieldStateKey(control.key, control.field.kind)]
+          : []))
+        for (const [stateKey, lease] of this.textEditors) if (!visible.has(stateKey)) lease.editor.focused = false
+      },
+      setLayoutViewport: viewport => { this.layoutViewport?.(viewport) },
+      bindControls: (keys, binding) => { this.controls.bind(keys, binding) },
+      bindScroll: (key, scroll) => { this.controls.bindScroll(key, scroll) },
+    }
+  }
+
+  bind(node: CompilableNode, options: RuntimeCompilerOptions, setLayoutViewport: (viewport: MayflyUiViewport) => void): number {
+    if (!this.live) throw new Error('surface runtime is disposed')
+    this.node = node
+    this.options = options
+    this.layoutViewport = setLayoutViewport
+    this.listRowBudget = undefined
+    this.controls.resetGeneration()
+    this.generation += 1
+    this.touch()
+    return this.generation
+  }
+
+  /** Renderer clocks do not change shared model revisions or form state. */
+  get animationFrame(): number { return this.loaderAnimation?.frame ?? 0 }
+  /**
+   * The clock frame a moving cell paints at. The render that asks holds for that frame only, and the clock is armed
+   * when the cell turns out to be on screen, not by the paint: scroll content is painted whole, so a loader below the
+   * fold would otherwise repaint the surface ten times a second for a cell nobody sees.
+   */
+  loaderFrame(): number {
+    this.markAnimated()
+    return this.loaderAnimation?.frame ?? 0
+  }
+
+  private measuring = 0
+  private readonly peaks = new Map<string, PagePeaks>()
+
+  /** The tallest height of a tab strip's pages by width and viewport, which outlasts a recompile so the panel does not shrink and grow back. */
+  pagePeaks(key: string): PagePeaks {
+    let peaks = this.peaks.get(key)
+    if (peaks === undefined) {
+      peaks = new Map()
+      // The oldest strips go first, as scroll positions do.
+      if (this.peaks.size >= 32) this.peaks.delete(this.peaks.keys().next().value!)
+      this.peaks.set(key, peaks)
+    }
+    return peaks
+  }
+
+  /**
+   * Paint something to learn its size: whatever it draws, it arms no clock and leaves no mark on the render around it, so a
+   * loader on a page nobody sees does not wake the surface.
+   */
+  measure<Result>(paint: () => Result): Result {
+    this.measuring += 1
+    const scope: RenderScope = { animated: false, moves: false, volatile: false, moving: new Map() }
+    this.renders.push(scope)
+    try { return paint() } finally {
+      this.renders.pop()
+      this.measuring -= 1
+    }
+  }
+
+  /** Counts what can change a row this surface painted, the clock aside; a retained render holds for one value. */
+  get epoch(): number { return this.epochValue }
+  /** Something that can change a painted row happened: every retained render of this surface is stale. */
+  touch(): void { this.epochValue += 1 }
+  /** The list row budget in force, part of what a retained render was painted under. */
+  get rowBudget(): number | undefined { return this.listRowBudget }
+  /** Opens the scope of one retained render; the leaves it paints leave their marks on it. */
+  beginRender(): RenderScope {
+    const scope: RenderScope = { animated: false, moves: false, volatile: false, moving: new Map() }
+    this.renders.push(scope)
+    return scope
+  }
+  /** Closes a render's scope and passes its marks to the render that contains it. */
+  endRender(scope: RenderScope): void {
+    this.renders.pop()
+    const outer = this.renders.at(-1)
+    if (outer === undefined) return
+    outer.animated ||= scope.animated
+    outer.volatile ||= scope.volatile
+    for (const [component, rows] of scope.moving) outer.moving.set(component, rows)
+  }
+  /** The render in progress painted a cell that moves with the clock; outside any retained render the clock is armed at once. */
+  markAnimated(): void {
+    if (this.measuring > 0) return
+    const scope = this.renders.at(-1)
+    if (scope === undefined) {
+      this.loaderAnimation?.render()
+      return
+    }
+    scope.animated = true
+    scope.moves = true
+  }
+  /** The render in progress read something no epoch tracks. */
+  markVolatile(): void {
+    const scope = this.renders.at(-1)
+    if (scope !== undefined) scope.volatile = true
+  }
+  /**
+   * Rows that hold moving cells are on their way to the screen, freshly painted or from memory: the render around them
+   * holds for this frame too, and the surface joins the clock when one of the cells can be seen.
+   */
+  showMoving(cells: ReadonlyMap<Component, number>): void {
+    if (this.measuring > 0) return
+    const scope = this.renders.at(-1)
+    if (scope !== undefined) {
+      scope.animated = true
+      for (const [component, rows] of cells) scope.moving.set(component, rows)
+    }
+    for (const [component, rows] of cells) {
+      if (!onScreen(component, rows)) continue
+      this.loaderAnimation?.render()
+      return
+    }
+  }
+  /**
+   * Asks the renderer to paint this surface again: an image's bytes arrived. A list row that holds the image was
+   * painted from its item and key alone, so the memo of painted rows is dropped with the request.
+   */
+  readonly repaint = (): void => {
+    if (!this.live) return
+    this.rows.clear()
+    this.requestRender?.()
+  }
+  /** The scroll position a region keeps across publishes. */
+  /**
+   * The place of the scroll region at `key`, made the most recent. A region is remembered by its position in the tree, so
+   * a tree that shifts its siblings brings a new key for the same region, and the keys it leaves behind age out once the
+   * limit is reached; a region still in a compiled tree was touched by that compile and outlasts them.
+   */
+  scrollMemory(key: string): ScrollMemory {
+    const memory = this.scrolled.get(key) ?? { offset: 0, following: undefined, away: 0 }
+    this.scrolled.delete(key)
+    this.scrolled.set(key, memory)
+    if (this.scrolled.size > SCROLL_MEMORY_LIMIT) this.scrolled.delete(this.scrolled.keys().next().value!)
+    return memory
+  }
+  /**
+   * The value a bar with a `transition` draws now. Without a clock, or under reduced motion, the bar is already settled;
+   * otherwise it drains with the clock and holds it only while it moves.
+   */
+  progressValue(key: string, node: Parameters<UiProgressTransitions['step']>[1], reducedMotion: boolean): number {
+    if (this.loaderAnimation === undefined || reducedMotion) return node.value
+    const step = this.transitions.step(key, node, this.loaderAnimation.frame)
+    if (step.animating) this.markAnimated()
+    return step.value
+  }
+  beginAnimationFrame(): void { this.loaderAnimation?.beginFrame() }
+  pauseAnimation(): void { this.loaderAnimation?.stop() }
+
+  current(generation: number): boolean { return this.live && this.interaction?.disposed !== true && generation === this.generation }
+
+  pagePath(node: object): MayflyPagePath { return this.nodePages.get(node) ?? [] }
+
+  activeTab(address: { readonly pagePath: MayflyPagePath, readonly controlId: string }): string | undefined {
+    return this.interaction === undefined ? this.tabDefinitions.get(controlGroup('tabs', address.controlId, address.pagePath))?.activeId : this.interaction.activeTab(address)
+  }
+
+  fieldAddress(key: string): MayflyFieldAddress | undefined { return this.fieldAddresses.get(key) }
+
+  listRowLimit(viewportRows: number): number { return this.flow ? Number.MAX_SAFE_INTEGER : Math.min(viewportRows, this.listRowBudget ?? viewportRows) }
+
+  setListRowBudget(rows: number | undefined): void { this.listRowBudget = rows }
+
+  search(node: MayflyListNode): SearchInput {
+    const key = controlGroup('list', node.id, this.pagePath(node))
+    let search = this.searches.get(key)
+    if (search === undefined) { search = new SearchInput(this.options!.components); this.searches.set(key, search) }
+    search.setText(this.interaction?.choice({ pagePath: this.pagePath(node), controlId: node.id })?.query ?? '')
+    return search
+  }
+
+  /** The row source of a flow list at `width`: reconciled with the list it painted last time, painted on demand. */
+  flowList(node: MayflyListNode, width: number, model: FlowListModel, options: ListPaintOptions): FlowListPainter {
+    const key = controlGroup('list', node.id, this.pagePath(node))
+    let painter = this.flowLists.get(key)
+    if (painter === undefined) {
+      painter = new FlowListPainter()
+      this.flowLists.set(key, painter)
+    }
+    painter.sync({ node, model, width, colors: this.options!.colors, options })
+    return painter
+  }
+
+  listWindow(node: MayflyListNode, rowLimit: number): readonly VirtualListEntry[] {
+    const state = this.interaction?.choice({ pagePath: this.pagePath(node), controlId: node.id })
+    const count = state === undefined ? node.items.length : choiceVisibleCount(state)
+    // Flow content is windowed by the outer scroll, not by a list height: keep the cursor window for the walk and paint.
+    const limit = this.flow && flowListCanVirtualize(node, state) && this.options !== undefined
+      ? safeViewport(this.options.getViewport).rows
+      : rowLimit
+    const size = Math.min(count, Math.max(1, Math.floor(limit)) + 4)
+    const cursor = state === undefined ? 0 : choiceVisiblePosition(state)
+    const start = Math.max(0, Math.min(count - size, cursor - Math.floor(size / 2)))
+    const window = Array.from({ length: size }, (_, offset) => {
+      const index = state === undefined ? start + offset : choiceVisibleIndex(state, start + offset)!
+      if (state !== undefined) return { index, position: start + offset, ...choiceRow(state, index) }
+      // Without a frontend model the list is a plain roving list: rows open only as they were declared.
+      const item = admittedListItem(node.items, index)!
+      const always = item.bodyAlways === true && item.body !== undefined
+      return { index, position: start + offset, item, depth: 0, last: false, expandable: !always && item.body !== undefined, open: always || (item.body !== undefined && item.expanded === true) }
+    })
+    return window
+  }
+
+  moveList(node: MayflyListNode, movement: ListMovement, pageSize: number): VirtualListEntry | undefined {
+    const address = { pagePath: this.pagePath(node), controlId: node.id }
+    if (movement === 'home' || movement === 'end') this.interaction?.updateChoice(address, { kind: 'edge', edge: movement === 'home' ? 'first' : 'last' })
+    else this.interaction?.updateChoice(address, { kind: 'move', direction: movement === 'up' || movement === 'page-up' ? -1 : 1, count: movement === 'page-up' || movement === 'page-down' ? pageSize : 1 })
+    const state = this.interaction?.choice(address)
+    const index = state?.focusedIndex ?? -1
+    const item = index < 0 ? undefined : admittedListItem(node.items, index)
+    return item === undefined ? undefined : { index, position: state!.focusedPosition, ...choiceRow(state!, index) }
+  }
+
+  setFocused(value: boolean): void {
+    this.state.focused = value
+    if (!value) {
+      for (const lease of this.textEditors.values()) lease.editor.focused = false
+      for (const editor of this.promptEditors.values()) editor.focused = false
+    }
+  }
+
+  /** The editor of the prompt at `key`, created on first use and wired to report its edits to the surface model. */
+  promptEditor(key: string, address: UiControlAddress): UiPromptEditor {
+    let editor = this.promptEditors.get(key)
+    if (editor === undefined) {
+      editor = new UiPromptEditor(this.options!.components)
+      this.promptEditors.set(key, editor)
+    }
+    editor.onChange(value => { this.interaction?.updatePrompt(address, { kind: 'edit', value }) })
+    return editor
+  }
+
+  /** Whether the focused control is a prompt whose completion list is open. */
+  promptCompletionsOpen(): boolean {
+    const active = this.state.controls()[this.state.lastIndex]
+    if (!this.state.focused || active?.kind !== 'prompt') return false
+    const draft = this.interaction?.prompt({ pagePath: this.pagePath(active.node), controlId: active.node.id })
+    return draft !== undefined && promptCompletionsOpen(draft)
+  }
+
+  /** The grammar's summary of the focused prompt. */
+  promptGrammar(node: MayflyPromptNode): { readonly completions: boolean, readonly recall: boolean, readonly empty: boolean, readonly tokens: boolean, readonly pasting: boolean } {
+    const address = { pagePath: this.pagePath(node), controlId: node.id }
+    const draft = this.interaction?.prompt(address)
+    const pasting = this.promptEditors.get(controlKey('prompt', node.id, undefined, address.pagePath))?.pending === true
+    return {
+      completions: draft !== undefined && promptCompletionsOpen(draft),
+      recall: draft !== undefined && promptRecallActive(draft),
+      empty: draft?.text === '',
+      tokens: (node.tokens?.length ?? 0) > 0,
+      pasting,
+    }
+  }
+
+  checkpoint(): () => void {
+    const node = this.node
+    const options = this.options
+    const layoutViewport = this.layoutViewport
+    const listRowBudget = this.listRowBudget
+    const generation = this.generation
+    const focus = {
+      activeKey: this.state.activeKey,
+      activeGroup: this.state.activeGroup,
+      desiredKey: this.state.desiredKey,
+      desiredGroup: this.state.desiredGroup,
+      editingKey: this.state.editingKey,
+      lastIndex: this.state.lastIndex,
+      focused: this.state.focused,
+      layoutPass: this.state.layoutPass,
+      lastTabGroupIndex: this.state.lastTabGroupIndex,
+      expandedKey: this.state.expandedKey,
+    }
+    const groupActiveKeys = new Map(this.state.groupActiveKeys)
+    const restoreControls = this.controls.checkpoint()
+    return () => {
+      this.node = node
+      this.options = options
+      this.layoutViewport = layoutViewport
+      this.listRowBudget = listRowBudget
+      this.generation = generation
+      Object.assign(this.state, focus)
+      this.state.groupActiveKeys.clear(); for (const [key, value] of groupActiveKeys) this.state.groupActiveKeys.set(key, value)
+      restoreControls()
+    }
+  }
+
+  /** Retain recent inactive fields while bounding registration-owned renderer state. */
+  admit(node: CompilableNode): void {
+    const active = new Set<string>()
+    this.activePrompts.clear()
+    this.admitFields(node, active)
+    for (const [key, editor] of this.promptEditors) if (!this.activePrompts.has(key)) { editor.release(); this.promptEditors.delete(key) }
+    for (const [stateKey, lease] of this.textEditors) if (!active.has(stateKey)) lease.editor.focused = false
+    let inactive = this.fieldRecency.size - active.size
+    // Every active key was just touched and therefore sits after all inactive keys.
+    for (const stateKey of this.fieldRecency.keys()) {
+      if (inactive <= INACTIVE_FIELD_CACHE_LIMIT) break
+      this.evictField(stateKey)
+      inactive -= 1
+    }
+  }
+
+  /** Add fields from a newly visible deferred branch without aging sibling state. */
+  admitDeferred(node: MayflyUiNode, pagePath: MayflyPagePath): void {
+    this.interaction?.admitVisibleControls()
+    this.admitFields(node, new Set(), pagePath)
+  }
+
+  /**
+   * The memoized control walk behind `FocusState.controls()` and
+   * `allControls()`: one tree walk per input/render round instead of one per
+   * read, with the same membership semantics.
+   */
+  private walkControlsCached(): ControlWalk {
+    const node = this.node
+    const options = this.options
+    if (node === undefined || options === undefined) return EMPTY_CONTROL_WALK
+    const viewport = safeViewport(options.getViewport)
+    const revision = this.interaction?.revision ?? 0
+    let memo = this.controlsWalkMemo
+    if (memo === undefined || memo.generation !== this.generation || memo.node !== node || memo.options !== options || memo.revision !== revision) {
+      memo = { generation: this.generation, node, options, revision, walks: new Map() }
+      this.controlsWalkMemo = memo
+    }
+    const key = `${String(viewport.columns)}x${String(viewport.rows)}/${String(this.listRowBudget ?? '')}`
+    const known = memo.walks.get(key)
+    if (known !== undefined) return known
+    const walk = walkControls(node, options)
+    if (memo.walks.size >= CONTROL_WALK_VIEWPORTS) memo.walks.delete(memo.walks.keys().next().value!)
+    memo.walks.set(key, walk)
+    return walk
+  }
+
+  deactivate(): void {
+    if (!this.live) return
+    this.pauseAnimation()
+    this.generation += 1
+    this.node = undefined
+    this.options = undefined
+    this.layoutViewport = undefined
+    this.listRowBudget = undefined
+    this.setFocused(false)
+    for (const lease of this.textEditors.values()) releaseTextEditor(lease)
+    for (const editor of this.promptEditors.values()) editor.release()
+  }
+
+  dispose(): void {
+    if (!this.live) return
+    this.deactivate()
+    this.live = false
+    this.flowLists.clear()
+    for (const lease of this.textEditors.values()) releaseTextEditor(lease)
+    this.textEditors.clear()
+    this.promptEditors.clear()
+    this.fieldAddresses.clear()
+    this.tabDefinitions.clear()
+    for (const search of this.searches.values()) search.clear()
+    this.searches.clear()
+    this.fieldKinds.clear()
+    this.fieldOwners.clear()
+    this.fieldRecency.clear()
+    this.scrolled.clear()
+    this.controls.resetGeneration()
+    this.state.activeKey = undefined
+    this.state.activeGroup = undefined
+    this.state.desiredKey = undefined
+    this.state.desiredGroup = undefined
+    this.state.setEditing(undefined)
+    this.state.groupActiveKeys.clear()
+    this.state.lastIndex = 0
+    this.state.lastTabGroupIndex = 0
+  }
+
+  private admitFields(current: CompilableNode, active: Set<string>, pagePath: MayflyPagePath = []): void {
+    this.nodePages.set(current, pagePath)
+    if (isDeferredUiNode(current as MayflyUiNode)) {
+      const admitted = materializedDeferredUiNode(current as MayflyUiNode)
+      if (admitted?.ok === true) this.admitFields(admitted.value, active, pagePath)
+      return
+    }
+    switch (current.kind) {
+      case 'stack': for (const child of current.children) this.admitFields(child.node, active, child.tab === undefined ? pagePath : [...pagePath, child.tab]); break
+      case 'surface':
+        this.admitFields(current.child, active, pagePath)
+        if (current.footer !== undefined) this.admitFields(current.footer, active, pagePath)
+        break
+      case 'scroll': this.admitFields(current.child, active, pagePath); break
+      case 'list': if (current.empty !== undefined) this.admitFields(current.empty, active, pagePath); break
+      case 'form': for (const field of current.fields) {
+        const key = controlKey('form-field', current.id, field.id, pagePath)
+        const address = { pagePath, formId: current.id, fieldId: field.id }
+        this.fieldAddresses.set(key, address)
+        this.fieldAddresses.set(fieldStateKey(key, field.kind), address)
+        this.touchField(key, field, active)
+      }; break
+      case 'tabs': this.tabDefinitions.set(controlGroup('tabs', current.id, pagePath), current); break
+      case 'prompt': this.activePrompts.add(controlKey('prompt', current.id, undefined, pagePath)); break
+      case 'empty': if (current.actions !== undefined) this.admitFields(current.actions, active, pagePath); break
+      default: break
+    }
+  }
+
+  private touchField(key: string, field: MayflyFormField, active: Set<string>): void {
+    const previousKind = this.fieldKinds.get(key)
+    if (previousKind !== undefined && previousKind !== field.kind) this.evictField(fieldStateKey(key, previousKind))
+    const stateKey = fieldStateKey(key, field.kind)
+    this.fieldKinds.set(key, field.kind)
+    this.fieldOwners.set(stateKey, key)
+    this.fieldRecency.delete(stateKey)
+    this.fieldRecency.set(stateKey, true)
+    active.add(stateKey)
+  }
+
+  private evictField(stateKey: string): void {
+    this.fieldAddresses.delete(stateKey)
+    const lease = this.textEditors.get(stateKey)
+    if (lease !== undefined) {
+      releaseTextEditor(lease)
+      this.textEditors.delete(stateKey)
+    }
+    const owner = this.fieldOwners.get(stateKey)!
+    this.fieldAddresses.delete(owner)
+    if (this.state.editingKey === owner) this.state.setEditing(undefined)
+    this.fieldKinds.delete(owner)
+    this.fieldOwners.delete(stateKey)
+    this.fieldRecency.delete(stateKey)
+  }
+
+  private textEditor(field: TextField, key: string): MayflyEditor {
+    const options = this.options
+    if (options === undefined) throw new Error('surface runtime is inactive')
+    const stateKey = fieldStateKey(key, field.kind)
+    const previous = this.textEditors.get(stateKey)
+    let editor = previous?.editor
+    if (editor === undefined) {
+      editor = options.components.createEditor()
+    }
+    let lease = previous
+    if (lease === undefined) {
+      lease = { editor, onChange: undefined, onSubmit: undefined }
+      this.textEditors.set(stateKey, lease)
+    } else {
+      detachTextEditorCallbacks(lease)
+    }
+    const controlled = String(this.state.fieldValue(field, key))
+    if (editor.getExpandedText() !== controlled) {
+      editor.onChange = undefined
+      editor.setText(controlled)
+    }
+    editor.disableSubmit = false
+    const onChange = (): void => {
+      if (!this.live || this.options !== options || editor.onChange !== onChange) return
+      const value = editor!.getExpandedText()
+      this.state.setValue(stateKey, value)
+    }
+    const onSubmit = (value: string): void => {
+      if (!this.live || this.options !== options || editor.onSubmit !== onSubmit) return
+      this.state.setValue(stateKey, value)
+      if (this.state.editingKey === key) this.state.setEditing(undefined)
+    }
+    lease.onChange = onChange
+    lease.onSubmit = onSubmit
+    editor.onChange = onChange
+    editor.onSubmit = onSubmit
+    return editor
+  }
+}
+
+class CompiledSurface implements MayflyEditorShellComponent {
+  private readonly state: FocusState
+  private readonly root: Component
+  private viewport: MayflyUiViewport
+  private runtimeFailure: string | undefined
+  private readonly surfaceRuntime: MayflyUiSurfaceRuntime
+  private readonly generation: number
+  private readonly hintRowsFor: ((width: number) => string[]) | undefined
+  private viewportOffset = 0
+  private readonly runtimeOptions: RuntimeCompilerOptions
+
+  constructor(
+    private readonly node: CompilableNode,
+    private readonly options: MayflyUiCompilerOptions,
+    private readonly mode: CompilerMode,
+    private readonly editor?: MayflyEditor,
+    surfaceRuntime?: MayflyUiSurfaceRuntime,
+    contextKeyHints = false,
+    private readonly escapeLabel?: EscapeLabel,
+  ) {
+    this.viewport = safeViewport(options.getViewport)
+    this.surfaceRuntime = surfaceRuntime ?? new MayflyUiSurfaceRuntime(options.interaction)
+    const runtimeOptions: RuntimeCompilerOptions = {
+      ...options,
+      reuse: options.reuse ?? this.surfaceRuntime.reuse,
+      ...(editor === undefined ? {} : { editor }),
+      getViewport: () => this.viewport,
+      listRuntime: this.surfaceRuntime,
+      // A failed paint is reported by the frame that painted it, so its rows are never answered from memory.
+      reportRuntimeFailure: message => { this.runtimeFailure ??= message; this.surfaceRuntime.markVolatile() },
+    }
+    this.runtimeOptions = runtimeOptions
+    this.generation = this.surfaceRuntime.bind(node, runtimeOptions, viewport => { this.viewport = viewport })
+    this.state = this.surfaceRuntime.state
+    this.surfaceRuntime.admit(node)
+    runtimeOptions.reuse.beginPass()
+    // A surface with `hint: 'completions'` draws its hint row only while the editor's completion list is open.
+    const hintOpen = node.kind === 'surface' && node.hint === 'completions' ? () => runtimeOptions.completionsOpen?.() === true || this.surfaceRuntime.promptCompletionsOpen() : undefined
+    // A panel's gutter indents its hint row; every other root keeps the row's own two-column indent.
+    const hintIndent = node.kind === 'surface' && (node.chrome === 'overlay' || node.chrome === 'surface') ? 0 : 2
+    const contextHint = contextKeyHints ? contextKeyHintComponent(this.state, runtimeOptions, mode, escapeLabel, hintOpen, hintIndent) : undefined
+    this.hintRowsFor = contextKeyHints ? width => hintOpen?.() === false ? [] : contextKeyHintRows(this.state, runtimeOptions, width, mode, escapeLabel, hintIndent) : undefined
+    const compiledRoot = compileNode(node, this.state, runtimeOptions, '$', mode, node.kind === 'surface' ? contextHint : undefined)
+    if (contextHint === undefined || node.kind === 'surface') this.root = compiledRoot
+    else {
+      const root = new ColumnStack()
+      root.addChild(compiledRoot, this.surfaceRuntime.interaction === undefined ? {} : { grow: 1, minSize: 1 })
+      root.addChild(contextHint)
+      this.root = root
+    }
+    reconcile(this.state)
+    const remembered = this.surfaceRuntime.interaction?.focus
+    const active = this.state.controls()[this.state.lastIndex]
+    // The model remembers the control, while editing and cursor state belong to this runtime.
+    if (remembered !== undefined && (active === undefined || !sameFocusIdentity(active.identity, remembered))) this.restoreFocusIdentity(remembered)
+  }
+
+  get focused(): boolean { return this.state.focused }
+  set focused(value: boolean) {
+    this.frameResult = undefined
+    this.surfaceRuntime.touch()
+    if (!this.surfaceRuntime.current(this.generation)) return
+    this.surfaceRuntime.setFocused(value)
+    if (!value && this.editor !== undefined) this.editor.focused = false
+    reconcile(this.state)
+  }
+
+  hasControls(): boolean {
+    const controls = this.state.allControls()
+    const deferred = containsDeferredNode(this.node)
+    return controls.length > 0 || deferred
+  }
+
+  /**
+   * `focus-change` reaches observers at most once per painted frame, with the control that holds focus when the frame is
+   * painted: a burst of moves between two frames is one report. The surface opening on a control is not a move, and the
+   * report leaves after the paint, so an observer cannot disturb the frame that produced it.
+   */
+  private reportFocusMove(): void {
+    const interaction = this.surfaceRuntime.interaction
+    const active = this.state.controls()[this.state.lastIndex]
+    if (interaction === undefined || active === undefined) return
+    const key = JSON.stringify([active.identity.pagePath, active.identity.controlId, active.identity.itemId])
+    const previous = this.paintedFocus
+    this.paintedFocus = key
+    if (previous === undefined || previous === key) return
+    const generation = this.generation
+    queueMicrotask(() => { if (this.paintedFocus === key && this.surfaceRuntime.current(generation)) interaction.observeFocus(active.identity as UiControlAddress) })
+  }
+
+  captureFocusIdentity(): MayflyFocusIdentity | undefined {
+    if (!this.surfaceRuntime.current(this.generation)) return undefined
+    this.viewport = safeViewport(this.options.getViewport)
+    const controls = reconcile(this.state)
+    const active = controls[this.state.lastIndex]
+    /* a live focus facade is created only for a tree with controls. */
+    if (active === undefined) return undefined
+    const tabControlId = controlGroups(controls)
+      .filter(group => group.kind === 'tabs')[this.state.lastTabGroupIndex]
+      ?.entries[0]?.control.identity.controlId
+    const identity: MayflyFocusIdentity = (active.kind === 'text' || active.kind === 'select')
+      && this.state.editingKey === active.key
+      ? { ...active.identity, editing: true }
+      : active.identity
+    return tabControlId === undefined ? identity : { ...identity, tabControlId }
+  }
+
+  restoreFocusIdentity(identity: MayflyFocusIdentity): boolean {
+    this.frameResult = undefined
+    this.surfaceRuntime.touch()
+    if (!this.surfaceRuntime.current(this.generation)) return false
+    this.viewport = safeViewport(this.options.getViewport)
+    const controls = this.state.controls()
+    const index = controls.findIndex(control => sameFocusIdentity(control.identity, identity))
+    if (index < 0) return false
+    const control = controls[index]!
+    this.state.activeKey = control.key
+    this.state.activeGroup = control.group
+    this.state.desiredKey = control.key
+    this.state.desiredGroup = control.group
+    this.state.groupActiveKeys.set(control.group, control.key)
+    this.state.lastIndex = index
+    const tabGroups = controlGroups(controls).filter(group => group.kind === 'tabs')
+    const tabIndex = tabGroups.findIndex(group => group.entries[0]?.control.identity.controlId === identity.tabControlId)
+    if (tabIndex >= 0) this.state.lastTabGroupIndex = tabIndex
+    const address = this.surfaceRuntime.fieldAddress(control.key)
+    const picker = address === undefined ? undefined : this.surfaceRuntime.interaction?.form(address)?.fields[address.fieldId]?.picker
+    if (control.kind === 'select' && (identity.editing === true || picker !== undefined)) this.state.beginSelectEditing(control.field, control.key)
+    else this.state.setEditing(control.kind === 'text' && identity.editing === true ? control.key : undefined)
+    reconcile(this.state)
+    return true
+  }
+
+  /** A scroll view of the surface's own takes the overflow in a layout, so the frame is laid out rather than fitted. */
+  private layoutScrolls(): boolean {
+    if (this.surfaceRuntime.interaction === undefined) return false
+    for (const view of this.state.scrollViews.values()) if (view.inline !== true) return true
+    return false
+  }
+
+  /**
+   * What pi-tui's native layout of this surface needs before it walks the tree, so that no caller has to render the
+   * surface first. A surface whose lists must fit the viewport fits them through one frame render (memoized, so a lane
+   * that measured this frame pays nothing); any other surface only has a focus move to report.
+   */
+  private prepareNativeLayout(): void {
+    const fitsLists = this.surfaceRuntime.interaction !== undefined && !this.layoutScrolls()
+      && this.state.controls().some(control => control.kind === 'list' || control.kind === 'event' && control.listEntry !== undefined)
+    if (fitsLists) this.renderChecked(this.viewport.columns)
+    else this.reportFocusMove()
+  }
+
+  [LAYOUT_NODE](): LayoutNode {
+    if (!this.surfaceRuntime.current(this.generation)) return { type: 'vstack', entries: [], gap: 0, align: 'stretch' }
+    this.viewport = safeViewport(this.options.getViewport)
+    this.syncEpoch(this.viewport, this.surfaceRuntime.interaction?.revision, this.options.keymap?.revision, this.options.contextHints?.revision?.(), this.options.completionsOpen?.() === true)
+    this.prepareNativeLayout()
+    this.viewport = safeViewport(this.options.getViewport)
+    this.surfaceRuntime.beginAnimationFrame()
+    reconcile(this.state)
+    beginLayoutPass(this.state)
+    return getLayoutNode(this.root) ?? {
+      type: 'vstack',
+      entries: [{ component: this.root, basis: 'auto', grow: 1, shrink: 1 }],
+      gap: 0,
+      align: 'stretch',
+    }
+  }
+
+  private renderFrame(width: number, maxRows: number | undefined): MayflyStatusRenderResult {
+    const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
+    if (!this.surfaceRuntime.current(this.generation)) return { rows: [], overflowed: false }
+    this.runtimeFailure = undefined
+    this.surfaceRuntime.beginAnimationFrame()
+    try {
+      this.state.layoutPass = false
+      this.viewport = maxRows === undefined
+        ? safeViewport(this.options.getViewport)
+        : { columns: safeWidth, rows: maxRows }
+      this.surfaceRuntime.setListRowBudget(undefined)
+      reconcile(this.state)
+      /* A scroll view expanded with Ctrl+E owns the whole frame: the shared
+         layout pass slices the same scroll state the embedded view uses. */
+      const expandedScroll = this.state.expandedKey === undefined ? undefined : this.state.scrollViews.get(this.state.expandedKey)
+      if (this.state.expandedKey !== undefined && expandedScroll === undefined) this.state.expandedKey = undefined
+      if (expandedScroll !== undefined && expandedScroll.inline !== true) {
+        const viewport = this.viewport
+        beginLayoutPass(this.state)
+        try {
+          const hint = glyphRows(this.hintRowsFor?.(safeWidth) ?? [], this.options.components.presentation?.glyphs)
+          const expandedComponent = expandedScroll as unknown as Component
+          /* Semantic scrolls learn the content width from render(); refresh it
+             so anchors written while expanded match the expanded width. */
+          expandedComponent.render(safeWidth)
+          const frame = renderLayoutFrame(expandedComponent, safeWidth, Math.max(1, viewport.rows - hint.length), () => {})
+          const lines = [...frame.lines, ...hint]
+          return { rows: lines.map(row => visibleWidth(row) <= safeWidth ? row : /* layout frames and hint rows are already produced at the safe width */ sliceByColumn(row, 0, safeWidth, true)), overflowed: false }
+        } finally { this.state.layoutPass = false; this.viewport = viewport }
+      }
+      let rows: string[]
+      const constrainedLayout = (): string[] => {
+        const viewport = this.viewport
+        beginLayoutPass(this.state)
+        try { return renderLayoutFrame(this.root, safeWidth, viewport.rows, () => {}).lines }
+        finally { this.state.layoutPass = false; this.viewport = viewport }
+      }
+      // A frame with a scroll view is laid out once; rendering it first would paint rows the layout replaces.
+      if (this.layoutScrolls()) rows = constrainedLayout()
+      else {
+        rows = this.root.render(safeWidth)
+        const hasList = this.state.controls().some(control => control.kind === 'list' || control.kind === 'event' && control.listEntry !== undefined)
+        if (this.surfaceRuntime.interaction !== undefined && hasList && !this.surfaceRuntime.flow) {
+          let budget = this.viewport.rows
+          while (rows.length > this.viewport.rows && budget > 1) {
+            const next = Math.max(1, budget - (rows.length - this.viewport.rows))
+            budget = next
+            this.surfaceRuntime.setListRowBudget(budget)
+            reconcile(this.state)
+            rows = this.root.render(safeWidth)
+          }
+        }
+      }
+      const rowLimit = maxRows ?? (this.surfaceRuntime.flow ? undefined : this.options.bounded || this.surfaceRuntime.interaction !== undefined ? this.viewport.rows : undefined)
+      const severity = { info: 0, success: 1, warning: 2, error: 3 }
+      const notice = this.surfaceRuntime.interaction?.feedbackSnapshot().toSorted((left, right) => severity[left.severity] - severity[right.severity]).at(-1)
+      const feedbackRows = notice === undefined || rowLimit === 1 ? [] : glyphRows([sliceByColumn(
+        joinSpans({ spans: feedbackSpans(notice.severity, sanitizePluginText(notice.message).replace(/[\r\n]+/gu, ' ')) }, this.options.colors),
+        0, safeWidth, true,
+      )], this.options.components.presentation?.glyphs)
+      // Without a row limit the frame is the whole tree at its live length: a lazy document reports an estimate until its
+      // units paint, and a window ending at today's length would cut its last rows.
+      const contentLimit = rowLimit === undefined ? Number.POSITIVE_INFINITY : Math.max(1, rowLimit - feedbackRows.length)
+      const caretRow = findMarkerRow(rows, CURSOR_MARKER)
+      const focusRow = caretRow < 0 ? findMarkerRow(rows, FOCUS_SENTINEL) : caretRow
+      // A focused flow list's cursor marker seeks its own row without walking the list; its owner reveals it in the scroll.
+      this.surfaceRuntime.focusedLine = this.surfaceRuntime.flow && focusRow >= 0 ? focusRow : undefined
+      const pinFrame = rowLimit !== undefined && rows.length > contentLimit && this.node.kind === 'surface'
+        && (this.node.chrome === 'overlay' || this.node.chrome === 'surface')
+      let limited: string[]
+      if (pinFrame && contentLimit > 1) {
+        const innerLength = Math.max(0, rows.length - 2)
+        const innerLimit = Math.max(0, contentLimit - 2)
+        const innerFocus = focusRow > 0 && focusRow < rows.length - 1 ? focusRow - 1 : -1
+        if (innerFocus >= 0 && innerFocus < this.viewportOffset) this.viewportOffset = innerFocus
+        else if (innerFocus >= this.viewportOffset + innerLimit) this.viewportOffset = innerFocus - innerLimit + 1
+        this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, innerLength - innerLimit))
+        limited = [rows[0]!, ...sliceRows(rows, 1 + this.viewportOffset, 1 + this.viewportOffset + innerLimit), rows.at(-1)!, ...feedbackRows]
+      } else {
+        if (focusRow >= 0 && focusRow < this.viewportOffset) this.viewportOffset = focusRow
+        else if (focusRow >= this.viewportOffset + contentLimit) this.viewportOffset = focusRow - contentLimit + 1
+        this.viewportOffset = Math.max(0, Math.min(this.viewportOffset, rows.length - contentLimit))
+        // A windowed tree keeps its window: the slice stays a facade, so the paint below touches only the rows read.
+        limited = concatRows(sliceRows(rows, this.viewportOffset, rowLimit === undefined ? undefined : this.viewportOffset + contentLimit), feedbackRows)
+      }
+      let overflowed = rowLimit !== undefined && rows.length > rowLimit
+      const clampRow = (row: string): string => {
+        if (visibleWidth(row) <= safeWidth) return row
+        overflowed = true
+        return sliceByColumn(row, 0, safeWidth, true)
+      }
+      const rendered = mapRows(limited, clampRow)
+      // Marker reads stay on the sources' seek path: a windowed answer consults the marker positions it already
+      // mapped instead of materializing every row to scan them.
+      const markerAt = (marker: string): number => {
+        const at = findMarkerRow(rows, marker, this.viewportOffset)
+        return at >= this.viewportOffset && at < this.viewportOffset + contentLimit ? at - this.viewportOffset : -1
+      }
+      const inserted = isVirtualRows(limited)
+        ? markerAt(CURSOR_MARKER) >= 0
+        : rendered.some(row => row.includes(CURSOR_MARKER))
+      const sentinelRow = !this.focused || inserted ? -1
+        : isVirtualRows(limited) ? markerAt(FOCUS_SENTINEL)
+          : rendered.findIndex(row => row.includes(FOCUS_SENTINEL))
+      const result = { rows: mapRows(rendered, (row, index) => {
+        if (!this.focused || inserted || index !== sentinelRow) return row.replaceAll(FOCUS_SENTINEL, ' ')
+        return row.replace(FOCUS_SENTINEL, `${CURSOR_MARKER} `).replaceAll(FOCUS_SENTINEL, ' ')
+      }, { markerFree: !inserted && sentinelRow < 0 }), overflowed }
+      return this.runtimeFailure === undefined ? result : { ...result, runtimeFailure: this.runtimeFailure }
+    } catch (error) {
+      const message = renderFailure(error)
+      const rows = errorRows(message, safeWidth, this.options.colors)
+      return { rows: maxRows === undefined ? rows : rows.slice(0, maxRows), overflowed: maxRows !== undefined && rows.length > maxRows, runtimeFailure: message }
+    }
+  }
+
+  /** The focus the last painted frame showed, as a key; `focus-change` is reported when it moves. */
+  private paintedFocus: string | undefined
+  /* pi-tui measures a surface before painting it inside one synchronous
+     pass, so identical renderFrame calls reuse the previous result. The
+     key covers every input the frame reads from outside itself: runtime
+     liveness (a rebind retires this surface), the caller-owned viewport
+     object, the interaction revision, the keymap revision (a key rebind
+     moves buttons and hints), and the renderer animation frame.
+     Internal state changes — focus, input, scroll — all flow
+     through the entry points below, which clear the memo eagerly. */
+  private frameResult: {
+    readonly current: boolean
+    readonly width: number
+    readonly maxRows: number | undefined
+    readonly columns: number
+    readonly rows: number
+    readonly revision: number | undefined
+    readonly keymapRevision: number | undefined
+    readonly localeRevision: number | undefined
+    readonly completions: boolean
+    readonly animationFrame: number
+    readonly result: MayflyStatusRenderResult
+  } | undefined
+
+  /** What a frame reads from outside the surface, the clock aside: when it differs from the last frame's, the epoch moves. */
+  private frameInputs: string | undefined
+
+  /**
+   * Moves the surface epoch when the host viewport, the model revision, the keymap or locale revision, or the
+   * completion list changed since the last frame. Everything inside the surface that can change a row moves the
+   * epoch where it happens.
+   */
+  private syncEpoch(viewport: MayflyUiViewport, revision: number | undefined, keymapRevision: number | undefined, localeRevision: number | undefined, completions: boolean): void {
+    const inputs = `${String(viewport.columns)}x${String(viewport.rows)}|${String(revision)}|${String(keymapRevision)}|${String(localeRevision)}|${String(completions)}`
+    if (inputs === this.frameInputs) return
+    this.frameInputs = inputs
+    this.surfaceRuntime.touch()
+  }
+
+  private renderFrameOnce(width: number, maxRows: number | undefined): MayflyStatusRenderResult {
+    const current = this.surfaceRuntime.current(this.generation)
+    const viewport = safeViewport(this.options.getViewport)
+    const revision = this.surfaceRuntime.interaction?.revision
+    const keymapRevision = this.options.keymap?.revision
+    const localeRevision = this.options.contextHints?.revision?.()
+    const completions = this.options.completionsOpen?.() === true
+    this.syncEpoch(viewport, revision, keymapRevision, localeRevision, completions)
+    const animationFrame = this.surfaceRuntime.animationFrame
+    const cached = this.frameResult
+    if (cached !== undefined
+      && cached.current === current && cached.width === width && cached.maxRows === maxRows
+      && cached.columns === viewport.columns && cached.rows === viewport.rows && cached.revision === revision
+      && cached.keymapRevision === keymapRevision && cached.localeRevision === localeRevision
+      && cached.completions === completions && cached.animationFrame === animationFrame) {
+      return cached.result
+    }
+    const result = this.renderFrame(width, maxRows)
+    // A shell paints the host editor, whose rows change on their own (a completion list that resolves late), so its
+    // frame is painted again every time it is asked for.
+    if (this.editor === undefined) this.frameResult = { current, width, maxRows, columns: viewport.columns, rows: viewport.rows, revision, keymapRevision, localeRevision, completions, animationFrame, result }
+    return result
+  }
+
+  render(width: number): string[] { return this.renderChecked(width).rows }
+
+  renderChecked(width: number, options: MayflyEditorShellRenderOptions = {}): MayflyEditorShellRenderResult {
+    if (options.dryRun !== true) {
+      const rendered = this.renderFrameOnce(width, undefined)
+      this.reportFocusMove()
+      return rendered.runtimeFailure === undefined
+        ? { rows: rendered.rows }
+        : { rows: rendered.rows, runtimeFailure: rendered.runtimeFailure }
+    }
+    // `dryRun` is exposed only by the validated editor-shell result, whose
+    // compiler contract guarantees the injected editor and its one control.
+    const editor = this.editor!
+    const focus = {
+      activeKey: this.state.activeKey,
+      activeGroup: this.state.activeGroup,
+      desiredKey: this.state.desiredKey,
+      desiredGroup: this.state.desiredGroup,
+      editingKey: this.state.editingKey,
+      groupActiveKeys: new Map(this.state.groupActiveKeys),
+      lastIndex: this.state.lastIndex,
+      focused: this.state.focused,
+      layoutPass: this.state.layoutPass,
+      lastTabGroupIndex: this.state.lastTabGroupIndex,
+      expandedKey: this.state.expandedKey,
+      viewport: this.viewport,
+      runtimeFailure: this.runtimeFailure,
+      editorFocused: editor.focused,
+    }
+    try {
+      const rendered = this.renderFrame(width, undefined)
+      return rendered.runtimeFailure === undefined
+        ? { rows: rendered.rows }
+        : { rows: rendered.rows, runtimeFailure: rendered.runtimeFailure }
+    } finally {
+      this.state.activeKey = focus.activeKey
+      this.state.activeGroup = focus.activeGroup
+      this.state.desiredKey = focus.desiredKey
+      this.state.desiredGroup = focus.desiredGroup
+      this.state.editingKey = focus.editingKey
+      this.state.groupActiveKeys.clear(); for (const [key, value] of focus.groupActiveKeys) this.state.groupActiveKeys.set(key, value)
+      this.state.lastIndex = focus.lastIndex
+      this.state.focused = focus.focused
+      this.state.layoutPass = focus.layoutPass
+      this.state.lastTabGroupIndex = focus.lastTabGroupIndex
+      this.state.expandedKey = focus.expandedKey
+      this.viewport = focus.viewport
+      this.runtimeFailure = focus.runtimeFailure
+      editor.focused = focus.editorFocused
+    }
+  }
+
+  focusEditor(): void {
+    this.frameResult = undefined
+    this.surfaceRuntime.touch()
+    if (!this.surfaceRuntime.current(this.generation)) return
+    this.viewport = safeViewport(this.options.getViewport)
+    const controls = this.state.controls()
+    const index = controls.findIndex(control => control.kind === 'editor')
+    this.state.activeKey = controls[index]!.key
+    this.state.activeGroup = controls[index]!.group
+    this.state.desiredKey = controls[index]!.key
+    this.state.desiredGroup = controls[index]!.group
+    this.state.groupActiveKeys.set(controls[index]!.group, controls[index]!.key)
+    this.state.lastIndex = index
+  }
+
+  /** Render a passive status surface with a fixed row budget and overflow signal. */
+  renderStatus(width: number, maxRows: number): MayflyStatusRenderResult { return this.renderFrameOnce(width, maxRows) }
+
+  private controlRectangles(controls: readonly ControlDescriptor[]): Map<string, LayoutRect> {
+    const rectangles = new Map<string, LayoutRect>()
+    /* input returns before geometry lookup when no control exists. */
+    if (controls.length === 0) return rectangles
+    const width = Math.max(1, this.viewport.columns)
+    // Bounded and interaction surfaces size geometry from the viewport;
+    // only the passive inline case needs a measurement render (UX-34).
+    const height = this.options.bounded || this.surfaceRuntime.interaction !== undefined
+      ? Math.max(1, this.viewport.rows)
+      : Math.max(1, this.root.render(width).length)
+    const previousLayoutPass = this.state.layoutPass
+    beginLayoutPass(this.state)
+    try {
+      /* pi-tui does not request repaint during synchronous measurement. */
+      const frame = renderLayoutFrame(this.root, width, height, () => {})
+      const boxes = layoutBoxes(frame.root)
+      const byComponent = new Map<Component, ControlDescriptor[]>()
+      for (const control of controls) {
+        const binding = this.state.controlBindings.get(control.key)
+        if (binding === undefined || !boxes.has(binding.component)) continue
+        const siblings = byComponent.get(binding.component) ?? []
+        siblings.push(control)
+        byComponent.set(binding.component, siblings)
+      }
+      for (const [component, siblings] of byComponent) {
+        const rect = boxes.get(component)!
+        for (const [index, control] of siblings.entries()) {
+          const binding = this.state.controlBindings.get(control.key)!
+          rectangles.set(control.key, divideRect(rect, binding.axis, index, siblings.length))
+        }
+      }
+    } catch { /* a missing layout box falls back to semantic group navigation */ }
+    finally { this.state.layoutPass = previousLayoutPass }
+    return rectangles
+  }
+
+  /** The key being handled found nothing to do: an arrow with no control in its direction. */
+  private inputIdle = false
+
+  /**
+   * The epoch moves when the key has been handled, not before: a key that looks for a neighbor reads the rows the last
+   * frame painted, and a key that found nothing to do leaves every one of them valid, so holding an arrow at the end of
+   * a list costs neither a layout of fresh rows nor a frame of them.
+   */
+  handleInput(data: string): void {
+    this.frameResult = undefined
+    if (!this.surfaceRuntime.current(this.generation)) return
+    this.inputIdle = false
+    try {
+      this.viewport = safeViewport(this.options.getViewport)
+      if (this.state.expandedKey !== undefined && !this.state.scrollViews.has(this.state.expandedKey)) this.state.expandedKey = undefined
+      const controls = reconcile(this.state)
+      const active = controls[this.state.lastIndex]
+      const runtimeOptions = this.runtimeOptions
+      const grammar = keyGrammar(grammarStateFor(this.state, runtimeOptions, controls, active, this.mode, this.escapeLabel))
+      const binding = grammar.find(candidate => matchesBinding(candidate.match, data, this.options.keymap))
+      /* every grammar ends with a catch-all binding. */
+      if (binding === undefined) return
+      this.apply(binding.intent, data, controls, active)
+    } finally {
+      if (!this.inputIdle) this.surfaceRuntime.touch()
+    }
+  }
+
+  private moveTo(index: number, within: readonly ControlDescriptor[]): void {
+    const control = within[index]
+    /* every caller resolves an entry from the current control set. */
+    if (control === undefined) return
+    const tabGroups = controlGroups(within).filter(group => group.kind === 'tabs')
+    this.state.setEditing(undefined)
+    this.state.lastIndex = index
+    this.state.activeKey = control.key
+    this.state.activeGroup = control.group
+    this.state.desiredKey = control.key
+    this.state.desiredGroup = control.group
+    this.state.groupActiveKeys.set(control.group, control.key)
+    const tabIndex = tabGroups.findIndex(group => group.id === control.group)
+    if (tabIndex >= 0) this.state.lastTabGroupIndex = tabIndex
+    reconcile(this.state)
+    this.surfaceRuntime.interaction?.focusControl(control.identity as UiControlAddress)
+    try { this.options.onFocusChange?.(control.identity) } catch { /* focus observers cannot escape input */ }
+  }
+
+  private moveGroup(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor): void {
+    const groups = controlGroups(controls)
+    const current = groups.findIndex(group => group.id === active.group)
+    /* a non-tab active control belongs to one content group above. */
+    if (current < 0) return
+    const sibling = controls[this.state.lastIndex + delta]
+    if (sibling?.group === active.group && !(active.kind === 'event' && (active.role === 'tab' || active.role === 'list-single' || active.role === 'list-multiple'))) {
+      this.moveTo(this.state.lastIndex + delta, controls)
+      return
+    }
+    const target = groups[current + delta]
+    if (target === undefined) return
+    this.moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)), controls)
+  }
+
+  /** Focus levels (`ui.focus-prev`/`ui.focus-next`): the previous or next control group, without wrapping. */
+  private focusLevel(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor): void {
+    const groups = controlGroups(controls)
+    const target = groups[groups.findIndex(group => group.id === active.group) + delta]
+    if (target !== undefined) this.moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)), controls)
+  }
+
+  /** Select one list row in both the frontend choice and the renderer roving focus. */
+  private focusRow(node: MayflyListNode, itemId: string, pagePath: MayflyPagePath): void {
+    const key = controlKey('list', node.id, itemId, pagePath)
+    const group = controlGroup('list', node.id, pagePath)
+    this.state.setEditing(undefined)
+    this.state.activeKey = key
+    this.state.activeGroup = group
+    this.state.desiredKey = key
+    this.state.desiredGroup = group
+    this.state.groupActiveKeys.set(group, key)
+    const updated = reconcile(this.state)
+    this.state.lastIndex = updated.findIndex(control => control.key === key)
+    this.surfaceRuntime.interaction?.focusControl({ pagePath, controlId: node.id, itemId })
+    try { this.options.onFocusChange?.(focusIdentity(node.id, itemId, pagePath)) } catch { /* focus observers cannot escape input */ }
+  }
+
+  /** Commit an in-progress text edit or picker before focus leaves the field. */
+  private commitEditing(active: ControlDescriptor): void {
+    if (active.kind === 'text' && this.state.editingKey === active.key) {
+      this.state.setValue(active.key, this.state.textEditor(active.field, active.key).getExpandedText())
+      this.state.setEditing(undefined)
+    } else if (active.kind === 'select' && this.state.editingKey === active.key) this.applyPicker(active)
+  }
+
+  private applyPicker(active: Extract<ControlDescriptor, { readonly kind: 'select' }>): void {
+    const address = this.surfaceRuntime.fieldAddress(active.key)!
+    const model = this.surfaceRuntime.interaction
+    const picker = model?.form(address)?.fields[address.fieldId]?.picker
+    if (active.field.kind === 'select' && picker?.focusedId !== undefined) {
+      model!.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'select', ids: [picker.focusedId] } })
+    }
+    this.state.finishSelectEditing(active.field, active.key, false)
+  }
+
+  private switchTab(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined): void {
+    const onStrip = active?.kind === 'event' && active.role === 'tab'
+    const group = selectedTabGroup(controlGroups(controls), active, this.state.lastTabGroupIndex)!
+    /* tab groups register only tab-change event controls. */
+    const tabEvent = (control: ControlDescriptor): Extract<MayflyUiEvent, { readonly kind: 'tab-change' }> | undefined =>
+      control.kind === 'event' && control.event.kind === 'tab-change' ? control.event : undefined
+    const entries = group.entries.filter(entry => tabEvent(entry.control) !== undefined)
+    const anchor = tabEvent(entries[0]!.control)!
+    const currentId = this.surfaceRuntime.activeTab({ pagePath: anchor.pagePath, controlId: anchor.controlId })
+    const currentIndex = entries.findIndex(entry => tabEvent(entry.control)?.tabId === currentId)
+    const target = entries[currentIndex + delta]
+    const targetEvent = target === undefined ? undefined : tabEvent(target.control)
+    if (targetEvent === undefined) return
+    this.state.emit(targetEvent)
+    const refreshed = reconcile(this.state)
+    const stripIndex = refreshed.findIndex(control => control.kind === 'event' && control.role === 'tab' && tabEvent(control)?.tabId === targetEvent.tabId)
+    const refreshedGroups = controlGroups(refreshed)
+    const content = onStrip ? undefined : refreshedGroups.slice(refreshedGroups.findIndex(candidate => candidate.id === group.id) + 1).find(candidate => candidate.kind === 'content')
+    // The strip remembers the tab it now shows, so a later return to it (`Tab`, `←`, `Esc`) lands on that tab.
+    this.state.groupActiveKeys.set(group.id, refreshed[stripIndex]!.key)
+    this.moveTo(content === undefined ? stripIndex : groupTarget(refreshed, content.id, this.state.groupActiveKeys.get(content.id)), refreshed)
+  }
+
+  private escape(step: EscapeStep, active: ControlDescriptor | undefined): void {
+    switch (step) {
+      case 'cancel': {
+        const select = active as Extract<ControlDescriptor, { readonly kind: 'select' }>
+        this.state.finishSelectEditing(select.field, select.key, true)
+        return
+      }
+      case 'done': this.commitEditing(active!); return
+      case 'end-search': {
+        const node = (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry?.node ?? (active as Extract<ControlDescriptor, { readonly kind: 'list' }>).node
+        this.surfaceRuntime.interaction!.updateChoice({ pagePath: this.surfaceRuntime.pagePath(node), controlId: node.id }, { kind: 'stop-search' })
+        return
+      }
+      case 'back': this.surfaceRuntime.interaction!.back(); return
+      case 'home': {
+        const controls = this.state.controls()
+        this.moveTo(groupTarget(controls, homeGroup(controls)!, this.state.groupActiveKeys.get(homeGroup(controls)!)), controls)
+        return
+      }
+      /* an expanded view resolves Escape through its own collapse binding. */
+      case 'collapse': this.state.expandedKey = undefined; return
+      case 'cancel-work': {
+        // The grammar offers this step only while a loader's cancel is among the controls.
+        const work = this.state.controls().find(candidate => candidate.kind === 'event' && candidate.work === true) as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        this.state.emit(work.event)
+        return
+      }
+      case 'close':
+      case 'leave':
+      case 'reject':
+      case 'no':
+      case 'surface-back':
+      case 'surface-cancel': this.closeSurface(); return
+    }
+  }
+
+  /** The outermost Escape: the cancel action a form declared closes the surface; otherwise the host decides. */
+  private closeSurface(): void {
+    const cancel = this.surfaceRuntime.interaction?.formCancel()
+    if (cancel === undefined) this.options.onUnhandledEscape?.()
+    else this.surfaceRuntime.interaction!.invoke(cancel.actionId, cancel.pagePath)
+  }
+
+  private selectCycle(active: Extract<ControlDescriptor, { readonly kind: 'select' }>, delta: -1 | 1): void {
+    const options = (this.state.field(active.field, active.key) as SelectField).options.filter(option => option.disabled !== true)
+    const value = this.state.fieldValue(active.field, active.key)
+    const index = options.findIndex(option => option.id === value)
+    /* An unset or unavailable value starts from the edge the arrow points into. */
+    const target = index < 0 ? (delta > 0 ? options[0] : options.at(-1)) : options[index + delta]
+    if (target !== undefined) this.state.setValue(active.key, target.id)
+  }
+
+  private numbered(data: string, active: ControlDescriptor): void {
+    const node = (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry!.node
+    const pagePath = this.surfaceRuntime.pagePath(node)
+    const address = { pagePath, controlId: node.id }
+    const choice = this.surfaceRuntime.interaction?.choice(address)
+    const index = choice === undefined ? Number(data) - 1 : choiceVisibleIndex(choice, Number(data) - 1)
+    const item = index === undefined ? undefined : admittedListItem(node.items, index)
+    if (item === undefined || item.disabled === true) return
+    this.surfaceRuntime.interaction?.updateChoice(address, { kind: 'focus', id: item.id })
+    this.focusRow(node, item.id, pagePath)
+    if (node.numbered !== true) return
+    const selected = choice?.selectedIds ?? listSelectedIds(node)
+    this.state.emit(node.mode === 'multiple'
+      ? { kind: 'selection-toggle', pagePath, controlId: node.id, selectedIds: selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id] }
+      : { kind: 'selection-accept', pagePath, controlId: node.id, selectedIds: [item.id] })
+  }
+
+  /** @returns whether focus moved; a caller that changed nothing before it may then call the key idle. */
+  private navigate(direction: 'up' | 'down' | 'left' | 'right', controls: readonly ControlDescriptor[], active: ControlDescriptor): boolean {
+    const group = controlGroups(controls).find(candidate => candidate.id === active.group)
+    const matchingAxis = active.navigation === 'horizontal'
+      ? direction === 'left' || direction === 'right'
+      : active.navigation === 'vertical' && (direction === 'up' || direction === 'down')
+    let target: number | undefined
+    if (matchingAxis && group !== undefined) {
+      const current = group.entries.findIndex(entry => entry.index === this.state.lastIndex)
+      target = group.entries[current + (direction === 'left' || direction === 'up' ? -1 : 1)]?.index
+    }
+    // Along its own axis the last control of the only group has no neighbor, so no layout is needed to look for one.
+    const alone = matchingAxis && group !== undefined && group.entries.length === controls.length
+    if (target === undefined && !alone) target = nearestDirectionalControl(controls, this.controlRectangles(controls), this.state.lastIndex, direction)
+    if (target === undefined) return false
+    this.moveTo(target, controls)
+    return true
+  }
+
+  /** One key of the focused prompt: a change of its draft through the model, or the key itself for its editor. */
+  private promptKey(operation: PromptOperation, data: string, prompt: Extract<ControlDescriptor, { readonly kind: 'prompt' }>): void {
+    const model = this.surfaceRuntime.interaction!
+    const address = { pagePath: this.surfaceRuntime.pagePath(prompt.node), controlId: prompt.node.id }
+    // Any key but the second press of Backspace puts a selected token back.
+    if (operation !== 'backspace') model.updatePrompt(address, { kind: 'deselect' })
+    switch (operation) {
+      case 'submit': model.updatePrompt(address, { kind: 'submit' }); return
+      case 'backspace': model.updatePrompt(address, { kind: 'backspace' }); return
+      case 'recall-older': model.updatePrompt(address, { kind: 'recall', direction: 'older' }); return
+      case 'recall-newer': model.updatePrompt(address, { kind: 'recall', direction: 'newer' }); return
+      case 'complete-previous': model.updatePrompt(address, { kind: 'complete-move', delta: -1 }); return
+      case 'complete-next': model.updatePrompt(address, { kind: 'complete-move', delta: 1 }); return
+      case 'complete-accept': model.updatePrompt(address, { kind: 'complete-accept' }); return
+      case 'complete-dismiss': model.updatePrompt(address, { kind: 'complete-dismiss' }); return
+      case 'newline':
+      case 'type': {
+        // The editor shows what the model holds before it takes the key, so a recall and an edit never disagree.
+        const editor = this.surfaceRuntime.promptEditor(prompt.key, address)
+        editor.sync(model.prompt(address)!.text)
+        editor.focused = this.state.focused
+        if (operation === 'newline') editor.newline()
+        else editor.handleInput(data)
+      }
+    }
+  }
+
+  private apply(intent: GrammarIntent, data: string, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined): void {
+    const model = this.surfaceRuntime.interaction
+    const listNode = active?.kind === 'list' ? active.node : active?.kind === 'event' ? active.listEntry?.node : undefined
+    const listAddress = listNode === undefined ? undefined : { pagePath: this.surfaceRuntime.pagePath(listNode), controlId: listNode.id }
+    switch (intent.kind) {
+      case 'editor': this.editor?.handleInput?.(data); return
+      case 'swallow': return
+      case 'collapse': this.state.expandedKey = undefined; return
+      case 'expand': this.state.expandedKey = active!.key; return
+      case 'scroll': {
+        const scroll = this.state.scrollViews.get(this.state.expandedKey ?? active!.key)
+        /* compiler registration creates both descriptors atomically. */
+        if (scroll !== undefined) scrollBy(scroll, intent.movement)
+        return
+      }
+      case 'escape': this.escape(intent.step, active); return
+      case 'close': this.closeSurface(); return
+      case 'rail-back': {
+        const rail = railGroupFor(controls, this.state.lastIndex)
+        /* the grammar binds `←` to the rail only while the surface has one. */
+        if (rail !== undefined) this.moveTo(groupTarget(controls, rail, this.state.groupActiveKeys.get(rail)), controls)
+        return
+      }
+      case 'keyed': this.state.emit(intent.control < controls.length ? (controls[intent.control] as Extract<ControlDescriptor, { readonly kind: 'event' }>).event : this.state.accelerators()[intent.control - controls.length]!.event); return
+      case 'numbered': this.numbered(data, active!); return
+      case 'tab-switch': this.switchTab(intent.delta, controls, active); return
+      case 'prompt': this.promptKey(intent.op, data, active as Extract<ControlDescriptor, { readonly kind: 'prompt' }>); return
+      case 'slider-step':
+      case 'slider-edge':
+      case 'slider-unpin':
+      case 'slider-accept': {
+        const slider = active as Extract<ControlDescriptor, { readonly kind: 'slider' }>
+        const address = { pagePath: this.surfaceRuntime.pagePath(slider.node), controlId: slider.node.id }
+        model?.updateSlider(address, intent.kind === 'slider-step' ? { kind: 'step', delta: intent.delta } : intent.kind === 'slider-edge' ? { kind: 'edge', end: intent.end } : intent.kind === 'slider-unpin' ? { kind: 'unpin' } : { kind: 'accept' })
+        return
+      }
+      case 'row-input': {
+        const row = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        const item = admittedListItem(row.listEntry!.node.items, row.listEntry!.index)!
+        const text = model!.choice(listAddress!)?.inputs?.[item.id] ?? ''
+        // A paste arrives in one chunk; control bytes and bracketed-paste markers are not text.
+        const typed = data.replace(/\x1b\[20[01]~/gu, '').replace(/[\x00-\x1f\x7f-\x9f]/gu, '')
+        const next = intent.op === 'clear' ? '' : intent.op === 'backspace' ? Array.from(text).slice(0, -1).join('') : `${text}${typed}`
+        model!.updateChoice(listAddress!, { kind: 'input', id: item.id, text: next })
+        return
+      }
+      case 'search-clear': {
+        this.surfaceRuntime.search(listNode!).clear()
+        model!.updateChoice(listAddress!, { kind: 'clear-search' })
+        return
+      }
+      case 'search-start': model!.updateChoice(listAddress!, { kind: 'query', query: model!.choice(listAddress!)!.query }); return
+      case 'search-type': {
+        // The grammar routes only text, Backspace, and paste chunks here, all of which the search input accepts.
+        const search = this.surfaceRuntime.search(listNode!)
+        search.handleInput(data, data === '\x7f' || data === '\b')
+        model!.updateChoice(listAddress!, { kind: 'query', query: search.text })
+        return
+      }
+    }
+    /* every remaining intent is bound only while a control holds focus. */
+    if (active === undefined) return
+    switch (intent.kind) {
+      case 'group': this.commitEditing(active); this.moveGroup(intent.delta, reconcile(this.state), active); return
+      case 'focus-level': this.focusLevel(intent.delta, controls, active); return
+      case 'text-newline': this.state.textEditor((active as Extract<ControlDescriptor, { readonly kind: 'text' }>).field, active.key).insertText('\n'); return
+      case 'text-enter': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        const editor = this.state.textEditor(text.field, text.key)
+        this.state.setValue(text.key, editor.getExpandedText())
+        const submits = formEnterAction(text.form, text.field)
+        this.state.setEditing(undefined)
+        if (submits === undefined) {
+          // The field just left editing: the neighbor is looked for among rows painted after that, not before.
+          this.surfaceRuntime.touch()
+          this.navigate('down', controls, active)
+        }
+        else model?.invoke(submits, text.identity.pagePath!)
+        return
+      }
+      case 'complete': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        const editor = this.state.textEditor(text.field, text.key)
+        // The grammar binds `Tab` to this only while a suggestion matches.
+        const hit = matchingSuggestions((text.field as Exclude<TextField, { readonly kind: 'number' }>).suggestions, editor.getExpandedText())[0]!
+        editor.setText(hit)
+        this.state.setValue(text.key, hit)
+        return
+      }
+      case 'number-step': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        const next = stepNumber(text.field as Extract<MayflyFormField, { readonly kind: 'number' }>, String(this.state.fieldValue(text.field, text.key)), intent.delta)
+        if (next !== undefined) this.state.setValue(text.key, next)
+        else {
+          // At its lower limit a number gives `←` to the rail when the surface has one, else to the control beside it.
+          const rail = intent.delta < 0 ? railGroupFor(controls, this.state.lastIndex) : undefined
+          if (rail !== undefined) this.moveTo(groupTarget(controls, rail, this.state.groupActiveKeys.get(rail)), controls)
+          else this.navigate(intent.delta < 0 ? 'left' : 'right', controls, active)
+        }
+        return
+      }
+      case 'form-save': {
+        // The grammar binds `ui.save` only where the form has a target to run.
+        const form = (active as Extract<ControlDescriptor, { readonly kind: 'text' | 'select' | 'toggle' | 'submit' }>).form
+        const pagePath = active.identity.pagePath!
+        if (this.state.editingKey === active.key) this.commitEditing(active)
+        model?.invoke(formSaveTarget(form, pagePath, model)!, pagePath)
+        return
+      }
+      case 'text-type': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        if (this.state.field(text.field, text.key).disabled === true) return
+        const editor = this.state.textEditor(text.field, text.key)
+        editor.focused = this.state.focused
+        editor.handleInput?.(data)
+        return
+      }
+      case 'text-begin': {
+        const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
+        this.state.setEditing(text.key)
+        if (startsText(data)) {
+          const editor = this.state.textEditor(text.field, text.key)
+          editor.focused = this.state.focused
+          editor.handleInput?.(data)
+        }
+        return
+      }
+      case 'enter-submits': {
+        const field = active as Extract<ControlDescriptor, { readonly kind: 'text' | 'select' | 'toggle' }>
+        model?.invoke(formEnterAction(field.form, field.field)!, field.identity.pagePath!)
+        return
+      }
+      case 'select-cycle': this.selectCycle(active as Extract<ControlDescriptor, { readonly kind: 'select' }>, intent.delta); return
+      case 'field-reset': {
+        const address = this.surfaceRuntime.fieldAddress(active!.key)!
+        model!.updateForm(address, { kind: 'reset', fieldId: address.fieldId })
+        return
+      }
+      case 'picker-open': {
+        const select = active as Extract<ControlDescriptor, { readonly kind: 'select' }>
+        this.state.beginSelectEditing(select.field, select.key)
+        return
+      }
+      case 'picker-move':
+      case 'picker-toggle': {
+        const address = this.surfaceRuntime.fieldAddress(active.key)!
+        const picker = model?.form(address)?.fields[address.fieldId]?.picker
+        /* an open picker always has a frontend model. */
+        if (picker === undefined) return
+        if (intent.kind === 'picker-move') model!.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'move', direction: intent.delta, count: 1 } })
+        else if (picker.focusedId !== undefined) model!.updateForm(address, { kind: 'picker', fieldId: address.fieldId, intent: { kind: 'toggle', id: picker.focusedId } })
+        return
+      }
+      case 'picker-apply': this.applyPicker(active as Extract<ControlDescriptor, { readonly kind: 'select' }>); return
+      case 'tab-move': {
+        const group = controlGroups(controls).find(candidate => candidate.id === active.group)!
+        const current = group.entries.findIndex(entry => entry.index === this.state.lastIndex)
+        const target = group.entries[current + intent.delta]
+        if (target === undefined) return
+        this.moveTo(target.index, controls)
+        this.state.emit((target.control as Extract<ControlDescriptor, { readonly kind: 'event' }>).event)
+        return
+      }
+      case 'tab-descend': {
+        const groups = controlGroups(controls)
+        const target = groups[groups.findIndex(group => group.id === active.group) + 1]
+        if (target !== undefined) this.moveTo(groupTarget(controls, target.id, this.state.groupActiveKeys.get(target.id)), controls)
+        return
+      }
+      case 'list-move': {
+        const target = this.surfaceRuntime.moveList(listNode!, intent.movement, Math.max(1, Math.min(10, this.viewport.rows - 1)))
+        if (target === undefined || target.index === (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry!.index) {
+          // Past the first or last row the arrow leaves the list for the control above or below it.
+          if (intent.movement === 'up' || intent.movement === 'down') this.inputIdle = !this.navigate(intent.movement, controls, active)
+          return
+        }
+        this.focusRow(listNode!, target.item.id, listAddress!.pagePath)
+        return
+      }
+      case 'segment': {
+        const row = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        model?.updateChoice(listAddress!, { kind: 'segment', id: admittedListItem(listNode!.items, row.listEntry!.index)!.id, direction: intent.delta })
+        return
+      }
+      case 'branch': {
+        const row = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        const item = admittedListItem(listNode!.items, row.listEntry!.index)!
+        const choice = model?.choice(listAddress!)
+        const expanded = choice?.expandedIds.includes(item.id) === true
+        // Space toggles; Right opens a closed parent; Left closes an open one.
+        const opens = choice?.treeIndex?.parents.has(item.id) === true || (item.body !== undefined && item.bodyAlways !== true)
+        const toggle = intent.expand === undefined ? true : intent.expand ? !expanded && opens : expanded
+        if (toggle) model?.updateChoice(listAddress!, { kind: 'expand', id: item.id })
+        return
+      }
+      case 'unpin': {
+        const row = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
+        model?.updateChoice(listAddress!, { kind: 'unpin', id: admittedListItem(listNode!.items, row.listEntry!.index)!.id })
+        return
+      }
+      case 'branch-all': model?.updateChoice(listAddress!, { kind: intent.expand ? 'expand-all' : 'collapse-all' }); return
+      case 'accept':
+        if (active.kind === 'list') this.state.emit({ kind: 'selection-accept', pagePath: active.identity.pagePath!, controlId: active.node.id, selectedIds: model?.choice(listAddress!)?.selectedIds ?? [] })
+        else this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).event)
+        return
+      case 'commit': this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).commitEvent!); return
+      case 'toggle-row': this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).event); return
+      case 'navigate': this.inputIdle = !this.navigate(intent.direction, controls, active); return
+      case 'activate':
+        if (active.kind === 'field-action') {
+          model?.updateForm(active.address, active.action.intent)
+          model?.focusControl({ pagePath: active.address.pagePath, controlId: active.address.fieldId })
+          this.restoreFocusIdentity({ pagePath: active.address.pagePath, controlId: active.address.fieldId })
+        } else if (active.kind === 'toggle') this.state.setValue(active.key, !this.state.fieldValue(active.field, active.key))
+        else if (active.kind === 'submit') model?.invoke(active.form.submitActionId!, active.identity.pagePath!)
+        else this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).event)
+        return
+    }
+  }
+
+  invalidate(): void {
+    this.frameResult = undefined
+    this.surfaceRuntime.touch()
+    if (this.surfaceRuntime.current(this.generation)) this.root.invalidate?.()
+  }
+}
+
+function admittedSurface(node: CompilableNode, options: MayflyUiCompilerOptions, mode: CompilerMode, editor?: MayflyEditor, surfaceRuntime?: MayflyUiSurfaceRuntime, contextKeyHints = false, contextEscapeHint?: EscapeLabel): CompiledSurface {
+  const rollback = surfaceRuntime?.checkpoint()
+  try { return new CompiledSurface(node, options, mode, editor, surfaceRuntime, contextKeyHints && !(node.kind === 'surface' && node.hint === 'none'), surfaceEscape(node, contextEscapeHint)) }
+  catch (error) { rollback?.(); throw error }
+}
+
+/** Validate first, then compile one canonical UI tree without a bypass path. */
+export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOptions): MayflyUiCompileResult {
+  const admitted = validateMayflyUiNode(value, options.admission)
+  if (!admitted.ok) {
+    return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
+  }
+  try {
+    const contextKeyHints = options.contextHints?.enabled === true
+    const contextEscapeHint = options.onUnhandledEscape === undefined ? undefined : 'close'
+    const surface = admittedSurface(admitted.value, options, 'ui', undefined, undefined, contextKeyHints, contextEscapeHint)
+    const hasControls = surface.hasControls()
+    const focusTarget = hasControls || (contextKeyHints && options.contextHints?.focusWithoutControls === true) ? surface : null
+    return { ok: true, value: { node: admitted.value, component: surface, focusTarget } }
+  } catch {
+    const message = 'Mayfly UI compilation failed safely'
+    return { ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message, errorComponent: new ErrorComponent(message, options.colors) }
+  }
+}
+
+/** Compile one validated projection into a bridge-owned persistent runtime. */
+export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurfaceCompilerOptions): MayflyUiCompileResult {
+  const admitted = value !== null && value === options.surfaceRuntime.interaction?.node
+    ? { ok: true as const, value: value as MayflyUiNode } : validateMayflyUiNode(value, options.admission)
+  if (!admitted.ok) {
+    return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
+  }
+  try {
+    const contextEscapeHint = options.onUnhandledEscape === undefined ? undefined : options.escapeHint ?? 'close'
+    let node = admitted.value
+    if (options.title !== undefined) {
+      if (node.kind === 'surface' && node.title === undefined) {
+        const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } })
+        if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
+        node = { ...node, title: frame.value.title! }
+      } else if (node.kind !== 'surface') {
+        const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } })
+        if (!frame.ok || frame.value.kind !== 'surface') throw new Error('invalid surface title')
+        node = { ...frame.value, child: node }
+      }
+    }
+    const surface = admittedSurface(node, options, 'ui', undefined, options.surfaceRuntime, options.contextHints?.rows !== false, contextEscapeHint)
+    const hasControls = surface.hasControls()
+    const focusTarget = hasControls || options.contextHints?.focusWithoutControls === true ? surface : null
+    return { ok: true, value: { node: admitted.value, component: surface, focusTarget } }
+  } catch {
+    const message = 'Mayfly UI compilation failed safely'
+    return { ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message, errorComponent: new ErrorComponent(message, options.colors) }
+  }
+}
+
+/** Validate an editor shell, then compile it around the exact injected engine. */
+export function compileMayflyEditorShellNode(value: unknown, options: MayflyEditorShellCompilerOptions): MayflyEditorShellCompileResult {
+  const admitted = validateMayflyEditorShellNode(value, options.admission)
+  if (!admitted.ok) {
+    return { ok: false, code: admitted.code, message: admitted.message, errorComponent: new ErrorComponent(admitted.message, options.colors) }
+  }
+  try {
+    const surface = admittedSurface(admitted.value, options, 'editor', options.editor)
+    return { ok: true, value: { node: admitted.value, component: surface, focusTarget: surface } }
+  } catch {
+    const message = 'Mayfly editor shell compilation failed safely'
+    return { ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message, errorComponent: new ErrorComponent(message, options.colors) }
+  }
+}

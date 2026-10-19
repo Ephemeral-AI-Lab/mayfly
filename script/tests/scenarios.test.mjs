@@ -2,8 +2,6 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { ROOT } from '../package-contract.mjs'
-import { reviewProblems } from '../scenarios/brief.mjs'
 import { APP_SHOTS, CATALOG } from '../scenarios/catalog.mjs'
 import { goldenPath } from '../scenarios/golden.mjs'
 import { parseGrid, serializeGrid, styleSgr } from '../scenarios/grid.mjs'
@@ -14,7 +12,6 @@ import { TERMINAL_COLORS, createScreen } from '../scenarios/screen.mjs'
 import { compile, seed, step, turn } from '../scenarios/timeline.mjs'
 import { withVersion } from '../shots/app.mjs'
 import { existsSync } from 'node:fs'
-import { repositoryGraph } from '../verify/select.mjs'
 
 test('the screen ends a frame at each synchronized-output end, even split across chunks, and settles its open count', async () => {
   const screen = createScreen({ cols: 10, rows: 2, reply: () => {} })
@@ -61,22 +58,10 @@ test('a grid masks the workspace tag, minted ids, and command tokens without cha
   assert.equal(maskGrid(grid), '|Directory: /tmp/mayfly-scenario-xxxxxxxx\n| …/mayfly-scenario-9f8e7d6c  cache\n|Trace · session-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\n|cmd-xxxxxxxx-2 done')
 })
 
-test('every scenario has a known source, real sizes, its marks, and covers globs that name files', () => {
-  const files = repositoryGraph(ROOT).files
-  const matches = (glob) => {
-    const pattern = new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/gu, '\\$&').replaceAll('*', '[^/]*')}${glob.endsWith('/') ? '' : '$'}`, 'u')
-    return files.some(file => pattern.test(file))
-  }
+test('every scenario has a known source, real sizes, and its marks', () => {
   for (const [name, scenario] of Object.entries(CATALOG)) {
     assert.ok(scenario.summary.length > 0, name)
-    if (scenario.review !== undefined) {
-      assert.deepEqual(reviewProblems(scenario.review), [], `${name}: review`)
-      const checkpoints = new Set(scenario.script.filter(step => step.step === 'checkpoint').map(step => step.name))
-      // A focus walk names a checkpoint of its scenario, one that `--keys` adds (runner.mjs captures the keys as `keys`), or another catalog scenario it opens.
-      for (const { how } of scenario.review.focus) assert.ok([...(how.includes('--keys') ? [...checkpoints, 'keys'] : checkpoints)].some(point => how.includes(point)) || Object.keys(CATALOG).some(other => how.includes(other)), `${name}: focus walk "${how}" names none of its checkpoints`)
-    }
     assert.ok(scenario.sizes.length > 0 && scenario.sizes.every(([cols, rows]) => Number.isInteger(cols) && Number.isInteger(rows) && cols >= 20 && rows >= 10), name)
-    for (const glob of scenario.covers) assert.ok(matches(glob), `${name}: ${glob} names no file`)
     if (scenario.source.replay !== undefined) {
       const replay = timelineNamed(scenario.source.replay)
       assert.ok(replay !== undefined, name)

@@ -78,7 +78,7 @@
 
 ## 暂缓的命令
 
-以下命令在参照系产品（kimi/Claude Code）中存在，Mayfly 侧**有意暂缓**——或等上游开出原语，或等真实需求出现（完整裁定见仓库 roadmap 挂起区）：
+以下命令在参照系产品（kimi/Claude Code）中存在，Mayfly 侧**有意暂缓**——或等上游开出原语，或等真实需求出现：
 
 - `/reload` `/tasks` —— 顺延（任务管理走 profile/config 文件）
 - `/archive` `/delete` —— 上游 persistence 暂无删除/归档原语

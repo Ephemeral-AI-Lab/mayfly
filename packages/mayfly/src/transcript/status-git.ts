@@ -29,7 +29,6 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-working-directory'
-import type { SessionFactsService } from './session-facts.ts'
 import { SHED, shedNode } from './status-shed.ts'
 import { sessionDirectory } from '../internal/session-directory.ts'
 
@@ -288,7 +287,7 @@ export function formatGitBadge(status: GitBadgeStatus | GitUnknownBadgeStatus): 
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
-  const facts = ctx.get('mayflySessionFacts') as SessionFactsService
+  const facts = ctx.mayflySessionFacts
   let agent: Agent | null = facts.currentAgent
   const directory = (): string => agent === null ? process.cwd() : sessionDirectory(ctx, agent.session)
   let cwd = directory()

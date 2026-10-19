@@ -7,14 +7,14 @@ import { ui } from '../../../ui/src/index.ts'
 import * as provider from '../../../ui/src/provider.ts'
 import type { MayflyUiEventHandlers, MayflyUiNode } from '../../../ui/src/contracts.ts'
 import * as frontend from '../../src/frontend/index.ts'
-import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime, type MayflyUiCompilerOptions } from '../../src/core/ui/compile/ui-compiler.ts'
 import type { MayflyComponents, MayflyKeymap } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { ScrollView } from '@earendil-works/pi-tui'
 import type { LayoutBox } from '@earendil-works/pi-tui/dist/layout.js'
-import { ACTION_CANCEL, ACTION_SUBMIT } from '../../src/core/key-actions.ts'
+import { ACTION_CANCEL, ACTION_SUBMIT } from '../../src/core/keys/key-actions.ts'
 import { flush, plainBlock, plainColors, plainText } from '../helpers.ts'
 
 const cleanups: (() => Promise<unknown>)[] = []
@@ -26,7 +26,7 @@ const scrollViews = (box: LayoutBox): ScrollView[] => [
   ...box.children.flatMap(scrollViews),
 ]
 
-async function setup(node: MayflyUiNode, onEvent?: MayflyUiEventHandlers, screenMode: 'main' | 'alternate' = 'alternate', keymap?: MayflyKeymap, contextHints?: MayflyUiCompilerOptions['contextHints']) {
+async function setup(node: MayflyUiNode, onEvent?: MayflyUiEventHandlers, bounded = true, keymap?: MayflyKeymap, contextHints?: MayflyUiCompilerOptions['contextHints']) {
   const ctx = new Context()
   const api = await ctx.plugin(provider)
   cleanups.push(() => api.dispose())
@@ -38,7 +38,7 @@ async function setup(node: MayflyUiNode, onEvent?: MayflyUiEventHandlers, screen
   const viewport = { columns: 80, rows: 20 }
   const compile = () => {
     const runtime = new MayflyUiSurfaceRuntime(model)
-    const result = compileMayflyUiSurfaceNode(model.decisionNode ?? model.node, { surfaceRuntime: runtime, components, colors, getViewport: () => viewport, screenMode, ...(keymap === undefined ? {} : { keymap }), ...(contextHints === undefined ? {} : { contextHints }), ...(model.decisionNode === undefined ? {} : { contextHints: { enabled: true, focusWithoutControls: true } }), emit: event => model.emit(event), onUnhandledEscape: () => model.emit({ kind: 'dismiss', pagePath: [] }) })
+    const result = compileMayflyUiSurfaceNode(model.decisionNode ?? model.node, { surfaceRuntime: runtime, components, colors, getViewport: () => viewport, bounded, ...(keymap === undefined ? {} : { keymap }), ...(contextHints === undefined ? {} : { contextHints }), ...(model.decisionNode === undefined ? {} : { contextHints: { enabled: true, focusWithoutControls: true } }), emit: event => model.emit(event), onUnhandledEscape: () => model.emit({ kind: 'dismiss', pagePath: [] }) })
     if (!result.ok) throw new Error(result.message)
     const compiled = result.value
     compiled.focusTarget!.focused = true
@@ -48,13 +48,13 @@ async function setup(node: MayflyUiNode, onEvent?: MayflyUiEventHandlers, screen
 }
 
 describe('shared interaction compiler', () => {
-  it.each(['main', 'alternate'] as const)('allocates a scrollable document beside decisions in %s mode', async mode => {
+  it.each([['unbounded', false], ['bounded', true]] as const)('allocates a scrollable document beside decisions in %s mode', async (_mode, bounded) => {
     const { compile, viewport } = await setup(ui.stack.column([
       ui.text('Review'),
       ui.child(ui.scroll(ui.text(Array.from({ length: 100 }, (_, index) => `Plan step ${index}`).join('\n')), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
       ui.tabs({ id: 'pages', activeId: 'decision', items: [{ id: 'decision', label: 'Decision' }] }),
       ui.child(ui.actions({ id: 'actions', items: [{ id: 'reject', label: 'Reject', defaultFocus: true }, { id: 'accept', label: 'Accept' }] }), { tab: { controlId: 'pages', itemId: 'decision' } }),
-    ]), undefined, mode)
+    ]), undefined, bounded)
     const renderer = compile()
     const frame = () => renderLayoutFrame(renderer.compiled.component, viewport.columns, viewport.rows, () => {}).lines
     expect(frame().join('\n')).toContain('Plan step 0')
@@ -291,7 +291,7 @@ describe('shared interaction compiler', () => {
       list: () => [],
     }
     const acted = vi.fn()
-    const { compile } = await setup(ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }), { action: () => { acted(); return { kind: 'completed' } } }, 'alternate', keymap)
+    const { compile } = await setup(ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }), { action: () => { acted(); return { kind: 'completed' } } }, true, keymap)
     const renderer = compile()
     expect(renderer.compiled.component.render(80).at(-1)).toContain('r run')
     renderer.input('\r')
@@ -687,7 +687,7 @@ describe('shared interaction compiler', () => {
       ], submitActionId: 'save', cancelActionId: 'close' }),
       ui.list({ id: 'rows', role: 'browse', filterable: true, selectedIds: [], items: [{ id: 'a', label: 'alpha' }] }),
       ui.loader({ message: 'Working', cancelActionId: 'stop', cancelLabel: 'Stop now' }),
-    ]), undefined, 'alternate', undefined, { translate: (key: string, values?: Readonly<Record<string, string | number>>) => `zh:${key}${values === undefined ? '' : JSON.stringify(values)}` })
+    ]), undefined, true, undefined, { translate: (key: string, values?: Readonly<Record<string, string | number>>) => `zh:${key}${values === undefined ? '' : JSON.stringify(values)}` })
     const renderer = compile()
     const rows = renderer.compiled.component.render(100).join('\n')
     expect(rows).toContain('‹ 128 › tokens')
@@ -703,7 +703,7 @@ describe('shared interaction compiler', () => {
   it('falls back to English core strings when the host translator throws', async () => {
     const { compile } = await setup(ui.form({ id: 'form', fields: [
       { kind: 'select', id: 'mode', label: 'Mode', value: null, options: [{ id: 'a', label: 'A' }] },
-    ], submitActionId: 'save' }), undefined, 'alternate', undefined, { translate: () => { throw new Error('catalog unavailable') } })
+    ], submitActionId: 'save' }), undefined, true, undefined, { translate: () => { throw new Error('catalog unavailable') } })
     const renderer = compile()
     expect(renderer.compiled.component.render(80).join('\n')).toContain('Choose…')
     renderer.runtime.dispose()

@@ -4,7 +4,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { Terminal } from '@earendil-works/pi-tui'
-import { createOutputRecovery, type AmbientOutputStream } from '../../src/core/output-recovery.ts'
+import { createOutputRecovery, type AmbientOutputStream } from '../../src/core/text/output-recovery.ts'
 
 class RecordingStream implements AmbientOutputStream {
   readonly chunks: string[] = []

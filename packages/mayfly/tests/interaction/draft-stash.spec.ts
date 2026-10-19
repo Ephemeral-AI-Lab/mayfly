@@ -14,7 +14,7 @@ import CommandRuntime from '@deepseek-ai/dsh-commands'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
 import { DraftStash } from '../../src/interaction/draft-stash.ts'
 import { fakeMayflyContext, KEY, type FakeMayflyComponents, type FakeMayflyEditor } from './fakes.ts'
-import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
 
 function type(editor: FakeMayflyEditor, text: string): void {
   for (const char of text) editor.handleInput(char)

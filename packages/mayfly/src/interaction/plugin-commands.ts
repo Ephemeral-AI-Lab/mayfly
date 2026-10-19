@@ -33,6 +33,7 @@ import { detailFacts, groupModeLabel, tabFacts, type FactsEnv } from './plugin-m
 import type { MarketEntry, MarketInstallRow } from './plugin-market/types.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
 import { listId, MARKET_BREAKPOINT, PluginMarketplace, PluginMarketplaceLoading, PluginMarketplaceOffline, PluginMarketplaceUnavailable } from '../components/marketplace.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Command outcome reused by every early-exit branch. */
 type CommandOutcome = { readonly kind: 'success', readonly text?: string } | { readonly kind: 'error', readonly text: string }
@@ -160,7 +161,7 @@ export function registerPluginCommand(ctx: Context): () => void {
       return true
     } catch (error) {
       if (unloaded || generation !== bundleGeneration) return false
-      bundleError = error instanceof Error ? error.message : String(error)
+      bundleError = formatError(error)
       return false
     }
   }
@@ -361,7 +362,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     } catch (error) {
       // ChangeResult folds expected failures; a rejected service call is unexpected and still must not escape a key.
       await refreshBundles(manager)
-      const message = shorten(error instanceof Error ? error.message : String(error))
+      const message = shorten(formatError(error))
       report({
         text: t(action === 'remove' ? 'uninstall failed: {message}' : action === 'update' ? 'update failed: {message}' : 'install failed: {message}', { message }),
         tone: 'danger',

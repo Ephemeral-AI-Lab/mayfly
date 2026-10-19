@@ -13,9 +13,7 @@ import {
   CURSOR_MARKER,
   Editor,
   Image,
-  Markdown,
   SelectList,
-  fuzzyFilter,
   fuzzyMatch,
   getCapabilities,
   getImageDimensions,
@@ -27,24 +25,16 @@ import {
   type EditorTheme,
   type ImageOptions,
   type ImageTheme,
-  type MarkdownTheme,
   type SelectListTheme,
   type TUI,
 } from '@earendil-works/pi-tui'
-import { expandMarkdownRules, markdownTheme } from './markdown-rows.ts'
-import { readPresentation, type MayflyPresentation } from './presentation.ts'
-import { renderMermaidRows, splitRichDocument } from './rich-document.ts'
+import { readPresentation, type MayflyPresentation } from './theme/presentation.ts'
 import { extractMentionToken, mentionPath } from '../internal/mention.ts'
 import { displayPath } from '../internal/paths.ts'
-import {
-  highlightLeadingSlashToken,
-  injectGhostHint,
-  splitEditorRows,
-  topRule as renderTopRule,
-} from './chrome.ts'
-import { CompletionList } from './completion-list.ts'
-import { pickPlaceholder } from './ui-prompt.ts'
-import { expandPastes, findTokenRanges, foldSegments, paintTokenRows, type EditorTokenPaints, type EditorTokenRange, type EditorTokenText } from './editor-tokens.ts'
+import { highlightLeadingSlashToken, injectGhostHint, splitEditorRows } from './text/chrome.ts'
+import { CompletionList } from './ui/compile/completion-list.ts'
+import { pickPlaceholder } from './ui/state/ui-prompt.ts'
+import { expandPastes, findTokenRanges, foldSegments, paintTokenRows, type EditorTokenPaints, type EditorTokenRange, type EditorTokenText } from './ui/compile/editor-tokens.ts'
 import type {
   MayflyAutocompleteProvider,
   MayflyComponents,
@@ -59,14 +49,9 @@ import type {
   MayflyFuzzyMatch,
   MayflyImage,
   MayflyImageOptions,
-  MayflyMarkdown,
-  MayflyMarkdownOptions,
   MayflySelectItem,
-  MayflySelectList,
-  MayflySelectListOptions,
   MayflySemanticColors,
   MayflyTheme,
-  MayflyTopRuleOptions,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -763,72 +748,6 @@ class EditorAdapter implements MayflyEditor {
   }
 }
 
-/** Delegate exposing a pi-tui `Markdown` through the Mayfly contract. */
-class MarkdownAdapter implements MayflyMarkdown {
-  private readonly markdown: Markdown
-  private text: string
-  private segments: ReturnType<typeof splitRichDocument> | undefined
-  private cache: { readonly width: number, readonly rows: string[] } | undefined
-
-  /**
-   * @param markdown - the wrapped pi-tui Markdown.
-   * @param hr - the exact horizontal-rule paint the wrapped markdown's
-   *   theme uses (the `markdownTheme` function pins `hr: colors.mdHr`);
-   *   lets the adapter re-paint pi-tui's width-capped rule.
-   */
-  constructor(
-    text: string,
-    private readonly paddingX: number,
-    private readonly paddingY: number,
-    private readonly theme: MarkdownTheme,
-    private readonly hr: (text: string) => string,
-  ) {
-    this.text = text
-    this.markdown = new Markdown(text, paddingX, paddingY, theme)
-  }
-
-  setText(text: string): void {
-    if (text === this.text) return
-    this.text = text
-    this.segments = undefined
-    this.cache = undefined
-    this.markdown.setText(text)
-  }
-
-  render(width: number): string[] {
-    const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
-    if (this.cache?.width === safeWidth) return this.cache.rows
-    const segments = this.segments ??= splitRichDocument(this.text)
-    if (!segments.some(segment => segment.kind === 'mermaid')) {
-      const rows = expandMarkdownRules(this.markdown.render(safeWidth), safeWidth, this.hr)
-      this.cache = { width: safeWidth, rows }
-      return rows
-    }
-    const padX = Math.min(Math.max(0, Math.floor(this.paddingX)), Math.max(0, Math.floor((safeWidth - 1) / 2)))
-    const padY = Math.max(0, Math.floor(this.paddingY))
-    const contentWidth = Math.max(1, safeWidth - padX * 2)
-    const body = segments.flatMap(segment => {
-      if (segment.kind === 'mermaid') {
-        const diagram = renderMermaidRows(segment.source, contentWidth)
-        if (diagram !== undefined) return diagram
-        return expandMarkdownRules(new Markdown(segment.fallback, 0, 0, this.theme).render(contentWidth), contentWidth, this.hr)
-      }
-      /* splitRichDocument omits zero-length Markdown segments. */
-      if (segment.source.length === 0) return []
-      return expandMarkdownRules(new Markdown(segment.source, 0, 0, this.theme).render(contentWidth), contentWidth, this.hr)
-    })
-    const horizontal = padX === 0 ? body : body.map(line => `${' '.repeat(padX)}${line}`)
-    const result = [...Array.from({ length: padY }, () => ''), ...horizontal, ...Array.from({ length: padY }, () => '')]
-    this.cache = { width: safeWidth, rows: result }
-    return result
-  }
-
-  invalidate(): void {
-    this.cache = undefined
-    this.markdown.invalidate()
-  }
-}
-
 /** Delegate exposing a pi-tui `Image` through the Mayfly contract. */
 class ImageAdapter implements MayflyImage {
   constructor(private readonly image: Image) {}
@@ -839,27 +758,6 @@ class ImageAdapter implements MayflyImage {
 
   invalidate(): void {
     this.image.invalidate()
-  }
-}
-
-/** Delegate exposing a pi-tui `SelectList` through the Mayfly contract. */
-class SelectListAdapter implements MayflySelectList {
-  constructor(private readonly list: SelectList) {}
-
-  getSelectedItem(): MayflySelectItem | null {
-    return this.list.getSelectedItem()
-  }
-
-  render(width: number): string[] {
-    return this.list.render(width)
-  }
-
-  handleInput(data: string): void {
-    this.list.handleInput(data)
-  }
-
-  invalidate(): void {
-    this.list.invalidate()
   }
 }
 
@@ -896,8 +794,6 @@ export class MayflyComponentsService extends Service implements MayflyComponents
   }
 
   strong(text: string): string { return `\x1b[1m${text}\x1b[22m` }
-  italic(text: string): string { return `\x1b[3m${text}\x1b[23m` }
-  strike(text: string): string { return `\x1b[9m${text}\x1b[29m` }
 
   /**
    * Create a palette-themed multi-line input editor. Its autocomplete list
@@ -929,21 +825,6 @@ export class MayflyComponentsService extends Service implements MayflyComponents
       ghostHintPaint: colors.textMuted,
       tokenPaints: { label: colors.accent, detail: colors.muted },
     }, completions)
-  }
-
-  /**
-   * Create a palette-themed streamed-Markdown component.
-   * @param options - markdown options.
-   * @returns the markdown component.
-   */
-  createMarkdown(options?: MayflyMarkdownOptions): MayflyMarkdown {
-    return new MarkdownAdapter(
-      options?.text ?? '',
-      options?.paddingX ?? 0,
-      options?.paddingY ?? 0,
-      markdownTheme(this.theme.colors),
-      this.theme.colors.mdHr,
-    )
   }
 
   /**
@@ -989,19 +870,6 @@ export class MayflyComponentsService extends Service implements MayflyComponents
   }
 
   /**
-   * Create a palette-themed single-selection list.
-   * @param options - items and selection callbacks.
-   * @returns the list component.
-   */
-  createSelectList(options: MayflySelectListOptions): MayflySelectList {
-    const list = new SelectList(options.items, options.maxVisible ?? 10, selectListTheme(this.theme.colors))
-    if (options.onSelect !== undefined) list.onSelect = options.onSelect
-    if (options.onCancel !== undefined) list.onCancel = options.onCancel
-    if (options.onSelectionChange !== undefined) list.onSelectionChange = options.onSelectionChange
-    return new SelectListAdapter(list)
-  }
-
-  /**
    * Measure the visible width of styled text in terminal columns.
    * @param text - the text, ANSI styling allowed.
    * @returns the width in columns.
@@ -1038,16 +906,6 @@ export class MayflyComponentsService extends Service implements MayflyComponents
   }
 
   /**
-   * Render the bounded top rule used by connected renderer-owned panes.
-   * @param width - the target visible width.
-   * @param options - optional title, hint, and paint functions.
-   * @returns the ANSI-safe rule row.
-   */
-  topRule(width: number, options?: MayflyTopRuleOptions): string {
-    return renderTopRule(width, options)
-  }
-
-  /**
    * Probe a case-insensitive fuzzy subsequence match (the S14 completion
    * primitive; re-exported from the renderer so no consumer imports pi-tui).
    * @param query - the query characters, matched in order.
@@ -1056,16 +914,5 @@ export class MayflyComponentsService extends Service implements MayflyComponents
    */
   fuzzyMatch(query: string, text: string): MayflyFuzzyMatch {
     return fuzzyMatch(query, text)
-  }
-
-  /**
-   * Filter and rank items by a fuzzy query (see the contract doc).
-   * @param items - the candidates.
-   * @param query - the fuzzy query.
-   * @param getText - extracts the match text from an item.
-   * @returns the matching items, best first.
-   */
-  fuzzyFilter<T>(items: readonly T[], query: string, getText: (item: T) => string): T[] {
-    return fuzzyFilter([...items], query, getText)
   }
 }

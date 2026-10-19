@@ -5,10 +5,10 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
-import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { plainBlock, plainColors } from '../helpers.ts'
 
@@ -39,7 +39,7 @@ function open(node: MayflyUiNode, options: { readonly columns?: number, readonly
   } as never, options.close === undefined ? {} : { close: options.close })
   models.push(model)
   const viewport = { columns: options.columns ?? 80, rows: 40 }
-  const compileOptions: Parameters<typeof compileMayflyUiSurfaceNode>[1] = { components, colors, getViewport: () => viewport, screenMode: 'alternate', emit: event => model.emit(event), contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model), ...options.onEscape === null ? {} : { onUnhandledEscape: options.onEscape ?? (() => {}) } }
+  const compileOptions: Parameters<typeof compileMayflyUiSurfaceNode>[1] = { components, colors, getViewport: () => viewport, bounded: true, emit: event => model.emit(event), contextHints: { enabled: true }, surfaceRuntime: new MayflyUiSurfaceRuntime(model), ...options.onEscape === null ? {} : { onUnhandledEscape: options.onEscape ?? (() => {}) } }
   const result = compileMayflyUiSurfaceNode(model.node!, compileOptions)
   if (!result.ok) throw new Error(result.message)
   const focus = result.value.focusTarget!

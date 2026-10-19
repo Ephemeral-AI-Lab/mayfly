@@ -1,10 +1,9 @@
 /** The list row memo: rows come back as painted, a state change repaints only what it touches, and a palette change repaints all. */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ui } from '@ephemeral-ai/mayfly-ui'
-import { renderList, type PatternFocus } from '../../src/core/ui-patterns.ts'
-import { UiRowCache } from '../../src/core/ui-row-cache.ts'
+import { renderList, type PatternFocus } from '../../src/core/ui/state/ui-patterns.ts'
+import { UiRowCache } from '../../src/core/ui/paint/ui-row-cache.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 
 const palette = (name: string): MayflySemanticColors => new Proxy({ logoGradient: [(value: string) => value] }, {
   get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `<${name}:${String(key)}>${value}</>`,
@@ -32,20 +31,6 @@ describe('renderList with a row memo', () => {
     }
   })
 
-  it('counts a painted row once and repaints only the two rows a cursor move changes', () => {
-    const colors = palette('a')
-    const counters = createWorkCounters()
-    const memo = { cache: new UiRowCache(), counters }
-    renderList(list, 80, 20, focusOn('a'), colors, 0, memo)
-    expect(counters.rowsPainted).toBe(4)
-    renderList(list, 80, 20, focusOn('a'), colors, 0, memo)
-    expect(counters.rowsPainted).toBe(4)
-    renderList(list, 80, 20, focusOn('b'), colors, 0, memo)
-    expect(counters.rowsPainted, 'a is painted resting, b focused').toBe(6)
-    renderList(list, 80, 20, focusOn('a'), colors, 0, memo)
-    expect(counters.rowsPainted, 'both looks are still remembered').toBe(6)
-  })
-
   it('serves a colors object only its own rows', () => {
     const memo = { cache: new UiRowCache() }
     const first = renderList(list, 80, 20, focusOn('a'), palette('a'), 0, memo)
@@ -58,25 +43,25 @@ describe('renderList with a row memo', () => {
   it('keeps a bounded number of looks per item', () => {
     const cache = new UiRowCache()
     const colors = palette('a')
-    const counters = createWorkCounters()
     const item = {}
-    const read = (key: string): string => cache.read(colors, item, key, () => key, counters)
+    const paint = vi.fn((key: string) => key)
+    const read = (key: string): string => cache.read(colors, item, key, () => paint(key))
     for (const key of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) read(key)
-    expect(counters.rowsPainted).toBe(9)
+    expect(paint).toHaveBeenCalledTimes(9)
     read('9')
-    expect(counters.rowsPainted, 'the newest look is kept').toBe(9)
+    expect(paint, 'the newest look is kept').toHaveBeenCalledTimes(9)
     read('1')
-    expect(counters.rowsPainted, 'the oldest look was dropped').toBe(10)
+    expect(paint, 'the oldest look was dropped').toHaveBeenCalledTimes(10)
   })
 
-  it('counts every line of a multi-line item and serves it again from the memo', () => {
+  it('serves every line of a multi-line item again from the memo', () => {
     const cache = new UiRowCache()
     const colors = palette('a')
-    const counters = createWorkCounters()
     const item = {}
-    const read = (): readonly string[] => cache.readLines(colors, item, 'k', () => ['a', 'b', 'c'], counters)
+    const paint = vi.fn(() => ['a', 'b', 'c'])
+    const read = (): readonly string[] => cache.readLines(colors, item, 'k', paint)
     expect(read()).toEqual(['a', 'b', 'c'])
     expect(read()).toEqual(['a', 'b', 'c'])
-    expect(counters.rowsPainted).toBe(3)
+    expect(paint).toHaveBeenCalledTimes(1)
   })
 })

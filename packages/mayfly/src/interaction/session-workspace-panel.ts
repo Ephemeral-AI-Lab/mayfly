@@ -7,6 +7,7 @@
  */
 import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
+import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SessionProjectionValues, SessionProjectionsValue, SessionSearchItem, SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-schedule'
@@ -17,7 +18,7 @@ import type { MayflyTranslate } from '../frontend/locale.ts'
 import type {} from '../app/conversation-views.ts'
 import { sessionDetailNode, sessionLabel, sessionListFacts, sessionListItem, type SessionListFacts } from './session-list-model.ts'
 import { openUiOverlay } from './ui-overlay.ts'
-import { refreshSessionList, sessionListRows, type SessionListCache } from './session-list-reads.ts'
+import { createSessionListCache, refreshSessionList, sessionListRows, type SessionListCache } from './session-list-reads.ts'
 import { sessionWorkspacePlacements, sessionWorkspaceTab, sessionWorkspaces, type SessionWorkspace } from './session-workspaces-model.ts'
 
 /** The panel's catalog scope: one registered workspace, every unowned session, or a global search. */
@@ -395,5 +396,23 @@ export function openSessionsPanel(ctx: Context, signal: AbortSignal, t: MayflyTr
   } catch (error) {
     cleanup()
     throw error
+  }
+}
+
+/**
+ * Browse sessions by native workspace in the one sessions panel.
+ * @param ctx - the commands context.
+ * @param signal - the dispatching command's cancellation.
+ * @param t - interaction translator.
+ * @param cache - the listing cache retained by the command Fiber.
+ * @returns the command result.
+ */
+export async function openSessions(ctx: Context, signal: AbortSignal, t: MayflyTranslate, cache = createSessionListCache(ctx)): Promise<CommandResult> {
+  if (signal.aborted || ctx.mayflyOverlays.focus('mayfly.sessions')) return { kind: 'success' }
+  try {
+    openSessionsPanel(ctx, signal, t, cache)
+    return { kind: 'success' }
+  } catch (error) {
+    return { kind: 'error', text: String(error) }
   }
 }

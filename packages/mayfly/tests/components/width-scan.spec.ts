@@ -10,8 +10,8 @@
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyListItem, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
-import { SearchLine, type MayflySearchLineOptions } from '../../src/core/search-line.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { SearchLine, type MayflySearchLineOptions } from '../../src/core/ui/state/search-line.ts'
 import { ActivityRow, type ActivityFacts } from '../../src/components/activity-row.ts'
 import { NotificationLine, type NotificationRowFacts } from '../../src/components/notification-line.ts'
 import { CompactionRow, type CompactionFacts } from '../../src/components/compaction-row.ts'
@@ -38,7 +38,7 @@ function render(node: MayflyUiNode, width: number): string[] {
     components: fakeMayflyComponents(),
     colors,
     getViewport: () => ({ columns: width, rows: 1000 }),
-    screenMode: 'main',
+    bounded: false,
     emit: () => {},
   })
   if (!compiled.ok) throw new Error(`node refused at width ${width}: ${compiled.message}`)

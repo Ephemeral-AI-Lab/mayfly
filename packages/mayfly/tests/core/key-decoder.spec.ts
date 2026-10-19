@@ -5,8 +5,8 @@
  */
 import { StdinBuffer } from '@earendil-works/pi-tui/dist/stdin-buffer.js'
 import { describe, expect, it, vi } from 'vitest'
-import { matchesKeyId } from '../../src/core/key-actions.ts'
-import { joinSplitModifiers, normalizeFunctionKeyInput, normalizeNavigationInput, startMayflyTerminal, withJoinedModifiers } from '../../src/core/terminal.ts'
+import { matchesKeyId } from '../../src/core/keys/key-actions.ts'
+import { joinSplitModifiers, normalizeFunctionKeyInput, normalizeNavigationInput, startMayflyTerminal, withJoinedModifiers } from '../../src/core/terminal/terminal.ts'
 import { FakeTerminal } from './fake-terminal.ts'
 
 /** Feed one terminal read through the real input path and collect the sequences a listener would see. */

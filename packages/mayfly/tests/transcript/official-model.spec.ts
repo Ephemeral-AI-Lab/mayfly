@@ -6,7 +6,6 @@ import { conversationTranscriptModel, createTranscriptModelCaches, OfficialConve
 import type { ConversationProjectionSource } from '../../src/transcript/conversation-feed.ts'
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'
 import { materializeTranscriptEntries } from '../../src/frontend/models.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 
 function projection(entries: ConversationProjection['entries'] = [], streaming = false): ConversationProjection {
   return { entries: entries.map(entry => ({ ...entry, updatedSeq: entry.updatedSeq ?? entry.seq })), streaming, settledSteps: [], turns: [] }
@@ -218,7 +217,6 @@ describe('official conversation model mapping', () => {
       {
         kind: 'transcript-tool',
         result: { text: 'raw', fullText: 'raw', isError: false, endedAt: 180 },
-        presentation: { kind: 'tool', call: { kind: 'text', content: expect.stringContaining('a.txt') }, result: { kind: 'text', content: 'presented' } },
         activity: 'read', detail: 'a.txt', title: 'Reading',
       },
       { kind: 'transcript-tool', id: 'todo-1', activity: 'plan', detail: 'todo_write' },
@@ -236,8 +234,8 @@ describe('official conversation model mapping', () => {
     ]), toolSource({ throws: true }))
     expect(pending.entries[0]).toMatchObject({
       kind: 'transcript-tool',
+      name: 'missing',
     })
-    expect((pending.entries[0] as { presentation?: unknown }).presentation).toBeUndefined()
 
     const failed = conversationTranscriptModel(projection([
       transcriptTool({
@@ -245,20 +243,9 @@ describe('official conversation model mapping', () => {
       }),
     ]), toolSource())
     expect(failed.entries[0]).toMatchObject({
-      presentation: { result: { kind: 'text', content: 'failure', tone: 'danger' } },
+      kind: 'transcript-tool',
+      result: { text: 'failure', isError: true, endedAt: 200 },
     })
-
-    const resultOnly = conversationTranscriptModel(projection([
-      transcriptTool({
-        result: { content: [{ type: 'text', text: 'done' }], text: 'done', isError: false, endedAt: 210 },
-      }),
-    ]), {
-      get: () => ({
-        presentResult: () => ({ card: 'generic', title: 'Result only' }),
-      } as never),
-    } as ToolPresentationSource)
-    expect(resultOnly.entries[0]).toMatchObject({ presentation: { result: { kind: 'text', content: 'done' } } })
-    expect((resultOnly.entries[0] as { presentation: { call?: unknown } }).presentation.call).toBeUndefined()
   })
 
   it('groups consecutive reads and closes the run at a later step\'s reasoning', () => {
@@ -1205,51 +1192,36 @@ describe('incremental conversion', () => {
 
   it('reuses a group model for an unchanged run and rebuilds it when a member changes', () => {
     const caches = createTranscriptModelCaches()
-    const counters = createWorkCounters()
     const reads = [
       transcriptTool({ id: 'read-1', seq: 2, callId: 'call-1', name: 'read', arguments: '{"path":"a.txt"}' }),
       transcriptTool({ id: 'read-2', seq: 3, callId: 'call-2', name: 'read', arguments: '{"path":"b.txt"}' }),
     ]
-    const first = conversationTranscriptModel(identityProjection([userEntry, ...reads]), readSource(), 0, undefined, caches, counters)
-    expect(counters.entriesMapped).toBe(3)
-    expect(counters.toolModelsBuilt).toBe(1)
+    const first = conversationTranscriptModel(identityProjection([userEntry, ...reads]), readSource(), 0, undefined, caches)
     const group = first.entries[1]!
 
-    Object.assign(counters, createWorkCounters())
-    const second = conversationTranscriptModel(identityProjection([userEntry, ...reads]), readSource(), 0, undefined, caches, counters)
+    const second = conversationTranscriptModel(identityProjection([userEntry, ...reads]), readSource(), 0, undefined, caches)
     expect(second.entries[0]).toBe(first.entries[0])
     expect(second.entries[1]).toBe(group)
-    expect(counters.entriesMapped).toBe(0)
-    expect(counters.toolModelsBuilt).toBe(0)
 
-    Object.assign(counters, createWorkCounters())
     const changed = { ...reads[1]!, updatedSeq: 9 }
-    const third = conversationTranscriptModel(identityProjection([userEntry, reads[0]!, changed]), readSource(), 0, undefined, caches, counters)
+    const third = conversationTranscriptModel(identityProjection([userEntry, reads[0]!, changed]), readSource(), 0, undefined, caches)
     expect(third.entries[0]).toBe(first.entries[0])
     expect(third.entries[1]).not.toBe(group)
-    expect(counters.entriesMapped).toBe(1)
-    expect(counters.toolModelsBuilt).toBe(1)
   })
 
   it('rebuilds only a changed tool model', () => {
     const caches = createTranscriptModelCaches()
-    const counters = createWorkCounters()
     const presentCall = vi.fn(() => undefined)
     const tools = { get: () => ({ presentCall }) } as unknown as ToolPresentationSource
     const firstTool = transcriptTool({ id: 'tool-1', seq: 2, callId: 'call-1', name: 'read', arguments: '{"path":"a.txt"}' })
     const secondTool = transcriptTool({ id: 'tool-2', seq: 3, callId: 'call-2', name: 'bash', arguments: '{"command":"ls"}' })
-    const first = conversationTranscriptModel(identityProjection([userEntry, firstTool, secondTool]), tools, 0, undefined, caches, counters)
-    expect(counters.entriesMapped).toBe(3)
-    expect(counters.toolModelsBuilt).toBe(2)
+    const first = conversationTranscriptModel(identityProjection([userEntry, firstTool, secondTool]), tools, 0, undefined, caches)
 
-    Object.assign(counters, createWorkCounters())
     const changedSecond = { ...secondTool, arguments: '{"command":"pwd"}' }
-    const second = conversationTranscriptModel(identityProjection([userEntry, firstTool, changedSecond]), tools, 0, undefined, caches, counters)
+    const second = conversationTranscriptModel(identityProjection([userEntry, firstTool, changedSecond]), tools, 0, undefined, caches)
     expect(second.entries[0]).toBe(first.entries[0])
     expect(second.entries[1]).toBe(first.entries[1])
     expect(second.entries[2]).not.toBe(first.entries[2])
-    expect(counters.entriesMapped).toBe(1)
-    expect(counters.toolModelsBuilt).toBe(1)
     expect(presentCall).toHaveBeenCalledTimes(3)
   })
 

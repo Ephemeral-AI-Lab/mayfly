@@ -14,13 +14,13 @@ import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
-import type { TranscriptItem } from '../../src/transcript/types.ts'
+import type { ConversationEntry } from '../../src/conversation/types.ts'
 import { conversationProjectionDefinition, foldConversationProjection, initialConversationState } from '../../src/conversation/projection.ts'
 import { setClipboardOsc52Emitter, setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
 import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
 import { buildExportMarkdown, buildFullExportMarkdown, lastAssistantText } from '../../src/interaction/session-export.ts'
 import { fakeMayflyContext } from './fakes.ts'
-import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
 registerTempDirCleanup()
@@ -51,24 +51,27 @@ function singleTurnLog(userText: string, answerText: string): string {
   ].join('\n')
 }
 
+/** One projected entry fixture; the helper supplies the identity fields. */
+type EntryInput = ConversationEntry extends infer Entry ? Entry extends ConversationEntry ? Omit<Entry, 'id' | 'updatedSeq'> : never : never
+const entry = (value: EntryInput): ConversationEntry => ({ id: `entry-${String(value.seq)}`, updatedSeq: value.seq, ...value }) as ConversationEntry
+
 describe('buildExportMarkdown', () => {
-  const baseItems = (): TranscriptItem[] => ([
+  const baseItems = (): EntryInput[] => ([
     {
       kind: 'user', seq: 1, turn: 0,
       text: 'first question',
-      images: [{ attachmentId: 'a1' as never, mediaType: 'image/png', bytes: 4, width: 1, height: 1 }],
+      images: [{ attachmentId: 'a1', mediaType: 'image/png', bytes: 4, width: 1, height: 1 }],
     },
     {
       kind: 'thinking', seq: 2, turn: 0, step: 0, text: 'reasoning trail', streaming: false,
     },
     {
-      kind: 'assistant', seq: 3, turn: 0, step: 0, text: '**answer** text',
+      kind: 'assistant', seq: 3, turn: 0, step: 0, text: '**answer** text', streaming: false,
     },
     {
-      kind: 'tool', seq: 4, turn: 0, step: 0, callId: 'c1', name: 'bash', startedAt: 0,
+      kind: 'tool', seq: 4, turn: 0, step: 0, callId: 'c1', name: 'bash', startedAt: 0, channel: 'transcript',
       arguments: '{"command":"ls"}',
-      parsedArguments: { command: 'ls' },
-      result: { text: 'summarized', fullText: 'file1\nfile2', isError: false, endedAt: 0 },
+      result: { content: [], text: 'file1\nfile2', isError: false, endedAt: 0 },
     },
     {
       kind: 'error', seq: 5, turn: 1, message: 'endpoint 404', code: 'ENDPOINT_404',
@@ -88,7 +91,7 @@ describe('buildExportMarkdown', () => {
     const markdown = buildExportMarkdown({
       sessionId: 'sess-12345678',
       workDir: '/tmp/spec',
-      items: baseItems(),
+      entries: baseItems().map(entry),
       exportedAt: new Date('2026-08-21T07:15:30.000Z'),
     })
     expect(markdown).toContain('session_id: sess-12345678')
@@ -126,18 +129,18 @@ describe('buildExportMarkdown', () => {
   })
 
   it('drops empty thinking, skips empty assistant bodies, and uses result fallbacks', () => {
-    const items: TranscriptItem[] = [
+    const items: EntryInput[] = [
       { kind: 'user', seq: 1, turn: 0, text: 'q', images: [] },
       { kind: 'thinking', seq: 2, turn: 0, step: 0, text: '   ', streaming: false },
-      { kind: 'assistant', seq: 3, turn: 0, step: 0, text: '' },
+      { kind: 'assistant', seq: 3, turn: 0, step: 0, text: '', streaming: false },
       {
-        kind: 'tool', seq: 4, turn: 0, step: 0, callId: 'c1', name: 'read', startedAt: 0,
-        arguments: 'not-json', parsedArguments: undefined,
-        result: { text: 'summarized only', isError: true, endedAt: 0 },
+        kind: 'tool', seq: 4, turn: 0, step: 0, callId: 'c1', name: 'read', startedAt: 0, channel: 'transcript',
+        arguments: 'not-json',
+        result: { content: [], text: 'summarized only', isError: true, endedAt: 0 },
       },
     ]
     const markdown = buildExportMarkdown({
-      sessionId: 's', workDir: undefined, items, exportedAt: new Date('2026-08-21T00:00:00.000Z'),
+      sessionId: 's', workDir: undefined, entries: items.map(entry), exportedAt: new Date('2026-08-21T00:00:00.000Z'),
     })
     expect(markdown).not.toContain('<summary>Thinking</summary>')
     expect(markdown).not.toContain('### Assistant')
@@ -145,43 +148,40 @@ describe('buildExportMarkdown', () => {
     expect(markdown).toContain('#### Tool Call: read')
     expect(markdown).toContain('```json\nnot-json\n```')
     expect(markdown).not.toContain('(`')
-    // The result falls back to the summarized text when fullText is absent.
     expect(markdown).toContain('summarized only')
     // Empty work_dir renders as an empty field.
     expect(markdown).toContain('work_dir: ')
   })
 
   it('caps the overview topic at 80 characters and pluralizes the tool count', () => {
-    const items: TranscriptItem[] = [
+    const items: EntryInput[] = [
       { kind: 'user', seq: 1, turn: 0, text: `${'x'.repeat(200)} more`, images: [] },
-      { kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'a', name: 'read', startedAt: 0, arguments: '{}', parsedArguments: {} },
-      { kind: 'tool', seq: 3, turn: 0, step: 0, callId: 'b', name: 'read', startedAt: 0, arguments: '{}', parsedArguments: {} },
+      { kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'a', name: 'read', startedAt: 0, arguments: '{}', channel: 'transcript' },
+      { kind: 'tool', seq: 3, turn: 0, step: 0, callId: 'b', name: 'read', startedAt: 0, arguments: '{}', channel: 'transcript' },
     ]
     const markdown = buildExportMarkdown({
-      sessionId: 's', workDir: undefined, items, exportedAt: new Date('2026-08-21T00:00:00.000Z'),
+      sessionId: 's', workDir: undefined, entries: items.map(entry), exportedAt: new Date('2026-08-21T00:00:00.000Z'),
     })
     expect(markdown).toContain(`- **Topic**: ${'x'.repeat(80)}…`)
     expect(markdown).toContain('- **Conversation**: 1 turn | 2 tool calls')
   })
 
   it('exports grouped subagent members as ordinary tool calls (S33: the group is mount-layer only)', () => {
-    const items: TranscriptItem[] = [
+    const items: EntryInput[] = [
       { kind: 'user', seq: 1, turn: 0, text: 'delegate', images: [] },
       {
-        kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'a', name: 'subagent',
+        kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'a', name: 'subagent', channel: 'transcript',
         arguments: '{"description":"Survey","prompt":"p"}',
-        parsedArguments: { description: 'Survey', prompt: 'p' },
-        startedAt: 1, result: { text: 'started subagent child-1', isError: false, endedAt: 2 },
+        startedAt: 1, result: { content: [], text: 'started subagent child-1', isError: false, endedAt: 2 },
       },
       {
-        kind: 'tool', seq: 3, turn: 0, step: 0, callId: 'b', name: 'subagent_fork',
+        kind: 'tool', seq: 3, turn: 0, step: 0, callId: 'b', name: 'subagent_fork', channel: 'transcript',
         arguments: '{"description":"Draft","prompt":"q"}',
-        parsedArguments: { description: 'Draft', prompt: 'q' },
-        startedAt: 1, result: { text: 'started background subagent job subagent-1', isError: false, endedAt: 2 },
+        startedAt: 1, result: { content: [], text: 'started background subagent job subagent-1', isError: false, endedAt: 2 },
       },
     ]
     const markdown = buildExportMarkdown({
-      sessionId: 's', workDir: undefined, items, exportedAt: new Date('2026-08-21T00:00:00.000Z'),
+      sessionId: 's', workDir: undefined, entries: items.map(entry), exportedAt: new Date('2026-08-21T00:00:00.000Z'),
     })
     // Each member renders its own Tool Call section and both count.
     expect(markdown).toContain('#### Tool Call: subagent')
@@ -193,12 +193,12 @@ describe('buildExportMarkdown', () => {
   })
 
   it('keeps the hint from non-whitelist string arguments and absent parse', () => {
-    const items: TranscriptItem[] = [
-      { kind: 'tool', seq: 1, turn: 0, step: 0, callId: 'a', name: 'read', startedAt: 0, arguments: '{"path":"/x"}', parsedArguments: { path: '/x' } },
-      { kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'b', name: 'read', startedAt: 0, arguments: '{"path":"/x","nested":{"file_path":"deep"}}', parsedArguments: { path: '/x', nested: { file_path: 'deep' } } },
+    const items: EntryInput[] = [
+      { kind: 'tool', seq: 1, turn: 0, step: 0, callId: 'a', name: 'read', startedAt: 0, arguments: '{"path":"/x"}', channel: 'transcript' },
+      { kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'b', name: 'read', startedAt: 0, arguments: '{"path":"/x","nested":{"file_path":"deep"}}', channel: 'transcript' },
     ]
     const markdown = buildExportMarkdown({
-      sessionId: 's', workDir: undefined, items, exportedAt: new Date('2026-08-21T00:00:00.000Z'),
+      sessionId: 's', workDir: undefined, entries: items.map(entry), exportedAt: new Date('2026-08-21T00:00:00.000Z'),
     })
     expect(markdown).toContain('#### Tool Call: read (`/x`)')
     // The whitelist scans only the top level: nested file_path does not win
@@ -377,22 +377,23 @@ describe('buildExportMarkdown', () => {
   })
 
   it('renders the remaining per-turn variants: second user, empty user text, named images, pluralization arms, codeless errors, over-long hints', () => {
-    const items: TranscriptItem[] = [
+    const long = 'z'.repeat(100)
+    const items: EntryInput[] = [
       // Empty user text skips the body but still opens the section.
       { kind: 'user', seq: 1, turn: 0, text: '', images: [] },
       // A second user item reuses the opened header; a named image keeps
       // its name in the placeholder.
       {
         kind: 'user', seq: 2, turn: 0, text: 'second user',
-        images: [{ attachmentId: 'a' as never, mediaType: 'image/png', bytes: 4, width: 1, height: 1, name: 'shot.png' }],
+        images: [{ attachmentId: 'a', mediaType: 'image/png', bytes: 4, width: 1, height: 1, name: 'shot.png' }],
       },
       // An error without a machine code drops the parenthetical.
       { kind: 'error', seq: 3, turn: 0, message: 'no code' },
       // Only over-long arguments: the hint falls through both lists.
-      { kind: 'tool', seq: 6, turn: 0, step: 0, callId: 'c', name: 'x', startedAt: 0, arguments: '{"long":"zzz"}', parsedArguments: { long: 'z'.repeat(100) } },
+      { kind: 'tool', seq: 6, turn: 0, step: 0, callId: 'c', name: 'x', startedAt: 0, channel: 'transcript', arguments: JSON.stringify({ long }) },
     ]
     const markdown = buildExportMarkdown({
-      sessionId: 's', workDir: undefined, items, exportedAt: new Date('2026-08-21T00:00:00.000Z'),
+      sessionId: 's', workDir: undefined, entries: items.map(entry), exportedAt: new Date('2026-08-21T00:00:00.000Z'),
     })
     expect(markdown).toContain('### User')
     expect(markdown).toContain('second user')
@@ -406,31 +407,31 @@ describe('buildExportMarkdown', () => {
 
 describe('lastAssistantText', () => {
   it('returns the newest non-empty assistant text', () => {
-    const items: TranscriptItem[] = [
+    const items: EntryInput[] = [
       { kind: 'user', seq: 1, turn: 0, text: 'q', images: [] },
-      { kind: 'assistant', seq: 2, turn: 0, step: 0, text: 'first answer' },
+      { kind: 'assistant', seq: 2, turn: 0, step: 0, text: 'first answer', streaming: false },
       { kind: 'user', seq: 3, turn: 1, text: 'q2', images: [] },
-      { kind: 'assistant', seq: 4, turn: 1, step: 0, text: 'second answer' },
+      { kind: 'assistant', seq: 4, turn: 1, step: 0, text: 'second answer', streaming: false },
     ]
-    expect(lastAssistantText(items)).toBe('second answer')
+    expect(lastAssistantText(items.map(entry))).toBe('second answer')
   })
 
   it('skips empty assistant items and answers empty when none has text', () => {
-    const user = { kind: 'user' as const, seq: 1, turn: 0, text: 'q', images: [] }
-    const empty = { kind: 'assistant' as const, seq: 2, turn: 0, step: 0, text: '   ' }
-    const kept = { kind: 'assistant' as const, seq: 3, turn: 1, step: 0, text: 'kept' }
+    const user: EntryInput = { kind: 'user', seq: 1, turn: 0, text: 'q', images: [] }
+    const empty: EntryInput = { kind: 'assistant', seq: 2, turn: 0, step: 0, text: '   ', streaming: false }
+    const kept: EntryInput = { kind: 'assistant', seq: 3, turn: 1, step: 0, text: 'kept', streaming: false }
     // The newest non-empty reply wins (the empty item sits behind it).
-    expect(lastAssistantText([user, empty, kept])).toBe('kept')
+    expect(lastAssistantText([user, empty, kept].map(entry))).toBe('kept')
     // With only empty replies the scan passes them and answers ''.
-    expect(lastAssistantText([user, empty])).toBe('')
+    expect(lastAssistantText([user, empty].map(entry))).toBe('')
     expect(lastAssistantText([])).toBe('')
   })
 
   it('skips an undefined tail entry when the window hands back nothing', () => {
     const items = [
       undefined,
-      { kind: 'assistant', seq: 2, turn: 0, step: 0, text: 'survives' },
-    ] as unknown as TranscriptItem[]
+      { kind: 'assistant', id: 'a', seq: 2, updatedSeq: 2, turn: 0, step: 0, text: 'survives', streaming: false },
+    ] as unknown as ConversationEntry[]
     expect(lastAssistantText(items)).toBe('survives')
   })
 })

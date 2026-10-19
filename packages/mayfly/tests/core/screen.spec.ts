@@ -6,13 +6,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { ui } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyNodeSlotCompiler } from '../../src/core/node-slot.ts'
-import { untranslated } from '../../src/core/ui-interaction-locale.ts'
-import { MayflyScreenService } from '../../src/core/screen.ts'
-import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
+import type { MayflyNodeSlotCompiler } from '../../src/core/hosts/node-slot.ts'
+import { untranslated } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { MayflyScreenService } from '../../src/core/hosts/screen.ts'
+import type { MayflyTerminalRuntime } from '../../src/core/terminal/terminal.ts'
 import type { MayflyComponent, MayflyDockOptions, MayflyFocusable, MayflyKeymap, MayflyOverlayHandle } from '../../src/core/types.ts'
-import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
-import { SurfaceManager } from '../../src/core/surface-manager.ts'
+import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
+import { SurfaceManager } from '../../src/core/hosts/surface-manager.ts'
 import { COMPONENTS, DIM_COLORS, PLAIN_COLORS, statusRow, streamItems, streamList } from './node-slot-host.ts'
 
 interface Recorded {
@@ -354,7 +354,7 @@ function slotCompiler(ctx: Context, extra: Partial<MayflyNodeSlotCompiler> = {})
   let requests = 0
   const interaction = (ctx.get('mayflyUiInteraction') as UiInteractionService | undefined) ?? new UiInteractionService(ctx)
   return {
-    interaction, components: COMPONENTS, colors: PLAIN_COLORS, keymap: {} as MayflyKeymap, mode: 'alternate',
+    interaction, components: COMPONENTS, colors: PLAIN_COLORS, keymap: {} as MayflyKeymap, bounded: true,
     requestRender: () => { requests += 1 }, requests: () => requests, ...extra,
   }
 }

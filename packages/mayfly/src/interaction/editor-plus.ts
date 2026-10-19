@@ -36,7 +36,7 @@ import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { activeAtToken, formatFileMention, type FileReferenceCandidate } from '@deepseek-ai/dsh-file-reference'
-import { GutterComponent, STREAM_GUTTER } from '../core/gutter.ts'
+import { GutterComponent, STREAM_GUTTER } from '../core/text/gutter.ts'
 import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import {
@@ -53,6 +53,7 @@ import { sanitizeShellOutput } from './shell-sanitize.ts'
 import { filterSlashCommands, slashCommandLabel } from './slash-filter.ts'
 import { beginPromptWait } from './prompt-wait.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Shell echo output caps: both bounds apply, whichever trips first. */
 const SHELL_MAX_LINES = 200
@@ -497,7 +498,7 @@ function runShell(ctx: Context, command: string, isUnloaded: () => boolean): voi
       mount({
         code: 1,
         stdout: '',
-        stderr: error instanceof Error ? error.message : String(error),
+        stderr: formatError(error),
       })
     },
   )

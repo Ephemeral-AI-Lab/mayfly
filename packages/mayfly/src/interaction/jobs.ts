@@ -6,10 +6,12 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-commands'
 import { JobId, type JobRegisteredData, type JobOutputRead, type JobSettledData, type JobView } from '@deepseek-ai/dsh-jobs'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { panel, ui, type MayflyContentChunk, type MayflyListItem, type MayflyOverlayHandle, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyContentChunk, type MayflyListItem, type MayflyOverlayHandle, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
+import { listPanel, panelActions, panelFrame } from './panel.ts'
+import { formatError } from '../internal/format.ts'
 
 export const name = 'mayfly-jobs'
 export const inject = ['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyOverlays']
@@ -87,13 +89,13 @@ export function jobItems(jobs: readonly JobView[], now: number, t: MayflyTransla
 
 /** The job detail page: status fields and the hidden keys that read output or stop a live job. */
 export function jobDetailsNode(job: JobView, t: MayflyTranslate): MayflyUiNode {
-  return panel({ title: t('Job {id}', { id: String(job.id) }), escapeLabel: 'back', body: ui.stack.column([
+  return panelFrame({ title: t('Job {id}', { id: String(job.id) }), escapeLabel: 'back', body: ui.stack.column([
     ui.fields([
       { label: t('Name'), value: [{ text: job.label }] },
       { label: t('Status'), value: [{ text: t(job.status), tone: STATUS_TONE[job.status] }] },
       ...job.detail === undefined ? [] : [{ label: t('Detail'), value: [{ text: job.detail }] }],
     ]),
-    ui.actions({ id: 'job-actions', items: [
+    panelActions({ id: 'job-actions', items: [
       { id: 'read', label: t('Read output'), hintLabel: t('output'), key: 'o', hidden: true },
       { id: 'stop', label: t('Stop job'), hintLabel: t('stop'), key: 'x', hidden: true, intent: 'danger', disabled: job.status !== 'running', ...job.status === 'running' ? {} : { disabledReason: t(job.status) }, confirm: t('Stop {job}?', { job: job.label }) },
     ] }),
@@ -147,7 +149,7 @@ function appendOutput(feed: JobOutputFeed, read: JobOutputRead): boolean {
 }
 
 export function jobOutputNode(job: JobView, feed: { readonly dropped: boolean, readonly chunks: readonly MayflyContentChunk[] }, t: MayflyTranslate, escapeLabel: 'close' | 'back' = 'back'): MayflyUiNode {
-  return panel({ title: t('Job {id}', { id: String(job.id) }), escapeLabel, body: ui.stack.column([
+  return panelFrame({ title: t('Job {id}', { id: String(job.id) }), escapeLabel, body: ui.stack.column([
     ui.fields([{ label: t('Status at read'), value: [{ text: t(job.status), tone: STATUS_TONE[job.status] }] }]),
     ...feed.dropped ? [ui.text(t('(earlier output was dropped by retention)'), { tone: 'muted' })] : [],
     ui.child(ui.scroll(feed.chunks.length === 0 ? ui.text(t(isLiveJob(job) ? '(no output yet)' : '(no output)'), { tone: 'muted' }) : ui.code([...feed.chunks]), { id: 'job-output-document', scrollbar: true, follow: 'end' }), { basis: 0, grow: 1, minSize: 1 }),
@@ -156,11 +158,13 @@ export function jobOutputNode(job: JobView, feed: { readonly dropped: boolean, r
 
 /** The list page of the single jobs panel. */
 function jobListPanel(rows: readonly JobView[], available: boolean, t: MayflyTranslate): MayflyUiNode {
-  return panel({ title: t('Jobs'), escapeLabel: 'close', body: ui.stack.column([
-    ...available ? [] : [ui.text(t('Job registry unavailable'), { tone: 'danger' })],
-    ui.list({ id: 'jobs', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items: jobItems(rows, Date.now(), t), empty: ui.empty({ title: t('no background jobs') }) }),
-    ui.actions({ id: 'jobs-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
-  ]) })
+  return listPanel({
+    title: t('Jobs'), escapeLabel: 'close',
+    id: 'jobs', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [],
+    items: jobItems(rows, Date.now(), t), empty: ui.empty({ title: t('no background jobs') }),
+    leading: available ? [] : [ui.text(t('Job registry unavailable'), { tone: 'danger' })],
+    actions: { id: 'jobs-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] },
+  })
 }
 
 /** A read result is retained in its child Fiber, never reread by rendering or scrolling. */
@@ -284,13 +288,13 @@ export function apply(ctx: Context): void {
             page = { kind: 'output', id: page.id }
             refresh()
             return { kind: 'completed' }
-          } catch (error) { return { kind: 'failed', message: error instanceof Error ? error.message : String(error) } }
+          } catch (error) { return { kind: 'failed', message: formatError(error) } }
         }
         if (event.kind === 'activate' && page.kind === 'detail' && event.actionId === 'stop') {
           try {
             if (jobs.get(page.id, agent.id).status !== 'running') return { kind: 'completed' }
             jobs.kill(page.id, agent.id, 'stopped from the Mayfly /jobs view')
-          } catch (error) { return { kind: 'failed', message: error instanceof Error ? error.message : String(error) } }
+          } catch (error) { return { kind: 'failed', message: formatError(error) } }
           refresh()
           return { kind: 'completed' }
         }

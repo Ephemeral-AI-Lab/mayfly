@@ -8,12 +8,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply as applyApi } from '../../../ui/src/provider.ts'
 import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiEventContext, MayflyUiNode } from '../../../ui/src/contracts.ts'
 import { ui } from '../../../ui/src/index.ts'
-import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
-import type { MayflyContextHints } from '../../src/core/context-hint-locale.ts'
-import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
-import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal.ts'
+import { mountMayflySurfaceRenderer } from '../../src/core/hosts/surface-renderer.ts'
+import type { MayflyContextHints } from '../../src/core/ui/compile/context-hint-locale.ts'
+import type { MayflyUiImageSource } from '../../src/core/ui/paint/ui-images.ts'
+import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal/terminal.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { flush, plainText } from '../helpers.ts'
 
@@ -21,8 +21,8 @@ import { flush, plainText } from '../helpers.ts'
 const promptStandIn = (): MayflyFocusable => ({ focused: false, render: () => ['prompt'], invalidate() {} })
 import { FakeTerminal } from './fake-terminal.ts'
 import * as frontend from '../../src/frontend/index.ts'
-import { MayflyScreenService } from '../../src/core/screen.ts'
-import { untranslated } from '../../src/core/ui-interaction-locale.ts'
+import { MayflyScreenService } from '../../src/core/hosts/screen.ts'
+import { untranslated } from '../../src/core/ui/state/ui-interaction-surface.ts'
 
 class Scope {
   private readonly cleanups: Array<() => void> = []
@@ -318,7 +318,8 @@ it('keeps short editor presentations at their natural content height', async () 
     })
     await flush(8)
     const rows = slot.component.render(80).map(stripTerminalSequences)
-    expect(rows.length).toBe(9)
+    // On the alternate screen the action row is horizontal: the frame is its natural content height.
+    expect(rows.length).toBe(8)
     expect(rows[0]).toMatch(/^━+$/u)
     expect(rows.join('\n')).toContain('Version')
     expect(rows.join('\n')).toContain('Mayfly')
@@ -743,16 +744,28 @@ describe('direct overlay surface renderer', () => {
       await flush(8)
       const component = f.stack()[0]!.component
       const tasks: VoidFunction[] = []
-      const queue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { tasks.push(task) })
-      component.handleInput?.('\r')
+      // Count only the tasks the action pipeline queues. The alternate screen's own layout queues a settle microtask,
+      // which a frame between the input and the flush may leave pending; it is not part of the refresh this checks.
+      let recording = false
+      const queue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { if (recording) tasks.push(task) })
+      const input = (): void => {
+        recording = true
+        try { component.handleInput?.('\r') } finally { recording = false }
+      }
+      const run = (task: VoidFunction | undefined): void => {
+        if (task === undefined) throw new Error('no queued task')
+        recording = true
+        try { task() } finally { recording = false }
+      }
+      input()
       await flush(8)
       expect(tasks).toHaveLength(1)
-      tasks.shift()!()
-      component.handleInput?.('\r')
+      run(tasks.shift())
+      input()
       await flush(8)
       expect(tasks).toHaveLength(2)
-      tasks.splice(1, 1)[0]!()
-      tasks.shift()!()
+      run(tasks.splice(1, 1)[0])
+      run(tasks.shift())
       expect(onEvent).toHaveBeenCalledTimes(2)
       queue.mockRestore()
     } finally {

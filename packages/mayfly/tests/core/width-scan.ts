@@ -10,7 +10,7 @@
  */
 
 import { expect } from 'vitest'
-import { visibleWidth } from '../../src/core/width.ts'
+import { visibleWidth } from '../../src/core/text/width.ts'
 
 /** Viewports every scanned component must survive, wide to brutally narrow. */
 export const SCAN_WIDTHS = [120, 80, 60, 40, 20, 10, 5, 3, 2] as const

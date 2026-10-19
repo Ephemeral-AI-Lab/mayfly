@@ -10,16 +10,16 @@ import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import { describe, expect, it, vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as agentsPlugin from '../../src/interaction/agents-command.ts'
-import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
-import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
+import type { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
 import {
   agentMetricsText,
   agentTreeItems,
-  formatAgentElapsed,
   WorkflowLabelCache,
   type MayflySubagentTreeEntry,
 } from '../../src/interaction/agents-command.ts'
 import { liveAgentDescendantCount } from '../../src/interaction/agents-stop.ts'
+import { compactElapsedMs } from '../../src/transcript/agent-presentation.ts'
 import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme } from './fakes.ts'
 import { renderRequest, flushRequests } from './request-fixture.ts'
 import type { MayflyComponent } from '../../src/core/types.ts'
@@ -46,9 +46,9 @@ function child(id: string, overrides: Overrides<ChildEntry> = {}): ChildEntry {
 
 describe('agent tree models', () => {
   it('formats elapsed time and optional metrics', () => {
-    expect(formatAgentElapsed(-5)).toBe('0s')
-    expect(formatAgentElapsed(45_000)).toBe('45s')
-    expect(formatAgentElapsed(130_000)).toBe('2m 10s')
+    expect(compactElapsedMs(-5)).toBe('0s')
+    expect(compactElapsedMs(45_000)).toBe('45s')
+    expect(compactElapsedMs(130_000)).toBe('2m 10s')
     expect(agentMetricsText({}, 1_000)).toBe('')
     expect(agentMetricsText({ tokens: 2_048 }, 1_000)).toBe('2k tok')
     expect(agentMetricsText({ toolCount: 1 }, 1_000)).toBe('1 tool')

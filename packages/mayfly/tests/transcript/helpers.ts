@@ -12,7 +12,7 @@ import {
   type ToolResultMessage,
   type UserMessage,
 } from '@deepseek-ai/dsh-llm'
-import type { MayflyComponents, MayflyImage, MayflyMarkdown } from '../../src/core/types.ts'
+import type { MayflyComponents, MayflyImage } from '../../src/core/types.ts'
 import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 
 // Width truth is pi-tui itself (D48): the fake codepoint counters that used
@@ -20,32 +20,15 @@ import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 // would trip the real width guard stayed green in tests (the D39 lesson).
 // Tests now measure and truncate through the same implementations the
 // renderer runs.
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
-import { topRule } from '../../src/core/chrome.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
 
 /**
- * Build a fake `MayflyComponents` for transcript tests. `createMarkdown`
- * returns a minimal `MayflyMarkdown`: `setText` stores the source, `render`
- * wraps it with the real `wrapTextWithAnsi` (no Markdown transform). The
- * editor and list factories are out of scope for the transcript and throw.
+ * Build a fake `MayflyComponents` for transcript tests. The editor and
+ * completion factories are out of scope for the transcript and throw.
  */
 export function fakeMayflyComponents(): MayflyComponents {
   return {
     strong: text => `\x1b[1m${text}\x1b[22m`,
-    italic: text => `\x1b[3m${text}\x1b[23m`,
-    strike: text => `\x1b[9m${text}\x1b[29m`,
-    createMarkdown(options = {}): MayflyMarkdown {
-      let text = options.text ?? ''
-      return {
-        setText(next: string): void {
-          text = next
-        },
-        render(width: number): string[] {
-          return wrapTextWithAnsi(text, width)
-        },
-        invalidate(): void {},
-      }
-    },
     createEditor(): never {
       throw new Error('fake createEditor is out of scope for transcript tests')
     },
@@ -55,20 +38,13 @@ export function fakeMayflyComponents(): MayflyComponents {
         invalidate(): void {},
       }
     },
-    createSelectList(): never {
-      throw new Error('fake createSelectList is out of scope for transcript tests')
-    },
     visibleWidth,
     wrapText: wrapTextWithAnsi,
     truncateToWidth,
-    topRule,
     imageProtocol: () => false,
     imageDimensions: () => undefined,
     fuzzyMatch(): never {
       throw new Error('fake fuzzyMatch is out of scope for transcript tests')
-    },
-    fuzzyFilter(): never {
-      throw new Error('fake fuzzyFilter is out of scope for transcript tests')
     },
   }
 }

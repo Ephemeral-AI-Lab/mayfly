@@ -29,7 +29,7 @@ import { bootPanePlugin } from './pane-fakes.ts'
 import { COLORS, fakeAgent } from './status-fakes.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
-import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
 
 /** Identity colors satisfy MayflySemanticColors where consumed. */
 const colors = COLORS as MayflySemanticColors
@@ -40,7 +40,7 @@ function renderNode(node: MayflyUiNode, width: number): string[] {
     components: fakeMayflyComponents(),
     colors,
     getViewport: () => ({ columns: width, rows: 24 }),
-    screenMode: 'main',
+    bounded: false,
     emit: () => {},
   })
   return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(width)

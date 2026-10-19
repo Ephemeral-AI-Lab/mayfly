@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
+import { validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
 
 function accepted(value: unknown) {
   const result = validateMayflyUiNode(value)

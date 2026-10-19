@@ -17,7 +17,7 @@ import {
   sanitizeTitleText,
   TITLE_MAX_CHARS,
   type MayflyEscapeProcess,
-} from '../../src/core/terminal-escape.ts'
+} from '../../src/core/terminal/terminal-escape.ts'
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }))
 

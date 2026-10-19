@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/tests/core/ui-loader-animation
  */
 import { afterEach, expect, it, vi } from 'vitest'
-import { UiAnimationClock, UiLoaderAnimation, LOADER_FRAME_MS, LOADER_MAX_CATCH_UP, LOADER_MAX_FRAME_MS } from '../../src/core/ui-loader-animation.ts'
+import { UiAnimationClock, UiLoaderAnimation, LOADER_FRAME_MS, LOADER_MAX_CATCH_UP, LOADER_MAX_FRAME_MS } from '../../src/core/ui/paint/ui-loader-animation.ts'
 
 afterEach(() => vi.useRealTimers())
 

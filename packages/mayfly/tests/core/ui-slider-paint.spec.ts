@@ -3,8 +3,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { MayflySliderLevel, MayflySliderNode } from '@ephemeral-ai/mayfly-ui'
-import { paintSlider } from '../../src/core/ui-slider-paint.ts'
-import type { UiSliderModel } from '../../src/core/ui-interaction-slider.ts'
+import { paintSlider } from '../../src/core/ui/paint/ui-slider-paint.ts'
+import type { UiSliderModel } from '../../src/core/ui/state/ui-interaction-slider.ts'
 import { plain, plainColors } from '../helpers.ts'
 
 function level(id: string, label = id, disabled = false): MayflySliderLevel {

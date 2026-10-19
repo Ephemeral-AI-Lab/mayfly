@@ -127,13 +127,13 @@ describe('mayfly-terminal-title', () => {
     const off = vi.fn()
     const cleanups: Array<() => void> = []
     terminalTitle.apply({
-      get: () => ({
+      mayflySessionFacts: {
         subscribeTitle(listener: (title: string | undefined) => void) {
           listener('same')
           listener('same')
           return off
         },
-      }),
+      },
       mayflyScreen: { setTitle },
       effect(effect: () => () => void) {
         cleanups.push(effect())

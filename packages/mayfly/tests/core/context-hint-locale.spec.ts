@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   contextHintTranslator,
   mountContextHintLocale,
-} from '../../src/core/context-hint-locale.ts'
-import { untranslated } from '../../src/core/ui-interaction-locale.ts'
+} from '../../src/core/ui/compile/context-hint-locale.ts'
+import { untranslated } from '../../src/core/ui/state/ui-interaction-surface.ts'
 
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
 

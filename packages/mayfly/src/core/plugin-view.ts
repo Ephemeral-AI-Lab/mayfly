@@ -5,14 +5,13 @@
  * escape its assigned rows.
  *
  * The windowed painters for `text`, `fields`, `code`, `sections`, `rich-text`, and `diff` live in `content-rows.ts`;
- * this module keeps the sanitizing primitives they share and the one-line summaries.
+ * this module keeps the sanitizing primitives they share.
  *
  * @module @ephemeral-ai/mayfly/core/plugin-view
  */
 
-import type { MayflyContentNode, MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
-import { textOf } from '@ephemeral-ai/mayfly-ui'
-import { stripTerminalText } from './escape-sequences.ts'
+import type { MayflyTextStyle, MayflyTone } from '@ephemeral-ai/mayfly-ui'
+import { stripTerminalText } from './terminal/escape-sequences.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
 
 /** A code block highlights at most this many rows; the rest are plain text. */
@@ -62,8 +61,6 @@ export function styledText(value: string, styles: readonly MayflyTextStyle[] | u
   return (styles ?? []).reduce((text, style) => style === 'strong' ? strong(text) : style === 'italic' ? italic(text) : style === 'inverse' ? inverse(text) : strike(text), value)
 }
 
-type BasicContentNode = Extract<MayflyContentNode, { readonly kind: 'text' | 'fields' | 'code' | 'diff' | 'sections' }>
-
 /**
  * One ellipsized row for `overflow: 'truncate'`: line breaks and tabs fold
  * to spaces so the text can never take a second row.
@@ -74,18 +71,4 @@ type BasicContentNode = Extract<MayflyContentNode, { readonly kind: 'text' | 'fi
  */
 export function truncatedRow(text: string, width: number, components: MayflyComponents): string {
   return components.truncateToWidth(text.replace(/[\r\n\t]+/gu, ' '), Math.max(1, width), '…')
-}
-
-/** Produce a safe one-line notification/status summary from any public view. */
-export function summarizePluginView(view: BasicContentNode): string {
-  if (typeof view !== 'object' || view === null) throw new TypeError('view must be an object')
-  const text = (value: unknown, label: string): string => sanitizePluginText(requireText(value, label))
-  switch (view.kind) {
-    case 'text': return sanitizePluginText(textOf(view.content)).replace(/\s+/gu, ' ').trim()
-    case 'fields': return view.rows.map(row => `${text(row.label, 'field label')}: ${row.value.map(span => text(span.text, 'field span text')).join('')}`).join(' · ')
-    case 'code': return sanitizePluginText(textOf(view.code)).replace(/\s+/gu, ' ').trim()
-    case 'diff': return 'diff contribution'
-    case 'sections': return view.sections.map(section => section.title === undefined ? summarizePluginView(section.body) : text(section.title, 'section title')).join(' · ')
-    default: throw new TypeError(`unknown basic content kind "${String((view as { kind?: unknown }).kind)}"`)
-  }
 }

@@ -36,8 +36,8 @@ import z from '@deepseek-ai/schemastery'
 // Empty type import carries the app-owned current-Agent Context merge.
 import type {} from '../app/index.ts'
 import type { TranscriptViewMode } from '../transcript/presentation-policy.ts'
-import { PALETTE_KEYS, type MayflyPaletteKey } from '../core/palettes.ts'
-import { resolvePresentation, samePresentation } from '../core/presentation.ts'
+import { PALETTE_KEYS, type MayflyPaletteKey } from '../core/theme/palettes.ts'
+import { resolvePresentation, samePresentation } from '../core/theme/presentation.ts'
 import { applyTheme, reloadTheme } from './theme-switch.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -85,7 +85,7 @@ export interface MayflySettings {
   /** A provider balance below this in every currency it holds is low (the `/stats` Account tab warns). */
   readonly lowBalanceCny: number
   readonly lowBalanceUsd: number
-  // Presentation (slice 1.2): read by core through `core/presentation.ts`; a change reloads the live theme provider.
+  // Presentation (slice 1.2): read by core through `core/theme/presentation.ts`; a change reloads the live theme provider.
   /** Glyph vocabulary: `auto` follows the locale's charset; `ascii` is the one-cell fallback table. */
   readonly glyphs: 'auto' | 'unicode' | 'ascii'
   /** Weight only, no color; `NO_COLOR` turns it on whatever this says. */

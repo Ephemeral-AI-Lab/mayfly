@@ -5,7 +5,7 @@
 import { HStack, ScrollView, VStack, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { describe, expect, it } from 'vitest'
-import { ColumnStack, ROW_STACK_ENTRIES, RowStack, onScreen, placeChild } from '../../src/core/ui-stacks.ts'
+import { ColumnStack, ROW_STACK_ENTRIES, RowStack, onScreen, placeChild } from '../../src/core/ui/paint/ui-stacks.ts'
 import { lazyRows } from '../helpers.ts'
 
 /** A leaf that counts its renders and answers each width with the same array, as a retained leaf does. */

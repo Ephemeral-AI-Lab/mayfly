@@ -21,11 +21,11 @@ import type {
   MayflyUiNode,
 } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponent, MayflyEditor, MayflyEditorSubmitAttempt, MayflyFocusable } from '../core/types.ts'
-import { compileMayflyEditorShellNode } from '../core/ui-compiler.ts'
-import type { MayflyEditorShellNode } from '../core/ui-contracts.ts'
-import { validateMayflyUiNode } from '../core/ui-validator.ts'
+import { compileMayflyEditorShellNode } from '../core/ui/compile/ui-compiler.ts'
+import type { MayflyEditorShellNode } from '../core/ui/compile/ui-contracts.ts'
+import { validateMayflyUiNode } from '../core/ui/admit/ui-validator.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import { printableKey } from '../core/key-actions.ts'
+import { printableKey } from '../core/keys/key-actions.ts'
 import { IMAGE_MARKER } from './image-marker.ts'
 import { interactionTranslator } from './locale.ts'
 import { beginPromptWait } from './prompt-wait.ts'
@@ -491,7 +491,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       components: this.options.ctx.mayflyComponents,
       colors: this.options.ctx.mayflyTheme.colors,
       getViewport: () => this.options.ctx.mayflyScreen.editorViewport,
-      screenMode: 'main',
+      bounded: false,
       keymap: this.options.ctx.mayflyKeymap,
       emit: event => { this.dispatchShellEvent(shell, event) },
     })

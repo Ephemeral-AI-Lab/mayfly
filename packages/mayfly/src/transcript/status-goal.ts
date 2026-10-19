@@ -14,9 +14,9 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyInlineSpan, type MayflyPaneSummary, type MayflyTone, type MayflyActionItem, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import type { TickSource } from './tick.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { itemSummary, viewPanel } from './view-items.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-goal'
@@ -66,7 +66,7 @@ function readGoal(ctx: Context, agent: Agent): GoalView | undefined {
   try {
     activation = ctx.goals.get(agent)?.activation ?? 'disarmed'
   } catch (error) {
-    ctx.logger.warn(`could not read current goal activation: ${error instanceof Error ? error.message : String(error)}`)
+    ctx.logger.warn(`could not read current goal activation: ${formatError(error)}`)
   }
   return {
     ...projected.goal,
@@ -152,7 +152,7 @@ export function goalPanel(state: GoalItemState, t: MayflyTranslate): MayflyUiNod
 /** Register the Goal item under the calling Fiber. */
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
-  const tick = ctx.get('mayflyTick') as TickSource | undefined
+  const tick = ctx.mayflyTick
   /**
    * A button of the panel: the `/goal` subcommand of the same name on the exact current Agent and goal. An action built for
    * an older revision (the goal changed under the open panel) is refused, never applied to the newer goal.
@@ -176,7 +176,7 @@ export function apply(ctx: Context): void {
       } else return { kind: 'failed', message: t('Unknown goal action') }
       return { kind: 'completed' }
     } catch (error) {
-      return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+      return { kind: 'failed', message: formatError(error) }
     }
   }
   const pane = ctx.mayflyPanes.register({ id: 'mayfly.view.goal', placement: 'views', priority: VIEW_PRIORITY, onEvent: { action: act } }, null)
@@ -213,7 +213,7 @@ export function apply(ctx: Context): void {
     try {
       next = agent === null ? undefined : readGoal(ctx, agent)
     } catch (error) {
-      ctx.logger.warn(`could not read current goal for the goal view: ${error instanceof Error ? error.message : String(error)}`)
+      ctx.logger.warn(`could not read current goal for the goal view: ${formatError(error)}`)
     }
     now = Date.now()
     if (next?.phase === 'complete') {

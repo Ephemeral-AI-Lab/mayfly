@@ -3,8 +3,8 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { prepareUiForms, uiControlKey, uiDeclarations, visitUiControls } from '../../src/core/ui-interaction-tree.ts'
-import { MAYFLY_UI_MAX_COLLECTION, MAYFLY_UI_MAX_DEPTH, materializeDeferredUiNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
+import { prepareUiForms, uiControlKey, uiDeclarations, visitUiControls } from '../../src/core/ui/state/ui-interaction-tree.ts'
+import { MAYFLY_UI_MAX_COLLECTION, MAYFLY_UI_MAX_DEPTH, materializeDeferredUiNode, validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
 
 describe('UI control traversal', () => {
   it('uses structured page addresses and visits all nested passive containers', () => {

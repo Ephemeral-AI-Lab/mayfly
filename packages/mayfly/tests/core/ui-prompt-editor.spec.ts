@@ -5,8 +5,8 @@ import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyPromptNode, type MayflyUiEvent } from '../../../ui/src/index.ts'
 import { MayflyComponentsService } from '../../src/core/components.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
-import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
 import type { MayflySemanticColors, MayflyTheme } from '../../src/core/types.ts'
 import { PROBE_PALETTE } from '../design/probe.ts'
 import { FakeTerminal } from './fake-terminal.ts'
@@ -33,7 +33,7 @@ function open(prompt: Omit<MayflyPromptNode, 'kind' | 'id'> = {}, width = 40) {
     node: ui.prompt({ id: 'p', autofocus: true, ...prompt }), events: endpoint, definition: { onEvent: {} },
   } as never)
   const runtime = new MayflyUiSurfaceRuntime(model)
-  const result = compileMayflyUiSurfaceNode(model.node!, { components, colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 20 }), screenMode: 'alternate', emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime })
+  const result = compileMayflyUiSurfaceNode(model.node!, { components, colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 20 }), bounded: true, emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime })
   if (!result.ok) throw new Error(result.message)
   result.value.focusTarget!.focused = true
   cleanups.push(() => { runtime.dispose(); model.dispose(); tui.stop() })

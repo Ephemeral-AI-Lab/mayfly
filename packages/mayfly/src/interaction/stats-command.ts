@@ -19,6 +19,7 @@ import { createStatsIndex, readDigests, refreshStatsIndex } from './stats-index/
 import { readAccountSnapshot, type AccountSnapshot } from './stats-account.ts'
 import { aggregate, RANGES, type StatsRange } from './stats-index/stats.ts'
 import { openUiOverlay } from './ui-overlay.ts'
+import { formatError } from '../internal/format.ts'
 
 export const name = 'mayfly-stats'
 export const inject = ['commands', 'mayflyOverlays']
@@ -108,7 +109,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           void readAccountSnapshot(owner, route, retire).then(snapshot => {
             if (!retire.aborted) accountCache = snapshot
           }).catch((error: unknown) => {
-            if (!retire.aborted) owner.logger.warn(`stats: account read failed: ${error instanceof Error ? error.message : String(error)}`)
+            if (!retire.aborted) owner.logger.warn(`stats: account read failed: ${formatError(error)}`)
           }).finally(() => {
             if (accountGeneration !== mine || closed) return
             accountLoading = false
@@ -147,7 +148,7 @@ export function apply(ctx: Context, config: Config = {}): void {
             if (generation === mine) { progress = { running: true, ...state }; schedule() }
           }).catch((error: unknown) => {
             if (retire.aborted) return
-            const message = error instanceof Error ? error.message : String(error)
+            const message = formatError(error)
             owner.logger.warn(`stats: index failed: ${message}`)
             if (generation === mine) progress = { running: false, done: 0, total: 0, skipped: 0, failed: 0, error: message }
           }).finally(() => {
@@ -169,7 +170,7 @@ export function apply(ctx: Context, config: Config = {}): void {
             const method = await copyTextToClipboard(statsSummary(facts(), tab))
             return { kind: 'completed', feedback: { severity: 'success', message: `${t('copied the stats summary')}${method === 'osc52' ? t(' via terminal escape sequence (unverified)') : ''}` } }
           } catch (error) {
-            return { kind: 'failed', message: t('could not copy: {error}', { error: error instanceof Error ? error.message : String(error) }) }
+            return { kind: 'failed', message: t('could not copy: {error}', { error: formatError(error) }) }
           }
         }
 

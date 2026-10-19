@@ -6,7 +6,7 @@
 import { registerPluginCommand } from './plugin-commands.ts'
 import { listCommands, registerOwnedCommand } from './sessionless-commands.ts'
 import { registerPermissionsCommand } from './permission-panel.ts'
-import { openSessions } from './native-sessions.ts'
+import { openSessions } from './session-workspace-panel.ts'
 import { createSessionListCache } from './session-list-reads.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
@@ -37,8 +37,9 @@ declare module '@deepseek-ai/cordis' {
 import { rewindCandidates } from './rewind.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
-import { displayKey } from '../core/key-actions.ts'
+import { displayKey } from '../core/keys/key-actions.ts'
 import { SHARED_KEY_REFERENCE } from '../core/ui-key-grammar.ts'
+import { formatError } from '../internal/format.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-commands'
@@ -188,7 +189,7 @@ export function apply(ctx: Context): void {
               && (await roster.list()).some(item => item.id === preset && item.broken === undefined)
             if (!usable) return { kind: 'error' as const, text: t('unknown agent preset {preset}', { preset }) }
           } catch (error) {
-            return { kind: 'error' as const, text: error instanceof Error ? error.message : String(error) }
+            return { kind: 'error' as const, text: formatError(error) }
           }
           if (invocation.signal.aborted) return { kind: 'success' as const }
         }

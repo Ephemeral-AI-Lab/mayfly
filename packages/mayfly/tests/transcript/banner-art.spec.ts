@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { markColumns } from '../../src/core/quad-mark.ts'
+import { markColumns } from '../../src/core/text/quad-mark.ts'
 import { MARK_BEAT, MARK_ROWS } from '../../src/transcript/banner-art.ts'
 
 describe('MARK_ROWS', () => {

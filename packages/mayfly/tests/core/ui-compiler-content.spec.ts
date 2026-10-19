@@ -1,13 +1,13 @@
 /** Compiled content, layout, and motion (slice 1.3): the surface chrome fields, a loader's Escape, the scroll region, motion rows, and a draining bar. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
-import { ScrollRegion } from '../../src/core/ui-scroll-region.ts'
-import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
-import { UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { ScrollRegion } from '../../src/core/ui/paint/ui-scroll-region.ts'
+import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { UiAnimationClock } from '../../src/core/ui/paint/ui-loader-animation.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
-import type { MayflyPresentation } from '../../src/core/presentation.ts'
-import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
+import type { MayflyPresentation } from '../../src/core/theme/presentation.ts'
+import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
 import { probeComponents } from '../design/probe.ts'
 import { plainColors, plainText } from '../helpers.ts'
 
@@ -32,7 +32,6 @@ interface MountOptions {
   readonly clock?: boolean
   /** No interaction model: events reach the compile options' `emit`, as in a plain compile. */
   readonly modelless?: boolean
-  readonly counters?: ReturnType<typeof createWorkCounters>
 }
 
 /** A focused surface a host republishes: one model and runtime, the node replaced by `publish`. */
@@ -49,11 +48,10 @@ function mount(initial: MayflyUiNode, options: MountOptions = {}) {
   disposers.push(() => { runtime.dispose(); model?.dispose(); clock.dispose() })
   const compile = () => {
     const result = compileMayflyUiSurfaceNode(model?.node ?? plain, {
-      components: components(options.presentation), colors, getViewport: () => ({ columns: width, rows: options.rows ?? 30 }), screenMode: 'alternate',
+      components: components(options.presentation), colors, getViewport: () => ({ columns: width, rows: options.rows ?? 30 }), bounded: true,
       emit: event => events.push(event), contextHints: { enabled: true, focusWithoutControls: true }, surfaceRuntime: runtime,
       ...(options.escape === undefined ? {} : { onUnhandledEscape: options.escape, escapeHint: 'close' as const }),
       ...(options.completionsOpen === undefined ? {} : { completionsOpen: options.completionsOpen }),
-      ...(options.counters === undefined ? {} : { counters: options.counters }),
     })
     if (!result.ok) throw new Error(result.message)
     result.value.focusTarget!.focused = true
@@ -219,18 +217,16 @@ describe('the scroll region', () => {
     expect(surface.render().filter(row => row.includes('log line')).map(row => row.trim())[0]).toContain('log line 2')
   })
 
-  it('works on a narrow width and an id with a document, and counts its rows', () => {
-    const counters = createWorkCounters()
-    const surface = mount(region(10, { id: 'log' }), { width: 2, counters })
+  it('works on a narrow width and an id with a document', () => {
+    const surface = mount(region(10, { id: 'log' }), { width: 2 })
     expect(surface.render()).toHaveLength(4)
-    const wide = mount(region(10, { id: 'log' }), { counters })
+    const wide = mount(region(10, { id: 'log' }))
     wide.render()
     wide.press(KEYS.up)
     wide.press(KEYS.pageUp)
     wide.press(KEYS.home)
     wide.press(KEYS.end)
     expect(wide.render()[3]).toContain('log line 10')
-    expect(counters.rowsPainted).toBeGreaterThan(0)
     wide.publish(region(14, { id: 'log' }))
     expect(wide.render()[3]).toContain('log line 14')
     wide.press(KEYS.up)
@@ -316,7 +312,7 @@ describe('a bar with a transition', () => {
 
 describe('content nodes in a plain compile', () => {
   const paint = (node: MayflyUiNode, width = 40): string[] => {
-    const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: width, rows: 20 }), screenMode: 'alternate' })
+    const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: width, rows: 20 }), bounded: true })
     if (!result.ok) throw new Error(result.message)
     return result.value.component.render(width)
   }
@@ -331,7 +327,7 @@ describe('content nodes in a plain compile', () => {
     const result = compileMayflyUiSurfaceNode(ui.stack.column([
       ui.text(Array.from({ length: 100 }, (_, index) => `line ${String(index)}`).join('\n')),
       ui.actions({ id: 'act', items: [{ id: 'ok', label: 'OK' }] }),
-    ]), { components: components(), colors, getViewport: () => viewport, screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
+    ]), { components: components(), colors, getViewport: () => viewport, bounded: true, emit: () => {}, surfaceRuntime: runtime })
     if (!result.ok) throw new Error(result.message)
     result.value.focusTarget!.focused = true
     const frame = (rows: number): string[] => { viewport.rows = rows; return [...result.value.component.render(40)].map(row => row.trim()) }
@@ -345,35 +341,36 @@ describe('content nodes in a plain compile', () => {
   })
 
   it('draws the main-screen scroll as its child, and a declared viewport in the alternate screen', () => {
-    const main = compileMayflyUiNode(ui.scroll(lines(3), { height: 2 }), { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 20, rows: 20 }), screenMode: 'main' })
+    const main = compileMayflyUiNode(ui.scroll(lines(3), { height: 2 }), { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 20, rows: 20 }), bounded: false })
     if (!main.ok) throw new Error(main.message)
     expect([...main.value.component.render(20)]).toEqual(['log line 1', 'log line 2', 'log line 3'])
     expect(paint(ui.scroll(lines(3), { height: 2, scrollbar: false }), 20).map(row => row.trimEnd())).toEqual(['log line 1', 'log line 2'])
   })
 
   it('leaves a main-mode render a facade, painting only the rows a consumer reads', () => {
-    const counters = createWorkCounters()
+    const put = vi.spyOn(MayflyContentCache.prototype, 'put')
     const compile = (node: MayflyUiNode) => {
-      const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 80, rows: 20 }), screenMode: 'main', counters })
+      const result = compileMayflyUiNode(node, { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 80, rows: 20 }), bounded: false })
       if (!result.ok) throw new Error(result.message)
       return result.value.component
     }
     const after = Array.from({ length: 25000 }, (_, index) => `line ${index} content`).join('\n')
     const rendered = compile(ui.sections([{ title: 'f', body: ui.diff('', after) }])).render(80)
     expect(rendered.length).toBeGreaterThan(25000)
-    expect(counters.rowsPainted).toBe(0)
+    expect(put).not.toHaveBeenCalled()
     const window = rendered.slice(0, 11)
-    expect(counters.rowsPainted).toBeLessThan(200)
+    expect(put.mock.calls.length).toBeLessThan(200)
     expect(window[0]).toContain('f')
     const markdown = compile(ui.markdown(`# T\n\n${Array.from({ length: 5000 }, (_, index) => `paragraph ${index} `.repeat(4)).join('\n\n')}`)).render(80)
-    expect(counters.rowsPainted).toBeLessThan(200)
+    expect(put.mock.calls.length).toBeLessThan(200)
     expect(markdown.length).toBeGreaterThan(5000)
     markdown.slice(0, 5)
-    expect(counters.rowsPainted).toBeLessThan(400)
+    expect(put.mock.calls.length).toBeLessThan(400)
+    put.mockRestore()
   })
 
   it('follows a main-mode Markdown leaf from its estimate to the rows it paints, keeping its last line', () => {
-    const result = compileMayflyUiNode(ui.markdown(`${Array.from({ length: 10 }, (_, index) => `${'frame '.repeat(150)}${String(index)}\n\n| k | v |\n| - | - |\n| a | ${String(index)} |`).join('\n\n')}\n\nLAST LINE`), { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 40, rows: 20 }), screenMode: 'main' })
+    const result = compileMayflyUiNode(ui.markdown(`${Array.from({ length: 10 }, (_, index) => `${'frame '.repeat(150)}${String(index)}\n\n| k | v |\n| - | - |\n| a | ${String(index)} |`).join('\n\n')}\n\nLAST LINE`), { emit: () => {}, components: components(), colors, getViewport: () => ({ columns: 40, rows: 20 }), bounded: false })
     if (!result.ok) throw new Error(result.message)
     const rows = result.value.component.render(40)
     const estimate = rows.length

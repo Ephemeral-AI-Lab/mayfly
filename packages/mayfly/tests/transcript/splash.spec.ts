@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { FLY_IN_TOTAL_MS, markColumns, scaleRows } from '../../src/core/quad-mark.ts'
+import { FLY_IN_TOTAL_MS, markColumns, scaleRows } from '../../src/core/text/quad-mark.ts'
 import { MARK_ROWS } from '../../src/transcript/banner-art.ts'
 import {
   SPLASH_LIST_MAX,
@@ -21,7 +21,7 @@ import {
   type SplashLabels,
   type SplashSession,
 } from '../../src/transcript/splash.ts'
-import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
+import { truncateToWidth, visibleWidth } from '../../src/core/text/width.ts'
 import { plainColors } from '../helpers.ts'
 
 const LABELS: SplashLabels = {

@@ -143,6 +143,19 @@ function inFlightOf(draft: LiveAssistantDraft, durable: ConversationFacts): Conv
   return preparing.length === 0 ? durable.inFlight : [...committed, ...preparing]
 }
 
+/**
+ * Whether a live draft belongs to the session and has not fallen behind its
+ * durable facts: a settled run, an earlier turn, or an already-completed step
+ * outranks the transient stream frame.
+ */
+function draftIsCurrent(draft: LiveAssistantDraft | undefined, facts: ConversationFacts, sessionId: string): draft is LiveAssistantDraft {
+  return draft !== undefined && draft.sessionId === sessionId
+    && !(draft.turn < facts.turn || (draft.turn === facts.turn
+      && (facts.runOutcome !== undefined
+        || (facts.currentStep !== undefined && draft.step < facts.currentStep)
+        || (facts.lastCompletedStep !== undefined && draft.step <= facts.lastCompletedStep))))
+}
+
 /** Session-scoped facts bridge for status and dock model producers. */
 export class SessionFactsService extends Service {
   private agent: Agent | null = null
@@ -333,11 +346,7 @@ export class SessionFactsService extends Service {
   /** Durable facts overlaid with the current Agent's live streaming draft. */
   private merged(): ConversationFacts {
     const draft = this.live
-    if (draft === undefined || this.agent === null || draft.sessionId !== String(this.agent.session.id)) return this.durable
-    if (draft.turn < this.durable.turn || (draft.turn === this.durable.turn
-      && (this.durable.runOutcome !== undefined
-        || (this.durable.currentStep !== undefined && draft.step < this.durable.currentStep)
-        || (this.durable.lastCompletedStep !== undefined && draft.step <= this.durable.lastCompletedStep)))) return this.durable
+    if (this.agent === null || !draftIsCurrent(draft, this.durable, String(this.agent.session.id))) return this.durable
     return {
       ...this.durable,
       active: true,
@@ -524,12 +533,7 @@ export class SessionFactsService extends Service {
 
 /** Convert one child session's presentation facts and native selection to renderer-neutral card facts. */
 export function projectChildSessionFacts(id: string, facts: ConversationFacts, draft?: LiveAssistantDraft, selection?: ModelSelectionProjection | null): ChildSessionFacts {
-  const liveDraft = draft !== undefined && draft.sessionId === id
-    && !(draft.turn < facts.turn || (draft.turn === facts.turn
-      && (facts.runOutcome !== undefined
-        || (facts.currentStep !== undefined && draft.step < facts.currentStep)
-        || (facts.lastCompletedStep !== undefined && draft.step <= facts.lastCompletedStep))))
-    ? draft : undefined
+  const liveDraft = draftIsCurrent(draft, facts, id) ? draft : undefined
   const phase = facts.active
     ? liveDraft !== undefined && liveDraft.phase !== 'waiting' ? 'running' : facts.phase === 'waiting' ? 'waiting' : 'running'
     // A child whose first turn has not begun has no outcome yet: it is about to work, not finished.

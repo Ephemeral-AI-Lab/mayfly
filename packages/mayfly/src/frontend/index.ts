@@ -4,8 +4,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { MayflyLocaleService } from './locale.ts'
-import { MayflyUiImagesService } from '../core/ui-images.ts'
-import { mountUiRegistryObservers, UiInteractionService } from '../core/ui-interaction-state.ts'
+import { MayflyUiImagesService } from '../core/ui/paint/ui-images.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../core/ui/state/ui-interaction-state.ts'
 import * as providerCommands from '../interaction/provider-commands.ts'
 import * as providerOnboarding from '../interaction/provider-onboarding.ts'
 import * as questions from '../interaction/questions-plugin.ts'
@@ -24,7 +24,6 @@ import { MayflyTickService } from '../transcript/tick.ts'
 import * as assistantStreamRecovery from './assistant-stream.ts'
 
 export * from './models.ts'
-export * from './theme.ts'
 export * from './locale.ts'
 export * from './common-locale.ts'
 

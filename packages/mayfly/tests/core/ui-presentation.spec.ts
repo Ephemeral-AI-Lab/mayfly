@@ -1,11 +1,11 @@
 /** The compiled surface under a presentation: ASCII glyphs on painted rows, never on typed text, and reduced motion. */
 import { describe, expect, it, vi } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { compileMayflyUiNode, MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
-import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
-import { UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
+import { compileMayflyUiNode, MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { UiAnimationClock } from '../../src/core/ui/paint/ui-loader-animation.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
-import type { MayflyPresentation } from '../../src/core/presentation.ts'
+import type { MayflyPresentation } from '../../src/core/theme/presentation.ts'
 import { probeComponents } from '../design/probe.ts'
 import { plainColors } from '../helpers.ts'
 
@@ -17,7 +17,7 @@ function components(presentation: Partial<MayflyPresentation>): MayflyComponents
 }
 
 function render(node: unknown, presentation: Partial<MayflyPresentation>, width = 40): string[] {
-  const result = compileMayflyUiNode(node, { emit: () => {}, components: components(presentation), colors, getViewport: () => ({ columns: width, rows: 20 }), screenMode: 'alternate' })
+  const result = compileMayflyUiNode(node, { emit: () => {}, components: components(presentation), colors, getViewport: () => ({ columns: width, rows: 20 }), bounded: true })
   if (!result.ok) throw new Error(result.message)
   return result.value.component.render(width)
 }
@@ -46,7 +46,7 @@ describe('loader motion', () => {
     } as never)
     const clock = new UiAnimationClock()
     const runtime = new MayflyUiSurfaceRuntime(model, () => {}, clock)
-    const result = compileMayflyUiSurfaceNode(model.node!, { emit: () => {}, components: components(presentation), colors, getViewport: () => ({ columns: 30, rows: 5 }), screenMode: 'alternate', surfaceRuntime: runtime })
+    const result = compileMayflyUiSurfaceNode(model.node!, { emit: () => {}, components: components(presentation), colors, getViewport: () => ({ columns: 30, rows: 5 }), bounded: true, surfaceRuntime: runtime })
     if (!result.ok) throw new Error(result.message)
     return { render: () => result.value.component.render(30), clock, dispose: () => { runtime.dispose(); model.dispose() } }
   }
@@ -86,7 +86,7 @@ describe('focus window', () => {
       definition: { onEvent: {} },
     } as never)
     const runtime = new MayflyUiSurfaceRuntime(model)
-    const result = compileMayflyUiSurfaceNode(model.node!, { emit: () => {}, components: components({}), colors, getViewport: () => ({ columns: 30, rows: 4 }), screenMode: 'alternate', surfaceRuntime: runtime })
+    const result = compileMayflyUiSurfaceNode(model.node!, { emit: () => {}, components: components({}), colors, getViewport: () => ({ columns: 30, rows: 4 }), bounded: true, surfaceRuntime: runtime })
     if (!result.ok) throw new Error(result.message)
     const surface = result.value
     surface.focusTarget!.focused = true
