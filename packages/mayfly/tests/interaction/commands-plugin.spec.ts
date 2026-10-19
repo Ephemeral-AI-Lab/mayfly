@@ -202,6 +202,18 @@ describe('mayfly-commands plugin', () => {
     expect(execution?.result).toEqual({ kind: 'success' })
   })
 
+  it('lists /mode and /plan on the start surface and toggles the pending plan', async () => {
+    const { ctx } = await mount({ attach: false })
+    const names = ctx.mayflyInteractionState.sessionless.list().map(command => command.name)
+    expect(names).toContain('mode')
+    expect(names).toContain('plan')
+    expect(await ctx.mayflyInteractionState.sessionless.find('mode')!.handler({ rawInput: '', signal: signal() })).toEqual({ kind: 'success' })
+    const start = ctx.get('mayflySessionStart') as unknown as { planActive(): boolean }
+    expect(start.planActive()).toBe(true)
+    expect(await ctx.mayflyInteractionState.sessionless.find('plan')!.handler({ rawInput: 'off', signal: signal() })).toEqual({ kind: 'success', text: 'Plan mode off for the next session' })
+    expect(start.planActive()).toBe(false)
+  })
+
   it('/sessions <id> emits mayfly/request-resume with the trimmed id', async () => {
     const { ctx, agent } = await mount()
     const onResume = vi.fn()
