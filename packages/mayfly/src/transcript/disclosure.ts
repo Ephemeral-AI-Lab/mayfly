@@ -8,8 +8,11 @@
 export interface Disclosure {
   /** Ctrl-O: the last `expandTurns` turns draw their Verbose tier. */
   readonly recent: boolean
-  /** Turns whose state Enter on their header flipped against what `recent` gives. */
-  readonly turns: ReadonlySet<number>
+  /**
+   * Turns Enter on their header set apart from what `recent` gives: `true` opened, `false` folded. The state holds while the
+   * reach moves on to newer turns, so no turn opens or folds by itself; a press of Ctrl-O forgets the folds.
+   */
+  readonly turns: ReadonlyMap<number, boolean>
   /** Entries Enter opened: each draws its Verbose tier with every row it carries (a diff, a command's output, a reasoning block, a folded prompt). */
   readonly rows: ReadonlySet<string>
   /** Runs of calls (by their first call's id) the reader opened as a whole: every call in them is open, those that join later too. */
@@ -21,14 +24,14 @@ export interface Disclosure {
 /** Nothing opened. */
 export const NO_DISCLOSURE: Disclosure = Object.freeze({
   recent: false,
-  turns: new Set<number>(),
+  turns: new Map<number, boolean>(),
   rows: new Set<string>(),
   groups: new Set<string>(),
   forced: new Set<number>(),
 })
 
 /**
- * The turns drawn at their Verbose tier: the Ctrl-O reach flipped by the turns Enter toggled, plus the forced ones.
+ * The turns drawn at their Verbose tier: the Ctrl-O reach, then the turns Enter opened or folded, plus the forced ones.
  * @param disclosure - what the reader opened.
  * @param reach - the turns Ctrl-O reaches (the newest few).
  * @returns the turn numbers to open.
@@ -36,24 +39,38 @@ export const NO_DISCLOSURE: Disclosure = Object.freeze({
 export function openTurns(disclosure: Disclosure, reach: ReadonlySet<number>): Set<number> {
   const open = new Set<number>()
   if (disclosure.recent) for (const turn of reach) open.add(turn)
-  for (const turn of disclosure.turns) {
-    if (open.has(turn)) open.delete(turn)
-    else open.add(turn)
+  for (const [turn, opened] of disclosure.turns) {
+    if (opened) open.add(turn)
+    else open.delete(turn)
   }
   for (const turn of disclosure.forced) open.add(turn)
   return open
 }
 
 /**
- * The same disclosure with one turn flipped.
+ * The same disclosure with one turn flipped from how it is drawn: open, it folds; closed, it opens. A turn put back to what
+ * Ctrl-O gives it follows Ctrl-O again.
  * @param disclosure - the current value.
  * @param turn - the turn whose header was accepted.
+ * @param reach - the turns Ctrl-O reaches, as the stream last drew them.
  * @returns the next value.
  */
-export function toggleTurn(disclosure: Disclosure, turn: number): Disclosure {
-  const turns = new Set(disclosure.turns)
-  if (!turns.delete(turn)) turns.add(turn)
+export function toggleTurn(disclosure: Disclosure, turn: number, reach: ReadonlySet<number>): Disclosure {
+  const opened = !openTurns(disclosure, reach).has(turn)
+  const turns = new Map(disclosure.turns)
+  if (opened === (disclosure.recent && reach.has(turn))) turns.delete(turn)
+  else turns.set(turn, opened)
   return { ...disclosure, turns }
+}
+
+/**
+ * The same disclosure after Ctrl-O: the reach opens or closes whole. The turns Enter folded are forgotten, so the next press
+ * opens them with the others; the turns Enter opened stay open.
+ * @param disclosure - the current value.
+ * @returns the next value.
+ */
+export function toggleRecent(disclosure: Disclosure): Disclosure {
+  return { ...disclosure, recent: !disclosure.recent, turns: new Map([...disclosure.turns].filter(([, opened]) => opened)) }
 }
 
 /**
