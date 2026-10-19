@@ -12,7 +12,7 @@ import { interactionTranslator } from './locale.ts'
 import { sessionModeSnapshot } from './mode-commands.ts'
 
 export const name = 'mayfly-status-mode'
-export const inject = ['mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections']
+export const inject = ['mayflyStatus', 'mayflyCurrentAgent', 'mayflySessionStart', 'sessionProjections']
 
 /** The native projections whose change can move either badge. */
 const MODE_KEYS: ReadonlySet<string> = new Set(['plan', 'permissions'])
@@ -23,8 +23,14 @@ export function apply(ctx: Context): void {
   const node = (): MayflyStatusNode | null => {
     const agent = ctx.mayflyCurrentAgent.current()
     const state = agent === null ? undefined : sessionModeSnapshot(ctx, agent)
-    const plan: MayflyStatusNode | null = state?.plan?.active === true || state?.plan?.pending === true
-      ? { kind: 'text', content: state.plan.pending ? t('plan…') : t('plan'), tone: 'accent' }
+    // The start surface has no Agent to carry plan state; the pending
+    // selection is shown as a queued badge that the first session takes.
+    const startPlan = agent === null
+      && ctx.mayflyCurrentAgent.primary() === null
+      && ctx.mayflySessionStart.planActive()
+    const pending = startPlan || state?.plan?.pending === true
+    const plan: MayflyStatusNode | null = startPlan || state?.plan?.active === true || state?.plan?.pending === true
+      ? { kind: 'text', content: pending ? t('plan…') : t('plan'), tone: 'accent' }
       : null
     const yolo: MayflyStatusNode | null = state?.yolo === true
       ? { kind: 'text', content: t('yolo'), tone: 'warning' }
@@ -46,6 +52,7 @@ export function apply(ctx: Context): void {
     registration.set(next)
   }
   const offAgent = ctx.mayflyCurrentAgent.subscribe(refresh)
+  const offStartPlan = ctx.mayflySessionStart.subscribePlan(refresh)
   const offProjection = ctx.sessionProjections.onChanged((session, key) => {
     if (session !== ctx.mayflyCurrentAgent.current()?.session) return
     // Only the plan and permission projections can change the badges; the
@@ -55,6 +62,7 @@ export function apply(ctx: Context): void {
   })
   ctx.effect(() => () => {
     offAgent()
+    offStartPlan()
     offProjection()
     registration.dispose()
   })

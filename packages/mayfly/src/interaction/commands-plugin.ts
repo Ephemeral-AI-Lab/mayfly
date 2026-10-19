@@ -18,7 +18,7 @@ import { conversationId } from '../app/conversation-views.ts'
 import { panel, ui } from '@ephemeral-ai/mayfly-ui'
 import type { HelpSection } from './help.ts'
 import { helpNode } from './help.ts'
-import { cycleMode } from './mode-commands.ts'
+import { cycleMode, registerSessionlessPlan } from './mode-commands.ts'
 import { registerModelCommands } from './model-commands.ts'
 import { registerExportCommands } from './session-export.ts'
 import { registerInitCommand } from './session-init.ts'
@@ -246,8 +246,9 @@ export function apply(ctx: Context): void {
       handler: () => showHelp(),
     })
     // The palette entry for the Shift+Tab plan cycle (mode-commands): the
-    // hotkey stays the primary surface; the command exists for discovery.
-    const mode = ctx.commands.register({
+    // hotkey stays the primary surface; the command exists for discovery and,
+    // with no session, sets the next session's pending plan selection.
+    const mode = registerOwnedCommand(ctx, {
       name: 'mode',
       description: 'Toggle plan mode (same as Shift+Tab)',
       handler: () => {
@@ -255,6 +256,9 @@ export function apply(ctx: Context): void {
         return { kind: 'success' as const }
       },
     })
+    // The native `/plan` command needs an Agent; its no-session form sets
+    // the same pending selection (`/plan` or `/plan off`).
+    const plan = registerSessionlessPlan(ctx)
     const theme = registerThemeCommand(ctx)
     /* `/permission` stays native; Mayfly owns only the terminal `/permissions` panel. */
     const permissions = registerPermissionsCommand(ctx)
@@ -284,6 +288,7 @@ export function apply(ctx: Context): void {
       rename()
       help()
       mode()
+      plan()
       theme()
       permissions()
       models()

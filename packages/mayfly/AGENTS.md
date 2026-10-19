@@ -26,7 +26,10 @@ slots, never arbitrary root components.
   until then; the post-boot signal is `mayflySessionStart.onBooted`, not
   the first Agent. A command that runs with no Agent registers through
   `registerOwnedCommand` (`interaction/sessionless-commands.ts`) and must
-  not read `invocation.agent`.
+  not read `invocation.agent`. The start surface's pending plan mode
+  (`plan…`) also lives on `mayflySessionStart`: the first created session
+  enters it through the native `/plan` before its first message, and a
+  selection or `/new` clears it.
   Interrupt descendants through native ancestor authority without draining
   retained Activations/inbox. A settled abort or failed turn can leave queued
   input in an idle Agent (the loop only re-wakes on `wakeRequested`); the

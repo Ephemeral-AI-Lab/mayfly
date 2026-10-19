@@ -110,7 +110,7 @@ async function mount(initial: PlanProjection = { active: false, pending: false }
     ;(ctx.get('testSession') as { current: Agent | null }).current = next
     ctx.emit('test/session-changed', next)
   }
-  return { ctx, agent, agentFor, projections, fiber, entry, switchTo }
+  return { ctx, agent, agentFor, projections, fiber, entry, switchTo, start: ctx.get('mayflySessionStart') as unknown as { setPlanActive(active: boolean): void, planActive(): boolean } }
 }
 
 describe('mayfly-status-mode', () => {
@@ -126,6 +126,21 @@ describe('mayfly-status-mode', () => {
 
     normal.projections.setPermission(normal.agent.session, 'danger-full-access')
     expect(normal.entry()).toMatchObject({ node: { content: 'yolo', tone: 'warning' } })
+  })
+
+  it('shows the pending plan on the start surface and clears it when the selection changes', async () => {
+    const world = await mount()
+    world.switchTo(null)
+    expect(world.entry()?.node).toBeNull()
+    world.start.setPlanActive(true)
+    expect(world.entry()?.node).toMatchObject({ kind: 'text', content: 'plan…', tone: 'accent' })
+    world.start.setPlanActive(false)
+    expect(world.entry()?.node).toBeNull()
+    world.start.setPlanActive(true)
+    world.switchTo(world.agent)
+    expect(world.entry()?.node).toBeNull()
+    await world.fiber.dispose()
+    expect(world.entry()).toBeUndefined()
   })
 
   it.each([false, true])('renders both badges with pending=%s and preserves yolo when planning ends', async pending => {

@@ -83,9 +83,9 @@ export function registerOwnedCommand(ctx: Context, definition: SessionlessDefini
 
 /**
  * Register a command that runs only while no session exists. The dsh runtime
- * already owns a command of the same name for a live Agent (`/permission`);
- * this one answers the start surface, where the same words set the default
- * a new session takes.
+ * already owns a command of the same name for a live Agent (`/permission`,
+ * `/plan`); this one answers the start surface, where the same words set the
+ * default a new session takes.
  * @returns the disposer.
  */
 export function registerSessionlessCommand(ctx: Context, definition: SessionlessDefinition): () => void {

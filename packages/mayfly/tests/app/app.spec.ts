@@ -27,6 +27,8 @@ interface Bench {
   readonly forked: Array<{ sessionId: unknown, atSeq?: number }>
   readonly exits: number[]
   readonly errors: () => string
+  readonly commandRuns: Array<{ agent: Agent, line: string }>
+  readonly commands: { execute: ReturnType<typeof vi.fn> }
   readonly controller: {
     create: ReturnType<typeof vi.fn>
     resolveAgent: ReturnType<typeof vi.fn>
@@ -86,6 +88,14 @@ function bench(config: Config = {}, options: {
     live.set(String(agent.id), agent)
     return { sessionId: agent.id }
   })
+  const commandRuns: Array<{ agent: Agent, line: string }> = []
+  const commands = {
+    execute: vi.fn(async (agent: Agent, line: string) => {
+      commandRuns.push({ agent, line })
+      return { commandId: 'command', result: { kind: 'success' as const } }
+    }),
+  }
+  ctx.provide('commands', commands as never)
   const controller = { create, resolveAgent, fork }
   ctx.provide('sessionController', controller as never)
   ctx.provide('mayflyScreen', {} as never)
@@ -98,6 +108,8 @@ function bench(config: Config = {}, options: {
     forked,
     exits,
     errors: () => errors,
+    commandRuns,
+    commands,
     controller,
     failCreate(error) { createError = error },
     failResolve(id, error) { resolveErrors.set(id, error) },
@@ -267,6 +279,40 @@ describe('mayfly app driver', () => {
     const second = await ensureAgent(test)
     expect(second).not.toBe(first)
     expect(test.created).toEqual([{ cwd: process.cwd() }, { cwd: process.cwd(), agentPreset: 'minimal' }])
+  })
+
+  it('starts the first session in the pending plan mode through the native command', async () => {
+    const test = bench()
+    await booted(test)
+    test.ctx.mayflySessionStart.setPlanActive(true)
+    const agent = await ensureAgent(test)
+    expect(test.commandRuns).toEqual([{ agent, line: '/plan' }])
+    expect(test.ctx.mayflySessionStart.planActive()).toBe(false)
+    expect(test.errors()).toBe('')
+    await test.ctx.fiber.dispose()
+  })
+
+  it('keeps the new session when plan mode cannot be entered and reports it', async () => {
+    const test = bench()
+    await booted(test)
+    test.commands.execute.mockResolvedValueOnce(undefined)
+    test.ctx.mayflySessionStart.setPlanActive(true)
+    const agent = await ensureAgent(test)
+    expect(test.ctx.mayflyCurrentAgent.current()).toBe(agent)
+    expect(test.ctx.mayflySessionStart.planActive()).toBe(false)
+    expect(test.errors()).toContain('plan mode is unavailable in the selected preset')
+    await test.ctx.fiber.dispose()
+  })
+
+  it('clears a pending plan selection when leaving the start surface', async () => {
+    const test = bench()
+    await booted(test)
+    test.ctx.mayflySessionStart.setPlanActive(true)
+    test.ctx.emit('mayfly/request-new')
+    await vi.waitFor(() => { expect(test.ctx.mayflySessionStart.planActive()).toBe(false) })
+    expect(test.ctx.mayflyCurrentAgent.current()).toBeNull()
+    expect(test.created).toEqual([])
+    await test.ctx.fiber.dispose()
   })
 
   it('forks and rewinds through the native controller and reports every guard', async () => {

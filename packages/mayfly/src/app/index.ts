@@ -11,6 +11,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionController } from '@deepseek-ai/dsh-api-session-controller'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type { MayflyRequestLifecycle } from './request-lifecycle.ts'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
@@ -169,7 +170,13 @@ export function apply(ctx: Context, config: Config): void {
     })
   }
 
+  /** The start surface's pending plan mode; the next created session takes it. */
+  let sessionStart: MayflySessionStartService | undefined
+
   const select = (agent: Agent): void => {
+    // A session selection leaves the start surface, and with it any pending
+    // plan mode; only a session created from that surface consumes it.
+    sessionStart?.setPlanActive(false)
     conversations.selectPrimary(agent)
   }
 
@@ -180,6 +187,26 @@ export function apply(ctx: Context, config: Config): void {
   /** The agent preset `/new <preset>` asked for; the next session created takes it. */
   let pendingPreset: string | undefined
 
+  /**
+   * Enter plan mode on a session created from the start surface, through the
+   * native `/plan` command of its preset. A preset without plan mode leaves
+   * the session running normally.
+   */
+  const enterPlanMode = async (agent: Agent): Promise<void> => {
+    const commands = ctx.get('commands')
+    if (commands === undefined) {
+      io.stderr.write('dsh: plan mode is unavailable: the command service is not mounted\n')
+      return
+    }
+    try {
+      const execution = await commands.execute(agent, '/plan', [], new AbortController().signal)
+      if (execution === undefined) io.stderr.write('dsh: plan mode is unavailable in the selected preset\n')
+      else if (execution.result.kind === 'error') io.stderr.write(`dsh: could not enter plan mode: ${execution.result.text}\n`)
+    } catch (error) {
+      io.stderr.write(`dsh: could not enter plan mode: ${formatError(error)}\n`)
+    }
+  }
+
   const create = async (): Promise<Agent> => {
     const agentPreset = pendingPreset
     const created = await controller.create({
@@ -187,7 +214,12 @@ export function apply(ctx: Context, config: Config): void {
       ...agentPreset === undefined ? {} : { agentPreset },
     })
     pendingPreset = undefined
-    return resolve(String(created.sessionId))
+    const agent = await resolve(String(created.sessionId))
+    if (sessionStart?.planActive() === true) {
+      await enterPlanMode(agent)
+      sessionStart.setPlanActive(false)
+    }
+    return agent
   }
 
   // Starts that wait on the chain; an unload rejects them so no caller hangs.
@@ -204,6 +236,7 @@ export function apply(ctx: Context, config: Config): void {
       try {
         const agent = current.primary() ?? await create()
         if (current.primary() !== agent) select(agent)
+        else sessionStart?.setPlanActive(false)
         resolveStart(agent)
       } catch (error) {
         reject(error instanceof Error ? error : new Error(describe(error)))
@@ -213,6 +246,7 @@ export function apply(ctx: Context, config: Config): void {
     })
   })
   const starter = new MayflySessionStartService(ctx, start)
+  sessionStart = starter
 
   enqueue(async () => {
     await ctx.get('loader')?.await()
@@ -256,6 +290,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('mayfly/request-new', (agentPreset) => {
     enqueue(async () => {
       conversations.closeSides()
+      sessionStart?.setPlanActive(false)
       pendingPreset = agentPreset
       conversations.selectPrimary(null)
     })

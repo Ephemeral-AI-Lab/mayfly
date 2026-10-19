@@ -9,10 +9,12 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-plan-mode'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '../app/index.ts'
 import type { PermissionPresetsService } from './permission-panel.ts'
 import type { InteractionFeedbackReporter } from './notifications.ts'
 import { getSharedEditor } from './editor-instance.ts'
 import { interactionTranslator } from './locale.ts'
+import { registerSessionlessCommand } from './sessionless-commands.ts'
 
 /** Independent native state for plan switching and status display. */
 interface MayflySessionModeSnapshot {
@@ -53,7 +55,23 @@ export async function cycleMode(ctx: Context, reporter?: InteractionFeedbackRepo
   const report = reporter ?? getSharedEditor(ctx)?.report ?? (() => {})
   const agent = ctx.mayflyCurrentAgent.current()
   if (agent === null) {
-    report('mode', { message: t('no session is live yet'), severity: 'error' })
+    // The start surface has no Agent to carry plan state yet: the selection
+    // rides the lazy start and the first message's session takes it.
+    if (ctx.mayflyCurrentAgent.primary() !== null) {
+      report('mode', { message: t('no session is live yet'), severity: 'error' })
+      return
+    }
+    const starter = ctx.get('mayflySessionStart')
+    if (starter === undefined) {
+      report('mode', { message: t('no session is live yet'), severity: 'error' })
+      return
+    }
+    const active = !starter.planActive()
+    starter.setPlanActive(active)
+    report('mode', {
+      message: t(active ? 'Plan mode on for the next session' : 'Plan mode off for the next session'),
+      severity: 'success',
+    })
     return
   }
   const plan = ctx.sessionProjections.snapshot(agent.session, ['plan']).values.plan
@@ -73,4 +91,29 @@ export async function cycleMode(ctx: Context, reporter?: InteractionFeedbackRepo
   } catch (error) {
     ctx.logger.warn(`mode cycle dispatch failed: ${describe(error)}`)
   }
+}
+
+/**
+ * Register the native `/plan` command's start-surface form. A live Agent runs
+ * the preset's own command; with no session, bare `/plan` and `/plan off` set
+ * the pending selection the first message's session takes. A message argument
+ * needs a session to steer into and is refused here.
+ * @returns the disposer removing the sessionless entry.
+ */
+export function registerSessionlessPlan(ctx: Context): () => void {
+  return registerSessionlessCommand(ctx, {
+    name: 'plan',
+    description: 'Enter or leave plan mode for the next session',
+    input: { hint: '[off]' },
+    handler: invocation => {
+      const t = interactionTranslator(ctx)
+      const starter = ctx.get('mayflySessionStart')
+      if (starter === undefined) return { kind: 'error', text: t('plan mode is unavailable') }
+      const argument = invocation.rawInput.trim()
+      if (argument !== '' && argument !== 'off') return { kind: 'error', text: t('Send a message first: /plan with a message needs a session') }
+      const active = argument !== 'off'
+      starter.setPlanActive(active)
+      return { kind: 'success', text: t(active ? 'Plan mode on for the next session' : 'Plan mode off for the next session') }
+    },
+  })
 }

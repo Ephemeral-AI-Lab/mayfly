@@ -1052,9 +1052,21 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
     clearStop: () => { stopRequested = false },
   } as never)
   ctx.provide('mayflyRetractions', { tryRetract: () => false })
+  let startPlan = false
+  const startPlanListeners = new Set<(active: boolean) => void>()
   ctx.provide('mayflySessionStart', {
     onBooted: (listener: () => void) => { listener(); return () => {} },
     ensure: async () => { throw new Error('no active session') },
+    planActive: () => startPlan,
+    setPlanActive: (active: boolean) => {
+      if (startPlan === active) return
+      startPlan = active
+      for (const listener of startPlanListeners) listener(active)
+    },
+    subscribePlan: (listener: (active: boolean) => void) => {
+      startPlanListeners.add(listener)
+      return () => { startPlanListeners.delete(listener) }
+    },
   } as never)
   ctx.on('test/session-changed', publishAgent)
   ctx.on('agent/status', publishAgent)

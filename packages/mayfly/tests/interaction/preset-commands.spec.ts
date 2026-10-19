@@ -19,6 +19,7 @@ const preset = (id: string, options: Partial<AgentPreset> = {}): AgentPreset => 
 class FixturePresets {
   constructor(private readonly ctx: Context) {}
   catalog: AgentPreset[] = [preset('standard', { name: 'Standard' }), preset('minimal', { name: 'Minimal' })]
+  defaultId = 'standard'
   selected = new Map<Context, string>()
   private readonly switches = new Map<string, Promise<unknown>>()
   readonly recomposeCalls = vi.fn(async (ctx: Context, id: string): Promise<AgentPreset> => {
@@ -28,6 +29,12 @@ class FixturePresets {
     return preset
   })
   async list() { return this.catalog }
+  async resolve(id?: string): Promise<AgentPreset> {
+    const wanted = id ?? this.defaultId
+    const item = this.catalog.find(entry => entry.id === wanted)
+    if (item === undefined) throw new Error(`Unknown agent preset: ${wanted}`)
+    return item
+  }
   composedPreset(ctx: Context) { return this.selected.get(ctx) }
   recompose(ctx: Context, id: string) { return this.recomposeCalls(ctx, id) }
   async select(agent: Agent, agentPreset: string): Promise<string> {
@@ -41,6 +48,27 @@ class FixturePresets {
     const guard = turn.catch(() => undefined)
     this.switches.set(agent.id, guard)
     try { return await turn } finally { if (this.switches.get(agent.id) === guard) this.switches.delete(agent.id) }
+  }
+}
+
+/** The native settings face `selectedDefault` is written through. */
+class FixtureSettings {
+  revision = 3
+  selectedDefault: string | undefined
+  readonly updates: Array<{ ns: string, patch: Record<string, unknown>, revision: number | undefined }> = []
+  constructor(private readonly ctx: Context) {}
+  describe() {
+    return [{
+      ns: 'agent-preset-registry', revision: this.revision,
+      value: this.selectedDefault === undefined ? {} : { selectedDefault: this.selectedDefault },
+    }]
+  }
+  async update(ns: string, patch: Record<string, unknown>, revision?: number): Promise<void> {
+    this.updates.push({ ns, patch, revision })
+    if (revision !== undefined && revision !== this.revision) throw new Error('settings conflict')
+    this.selectedDefault = String(patch.selectedDefault)
+    ;(this.ctx.agentPresets as unknown as FixturePresets).defaultId = this.selectedDefault
+    this.revision += 1
   }
 }
 
@@ -60,8 +88,10 @@ async function setup() {
     owner.provide('agentPresets', new FixturePresets(owner))
   } })
   await flushRequests()
+  const settings = new FixtureSettings(ctx)
+  ctx.provide('settings', settings as never)
   const run = (line = '/preset', signal = new AbortController().signal) => ctx.commands.execute(bench.agent, line, [], signal)
-  return { ...bench, rosterOwner, roster: ctx.agentPresets as unknown as FixturePresets, session, run }
+  return { ...bench, rosterOwner, roster: ctx.agentPresets as unknown as FixturePresets, settings, session, run }
 }
 
 describe('native preset selection UI', () => {
@@ -86,6 +116,45 @@ describe('native preset selection UI', () => {
     expect(rows.map(row => row.id)).toEqual(['first', 'broken', 'z'])
     expect(rows[0]).toMatchObject({ label: 'First', detail: 'Description', current: true })
     expect(rows[1]).toMatchObject({ disabled: true, disabledReason: 'Bad composition' })
+  })
+
+  it('writes the next new session\'s preset through the native settings field with no session', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyConversations.selectPrimary(null)
+    const execution = await bench.run('/preset minimal')
+    expect(execution?.result).toEqual({ kind: 'success', text: 'Default preset: Minimal' })
+    expect(bench.settings.updates).toEqual([{ ns: 'agent-preset-registry', patch: { selectedDefault: 'minimal' }, revision: 3 }])
+    expect(bench.roster.defaultId).toBe('minimal')
+    expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
+  })
+
+  it('opens the picker on the default before a session and dismisses with the default notice', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyConversations.selectPrimary(null)
+    expect((await bench.run())?.result.kind).toBe('success')
+    const model = bench.model('mayfly.presets')
+    model.emit({ kind: 'selection-accept', controlId: 'presets', pagePath: [], selectedIds: ['minimal'] })
+    await flushRequests()
+    expect(model.disposed).toBe(true)
+    expect(bench.settings.updates).toHaveLength(1)
+    expect(bench.ctx.mayflyUiInteraction.notificationSnapshot().at(-1)).toMatchObject({ severity: 'success', message: 'Default preset: Minimal' })
+  })
+
+  it('refuses unknown and broken defaults before writing settings', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyConversations.selectPrimary(null)
+    bench.roster.catalog.push(preset('busted', { broken: 'Unreadable composition' }))
+    expect((await bench.run('/preset missing'))?.result).toMatchObject({ kind: 'error' })
+    expect((await bench.run('/preset busted'))?.result).toMatchObject({ kind: 'error' })
+    expect(bench.settings.updates).toEqual([])
+  })
+
+  it('reports a missing settings service instead of pretending the default changed', async () => {
+    const bench = await setup()
+    bench.ctx.set('settings', undefined as never)
+    bench.ctx.mayflyConversations.selectPrimary(null)
+    expect((await bench.run('/preset minimal'))?.result).toEqual({ kind: 'error', text: 'preset selection is unavailable' })
+    expect(bench.roster.defaultId).toBe('standard')
   })
 
   it('opens without renderer services, keeps failed selection visible, and retries through native select', async () => {

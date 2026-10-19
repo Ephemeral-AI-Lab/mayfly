@@ -16,11 +16,12 @@
 | `/agents` | — | `[stop <id>]` | 浏览 subagent 树、查看 child，或停止 continuable child | `mayfly-agents-command` |
 | `/jobs` | — | — | 浏览当前 Agent 的后台任务（列表 + 详情 + Read 输出） | `mayfly-jobs` |
 | `/help` | — | — | 显示可用命令与键位 | `mayfly-commands` |
-| `/mode` | — | — | 切换计划模式（等价于 `Shift+Tab`） | `mayfly-commands` |
+| `/mode` | — | — | 切换计划模式（等价于 `Shift+Tab`；无会话时设置下一个会话） | `mayfly-commands` |
+| `/plan` | — | 无会话时 `[off]` | 原生计划命令；无会话时 `/plan` 与 `/plan off` 设置待定计划模式（带消息需先有会话） | `dsh-plan-mode`（原生） |
 | `/model` | — | `[id]` | 切换会话模型；无参数打开选择面板 | `mayfly-commands`（model-commands） |
 | `/effort` | `/thinking` | `[level]` | 切换当前模型的思考力度；无参数打开横向选择器 | `mayfly-commands`（model-commands） |
 | `/provider` | — | `[list \| switch <name> \| add]` | 列出 provider、切换路由或新增 | `mayfly-commands`（model-commands） |
-| `/preset` | — | `[name]` | 列出 agent 预设或切换（仅空会话） | `mayfly-commands`（preset-commands） |
+| `/preset` | — | `[name]` | 列出 agent 预设、切换空会话，或在启动前设置新会话默认值 | `mayfly-commands`（preset-commands） |
 | `/permission` | — | `[name]` | 原生权限命令：列出或切换沙箱/审批预设 | `dsh-permission-presets`（原生） |
 | `/permissions` | — | — | 打开 Mayfly 的权限预设面板（作用于当前 Agent） | `mayfly-commands`（`permission-panel`） |
 | `/tools` | — | — | 列出当前会话可见的工具 | `mayfly-commands`（tools-commands） |
@@ -57,11 +58,11 @@
 - **`/btw` / `/agents`** —— 在主会话旁打开旁支会话，可同时保留多个，新的 BTW 会替换旧的 BTW。所有会话都在 transcript 面板中渲染：live BTW/continuable child 驱动完整布局和编辑器，one-shot 或 cold child 从原生历史读取并标注 `只读` 或 `回复以恢复`；状态栏显式显示 `F7 switch · F8 close`。`/agents stop <id>` 只接受没有 live 后代的 live continuable child，浏览器里的停止需在 Yes / No 确认中选择 Yes；cold/inactive child 不会被误报为已停止，父节点需先从叶子向上停止，避免 Harness 的递归 teardown 扩大操作范围。
 - **`/model` / `/effort`** —— 无参数分别打开模型选择面板与横向力度选择器；面板用不循环的 `←` `→` 移动 provider/effort tabs、`Enter` 下钻、内容态 `Tab` 切到 action。`Enter` 提交 **`Set as default`**：切换并持久化为新默认。带参数直接切换并持久化。免开面板的快路：**`Alt+M`** 在当前 provider 的模型列表里逐个切换（草稿保留；见[键位参考](/reference/keys)）。
 - **`/provider`** —— 三条子命令：`list` 列出可用 provider 与当前路由；`switch <name>` 切换；`add` 进入新增 provider 流程。
-- **`/preset`** —— 在薄宿主预设名册（上游 `standard` / `minimal` / `ptc` / `cordis`，以及 Mayfly `mayfly-cordis`）上切换 agent 组合：工具面、人格与 plan 模式都来自当前预设。没有 `code` alias。仅在**空会话**允许切换——已开始的会话返回 `cannot switch presets: this session has already started (blank sessions only)`。提醒工具（`schedule_*`）由预设决定：`standard`、`ptc`、`cordis` 与 `mayfly-cordis` 挂载 `tool-schedule`，`minimal` 不挂载。Host 级 `schedule` 服务在内置组合中默认禁用，需在 profile 文件中启用该行后才能使用提醒。
+- **`/preset`** —— 在薄宿主预设名册（上游 `standard` / `minimal` / `ptc` / `cordis`，以及 Mayfly `mayfly-cordis`）上切换 agent 组合：工具面、人格与 plan 模式都来自当前预设。没有 `code` alias。**空会话**上切换当前会话；尚无会话时，选择会写入第一个及后续新会话采用的默认值，面板提示 `Default preset: <name>`。已开始的会话返回 `cannot switch presets: this session has already started`。提醒工具（`schedule_*`）由预设决定：`standard`、`ptc`、`cordis` 与 `mayfly-cordis` 挂载 `tool-schedule`，`minimal` 不挂载。Host 级 `schedule` 服务在内置组合中默认禁用，需在 profile 文件中启用该行后才能使用提醒。
 
 ## 模式与审批
 
-- **`Shift+Tab` 计划切换** —— normal ↔ plan，只执行 `/plan` 或 `/plan off`。YOLO 使用 `/permission danger-full-access` 进入、`/permission workspace-write` 退出，可与 plan 叠加（见[会话模式](/features/modes)）。Mayfly 不注册 `/yolo` 或 `/yes`。
+- **`Shift+Tab` 计划切换** —— normal ↔ plan，只执行 `/plan` 或 `/plan off`。尚无会话时，`Shift+Tab`、`/mode`、`/plan` 与 `/plan off` 设置以 `plan…` 显示的待定模式；首条消息创建的会话会先进入 plan mode 再运行该消息。YOLO 使用 `/permission danger-full-access` 进入、`/permission workspace-write` 退出，可与 plan 叠加（见[会话模式](/features/modes)）。Mayfly 不注册 `/yolo` 或 `/yes`。
 - **`/permission`** —— 原生命令，列出/切换权限预设（sandbox 模式 + 审批策略的命名束），保留自己的名称与参数形式。Mayfly 的 `/permissions` 为当前 Agent 打开与 `/preset` 同款的单选列表面板；danger 预设打开 Yes / No 确认，默认选中 No。
 - **`/mcp`** —— 三层面板浏览宿主连接的 MCP 服务器：服务器选择器 → 服务器面板（config 伪行 + 工具行）→ 详情（config 状态/脱敏连接/策略，或工具 schema）。只读——增删服务器走 profile patch（见 [dsh/mcp](/dsh/mcp)）；空态有指路。
 - **`/init`** —— 让 agent 分析代码库并把结论写入项目根的 `AGENTS.md`：已存在则先读取、延续仍然准确的内容，重写为一个连贯的最新文件（而非追加），使用项目自身文档的主要语言。

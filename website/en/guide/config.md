@@ -178,7 +178,7 @@ mayfly:
 
 The panel is two-level: level one starts with `locale` and groups rows by namespace (host sections like `shell:`, `agent-loop:`, and `web-search-deepseek:` included), Enter steps into level two's per-key rows, and `Enter`/`Space` there steps the preset value with every change landing on disk; language and `mayfly.theme` changes both apply live (`/theme` stays the session-level switch — see [Theming](/en/guide/theme)), and `transcriptView` and number changes apply to the running session just as immediately (an active Ctrl-O expansion still dominates). Level one's last row opens the whole settings.yaml in `$EDITOR`.
 
-`startup` only decides the screen a start shows: Mayfly creates no session at launch and creates one when the first message is sent, so neither value leaves an empty session in the store. `--resume <id>` and a `[task]` argument still start a session at once, and `/new` and `/clear` return to the start screen. While no session exists only `/theme`, `/settings`, `/sessions`, `/help`, `/quit`, `/new`, and `/clear` run; any other command asks for a message first. The first-run guide's Preferences step offers the choice; change it later under `mayfly` in `/settings`.
+`startup` only decides the screen a start shows: Mayfly creates no session at launch and creates one when the first message is sent, so neither value leaves an empty session in the store. `--resume <id>` and a `[task]` argument still start a session at once, and `/new` and `/clear` return to the start screen. While no session exists `/theme`, `/settings`, `/sessions`, `/help`, `/quit`, `/new`, `/clear`, `/provider`, `/plugin` and `/update` run, as do `/model`, `/effort`, `/preset`, `/plan`, `/plan off` and `/mode`: the model, effort, and preset choices are the defaults the first session takes, and plan mode waits as `plan…` until that session starts. Any other command asks for a message first. The first-run guide's Preferences step offers the choice; change it later under `mayfly` in `/settings`.
 
 ### Verifying your edits
 
@@ -194,8 +194,8 @@ settings.yaml effects show up right in the UI: the `/model` panel lists each rou
 
 ## Other configuration surfaces
 
-- **Permissions & sandbox**: permission presets (workspace-write / danger-full-access) and approval policies, see [Modes & permissions](/en/dsh/modes). `/permission` controls YOLO; `Shift+Tab` toggles only normal ↔ plan. Planning and permissions remain independent.
-- **Agent presets** — `/preset` switches tool surface and persona across upstream shipped `standard` / `minimal` / `ptc` / `cordis` and Mayfly's `mayfly-cordis` (blank sessions only). Mayfly does not provide the old `code` alias.
+- **Permissions & sandbox**: permission presets (workspace-write / danger-full-access) and approval policies, see [Modes & permissions](/en/dsh/modes). `/permission` controls YOLO; `Shift+Tab` toggles only normal ↔ plan, and before a session it sets the next one's plan mode. Planning and permissions remain independent.
+- **Agent presets** — `/preset` switches tool surface and persona across upstream shipped `standard` / `minimal` / `ptc` / `cordis` and Mayfly's `mayfly-cordis`. On a blank session it switches that session; with no session it writes the default the first session takes (and later new sessions keep). Mayfly does not provide the old `code` alias.
 - **Skills** — user-level skills live under `~/.dsh/skills/`, see [Skills](/en/dsh/skills).
 - **MCP** — wiring MCP servers is covered in [MCP setup](/en/dsh/mcp).
 
