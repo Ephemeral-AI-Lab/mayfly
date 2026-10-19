@@ -178,7 +178,7 @@ mayfly:
 
 面板分两级：第一级从 `locale` 开始，并按命名空间分组（`mayfly`、`shell`、`agent-loop`、`web-search-deepseek:` 等宿主段在内），Enter 进入第二级逐行调整，`Enter`/`Space` 步进预设值、每次改动即落盘；语言切换与 `mayfly.theme` 都实时生效（`/theme` 仍是会话级切换，见[主题](/guide/theme)），`transcriptView`与数值项的改动同样立即作用于当前会话（Ctrl-O 的全局展开状态优先）。第一级末行可在 `$EDITOR` 里打开整份 settings.yaml。
 
-`startup` 只决定启动时的画面：Mayfly 启动时不创建会话，发出第一条消息时才创建，所以两种取值都不会在会话目录里留下空会话。`--resume <id>` 与 `[task]` 参数仍立即启动会话；`/new` 与 `/clear` 回到启动画面。尚无会话时，只有 `/theme`、`/settings`、`/sessions`、`/help`、`/quit`、`/new`、`/clear` 可用，其余命令提示先发一条消息。首次引导的「偏好」一步可选择此项，之后在 `/settings` 的 `mayfly` 中修改。
+`startup` 只决定启动时的画面：Mayfly 启动时不创建会话，发出第一条消息时才创建，所以两种取值都不会在会话目录里留下空会话。`--resume <id>` 与 `[task]` 参数仍立即启动会话；`/new` 与 `/clear` 回到启动画面。尚无会话时，`/theme`、`/settings`、`/sessions`、`/help`、`/quit`、`/new`、`/clear`、`/provider`、`/plugin`、`/update` 可用，`/model`、`/effort`、`/preset` 设置的默认值会由第一个会话采用，`/plan`、`/plan off` 与 `/mode` 则以 `plan…` 等待该会话启动。其余命令提示先发一条消息。首次引导的「偏好」一步可选择此项，之后在 `/settings` 的 `mayfly` 中修改。
 
 ### 改完怎么验证
 
@@ -194,8 +194,8 @@ settings.yaml 的效果则直接在界面里看：`/model` 面板列出各路由
 
 ## 更多配置面
 
-- **权限与沙箱** —— 权限预设（workspace-write / danger-full-access）、审批策略，见[权限与模式](/dsh/modes)；`/permission` 控制 YOLO，`Shift+Tab` 只切换 normal ↔ plan。计划与权限独立生效。
-- **Agent 预设** —— `/preset` 在上游 shipped `standard` / `minimal` / `ptc` / `cordis` 与 Mayfly 的 `mayfly-cordis` 间切换工具面与人格（仅空会话）。Mayfly 不提供旧 `code` alias。
+- **权限与沙箱** —— 权限预设（workspace-write / danger-full-access）、审批策略，见[权限与模式](/dsh/modes)；`/permission` 控制 YOLO，`Shift+Tab` 只切换 normal ↔ plan，尚无会话时设置下一个会话的计划模式。计划与权限独立生效。
+- **Agent 预设** —— `/preset` 在上游 shipped `standard` / `minimal` / `ptc` / `cordis` 与 Mayfly 的 `mayfly-cordis` 间切换工具面与人格。空会话上切换当前会话；尚无会话时写入第一个会话采用的默认值，之后的新会话继续沿用。Mayfly 不提供旧 `code` alias。
 - **Skills** —— 用户级技能放 `~/.dsh/skills/`，见 [Skills](/dsh/skills)。
 - **MCP** —— MCP server 的接入配置见 [MCP 配置](/dsh/mcp)。
 

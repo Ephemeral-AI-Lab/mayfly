@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SessionStore, { SessionId, type SessionSeqCursor } from '@deepseek-ai/dsh-session'
 import CommandRuntime, { type CommandResult } from '@deepseek-ai/dsh-commands'
-import { cycleMode, sessionModeSnapshot } from '../../src/interaction/mode-commands.ts'
+import { cycleMode, registerSessionlessPlan, sessionModeSnapshot } from '../../src/interaction/mode-commands.ts'
 import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
 import type { PresetSpec } from '@deepseek-ai/dsh-permission-presets'
 import type { PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
@@ -101,7 +101,7 @@ async function mount(options: MountOptions = {}) {
     setShell: () => {},
     report: (_id, feedback) => { notices.push(feedback.message) },
   })
-  return { ctx, agent, plan, runs, currentPreset: () => currentPreset }
+  return { ctx, agent, plan, runs, currentPreset: () => currentPreset, startPlan: () => (ctx.get('mayflySessionStart') as unknown as { planActive(): boolean }).planActive() }
 }
 
 describe('cycleMode', () => {
@@ -197,20 +197,42 @@ describe('cycleMode', () => {
     expect(notices).toEqual([])
   })
 
-  it('guards detached sessions and missing native commands', async () => {
+  it('toggles the pending plan on the start surface and guards detached sessions', async () => {
     const detached = await mount({ attached: false })
     await cycleMode(detached.ctx)
-    expect(notices).toEqual(['no session is live yet'])
+    expect(detached.runs).toEqual([])
+    expect(detached.startPlan()).toBe(true)
+    expect(notices).toEqual(['Plan mode on for the next session'])
+    await cycleMode(detached.ctx)
+    expect(detached.startPlan()).toBe(false)
+    expect(notices).toEqual(['Plan mode on for the next session', 'Plan mode off for the next session'])
 
     notices = []
     const missing = await mount({ registerPlan: false })
     await cycleMode(missing.ctx)
+    expect(missing.runs).toEqual([])
     expect(notices).toEqual(['mode command is unavailable: /plan'])
 
     const silent = new (await import('@deepseek-ai/cordis')).Context()
-    silent.provide('mayflyCurrentAgent', { current: () => null } as never)
+    silent.provide('mayflyCurrentAgent', { current: () => null, primary: () => null } as never)
     await cycleMode(silent)
   })
+
+  it('registers the start-surface /plan and /plan off commands', async () => {
+    const world = await mount({ attached: false })
+    const off = registerSessionlessPlan(world.ctx)
+    const command = world.ctx.mayflyInteractionState.sessionless.find('plan')!
+    expect(command.description).toBe('Enter or leave plan mode for the next session')
+    expect(await command.handler({ rawInput: '', signal: new AbortController().signal })).toEqual({ kind: 'success', text: 'Plan mode on for the next session' })
+    expect(world.startPlan()).toBe(true)
+    expect(await command.handler({ rawInput: ' off ', signal: new AbortController().signal })).toEqual({ kind: 'success', text: 'Plan mode off for the next session' })
+    expect(world.startPlan()).toBe(false)
+    expect(await command.handler({ rawInput: 'do it', signal: new AbortController().signal })).toEqual({ kind: 'error', text: 'Send a message first: /plan with a message needs a session' })
+    expect(world.startPlan()).toBe(false)
+    off()
+    expect(world.ctx.mayflyInteractionState.sessionless.find('plan')).toBeUndefined()
+  })
+
 
   it('contains command dispatch failures in the logger', async () => {
     const world = await mount({ throws: new Error('dispatch failed') })
