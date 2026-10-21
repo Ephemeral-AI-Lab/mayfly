@@ -10,7 +10,6 @@ import { panel, ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUi
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
-import { formatError } from '../internal/format.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 
 export const name = 'mayfly-preset-command'
@@ -48,7 +47,7 @@ async function setDefaultPreset(ctx: Context, id: string): Promise<void> {
   try {
     await settings.update(PRESET_SETTINGS_NS, { selectedDefault: id }, entry.revision)
   } catch (error) {
-    throw new Error(formatError(error))
+    throw new Error(message(error))
   }
 }
 export function apply(ctx: Context): void {

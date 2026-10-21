@@ -203,7 +203,7 @@ export function apply(ctx: Context, config: Config): void {
       if (execution === undefined) io.stderr.write('dsh: plan mode is unavailable in the selected preset\n')
       else if (execution.result.kind === 'error') io.stderr.write(`dsh: could not enter plan mode: ${execution.result.text}\n`)
     } catch (error) {
-      io.stderr.write(`dsh: could not enter plan mode: ${formatError(error)}\n`)
+      io.stderr.write(`dsh: could not enter plan mode: ${describe(error)}\n`)
     }
   }
 
