@@ -36,6 +36,11 @@ slots, never arbitrary root components.
   app-owned `inbox-wake.ts` re-submits the oldest pending message through the
   public inbox and Agent API, and retires when the Harness wakes that input
   itself.
+- `/btw` owns a plain `AgentHandle` from `agents.create`, never a managed
+  `subagents.startActivation`: a local activation settles at its first idle and
+  disposes the child, which closes the side conversation as soon as the answer
+  ends. Clear the child's inherited inbox before posting the question; the fork
+  seed can fold the parent's unclaimed queued and steering messages into it.
 - `frontend/index.ts` owns `mayflyUiInteraction` and independent consumer Fibers.
   Its models are implemented in `core/ui-interaction-*.ts` but survive core-only
   reload. Renderer teardown releases editors/handles, not drafts or choice state.

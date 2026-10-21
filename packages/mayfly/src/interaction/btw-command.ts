@@ -1,37 +1,46 @@
 /**
- * `/btw` side-question ownership over one native fork activation. The fork
- * provider seeds the child from the parent's completed turns; the managed
- * activation accepts the question as its initial prompt and owns the child's
- * lifecycle, so closing the side conversation disposes that exact activation.
- * The live child becomes the exact `mayflyCurrentAgent` while displayed, so
- * the ordinary transcript, status, panes, and editor render it without a
- * second view implementation; its history floor hides the inherited seed.
- * `/btw` exists only while the native `fork` provider is registered; without
- * it no command is registered and no custom Agent is created.
+ * `/btw` side-question Agent ownership. The controller creates a regular
+ * Harness Agent seeded from the parent's log and holds its `AgentHandle` for
+ * the side conversation's whole life. A managed subagent activation cannot
+ * back this view: the activation manager settles a local child at its first
+ * idle and disposes it, which would close the side conversation as soon as
+ * the answer ends. The live child still becomes the exact
+ * `mayflyCurrentAgent` while displayed, so the ordinary transcript, status,
+ * panes, and editor render it without a second view implementation; its
+ * history floor hides the inherited seed.
+ *
+ * The fork seed can fold the parent's unclaimed queued and steering messages
+ * into the child's inbox, so the controller clears that inbox before asking
+ * the question; those messages stay with the parent. `/btw` exists only while
+ * the native `fork` provider is registered, the capability signal for seeded
+ * side conversations, but the controller creates the Agent itself so it can
+ * keep it alive across turns instead of accepting a managed one-shot
+ * activation.
  *
  * @module @ephemeral-ai/mayfly/interaction/btw-command
  */
 
+import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-subagent'
-import type { SubagentActivation } from '@deepseek-ai/dsh-subagent'
+import type { AgentHandle } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { buildForkSeed, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-subagent'
 import type {} from '../app/index.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-btw-command'
 
 /** Native and app-owned services required by the side-question controller. */
-export const inject = ['commands', 'mayflyConversations', 'mayflyCurrentAgent', 'mayflyRequests', 'agents', 'subagents']
+export const inject = ['commands', 'mayflyConversations', 'mayflyCurrentAgent', 'mayflyRequests', 'agents', 'agentDefaultModel', 'agentPresets', 'subagents']
 
-/** The native provider that seeds a side conversation from the parent's completed turns. */
+/** The native provider that gates seeded side conversations. */
 const BTW_PROVIDER = 'fork'
 
-/** The catalog label that marks the side-question child from `/agents`. */
-const BTW_LABEL = 'btw'
-
 interface OwnedBtw {
-  readonly activation: SubagentActivation
+  readonly handle: AgentHandle
   readonly viewId: string
   disposal: Promise<void> | undefined
 }
@@ -52,6 +61,9 @@ export function apply(ctx: Context): void {
   const conversations = ctx.mayflyConversations
   const currentAgent = ctx.mayflyCurrentAgent
   const requests = ctx.mayflyRequests
+  const agents = ctx.agents
+  const defaultModel = ctx.agentDefaultModel
+  const presets = ctx.agentPresets
   const logger = ctx.logger
   let owned: OwnedBtw | undefined
   let pending: AbortController | undefined
@@ -61,8 +73,8 @@ export function apply(ctx: Context): void {
 
   const disposeOwned = (entry: OwnedBtw): Promise<void> => {
     if (owned === entry) owned = undefined
-    entry.disposal ??= entry.activation.dispose().catch(error => {
-      logger.warn(`could not dispose BTW activation ${String(entry.activation.childId)}: ${error instanceof Error ? error.message : String(error)}`)
+    entry.disposal ??= entry.handle.dispose().catch(error => {
+      logger.warn(`could not dispose BTW Agent ${String(entry.handle.agent.id)}: ${error instanceof Error ? error.message : String(error)}`)
     })
     return entry.disposal
   }
@@ -76,7 +88,7 @@ export function apply(ctx: Context): void {
 
   const offView = conversations.subscribe((snapshot) => {
     const entry = owned
-    if (entry === undefined || snapshot.views.some(view => view.kind === 'btw' && view.sessionId === String(entry.activation.childId))) return
+    if (entry === undefined || snapshot.views.some(view => view.kind === 'btw' && view.sessionId === String(entry.handle.agent.id))) return
     void disposeOwned(entry)
   })
   ctx.effect(() => offView)
@@ -111,14 +123,36 @@ export function apply(ctx: Context): void {
     }
     const controller = new AbortController()
     pending = controller
-    let activation: SubagentActivation
+    let handle: AgentHandle
+    let historyFloorSeq: number | undefined
     try {
-      activation = await ctx.subagents.startActivation({
-        provider: BTW_PROVIDER,
-        label: BTW_LABEL,
-        request: { parent, prompt: [{ type: 'text', text: question }] },
-        delivery: 'caller',
+      // Inherit the parent's whole log: `buildForkSeed` tags the inherited cut
+      // and closes any open tail, so a side question may start mid-turn.
+      const events = parent.session.snapshotEvents()
+      const lastSeq = events.at(-1)?.seq
+      const seed = lastSeq === undefined ? [] : buildForkSeed(events, lastSeq)
+      historyFloorSeq = lastSeq
+      const selected = parent.session.requestHeader()?.config ?? defaultModel.currentSelection()
+      let preset = parent.session.header.agentPreset
+      for (const event of events) {
+        if (event.type === 'agent-preset/selected') preset = event.data.agentPreset
+      }
+      handle = await agents.create({
+        sessionId: SessionId(`btw-${randomUUID()}`),
+        meta: {
+          cwd: parent.session.header.cwd ?? process.cwd(),
+          parentSession: parent.id,
+          ...(events.length === 0 ? {} : { isSeeded: true }),
+        },
+        ...(events.length === 0 ? {} : { inheritedEventCount: SessionLogOffset(events.length) }),
+        seed,
         signal: controller.signal,
+        agentOptions: {
+          provider: selected.provider,
+          model: selected.model,
+          ...(selected.reasoningEffort === undefined ? {} : { reasoningEffort: selected.reasoningEffort }),
+        },
+        setup: async agentCtx => { await presets.mount(agentCtx, preset) },
       })
     } catch (error) {
       if (pending === controller) pending = undefined
@@ -131,30 +165,24 @@ export function apply(ctx: Context): void {
       }
     }
     if (pending === controller) pending = undefined
-    const entry: OwnedBtw = { activation, viewId: '', disposal: undefined }
-    // The captured result belongs to the side conversation; teardown failures
-    // are reported by dispose(), not by an unhandled rejection here.
-    void activation.result.catch(error => {
-      logger.warn(`BTW activation ${String(activation.childId)} failed: ${error instanceof Error ? error.message : String(error)}`)
-    })
+    const entry: OwnedBtw = { handle, viewId: '', disposal: undefined }
     if (unloaded || controller.signal.aborted || requestGeneration !== generation || currentAgent.primary() !== parent) {
       await disposeOwned(entry)
       return { kind: 'error', text: 'the side question was replaced before it opened' }
     }
-    const child = ctx.agents.get(activation.childId)
-    if (child === undefined) {
+    try {
+      // The inbox projection folds the inherited prefix too, so the fork starts with the parent's unclaimed queued and
+      // steering messages; the side question must not run them.
+      handle.agent.inbox.clear()
+    } catch (error) {
       await disposeOwned(entry)
-      return { kind: 'error', text: 'the side question was replaced before it opened' }
+      return { kind: 'error', text: `could not start the side session: ${error instanceof Error ? error.message : String(error)}` }
     }
-    // The fork seed's inherited prefix is everything before the child's first
-    // own event; presentation starts after that cut.
-    const firstLive = Number(child.session.firstLiveSeq)
-    const historyFloorSeq = firstLive > 0 ? firstLive - 1 : undefined
     let viewId: string
     try {
       viewId = conversations.open({
         kind: 'btw',
-        sessionId: String(activation.childId),
+        sessionId: String(handle.agent.id),
         parentSessionId: String(parent.id),
         label: labelFor(question),
         ...(historyFloorSeq === undefined ? {} : { historyFloorSeq }),
@@ -163,9 +191,16 @@ export function apply(ctx: Context): void {
       await disposeOwned(entry)
       return { kind: 'error', text: `could not open the side session: ${error instanceof Error ? error.message : String(error)}` }
     }
-    const shown: OwnedBtw = { activation, viewId, disposal: undefined }
+    const shown: OwnedBtw = { handle, viewId, disposal: undefined }
     owned = shown
-    requests.begin('btw')
+    try {
+      handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: question }], source: { kind: 'user' } }))
+      requests.begin('btw')
+    } catch (error) {
+      conversations.close(viewId)
+      await disposeOwned(shown)
+      return { kind: 'error', text: `could not ask the side question: ${error instanceof Error ? error.message : String(error)}` }
+    }
     return { kind: 'success', text: 'asked the side question' }
   }
 
