@@ -25,7 +25,7 @@ afterEach(() => {
 })
 
 /** The shell's own manifest version — the pin every fixture calibrates to. */
-const PIN = '0.1.4-rc.1'
+const PIN = '0.1.4-rc.2'
 /** A release one minor line ahead of the pin. */
 const AHEAD = `${PIN.split('.')[0]!}.${String(Number(PIN.split('.')[1]) + 1)}.0`
 

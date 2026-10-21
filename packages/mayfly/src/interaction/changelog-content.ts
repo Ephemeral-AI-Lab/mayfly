@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.4-rc.2',
+    summary: 'A fix-only follow-up to 0.1.4-rc.1: /btw stays open and keeps the primary queue out, session browsing survives service proxies, start-time preset and plan selection work before the first session, and conversation disclosure stays per view.',
+    highlights: [
+      '/btw - the side conversation owns its Agent for its whole life, so it stays open after the answer and accepts follow-ups; the inherited inbox is cleared before the question, keeping the primary\'s queued and steering messages in the primary.',
+      'Conversation disclosure - fold state follows each conversation view, and a turn folded under Ctrl+O no longer opens by itself.',
+      'Session browsing - retain the native session catalog across Cordis traceable service proxies, so /sessions and /stats keep their rows.',
+      'Startup - /preset and plan mode now run before the first session is created, and the pre-refactor error formatters are restored after the port.',
+    ],
+    knownIssues: [],
+  },
+  {
     version: '0.1.4-rc.1',
     summary: 'Align with Harness 0.2.1-rc.2, add the compose layer and the themed launch surfaces, and finish the Phase 7 performance pass with live-stream and transcript fixes.',
     highlights: [
