@@ -177,6 +177,8 @@ interface ControllerView {
   readonly facts: StreamFacts
   /** The marker for the messages that arrived while the reader was scrolled away. */
   readonly fresh: NewMessages
+  /** What the reader opened in this conversation; turn numbers repeat across conversations, so this is per view. */
+  disclosure: Disclosure
 }
 
 /**
@@ -188,7 +190,6 @@ export class TranscriptController {
   private active: string | undefined
   private slot: MayflyNodeSlot | undefined
   private screen: TranscriptScreen | undefined
-  private disclosure: Disclosure = NO_DISCLOSURE
   /** Counts the times focus moved into the stream; the list sends its cursor to the newest row once per count. */
   private cursorRev = 0
   /** The cursor send the slot's focus was last moved for. */
@@ -257,8 +258,12 @@ export class TranscriptController {
    * @param options - how this view differs from the default.
    */
   setView(key: string, source: Source, options: TranscriptViewOptions = {}): void {
-    this.views.get(key)?.fresh.reset()
-    this.views.set(key, { source, options, facts: new StreamFacts(this.options.counters), fresh: new NewMessages(this.freshHost) })
+    const previous = this.views.get(key)
+    previous?.fresh.reset()
+    this.views.set(key, {
+      source, options, facts: new StreamFacts(this.options.counters), fresh: new NewMessages(this.freshHost),
+      disclosure: previous?.disclosure ?? NO_DISCLOSURE,
+    })
     if (key === this.active) this.publish()
   }
 
@@ -355,28 +360,40 @@ export class TranscriptController {
     this.requestPublish()
   }
 
+  /** The displayed view, whose disclosure the reader's keys act on. */
+  private activeView(): ControllerView | undefined {
+    return this.active === undefined ? undefined : this.views.get(this.active)
+  }
+
   /** Ctrl-O: open or close the Verbose tier of the newest turns, the ones Enter folded included. @returns whether they are open now. */
   toggleRecent(): boolean {
-    this.disclosure = toggleRecent(this.disclosure)
+    const view = this.activeView()
+    if (view === undefined) return false
+    view.disclosure = toggleRecent(view.disclosure)
     this.publish()
-    return this.disclosure.recent
+    return view.disclosure.recent
   }
 
   /** Enter on a turn header: fold the turn if it is drawn open, open it if not, whatever the level and Ctrl-O give. */
   toggleTurn(turn: number): void {
-    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
-    this.disclosure = toggleTurn(this.disclosure, turn, facts?.reach() ?? new Set())
+    const view = this.activeView()
+    if (view === undefined) return
+    view.disclosure = toggleTurn(view.disclosure, turn, view.facts.reach())
     this.publish()
   }
 
   /** Enter on a row: open the entries it stands for to their Verbose tier, or put them back. */
   toggleRows(ids: readonly string[]): void {
-    this.disclosure = toggleRows(this.disclosure, ids)
+    const view = this.activeView()
+    if (view === undefined) return
+    view.disclosure = toggleRows(view.disclosure, ids)
     this.publish()
   }
 
   private setDisclosure(disclosure: Disclosure): void {
-    this.disclosure = disclosure
+    const view = this.activeView()
+    if (view === undefined) return
+    view.disclosure = disclosure
     this.publish()
   }
 
@@ -398,7 +415,8 @@ export class TranscriptController {
     const model = this.model()
     this.search = { line, forward, pattern: '', read: { kind: 'empty' }, phase: 'input', model, result: EMPTY_RESULT, index: -1, visited: new Set() }
     this.search.result = this.searchHits(this.search, model)
-    this.disclosure = { ...this.disclosure, forced: new Set() }
+    const view = this.activeView()
+    if (view !== undefined) view.disclosure = { ...view.disclosure, forced: new Set() }
     // The stream keeps the window it had around its cursor while the line holds the keys.
     this.slot.spotlight(true)
     this.slot.setKeys(BASE_KEYS)
@@ -442,7 +460,8 @@ export class TranscriptController {
     search.line.dispose()
     this.slot?.spotlight(false)
     this.slot?.setKeys(BASE_KEYS)
-    this.disclosure = { ...this.disclosure, forced: new Set() }
+    const view = this.activeView()
+    if (view !== undefined) view.disclosure = { ...view.disclosure, forced: new Set() }
   }
 
   private patternChanged(pattern: string): void {
@@ -513,7 +532,8 @@ export class TranscriptController {
       const hit = hits[search.index]
       if (hit === undefined || facts === undefined) break
       search.visited.add(hit.turn)
-      this.disclosure = { ...this.disclosure, forced: new Set(search.visited) }
+      const view = this.activeView()
+      if (view !== undefined) view.disclosure = { ...view.disclosure, forced: new Set(search.visited) }
       // A row the stream already draws can take the cursor in the one publish that also mounts the visited turn.
       const drawn = facts.rowOf(hit.part)
       if (drawn !== undefined) {
@@ -639,7 +659,7 @@ export class TranscriptController {
     this.setStreaming(model.streaming === true || model.live !== undefined)
     const built = view.facts.build(model, {
       policy: this.presentationPolicy(),
-      disclosure: this.disclosure,
+      disclosure: view.disclosure,
       liveTurnHeader: view.options.liveTurnHeader === true,
       t: this.options.t,
       now,
@@ -905,8 +925,13 @@ export class TranscriptController {
     this.cursorRev += 1
     const run = owner.run
     if (run === undefined) this.toggleRows(owner.parts)
-    else if (itemId === run.head) this.setDisclosure(toggleGroup(this.disclosure, run.head, run.calls))
-    else this.setDisclosure(toggleCall(this.disclosure, run.head, run.calls, owner.parts[0]!))
+    else if (itemId === run.head) this.setDisclosure(toggleGroup(this.viewDisclosure(), run.head, run.calls))
+    else this.setDisclosure(toggleCall(this.viewDisclosure(), run.head, run.calls, owner.parts[0]!))
+  }
+
+  /** The displayed view's disclosure, or the empty value when nothing is displayed. */
+  private viewDisclosure(): Disclosure {
+    return this.activeView()?.disclosure ?? NO_DISCLOSURE
   }
 
   private withRowText(mode: CopyMode, use: (text: string) => void): void {

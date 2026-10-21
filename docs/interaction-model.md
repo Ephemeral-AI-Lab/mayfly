@@ -163,7 +163,10 @@ prompt).
 header sets that turn apart from what `Ctrl+O` gives: a turn folded by hand
 stays folded while newer turns move the reach on, and a turn opened by hand
 stays open through `Ctrl+O` and back. The next `Ctrl+O` opens or closes the
-newest turns whole again, the turns `Enter` folded included.
+newest turns whole again, the turns `Enter` folded included. Each displayed
+conversation keeps its own openings: turn numbers repeat across the main,
+subagent, and `/btw` views, so a fold or a reach in one never applies to
+another.
 
 ## Hints
 
