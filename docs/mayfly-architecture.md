@@ -102,7 +102,10 @@ plugin bridge, and no app session facade.
   hidden one drops first.
 - A BTW Agent still carries the complete seed as model context, but its
   conversation records a `historyFloorSeq`, and the transcript only presents
-  new questions, tools, and answers after that floor.
+  new questions, tools, and answers after that floor. The controller owns it
+  through a regular `AgentHandle` rather than a managed activation, which would
+  settle at its first idle, and clears the seeded inbox so the primary's
+  unclaimed queued and steering messages stay with the primary.
 - The `mayfly-ui` provider holds the current UI contribution snapshots, and
   every registration is cleaned up with its consumer Fiber.
 - The frontend `mayflyUiInteraction` holds renderer-neutral Form, Choice,
