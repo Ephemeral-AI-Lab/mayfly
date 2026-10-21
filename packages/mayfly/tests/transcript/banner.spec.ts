@@ -418,7 +418,7 @@ describe('mayfly-banner plugin', () => {
     const named = await bootBanner({ config: { displayVersion: 'next' }, reducedMotion: true })
     expect(plainRows(named.screen)).toContain('mayfly next')
     expect(plainRows(named.screen)).not.toContain('vnext')
-    expect(MAYFLY_VERSION).toBe('0.1.4-rc.1')
+    expect(MAYFLY_VERSION).toBe('0.1.4-rc.2')
   })
 
   it('re-derives the model line on session switches, projections, and fallbacks', async () => {
