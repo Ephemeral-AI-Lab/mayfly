@@ -27,9 +27,24 @@ const problems = [
 if (problems.length > 0) throw new Error(`release preflight failed: ${problems.join('; ')}`)
 for (const pkg of packages) pkg.filename = join(ROOT, '.artifacts', 'pack', pkg.filename)
 
+/** npm registry failures that are worth retrying inside one release step. */
+const RETRYABLE_NPM = /\b(?:E503|EAI_AGAIN|ETIMEDOUT|ECONNRESET)\b|503 Service Unavailable|network/u
+
+/** Block one release step between registry attempts without an async refactor. */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
 function npmView(spec, field) {
-  const result = spawnSync('npm', ['view', spec, field, '--json'], { cwd: ROOT, encoding: 'utf8' })
-  return readNpmView(result, spec, field)
+  let last
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    const result = spawnSync('npm', ['view', spec, field, '--json'], { cwd: ROOT, encoding: 'utf8' })
+    const failure = `${result.stderr ?? ''}${result.error?.message ?? ''}`
+    if (result.status === 0 || !RETRYABLE_NPM.test(failure)) return readNpmView(result, spec, field)
+    last = new Error(`npm view ${spec} ${field} failed during a registry outage (attempt ${attempt}/4)`)
+    if (attempt < 4) sleepSync(attempt * 3_000)
+  }
+  throw last
 }
 
 /**
