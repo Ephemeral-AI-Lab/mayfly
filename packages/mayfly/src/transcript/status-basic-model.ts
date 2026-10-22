@@ -8,7 +8,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '../app/index.ts'
-import type { MayflyStatusEntry } from './status-model.ts'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { ConversationFacts } from '../conversation/index.ts'
 import type { SessionFactsService } from './session-facts.ts'
 
@@ -31,11 +31,11 @@ export function apply(ctx: Context): void {
       ?? (agent === null ? '' : 'no model')
   }
   derive()
-  const model = (): MayflyStatusEntry => ({ id: 'mayfly.status.basic', priority: 0, node: { kind: 'text', content: text, tone: 'default' }, visible: text !== '' })
-  const refresh = (): void => { derive(); ctx.mayflyStatus.refresh('mayfly.status.basic') }
+  const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'default' }
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.basic', priority: 0 }, node())
+  const refresh = (): void => { derive(); status.set(node()) }
   const offFacts = factsService.subscribe(next => { facts = next; refresh() })
   const offAgent = factsService.subscribeAgent(next => { agent = next; refresh() })
   ctx.effect(() => () => offFacts())
   ctx.effect(() => () => offAgent())
-  ctx.mayflyStatus.register(model)
 }

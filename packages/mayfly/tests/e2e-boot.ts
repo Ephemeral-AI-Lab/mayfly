@@ -203,14 +203,11 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
         title: 'Direct plugin',
         placement: 'bottom',
         size: { min: 2, preferred: 3, max: 4 },
-        render: () => ({ kind: 'text', content: 'native dsh + Mayfly seam' }),
-      })
+      }, { kind: 'text', content: 'native dsh + Mayfly seam' })
       direct.mayflyStatus.register({
         id: 'e2e.direct-status',
-        visible: true,
-        node: { kind: 'text', content: 'direct' },
-      })
-      direct.mayflyEditorExtensions.register({ id: 'e2e.direct-editor', hint: 'Direct extension' })
+      }, { kind: 'text', content: 'direct' })
+      direct.mayflyEditorExtensions.register({ id: 'e2e.direct-editor' }, { hint: 'Direct extension' })
       direct.commands.register({
         name: 'direct-overlay',
         description: 'Open the direct overlay',
@@ -220,8 +217,7 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
             id: 'e2e.direct-overlay',
             title: 'Direct overlay',
             capturing: true,
-            render: () => ({ kind: 'text', content: 'opened through the direct Mayfly service' }),
-          })
+          }, { kind: 'text', content: 'opened through the direct Mayfly service' })
           return { kind: 'success' }
         },
       })

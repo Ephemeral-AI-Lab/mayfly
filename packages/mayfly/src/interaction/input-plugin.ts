@@ -53,7 +53,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {
   MayflyComponent,
   MayflyComponents,
-  MayflyFocusable,
   MayflyScreen,
   MayflySemanticColors,
 } from '../core/index.ts'
@@ -66,12 +65,13 @@ import type {} from '../app/index.ts'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '../transcript/index.ts'
 import {
-  applyReversibleSubmitTransformers,
   clearSharedEditor,
-  setEditorSlotSwap,
   setSharedEditor,
 } from './editor-instance.ts'
+import { applyReversibleSubmitTransformers } from './prompt-submit-pipeline.ts'
 import { EditorExtensionRuntime } from './editor-extension-runtime.ts'
+import { EditorDockHost } from './editor-dock-host.ts'
+import { mountEditorPlus } from './editor-plus.ts'
 import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { currentMayflySettings } from './settings.ts'
 import {
@@ -122,7 +122,7 @@ function wheelDirection(data: string): 'up' | 'down' | undefined {
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-input'
 /** Services required before the editor can mount. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'commands', 'sessionProjections', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
+export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyEditorPanels', 'mayflyPromptSubmissions', 'commands', 'sessionProjections', 'mayflyCurrentAgent', 'mayflyRequests', 'mayflyRetractions', 'mayflySkillsCatalog', 'mayflyInteractionState', 'mayflyEditorExtensions']
 
 /**
  * The single-line hint rendered under the input editor. Only the transient
@@ -454,7 +454,6 @@ export function apply(ctx: Context): void {
     currentText = ''
     draft.clearDraft()
     refreshHint()
-    ctx.emit('mayfly/editor-model-changed')
     screen.requestRender()
     return true
   }
@@ -588,7 +587,6 @@ export function apply(ctx: Context): void {
 
   editor.onChange = (text) => {
     currentText = text
-    ctx.emit('mayfly/editor-model-changed')
     // Mirror every edit so a theme-swap reload loses nothing.
     draft.stashDraft(text)
     // Slash context highlights the frame in `primary`; any other text
@@ -597,12 +595,6 @@ export function apply(ctx: Context): void {
     editor.setBorderColor(text.trimStart().startsWith('/') ? colors.primary : colors.border)
     notice = undefined
     refreshHint()
-  }
-  // The pi-tui Editor clears its buffer before invoking onSubmit, and the
-  // callback argument already carries the paste-expanded, trimmed text — so
-  // the argument, not getExpandedText(), is the submission.
-  editor.onSubmit = (text) => {
-    submitPrompt(text)
   }
   editor.onKey = handleEditorKey
 
@@ -649,74 +641,40 @@ export function apply(ctx: Context): void {
   })
 
   ctx.effect(() => {
-    // Pin below the transcript: pi-tui renders root children in mount order,
-    // and transcript components only appear once a session exists. The hint
-    // line mounts after the editor so it renders beneath it.
-    let removeEditor = screen.addBottomChild(extensionRuntime)
-    let removeHint = screen.addBottomChild(hintLine)
-    screen.setFocus(extensionRuntime)
-    setSharedEditor(ctx, { editor, submitPrompt, abortPrompt: () => { interruptOrClear() }, notice: setNotice })
+    const dock = new EditorDockHost(extensionRuntime, hintLine, occupied => {
+      ctx.emit('mayfly/editor-slot-swapped', occupied)
+    })
+    const slot = screen.mountDockSlot('editor.prompt', dock)
+    slot.focus()
+    const shared = { editor, submitPrompt, abortPrompt: () => { interruptOrClear() }, notice: setNotice }
+    setSharedEditor(ctx, shared)
+    const detachEditorPlus = mountEditorPlus(ctx, shared, () => unloaded)
     ctx.emit('mayfly/input-editor-changed')
 
-    // The editor-slot swap (kimi `mountEditorReplacement`, D30): a dialog
-    // panel takes over the editor's dock slot, so below an open panel only
-    // the footer remains — a floating overlay would leave the editor's
-    // frame peeking around it. A stack keeps nested opens orderly; the top
-    // entry is what renders, and popping back to empty restores the editor
-    // (its buffer and draft survive — the component merely left the tree).
-    const panels: { readonly component: MayflyFocusable; readonly remove: () => void }[] = []
-    const hideEditor = (): void => {
-      removeHint()
-      removeEditor()
-    }
-    const showEditor = (): void => {
-      removeEditor = screen.addBottomChild(extensionRuntime)
-      removeHint = screen.addBottomChild(hintLine)
-      screen.setFocus(extensionRuntime)
-    }
-    setEditorSlotSwap(ctx, {
+    ctx.mayflyEditorPanels.setHost({
       mount: (component) => {
-        if (panels.length === 0) hideEditor()
-        const remove = screen.addBottomChild(component)
-        screen.setFocus(component)
-        const entry = { component, remove }
-        panels.push(entry)
-        if (panels.length === 1) {
-          // The dock slot changed hands: activity panes stand down while a
-          // dialog hangs (below an open panel only the footer stays).
-          ctx.emit('mayfly/editor-slot-swapped', true)
-        }
+        const remove = dock.mountPanel(component)
+        slot.focus()
         screen.requestRender()
+        let disposed = false
         return () => {
-          const index = panels.indexOf(entry)
-          // -1 covers both re-disposal and a panel outliving this fiber:
-          // the teardown below already unmounted it.
-          if (index === -1) return
-          panels.splice(index, 1)
+          if (disposed) return
+          disposed = true
           remove()
-          const top = panels.at(-1)
-          if (top === undefined) {
-            showEditor()
-            ctx.emit('mayfly/editor-slot-swapped', false)
-          } else screen.setFocus(top.component)
+          slot.focus()
           screen.requestRender()
         }
       },
     })
 
     return () => {
-      setEditorSlotSwap(ctx, undefined)
-      // Panels still open when this fiber unloads (a /theme swap with a
-      // dialog up) unmount with it; their disposers turn into no-ops.
-      const wasOccupied = panels.length > 0
-      for (const entry of panels.splice(0)) entry.remove()
-      if (wasOccupied) ctx.emit('mayfly/editor-slot-swapped', false)
+      ctx.mayflyEditorPanels.setHost(undefined)
       clearSharedEditor(ctx)
       ctx.emit('mayfly/input-editor-changed')
+      detachEditorPlus()
       extensionRuntime.dispose()
-      removeHint()
-      removeEditor()
-      screen.setFocus(null)
+      dock.dispose()
+      slot.dispose()
     }
   })
   ctx.effect(() => {

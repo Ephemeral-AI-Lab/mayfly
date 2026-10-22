@@ -4,9 +4,10 @@
  * @module @ephemeral-ai/mayfly-ui
  */
 
-export type * from './contracts.ts'
+export * from './contracts.ts'
 export {
   deepFreeze,
+  freezeWire,
   defineMayflyComponent,
   ui,
   type MayflyComponentDefinition,

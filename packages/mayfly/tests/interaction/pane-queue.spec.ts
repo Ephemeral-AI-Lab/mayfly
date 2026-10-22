@@ -31,8 +31,8 @@ async function mount(attached = true, inbox = fakeInbox()) {
 describe('mayfly-pane-queue', () => {
   it('registers one ordinary bottom pane and renders null without work', async () => {
     const world = await mount(false)
-    expect(world.entry()?.contribution).toMatchObject({ placement: 'bottom', priority: 20, narrow: 'bottom' })
-    expect(world.entry()?.contribution.render()).toBeNull()
+    expect(world.entry()?.definition).toMatchObject({ placement: 'bottom', priority: 20, narrow: 'bottom' })
+    expect(world.entry()?.node).toBeNull()
   })
 
   it('projects pending turn and step messages as canonical muted rows', async () => {
@@ -40,7 +40,7 @@ describe('mayfly-pane-queue', () => {
       [message('first turn'), message('second\nturn')],
       [message('steer this')],
     ))
-    expect(world.entry()?.contribution.render()).toEqual({
+    expect(world.entry()?.node).toEqual({
       kind: 'stack',
       direction: 'column',
       children: [
@@ -54,7 +54,7 @@ describe('mayfly-pane-queue', () => {
   it('keeps image-only message text empty', async () => {
     const image = { content: [{ type: 'image' }] } as unknown as UserMessage
     const world = await mount(true, fakeInbox([image]))
-    expect(world.entry()?.contribution.render()).toMatchObject({
+    expect(world.entry()?.node).toMatchObject({
       children: [{ node: { content: 'queued / turn: ' } }],
     })
   })
@@ -76,7 +76,7 @@ describe('mayfly-pane-queue', () => {
     const world = await mount(true, fakeInbox([message('old')]))
     ;(world.ctx.get('testSession') as { current: Agent | null }).current = null
     world.ctx.emit('test/session-changed', null)
-    expect(world.entry()?.contribution.render()).toBeNull()
+    expect(world.entry()?.node).toBeNull()
     await world.fiber.dispose()
     expect(world.entry()).toBeUndefined()
   })

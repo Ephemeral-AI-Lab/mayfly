@@ -25,7 +25,8 @@ import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '../app/index.ts'
 import type { Action } from '../frontend/index.ts'
 import { displayServices } from './display-services.ts'
-import { getSharedEditor, mountEditorReplacement } from './editor-instance.ts'
+import { getSharedEditor } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { CanonicalDocumentController } from './frontend-panel.ts'
 import {
   effortPickerPanelModel,

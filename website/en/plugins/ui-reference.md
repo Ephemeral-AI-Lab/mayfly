@@ -231,12 +231,12 @@ ui.diff(
 ```ts
 ui.sections(sections: readonly {
   title?: string
-  body: MayflyView
+  body: MayflySectionContentNode
   collapsed?: boolean
 }[])
 ```
 
-Each `body` is restricted to the lightweight `MayflyView` union:
+Each `body` is restricted to the lightweight section-content union:
 `text | fields | code | diff | sections`. It cannot directly contain tabs,
 forms, actions, or another full `MayflyUiNode`.
 Omitting `collapsed` is equivalent to `false`. With `true`, the current TUI
@@ -260,13 +260,11 @@ ui.sections([
 ])
 ```
 
-### `document`
+### `markdown` and `diagram`
 
 ```ts
-ui.document({
-  format: 'markdown' | 'mermaid',
-  source: string,
-})
+ui.markdown(source: string)
+ui.diagram(mermaidSource: string)
 ```
 
 Markdown reuses Mayfly's pi-tui adapter, including tables and fenced code.
@@ -277,14 +275,11 @@ containing CJK, emoji, or other full-width characters remain visible as the
 original Mermaid code fence. Diagrams are never wrapped or truncated.
 
 ```ts
-ui.document({
-  format: 'mermaid',
-  source: 'flowchart TD\n  Request --> Validate\n  Validate --> Result',
-})
+ui.diagram('flowchart TD\n  Request --> Validate\n  Validate --> Result')
 ```
 
-`document` is available in ordinary panes and passive or capturing overlays.
-It is not a status, notification, editor-extension, or `sections.body` node.
+`markdown` and `diagram` are available in ordinary panes and overlays.
+It is not a status, editor-extension, or `sections.body` node.
 
 ### `chart`
 
@@ -336,7 +331,7 @@ values are unique, bar values match the category count, and heatmap dimensions
 match their row/column labels. Each chart accepts at most 20 series, and one
 tree accepts at most 4,000 chart cells. Like `document`, `chart` is available
 in ordinary panes and passive or capturing overlays, not in narrower status,
-notification, editor-extension, or `MayflyView` trees.
+status, editor-extension, or section-content trees.
 
 ## Layout nodes
 
@@ -1027,8 +1022,8 @@ ui.divider()
 
 ## Events and rerendering
 
-Panes and overlays place the handler on the contribution/request, not on an
-individual node:
+Panes, overlays, and editor extensions place the handler on the definition,
+not on an individual node:
 
 ```ts
 onEvent: (
@@ -1053,25 +1048,24 @@ onEvent: (
 success. Failure, abort, timeout, an old generation, or a result after unload
 cannot commit.
 
-Call the pane/overlay handle's `refresh()` when an external projection, service
-subscription, or timer changes state. Do not manually refresh in a successful
-`onEvent()` path. Doing so is an external replacement and may abort the event's
-own generation.
+Call the pane/overlay handle's `set(node)` or the editor-extension registration's
+`set(decoration)` when an external projection, service subscription, or timer
+changes state. Inside `onEvent()`, publish with
+`{ eventRevision: context.revision }`; unmarked external updates abort older
+event work while the matching event revision remains current.
 
 ## Surface compatibility matrix
 
 | Surface | Allowed nodes | Interaction rule |
 | --- | --- | --- |
 | `panes` | Full `MayflyUiNode` | Controls work and events go to pane `onEvent` |
-| Capturing overlay | Full `MayflyUiNode` | Opening must consume a valid `userGesture` |
+| Capturing overlay | Full `MayflyUiNode` | Receives focus and handles Escape dismissal |
 | Non-capturing overlay | Passive content/layout only | Tabs/list/form/actions controls replace the whole render tree with an error message |
 | Additive `status` | text, rich-text, fields, progress, recursive stack | Always passive; no surface, scroll, or controls |
-| Notification `view` | `MayflyView`: text, fields, code, diff, sections | No controls and no rich-text/layout |
-| Editor extension (Experimental) | Passive MayflyView/rich-text/progress/spacer/divider plus stack/surface | Interactive actions use the extension's separate `actions` field |
+| Editor extension | Passive content/rich-text/progress/spacer/divider plus stack/surface | Interactive actions use the extension decoration's `actions` field |
 
-`status.provider`, `editor.extensions`, and `editor.provider` remain
-Experimental/reference surfaces and cannot appear in a canonical v1 manifest.
-New plugins should prefer the Public Beta surfaces in the first five rows.
+All four registries are direct Fiber-owned Cordis services; no secondary
+manifest or capability host participates in registration.
 
 ## Validation checklist
 

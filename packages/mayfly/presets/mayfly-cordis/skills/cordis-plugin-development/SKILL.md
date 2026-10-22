@@ -94,8 +94,7 @@ return {
           id: 'probe.health',
           title: 'Health',
           capturing: true,
-          render: () => ({ kind: 'text', content: 'healthy', tone: 'success' }),
-        })
+        }, { kind: 'text', content: 'healthy', tone: 'success' })
         return { kind: 'success', text: 'opened health probe' }
       },
     })
@@ -107,8 +106,8 @@ Registries reject invalid or duplicate ids by throwing. Native commands return
 the native dsh command result shape. A capturing overlay is Escape-dismissible
 unless `dismissible: false`.
 
-Renderer-neutral nodes contain data, not pi-tui components. Render functions
-are synchronous, cheap, and do no I/O.
+Renderer-neutral snapshots contain data, not pi-tui components. Build them in
+event/projection callbacks and publish with `set()`; rendering performs no I/O.
 
 ## Execution environment
 

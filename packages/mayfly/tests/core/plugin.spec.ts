@@ -101,11 +101,10 @@ export const apply = ctx => globalThis.__externalPaneApply(ctx)
     ctx.mayflyPanes.register({
       id: 'startup-pane',
       placement: 'bottom',
-      render: () => {
-        pane.renders += 1
-        return { kind: 'text', content: 'startup-pane' }
-      },
-    })
+    }, (() => {
+      pane.renders += 1
+      return { kind: 'text', content: 'startup-pane' }
+    })())
     pane.registerOk = true
   }
 
@@ -157,17 +156,16 @@ describe('mayfly-core plugin through the real Loader', () => {
     pane.panes!.register({
       id: 'during-renderer-gap',
       placement: 'bottom',
-      render: () => {
+    }, (() => {
         pane.gapRenders += 1
         return { kind: 'text', content: 'renderer-gap-pane' }
-      },
-    })
+      })())
 
     await ctx.loader.update(coreEntry!.id, { disabled: false })
     await ctx.loader.await()
     ctx.mayflyScreen.requestRender(true)
     await new Promise<void>(resolve => setTimeout(resolve, 50))
-    expect(pane.gapRenders).toBeGreaterThan(0)
+    expect(pane.gapRenders).toBe(1)
     expect(output()).toContain('renderer-gap-pane')
   })
 
@@ -193,8 +191,8 @@ describe('mayfly-core plugin through the real Loader', () => {
       invalidate: () => {},
       handleInput: (data: string) => received.push(data),
     }
-    ctx.mayflyScreen.addChild(focused)
-    ctx.mayflyScreen.setFocus(focused)
+    const slot = ctx.mayflyScreen.mountContentSlot('test.focused', focused)
+    slot.focus()
 
     // A matching sequence is consumed by the handler before focus routing.
     process.stdin.emit('data', Buffer.from('\x0f', 'utf8'))

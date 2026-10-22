@@ -37,7 +37,8 @@ import {
 } from './surface-manager.ts'
 import { buildTitleOsc0, copySelectionText } from './terminal-escape.ts'
 import { probeTerminalBackground, backgroundFromRgb, type MayflyProbeProcess } from './terminal-info.ts'
-import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyRgbColor } from './types.ts'
+import type { MayflyComponent, MayflyDockOptions, MayflyOverlayOptions, MayflyRgbColor, MayflyScreenOverlayHandle } from './types.ts'
+import { safeWidth } from './width.ts'
 
 interface MayflyRuntimeOverlayOptions extends MayflyOverlayOptions { readonly maxWidth?: number }
 
@@ -328,7 +329,7 @@ export interface MayflyTerminalRuntime {
    * @param options - positioning and sizing options.
    * @returns the overlay's control handle.
    */
-  showOverlay(component: MayflyComponent, options?: MayflyRuntimeOverlayOptions): MayflyOverlayHandle
+  showOverlay(component: MayflyComponent, options?: MayflyRuntimeOverlayOptions): MayflyScreenOverlayHandle
   /**
    * Schedule a re-render of the live renderer.
    * @param force - reset differential render state before drawing.
@@ -759,15 +760,15 @@ export async function startMayflyTerminal(
       const lane = ([layout.header, layout.left, layout.right, layout.bottom] as const)
         .find(candidate => candidate?.entries.some(entry => entry.id === id))
       const columns = lane?.placement === 'left' || lane?.placement === 'right' ? lane.width ?? terminal.columns : terminal.columns
-      if (screenMode === 'main') return { columns: Math.max(1, terminal.columns), rows: Math.max(1, terminal.rows) }
+      if (screenMode === 'main') return { columns: safeWidth(terminal.columns), rows: safeWidth(terminal.rows) }
       const tabs = lane === undefined ? 0 : surfaceLaneTabRows(lane)
       const dockRows = lastDockRows
       const rows = lane?.placement === 'header'
-        ? Math.max(1, (lastSurfaceHeaderRows || SURFACE_HEADER_MAX_ROWS) - tabs)
+        ? safeWidth((lastSurfaceHeaderRows || SURFACE_HEADER_MAX_ROWS) - tabs)
         : lane?.placement === 'bottom'
-          ? Math.max(1, (lastSurfaceBottomRows || Math.floor(terminal.rows / 3)) - tabs)
-          : Math.max(1, terminal.rows - dockRows - lastSurfaceHeaderRows - lastSurfaceBottomRows - tabs)
-      return { columns: Math.max(1, Math.min(terminal.columns, columns)), rows: Math.min(terminal.rows, rows) }
+          ? safeWidth((lastSurfaceBottomRows || Math.floor(terminal.rows / 3)) - tabs)
+          : safeWidth(terminal.rows - dockRows - lastSurfaceHeaderRows - lastSurfaceBottomRows - tabs)
+      return { columns: safeWidth(Math.min(terminal.columns, columns)), rows: Math.min(terminal.rows, rows) }
     },
     releaseSurfaceFocus(id) {
       if (surfaces.focusedId !== id) return
@@ -845,7 +846,7 @@ export async function startMayflyTerminal(
       const lines = collectLines(current.terminal.columns)
       let dockRows = 0
       for (const child of orderedDock()) dockRows += child.render(current.terminal.columns).length
-      const contentRows = Math.max(1, terminal.rows - dockRows)
+      const contentRows = safeWidth(terminal.rows - dockRows)
       const max = Math.max(0, lines.length - dockRows - contentRows)
       if (max === 0) return false
       const step = Math.max(1, Math.floor(amount))
@@ -887,7 +888,7 @@ export async function startMayflyTerminal(
     /* v8 ignore stop */
     showOverlay(component, options) {
       if (options?.maxWidth === undefined) return stable.showOverlay(component, options)
-      const maximum = Math.max(1, Math.floor(options.maxWidth))
+      const maximum = safeWidth(options.maxWidth)
       const source = options.width
       const sourceMinWidth = options.minWidth
       const adapted = {
@@ -900,12 +901,12 @@ export async function startMayflyTerminal(
             const requested = typeof source === 'string'
               ? Math.floor(terminal.columns * Number.parseFloat(source) / 100)
               : source ?? Math.min(80, terminal.columns)
-            return Math.max(1, Math.min(maximum, requested))
+            return safeWidth(Math.min(maximum, requested))
           },
         },
         minWidth: {
           enumerable: true,
-          get: () => Math.max(1, Math.min(terminal.columns, maximum, Math.floor(sourceMinWidth ?? 1))),
+          get: () => safeWidth(Math.min(terminal.columns, maximum, Math.floor(sourceMinWidth ?? 1))),
         },
       })
       return stable.showOverlay(component, adapted)

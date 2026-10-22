@@ -20,10 +20,9 @@ import { MayflyTerminalInfoService } from './terminal-info.ts'
 import { startMayflyTerminal } from './terminal.ts'
 import { mountMayflySurfaceRenderer } from './surface-renderer.ts'
 import { contextHintTranslator, mountContextHintLocale } from './context-hint-locale.ts'
-import { NotificationModelService, ThemeModelService } from '../frontend/index.ts'
+import { ThemeModelService } from '../frontend/index.ts'
 
 export { MayflyComponentsService, type MayflyComponentsDeps } from './components.ts'
-export { mountDockChild } from './dock.ts'
 export { GutterComponent } from './gutter.ts'
 export { MayflyKeymapError, MayflyKeymapService } from './keymap.ts'
 export { MayflyScreenService } from './screen.ts'
@@ -95,7 +94,6 @@ export type {
   MayflyColorFn,
   MayflyComponent,
   MayflyComponents,
-  MayflyDockOptions,
   MayflyEditor,
   MayflyEditorOptions,
   MayflyEditorSubmitAttempt,
@@ -108,12 +106,13 @@ export type {
   MayflyMarkdown,
   MayflyMarkdownOptions,
   MayflyOverlayAnchor,
-  MayflyOverlayHandle,
   MayflyOverlayOptions,
   MayflyOverlaySize,
   MayflyOverlayUnfocusOptions,
   MayflyRgbColor,
   MayflyScreen,
+  MayflyScreenOverlayHandle,
+  MayflyScreenSlot,
   MayflySelectItem,
   MayflySelectList,
   MayflySelectListOptions,
@@ -141,7 +140,6 @@ export const name = 'mayfly-core'
  */
 export async function apply(ctx: Context): Promise<void> {
   ctx.plugin(ThemeModelService)
-  ctx.plugin(NotificationModelService)
   const runtime = await startMayflyTerminal(undefined, undefined, (scheme) => {
     ctx.emit('mayfly/terminal-theme-changed', scheme)
   }, undefined, 'alternate', { stdout: process.stdout, stderr: process.stderr })

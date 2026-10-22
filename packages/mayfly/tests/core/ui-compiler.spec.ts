@@ -168,13 +168,17 @@ describe('compileMayflyUiNode', () => {
     expect(compiled(built, a.options).component.render(60)).toEqual(compiled(hand, b.options).component.render(60))
   })
 
-  it('compiles every non-MayflyView node kind into width-safe rows', () => {
+  it('compiles every structural node kind into width-safe rows', () => {
     const tree = ui.stack.column([
       ui.fields([{ label: 'field', value: [{ text: 'value' }] }]),
       ui.code('const x = 1'),
       ui.diff('before', 'after'),
       ui.sections([{ title: 'section', body: ui.text('body') }]),
-      ui.richText([{ text: 'rich' }]),
+      ui.richText([
+        { text: 'rich', styles: ['strong'] },
+        { text: ' italic', styles: ['italic'] },
+        { text: ' strike', styles: ['strike'] },
+      ]),
       ui.surface({ title: 'surface', child: ui.text('child'), footer: ui.text('footer') }),
       ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B', disabled: true }] }),
       ui.list({ id: 'list', selectedIds: ['a'], items: [{ id: 'a', label: 'A' }] }),
@@ -185,8 +189,8 @@ describe('compileMayflyUiNode', () => {
       ui.progress({ value: 1, max: 2 }),
       ui.spacer(),
       ui.divider(),
-      ui.document({ format: 'markdown', source: '| A | B |\n| - | - |' }),
-      ui.document({ format: 'mermaid', source: 'graph LR; A --> B' }),
+      ui.markdown('| A | B |\n| - | - |'),
+      ui.diagram('graph LR; A --> B'),
       ui.chart({ chart: 'line', series: [{ id: 'series', points: [{ x: 0, y: 1 }, { x: 1, y: 2 }] }] }),
       ui.chart({ chart: 'sparkline', values: [1, 3, 2] }),
     ])
@@ -208,9 +212,9 @@ describe('compileMayflyUiNode', () => {
         return { setText: () => {}, render: () => ['document'], invalidate: () => {} }
       },
     } as MayflyComponents
-    expect(compiled(ui.document({ format: 'markdown', source: '# Heading' }), fixture({ components: markdownComponents }).options).component.render(20)).toEqual(['document'])
-    expect(compiled(ui.document({ format: 'mermaid', source: 'graph TD\nA --> B' }), fixture({ components: markdownComponents }).options).component.render(20)).toEqual(['document'])
-    expect(compiled(ui.document({ format: 'mermaid', source: 'graph TD\nA[```] --> B' }), fixture({ components: markdownComponents }).options).component.render(20)).toEqual(['document'])
+    expect(compiled(ui.markdown('# Heading'), fixture({ components: markdownComponents }).options).component.render(20)).toEqual(['document'])
+    expect(compiled(ui.diagram('graph TD\nA --> B'), fixture({ components: markdownComponents }).options).component.render(20)).toEqual(['document'])
+    expect(compiled(ui.diagram('graph TD\nA[```] --> B'), fixture({ components: markdownComponents }).options).component.render(20)).toEqual(['document'])
     expect(sources[0]).toBe('# Heading')
     expect(sources[1]).toBe('```mermaid\ngraph TD\nA --> B\n```')
     expect(sources[2]).toBe('````mermaid\ngraph TD\nA[```] --> B\n````')
@@ -279,11 +283,10 @@ describe('compileMayflyUiNode', () => {
         invalidate,
       }),
     } as MayflyComponents
-    const result = compiled(ui.text('# heading\n- list\n```ts\nfence\n```'), fixture({
+    const result = compiled(ui.markdown('# heading\n- list\n```ts\nfence\n```'), fixture({
       components: markdownComponents,
       maxLeafRows: 2,
       leafRowWindowPath: '$',
-      markdownLeafPath: '$',
       leafRowOffset: () => 1,
     }).options)
     expect(result.component.render(20)).toEqual(['list', 'fence'])
@@ -300,7 +303,7 @@ describe('compileMayflyUiNode', () => {
         invalidate: () => {},
       }),
     } as MayflyComponents
-    const error = compiled(ui.text('# heading'), fixture({ components: markdownComponents, markdownLeafPath: '$' }).options)
+    const error = compiled(ui.markdown('# heading'), fixture({ components: markdownComponents }).options)
     expect(error.component.render(20).join('')).toContain('markdown failed')
 
     const unknownComponents = {
@@ -311,14 +314,14 @@ describe('compileMayflyUiNode', () => {
         invalidate: () => {},
       }),
     } as MayflyComponents
-    const unknown = compiled(ui.text('# heading'), fixture({ components: unknownComponents, markdownLeafPath: '$' }).options)
+    const unknown = compiled(ui.markdown('# heading'), fixture({ components: unknownComponents }).options)
     expect(unknown.component.render(20).join('')).toContain('unknown')
   })
 
   it('renders all surface chrome content, rich emphasis, and explicit stack sizing', () => {
     const { options } = fixture()
     const tree = ui.stack.row([
-      ui.child(ui.surface({ title: 'Title', subtitle: 'Subtitle', badges: [{ text: 'Badge', emphasis: 'strong' }], padding: 1, child: ui.richText([{ text: 'Body', emphasis: 'strong' }]), footer: ui.text('Footer') }), { basis: 'auto', grow: 1, shrink: 0, minSize: 2, maxSize: 100 }),
+      ui.child(ui.surface({ title: 'Title', subtitle: 'Subtitle', badges: [{ text: 'Badge', styles: ['strong'] }], padding: 1, child: ui.richText([{ text: 'Body', styles: ['strong'] }]), footer: ui.text('Footer') }), { basis: 'auto', grow: 1, shrink: 0, minSize: 2, maxSize: 100 }),
       ui.child(ui.text('hidden'), { when: { maxWidth: 10, minHeight: 30 } }),
     ], { align: 'end' })
     const rows = compiled(tree, options).component.render(80)
@@ -474,10 +477,9 @@ describe('compileMayflyUiNode', () => {
     if (!first.ok) throw new Error(first.message)
     first.value.component.render(2)
 
-    const failed = compileMayflyUiSurfaceNode(ui.text('broken markdown'), {
+    const failed = compileMayflyUiSurfaceNode(ui.markdown('broken markdown'), {
       ...fixture({
         components: { ...components, createMarkdown: () => { throw new Error('setup failed') } } as MayflyComponents,
-        markdownLeafPath: '$',
       }).options,
       surfaceRuntime: runtime,
       refreshMode: 'internal',
@@ -1123,11 +1125,10 @@ describe('compileMayflyUiNode', () => {
     } as MayflyComponents
     const failed = compileMayflyUiSurfaceNode(ui.stack.column([
       ui.form({ id: 'profile', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'Server' }] }),
-      ui.text('failure after the form'),
+      ui.markdown('failure after the form'),
     ]), {
       ...f.options,
       components: failingComponents,
-      markdownLeafPath: '$.1',
       surfaceRuntime: runtime,
       refreshMode: 'external',
     })
@@ -2369,7 +2370,7 @@ describe('compileMayflyUiNode', () => {
       const tree = ui.stack.column([
         ui.surface({ chrome: 'overlay', title: content, subtitle: content, badges: [{ text: content, tone: 'warning' }], child: ui.text(content), footer: ui.divider({ label: content }) }),
         ui.tabs({ id: `tabs-${suffix}`, activeId: 'a', items: [{ id: 'a', label: content, count: 123 }, { id: 'b', label: content }] }),
-        ui.list({ id: `list-${suffix}`, mode: 'multiple', selectedIds: ['a'], filter: content, items: [{ id: 'a', label: content, detail: content, detailSpans: [{ text: content, tone: 'accent', emphasis: 'strong' }], badge: content, group: content }, { id: 'b', label: content }] }),
+        ui.list({ id: `list-${suffix}`, mode: 'multiple', selectedIds: ['a'], filter: content, items: [{ id: 'a', label: content, detail: content, detailSpans: [{ text: content, tone: 'accent', styles: ['strong'] }], badge: content, group: content }, { id: 'b', label: content }] }),
         ui.form({ id: `form-${suffix}`, fields: [{ kind: 'input', id: `field-${suffix}`, label: content, value: content, error: content }] }),
         ui.actions({ id: `actions-${suffix}`, items: [{ id: `action-${suffix}`, label: content, intent: 'danger', confirm: content }] }),
         ui.loader({ message: content, elapsedMs: 12 }),

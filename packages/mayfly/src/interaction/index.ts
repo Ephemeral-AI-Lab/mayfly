@@ -7,8 +7,8 @@
  * overlay provider (`mayfly-questions`, one tabbed questionnaire overlay per
  * request), and the interactive four-choice `approval/request` answerer
  * (`mayfly-approval`). The optional bash-mode and autocomplete enhancement
- * layer ships as the `./editor-plus` subpath plugin (`mayfly-editor-plus`),
- * and the queued-message pane with app-owned live refresh as the
+ * layer is mounted with the editor as one interaction feature, and the
+ * queued-message pane with app-owned live refresh as the
  * `./pane-queue` subpath plugin (`mayfly-pane-queue`). The session-title
  * terminal mirror (`mayfly-terminal-title`, the OSC 0 window title over the
  * upstream session-title fold), the consolidated `mayfly` settings namespace
@@ -24,7 +24,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import * as approvalPlugin from './approval-plugin.ts'
 import * as commandsPlugin from './commands-plugin.ts'
-import { CommandModelService } from './command-model.ts'
 import * as inputPlugin from './input-plugin.ts'
 import * as keysPlugin from './keys.ts'
 import * as providerOnboardingPlugin from './provider-onboarding.ts'
@@ -32,18 +31,13 @@ import * as questionsPlugin from './questions-plugin.ts'
 import * as settingsPlugin from './settings.ts'
 import * as terminalTitlePlugin from './terminal-title.ts'
 import * as updateCheckPlugin from './updater/check.ts'
-import { EditorModelService } from './editor-model.ts'
-import { EditorHostService } from './editor-instance.ts'
+import { PromptEditorController } from './editor-instance.ts'
+import { EditorPanelController } from './editor-panel-controller.ts'
+import { PromptSubmitPipeline } from './prompt-submit-pipeline.ts'
 import { SkillsCatalogService } from './skills-catalog.ts'
 import { InteractionStateService } from './runtime-state.ts'
 import { DEFAULT_SETTINGS } from './settings.ts'
 import { mountInteractionLocale } from './locale.ts'
-
-export { CommandModelService } from './command-model.ts'
-export { EditorModelService } from './editor-model.ts'
-export { EditorHostService } from './editor-instance.ts'
-export { SkillsCatalogService } from './skills-catalog.ts'
-export { InteractionStateService } from './runtime-state.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-interaction'
@@ -71,13 +65,15 @@ export function apply(ctx: Context, config: Config = {}): void {
   mountInteractionLocale(ctx)
   const runtimeState = new InteractionStateService(ctx, DEFAULT_SETTINGS)
   ctx.effect(() => () => runtimeState.dispose())
-  const editorHost = new EditorHostService(ctx)
+  const editorHost = new PromptEditorController(ctx)
   ctx.effect(() => () => editorHost.dispose())
+  const editorPanels = new EditorPanelController(ctx)
+  ctx.effect(() => () => editorPanels.dispose())
+  const promptSubmissions = new PromptSubmitPipeline(ctx)
+  ctx.effect(() => () => promptSubmissions.dispose())
   const skillsCatalog = new SkillsCatalogService(ctx)
   ctx.effect(() => () => skillsCatalog.dispose())
   ctx.plugin(keysPlugin)
-  ctx.plugin(CommandModelService)
-  ctx.plugin(EditorModelService)
   ctx.plugin(commandsPlugin, config)
   ctx.plugin(inputPlugin)
   ctx.plugin(providerOnboardingPlugin)

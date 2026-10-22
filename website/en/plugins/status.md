@@ -1,7 +1,6 @@
 # Status bar
 
-`ctx.mayflyStatus.register(source)` accepts a fixed entry or a synchronous
-function returning an entry or null.
+`ctx.mayflyStatus.register(definition, initialNode)` publishes immutable status snapshots.
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
@@ -12,28 +11,24 @@ export const inject = ['mayflyStatus']
 
 export function apply(ctx: Context): void {
   let healthy = true
-  const status = ctx.mayflyStatus.register(() => ({
+  const status = ctx.mayflyStatus.register({
     id: 'acme.health',
     priority: 30,
     band: 'right',
     row: 1,
     overflow: 'hide',
-    visible: true,
-    node: ui.text(healthy ? 'healthy' : 'failed', {
-      tone: healthy ? 'success' : 'danger',
-    }),
-  }))
+  }, ui.text('healthy', { tone: 'success' }))
 
   ctx.on('acme/health-changed', value => {
     healthy = value
-    status.refresh()
+    status.set(ui.text(healthy ? 'healthy' : 'failed', {
+      tone: healthy ? 'success' : 'danger',
+    }))
   })
 }
 ```
 
-Status nodes are non-interactive. Entries sort by priority and id;
-`visible: false` or a null source result hides the entry. If a source throws,
-Mayfly renders an entry-local failure fallback without blocking the Agent loop.
-
-`refresh()` asks the footer to reread the source, `dispose()` removes it
-early, and Fiber unload removes it automatically.
+Status nodes are non-interactive and sort by priority then id. `set(null)`
+releases the slot; `set(node)` clones and freezes the snapshot, increments its
+revision, and invalidates only the footer host. `dispose()` removes the entry,
+and Fiber unload disposes it automatically.

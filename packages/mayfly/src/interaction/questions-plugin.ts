@@ -20,7 +20,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { UserQuestionError } from '@deepseek-ai/dsh-user-questions'
 import type { AskUserQuestionAnswer, AskUserQuestionRequest } from '@deepseek-ai/dsh-user-questions'
-import { mountEditorReplacement } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { PlanReviewPanel, planReviewChoices } from './plan-review-panel.ts'
 import { Questionnaire } from './questionnaire.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
@@ -28,7 +28,7 @@ import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-questions'
 /** Services required before the provider can register. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'userQuestions']
+export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyEditorPanels', 'userQuestions']
 
 /**
  * Register the overlay-backed user-questions waterfall answerer.

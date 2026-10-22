@@ -347,7 +347,7 @@ export class CanonicalDocumentController implements MayflyFocusable {
         return {
           text: `${index === 0 ? '' : ' '}[${variant.label}]`,
           tone: active ? 'accent' : 'muted',
-          ...(active ? { emphasis: 'strong' as const } : {}),
+          ...(active ? { styles: ['strong'] as const } : {}),
         }
       })
       if (item.detail !== undefined) spans.push({ text: ` · ${item.detail}` })
@@ -359,7 +359,7 @@ export class CanonicalDocumentController implements MayflyFocusable {
       spans.push({
         text: `${spans.length === 0 ? '' : ' '}[${variant.label}]`,
         tone: active ? 'accent' : 'muted',
-        ...(active ? { emphasis: 'strong' as const } : {}),
+        ...(active ? { styles: ['strong'] as const } : {}),
       })
     }
     return spans

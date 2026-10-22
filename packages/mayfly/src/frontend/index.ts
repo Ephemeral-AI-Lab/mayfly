@@ -6,7 +6,6 @@ import { MayflyLocaleService } from './locale.ts'
 
 export * from './models.ts'
 export * from './theme.ts'
-export * from './notification.ts'
 export * from './locale.ts'
 
 export const name = 'mayfly-frontend'

@@ -47,7 +47,8 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 // available); optional and resolved lazily like persistence.
 import type {} from '@deepseek-ai/dsh-session-query'
 import { displayServices } from './display-services.ts'
-import { getSharedEditor, mountEditorReplacement } from './editor-instance.ts'
+import { getSharedEditor } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import type { HelpSection } from './help.ts'
 import { HelpOverlay } from './help.ts'
 import { registerMcpCommands } from './mcp-commands.ts'
@@ -323,8 +324,6 @@ export function apply(ctx: Context, config: Config = {}): void {
         heading: 'Commands',
         labelTone: 'accent',
         rows: (() => {
-          const models = ctx.get('mayflyCommandModels')?.list()
-          if (models !== undefined) return models.map(model => ({ label: model.label, description: model.description ?? '' }))
           const agent = ctx.mayflyCurrentAgent.current()
           return agent === null ? [] : ctx.commands.list(agent).map(command => ({ name: command.name, description: t(command.description) }))
         })().map(command => {
@@ -332,10 +331,10 @@ export function apply(ctx: Context, config: Config = {}): void {
           // slashed parentheses (`/quit (/q, /exit)`), visible on every
           // listing — unlike the dropdown, which shows them only when the
           // query matched one.
-          const commandName = 'name' in command ? command.name : command.label.slice(1)
+          const commandName = command.name
           const aliases = aliasRegistry.aliasesOf(commandName)
           return {
-            label: aliases.length === 0 ? ('label' in command ? command.label : `/${commandName}`) : `/${commandName} (${aliases.map(alias => `/${alias}`).join(', ')})`,
+            label: aliases.length === 0 ? `/${commandName}` : `/${commandName} (${aliases.map(alias => `/${alias}`).join(', ')})`,
             description: command.description,
           }
         }),

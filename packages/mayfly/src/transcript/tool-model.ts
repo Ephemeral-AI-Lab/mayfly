@@ -4,19 +4,14 @@
  *
  * @module @ephemeral-ai/mayfly/transcript/tool-model
  */
-import { Service, type Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ToolCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
-import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { diffChangeCounts, type MayflyComponent, type MayflyScreen } from '../core/index.ts'
+import type { MayflyField, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { diffChangeCounts, type MayflyComponent } from '../core/index.ts'
 import { freezeModel, type ToolPresentationModel } from '../frontend/index.ts'
 import { renderCanonicalNode, type CanonicalNodeRenderer } from './canonical-node-renderer.ts'
 import { summarizeToolText } from './envelope.ts'
 import { summarizeToolCall } from './present.ts'
-
-declare module '@deepseek-ai/cordis' { interface Context { mayflyToolModels: MayflyModelToolService } }
-
-type Source = ToolPresentationModel | (() => ToolPresentationModel | null)
 
 const COLLAPSED_ROW_LIMIT = 12
 const EXPANDED_ROW_LIMIT = 200
@@ -51,13 +46,30 @@ export function toolCallNode(view: ToolCallView): MayflyUiNode {
     case 'generic': {
       const content = contentText(view.content)
       const input = view.rawInput === undefined ? undefined : readableValue(view.rawInput)
-      return { kind: 'sections', sections: [{ title: view.title, body: { kind: 'text', content: content ?? input ?? '' } }] }
+      const sections: { title: string; body: Extract<MayflyUiNode, { readonly kind: 'text' }> }[] = [
+        { title: view.title, body: { kind: 'text', content: content ?? input ?? '' } },
+      ]
+      if (view.locations !== undefined && view.locations.length > 0) {
+        const files = view.locations.map(location => location.line === undefined ? location.path : `${location.path}:${String(location.line)}`).join('\n')
+        sections.push({ title: 'files', body: { kind: 'text', content: files } })
+      }
+      return { kind: 'sections', sections }
     }
     case 'terminal': {
       const sections: { title: string; body: Extract<MayflyUiNode, { readonly kind: 'text' | 'code' }> }[] = []
-      if (view.description !== undefined || view.cwd !== undefined) sections.push({ title: view.description ?? 'cwd', body: { kind: 'text', content: view.cwd ?? '' } })
+      if (view.cwd !== undefined) sections.push({ title: 'cwd', body: { kind: 'text', content: view.cwd } })
       sections.push({ title: 'Command', body: { kind: 'code', code: view.title } })
-      return { kind: 'sections', sections }
+      const card: MayflyUiNode = { kind: 'sections', sections }
+      if (view.description === undefined) return card
+      return {
+        kind: 'stack',
+        direction: 'column',
+        gap: 0,
+        children: [
+          { node: { kind: 'text', content: view.description, tone: 'muted' } },
+          { node: card },
+        ],
+      }
     }
     case 'diff':
       return diffSections(view.title, view.diffs)
@@ -86,14 +98,14 @@ export function toolResultNode(view: ToolResultView | undefined, outcome: ToolRe
       // transcript's grouped card renders from the group model instead.
       if (view.shape === 'paths') {
         const count = view.total
-        return { kind: 'fields', rows: [{ label: 'paths', value: [{ text: count === view.paths.length ? String(count) : `${String(view.paths.length)} of ${String(count)}` }] }] }
+        return titledFields(view.title, [{ label: 'paths', value: [{ text: count === view.paths.length ? String(count) : `${String(view.paths.length)} of ${String(count)}` }] }])
       }
       const kept = view.files.reduce((sum, file) => sum + file.matches.length, 0)
       const matches = view.truncated && view.total !== kept ? `${String(kept)} of ${String(view.total)}` : String(kept)
-      return { kind: 'fields', rows: [
+      return titledFields(view.title, [
         { label: 'files', value: [{ text: String(view.files.length) }] },
         { label: 'matches', value: [{ text: matches }] },
-      ] }
+      ])
     }
     case 'read': {
       // The compact registry shape: the window facts, never the content —
@@ -106,16 +118,28 @@ export function toolResultNode(view: ToolResultView | undefined, outcome: ToolRe
       const open = view.totalLines > (last ?? view.offset - 1) ? ` of ${String(view.totalLines)}` : ''
       return { kind: 'fields', rows: [
         { label: 'path', value: [{ text: view.path }] },
+        ...(view.lang === undefined || view.lang === '' ? [] : [{ label: 'lang', value: [{ text: view.lang }] }]),
         { label: 'lines', value: [{ text: `${window}${String(open)}` }] },
       ] }
     }
-    case 'web':
+    case 'web': {
       if (view.kind === 'fetch') return { kind: 'fields', rows: [
         { label: 'url', value: [{ text: view.url }] },
         { label: 'status', value: [{ text: String(view.statusCode) }] },
         { label: 'truncated', value: [{ text: view.truncated ? 'yes' : 'no' }] },
       ] }
-      return { kind: 'list', id: 'tool-web-sources', selectedIds: [], items: view.sources.map((source, index) => ({ id: `source-${String(index)}`, label: source.title ?? source.url, detail: source.snippet ?? source.url })) }
+      const sources: Extract<MayflyUiNode, { readonly kind: 'list' }> = { kind: 'list', id: 'tool-web-sources', selectedIds: [], items: view.sources.map((source, index) => ({
+        id: `source-${String(index)}`,
+        label: source.title ?? source.url,
+        detail: source.snippet ?? source.url,
+        ...(source.publishedAt === undefined || source.publishedAt === '' ? {} : { badge: source.publishedAt }),
+      })) }
+      if (view.answer === undefined || view.answer === '') return sources
+      return { kind: 'stack', direction: 'column', gap: 0, children: [
+        { node: { kind: 'text', content: view.answer } },
+        { node: sources },
+      ] }
+    }
   }
 }
 
@@ -133,6 +157,12 @@ function diffSections(title: string, diffs: readonly { readonly path: string; re
   return { kind: 'sections', sections: diffs.length === 0
     ? [{ title, body: { kind: 'text', content: '(no changes)' } }]
     : diffs.map(diff => ({ title: diffSectionTitle(diff), body: { kind: 'diff', before: diff.oldText ?? '', after: diff.newText } })) }
+}
+
+/** The compact fields card, or a titled section when the view replaces the pending title. */
+function titledFields(title: string | undefined, rows: readonly MayflyField[]): MayflyUiNode {
+  const fields: Extract<MayflyUiNode, { readonly kind: 'fields' }> = { kind: 'fields', rows }
+  return title === undefined || title === '' ? fields : { kind: 'sections', sections: [{ title, body: fields }] }
 }
 
 /**
@@ -213,33 +243,4 @@ class ToolModelComponent implements MayflyComponent {
   invalidate(): void {}
 }
 
-/** Renderer-neutral tool presentation registry with an additive TUI bridge. */
-export class MayflyModelToolService extends Service {
-  private readonly models = new Map<string, Source>()
-  private readonly mounted = new Map<string, () => void>()
-  private screen: MayflyScreen | undefined
-  constructor(ctx: Context, screen?: MayflyScreen, private readonly renderer?: CanonicalNodeRenderer) { super(ctx, 'mayflyToolModels'); this.screen = screen }
-  attach(screen: MayflyScreen): void { for (const dispose of this.mounted.values()) dispose(); this.mounted.clear(); this.screen = screen; for (const id of this.models.keys()) this.mount(id) }
-  register(source: Source): () => void {
-    const initial = typeof source === 'function' ? source() : source
-    if (initial === null) return () => undefined
-    if (this.models.has(initial.id)) throw new Error(`tool model "${initial.id}" is already registered`)
-    this.models.set(initial.id, source); this.mount(initial.id)
-    let disposed = false
-    return () => { if (disposed) return; disposed = true; this.models.delete(initial.id); this.mounted.get(initial.id)?.(); this.mounted.delete(initial.id); this.screen?.requestRender() }
-  }
-  refresh(id: string): void { if (this.models.has(id)) this.screen?.requestRender() }
-  list(): readonly ToolPresentationModel[] { return [...this.models.values()].map(source => typeof source === 'function' ? source() : source).filter((model): model is ToolPresentationModel => model !== null) }
-  dispose(): void { for (const dispose of this.mounted.values()) dispose(); this.mounted.clear(); this.models.clear(); this.screen = undefined }
-  private mount(id: string): void {
-    const screen = this.screen; const source = this.models.get(id); const renderer = this.renderer
-    if (screen === undefined || source === undefined || renderer === undefined) return
-    this.mounted.get(id)?.(); this.mounted.delete(id)
-    /* c8 ignore next -- the closure's deleted-source branch is exercised by unload fixtures. */
-    const component = new ToolModelComponent(() => { const current = this.models.get(id); return current === undefined ? null : typeof current === 'function' ? current() : current }, renderer)
-    this.mounted.set(id, screen.addChild(component)); screen.requestRender()
-  }
-}
-
 export { ToolModelComponent }
-export { MayflyModelToolService as ToolModelService }

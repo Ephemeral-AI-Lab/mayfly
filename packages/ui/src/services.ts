@@ -1,24 +1,32 @@
-/** Direct Fiber-owned Mayfly UI registries.
+/** Direct Fiber-owned snapshot registries for Mayfly UI contributions.
  * @module @ephemeral-ai/mayfly-ui/services
  */
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-include'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
+import { freezeWire } from './builders.ts'
 import type {
-  MayflyEditorExtensionContribution,
+  MayflyEditorDecoration,
+  MayflyEditorExtensionDefinition,
+  MayflyEditorExtensionEntry,
+  MayflyEditorExtensionRegistration,
   MayflyEditorExtensionRegistry,
+  MayflyOverlayDefinition,
   MayflyOverlayEntry,
   MayflyOverlayHandle,
   MayflyOverlayRegistry,
-  MayflyOverlayRequest,
-  MayflyPaneContribution,
+  MayflyPaneDefinition,
   MayflyPaneEntry,
   MayflyPaneRegistration,
   MayflyPaneRegistry,
-  MayflyRefreshRegistration,
+  MayflyRegistryDelta,
+  MayflyStatusDefinition,
   MayflyStatusEntry,
+  MayflyStatusNode,
+  MayflyStatusRegistration,
   MayflyStatusRegistry,
-  MayflyStatusSource,
+  MayflyUiNode,
+  MayflySnapshotUpdate,
 } from './contracts.ts'
 
 const ID = /^[a-z0-9][a-z0-9._/-]*$/u
@@ -27,170 +35,257 @@ function assertId(id: string, kind: string): void {
   if (!ID.test(id)) throw new TypeError(`${kind} id "${id}" is invalid`)
 }
 
-class RefreshHandle implements MayflyRefreshRegistration {
-  private live = true
-  constructor(private readonly cleanup: () => void, private readonly onRefresh: () => void) {}
-  get disposed(): boolean { return !this.live }
-  refresh(): void { if (this.live) this.onRefresh() }
-  dispose(): void {
-    if (!this.live) return
-    this.live = false
-    this.cleanup()
-  }
-}
+abstract class ObservableRegistry<Entry extends { readonly id: string }> extends Service {
+  protected readonly listeners = new Set<(delta: MayflyRegistryDelta<Entry>) => void>()
+  abstract list(): readonly Entry[]
 
-class OverlayHandle extends RefreshHandle implements MayflyOverlayHandle {
-  get closed(): boolean { return this.disposed }
-  close(): void { this.dispose() }
-}
-
-abstract class ObservableRegistry<T> extends Service {
-  protected readonly listeners = new Set<(entries: readonly T[]) => void>()
-  abstract list(): readonly T[]
-  subscribe(listener: (entries: readonly T[]) => void): () => void {
+  subscribe(listener: (delta: MayflyRegistryDelta<Entry>) => void): () => void {
     this.listeners.add(listener)
-    listener(this.list())
+    for (const entry of this.list()) listener({ kind: 'upsert', entry })
     return this.ctx.effect(() => () => { this.listeners.delete(listener) })
   }
-  protected emit(): void {
-    const snapshot = this.list()
-    for (const listener of this.listeners) listener(snapshot)
+
+  protected upsert(entry: Entry): void {
+    const delta = Object.freeze({ kind: 'upsert' as const, entry })
+    for (const listener of this.listeners) listener(delta)
+  }
+
+  protected remove(id: string, revision: number): void {
+    const delta = Object.freeze({ kind: 'remove' as const, id, revision })
+    for (const listener of this.listeners) listener(delta)
+  }
+}
+
+class SnapshotHandle<Node> {
+  private live = true
+  private revisionValue = 0
+
+  constructor(
+    private readonly publish: (node: Node, revision: number, update?: MayflySnapshotUpdate) => void,
+    private readonly cleanup: (revision: number) => void,
+  ) {}
+
+  get disposed(): boolean { return !this.live }
+  get revision(): number { return this.revisionValue }
+
+  set(node: Node, update?: MayflySnapshotUpdate): void {
+    if (!this.live) return
+    const frozen = freezeWire(node)
+    this.revisionValue += 1
+    this.publish(frozen, this.revisionValue, update)
+  }
+
+  dispose(): void {
+    this.live = false
+    this.revisionValue += 1
+    this.cleanup(this.revisionValue)
   }
 }
 
 export class MayflyPaneService extends ObservableRegistry<MayflyPaneEntry> implements MayflyPaneRegistry {
   private readonly entries = new Map<string, MayflyPaneEntry>()
+
   constructor(ctx: Context) { super(ctx, 'mayflyPanes') }
-  register(contribution: MayflyPaneContribution): MayflyPaneRegistration {
-    assertId(contribution.id, 'pane')
-    if (typeof contribution.render !== 'function') throw new TypeError(`pane "${contribution.id}" needs a render function`)
-    if (this.entries.has(contribution.id)) throw new Error(`pane "${contribution.id}" is already registered`)
-    let revision = 0
-    let hidden = false
-    const frozen = Object.freeze({ ...contribution })
-    const publish = (): void => {
-      this.entries.set(contribution.id, Object.freeze({ id: contribution.id, contribution: frozen, hidden, revision }))
-      this.emit()
+
+  register(definition: MayflyPaneDefinition, initialNode: MayflyUiNode | null = null): MayflyPaneRegistration {
+    assertId(definition.id, 'pane')
+    if (this.entries.has(definition.id)) throw new Error(`pane "${definition.id}" is already registered`)
+    const admittedDefinition = freezeWire(definition)
+    const publish = (node: MayflyUiNode | null, revision: number, update?: MayflySnapshotUpdate): void => {
+      const entry = Object.freeze({ id: definition.id, definition: admittedDefinition, node, revision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
+      this.entries.set(definition.id, entry)
+      this.upsert(entry)
     }
-    publish()
-    const cleanup = this.ctx.effect(() => () => {
-      /* v8 ignore else -- Cordis runs and unregisters each effect disposer once. */
-      if (this.entries.delete(contribution.id)) this.emit()
-    })
-    const base = new RefreshHandle(cleanup, () => { revision += 1; publish() })
-    return Object.assign(base, {
-      setHidden: (value: boolean): void => {
-        if (base.disposed || hidden === value) return
-        hidden = value
-        revision += 1
-        publish()
-      },
-    })
+    let handle!: SnapshotHandle<MayflyUiNode | null>
+    const remove = (revision: number): void => {
+      this.entries.delete(definition.id)
+      this.remove(definition.id, revision)
+    }
+    handle = new SnapshotHandle(publish, remove)
+    const cleanup = this.ctx.effect(() => () => handle.dispose())
+    const originalDispose = handle.dispose.bind(handle)
+    handle.dispose = (): void => {
+      if (handle.disposed) return
+      originalDispose()
+      cleanup()
+    }
+    publish(freezeWire(initialNode), 0)
+    return handle
   }
-  list(): readonly MayflyPaneEntry[] { return Object.freeze([...this.entries.values()]) }
+
+  list(): readonly MayflyPaneEntry[] {
+    return Object.freeze([...this.entries.values()].sort((left, right) =>
+      (left.definition.priority ?? 0) - (right.definition.priority ?? 0) || left.id.localeCompare(right.id)))
+  }
+}
+
+class OverlayHandle implements MayflyOverlayHandle {
+  private live = true
+  private revisionValue = 0
+  private hiddenValue = false
+  private focusRevisionValue = 0
+
+  constructor(
+    private readonly publish: (revision: number, hidden: boolean, focusRevision: number, node?: MayflyUiNode, update?: MayflySnapshotUpdate) => void,
+    private readonly cleanup: (revision: number) => void,
+    private node: MayflyUiNode,
+  ) {}
+
+  get disposed(): boolean { return !this.live }
+  get closed(): boolean { return !this.live }
+  get revision(): number { return this.revisionValue }
+
+  set(node: MayflyUiNode, update?: MayflySnapshotUpdate): void {
+    if (!this.live) return
+    this.node = freezeWire(node)
+    this.revisionValue += 1
+    this.publish(this.revisionValue, this.hiddenValue, this.focusRevisionValue, this.node, update)
+  }
+
+  focus(): void {
+    if (!this.live) return
+    this.focusRevisionValue += 1
+    this.publish(this.revisionValue, this.hiddenValue, this.focusRevisionValue)
+  }
+
+  hide(): void { this.setHidden(true) }
+  show(): void { this.setHidden(false) }
+  close(): void { this.dispose() }
+
+  dispose(): void {
+    this.live = false
+    this.revisionValue += 1
+    this.cleanup(this.revisionValue)
+  }
+
+  private setHidden(hidden: boolean): void {
+    if (!this.live || this.hiddenValue === hidden) return
+    this.hiddenValue = hidden
+    this.revisionValue += 1
+    this.publish(this.revisionValue, hidden, this.focusRevisionValue)
+  }
 }
 
 export class MayflyOverlayService extends ObservableRegistry<MayflyOverlayEntry> implements MayflyOverlayRegistry {
   private readonly entries = new Map<string, MayflyOverlayEntry>()
-  private readonly handles = new Map<string, RefreshHandle>()
+  private readonly handles = new Map<string, OverlayHandle>()
   private nextOrder = 0
+
   constructor(ctx: Context) { super(ctx, 'mayflyOverlays') }
-  open(request: MayflyOverlayRequest): MayflyOverlayHandle {
-    assertId(request.id, 'overlay')
-    if (typeof request.render !== 'function') throw new TypeError(`overlay "${request.id}" needs a render function`)
-    if (this.entries.has(request.id)) throw new Error(`overlay "${request.id}" is already open`)
-    let revision = 0
+
+  open(definition: MayflyOverlayDefinition, initialNode: MayflyUiNode): MayflyOverlayHandle {
+    assertId(definition.id, 'overlay')
+    if (this.entries.has(definition.id)) throw new Error(`overlay "${definition.id}" is already open`)
+    const admittedDefinition = freezeWire(definition)
+    let node = freezeWire(initialNode)
     const order = this.nextOrder++
-    const frozen = Object.freeze({ ...request })
-    const publish = (): void => {
-      this.entries.set(request.id, Object.freeze({ id: request.id, request: frozen, revision, order }))
-      this.emit()
+    const publish = (revision: number, hidden: boolean, focusRevision: number, nextNode?: MayflyUiNode, update?: MayflySnapshotUpdate): void => {
+      node = nextNode ?? node
+      const entry = Object.freeze({ id: definition.id, definition: admittedDefinition, node, revision, order, hidden, focusRevision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
+      this.entries.set(definition.id, entry)
+      this.upsert(entry)
     }
-    publish()
-    const cleanup = this.ctx.effect(() => () => {
-      this.handles.delete(request.id)
-      /* v8 ignore else -- Cordis runs and unregisters each effect disposer once. */
-      if (this.entries.delete(request.id)) this.emit()
-    })
-    const handle = new OverlayHandle(cleanup, () => { revision += 1; publish() })
-    this.handles.set(request.id, handle)
+    let handle!: OverlayHandle
+    const remove = (revision: number): void => {
+      this.handles.delete(definition.id)
+      this.entries.delete(definition.id)
+      this.remove(definition.id, revision)
+    }
+    handle = new OverlayHandle(publish, remove, node)
+    this.handles.set(definition.id, handle)
+    const cleanup = this.ctx.effect(() => () => handle.dispose())
+    const originalDispose = handle.dispose.bind(handle)
+    handle.dispose = (): void => {
+      if (handle.disposed) return
+      originalDispose()
+      cleanup()
+    }
+    publish(0, false, 0)
     return handle
   }
+
   close(id: string): boolean {
     const handle = this.handles.get(id)
     if (handle === undefined) return false
-    handle.dispose()
+    handle.close()
     return true
   }
-  list(): readonly MayflyOverlayEntry[] { return Object.freeze([...this.entries.values()].sort((left, right) => left.order - right.order)) }
+
+  list(): readonly MayflyOverlayEntry[] {
+    return Object.freeze([...this.entries.values()].sort((left, right) => left.order - right.order))
+  }
 }
 
-interface StatusRecord { readonly source: MayflyStatusSource, readonly fallback: MayflyStatusEntry }
-function statusValue(source: MayflyStatusSource): MayflyStatusEntry | null { return typeof source === 'function' ? source() : source }
+export class MayflyStatusService extends ObservableRegistry<MayflyStatusEntry> implements MayflyStatusRegistry {
+  private readonly entries = new Map<string, MayflyStatusEntry>()
 
-export class MayflyStatusService extends Service implements MayflyStatusRegistry {
-  private readonly entries = new Map<string, StatusRecord>()
-  private readonly listeners = new Set<() => void>()
   constructor(ctx: Context) { super(ctx, 'mayflyStatus') }
-  register(source: MayflyStatusSource): MayflyRefreshRegistration {
-    const initial = statusValue(source)
-    if (initial === null) throw new TypeError('a status source must return an initial entry')
-    assertId(initial.id, 'status')
-    if (this.entries.has(initial.id)) throw new Error(`status "${initial.id}" is already registered`)
-    this.entries.set(initial.id, { source, fallback: initial })
-    this.emit()
-    const cleanup = this.ctx.effect(() => () => {
-      /* v8 ignore else -- Cordis runs and unregisters each effect disposer once. */
-      if (this.entries.delete(initial.id)) this.emit()
-    })
-    return new RefreshHandle(cleanup, () => this.refresh(initial.id))
+
+  register(definition: MayflyStatusDefinition, initialNode: MayflyStatusNode | null = null): MayflyStatusRegistration {
+    assertId(definition.id, 'status')
+    if (this.entries.has(definition.id)) throw new Error(`status "${definition.id}" is already registered`)
+    const admittedDefinition = freezeWire(definition)
+    const publish = (node: MayflyStatusNode | null, revision: number): void => {
+      const entry = Object.freeze({ id: definition.id, definition: admittedDefinition, node, revision })
+      this.entries.set(definition.id, entry)
+      this.upsert(entry)
+    }
+    let handle!: SnapshotHandle<MayflyStatusNode | null>
+    const remove = (revision: number): void => {
+      this.entries.delete(definition.id)
+      this.remove(definition.id, revision)
+    }
+    handle = new SnapshotHandle(publish, remove)
+    const cleanup = this.ctx.effect(() => () => handle.dispose())
+    const originalDispose = handle.dispose.bind(handle)
+    handle.dispose = (): void => {
+      if (handle.disposed) return
+      originalDispose()
+      cleanup()
+    }
+    publish(freezeWire(initialNode), 0)
+    return handle
   }
-  refresh(id: string): void { if (this.entries.has(id)) this.emit() }
+
   list(): readonly MayflyStatusEntry[] {
-    return Object.freeze([...this.entries.values()].flatMap(record => {
-      try {
-        const value = statusValue(record.source)
-        return value === null ? [] : [value]
-      } catch {
-        return [{ ...record.fallback, visible: true, node: { kind: 'text' as const, content: `Status ${record.fallback.id} failed`, tone: 'danger' as const } }]
-      }
-    }).sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0) || left.id.localeCompare(right.id)))
+    return Object.freeze([...this.entries.values()].sort((left, right) =>
+      (left.definition.priority ?? 0) - (right.definition.priority ?? 0) || left.id.localeCompare(right.id)))
   }
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener)
-    listener()
-    return this.ctx.effect(() => () => { this.listeners.delete(listener) })
-  }
-  private emit(): void { for (const listener of this.listeners) listener() }
 }
 
-export class MayflyEditorExtensionService extends Service implements MayflyEditorExtensionRegistry {
-  private readonly entries = new Map<string, MayflyEditorExtensionContribution>()
-  private readonly listeners = new Set<(entries: readonly MayflyEditorExtensionContribution[], revision: number) => void>()
-  private revision = 0
+export class MayflyEditorExtensionService extends ObservableRegistry<MayflyEditorExtensionEntry> implements MayflyEditorExtensionRegistry {
+  private readonly entries = new Map<string, MayflyEditorExtensionEntry>()
+
   constructor(ctx: Context) { super(ctx, 'mayflyEditorExtensions') }
-  register(contribution: MayflyEditorExtensionContribution): MayflyRefreshRegistration {
-    assertId(contribution.id, 'editor extension')
-    if (this.entries.has(contribution.id)) throw new Error(`editor extension "${contribution.id}" is already registered`)
-    this.entries.set(contribution.id, Object.freeze({ ...contribution }))
-    this.emit()
-    const cleanup = this.ctx.effect(() => () => {
-      /* v8 ignore else -- Cordis runs and unregisters each effect disposer once. */
-      if (this.entries.delete(contribution.id)) this.emit()
-    })
-    return new RefreshHandle(cleanup, () => this.emit())
+
+  register(definition: MayflyEditorExtensionDefinition, initialDecoration: MayflyEditorDecoration = {}): MayflyEditorExtensionRegistration {
+    assertId(definition.id, 'editor extension')
+    if (this.entries.has(definition.id)) throw new Error(`editor extension "${definition.id}" is already registered`)
+    const admittedDefinition = freezeWire(definition)
+    const publish = (decoration: MayflyEditorDecoration, revision: number, update?: MayflySnapshotUpdate): void => {
+      const entry = Object.freeze({ id: definition.id, definition: admittedDefinition, decoration, revision, ...(update?.eventRevision === undefined ? {} : { eventRevision: update.eventRevision }) })
+      this.entries.set(definition.id, entry)
+      this.upsert(entry)
+    }
+    let handle!: SnapshotHandle<MayflyEditorDecoration>
+    const remove = (revision: number): void => {
+      this.entries.delete(definition.id)
+      this.remove(definition.id, revision)
+    }
+    handle = new SnapshotHandle(publish, remove)
+    const cleanup = this.ctx.effect(() => () => handle.dispose())
+    const originalDispose = handle.dispose.bind(handle)
+    handle.dispose = (): void => {
+      if (handle.disposed) return
+      originalDispose()
+      cleanup()
+    }
+    publish(freezeWire(initialDecoration), 0)
+    return handle
   }
-  list(): readonly MayflyEditorExtensionContribution[] {
-    return Object.freeze([...this.entries.values()].sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0) || left.id.localeCompare(right.id)))
-  }
-  subscribe(listener: (entries: readonly MayflyEditorExtensionContribution[], revision: number) => void): () => void {
-    this.listeners.add(listener)
-    listener(this.list(), this.revision)
-    return this.ctx.effect(() => () => { this.listeners.delete(listener) })
-  }
-  private emit(): void {
-    this.revision += 1
-    const entries = this.list()
-    for (const listener of this.listeners) listener(entries, this.revision)
+
+  list(): readonly MayflyEditorExtensionEntry[] {
+    return Object.freeze([...this.entries.values()].sort((left, right) =>
+      (left.definition.priority ?? 0) - (right.definition.priority ?? 0) || left.id.localeCompare(right.id)))
   }
 }

@@ -1,14 +1,14 @@
 # 内置插件
 
-Mayfly bundle 在 `dsh-base` 上插入 36 个普通 Cordis sibling：6 个 dsh 支撑行
-与 30 个 Mayfly product 行。不存在 group/isolate 或私有 service realm。
+Mayfly bundle 在 `dsh-base` 上插入 34 个普通 Cordis sibling：6 个 dsh 支撑行
+与 28 个 Mayfly product 行。不存在 group/isolate 或私有 service realm。
 
 <!-- BEGIN diagram:mayfly-composition -->
 <!-- single source 单一来源: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
     BASE["dsh-base"]
-    subgraph GRAPH["flat Cordis sibling graph · 36 inserted rows"]
+    subgraph GRAPH["flat Cordis sibling graph · 34 inserted rows"]
         SUPPORT["dsh support · 6 rows<br/>subagent settings · presets · host runner<br/>workspace · session controller · title"]
         UI["@ephemeral-ai/mayfly-ui provider<br/>four direct UI registries"]
         RUNTIME["@ephemeral-ai/mayfly runtime rows<br/>frontend · conversation · app · core<br/>transcript · status · panes · interaction"]

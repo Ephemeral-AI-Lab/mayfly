@@ -85,7 +85,7 @@ describe('mayfly-pane-activity', () => {
     const { ctx, screen, dispose } = await boot()
     expect(activity.name).toBe('mayfly-pane-activity')
     expect(activity.inject).toEqual(['mayflyPanes', 'mayflySessionFacts'])
-    expect(ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')?.contribution.title).toBe('Activity')
+    expect(ctx.mayflyPanes.list().find(entry => entry.id === 'mayfly.pane.activity')?.definition.title).toBe('Activity')
     expect(screen.bottomChildren).toHaveLength(1)
     // kimi's Spacer(1): the placeholder row is always present when the
     // spinner is not, so the dock never jumps at the activity edges.
@@ -100,13 +100,12 @@ describe('mayfly-pane-activity', () => {
       id: 'mayfly.pane.agents',
       title: 'Agents',
       placement: 'bottom',
-      render: () => ({ kind: 'text', content: 'agent row' }),
-    })
+    }, { kind: 'text', content: 'agent row' })
     expect(harness.screen.paneLines()).toEqual([
       `${MOON_SPINNER_FRAMES[0]!} · Tip: ${FIRST_TIP}`,
       'agent row',
     ])
-    agents.setHidden(true)
+    agents.set(null)
     expect(harness.screen.paneLines()).toEqual([`${MOON_SPINNER_FRAMES[0]!} · Tip: ${FIRST_TIP}`])
     agents.dispose()
     await harness.dispose()

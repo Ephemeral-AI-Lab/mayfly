@@ -18,12 +18,11 @@ export function apply(ctx: Context): void {
     placement: 'bottom',
     size: { min: 2, preferred: 4, max: 6 },
     narrow: 'bottom',
-    render: () => ui.surface({
+  }, ui.surface({
       chrome: 'lane',
       child: ui.sections([
         { body: ui.text('Plugin loaded', { tone: 'success' }) },
         { body: ui.text('Waiting for the next host event', { tone: 'muted' }) },
       ]),
-    }),
-  })
+    }))
 }

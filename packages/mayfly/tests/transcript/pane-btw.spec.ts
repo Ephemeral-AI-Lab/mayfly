@@ -137,7 +137,7 @@ describe('mayfly-pane-btw', () => {
     const definition = commands.definitions.get('btw')
     expect(definition?.description).toBe('Ask a side question in a forked session')
     expect(definition?.input).toEqual({ hint: '<question>' })
-    expect(screen.bottomChildren).toHaveLength(1)
+    expect(screen.bottomChildren).toHaveLength(0)
     expect(screen.paneLines()).toEqual([])
     await dispose()
     expect(commands.definitions.size).toBe(0)

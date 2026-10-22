@@ -15,7 +15,8 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
 import type SessionQueryEngine from '@deepseek-ai/dsh-session-query'
 import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
-import { clearSharedEditor, EditorHostService, setSharedEditor } from '../../src/interaction/editor-instance.ts'
+import { clearSharedEditor, PromptEditorController, setSharedEditor } from '../../src/interaction/editor-instance.ts'
+import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
 import type {} from '../../src/app/index.ts'
 import { fakeMayflyContext, KEY, type FakeMayflyComponents, type FakeScreen } from './fakes.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
@@ -663,7 +664,8 @@ describe('mayfly-commands plugin', () => {
     // A bare context without the Mayfly services: persistence alone is present.
     const ctx = new Context()
     new InteractionStateService(ctx, DEFAULT_SETTINGS)
-    new EditorHostService(ctx)
+    new PromptEditorController(ctx)
+    new EditorPanelController(ctx)
     await ctx.plugin(SessionStore)
     await ctx.plugin(CommandRuntime)
     ctx.provide('sessionPersistence', {
@@ -714,15 +716,6 @@ describe('mayfly-commands plugin', () => {
     screen.overlays[0]?.component.invalidate()
     overlay(screen).handleInput(KEY.escape)
     expect(screen.overlays[0]?.hidden).toBe(true)
-  })
-
-  it('/help consumes the renderer-neutral command model projection when available', async () => {
-    const { ctx, screen, agent, fiber } = await mount()
-    ctx.provide('mayflyCommandModels', { list: () => [{ kind: 'command', id: 'command.status', label: '/status', description: 'projected status', enabled: true }, { kind: 'command', id: 'command.version', label: '/version', enabled: true }] })
-    const execution = await ctx.commands.execute(agent, '/help', [], signal())
-    expect(execution?.result).toEqual({ kind: 'success' })
-    expect(screen.overlays[0]?.component.render(80).some(row => row.includes('projected status'))).toBe(true)
-    await fiber.dispose()
   })
 
   it('/help handles no current Agent', async () => {

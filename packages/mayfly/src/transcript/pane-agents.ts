@@ -26,10 +26,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyInlineSpan, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { ConversationFacts } from '../conversation/index.ts'
 import type { SessionFactsService } from './session-facts.ts'
-import type { AgentLiveLookup } from './agent-group.ts'
 import { trackChildAgentModels } from './child-agent-model.ts'
 import { parseToolArguments } from './present.ts'
-import type { TranscriptToolItem } from './types.ts'
+import type { AgentLiveLookup, TranscriptToolItem } from './types.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-pane-agents'
@@ -118,12 +117,12 @@ function agentsNode(members: readonly PaneMember[], live: AgentLiveLookup | unde
   const summary: MayflyInlineSpan[] = settled
     ? [
         { text: '✓ ', tone: 'success' },
-        { text: `${String(members.length)} ${noun} finished`, tone: 'accent', emphasis: 'strong' },
+        { text: `${String(members.length)} ${noun} finished`, tone: 'accent', styles: ['strong'] },
         { text: ` · ${formatElapsed(maxElapsed)}`, tone: 'muted' },
       ]
     : [
         { text: '● ', tone: 'accent' },
-        { text: `Running ${String(members.length)} ${noun}`, tone: 'accent', emphasis: 'strong' },
+        { text: `Running ${String(members.length)} ${noun}`, tone: 'accent', styles: ['strong'] },
         { text: ` (${['done', 'failed', 'running', 'waiting'].flatMap(label => {
           const count = counts.get(label) ?? 0
           return count === 0 ? [] : [`${String(count)} ${label}`]
@@ -149,7 +148,7 @@ function agentsNode(members: readonly PaneMember[], live: AgentLiveLookup | unde
         kind: 'rich-text',
         spans: [
           { text: `  ${index === members.length - 1 ? '└─' : '├─'} `, tone: 'muted' },
-          { text: `${phase.label} `, tone: phase.tone, emphasis: 'strong' },
+          { text: `${phase.label} `, tone: phase.tone, styles: ['strong'] },
           { text: label, tone: 'accent' },
           { text: ` · ${[...(detail === undefined ? [] : [detail]), ...metrics].join(' · ')}`, tone: 'muted' },
         ],
@@ -270,11 +269,9 @@ export function apply(ctx: Context): void {
     placement: 'bottom',
     priority: 50,
     narrow: 'bottom',
-    render: () => agentsNode(members, displayLookup),
-  })
+  }, null)
   refresh = () => {
-    pane.setHidden(members.length === 0)
-    if (members.length > 0) pane.refresh()
+    pane.set(agentsNode(members, displayLookup))
     if (!hasRunningMember(members, liveLookup)) {
       stopElapsedTimer()
     } else if (elapsedTimer === undefined) {
@@ -283,7 +280,7 @@ export function apply(ctx: Context): void {
           stopElapsedTimer()
           return
         }
-        pane.refresh()
+        pane.set(agentsNode(members, displayLookup))
       }, ELAPSED_TICK_MS)
       elapsedTimer.unref()
     }

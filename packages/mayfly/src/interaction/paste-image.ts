@@ -47,16 +47,15 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-settings'
 import {
   getSharedEditor,
-  registerSubmitTransformer,
   type SharedEditor,
-  type SubmitTransformation,
 } from './editor-instance.ts'
+import { registerSubmitTransformer, type SubmitTransformation } from './prompt-submit-pipeline.ts'
 import { ADMITTED_IMAGE_TYPES, EXT_BY_MEDIA_TYPE, sniffImageMediaType } from './attachments.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-paste-image'
 /** Services required before the paste flow can run. */
-export const inject = ['attachments', 'mayflyKeymap', 'mayflyEditorHost', 'mayflyInteractionState']
+export const inject = ['attachments', 'mayflyKeymap', 'mayflyPromptEditor', 'mayflyPromptSubmissions', 'mayflyInteractionState']
 
 /** Clipboard backend policy: automatic session order, or one strict backend. */
 export type ClipboardBackendPolicy = 'auto' | 'wayland' | 'x11'

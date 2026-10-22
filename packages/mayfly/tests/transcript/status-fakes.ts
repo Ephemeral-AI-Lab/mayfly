@@ -12,14 +12,15 @@ import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
 import type {
   MayflyComponent,
-  MayflyOverlayHandle,
   MayflyScreen,
+  MayflyScreenOverlayHandle,
 } from '../../src/core/index.ts'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { foldConversationFacts, initialConversationFacts, type ConversationFacts } from '../../src/conversation/facts.ts'
 import { projectChildSessionFacts, type ChildSessionFacts } from '../../src/transcript/session-facts.ts'
 import { compileMayflyStatusNode } from '../../src/core/ui-compiler.ts'
 import { fakeMayflyComponents } from './helpers.ts'
+import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 
 /** Identity colors so rendered assertions see structure, not escape codes. */
 const id = (text: string): string => text
@@ -31,6 +32,7 @@ export const COLORS = {
   mdCodeBlockBorder: id, mdQuote: id, mdQuoteBorder: id, mdHr: id, mdListBullet: id,
   diffAdded: id, diffRemoved: id, diffAddedStrong: id, diffRemovedStrong: id,
   diffGutter: id, diffMeta: id,
+  modelHighlight: id,
   logoGradient: [],
 }
 // Structurally satisfies MayflySemanticColors; declared where consumed.
@@ -40,6 +42,14 @@ export class StatusFakeScreen implements MayflyScreen {
   readonly renderRequests: (boolean | undefined)[] = []
   readonly columns = 80
   readonly rows = 24
+
+  mountContentSlot(id: string, component: MayflyComponent | null) {
+    return mountFakeScreenSlot(id, component, () => () => {}, target => this.setFocus(target), () => this.requestRender())
+  }
+
+  mountDockSlot(id: string, component: MayflyComponent | null) {
+    return mountFakeScreenSlot(id, component, () => () => {}, target => this.setFocus(target), () => this.requestRender())
+  }
 
   addChild(): () => void {
     throw new Error('fake addChild is out of scope for status plugin tests')
@@ -53,7 +63,7 @@ export class StatusFakeScreen implements MayflyScreen {
 
   setFocus(): void {}
 
-  showOverlay(): MayflyOverlayHandle {
+  showOverlay(): MayflyScreenOverlayHandle {
     throw new Error('fake showOverlay is out of scope for status plugin tests')
   }
 
@@ -371,23 +381,23 @@ export async function bootStatusPlugin(
   }
   const fiber = await ctx.plugin(plugin)
   if (current !== null) ctx.emit('test/session-binding-changed', { id: String(current.id), session: current.session, cwd: current.session.header.cwd })
-  const currentModel = () => statusModels.list().find(model => model.visible)
+  const currentModel = () => statusModels.list().find(model => model.node !== null)
   const entry: StatusEntryView = {
     get id() { return currentModel()?.id ?? '' },
-    get priority() { return currentModel()?.priority ?? 0 },
-    get align() { return currentModel()?.band === 'right' ? 'right' : currentModel() === undefined ? undefined : 'left' },
-    get row() { return currentModel()?.row },
+    get priority() { return currentModel()?.definition.priority ?? 0 },
+    get align() { return currentModel()?.definition.band === 'right' ? 'right' : currentModel() === undefined ? undefined : 'left' },
+    get row() { return currentModel()?.definition.row },
     render: width => {
       const model = currentModel()
       if (model === undefined || width <= 0) return ''
-      const result = compileMayflyStatusNode(model.node, {
+      const result = compileMayflyStatusNode(model.node!, {
         components,
         colors,
         getViewport: () => ({ columns: width, rows: 1 }),
         screenMode: 'main',
       })
       const rendered = result.ok ? result.value.component.renderStatus(width) : result.errorComponent.renderStatus(width)
-      if (model.overflow === 'hide' && rendered.overflowed) return ''
+      if (model.definition.overflow === 'hide' && rendered.overflowed) return ''
       return rendered.rows[0] ?? ''
     },
   }

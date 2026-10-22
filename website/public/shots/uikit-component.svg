@@ -7,7 +7,7 @@
 <g font-family="'JetBrains Mono',monospace" font-size="14">
 <text x="12" y="52" textLength="537.6" lengthAdjust="spacingAndGlyphs" fill="#888888">────────────────────────────────────────────────────────────────</text>
 <text x="12" y="71" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#888888">Branch</text>
-<text x="70.8" y="71" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#4fa8ff" font-weight="bold">main</text>
+<text x="70.8" y="71" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#2bc8e8" font-weight="bold">main</text>
 <text x="112.8" y="71" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#888888">Mayfly</text>
 <text x="171.6" y="71" textLength="75.6" lengthAdjust="spacingAndGlyphs" fill="#888888">ecosystem</text>
 <text x="255.6" y="71" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#888888">example</text>

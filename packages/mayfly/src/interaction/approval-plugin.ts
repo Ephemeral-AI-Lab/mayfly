@@ -27,13 +27,13 @@ import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-app
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { CanonicalPanelAdapter } from './canonical-panel.ts'
-import { mountEditorReplacement } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-approval'
 /** Services required before the answerer can listen. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyCurrentAgent']
+export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyEditorPanels', 'mayflyCurrentAgent']
 
 /** Decoded input sequences the prompt handles directly (no keymap actions). */
 /** Construction options for {@link ApprovalPrompt}. */

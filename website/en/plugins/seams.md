@@ -12,10 +12,10 @@ root UI plugin reads the native `plan` projection and executes the native
 
 | Service | Write | Consumer |
 | --- | --- | --- |
-| `mayflyPanes` | `register(MayflyPaneContribution)` | core surface renderer |
-| `mayflyStatus` | `register(MayflyStatusSource)` | transcript footer |
-| `mayflyOverlays` | `open(MayflyOverlayRequest)` | core overlay renderer |
-| `mayflyEditorExtensions` | `register(MayflyEditorExtensionContribution)` | interaction editor |
+| `mayflyPanes` | `register(MayflyPaneDefinition, MayflyUiNode)` | core surface renderer |
+| `mayflyStatus` | `register(MayflyStatusDefinition, MayflyStatusNode)` | transcript footer |
+| `mayflyOverlays` | `open(MayflyOverlayDefinition, MayflyUiNode)` | core overlay renderer |
+| `mayflyEditorExtensions` | `register(MayflyEditorExtensionDefinition, MayflyEditorDecoration)` | interaction editor |
 
 `@ephemeral-ai/mayfly-ui` provides the Context declaration merge and contracts;
 `@ephemeral-ai/mayfly-ui` provides pure builders.

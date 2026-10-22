@@ -6,6 +6,6 @@
 <circle cx="54" cy="25" r="6" fill="#28c840"/>
 <g font-family="'JetBrains Mono',monospace" font-size="14">
 <text x="12" y="52" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#888888">Model</text>
-<text x="62.4" y="52" textLength="109.2" lengthAdjust="spacingAndGlyphs" fill="#4fa8ff" font-weight="bold">deepseek-chat</text>
+<text x="62.4" y="52" textLength="109.2" lengthAdjust="spacingAndGlyphs" fill="#2bc8e8" font-weight="bold">deepseek-chat</text>
 </g>
 </svg>

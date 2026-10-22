@@ -160,7 +160,7 @@ describe('mayfly-pane-todo', () => {
   it('renders zero rows without a session or without any todo/write', async () => {
     const noSession = await bootPanePlugin(todo)
     expect(todo.name).toBe('mayfly-pane-todo')
-    expect(noSession.screen.bottomChildren).toHaveLength(1)
+    expect(noSession.screen.bottomChildren).toHaveLength(0)
     expect(noSession.screen.paneLines()).toEqual([])
     await noSession.dispose()
     expect(noSession.screen.bottomChildren).toHaveLength(0)

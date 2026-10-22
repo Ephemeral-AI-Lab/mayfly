@@ -219,12 +219,12 @@ ui.diff(
 ```ts
 ui.sections(sections: readonly {
   title?: string
-  body: MayflyView
+  body: MayflySectionContentNode
   collapsed?: boolean
 }[])
 ```
 
-每个 `body` 只能是轻量 `MayflyView`：`text | fields | code | diff | sections`。
+每个 `body` 只能是轻量 section-content union：`text | fields | code | diff | sections`。
 它不能直接包含 tabs、form、actions 或其他完整 `MayflyUiNode`。
 `collapsed` 省略时等同 `false`；设为 `true` 时当前 TUI 只显示 section 标题，
 无标题则显示省略提示。它是静态展示状态，不会自动生成展开/折叠事件。上面的
@@ -246,13 +246,11 @@ ui.sections([
 ])
 ```
 
-### `document`
+### `markdown` 与 `diagram`
 
 ```ts
-ui.document({
-  format: 'markdown' | 'mermaid',
-  source: string,
-})
+ui.markdown(source: string)
+ui.diagram(mermaidSource: string)
 ```
 
 Markdown 复用 Mayfly 的 pi-tui adapter，支持表格与代码 fence。Mermaid 通过
@@ -262,14 +260,11 @@ fence 也走同一路径。解析失败、不支持或超宽的图、源码/输�
 wrap 或 truncate。
 
 ```ts
-ui.document({
-  format: 'mermaid',
-  source: 'flowchart TD\n  Request --> Validate\n  Validate --> Result',
-})
+ui.diagram('flowchart TD\n  Request --> Validate\n  Validate --> Result')
 ```
 
-`document` 可用于普通 pane、passive overlay 与 capturing overlay，不能用于
-status、notification、editor extension 或 `sections.body`。
+`markdown` 与 `diagram` 可用于普通 pane、passive overlay 与 capturing overlay，不能用于
+status、editor extension 或 `sections.body`。
 
 ### `chart`
 
@@ -319,7 +314,7 @@ ui.chart({
 bar values 数量匹配 category，heatmap 矩阵维度匹配 row/column label。每个 chart
 最多 20 个 series，单棵树最多 4,000 个 chart cell。与 `document` 一样，`chart`
 可用于普通 pane、passive overlay 与 capturing overlay，不能进入更窄的 status、
-notification、editor extension 或 `MayflyView` 树。
+status、editor extension 或 section-content 树。
 
 ## 布局节点
 
@@ -973,7 +968,7 @@ ui.divider()
 
 ## 事件与重渲染
 
-Pane 和 overlay 把 handler 放在 contribution/request 上，而不是放进节点：
+Pane、overlay 和 editor extension 把 handler 放在 definition 上，而不是放进节点：
 
 ```ts
 onEvent: (
@@ -996,24 +991,23 @@ onEvent: (
 latest-wins；`activate`、`submit`、`dismiss` 按 surface FIFO。handler 成功后 Mayfly
 自动重渲染；失败、abort、timeout、旧 generation 或卸载后的结果不会提交。
 
-外部 projection、service subscription 或 timer 改变 state 时，再调用 pane/overlay
-handle 的 `refresh()`。不要在 `onEvent()` 成功路径里手动 refresh；这会把当前事件
-误判为一次外部替换，并可能 abort 它自己的 generation。
+外部 projection、service subscription 或 timer 改变 state 时，调用 pane/overlay
+handle 的 `set(node)` 或 editor-extension registration 的 `set(decoration)`。在
+`onEvent()` 内发布时使用 `{ eventRevision: context.revision }`；未标记的外部更新会
+abort 旧事件任务。
 
 ## Surface 兼容矩阵
 
 | Surface | 可用节点 | 交互规则 |
 | --- | --- | --- |
 | `panes` | 完整 `MayflyUiNode` | controls 可用，事件交给 pane `onEvent` |
-| capturing overlay | 完整 `MayflyUiNode` | 打开时必须消费有效 `userGesture` |
+| capturing overlay | 完整 `MayflyUiNode` | 获取焦点并处理 Escape 关闭 |
 | non-capturing overlay | 只使用 passive 内容/layout | tabs/list/form/actions 等 controls 会使整棵渲染树降级为错误提示 |
 | additive `status` | text、rich-text、fields、progress、递归 stack | 始终非交互，不接受 surface/scroll/control |
-| notification `view` | `MayflyView`：text、fields、code、diff、sections | 无 controls、无 rich-text/layout |
-| editor extension（Experimental） | passive MayflyView/rich-text/progress/spacer/divider + stack/surface | 交互 action 走 extension 的独立 `actions` 字段 |
+| editor extension | passive content/rich-text/progress/spacer/divider + stack/surface | 交互 action 走 extension decoration 的 `actions` 字段 |
 
-`status.provider`、`editor.extensions` 与 `editor.provider` 仍是 Experimental/reference
-surface，不得写进 canonical v1 manifest。新插件优先使用上表前五行的 Public Beta
-能力。
+四个 registry 都是 Fiber-owned 的直接 Cordis service，不存在第二套 manifest 或
+capability host。
 
 ## 验证清单
 

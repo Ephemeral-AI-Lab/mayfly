@@ -11,7 +11,9 @@ import type {
   MayflyEditorAttachment,
   MayflyEditorCompletionItem,
   MayflyEditorCompletionRequest,
-  MayflyEditorExtensionContribution,
+  MayflyEditorDecoration,
+  MayflyEditorExtensionDefinition,
+  MayflyEditorExtensionEntry,
   MayflyEditorExtensionNode,
   MayflyEditorSubmitRequest,
   MayflyUiEvent,
@@ -30,7 +32,7 @@ import {
   type MayflyFocusable,
 } from '../core/index.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { SubmitTransformation } from './editor-instance.ts'
+import type { SubmitTransformation } from './prompt-submit-pipeline.ts'
 
 const MAX_COMPLETIONS = 200
 const MAX_COMPLETION_TEXT = 2_000
@@ -62,9 +64,11 @@ interface CompletionApplication {
 }
 
 interface ExtensionActionBinding {
-  readonly entry: MayflyEditorExtensionContribution
+  readonly entry: EditorExtensionRuntimeEntry
   readonly actionId: string
 }
+
+type EditorExtensionRuntimeEntry = MayflyEditorExtensionDefinition & MayflyEditorDecoration
 
 interface EditorShell {
   readonly component: MayflyComponent
@@ -239,11 +243,13 @@ export class EditorExtensionRuntime implements MayflyFocusable {
   private ownFocused = false
   private columns = 80
   private operationRevision = 0
-  private entries: readonly MayflyEditorExtensionContribution[] = []
+  private entries: readonly EditorExtensionRuntimeEntry[] = []
+  private readonly extensionEntries = new Map<string, MayflyEditorExtensionEntry>()
   private component: MayflyComponent
   private focusTarget: MayflyFocusable
   private shell: EditorShell
   private readonly pending = new Set<AbortController>()
+  private readonly activeEventRevisions = new Set<number>()
   private readonly eventTails = new Map<string, Promise<void>>()
   private actionGeneration = 0
   private completionLifecycle = new AbortController()
@@ -256,11 +262,15 @@ export class EditorExtensionRuntime implements MayflyFocusable {
     this.component = options.editor
     this.focusTarget = options.editor
     this.shell = this.plainShell()
-    this.unsubscribeExtensions = options.ctx.mayflyEditorExtensions.subscribe(entries => {
-      this.entries = entries
-      if (this.initialized) this.syncExtensions()
+    this.unsubscribeExtensions = options.ctx.mayflyEditorExtensions.subscribe(delta => {
+      if (delta.kind === 'remove') this.extensionEntries.delete(delta.id)
+      else this.extensionEntries.set(delta.entry.id, delta.entry)
+      this.entries = [...this.extensionEntries.values()]
+        .sort((left, right) => (left.definition.priority ?? 0) - (right.definition.priority ?? 0) || left.id.localeCompare(right.id))
+        .map(entry => ({ ...entry.definition, ...entry.decoration }))
+      if (this.initialized) this.syncExtensions(delta.kind === 'upsert' ? delta.entry.eventRevision : undefined)
     })
-    this.unsubscribeHost = options.ctx.mayflyEditorHost.subscribeEditorState(() => {
+    this.unsubscribeHost = options.ctx.mayflyPromptEditor.subscribeEditorState(() => {
       /* v8 ignore else -- the immediate subscription replay intentionally precedes initialization. */
       if (this.initialized) this.syncAutocomplete()
     })
@@ -325,8 +335,8 @@ export class EditorExtensionRuntime implements MayflyFocusable {
   invalidateRoute(): void { this.abortPending() }
   invalidateSession(): void { this.abortPending() }
 
-  private syncExtensions(): void {
-    this.abortPending()
+  private syncExtensions(eventRevision?: number): void {
+    if (eventRevision === undefined || !this.activeEventRevisions.has(eventRevision)) this.abortPending()
     this.activateShell(this.compileShell())
     const transforms = this.entries.some(entry => entry.transformSubmit !== undefined)
     this.options.editor.setSubmitBarrier(transforms ? attempt => { this.beginSubmit(attempt) } : undefined)
@@ -347,6 +357,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
     this.completionLifecycle = new AbortController()
     for (const controller of this.pending) controller.abort()
     this.pending.clear()
+    this.activeEventRevisions.clear()
     this.eventTails.clear()
     this.prepared = undefined
   }
@@ -455,6 +466,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
       if (this.actionGeneration !== generation || shell !== this.shell) return
       const controller = new AbortController()
       this.pending.add(controller)
+      this.activeEventRevisions.add(revision)
       try {
         const outcome = await settleCallback(
           () => target.entry.onEvent!(translated, { surfaceId: target.entry.id, signal: controller.signal, revision }),
@@ -464,7 +476,10 @@ export class EditorExtensionRuntime implements MayflyFocusable {
         if (shell !== this.shell || controller.signal.aborted || outcome.kind === 'aborted') return
         if (outcome.kind === 'timeout') { controller.abort(); this.options.notice('editor extension action timed out'); return }
         if (outcome.kind === 'rejected') this.options.notice(boundedMessage(outcome.error, 'editor extension action failed'))
-      } finally { this.pending.delete(controller) }
+      } finally {
+        this.pending.delete(controller)
+        this.activeEventRevisions.delete(revision)
+      }
     })
     this.eventTails.set(target.entry.id, next)
     const clearTail = (): void => {
@@ -481,7 +496,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
 
   private installCompletionProvider(): void {
     const entries = this.entries
-    const sources = this.options.ctx.mayflyEditorHost.listAutocompleteSources()
+    const sources = this.options.ctx.mayflyPromptEditor.listAutocompleteSources()
     const applications = new WeakMap<MayflyAutocompleteItem, CompletionApplication>()
     const provider: MayflyAutocompleteProvider = {
       triggerCharacters: [...new Set([...sources.flatMap(source => source.triggerCharacters ?? []), '/', '@', '#'])],

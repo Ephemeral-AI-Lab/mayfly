@@ -24,8 +24,7 @@ return {
         ctx.mayflyOverlays.open({
           id: 'probe.health',
           capturing: true,
-          render: () => ({ kind: 'text', content: 'healthy' }),
-        })
+        }, { kind: 'text', content: 'healthy' })
         return { kind: 'success', text: 'opened health' }
       },
     })

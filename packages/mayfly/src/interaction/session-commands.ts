@@ -26,7 +26,7 @@ import type { InfoRow, InfoSection, InfoSegment, InfoStyle } from './info-panel.
 import { InfoPanel } from './info-panel.ts'
 import { CHANGELOG_ENTRIES, type ChangelogEntry } from './changelog-content.ts'
 import { displayServices } from './display-services.ts'
-import { mountEditorReplacement } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { currentModelSelection } from './model-commands.ts'
 import { wrapLines } from './tools-commands.ts'
 import {

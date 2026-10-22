@@ -1,20 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import type { ConversationProjection, ConversationToolEntry } from '../../src/conversation/index.ts'
 import {
-  apply,
   conversationTranscriptModel,
-  inject,
-  name,
   OfficialConversationModelSource,
   type ConversationProjectionSource,
 } from '../../src/transcript/official-model.ts'
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'
 
 function projection(entries: ConversationProjection['entries'] = [], streaming = false): ConversationProjection {
-  return { entries, streaming }
+  return { entries: entries.map(entry => ({ ...entry, updatedSeq: entry.updatedSeq ?? entry.seq })), streaming }
 }
 
 function toolSource(options: { readonly throws?: boolean } = {}): ToolPresentationSource {
@@ -495,75 +491,5 @@ describe('OfficialConversationModelSource', () => {
     source.attach(fixture.session)
     expect(source.snapshot().entries[0]).toMatchObject({ text: 'baseline' })
     source.dispose()
-  })
-})
-
-describe('official conversation plugin', () => {
-  it('registers one Fiber-owned model and follows structurally valid session bindings', () => {
-    const f = sourceFixture(projection([
-      transcriptTool(),
-      transcriptTool({ id: 'tool-2', seq: 5, callId: 'call-2', name: 'plain' }),
-    ]), 0)
-    const refresh = vi.fn()
-    const unregister = vi.fn()
-    const cleanups: Array<() => void> = []
-    let registered: (() => unknown) | undefined
-    const listeners = new Set<(agent: Agent | null, revision: number) => void>()
-    const first = { session: f.session } as unknown as Agent
-    let current: Agent | null = first
-    const toolScopes: unknown[] = []
-    const ctx = {
-      sessionProjections: f.source,
-      tools: {
-        get(toolName: string, scope: unknown) {
-          toolScopes.push(scope)
-          if (toolName === 'read') {
-            current = null
-            return {
-              presentCall: () => ({ card: 'generic', title: 'Read' }),
-              presentResult: () => ({ card: 'generic', title: 'Read result', content: [] }),
-            }
-          }
-          return {}
-        },
-      },
-      mayflyTranscriptModels: {
-        refresh,
-        register(source: () => unknown) {
-          registered = source
-          return unregister
-        },
-      },
-      mayflyCurrentAgent: {
-        current: () => current,
-        subscribe(listener: (agent: Agent | null, revision: number) => void) {
-          listeners.add(listener)
-          listener(current, 0)
-          return () => listeners.delete(listener)
-        },
-      },
-      effect(effect: () => () => void) {
-        const cleanup = effect()
-        cleanups.push(cleanup)
-        return cleanup
-      },
-    }
-
-    apply(ctx as never)
-    expect(name).toBe('mayfly-transcript-official')
-    expect(inject).toEqual(['mayflyConversationReady', 'sessionProjections', 'mayflyCurrentAgent', 'mayflyTranscriptModels', 'tools'])
-    expect(registered?.()).toMatchObject({ id: 'official-conversation' })
-    expect(refresh).toHaveBeenCalledWith('official-conversation')
-    expect(toolScopes).toEqual([first, undefined])
-
-    current = null
-    for (const listener of listeners) listener(null, 1)
-    current = { session: { id: 'session-2' } } as unknown as Agent
-    for (const listener of listeners) listener(current, 2)
-    expect(f.source.snapshot).toHaveBeenCalledTimes(2)
-    for (const cleanup of cleanups.reverse()) cleanup()
-    expect(unregister).toHaveBeenCalledOnce()
-    expect(f.off).toHaveBeenCalledOnce()
-    expect(listeners.size).toBe(0)
   })
 })

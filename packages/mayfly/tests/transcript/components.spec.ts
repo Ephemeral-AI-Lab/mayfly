@@ -533,6 +533,15 @@ describe('ToolCallComponent', () => {
     const failed = new ToolCallComponent(item, tagged(), setup(), undefined, '+3 −2')
     item.result = { text: 'boom', isError: true }
     expect(failed.render(80)[1]).toContain('[E] · +3 −2[/E]')
+
+    const dynamic = new ToolCallComponent(item, tagged(), setup(), undefined, '+1 −0')
+    const first = dynamic.render(80)
+    dynamic.setResultChip('+1 −0')
+    expect(dynamic.render(80)).toBe(first)
+    dynamic.setResultChip('+2 −1')
+    expect(dynamic.render(80)[1]).toContain('+2 −1')
+    dynamic.setResultChip(undefined)
+    expect(dynamic.render(80)[1]).toContain('line')
   })
 
   it('caps a generic result preview until expanded', () => {
@@ -590,6 +599,47 @@ describe('ToolCallComponent', () => {
     expect(new ToolCallComponent(nonObject, COLORS, setup()).render(80)).toHaveLength(2)
     const empty = toolItem({ parsedArguments: { command: '' } })
     expect(new ToolCallComponent(empty, COLORS, setup()).render(80)).toHaveLength(2)
+  })
+
+  it('shows a model-supplied description above the bash command', () => {
+    const item = toolItem({ parsedArguments: { command: 'ls', description: 'List the directory' } })
+    const lines = new ToolCallComponent(item, tagged(), setup()).render(80)
+    expect(lines).toEqual([
+      '',
+      '● \x1b[1m[P]Running a command[/P]\x1b[22m',
+      '  [M]List the directory[/M]',
+      '  $ [M]ls[/M]',
+    ])
+  })
+
+  it('splits a multi-line description into muted rows above the command', () => {
+    const item = toolItem({ parsedArguments: { command: 'ls', description: 'first\nsecond' } })
+    const lines = new ToolCallComponent(item, tagged(), setup()).render(80)
+    expect(lines.slice(2)).toEqual(['  [M]first[/M]', '  [M]second[/M]', '  $ [M]ls[/M]'])
+  })
+
+  it('ignores an empty or non-string description', () => {
+    const empty = toolItem({ parsedArguments: { command: 'ls', description: '' } })
+    expect(new ToolCallComponent(empty, tagged(), setup()).render(80).slice(2)).toEqual(['  $ [M]ls[/M]'])
+    const nonString = toolItem({ parsedArguments: { command: 'ls', description: 42 } })
+    expect(new ToolCallComponent(nonString, tagged(), setup()).render(80).slice(2)).toEqual(['  $ [M]ls[/M]'])
+  })
+
+  it('keeps the description outside the collapsed command preview cap', () => {
+    const item = toolItem({
+      parsedArguments: { command: Array.from({ length: 12 }, (_, n) => `c${n}`).join('\n'), description: 'many' },
+    })
+    const component = new ToolCallComponent(item, COLORS, setup())
+    expect(component.render(80)).toHaveLength(1 + 1 + 1 + 10)
+    component.setExpanded(true)
+    expect(component.render(80)).toHaveLength(1 + 1 + 1 + 12)
+  })
+
+  it('truncates an over-wide description row to the viewport', () => {
+    const components = setup()
+    const item = toolItem({ parsedArguments: { command: 'ls', description: 'd'.repeat(100) } })
+    const lines = new ToolCallComponent(item, COLORS, components).render(30)
+    expect(components.visibleWidth(lines[2]!)).toBeLessThanOrEqual(30)
   })
 })
 

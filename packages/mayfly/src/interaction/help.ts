@@ -103,10 +103,10 @@ export class HelpOverlay implements MayflyFocusable {
     const t: MayflyTranslate = this.options.t ?? interpolateLocaleMessage
     const spans: MayflyInlineSpan[] = []
     for (const [sectionIndex, section] of this.sections().entries()) {
-      spans.push({ text: `${sectionIndex === 0 ? '' : '\n\n'}${t(section.heading)}`, tone: 'accent', emphasis: 'strong' })
+      spans.push({ text: `${sectionIndex === 0 ? '' : '\n\n'}${t(section.heading)}`, tone: 'accent', styles: ['strong'] })
       for (const row of section.rows) {
         spans.push(
-          { text: `\n${row.label}`, tone: section.labelTone ?? 'default', emphasis: 'strong' },
+          { text: `\n${row.label}`, tone: section.labelTone ?? 'default', styles: ['strong'] },
           { text: `  ${t(row.description)}`, tone: 'muted' },
         )
       }

@@ -11,7 +11,7 @@
  * @module mayfly-core/chrome
  */
 
-import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui'
+import { safeWidth, truncateToWidth, visibleWidth } from './width.ts'
 
 // oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match ANSI SGR escape sequences
 const ANSI_SGR = /\x1b\[[0-9;]*m/g
@@ -142,7 +142,7 @@ export function injectGhostHint(
     // belong here; otherwise the cursor is mid-text and the hint declines.
     if (stripSgr(line.slice(cursorIdx + CURSOR_BLOCK.length)).trim().length > 0) return line
   }
-  const contentWidth = Math.max(1, width - EDITOR_LEFT_PADDING * 2)
+  const contentWidth = safeWidth(width - EDITOR_LEFT_PADDING * 2)
   const available = contentWidth - textLength - (cursorPresent ? 1 : 0)
   const trimmed = truncateHint(hint, available)
   if (trimmed.length === 0) return line
@@ -296,7 +296,7 @@ export function framePanel(
   width: number,
   options: FramePanelOptions = {},
 ): string[] {
-  const ruleWidth = Math.max(1, width)
+  const ruleWidth = safeWidth(width)
   const rulePaint = options.rulePaint ?? identity
   const lines: string[] = [rulePaint('─'.repeat(ruleWidth))]
   const title = options.title
@@ -327,7 +327,7 @@ export function framePanel(
   // over-wide, and only then does the framer cut (D48). Wider frames
   // emit the body untouched.
   if (width >= FRAME_DEGENERATE_WIDTH) return lines
-  return lines.map(line => truncateToWidth(line, Math.max(1, width)))
+  return lines.map(line => truncateToWidth(line, ruleWidth))
 }
 
 /**
@@ -362,7 +362,7 @@ export interface TopRuleOptions {
  */
 export function topRule(width: number, options: TopRuleOptions = {}): string {
   const paint = options.paint ?? identity
-  const innerWidth = Math.max(1, width - 2)
+  const innerWidth = safeWidth(width - 2)
   const title = options.title
   const hint = options.hint
   const composite =

@@ -98,8 +98,7 @@ describe('Mayfly direct-service whole tree', () => {
     tree.ctx.mayflyPanes.register({
       id: 'e2e.renderer-independent',
       placement: 'bottom',
-      render: () => ({ kind: 'text', content: 'registry survives renderer gaps' }),
-    })
+    }, { kind: 'text', content: 'registry survives renderer gaps' })
     const entry = [...tree.ctx.loader.entries()].find(candidate => candidate.options.id === 'mayfly-core')
     expect(entry).toBeDefined()
     await tree.ctx.loader.update(entry!.id, { disabled: true })

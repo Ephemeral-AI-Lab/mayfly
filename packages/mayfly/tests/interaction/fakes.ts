@@ -33,9 +33,9 @@ import type {
   MayflyKeymap,
   MayflyMarkdown,
   MayflyMarkdownOptions,
-  MayflyOverlayHandle,
   MayflyOverlayOptions,
   MayflyScreen,
+  MayflyScreenOverlayHandle,
   MayflySelectItem,
   MayflySelectList,
   MayflySelectListOptions,
@@ -48,13 +48,16 @@ import type { MayflyScreenService, MayflyKeymapService, MayflyComponentsService 
 // MayflyImage/MayflyImageOptions are not root-exported by core yet; source-plane
 // tests import them straight from core's src types.
 import type { MayflyImage, MayflyImageOptions } from '../../src/core/types.ts'
-import { EditorHostService, setEditorSlotSwap } from '../../src/interaction/editor-instance.ts'
+import { PromptEditorController } from '../../src/interaction/editor-instance.ts'
+import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
+import { PromptSubmitPipeline } from '../../src/interaction/prompt-submit-pipeline.ts'
 import {
   INTERACTION_KEY_ACTIONS,
 } from '../../src/interaction/keys.ts'
 import { SkillsCatalogService } from '../../src/interaction/skills-catalog.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
+import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 
 /** Decoded input sequences matching each key id the interaction batch binds. */
 const SEQUENCE_BY_KEY_ID: Record<string, string> = {
@@ -594,6 +597,9 @@ export class FakeFileMentionProvider implements MayflyAutocompleteProvider {
  * editor/select-list creation for test inspection.
  */
 export class FakeMayflyComponents implements MayflyComponents {
+  strong(text: string): string { return text }
+  italic(text: string): string { return text }
+  strike(text: string): string { return text }
   /** Every editor created through this factory, in creation order. */
   readonly editors: FakeMayflyEditor[] = []
   /** The options each editor was created with, in creation order. */
@@ -733,7 +739,7 @@ export interface FakeOverlay {
   readonly options: MayflyOverlayOptions | undefined
   /** The focus holder before this record mounted; restored on dismissal. */
   readonly previous: MayflyComponent | null
-  readonly handle: MayflyOverlayHandle
+  readonly handle: MayflyScreenOverlayHandle
   hidden: boolean
 }
 
@@ -751,9 +757,20 @@ export class FakeScreen implements MayflyScreen {
   followCount = 0
   /** Terminal-title writes, for the OSC-mirror plugin assertions. */
   readonly titles: string[] = []
+  readonly slotTargets = new Map<string, MayflyComponent | null>()
   private readonly bottom = new Set<MayflyComponent>()
   /** Dock members pinned to the very bottom slot (the footer shell). */
   private readonly bottomPinned = new Set<MayflyComponent>()
+
+  mountContentSlot(id: string, component: MayflyComponent | null) {
+    this.slotTargets.set(id, component)
+    return mountFakeScreenSlot(id, component, shell => this.addChild(shell), target => this.setFocus(target), () => this.requestRender())
+  }
+
+  mountDockSlot(id: string, component: MayflyComponent | null, position?: 'bottom') {
+    this.slotTargets.set(id, component)
+    return mountFakeScreenSlot(id, component, shell => this.addBottomChild(shell, position), target => this.setFocus(target), () => this.requestRender())
+  }
 
   addChild(component: MayflyComponent): () => void {
     // Mirror the runtime's ordering contract: plain mounts land above every
@@ -823,7 +840,7 @@ export class FakeScreen implements MayflyScreen {
     return this.contentScrollHandler?.(data) ?? false
   }
 
-  showOverlay(component: MayflyComponent, options?: MayflyOverlayOptions): MayflyOverlayHandle {
+  showOverlay(component: MayflyComponent, options?: MayflyOverlayOptions): MayflyScreenOverlayHandle {
     this.recordDialog(component, options)
     return this.overlays.at(-1)!.handle
   }
@@ -1001,10 +1018,12 @@ export function fakeMayflyContext(options: { readonly display?: boolean; readonl
   ctx.on('agent/status', publishAgent)
   new SkillsCatalogService(ctx)
   new InteractionStateService(ctx, DEFAULT_SETTINGS)
-  new EditorHostService(ctx)
+  new PromptEditorController(ctx)
+  new EditorPanelController(ctx)
+  new PromptSubmitPipeline(ctx)
   // The D30 editor-slot swap stands in for `mayfly-input`'s real machinery:
   // dialog specs assert the mounted panel through the overlay registry.
-  setEditorSlotSwap(ctx, { mount: component => screen.mountDialogPanel(component) })
+  ctx.mayflyEditorPanels.setHost({ mount: component => screen.mountDialogPanel(component) })
   screen.renderRequests = 0
   return { ctx, screen, theme, keymap, components }
 }

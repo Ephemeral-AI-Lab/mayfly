@@ -4,15 +4,18 @@
  * @module @ephemeral-ai/mayfly/core/chart-renderer
  */
 
-import type { MayflyChartNode, MayflyTone } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyBarChartNode, MayflyChartNode, MayflyHeatmapChartNode, MayflyLineChartNode, MayflySparklineChartNode, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import { heatmap, plot, renderChart, sparkline, type Color } from 'simple-ascii-chart'
-import { paintPluginTone } from './plugin-view.ts'
+import { paintTone } from './paint.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
+import { safeWidth } from './width.ts'
 
 const TONE_COLOR: Readonly<Record<MayflyTone, Color>> = {
   default: 'ansiWhite',
   muted: 'ansiBrightBlack',
+  primary: 'ansiBrightCyan',
   accent: 'ansiCyan',
+  user: 'ansiBrightBlue',
   success: 'ansiGreen',
   warning: 'ansiYellow',
   danger: 'ansiRed',
@@ -37,7 +40,7 @@ function applyTheme(output: string, tones: readonly MayflyTone[], colors: Mayfly
   const byCode = new Map(tones.map(tone => [COLOR_CODE[vendorColor(tone)], tone]))
   return output.replace(/\x1b\[(\d+)m([^\x1b]*)\x1b\[0m/gu, (_match, rawCode: string, body: string) => {
     const tone = byCode.get(Number(rawCode))
-    return tone === undefined ? body : paintPluginTone(colors, tone)(body)
+    return tone === undefined ? body : paintTone(tone, body, colors)
   })
 }
 
@@ -83,14 +86,14 @@ function summary(node: Exclude<MayflyChartNode, { readonly chart: 'sparkline' }>
       for (const [index, series] of node.series.entries()) {
         const values = series.points.flatMap(point => point.y === null ? [] : [point.y])
         const detail = values.length === 0 ? 'no data' : `min ${formatChartNumber(Math.min(...values))}, max ${formatChartNumber(Math.max(...values))}, last ${formatChartNumber(values.at(-1)!)}`
-        result.push(paintPluginTone(colors, toneAt(series.tone, index))(components.truncateToWidth(`${series.label ?? series.id}: ${detail}`, width)))
+        result.push(paintTone(toneAt(series.tone, index), components.truncateToWidth(`${series.label ?? series.id}: ${detail}`, width), colors))
       }
       break
     case 'bar':
       for (const [index, series] of node.series.entries()) {
         const values = series.values.flatMap(value => value === null ? [] : [value])
         const detail = values.length === 0 ? 'no data' : `total ${formatChartNumber(values.reduce((sum, value) => sum + value, 0))}`
-        result.push(paintPluginTone(colors, toneAt(series.tone, index))(components.truncateToWidth(`${series.label ?? series.id}: ${detail}`, width)))
+        result.push(paintTone(toneAt(series.tone, index), components.truncateToWidth(`${series.label ?? series.id}: ${detail}`, width), colors))
       }
       break
     case 'heatmap':
@@ -101,7 +104,7 @@ function summary(node: Exclude<MayflyChartNode, { readonly chart: 'sparkline' }>
   return result.slice(0, 20)
 }
 
-function renderNumeric(node: Extract<MayflyChartNode, { readonly chart: 'line' | 'point' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
+function renderNumeric(node: MayflyLineChartNode, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
   const tones = node.series.map((series, index) => toneAt(series.tone, index))
   return checkedRows((plotWidth, compact) => plot(
     node.series.map(series => series.points.map(point => [point.x, point.y] as const)),
@@ -123,7 +126,7 @@ function renderNumeric(node: Extract<MayflyChartNode, { readonly chart: 'line' |
   ), width, tones, components, colors)
 }
 
-function renderBars(node: Extract<MayflyChartNode, { readonly chart: 'bar' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
+function renderBars(node: MayflyBarChartNode, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
   const tones = node.series.map((series, index) => toneAt(series.tone, index))
   return checkedRows((plotWidth, compact) => renderChart({
     width: plotWidth,
@@ -148,7 +151,7 @@ function sampleValues(values: readonly (number | null)[], size: number): readonl
   return Array.from({ length: size }, (_, index) => values[Math.round(index * (values.length - 1) / Math.max(1, size - 1))]!)
 }
 
-function renderSparkline(node: Extract<MayflyChartNode, { readonly chart: 'sparkline' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] {
+function renderSparkline(node: MayflySparklineChartNode, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] {
   const tone = toneAt(node.tone, 0)
   const label = node.label === undefined ? [] : [colors.textStrong(components.truncateToWidth(node.label, width))]
   if (node.values.length === 0) return label
@@ -156,7 +159,7 @@ function renderSparkline(node: Extract<MayflyChartNode, { readonly chart: 'spark
   return [...label, components.truncateToWidth(output, width)]
 }
 
-function renderHeatmap(node: Extract<MayflyChartNode, { readonly chart: 'heatmap' }>, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
+function renderHeatmap(node: MayflyHeatmapChartNode, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] | undefined {
   const tones = node.levels.map((level, index) => toneAt(level.tone, index))
   const symbols = ['●', '◆', '■', '▲', '○', '◇'] as const
   for (const compact of [false, true]) {
@@ -183,12 +186,12 @@ function renderHeatmap(node: Extract<MayflyChartNode, { readonly chart: 'heatmap
 
 /** Render one canonical chart, falling back to a bounded textual summary. */
 export function renderChartRows(node: MayflyChartNode, width: number, components: MayflyComponents, colors: MayflySemanticColors): string[] {
-  const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
+  const available = safeWidth(width)
   switch (node.chart) {
-    case 'sparkline': return renderSparkline(node, safeWidth, components, colors)
+    case 'sparkline': return renderSparkline(node, available, components, colors)
     case 'line':
-    case 'point': return renderNumeric(node, safeWidth, components, colors) ?? summary(node, safeWidth, components, colors)
-    case 'bar': return renderBars(node, safeWidth, components, colors) ?? summary(node, safeWidth, components, colors)
-    case 'heatmap': return renderHeatmap(node, safeWidth, components, colors) ?? summary(node, safeWidth, components, colors)
+    case 'point': return renderNumeric(node, available, components, colors) ?? summary(node, available, components, colors)
+    case 'bar': return renderBars(node, available, components, colors) ?? summary(node, available, components, colors)
+    case 'heatmap': return renderHeatmap(node, available, components, colors) ?? summary(node, available, components, colors)
   }
 }

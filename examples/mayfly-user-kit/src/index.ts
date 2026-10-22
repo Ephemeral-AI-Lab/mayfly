@@ -18,7 +18,7 @@ export const summaryMetric = defineMayflyComponent<{
     child: ui.stack.row([
       ui.richText([
         { text: props.label, tone: 'muted' },
-        { text: ` ${props.value}`, tone: 'accent', emphasis: 'strong' },
+        { text: ` ${props.value}`, tone: 'accent', styles: ['strong'] },
       ]),
       ui.child(ui.text(props.detail, { tone: 'muted' }), { grow: 1, when: { minWidth: 32 } }),
     ], { gap: 1, align: 'center' }),

@@ -160,6 +160,7 @@ describe('mayfly-pane-workflow', () => {
     rig.ctx.emit('workflow/agent-end', info, agentEnd(2, 'failed', 'child-2', 'second'))
     rig.ctx.emit('workflow/agent-end', info, agentEnd(99, 'completed'))
     clock = T0 + 10_000
+    ticks[0]!()
     let rows = plain(rig)
     expect(rows[1]).toContain('Workflow publish-check')
     expect(rows[1]).toContain('● 1 running')

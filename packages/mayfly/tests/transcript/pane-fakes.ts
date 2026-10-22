@@ -11,8 +11,8 @@ import type {
   MayflyComponent,
   MayflyKeyAction,
   MayflyKeymap,
-  MayflyOverlayHandle,
   MayflyScreen,
+  MayflyScreenOverlayHandle,
 } from '../../src/core/index.ts'
 import type { CommandDefinition, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { fakeMayflyComponents } from './helpers.ts'
@@ -20,6 +20,7 @@ import { asAgent, COLORS, FakeFactsService, type FakeAgent } from './status-fake
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import { conversationProjectionDefinition, foldConversationProjection, initialConversationState, type ConversationProjectionState } from '../../src/conversation/projection.ts'
 import type { ConversationProjection } from '../../src/conversation/types.ts'
+import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 
 const ANSI_OR_OSC = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|.)/gu
 
@@ -34,6 +35,14 @@ export class PaneFakeScreen implements MayflyScreen {
   private panes?: MayflyPaneService
   private components?: ReturnType<typeof fakeMayflyComponents>
   private colors: typeof COLORS = COLORS
+
+  mountContentSlot(id: string, component: MayflyComponent | null) {
+    return mountFakeScreenSlot(id, component, shell => this.addChild(shell), target => this.setFocus(target), () => this.requestRender())
+  }
+
+  mountDockSlot(id: string, component: MayflyComponent | null) {
+    return mountFakeScreenSlot(id, component, shell => this.addBottomChild(shell), target => this.setFocus(target), () => this.requestRender())
+  }
 
   addChild(component: MayflyComponent): () => void {
     this.children.push(component)
@@ -58,7 +67,7 @@ export class PaneFakeScreen implements MayflyScreen {
 
   setFocus(): void {}
 
-  showOverlay(): MayflyOverlayHandle {
+  showOverlay(): MayflyScreenOverlayHandle {
     throw new Error('fake showOverlay is out of scope for pane plugin tests')
   }
 
@@ -88,8 +97,9 @@ export class PaneFakeScreen implements MayflyScreen {
     this.panes = panes
     this.components = components
     this.colors = colors
-    panes.subscribe(entries => {
-      const live = new Set(entries.filter(entry => !entry.hidden).map(entry => entry.id))
+    panes.subscribe(() => {
+      const entries = panes.list()
+      const live = new Set(entries.filter(entry => entry.node !== null).map(entry => entry.id))
       for (const [id, component] of this.paneComponents) {
         if (live.has(id)) continue
         this.paneComponents.delete(id)
@@ -97,11 +107,11 @@ export class PaneFakeScreen implements MayflyScreen {
         if (index !== -1) this.bottomChildren.splice(index, 1)
       }
       for (const entry of entries) {
-        if (entry.hidden || this.paneComponents.has(entry.id)) continue
+        if (entry.node === null || this.paneComponents.has(entry.id)) continue
         const component: MayflyComponent = {
           render: width => {
             const current = this.panes?.list().find(candidate => candidate.id === entry.id)
-            const node = current?.contribution.render()
+            const node = current?.node
             if (node === null || node === undefined || this.components === undefined) return []
             const compiled = compileMayflyUiNode(node, {
               components: this.components,

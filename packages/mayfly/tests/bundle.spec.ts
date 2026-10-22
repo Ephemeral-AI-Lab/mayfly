@@ -85,7 +85,6 @@ describe('mayfly bundle', () => {
       'mayfly-app',
       'mayfly-banner',
       'mayfly-transcript',
-      'mayfly-transcript-official',
       'mayfly-status-basic',
       'mayfly-status-cwd',
       'mayfly-status-git',
@@ -102,7 +101,6 @@ describe('mayfly bundle', () => {
       'mayfly-pane-workflow',
       'mayfly-attachments',
       'mayfly-paste-image',
-      'mayfly-editor-plus',
       'mayfly-jobs',
       'mayfly-agents-command',
       'mayfly-interaction',
@@ -116,7 +114,8 @@ describe('mayfly bundle', () => {
     expect(patch).toContain("name: '@ephemeral-ai/mayfly/frontend'")
     expect(patch).toContain("name: '@ephemeral-ai/mayfly/banner'")
     expect(patch).toContain("name: '@ephemeral-ai/mayfly/conversation'")
-    expect(patch).toContain("name: '@ephemeral-ai/mayfly/official-model'")
+    expect(patch).not.toContain("name: '@ephemeral-ai/mayfly/official-model'")
+    expect(patch).not.toContain("name: '@ephemeral-ai/mayfly/editor-plus'")
     expect(patch).not.toMatch(/- id: mayfly-(?:context|conversation|transcript-official|openpencil|lark)\n\s+name:[^\n]+\n\s+disabled: true/gu)
     expect(patch).toContain("name: '@deepseek-ai/dsh-agent-presets'")
     expect(insertedRows.some(row => row.group === true)).toBe(false)
@@ -127,7 +126,7 @@ describe('mayfly bundle', () => {
     expect(statusGoal.inject).toEqual(['mayflyStatus', 'mayflyCurrentAgent', 'mayflySessionFacts', 'goals'])
     expect(statusJobs.inject).toEqual(['mayflyStatus', 'mayflyCurrentAgent', 'jobs'])
     expect(paneWorkflow.inject).toEqual(['mayflyPanes', 'mayflyCurrentAgent', 'mayflySessionFacts', 'sessions'])
-    expect(jobsCommand.inject).toEqual(['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyEditorHost'])
+    expect(jobsCommand.inject).toEqual(['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyPromptEditor', 'mayflyEditorPanels'])
     expect(agentsCommand.inject).toEqual([
       'commands',
       'subagents',
@@ -135,7 +134,7 @@ describe('mayfly bundle', () => {
       'sessions',
       'sessionProjections',
       'mayflyCurrentAgent',
-      'mayflyEditorHost',
+      'mayflyEditorPanels',
       'tools',
     ])
     const dependencies = [

@@ -14,16 +14,15 @@ export function apply(ctx: Context): void {
     placement: 'right',
     size: { min: 20, preferred: 30, max: 40 },
     narrow: 'bottom',
-    render: () => ({ kind: 'text', content: 'healthy' }),
-  })
+  }, { kind: 'text', content: 'healthy' })
 
   // Call after domain state changes:
-  pane.refresh()
+  pane.set({ kind: 'text', content: 'updated' })
 }
 ```
 
 `narrow` may be `bottom`, `overlay`, or `hidden`. The handle also exposes
-`setHidden(boolean)`.
+`set(null)` releases the lane until the next non-null snapshot.
 
 ## Overlay
 
@@ -42,8 +41,7 @@ export function apply(ctx: Context): void {
         capturing: true,
         anchor: 'center',
         width: '70%',
-        render: () => ({ kind: 'text', content: 'healthy' }),
-      })
+      }, { kind: 'text', content: 'healthy' })
       return { kind: 'success', text: 'opened health details' }
     },
   })
@@ -55,5 +53,5 @@ Only explicit `dismissible: false` disables this. A non-capturing overlay may
 not contain interactive controls.
 
 Pane and overlay ids are unique within their registry. Core still admits
-render and event output. Fiber unload removes panes and closes overlays opened
+snapshot and event output. Fiber unload removes panes and closes overlays opened
 by that Fiber.

@@ -24,7 +24,7 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 // module resolves lazily.
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-credentials'
-import { mountEditorReplacement } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { loadModelsDevIndex, type ModelsDevMatch } from './models-dev.ts'
 import { CanonicalFormController, type FormField } from './form-panel.ts'
 import { CanonicalMultiSelectController } from './select.ts'

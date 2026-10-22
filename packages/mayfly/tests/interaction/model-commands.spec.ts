@@ -16,7 +16,8 @@ import type { AgentDefaultModelConfig } from '@deepseek-ai/dsh-agent-default-mod
 import type { Action } from '../../src/frontend/index.ts'
 import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
 import { createModelListCache, cycleSessionModel, type ModelListCache } from '../../src/interaction/model-commands.ts'
-import { EditorHostService, setSharedEditor } from '../../src/interaction/editor-instance.ts'
+import { PromptEditorController, setSharedEditor } from '../../src/interaction/editor-instance.ts'
+import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
 import { fakeMayflyContext, KEY, type FakeScreen } from './fakes.ts'
 import { setModelsDevLoader } from '../../src/interaction/models-dev.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
@@ -1130,7 +1131,8 @@ describe('cycleSessionModel (the Alt+M hotkey)', () => {
    */
   async function bareContext(llm?: LlmRuntime): Promise<Context> {
     const ctx = new Context()
-    new EditorHostService(ctx)
+    new PromptEditorController(ctx)
+    new EditorPanelController(ctx)
     const agent = { id: 'bare', session: { events: [] }, status: 'idle' } as unknown as Agent
     provideModelBoundary(ctx, agent, fakeModelRef({ provider: 'mock', model: 'mock' }).ref)
     if (llm !== undefined) ctx.provide('llm', llm)

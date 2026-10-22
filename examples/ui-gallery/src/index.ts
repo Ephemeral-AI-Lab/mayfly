@@ -19,7 +19,7 @@ function contentGroup() {
     ui.text('中文示例：文本宽度按真实列宽计算。', { tone: 'muted' }),
     ui.richText([
       { text: 'Rich text ', tone: 'muted' },
-      { text: 'mixes', emphasis: 'strong' },
+      { text: 'mixes', styles: ['strong'] },
       { text: ' tones', tone: 'accent' },
     ]),
     ui.fields([
@@ -30,7 +30,7 @@ function contentGroup() {
     ui.code('const answer = 42\nconsole.log(answer)', { language: 'ts' }),
     ui.diff('export const mode = "plan"', 'export const mode = "normal"'),
     ui.sections([
-      { title: 'Expanded section', body: ui.text('Section bodies stay lightweight MayflyView content.') },
+      { title: 'Expanded section', body: ui.text('Section bodies stay lightweight content nodes.') },
       { title: 'Collapsed section', body: ui.text('Hidden while collapsed.'), collapsed: true },
     ]),
   ]
@@ -48,14 +48,8 @@ function richContentGroup() {
   ]
   return [
     ui.divider({ label: 'Rich content' }),
-    ui.document({
-      format: 'markdown',
-      source: '| Service | State |\n| --- | --- |\n| API | Ready |\n| Worker | Running |',
-    }),
-    ui.document({
-      format: 'mermaid',
-      source: 'flowchart TD\n  Request --> Validate\n  Validate --> Execute\n  Execute --> Result',
-    }),
+    ui.markdown('| Service | State |\n| --- | --- |\n| API | Ready |\n| Worker | Running |'),
+    ui.diagram('flowchart TD\n  Request --> Validate\n  Validate --> Execute\n  Execute --> Result'),
     ui.chart({ chart: 'line', title: 'Request latency', xLabel: 'minute', yLabel: 'ms', height: 6, series: trend }),
     ui.chart({ chart: 'point', title: 'Samples', height: 5, series: [trend[0]!] }),
     ui.chart({ chart: 'bar', layout: 'grouped', title: 'Grouped jobs', categories: ['Mon', 'Tue', 'Wed'], height: 6, series: bars }),
@@ -188,6 +182,5 @@ export function apply(ctx: Context): void {
     placement: 'right',
     size: { min: 24, preferred: 36, max: 48 },
     narrow: 'bottom',
-    render: () => renderGallery(),
-  })
+  }, renderGallery())
 }

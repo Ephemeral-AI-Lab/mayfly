@@ -377,7 +377,7 @@ describe('mayflyConversation projection', () => {
     expect(conversationProjectionSchema.safeParse({ entries: [], streaming: 'yes' }).success).toBe(false)
     expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
     expect(conversationProjectionStateSchema.safeParse({ ...state, finalizedSteps: [1] }).success).toBe(false)
-    expect(conversationProjectionDefinition.stateVersion).toBe(2)
+    expect(conversationProjectionDefinition.stateVersion).toBe(3)
   })
 
   it('covers final-only replay, mid-stream settling, nested result text, and defensive restored ids', () => {
@@ -438,8 +438,8 @@ describe('mayflyConversation projection', () => {
     const crossed: ConversationProjectionState = {
       ...initialConversationState(),
       entries: [
-        { kind: 'assistant', id: 'assistant-id', seq: 1, turn: 1, step: 0, text: 'a', streaming: true },
-        { kind: 'thinking', id: 'thinking-id', seq: 2, turn: 1, step: 0, text: 't', streaming: true },
+        { kind: 'assistant', id: 'assistant-id', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'a', streaming: true },
+        { kind: 'thinking', id: 'thinking-id', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 't', streaming: true },
       ],
       streamingStep: '1:0',
       streamingThinkingId: 'assistant-id',
@@ -519,7 +519,7 @@ describe('SessionProjectionRegistry integration', () => {
     expect(changes).toEqual([2, 3])
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
-    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 2, seq: 3 })
+    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 3, seq: 3 })
     expect(ctx.sessionProjections.viewCheckpoint(checkpoint)).toMatchObject({
       mayflyConversation: { entries: expect.arrayContaining([expect.objectContaining({ kind: 'assistant', text: 'live' })]) },
     })

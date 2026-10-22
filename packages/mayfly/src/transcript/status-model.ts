@@ -19,32 +19,43 @@ export class StatusFooterComponent implements MayflyComponent {
   invalidate(): void { this.cache = null }
 
   render(width: number): string[] {
-    const visible = this.models.list().filter(model => model.visible)
-    const bands: { left: MayflyStatusEntry[], right: MayflyStatusEntry[] }[] = [{ left: [], right: [] }, { left: [], right: [] }]
+    const visible = this.models.list().filter(model => model.node !== null)
+    const sourceKey = `${width}:${visible.map(entry => `${entry.id}:${String(entry.revision)}`).join(',')}`
+    if (this.cache?.key === sourceKey) return this.cache.lines
+    const bands: { left: MayflyStatusEntry[], center: MayflyStatusEntry[], right: MayflyStatusEntry[] }[] = [
+      { left: [], center: [], right: [] },
+      { left: [], center: [], right: [] },
+    ]
     for (const model of visible) {
-      const band = Math.min(2, Math.max(1, model.row ?? 1)) - 1
-      bands[band]![model.band === 'right' ? 'right' : 'left'].push(model)
+      const band = Math.min(2, Math.max(1, model.definition.row ?? 1)) - 1
+      bands[band]![model.definition.band ?? 'left'].push(model)
     }
     const lines: string[] = []
-    const keys: string[] = []
     for (const band of bands) {
       const leftText = this.renderCluster(band.left, width)
       const leftWidth = this.components.visibleWidth(leftText)
       const rightBudget = band.right.length === 0 ? 0 : Math.max(0, width - leftWidth - (leftText === '' ? 0 : 2))
       const rightText = rightBudget > 0 ? this.renderCluster(band.right, rightBudget) : ''
-      if (leftText === '' && rightText === '') continue
       const rightWidth = this.components.visibleWidth(rightText)
-      const line = leftText === ''
-        ? ' '.repeat(Math.max(0, width - rightWidth)) + rightText
-        : rightText === ''
-          ? leftText + ' '.repeat(Math.max(0, width - leftWidth))
-          : leftText + ' '.repeat(Math.max(0, width - leftWidth - rightWidth)) + rightText
-      lines.push(line)
-      keys.push(`${leftText}\x00${rightText}`)
+      const middleStart = leftWidth + (leftText === '' ? 0 : 2)
+      const middleEnd = Math.max(middleStart, width - rightWidth - (rightText === '' ? 0 : 2))
+      const centerText = this.renderCluster(band.center, Math.max(0, middleEnd - middleStart))
+      const centerWidth = this.components.visibleWidth(centerText)
+      if (leftText === '' && centerText === '' && rightText === '') continue
+      const idealCenter = Math.max(middleStart, Math.floor((width - centerWidth) / 2))
+      const centerStart = Math.min(Math.max(middleStart, idealCenter), Math.max(middleStart, middleEnd - centerWidth))
+      const line = centerText === '' && rightText === ''
+        ? leftText + ' '.repeat(Math.max(0, width - leftWidth))
+        : leftText === '' && centerText === ''
+          ? ' '.repeat(Math.max(0, width - rightWidth)) + rightText
+          : leftText
+            + ' '.repeat(Math.max(0, centerStart - leftWidth))
+            + centerText
+            + ' '.repeat(Math.max(0, width - centerStart - centerWidth - rightWidth))
+            + rightText
+      lines.push(this.components.truncateToWidth(line, width))
     }
-    const key = `${width}:${keys.join('\x01')}`
-    if (this.cache?.key === key) return this.cache.lines
-    this.cache = { key, lines }
+    this.cache = { key: sourceKey, lines }
     return lines
   }
 
@@ -55,7 +66,7 @@ export class StatusFooterComponent implements MayflyComponent {
     for (const entry of entries) {
       const remaining = width - used - (parts.length > 0 ? 2 : 0)
       if (remaining <= 0) break
-      const result = compileMayflyStatusNode(entry.node, {
+      const result = compileMayflyStatusNode(entry.node!, {
         components: this.components,
         colors: this.colors,
         getViewport: this.viewport,
@@ -69,7 +80,7 @@ export class StatusFooterComponent implements MayflyComponent {
       const rendered = component.renderStatus(renderWidth)
       const fullPart = (rendered.rows[0] ?? '').replace(/ +$/u, '')
       const fullWidth = this.components.visibleWidth(fullPart)
-      if (entry.overflow === 'hide' && (rendered.overflowed || fullWidth > remaining)) continue
+      if (entry.definition.overflow === 'hide' && (rendered.overflowed || fullWidth > remaining)) continue
       const part = this.components.truncateToWidth(fullPart, remaining).replace(/ +$/u, '')
       if (part === '') continue
       parts.push(part)

@@ -41,13 +41,14 @@ describe('frontend runtime architecture boundary', () => {
       if (path.startsWith(`${resolve(sourceRoot, 'core')}/`)) continue
       const source = await readFile(path, 'utf8')
       expect(source, path).not.toContain('@earendil-works/pi-tui')
+      expect(source, path).not.toMatch(/\\x1b\[(?:1m|3m|9m|38)/u)
     }
   })
 
   it('exposes a renderer-neutral public surface without renderer objects', () => {
     expect(frontend.freezeModel).toBeTypeOf('function')
     expect(frontend.MayflyLocaleService).toBeTypeOf('function')
-    expect(frontend.NotificationModelService).toBeTypeOf('function')
+    expect(Object.keys(frontend)).not.toContain('NotificationModelService')
     expect(Object.keys(frontend)).not.toContain('Terminal')
   })
 

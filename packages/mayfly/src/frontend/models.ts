@@ -2,17 +2,15 @@
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 
 export type Action = Readonly<{ readonly kind: string; readonly [key: string]: unknown }>
-export interface CommandModel { readonly kind: 'command'; readonly id: string; readonly label: string; readonly description?: string; readonly enabled: boolean; readonly action?: Action }
-export interface NotificationModel { readonly kind: 'notification'; readonly id: string; readonly severity: 'info' | 'success' | 'warning' | 'error'; readonly message: string; readonly durationMs?: number; readonly dedupeKey?: string }
 export interface ToolPresentationModel { readonly kind: 'tool'; readonly id: string; readonly name: string; readonly call?: MayflyUiNode; readonly result?: MayflyUiNode; readonly expanded?: boolean; readonly action?: Action }
 export interface ThemeModel { readonly kind: 'theme'; readonly id: string; readonly name: string; readonly colors: Readonly<Record<string, string>>; readonly dark: boolean }
-export interface EditorModel { readonly kind: 'editor'; readonly id: string; readonly value: string; readonly placeholder?: string; readonly enabled: boolean; readonly set?: Action; readonly submit?: Action; readonly abort?: Action }
 export interface TranscriptImageModel { readonly attachmentId: string; readonly mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; readonly bytes: number; readonly width: number; readonly height: number; readonly name?: string | undefined; readonly originalDimensions?: Readonly<{ readonly width: number; readonly height: number }> | undefined }
-export interface TranscriptUserModel { readonly kind: 'transcript-user'; readonly id: string; readonly seq: number; readonly turn: number; readonly text: string; readonly images: readonly TranscriptImageModel[] }
-export interface TranscriptAssistantModel { readonly kind: 'transcript-assistant'; readonly id: string; readonly seq: number; readonly turn: number; readonly step: number; readonly text: string; readonly streaming: boolean }
-export interface TranscriptThinkingModel { readonly kind: 'transcript-thinking'; readonly id: string; readonly seq: number; readonly turn: number; readonly step: number; readonly text: string; readonly streaming: boolean }
+interface TranscriptEntryBase { readonly id: string; readonly seq: number; readonly updatedSeq: number; readonly turn: number }
+export interface TranscriptUserModel extends TranscriptEntryBase { readonly kind: 'transcript-user'; readonly text: string; readonly images: readonly TranscriptImageModel[] }
+export interface TranscriptAssistantModel extends TranscriptEntryBase { readonly kind: 'transcript-assistant'; readonly step: number; readonly text: string; readonly streaming: boolean }
+export interface TranscriptThinkingModel extends TranscriptEntryBase { readonly kind: 'transcript-thinking'; readonly step: number; readonly text: string; readonly streaming: boolean }
 export interface TranscriptToolResultModel { readonly text: string; readonly fullText?: string; readonly isError: boolean; readonly endedAt: number }
-export interface TranscriptToolModel { readonly kind: 'transcript-tool'; readonly id: string; readonly seq: number; readonly turn: number; readonly step: number; readonly callId: string; readonly name: string; readonly arguments: string; readonly startedAt: number; readonly result?: TranscriptToolResultModel; readonly presentation?: ToolPresentationModel }
+export interface TranscriptToolModel extends TranscriptEntryBase { readonly kind: 'transcript-tool'; readonly step: number; readonly callId: string; readonly name: string; readonly arguments: string; readonly startedAt: number; readonly result?: TranscriptToolResultModel; readonly presentation?: ToolPresentationModel }
 /** One bounded preview line carried for a read window's expanded view. */
 export interface ReadPreviewLine { readonly number: number; readonly text: string }
 /**
@@ -25,6 +23,7 @@ export interface ReadPreviewLine { readonly number: number; readonly text: strin
 export interface ReadCallModel {
   readonly callId: string
   readonly seq: number
+  readonly updatedSeq: number
   readonly turn: number
   readonly step: number
   readonly path?: string
@@ -38,7 +37,7 @@ export interface ReadCallModel {
   readonly previewLines?: readonly ReadPreviewLine[]
 }
 /** A run of consecutive read calls collapsed into one transcript entry. */
-export interface TranscriptReadGroupModel { readonly kind: 'transcript-read-group'; readonly id: string; readonly seq: number; readonly turn: number; readonly step: number; readonly reads: readonly ReadCallModel[] }
+export interface TranscriptReadGroupModel extends TranscriptEntryBase { readonly kind: 'transcript-read-group'; readonly step: number; readonly reads: readonly ReadCallModel[] }
 /** One bounded match preview carried for a search group's expanded view. */
 export interface SearchMatchPreview { readonly lineNumber: number; readonly line: string }
 /** One file's matched content as carried facts: the match count plus bounded previews. */
@@ -53,6 +52,7 @@ export interface SearchFileMatchesModel { readonly path: string; readonly count:
 export interface SearchCallModel {
   readonly callId: string
   readonly seq: number
+  readonly updatedSeq: number
   readonly turn: number
   readonly step: number
   readonly pattern?: string
@@ -66,11 +66,11 @@ export interface SearchCallModel {
   readonly error?: string
 }
 /** A run of consecutive search calls collapsed into one transcript entry. */
-export interface TranscriptSearchGroupModel { readonly kind: 'transcript-search-group'; readonly id: string; readonly seq: number; readonly turn: number; readonly step: number; readonly searches: readonly SearchCallModel[] }
-export interface TranscriptErrorModel { readonly kind: 'transcript-error'; readonly id: string; readonly seq: number; readonly turn: number; readonly message: string; readonly code?: string }
-export interface TranscriptInterruptedModel { readonly kind: 'transcript-interrupted'; readonly id: string; readonly seq: number; readonly turn: number }
+export interface TranscriptSearchGroupModel extends TranscriptEntryBase { readonly kind: 'transcript-search-group'; readonly step: number; readonly searches: readonly SearchCallModel[] }
+export interface TranscriptErrorModel extends TranscriptEntryBase { readonly kind: 'transcript-error'; readonly message: string; readonly code?: string }
+export interface TranscriptInterruptedModel extends TranscriptEntryBase { readonly kind: 'transcript-interrupted' }
 export type TranscriptEntryModel = TranscriptUserModel | TranscriptAssistantModel | TranscriptThinkingModel | TranscriptToolModel | TranscriptReadGroupModel | TranscriptSearchGroupModel | TranscriptErrorModel | TranscriptInterruptedModel
-export interface TranscriptModel { readonly kind: 'transcript'; readonly id: string; readonly entries: readonly (MayflyUiNode | TranscriptEntryModel)[]; readonly streaming?: boolean }
+export interface TranscriptModel { readonly kind: 'transcript'; readonly id: string; readonly generation: number; readonly entries: readonly (MayflyUiNode | TranscriptEntryModel)[]; readonly streaming?: boolean }
 
 export function freezeModel<T>(value: T): Readonly<T> {
   if (value && typeof value === 'object') {

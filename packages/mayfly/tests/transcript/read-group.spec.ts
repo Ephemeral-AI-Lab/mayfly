@@ -205,4 +205,17 @@ describe('ReadGroupComponent', () => {
     ]), IDENTITY, COMPONENTS).render(24)
     for (const row of narrow) expect(COMPONENTS.visibleWidth(row)).toBeLessThanOrEqual(24)
   })
+
+  it('replaces its immutable snapshot and invalidates cached rows', () => {
+    const component = new ReadGroupComponent(group([
+      read({ callId: 'before', path: 'before.ts', state: 'ok' }),
+    ]), IDENTITY, COMPONENTS)
+    const before = component.render(80)
+    component.update(group([
+      read({ callId: 'after', path: 'after.ts', state: 'ok' }),
+    ]))
+    const after = component.render(80)
+    expect(after).not.toBe(before)
+    expect(after.join('\n')).toContain('after.ts')
+  })
 })

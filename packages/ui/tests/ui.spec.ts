@@ -12,24 +12,24 @@ describe('ui builders', () => {
   it('builds and freezes every content leaf without changing its wire shape', () => {
     const leaves = [
       ui.text('hello', { tone: 'accent' }),
-      ui.fields([{ label: 'branch', value: [{ text: 'main', emphasis: 'strong' }] }]),
+      ui.fields([{ label: 'branch', value: [{ text: 'main', styles: ['strong'] }] }]),
       ui.code('const value = 1', { language: 'ts' }),
       ui.diff('before', 'after'),
       ui.sections([{ title: 'Details', body: { kind: 'text', content: 'body' }, collapsed: false }]),
       ui.richText([{ text: 'ready', tone: 'success' }]),
-      ui.document({ format: 'markdown', source: '| A | B |\n| - | - |' }),
-      ui.document({ format: 'mermaid', source: 'graph LR; A --> B' }),
+      ui.markdown('| A | B |\n| - | - |'),
+      ui.diagram('graph LR; A --> B'),
       ui.chart({ chart: 'sparkline', values: [1, null, 3], label: 'Load', tone: 'accent' }),
     ]
     expect(leaves).toEqual([
       { kind: 'text', content: 'hello', tone: 'accent' },
-      { kind: 'fields', rows: [{ label: 'branch', value: [{ text: 'main', emphasis: 'strong' }] }] },
+      { kind: 'fields', rows: [{ label: 'branch', value: [{ text: 'main', styles: ['strong'] }] }] },
       { kind: 'code', code: 'const value = 1', language: 'ts' },
       { kind: 'diff', before: 'before', after: 'after' },
       { kind: 'sections', sections: [{ title: 'Details', body: { kind: 'text', content: 'body' }, collapsed: false }] },
       { kind: 'rich-text', spans: [{ text: 'ready', tone: 'success' }] },
-      { kind: 'document', format: 'markdown', source: '| A | B |\n| - | - |' },
-      { kind: 'document', format: 'mermaid', source: 'graph LR; A --> B' },
+      { kind: 'markdown', source: '| A | B |\n| - | - |' },
+      { kind: 'diagram', diagram: 'mermaid', source: 'graph LR; A --> B' },
       { kind: 'chart', chart: 'sparkline', values: [1, null, 3], label: 'Load', tone: 'accent' },
     ])
     for (const leaf of leaves) expectDeepFrozen(leaf)
@@ -66,7 +66,7 @@ describe('ui builders', () => {
     const action = ui.actions({ id: 'actions', items: [{ id: 'save', label: 'Save', intent: 'primary', busy: true }] })
     const nodes = [
       ui.tabs({ id: 'tabs', activeId: 'one', items: [{ id: 'one', label: 'One', count: 2 }, { id: 'two', label: 'Two', disabled: true }] }),
-      ui.list({ id: 'list', mode: 'multiple', selectedIds: ['one'], items: [{ id: 'one', label: 'One', detail: 'detail', detailSpans: [{ text: '[High]', tone: 'accent', emphasis: 'strong' }], badge: 'new', group: 'g' }], filter: 'o', empty: ui.text('none') }),
+      ui.list({ id: 'list', mode: 'multiple', selectedIds: ['one'], items: [{ id: 'one', label: 'One', detail: 'detail', detailSpans: [{ text: '[High]', tone: 'accent', styles: ['strong'] }], badge: 'new', group: 'g' }], filter: 'o', empty: ui.text('none') }),
       ui.form({ id: 'form', fields: [
         { kind: 'input', id: 'name', label: 'Name', value: 'Mayfly', placeholder: 'name' },
         { kind: 'textarea', id: 'notes', label: 'Notes', value: '', error: 'required' },
@@ -94,7 +94,8 @@ describe('ui builders', () => {
     expect(ui.scroll(ui.text('x'))).toEqual({ kind: 'scroll', child: { kind: 'text', content: 'x' } })
     expect(ui.spacer()).toEqual({ kind: 'spacer' })
     expect(ui.divider()).toEqual({ kind: 'divider' })
-    expect(ui.document({ format: 'markdown', source: 'x' })).toEqual({ kind: 'document', format: 'markdown', source: 'x' })
+    expect(ui.markdown('x')).toEqual({ kind: 'markdown', source: 'x' })
+    expect(ui.diagram('graph TD')).toEqual({ kind: 'diagram', diagram: 'mermaid', source: 'graph TD' })
     expect(ui.chart({ chart: 'sparkline', values: [1] })).toEqual({ kind: 'chart', chart: 'sparkline', values: [1] })
     expect(Object.isFrozen(ui)).toBe(true)
     expect(Object.isFrozen(ui.stack)).toBe(true)

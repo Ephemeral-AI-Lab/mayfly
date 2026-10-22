@@ -221,8 +221,8 @@ try {
       const apiFiber = await ctx.plugin(provider)
       const pluginFiber = await ctx.plugin(module)
       const entry = ctx.mayflyPanes.list()[0]
-      ensure(entry?.id === expectedId && entry.contribution.placement === placement, 'EXAMPLES_PANE_DIRECT', `${name} did not register directly`)
-      ensure(typeof entry.contribution.render()?.kind === 'string', 'EXAMPLES_PANE_NODE', `${name} returned no canonical node`)
+      ensure(entry?.id === expectedId && entry.definition.placement === placement, 'EXAMPLES_PANE_DIRECT', `${name} did not register directly`)
+      ensure(typeof entry.node?.kind === 'string', 'EXAMPLES_PANE_NODE', `${name} returned no canonical node`)
       await pluginFiber.dispose()
       ensure(ctx.mayflyPanes.list().length === 0, 'EXAMPLES_PANE_UNLOAD', `${name} survived Fiber unload`)
       await apiFiber.dispose()

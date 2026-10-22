@@ -42,6 +42,11 @@ flowchart TB
    布局和 visible width。
 6. UI contribution 始终是普通 readonly node；core 私有地窗口化大列表，并在
    响应式分支首次可见时才校验和编译，不向插件暴露 renderer 调度状态。
+7. core 启动时按固定顺序预建 prelude、conversation、local activity、EditorDock
+   与 Footer host。Feature 只领取 named slot lease；临时 notice/echo 进入 local
+   activity region，不改变 terminal root 顺序。
+8. 普通 surface 按 provider revision 缓存；transcript 按
+   `(session generation, entry id, updatedSeq, width, presentation revision)` 缓存。
 
 ## 包边界
 
@@ -62,10 +67,15 @@ flowchart TB
 - Harness 的 Agent、Session、command、tool 与 projection 状态仍由 Harness
   package 持有。
 - app 持有当前 Agent selection；它不重做 Harness command/tool/projection API。
-- `mayfly-ui` provider 持有当前 UI contribution definitions，且每项
+- `mayfly-ui` provider 持有当前 UI contribution snapshots，且每项
   registration 随 consumer Fiber 清理。
 - transcript 与 interaction 持有它们自己的 renderer-neutral/TUI product state。
-- core 持有 terminal、focus、layout、懒 admission cache 与编译后的 renderer
+- interaction 内部把当前 editor/autocomplete、panel host 与 submit transform 分成
+  `mayflyPromptEditor`、`mayflyEditorPanels`、`mayflyPromptSubmissions` 三个 Fiber service。
+- transcript 只有一个 selected-session conversation controller；session generation
+  改变时会销毁旧 entry cache。
+- core 持有 named Screen Shell、terminal、focus、layout、form draft、control/scroll、
+  list cursor/admission cache 与编译后的 renderer
   object；这些状态随 surface generation 失效，不进入公开 node。
 
 Renderer 可以根据当前 Agent 调用 projection snapshot，但不能折叠第二份
@@ -78,7 +88,7 @@ Harness session event truth。
 ```mermaid
 flowchart TB
     BASE["dsh-base"]
-    subgraph GRAPH["flat Cordis sibling graph · 36 inserted rows"]
+    subgraph GRAPH["flat Cordis sibling graph · 34 inserted rows"]
         SUPPORT["dsh support · 6 rows<br/>subagent settings · presets · host runner<br/>workspace · session controller · title"]
         UI["@ephemeral-ai/mayfly-ui provider<br/>four direct UI registries"]
         RUNTIME["@ephemeral-ai/mayfly runtime rows<br/>frontend · conversation · app · core<br/>transcript · status · panes · interaction"]
@@ -95,7 +105,7 @@ flowchart TB
 ```
 <!-- END diagram:mayfly-composition -->
 
-`cordis.patch.yml` 插入 36 个普通 sibling：6 个 dsh 支撑行和 30 个 Mayfly
+`cordis.patch.yml` 插入 34 个普通 sibling：6 个 dsh 支撑行和 28 个 Mayfly
 product 行。YAML 顺序不代表启动顺序；所有顺序要求必须由 `inject` 表达。
 动态 Cordis plugin 与官方 Mayfly 行处在同一 service graph。
 

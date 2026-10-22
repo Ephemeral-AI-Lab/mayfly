@@ -14,7 +14,8 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-settings'
-import { getSharedEditor, mountEditorReplacement } from './editor-instance.ts'
+import { getSharedEditor } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { displayServices } from './display-services.ts'
 import { deriveKeyRef } from './provider-add.ts'
 import { CanonicalFormController } from './form-panel.ts'
@@ -24,7 +25,7 @@ const DEEPSEEK_KEY = 'DEEPSEEK_API_KEY'
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-provider-onboarding'
 /** App-owned current-Agent selection required before the one-shot check. */
-export const inject = ['mayflyCurrentAgent']
+export const inject = ['mayflyCurrentAgent', 'mayflyPromptEditor', 'mayflyEditorPanels']
 
 interface Credentials {
   describe(ref: object): Promise<{ configured: boolean }>

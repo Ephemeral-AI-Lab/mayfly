@@ -6,7 +6,6 @@
  * @module @ephemeral-ai/mayfly/transcript/official-model
  */
 
-import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
@@ -133,6 +132,7 @@ function readCallModel(resolved: ResolvedTool): ReadCallModel {
   return {
     callId: entry.callId,
     seq: entry.seq,
+    updatedSeq: entry.updatedSeq,
     turn: entry.turn,
     step: entry.step,
     ...(path === undefined ? {} : { path }),
@@ -155,6 +155,7 @@ function readGroupModel(run: readonly ResolvedTool[]): TranscriptReadGroupModel 
     kind: 'transcript-read-group',
     id: `read-group:${String(first.entry.id)}`,
     seq: first.entry.seq,
+    updatedSeq: Math.max(...run.map(item => item.entry.updatedSeq)),
     turn: first.entry.turn,
     step: first.entry.step,
     reads: run.map(readCallModel),
@@ -171,6 +172,7 @@ function searchCallModel(resolved: ResolvedTool): SearchCallModel {
   return {
     callId: entry.callId,
     seq: entry.seq,
+    updatedSeq: entry.updatedSeq,
     turn: entry.turn,
     step: entry.step,
     ...(pattern === undefined ? {} : { pattern }),
@@ -197,6 +199,7 @@ function searchGroupModel(run: readonly ResolvedTool[]): TranscriptSearchGroupMo
     kind: 'transcript-search-group',
     id: `search-group:${String(first.entry.id)}`,
     seq: first.entry.seq,
+    updatedSeq: Math.max(...run.map(item => item.entry.updatedSeq)),
     turn: first.entry.turn,
     step: first.entry.step,
     searches: run.map(searchCallModel),
@@ -218,6 +221,7 @@ function toolModel(resolved: ResolvedTool): TranscriptEntryModel {
     kind: 'transcript-tool',
     id: entry.id,
     seq: entry.seq,
+    updatedSeq: entry.updatedSeq,
     turn: entry.turn,
     step: entry.step,
     callId: entry.callId,
@@ -240,7 +244,7 @@ function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): T
   switch (entry.kind) {
     case 'user':
       return {
-        kind: 'transcript-user', id: entry.id, seq: entry.seq, turn: entry.turn, text: entry.text,
+        kind: 'transcript-user', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn, text: entry.text,
         images: entry.images.map(image => ({
           attachmentId: image.attachmentId,
           mediaType: image.mediaType,
@@ -255,21 +259,21 @@ function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): T
       }
     case 'assistant':
       return {
-        kind: 'transcript-assistant', id: entry.id, seq: entry.seq, turn: entry.turn, step: entry.step,
+        kind: 'transcript-assistant', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn, step: entry.step,
         text: entry.text, streaming: entry.streaming,
       }
     case 'thinking':
       return {
-        kind: 'transcript-thinking', id: entry.id, seq: entry.seq, turn: entry.turn, step: entry.step,
+        kind: 'transcript-thinking', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn, step: entry.step,
         text: entry.text, streaming: entry.streaming,
       }
     case 'error':
       return {
-        kind: 'transcript-error', id: entry.id, seq: entry.seq, turn: entry.turn, message: entry.message,
+        kind: 'transcript-error', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn, message: entry.message,
         ...(entry.code === undefined ? {} : { code: entry.code }),
       }
     case 'interrupted':
-      return { kind: 'transcript-interrupted', id: entry.id, seq: entry.seq, turn: entry.turn }
+      return { kind: 'transcript-interrupted', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn }
   }
 }
 
@@ -277,6 +281,7 @@ function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): T
 export function conversationTranscriptModel(
   projection: ConversationProjection,
   tools: ToolPresentationSource,
+  generation = 0,
 ): TranscriptModel {
   const entries: TranscriptEntryModel[] = []
   let run: ResolvedTool[] = []
@@ -311,13 +316,14 @@ export function conversationTranscriptModel(
     runFamily = family
   }
   flushRun()
-  return createTranscriptModel('official-conversation', entries, projection.streaming)
+  return createTranscriptModel('official-conversation', entries, projection.streaming, generation)
 }
 
 /** Projection-to-model source scoped to one frontend tree and provider Fiber. */
 export class OfficialConversationModelSource {
   private model: TranscriptModel = createTranscriptModel('official-conversation', [], false)
   private session: Session | null = null
+  private generation = 0
   private watermark = -1
   private disposed = false
   private readonly offChanged: () => void
@@ -332,7 +338,7 @@ export class OfficialConversationModelSource {
       const parsed = conversationProjectionSchema.safeParse(value)
       if (!parsed.success) return
       this.watermark = seq
-      this.model = conversationTranscriptModel(parsed.data, this.tools)
+      this.model = conversationTranscriptModel(parsed.data, this.tools, this.generation)
       this.publish(this.model)
     })
   }
@@ -345,9 +351,10 @@ export class OfficialConversationModelSource {
   /** Attach to the app's current session, clearing stale content first. */
   attach(session: Session | null): void {
     this.session = session
+    this.generation += 1
     this.watermark = -1
     if (session === null) {
-      this.model = createTranscriptModel('official-conversation', [], false)
+      this.model = createTranscriptModel('official-conversation', [], false, this.generation)
       this.publish(this.model)
       return
     }
@@ -355,8 +362,8 @@ export class OfficialConversationModelSource {
     const parsed = conversationProjectionSchema.safeParse(snapshot.values.mayflyConversation)
     this.watermark = snapshot.asOfSeq
     this.model = parsed.success
-      ? conversationTranscriptModel(parsed.data, this.tools)
-      : createTranscriptModel('official-conversation', [], false)
+      ? conversationTranscriptModel(parsed.data, this.tools, this.generation)
+      : createTranscriptModel('official-conversation', [], false, this.generation)
     this.publish(this.model)
   }
 
@@ -368,36 +375,4 @@ export class OfficialConversationModelSource {
     this.session = null
     this.model = createTranscriptModel('official-conversation', [], false)
   }
-}
-
-/** Stable Cordis plugin name. */
-export const name = 'mayfly-transcript-official'
-
-/** Official projection/model services and current frontend binding. */
-export const inject = ['mayflyConversationReady', 'sessionProjections', 'mayflyCurrentAgent', 'mayflyTranscriptModels', 'tools']
-
-/** Mount the official projection consumer and bind it to session switches. */
-export function apply(ctx: Context): void {
-  const source = new OfficialConversationModelSource(
-    ctx.sessionProjections,
-    { get: name => {
-      const definition = ctx.tools.get(name, ctx.mayflyCurrentAgent.current() ?? undefined)
-      if (definition === undefined) return undefined
-      return {
-        ...(definition.presentCall === undefined ? {} : { presentCall: definition.presentCall }),
-        ...(definition.presentResult === undefined ? {} : { presentResult: definition.presentResult }),
-      }
-    } },
-    () => ctx.mayflyTranscriptModels.refresh('official-conversation'),
-  )
-  ctx.effect(() => () => source.dispose())
-  ctx.effect(() => ctx.mayflyTranscriptModels.register(() => source.snapshot()))
-  let agent = ctx.mayflyCurrentAgent.current()
-  source.attach(agent?.session ?? null)
-  const offAgent = ctx.mayflyCurrentAgent.subscribe((next) => {
-    if (next === agent) return
-    agent = next
-    source.attach(next?.session ?? null)
-  })
-  ctx.effect(() => () => offAgent())
 }

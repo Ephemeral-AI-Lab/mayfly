@@ -25,9 +25,7 @@ export function apply(ctx: Context): void {
     id: 'acme.health',
     priority: 15,
     band: 'right',
-    visible: true,
-    node: { kind: 'text', content: 'healthy', tone: 'success' },
-  })
+  }, { kind: 'text', content: 'healthy', tone: 'success' })
 }
 ```
 

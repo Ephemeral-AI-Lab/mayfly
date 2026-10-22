@@ -1,6 +1,6 @@
 # 状态栏
 
-`ctx.mayflyStatus.register(source)` 接受固定 entry 或返回 entry/null 的同步函数。
+`ctx.mayflyStatus.register(definition, initialNode)` 发布不可变状态 snapshot。
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
@@ -11,28 +11,23 @@ export const inject = ['mayflyStatus']
 
 export function apply(ctx: Context): void {
   let healthy = true
-  const status = ctx.mayflyStatus.register(() => ({
+  const status = ctx.mayflyStatus.register({
     id: 'acme.health',
     priority: 30,
     band: 'right',
     row: 1,
     overflow: 'hide',
-    visible: true,
-    node: ui.text(healthy ? 'healthy' : 'failed', {
-      tone: healthy ? 'success' : 'danger',
-    }),
-  }))
+  }, ui.text('healthy', { tone: 'success' }))
 
   ctx.on('acme/health-changed', value => {
     healthy = value
-    status.refresh()
+    status.set(ui.text(healthy ? 'healthy' : 'failed', {
+      tone: healthy ? 'success' : 'danger',
+    }))
   })
 }
 ```
 
-Status node 只能使用非交互内容。Entry 按 priority 与 id 排序；`visible: false`
-或 source 返回 `null` 时不显示。Source 抛错时 Mayfly 显示该 entry 的失败 fallback，
-不会打断 Agent loop。
-
-`refresh()` 通知 footer 重新读取 source，`dispose()` 提前移除；Fiber unload
-也会自动移除。
+Status node 只能使用非交互内容，并按 priority、id 排序。`set(null)`
+释放 slot；`set(node)` 会复制并冻结 snapshot、递增 revision，且只使 FooterHost
+失效。`dispose()` 提前移除 entry，Fiber unload 也会自动清理。

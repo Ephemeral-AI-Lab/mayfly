@@ -100,6 +100,30 @@ export interface TranscriptToolItem {
   result?: TranscriptToolResult
 }
 
+/**
+ * The live overlay one subagent member renders from — the child-session
+ * tracker's snapshot (kimi-level fields the fold has no source for; D39).
+ */
+export interface AgentMemberLive {
+  /** The refined phase; `running`/`waiting` override a premature ack. */
+  readonly phase: 'running' | 'waiting' | 'completed' | 'failed'
+  /** Wall clock of the epoch's close, while terminal. */
+  readonly endedAt?: number
+  /** Total tokens, once at least one usage record landed. */
+  readonly tokens?: number
+  /** Dispatched tool calls this epoch. */
+  readonly toolCount: number
+  /** The activity second line, non-terminal states only. */
+  readonly activity?: string
+  /** The child's latest `request/header` model. */
+  readonly model?: string
+  /** The child's latest `request/header` reasoning effort. */
+  readonly effort?: string
+}
+
+/** Resolves a member's live overlay; absent on replay and unit tests. */
+export type AgentLiveLookup = (member: TranscriptToolItem) => AgentMemberLive | undefined
+
 /** A turn that failed: the `turn/end` error reason rendered as a row, so a
  * dead endpoint is never silent (the S23 dogfood ruling — a 404 completion
  * route left the transcript blank while the pane spinner idled). */

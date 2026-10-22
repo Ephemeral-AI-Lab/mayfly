@@ -160,7 +160,7 @@ function todoSpans(todo: TodoItem): readonly MayflyInlineSpan[] {
     case 'completed':
       return [{ text: '  ✓ ', tone: 'success' }, { text: todo.content, tone: 'muted' }]
     case 'in_progress':
-      return [{ text: '  ● ', tone: 'accent', emphasis: 'strong' }, { text: todo.content }]
+      return [{ text: '  ● ', tone: 'accent', styles: ['strong'] }, { text: todo.content }]
     case 'pending':
       return [{ text: '  ○ ', tone: 'muted' }, { text: todo.content }]
   }
@@ -211,14 +211,14 @@ function blockedReasonText(goal: GoalProjection): string {
 }
 
 function titleSpans(goal: GoalProjection | null): readonly MayflyInlineSpan[] {
-  const title: MayflyInlineSpan = { text: '  Todo', tone: 'accent', emphasis: 'strong' }
+  const title: MayflyInlineSpan = { text: '  Todo', tone: 'accent', styles: ['strong'] }
   const badge = goalBadge(goal)
   if (badge === null) return [title]
   const paint = GOAL_BADGE[badge.phase]
   return [
     title,
     { text: ' · ', tone: 'muted' },
-    { text: `${paint.marker} ${badge.phase}`, tone: paint.tone, ...(badge.phase === 'active' ? { emphasis: 'strong' as const } : {}) },
+    { text: `${paint.marker} ${badge.phase}`, tone: paint.tone, ...(badge.phase === 'active' ? { styles: ['strong'] as const } : {}) },
     { text: ` · ${badge.goal.roundsStarted}/${badge.goal.goal.maxGoalRounds}`, tone: 'muted' },
   ]
 }
@@ -280,8 +280,8 @@ export function apply(ctx: Context): void {
     placement: 'bottom',
     priority: 30,
     narrow: 'bottom',
-    render: () => state.dialog || state.todos.length === 0 ? null : todoNode(state),
-  })
+  }, null)
+  const publish = (): void => pane.set(state.dialog || state.todos.length === 0 ? null : todoNode(state))
 
   /**
    * Install a new whole-list snapshot. A list whose every entry completed
@@ -298,7 +298,7 @@ export function apply(ctx: Context): void {
     const next = signature(state)
     if (next === rendered) return
     rendered = next
-    pane.refresh()
+    publish()
   }
 
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
@@ -316,7 +316,7 @@ export function apply(ctx: Context): void {
     const next = signature(state)
     if (next === rendered) return
     rendered = next
-    pane.refresh()
+    publish()
   })
   ctx.effect(() => () => offAgent?.())
   ctx.effect(() => () => offFacts?.())
@@ -325,7 +325,7 @@ export function apply(ctx: Context): void {
     if (state.dialog === occupied) return
     state.dialog = occupied
     rendered = signature(state)
-    pane.refresh()
+    publish()
   })
 
   // Effect-bound so unloading this fiber unregisters the action.
@@ -336,7 +336,7 @@ export function apply(ctx: Context): void {
     handler: () => {
       state.expanded = !state.expanded
       rendered = signature(state)
-      pane.refresh()
+      publish()
     },
   }]))
 

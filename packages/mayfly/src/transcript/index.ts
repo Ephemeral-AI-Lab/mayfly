@@ -19,9 +19,9 @@ import type {} from '../app/index.ts'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { UserMessageImages } from './components.ts'
 import { StatusFooterComponent } from './status-model.ts'
-import { MayflyModelToolService } from './tool-model.ts'
-import { TranscriptModelService } from './transcript-model.ts'
+import { TranscriptController } from './transcript-model.ts'
 import { SessionFactsService } from './session-facts.ts'
+import { OfficialConversationModelSource } from './official-model.ts'
 import {
   DEFAULT_EXPAND_TURNS,
   TranscriptPresentationPolicy,
@@ -48,7 +48,6 @@ export {
   USER_PREVIEW_LINES,
   UserMessageComponent,
 } from './components.ts'
-export { AgentGroupComponent, setAgentGroupTimers, type AgentGroupTimers } from './agent-group.ts'
 export { ReadGroupComponent, groupReadsByFile, READ_GROUP_ROW_LIMIT, READ_GROUP_EXPANDED_ROW_LIMIT, type ReadFileGroup } from './read-group.ts'
 export { SearchGroupComponent, SEARCH_GROUP_ROW_LIMIT, SEARCH_GROUP_EXPANDED_ROW_LIMIT } from './search-group.ts'
 export { READ_PREVIEW_LINE_LIMIT, SEARCH_PREVIEW_MATCH_LIMIT, SEARCH_PATH_LIMIT } from './official-model.ts'
@@ -57,9 +56,9 @@ export type { ToolPresentationSource } from './present.ts'
 export { parseXmlEnvelope, summarizeToolText, type EnvelopePair } from './envelope.ts'
 export { ellipsize, parseToolArguments, summarizeToolCall, TOOL_ARG_PAIR_LIMIT, TOOL_ARG_VALUE_MAX_CHARS } from './present.ts'
 export { SessionFactsService } from './session-facts.ts'
-export { createToolPresentationModel, toolCallNode, toolResultNode, toolResultChip, MayflyModelToolService, ToolModelComponent, ToolModelService } from './tool-model.ts'
+export { createToolPresentationModel, toolCallNode, toolResultNode, toolResultChip, ToolModelComponent } from './tool-model.ts'
 export type { ToolPresentationFacts } from './tool-model.ts'
-export { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, TranscriptModelService, TranscriptModelComponent } from './transcript-model.ts'
+export { appendTranscriptNode, createTranscriptModel, TRANSCRIPT_MODEL_WINDOW, TranscriptController, TranscriptModelComponent } from './transcript-model.ts'
 export type { TranscriptModelRenderer } from './transcript-model.ts'
 export {
   BRAILLE_SPINNER_FRAMES,
@@ -91,7 +90,7 @@ export {
 export const name = 'mayfly-transcript'
 
 /** Services the plugin requires before it can mount. */
-export const inject = ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections', 'sessions']
+export const inject = ['mayflyConversationReady', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections', 'sessions', 'tools']
 
 /** The global action toggling tool-output expansion (Ctrl-O). */
 export const ACTION_TOGGLE_COLLAPSE = 'mayfly.transcript.toggle-collapse'
@@ -106,8 +105,8 @@ export const EXPAND_TURNS = DEFAULT_EXPAND_TURNS
 interface CollapseToggle { expanded: boolean }
 /**
  * Mount the transcript components and model footer. The official transcript
- * consumer owns projection binding; this fiber provides only the shared
- * model registry, dock chrome, settings, and global Ctrl-O expansion action.
+ * consumer owns projection binding; this fiber provides the single
+ * conversation controller, dock chrome, settings, and global Ctrl-O expansion action.
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
@@ -141,12 +140,7 @@ export function apply(ctx: Context): void {
 
   const sessionFacts = new SessionFactsService(ctx)
   ctx.effect(() => () => sessionFacts.dispose())
-  const toolModels = new MayflyModelToolService(ctx, undefined, {
-    components: ctx.mayflyComponents,
-    colors,
-    viewportRows: () => screen.rows,
-  })
-  const transcriptModels = new TranscriptModelService(ctx, undefined, {
+  const transcript = new TranscriptController(ctx, undefined, {
     renderer: {
       colors,
       components: ctx.mayflyComponents,
@@ -156,8 +150,29 @@ export function apply(ctx: Context): void {
       t,
     },
   })
-  ctx.effect(() => () => toolModels.dispose())
-  ctx.effect(() => () => transcriptModels.dispose())
+  ctx.effect(() => () => transcript.dispose())
+  const officialSource = new OfficialConversationModelSource(
+    ctx.sessionProjections,
+    { get: toolName => {
+      const definition = ctx.tools.get(toolName, ctx.mayflyCurrentAgent.current()!)
+      if (definition === undefined) return undefined
+      return {
+        ...(definition.presentCall === undefined ? {} : { presentCall: definition.presentCall }),
+        ...(definition.presentResult === undefined ? {} : { presentResult: definition.presentResult }),
+      }
+    } },
+    () => transcript.refresh(),
+  )
+  ctx.effect(() => () => officialSource.dispose())
+  transcript.setSource(() => officialSource.snapshot())
+  let selectedAgent = ctx.mayflyCurrentAgent.current()
+  officialSource.attach(selectedAgent?.session ?? null)
+  const offAgent = ctx.mayflyCurrentAgent.subscribe((next) => {
+    if (next === selectedAgent) return
+    selectedAgent = next
+    officialSource.attach(next?.session ?? null)
+  })
+  ctx.effect(() => () => offAgent())
   const footer = new StatusFooterComponent(
     ctx.mayflyStatus,
     ctx.mayflyComponents,
@@ -169,12 +184,14 @@ export function apply(ctx: Context): void {
     screen.requestRender()
   })
   ctx.effect(() => offStatus)
-  toolModels.attach(screen)
-  transcriptModels.attach(screen)
+  transcript.attach(screen)
   // The footer pins to the dock's lowest slot (S12): the two-row status
   // stays on the terminal's last rows beneath the editor, the kimi layout
   // dialog panels pull up over.
-  ctx.effect(() => screen.addBottomChild(new GutterComponent(footer), 'bottom'))
+  ctx.effect(() => {
+    const slot = screen.mountDockSlot('status.footer', new GutterComponent(footer), 'bottom')
+    return () => slot.dispose()
+  })
 
   let offKeymap: () => void = () => {}
   const registerKeymap = (): void => {
@@ -185,7 +202,7 @@ export function apply(ctx: Context): void {
       description: t('Toggle detail expansion (tool output, long messages)'),
       handler: () => {
         toggle.expanded = !toggle.expanded
-        transcriptModels.setExpanded(toggle.expanded)
+        transcript.setExpanded(toggle.expanded)
         screen.requestRender(true)
       },
     }])
@@ -202,14 +219,14 @@ export function apply(ctx: Context): void {
   // wrongly typed values keep the current setting; a host without settings
   // keeps every shipped default.
   const applyFoldSettings = (value: unknown): void => {
-    if (presentation.apply(value)) transcriptModels.refreshPresentationPolicy()
+    if (presentation.apply(value)) transcript.refreshPresentationPolicy()
   }
   ctx.on('settings/updated', (ns, next) => {
     if (ns === MAYFLY_NS) applyFoldSettings(next)
   })
 
   const offLocale = observeTranscriptLocale(ctx, () => {
-    transcriptModels.refreshLocale()
+    transcript.refreshLocale()
     registerKeymap()
   })
   ctx.effect(() => offLocale)

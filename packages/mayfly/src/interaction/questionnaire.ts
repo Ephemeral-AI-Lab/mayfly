@@ -182,7 +182,7 @@ export class Questionnaire implements MayflyFocusable {
           label: `${this.states[index]?.answer === undefined ? index === this.tab ? '●' : '○' : '✓'} ${entry.header ?? `Q${String(index + 1)}`}`,
         })),
       },
-      { kind: 'rich-text', spans: [{ text: question.question, tone: 'accent', emphasis: 'strong' }] },
+      { kind: 'rich-text', spans: [{ text: question.question, tone: 'accent', styles: ['strong'] }] },
       ...(question.detail === undefined ? [] : [{ kind: 'text', content: question.detail, tone: 'muted' } as const]),
     ]
     if (this.editing || this.isOptionless(question)) {

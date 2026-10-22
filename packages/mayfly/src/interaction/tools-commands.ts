@@ -23,7 +23,7 @@ import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '../app/index.ts'
 import { displayServices } from './display-services.ts'
-import { mountEditorReplacement } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { InfoPanel, type InfoSection } from './info-panel.ts'
 import { CanonicalSelectController, type SelectRow } from './select-list.ts'
 

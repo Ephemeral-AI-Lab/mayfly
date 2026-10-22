@@ -6,9 +6,8 @@
  * @module @ephemeral-ai/mayfly/transcript/child-agent-model
  */
 
-import type { AgentMemberLive } from './agent-group.ts'
 import type { ChildSessionFacts, SessionFactsService } from './session-facts.ts'
-import type { TranscriptToolItem } from './types.ts'
+import type { AgentMemberLive, TranscriptToolItem } from './types.ts'
 
 /** The child session id carried by a spawn-class acknowledgement. */
 export function childIdOfResult(item: TranscriptToolItem): string | undefined {

@@ -1,5 +1,5 @@
 /**
- * Safe renderer adapter for the public, renderer-neutral `MayflyView` model.
+ * Safe renderer adapter for basic public, renderer-neutral content nodes.
  * Third-party text is stripped of terminal controls before Mayfly applies its
  * own theme and width helpers, so a contribution cannot write raw ANSI or
  * escape its assigned rows.
@@ -7,10 +7,12 @@
  * @module @ephemeral-ai/mayfly/core/plugin-view
  */
 
-import type { MayflyInlineSpan, MayflyTone, MayflyView } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyInlineSpan, MayflySectionContentNode, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import { alignDiffLines, paintDiffRows } from './diff-align.ts'
 import { clampRowsToWidth } from './chrome.ts'
+import { paintSpan, paintTone, strong } from './paint.ts'
 import type { MayflyComponents, MayflySemanticColors } from './types.ts'
+import { safeWidth } from './width.ts'
 
 /** Maximum source characters accepted from one dynamic view render. */
 export const PLUGIN_VIEW_MAX_CHARS = 20_000
@@ -28,14 +30,7 @@ export function sanitizePluginText(text: string): string {
 
 /** Resolve one semantic public tone into Mayfly's current palette. */
 export function paintPluginTone(colors: MayflySemanticColors, tone: MayflyTone | undefined): (text: string) => string {
-  switch (tone) {
-    case 'muted': return colors.muted
-    case 'accent': return colors.primary
-    case 'success': return colors.success
-    case 'warning': return colors.warning
-    case 'danger': return colors.error
-    default: return colors.text
-  }
+  return text => paintTone(tone, text, colors)
 }
 
 function checkedText(value: unknown, label: string): string {
@@ -44,20 +39,17 @@ function checkedText(value: unknown, label: string): string {
   return sanitizePluginText(value)
 }
 
-function strong(text: string): string { return `\x1b[1m${text}\x1b[22m` }
-
 function spanText(span: MayflyInlineSpan, colors: MayflySemanticColors): string {
   if (typeof span !== 'object' || span === null) throw new TypeError('field span must be an object')
-  const painted = paintPluginTone(colors, span.tone)(checkedText(span.text, 'field span text'))
-  return span.emphasis === 'strong' ? strong(painted) : painted
+  return paintSpan({ ...span, text: checkedText(span.text, 'field span text') }, colors)
 }
 
 function wrapped(text: string, width: number, components: MayflyComponents): string[] {
-  return components.wrapText(text, Math.max(1, width))
+  return components.wrapText(text, safeWidth(width))
 }
 
 function renderView(
-  view: MayflyView,
+  view: MayflySectionContentNode,
   width: number,
   components: MayflyComponents,
   colors: MayflySemanticColors,
@@ -103,24 +95,24 @@ function renderView(
         return [...title, ...renderView(section.body, width, components, colors, depth + 1)]
       })
     }
-    default: throw new TypeError(`unknown MayflyView kind "${String((view as { kind?: unknown }).kind)}"`)
+    default: throw new TypeError(`unknown basic content kind "${String((view as { kind?: unknown }).kind)}"`)
   }
 }
 
 /** Core-internal renderer for an already validated canonical view. */
 export function renderCanonicalView(
-  view: MayflyView,
+  view: MayflySectionContentNode,
   width: number,
   components: MayflyComponents,
   colors: MayflySemanticColors,
   maxRows: number,
 ): string[] {
-  const rows = renderView(view, Math.max(1, width), components, colors, 0).slice(0, Math.max(0, maxRows))
-  return clampRowsToWidth(rows, Math.max(1, width), (text, target) => components.truncateToWidth(text, target))
+  const rows = renderView(view, safeWidth(width), components, colors, 0).slice(0, Math.max(0, maxRows))
+  return clampRowsToWidth(rows, safeWidth(width), (text, target) => components.truncateToWidth(text, target))
 }
 
 /** Produce a safe one-line notification/status summary from any public view. */
-export function summarizePluginView(view: MayflyView): string {
+export function summarizePluginView(view: MayflySectionContentNode): string {
   if (typeof view !== 'object' || view === null) throw new TypeError('view must be an object')
   switch (view.kind) {
     case 'text': return checkedText(view.content, 'text content').replace(/\s+/gu, ' ').trim()
@@ -128,6 +120,6 @@ export function summarizePluginView(view: MayflyView): string {
     case 'code': return checkedText(view.code, 'code content').replace(/\s+/gu, ' ').trim()
     case 'diff': return 'diff contribution'
     case 'sections': return view.sections.map(section => section.title === undefined ? summarizePluginView(section.body) : checkedText(section.title, 'section title')).join(' · ')
-    default: throw new TypeError(`unknown MayflyView kind "${String((view as { kind?: unknown }).kind)}"`)
+    default: throw new TypeError(`unknown basic content kind "${String((view as { kind?: unknown }).kind)}"`)
   }
 }

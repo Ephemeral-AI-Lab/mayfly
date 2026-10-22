@@ -19,12 +19,11 @@ export function apply(ctx: Context): void {
     placement: 'right',
     size: { min: 20, preferred: 30, max: 40 },
     narrow: 'bottom',
-    render: () => ui.stack.column([
+  }, ui.stack.column([
       summaryMetric.render({ label: 'Context', value: '42%', detail: '12k / 28k tokens' }),
       ui.fields([
         { label: 'Mode', value: [{ text: 'normal', tone: 'success' }] },
         { label: 'Model', value: [{ text: 'deepseek-chat', tone: 'accent' }] },
       ]),
-    ], { gap: 1 }),
-  })
+    ], { gap: 1 }))
 }

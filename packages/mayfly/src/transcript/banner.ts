@@ -35,7 +35,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-session-projection'
 // Empty type import carries the app-owned session reader service.
 import type {} from '../app/index.ts'
-import { LOGO_ART, LOGO_GRADIENT, LOGO_ROWS } from './banner-art.ts'
+import { LOGO_ART, LOGO_ROWS } from './banner-art.ts'
 import { MAYFLY_VERSION } from './banner-content.ts'
 import type { MayflyTranslate } from '../frontend/index.ts'
 import {
@@ -120,10 +120,7 @@ export interface BannerContent {
 }
 
 /** The theme tokens the banner paints with, keyed by segment role. */
-type BannerStyle = 'logo' | 'strong' | 'accent' | 'muted' | 'text' | 'highlight'
-
-/** The model row's brand-light-mayfly highlight (theme-independent, like the logo). */
-const MODEL_HIGHLIGHT = '#8ca8ff'
+type BannerStyle = 'raw' | 'logo' | 'strong' | 'accent' | 'muted' | 'text' | 'highlight'
 
 /** One styled run of a rendered banner line. */
 interface BannerSegment {
@@ -171,25 +168,16 @@ export function composeBannerLines(
   const { valueWidth } = layout
   const t = deps.t ?? ((key: string): string => key)
   const paint: Record<BannerStyle, (text: string) => string> = {
+    raw: text => text,
     logo: deps.colors.primary,
     strong: deps.colors.primary,
     accent: deps.colors.accent,
     muted: deps.colors.muted,
     text: deps.colors.text,
-    highlight: text => gradientWrap(MODEL_HIGHLIGHT, text),
+    highlight: deps.colors.modelHighlight ?? deps.colors.accent,
   }
   const line = (segments: readonly BannerSegment[]): string =>
     segments.map(segment => paint[segment.style](segment.text)).join('')
-
-  // The logo's brand color gradient, one hex per row, applied directly (the
-  // mark is brand identity — the same sweep in every theme). The gap after
-  // the whale stays the frame's neutral tint.
-  const gradientWrap = (hex: string, text: string): string => {
-    const r = parseInt(hex.slice(1, 3), 16)
-    const g = parseInt(hex.slice(3, 5), 16)
-    const b = parseInt(hex.slice(5, 7), 16)
-    return `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m`
-  }
 
   // The right-hand status column; the welcome and help lines lead, then the
   // three info rows. A blank spacer row separates the two groups.
@@ -219,7 +207,7 @@ export function composeBannerLines(
     const statusIndex = i - statusTopPad
     const statusLine = status[statusIndex]
     const segments: BannerSegment[] = [
-      { text: gradientWrap(LOGO_GRADIENT[i]!, logo), style: 'logo' },
+      { text: (deps.colors.logoGradient[i] ?? deps.colors.primary)(logo), style: 'raw' },
       { text: ' '.repeat(LOGO_TEXT_GAP), style: 'logo' },
     ]
     if (statusLine !== undefined) {
@@ -322,7 +310,10 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.effect(() => () => offAgent())
   ctx.effect(() => () => offProjection())
   // Effect-bound so unloading this fiber unmounts the banner.
-  ctx.effect(() => ctx.mayflyScreen.addChild(new GutterComponent(banner)))
+  ctx.effect(() => {
+    const slot = ctx.mayflyScreen.mountContentSlot('transcript.prelude', new GutterComponent(banner))
+    return () => slot.dispose()
+  })
   const offLocale = observeTranscriptLocale(ctx, () => {
     banner.invalidate()
     ctx.mayflyScreen.requestRender(true)

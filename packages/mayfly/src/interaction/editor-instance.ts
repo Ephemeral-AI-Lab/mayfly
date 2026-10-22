@@ -7,11 +7,10 @@
  */
 
 import { Service, type Context } from '@deepseek-ai/cordis'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { MayflyAutocompleteProvider, MayflyEditor, MayflyFocusable } from '../core/index.ts'
+import type { MayflyAutocompleteProvider, MayflyEditor } from '../core/index.ts'
 
 declare module '@deepseek-ai/cordis' {
-  interface Context { mayflyEditorHost: EditorHostService }
+  interface Context { mayflyPromptEditor: PromptEditorController }
   interface Events { 'mayfly/input-editor-changed'(): void }
 }
 
@@ -23,33 +22,18 @@ export interface SharedEditor {
   readonly notice?: (text: string) => void
 }
 
-/** Editor-slot replacement machinery installed by `mayfly-input`. */
-export interface EditorSlotSwap {
-  readonly mount: (component: MayflyFocusable) => () => void
-}
-
-/** Reversible content produced by one submit transformer. */
-export interface SubmitTransformation {
-  readonly blocks: ContentBlock[]
-  readonly rollback?: () => void
-}
-
-export type SubmitTransformer = (text: string) => ContentBlock[] | SubmitTransformation
-
 /** Presence id of the optional editor-plus enhancement. */
 export const ENHANCEMENT_EDITOR_PLUS = 'mayfly-editor-plus'
 
 /** Per-frontend-tree editor host. */
-export class EditorHostService extends Service {
+export class PromptEditorController extends Service {
   private shared: SharedEditor | undefined
-  private slotSwap: EditorSlotSwap | undefined
   private readonly enhancements = new Set<string>()
-  private readonly submitTransformers: SubmitTransformer[] = []
   private readonly editorStateListeners = new Set<() => void>()
   private readonly autocompleteSources = new Map<string, MayflyAutocompleteProvider>()
 
   constructor(ctx: Context) {
-    super(ctx, 'mayflyEditorHost')
+    super(ctx, 'mayflyPromptEditor')
   }
 
   get current(): SharedEditor | undefined { return this.shared }
@@ -57,12 +41,6 @@ export class EditorHostService extends Service {
   setCurrent(value: SharedEditor | undefined): void {
     this.shared = value
     this.emitEditorState()
-  }
-
-  setSlotSwap(value: EditorSlotSwap | undefined): void { this.slotSwap = value }
-
-  mountReplacement(component: MayflyFocusable): () => void {
-    return this.slotSwap?.mount(component) ?? (() => {})
   }
 
   markEnhancement(id: string): () => void {
@@ -102,51 +80,9 @@ export class EditorHostService extends Service {
     return Object.freeze([...this.autocompleteSources.values()])
   }
 
-  registerSubmitTransformer(transformer: SubmitTransformer): () => void {
-    this.submitTransformers.push(transformer)
-    let disposed = false
-    return () => {
-      if (disposed) return
-      disposed = true
-      const index = this.submitTransformers.indexOf(transformer)
-      if (index >= 0) this.submitTransformers.splice(index, 1)
-    }
-  }
-
-  applySubmitTransformers(text: string): ContentBlock[] {
-    return this.applyReversibleSubmitTransformers(text).blocks
-  }
-
-  applyReversibleSubmitTransformers(text: string): SubmitTransformation {
-    if (this.submitTransformers.length === 0) return { blocks: [{ type: 'text', text }] }
-    const blocks: ContentBlock[] = []
-    const rollbacks: Array<() => void> = []
-    for (const transformer of this.submitTransformers) {
-      const result = transformer(text)
-      if (Array.isArray(result)) blocks.push(...result)
-      else {
-        blocks.push(...result.blocks)
-        if (result.rollback !== undefined) rollbacks.push(result.rollback)
-      }
-    }
-    let rolledBack = false
-    return {
-      blocks: blocks.length === 0 ? [{ type: 'text', text }] : blocks,
-      ...(rollbacks.length === 0 ? {} : {
-        rollback: () => {
-          if (rolledBack) return
-          rolledBack = true
-          for (const rollback of rollbacks.reverse()) rollback()
-        },
-      }),
-    }
-  }
-
   dispose(): void {
     this.shared = undefined
-    this.slotSwap = undefined
     this.enhancements.clear()
-    this.submitTransformers.splice(0)
     this.autocompleteSources.clear()
     this.editorStateListeners.clear()
   }
@@ -156,14 +92,9 @@ export class EditorHostService extends Service {
   }
 }
 
-export const setSharedEditor = (ctx: Context, value: SharedEditor): void => { ctx.mayflyEditorHost.setCurrent(value) }
-export const clearSharedEditor = (ctx: Context): void => { ctx.mayflyEditorHost.setCurrent(undefined) }
-export const getSharedEditor = (ctx: Context): SharedEditor | undefined => ctx.mayflyEditorHost.current
-export const setEditorSlotSwap = (ctx: Context, value: EditorSlotSwap | undefined): void => { ctx.mayflyEditorHost.setSlotSwap(value) }
-export const mountEditorReplacement = (ctx: Context, component: MayflyFocusable): (() => void) => ctx.mayflyEditorHost.mountReplacement(component)
-export const markEditorEnhancement = (ctx: Context, id: string): (() => void) => ctx.mayflyEditorHost.markEnhancement(id)
-export const hasEditorEnhancement = (ctx: Context, id: string): boolean => ctx.mayflyEditorHost.hasEnhancement(id)
-export const registerSubmitTransformer = (ctx: Context, transformer: SubmitTransformer): (() => void) => ctx.mayflyEditorHost.registerSubmitTransformer(transformer)
-export const applySubmitTransformers = (ctx: Context, text: string): ContentBlock[] => ctx.mayflyEditorHost.applySubmitTransformers(text)
-export const applyReversibleSubmitTransformers = (ctx: Context, text: string): SubmitTransformation => ctx.mayflyEditorHost.applyReversibleSubmitTransformers(text)
-export const registerEditorAutocompleteSource = (ctx: Context, id: string, provider: MayflyAutocompleteProvider): (() => void) => ctx.mayflyEditorHost.registerAutocompleteSource(id, provider)
+export const setSharedEditor = (ctx: Context, value: SharedEditor): void => { ctx.mayflyPromptEditor.setCurrent(value) }
+export const clearSharedEditor = (ctx: Context): void => { ctx.mayflyPromptEditor.setCurrent(undefined) }
+export const getSharedEditor = (ctx: Context): SharedEditor | undefined => ctx.get('mayflyPromptEditor')?.current
+export const markEditorEnhancement = (ctx: Context, id: string): (() => void) => ctx.mayflyPromptEditor.markEnhancement(id)
+export const hasEditorEnhancement = (ctx: Context, id: string): boolean => ctx.mayflyPromptEditor.hasEnhancement(id)
+export const registerEditorAutocompleteSource = (ctx: Context, id: string, provider: MayflyAutocompleteProvider): (() => void) => ctx.mayflyPromptEditor.registerAutocompleteSource(id, provider)

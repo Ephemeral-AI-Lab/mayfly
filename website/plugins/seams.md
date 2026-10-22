@@ -11,10 +11,10 @@ command。方法签名与返回值不经过 Mayfly 改写。
 
 | Service | 写入 | 消费方 |
 | --- | --- | --- |
-| `mayflyPanes` | `register(MayflyPaneContribution)` | core surface renderer |
-| `mayflyStatus` | `register(MayflyStatusSource)` | transcript footer |
-| `mayflyOverlays` | `open(MayflyOverlayRequest)` | core overlay renderer |
-| `mayflyEditorExtensions` | `register(MayflyEditorExtensionContribution)` | interaction editor |
+| `mayflyPanes` | `register(MayflyPaneDefinition, MayflyUiNode)` | core surface renderer |
+| `mayflyStatus` | `register(MayflyStatusDefinition, MayflyStatusNode)` | transcript footer |
+| `mayflyOverlays` | `open(MayflyOverlayDefinition, MayflyUiNode)` | core overlay renderer |
+| `mayflyEditorExtensions` | `register(MayflyEditorExtensionDefinition, MayflyEditorDecoration)` | interaction editor |
 
 `@ephemeral-ai/mayfly-ui` 提供 Context declaration merge 和 contract；
 `@ephemeral-ai/mayfly-ui` 提供纯 builder。

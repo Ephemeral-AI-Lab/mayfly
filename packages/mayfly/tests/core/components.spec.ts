@@ -145,6 +145,15 @@ describe('MayflyComponentsService registration', () => {
     expect(ctx.get('mayflyComponents')).toBeUndefined()
     stop()
   })
+
+  it('owns the renderer SGR wrappers used by semantic nodes', () => {
+    const { tui, stop } = bootTui()
+    const components = createService(tui)
+    expect(components.strong('strong')).toBe('\x1b[1mstrong\x1b[22m')
+    expect(components.italic('italic')).toBe('\x1b[3mitalic\x1b[23m')
+    expect(components.strike('strike')).toBe('\x1b[9mstrike\x1b[29m')
+    stop()
+  })
 })
 
 describe('createEditor', () => {

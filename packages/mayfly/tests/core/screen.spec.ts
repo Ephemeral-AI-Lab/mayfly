@@ -3,11 +3,11 @@
  * delegation of every `MayflyScreen` method to the terminal runtime.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { MayflyScreenService } from '../../src/core/screen.ts'
 import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
-import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle } from '../../src/core/types.ts'
+import type { MayflyComponent, MayflyDockOptions, MayflyScreenOverlayHandle } from '../../src/core/types.ts'
 
 interface Recorded {
   added: MayflyComponent[]
@@ -24,7 +24,7 @@ interface Recorded {
 }
 
 function recordingRuntime(): MayflyTerminalRuntime & Recorded {
-  const handle: MayflyOverlayHandle = {
+  const handle: MayflyScreenOverlayHandle = {
     hide: () => {},
     setHidden: () => {},
     isHidden: () => false,
@@ -103,23 +103,55 @@ describe('MayflyScreenService', () => {
 
     expect(screen.columns).toBe(120)
     expect(screen.rows).toBe(24)
+    expect(runtime.added).toHaveLength(3)
+    expect(runtime.bottomAdded).toHaveLength(2)
+    expect(runtime.added.flatMap(child => child.render(20))).toEqual([])
 
-    const dispose = screen.addChild(component)
-    expect(runtime.added).toEqual([component])
-    screen.removeChild(component)
-    expect(runtime.removed).toEqual([component])
-    dispose()
-    expect(runtime.removed).toEqual([component, component])
+    const content = screen.mountContentSlot('transcript.prelude', component)
+    expect(content.disposed).toBe(false)
+    expect(content.component.focused).toBe(false)
+    expect(runtime.added[0]).toBe(content.component)
+    expect(content.component.render(20)).toEqual(['row'])
+    expect(() => screen.mountContentSlot('transcript.prelude', component)).toThrow('already mounted')
+    content.replace(component)
+    content.replace(null)
+    expect(content.component.render(20)).toEqual([])
+    content.focus()
+    content.dispose()
+    content.dispose()
+    content.replace(component)
+    content.focus()
+    content.component.invalidate()
+    content.component.handleInput?.('ignored')
+    expect(content.disposed).toBe(true)
+    expect(content.component.focused).toBe(false)
+    expect(content.component.render(20)).toEqual([])
+    expect(runtime.removed).toEqual([])
+    const remounted = screen.mountContentSlot('transcript.prelude', component)
+    expect(remounted.component).toBe(content.component)
+    remounted.dispose()
 
-    const bottomDispose = screen.addBottomChild(component)
-    expect(runtime.bottomAdded).toEqual([component])
-    bottomDispose()
-    expect(runtime.removed).toEqual([component, component, component])
+    const local = screen.mountContentSlot('local.test', component)
+    expect(() => screen.mountContentSlot('local.test', component)).toThrow('already mounted')
+    expect(runtime.added).toHaveLength(3)
+    expect(runtime.added[2]!.render(20)).toEqual(['row'])
+    runtime.added[2]!.invalidate()
+    local.dispose()
+    expect(runtime.added[2]!.render(20)).toEqual([])
+    local.component.focused = true
+    expect(local.component.focused).toBe(false)
+    local.component.invalidate()
+    local.component.handleInput?.('ignored')
 
-    const dockDispose = screen.addDockChild?.(component, { priority: 40 })
-    expect(runtime.dockAdded).toEqual([{ component, options: { priority: 40 } }])
-    dockDispose?.()
-    expect(runtime.removed).toEqual([component, component, component, component])
+    const dock = screen.mountDockSlot('editor.prompt', component)
+    expect(runtime.bottomAdded[0]).toBe(dock.component)
+    dock.dispose()
+    const footer = screen.mountDockSlot('status.footer', component, 'bottom')
+    expect(runtime.bottomAdded[1]).toBe(footer.component)
+    footer.dispose()
+    expect(() => screen.mountDockSlot('dock', component)).toThrow('unknown dock slot')
+    expect(() => screen.mountDockSlot('editor.prompt', component, 'bottom')).toThrow('fixed position')
+    expect(runtime.removed).toEqual([])
 
     screen.setFocus(component)
     screen.setFocus(null)
@@ -131,7 +163,7 @@ describe('MayflyScreenService', () => {
 
     screen.requestRender()
     screen.requestRender(true)
-    expect(runtime.renders).toEqual([undefined, true])
+    expect(runtime.renders.slice(-2)).toEqual([undefined, true])
 
     expect(screen.scrollContent('up', 3)).toBe(true)
     expect(runtime.scrolls).toEqual([{ direction: 'up', amount: 3 }])
@@ -143,5 +175,49 @@ describe('MayflyScreenService', () => {
 
     screen.setTitle('fix the login bug')
     expect(runtime.titles).toEqual(['fix the login bug'])
+  })
+
+  it('keeps focus on the stable slot while replacing focusable targets', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const first = {
+      focused: false,
+      render: vi.fn(() => ['first']),
+      invalidate: vi.fn(),
+      handleInput: vi.fn(),
+    }
+    const second = {
+      focused: false,
+      render: vi.fn(() => ['second']),
+      invalidate: vi.fn(),
+      handleInput: vi.fn(),
+    }
+    const slot = ctx.mayflyScreen.mountContentSlot('transcript.conversation', first)
+
+    slot.focus()
+    expect(runtime.focused).toEqual([slot.component])
+    slot.component.focused = true
+    expect(slot.component.focused).toBe(true)
+    expect(first.focused).toBe(true)
+    slot.component.invalidate()
+    slot.component.handleInput?.('a')
+    expect(first.invalidate).toHaveBeenCalledOnce()
+    expect(first.handleInput).toHaveBeenCalledWith('a')
+
+    slot.replace(second)
+    expect(first.focused).toBe(false)
+    expect(second.focused).toBe(true)
+    expect(slot.component.render(20)).toEqual(['second'])
+    slot.component.focused = false
+    expect(second.focused).toBe(false)
+    slot.component.focused = true
+    slot.dispose()
+    expect(runtime.focused.at(-1)).toBeNull()
+    expect(second.focused).toBe(false)
+
+    slot.component.focused = true
+    expect(slot.component.focused).toBe(false)
+    expect(slot.component.render(20)).toEqual([])
   })
 })

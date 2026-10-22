@@ -7,6 +7,13 @@ has no Cordis runtime import; `./provider` is the sole Cordis entry and mounts
 `mayflyEditorExtensions`. It must not depend on Harness, the Mayfly runtime,
 pi-tui, terminal objects, or mutable product state.
 
+`contracts.ts` also owns the `MAYFLY_*` runtime `as const` enumeration arrays
+(tones, text styles, stack direction/gap/align, surface chrome/padding, and
+the remaining wire enums); the union types derive from them. Core's validator
+consumes these arrays instead of rewriting literals — adding an enum value
+means extending the array here, never a second list elsewhere. The overlay
+anchor/size vocabulary is canonical here too; core only re-exports it.
+
 Builders must remain side-effect free and preserve the handwritten wire shape.
 They recursively clone caller-owned wire data before freezing the result and
 reject cycles. Stacks normalize plain nodes to `{ node }`; flex sizing and
@@ -15,9 +22,9 @@ List `detailSpans`, like all inline semantic content, pass through unchanged
 and are cloned/frozen with their list item. Do not add hidden layout metadata
 or renderer callbacks to nodes.
 
-Document and chart builders preserve only the public wire data. They must not
+Markdown, diagram, and chart builders preserve only the public wire data. They must not
 import, configure, or expose Mermaid/chart renderer libraries, and they remain
-outside the narrower status, editor-extension, and `MayflyView` unions.
+outside the narrower status, editor-extension, and section-content unions.
 
 `defineMayflyComponent` is a package-level composition factory. It validates
 the component id and render function, then freezes render output.
@@ -26,5 +33,5 @@ or create a runtime registry. Core owns schema admission, quotas, and compile.
 
 Keep runtime source fully covered. Type fixtures must prove component prop
 inference, the explicit child boundary, and rejection of custom node kinds.
-Provider tests must prove registration ownership, replay, refresh, duplicate
+Provider tests must prove registration ownership, delta replay, snapshot set, duplicate
 id rejection, and Fiber cleanup.

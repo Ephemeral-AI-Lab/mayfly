@@ -71,8 +71,7 @@ describe('mayfly-pane-agents plugin', () => {
     const { ctx, screen } = await boot()
     expect(screen.paneLines(80)).toEqual([])
     const entry = ctx.mayflyPanes.list().find(candidate => candidate.id === 'mayfly.pane.agents')
-    expect(entry?.hidden).toBe(true)
-    expect(entry?.contribution.render()).toBeNull()
+    expect(entry?.node).toBeNull()
   })
 
   it('covers fallback labels and bounded parent-call errors in the tree', async () => {

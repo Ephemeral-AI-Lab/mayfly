@@ -202,7 +202,10 @@ function mountNotice(ctx: Context, target: string): void {
       command: `dsh plugin --profile ${profile} add @ephemeral-ai/mayfly@${target}`,
     }),
   )
-  ctx.effect(() => screen.addChild(notice))
+  ctx.effect(() => {
+    const slot = screen.mountContentSlot('local.update-offer', notice)
+    return () => slot.dispose()
+  })
   screen.requestRender()
   getSharedEditor(ctx)?.notice?.(`Mayfly v${target} available — /update to upgrade`)
 }
@@ -243,7 +246,10 @@ function mountInterruptedNotice(ctx: Context, content: InterruptedNoticeContent)
     (text, width) => components.truncateToWidth(text, width),
     interruptedNoticeRows(content),
   )
-  ctx.effect(() => screen.addChild(notice))
+  ctx.effect(() => {
+    const slot = screen.mountContentSlot('local.update-interrupted', notice)
+    return () => slot.dispose()
+  })
   screen.requestRender()
 }
 

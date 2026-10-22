@@ -86,12 +86,12 @@ function runningHeader(run: WorkflowRunState, now: number): MayflyUiNode {
     formatWorkflowElapsed(Math.max(0, Math.floor((now - run.startedAt) / 1000))),
   ].filter((value): value is string => value !== undefined)
   const spans: MayflyInlineSpan[] = [
-    { text: `  Workflow ${run.name}`, tone: 'accent', emphasis: 'strong' },
+    { text: `  Workflow ${run.name}`, tone: 'accent', styles: ['strong'] },
     { text: '  ', tone: 'muted' },
   ]
   parts.forEach((part, index) => {
     if (index > 0) spans.push({ text: ' · ', tone: 'muted' })
-    if (part === `${String(running)} running` && running > 0) spans.push({ text: '● ', tone: 'accent', emphasis: 'strong' })
+    if (part === `${String(running)} running` && running > 0) spans.push({ text: '● ', tone: 'accent', styles: ['strong'] })
     spans.push({ text: part, tone: 'muted' })
   })
   return { kind: 'rich-text', spans }
@@ -99,7 +99,7 @@ function runningHeader(run: WorkflowRunState, now: number): MayflyUiNode {
 
 function memberNode(agent: WorkflowAgentRow, last: boolean): MayflyUiNode {
   const marker = agent.outcome === undefined
-    ? { text: '● ', tone: 'accent' as const, emphasis: 'strong' as const }
+    ? { text: '● ', tone: 'accent' as const, styles: ['strong'] as const }
     : agent.outcome === 'completed'
       ? { text: '✓ ', tone: 'success' as const }
       : agent.outcome === 'failed'
@@ -131,7 +131,7 @@ function settledNode(run: WorkflowRunState): MayflyUiNode {
     spans: [
       { text: '  ' },
       marker,
-      { text: `Workflow ${run.name}`, tone: 'accent', emphasis: 'strong' },
+      { text: `Workflow ${run.name}`, tone: 'accent', styles: ['strong'] },
       { text: ` — ${reason} · ${String(count)} agent${count === 1 ? '' : 's'} · ${elapsed}`, tone: 'muted' },
     ],
   }
@@ -175,7 +175,7 @@ export function apply(ctx: Context): void {
     return run.attributed
   }
   const attributedRuns = (): readonly WorkflowRunState[] => [...runs.values()].filter(run => run.attributed)
-  const refresh = (): void => pane?.refresh()
+  const refresh = (): void => pane?.set(workflowNode(attributedRuns(), workflowPaneTimers.now()))
   const standDownTick = (): void => {
     if (tickHandle === undefined) return
     workflowPaneTimers.clearInterval(tickHandle)
@@ -284,8 +284,7 @@ export function apply(ctx: Context): void {
     placement: 'bottom',
     priority: WORKFLOW_PRIORITY,
     narrow: 'bottom',
-    render: () => workflowNode(attributedRuns(), workflowPaneTimers.now()),
-  })
+  }, workflowNode(attributedRuns(), workflowPaneTimers.now()))
   ctx.effect(() => () => {
     standDownTick()
     offFacts()

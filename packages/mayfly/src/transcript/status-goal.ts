@@ -7,7 +7,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
 import type { SessionFactsService } from './session-facts.ts'
-import type { MayflyStatusEntry } from './status-model.ts'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-goal'
@@ -25,6 +25,8 @@ export function goalStatusText(goal: GoalView | undefined): string {
 export function apply(ctx: Context): void {
   let text = ''
   let tone: 'accent' | 'success' | 'warning' | 'muted' = 'muted'
+  let status: ReturnType<typeof ctx.mayflyStatus.register>
+  const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone }
   const derive = (): void => {
     const agent = ctx.mayflyCurrentAgent.current()
     let goal: GoalView | undefined
@@ -44,16 +46,13 @@ export function apply(ctx: Context): void {
     if (nextText === text && nextTone === tone) return
     text = nextText
     tone = nextTone
-    ctx.mayflyStatus.refresh('mayfly.status.goal')
+    status?.set(node())
   }
-  const model = (): MayflyStatusEntry => ({
+  status = ctx.mayflyStatus.register({
     id: 'mayfly.status.goal',
     priority: 2,
     overflow: 'hide',
-    node: { kind: 'text', content: text, tone },
-    visible: text !== '',
-  })
-  ctx.mayflyStatus.register(model)
+  }, node())
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService
   const offGoal = facts.subscribeGoal(() => derive())
   const offAgent = ctx.mayflyCurrentAgent.subscribe(() => derive())

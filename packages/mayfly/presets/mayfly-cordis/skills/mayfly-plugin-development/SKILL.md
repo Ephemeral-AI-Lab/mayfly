@@ -124,12 +124,11 @@ export function apply(ctx: Context): void {
     id: 'acme.build-health',
     placement: 'right',
     narrow: 'bottom',
-    render: () => ui.text('healthy'),
-  })
+  }, ui.text('healthy'))
 }
 ```
 
-Render functions are synchronous, cheap, and free of I/O. Mayfly owns terminal
+Snapshots are immutable data and are published with `set()`. Mayfly owns terminal
 layout, theme, width, focus, input routing, and safety. Event/completion/submit
 callbacks honor their AbortSignal and reject stale results.
 

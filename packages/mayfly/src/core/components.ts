@@ -33,6 +33,7 @@ import {
   type TUI,
 } from '@earendil-works/pi-tui'
 import { highlightCodeLines } from './highlight.ts'
+import { italic as paintItalic, strike as paintStrike, strong as paintStrong } from './paint.ts'
 import { renderMermaidRows, splitRichDocument } from './rich-document.ts'
 import {
   highlightLeadingSlashToken,
@@ -43,6 +44,7 @@ import {
   withSideBorders,
 } from './chrome.ts'
 import { WrappingSelectList } from './wrapping-select-list.ts'
+import { safeWidth } from './width.ts'
 import type {
   MayflyAutocompleteProvider,
   MayflyColorFn,
@@ -104,7 +106,7 @@ function selectListTheme(colors: MayflySemanticColors): SelectListTheme {
  */
 function markdownTheme(colors: MayflySemanticColors): MarkdownTheme {
   return {
-    heading: (text) => `\x1b[1m${colors.mdHeading(text)}\x1b[22m`,
+    heading: (text) => paintStrong(colors.mdHeading(text)),
     link: colors.mdLink,
     linkUrl: colors.mdLinkUrl,
     code: colors.mdCode,
@@ -582,11 +584,11 @@ class MarkdownAdapter implements MayflyMarkdown {
   render(width: number): string[] {
     const segments = splitRichDocument(this.text)
     if (!segments.some(segment => segment.kind === 'mermaid')) return this.expandRules(this.markdown.render(width), width)
-    const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
-    const padX = Math.min(Math.max(0, Math.floor(this.paddingX)), Math.max(0, Math.floor((safeWidth - 1) / 2)))
+    const available = safeWidth(width)
+    const padX = Math.min(Math.max(0, Math.floor(this.paddingX)), Math.max(0, Math.floor((available - 1) / 2)))
     const padY = Math.max(0, Math.floor(this.paddingY))
-    const contentWidth = Math.max(1, safeWidth - padX * 2)
-    const key = `${String(safeWidth)}:${this.text}`
+    const contentWidth = Math.max(1, available - padX * 2)
+    const key = `${String(available)}:${this.text}`
     if (this.cache?.key === key) return this.cache.rows
     const body = segments.flatMap(segment => {
       if (segment.kind === 'mermaid') {
@@ -708,6 +710,10 @@ export class MayflyComponentsService extends Service implements MayflyComponents
     this.tui = deps.tui
   }
 
+  strong(text: string): string { return paintStrong(text) }
+  italic(text: string): string { return paintItalic(text) }
+  strike(text: string): string { return paintStrike(text) }
+
   /**
    * Create a palette-themed multi-line input editor. The editor's
    * autocomplete dropdown renders slash-command descriptions wrapped to two
@@ -736,7 +742,7 @@ export class MayflyComponentsService extends Service implements MayflyComponents
         ? new WrappingSelectList(items, editor.getAutocompleteMaxVisible(), theme.selectList, SLASH_SELECT_LIST_LAYOUT)
         : new SelectList(items, editor.getAutocompleteMaxVisible(), theme.selectList)
     return new EditorAdapter(editor, {
-      slashTokenPaint: (text) => `\x1b[1m${colors.primary(text)}\x1b[22m`,
+      slashTokenPaint: (text) => paintStrong(colors.primary(text)),
       ghostHintPaint: colors.textMuted,
     })
   }

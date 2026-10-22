@@ -56,13 +56,13 @@ describe('direct plugin services and lifecycle', () => {
       const plugins = [header, inspector, bottomLog, uiGallery]
       const fibers = []
       for (const plugin of plugins) fibers.push(await ctx.plugin(plugin))
-      expect(ctx.mayflyPanes.list().map(entry => [entry.id, entry.contribution.placement])).toEqual([
+      expect(ctx.mayflyPanes.list().map(entry => [entry.id, entry.definition.placement])).toEqual([
         ['example.header.summary', 'header'],
         ['example.inspector.context', 'right'],
         ['example.log.recent', 'bottom'],
         ['example.ui-gallery.showcase', 'right'],
       ])
-      for (const pane of ctx.mayflyPanes.list()) expect(pane.contribution.render()).not.toBeNull()
+      for (const pane of ctx.mayflyPanes.list()) expect(pane.node).not.toBeNull()
 
       await fibers[1]!.dispose()
       expect(ctx.mayflyPanes.list().map(entry => entry.id)).not.toContain('example.inspector.context')
@@ -90,7 +90,7 @@ describe('direct plugin services and lifecycle', () => {
       } as never)
       expect(result).toEqual({ kind: 'success', text: 'opened the example overlay' })
       expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual([overlay.overlayRequest.id])
-      expect(ctx.mayflyOverlays.list()[0]!.request.render()).toMatchObject({ kind: 'stack' })
+      expect(ctx.mayflyOverlays.list()[0]!.node).toMatchObject({ kind: 'stack' })
 
       await fiber.dispose()
       expect(commands.find('example-overlay')).toBeUndefined()
@@ -107,8 +107,8 @@ describe('direct plugin services and lifecycle', () => {
         name: 'direct-ui-contributions',
         inject: ['mayflyStatus', 'mayflyEditorExtensions'],
         apply(pluginCtx: Context) {
-          pluginCtx.mayflyStatus.register({ id: 'example.status', visible: true, node: { kind: 'text', content: 'ready' } })
-          pluginCtx.mayflyEditorExtensions.register({ id: 'example.editor', hint: 'direct extension' })
+          pluginCtx.mayflyStatus.register({ id: 'example.status' }, { kind: 'text', content: 'ready' })
+          pluginCtx.mayflyEditorExtensions.register({ id: 'example.editor' }, { hint: 'direct extension' })
         },
       })
       expect(ctx.mayflyStatus.list().map(entry => entry.id)).toEqual(['example.status'])

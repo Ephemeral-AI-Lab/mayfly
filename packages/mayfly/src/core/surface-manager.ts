@@ -5,7 +5,7 @@
  */
 
 import type { MayflyComponent, MayflyFocusable } from './types.ts'
-import { sliceByColumn, visibleWidth } from './width.ts'
+import { fitText, safeWidth, visibleWidth } from './width.ts'
 
 export type SurfacePlacement = 'header' | 'left' | 'right' | 'bottom'
 export type SurfaceNarrowPolicy = 'bottom' | 'overlay' | 'hidden'
@@ -116,15 +116,6 @@ function freezeUserState(input: SurfaceUserLayoutInput = {}): SurfaceUserLayoutS
   })
 }
 
-function safeDimension(value: number): number {
-  return Math.max(1, Number.isFinite(value) ? Math.floor(value) : 1)
-}
-
-function fit(value: string, width: number): string {
-  const available = safeDimension(width)
-  return visibleWidth(value) <= available ? value : sliceByColumn(value, 0, available, true)
-}
-
 function contributionFocusTarget(contribution: SurfaceContribution): MayflyFocusable | null {
   if (contribution.focusTarget !== undefined) return contribution.focusTarget
   return typeof (contribution.component as MayflyComponent & { focused?: unknown }).focused === 'boolean'
@@ -134,7 +125,7 @@ function contributionFocusTarget(contribution: SurfaceContribution): MayflyFocus
 
 /** ANSI-aware Mayfly-owned lane tab chrome with deterministic overflow. */
 export function renderSurfaceTabs(lane: SurfaceLaneLayout, width: number): string {
-  const available = safeDimension(width)
+  const available = safeWidth(width)
   const selectable = selectableSurfaceEntries(lane)
   const activeId = selectable.some(entry => entry.id === lane.active.id) ? lane.active.id : selectable[0]?.id
   const tokens = selectable.map(entry => ({
@@ -156,8 +147,8 @@ export function renderSurfaceTabs(lane: SurfaceLaneLayout, width: number): strin
   const ordered = [...kept].sort((left, right) => left - right).map(index => tokens[index]!.value)
   const hidden = tokens.length - ordered.length
   const suffix = ` +${String(hidden)}`
-  const labelWidth = Math.max(1, available - visibleWidth(suffix))
-  return fit(`${fit(ordered.join(' '), labelWidth)}${suffix}`, available)
+  const labelWidth = safeWidth(available - visibleWidth(suffix))
+  return fitText(`${fitText(ordered.join(' '), labelWidth)}${suffix}`, available)
 }
 
 /** Entries eligible for tab selection; passive bottom progress panes need no tab. */
@@ -184,11 +175,11 @@ export function surfaceLaneTabRows(lane: SurfaceLaneLayout): 0 | 1 {
 /** Render one lane and clamp hostile component output. */
 export function renderSurfaceLane(lane: SurfaceLaneLayout | undefined, width: number, maxRows = Number.MAX_SAFE_INTEGER): string[] {
   if (lane === undefined) return []
-  const available = safeDimension(width)
+  const available = safeWidth(width)
   const tabs = surfaceLaneTabRows(lane) === 1 ? [renderSurfaceTabs(lane, available)] : []
   const body = renderedSurfaceEntries(lane)
     .flatMap(entry => entry.component.render(available))
-    .map(row => fit(row, available))
+    .map(row => fitText(row, available))
   return [...tabs, ...body].slice(0, Math.max(0, finiteInteger(maxRows, 0)))
 }
 
@@ -344,12 +335,12 @@ export class SurfaceManager {
       const lane = this.lane(placement, grouped[placement])
       return lane === undefined ? [] : [{ placement, lane, width: this.sideWidth(lane.active) }]
     })
-    return this.finishLayout(safeDimension(columns), safeDimension(rows), grouped, sides, [])
+    return this.finishLayout(safeWidth(columns), safeWidth(rows), grouped, sides, [])
   }
 
   layout(columns: number, rows: number): SurfaceLayout {
-    const safeColumns = safeDimension(columns)
-    const safeRows = safeDimension(rows)
+    const safeColumns = safeWidth(columns)
+    const safeRows = safeWidth(rows)
     const grouped = this.groupedEntries()
     const sideLanes = (['left', 'right'] as const).flatMap(placement => {
       const lane = this.lane(placement, grouped[placement])
@@ -532,7 +523,7 @@ export class SurfaceManager {
   }
 
   private transcriptWidth(columns: number, sides: readonly { readonly width: number }[]): number {
-    return Math.max(1, columns - sides.reduce((total, side) => total + side.width, 0) - sides.length)
+    return safeWidth(columns - sides.reduce((total, side) => total + side.width, 0) - sides.length)
   }
 
   private finishLayout(

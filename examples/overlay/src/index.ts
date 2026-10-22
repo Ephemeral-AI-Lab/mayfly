@@ -4,7 +4,7 @@
  * @module @mayfly-example/overlay
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyOverlayRequest } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyOverlayDefinition, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type {} from '@deepseek-ai/dsh-commands'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 
@@ -12,7 +12,7 @@ export const name = '@mayfly-example/overlay'
 export const inject = ['commands', 'mayflyOverlays']
 
 /** Static request reused by the command and packed fixture. */
-export const overlayRequest: MayflyOverlayRequest = {
+export const overlayRequest: MayflyOverlayDefinition & { readonly node: MayflyUiNode } = {
   id: 'example.overlay.details',
   title: 'Example details',
   capturing: true,
@@ -20,7 +20,7 @@ export const overlayRequest: MayflyOverlayRequest = {
   anchor: 'center',
   width: '70%',
   maxHeight: '70%',
-  render: () => ui.stack.column([
+  node: ui.stack.column([
     ui.text('Opened by an explicit Mayfly user gesture.'),
     ui.text('Escape returns focus to the previous surface.', { tone: 'muted' }),
   ], { gap: 1 }),
@@ -33,7 +33,8 @@ export function apply(ctx: Context): void {
     description: 'Open the example overlay',
     handler: () => {
       ctx.mayflyOverlays.close(overlayRequest.id)
-      ctx.mayflyOverlays.open(overlayRequest)
+      const { node, ...definition } = overlayRequest
+      ctx.mayflyOverlays.open(definition, node)
       return { kind: 'success', text: 'opened the example overlay' }
     },
   })

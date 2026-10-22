@@ -30,6 +30,7 @@ describe('validateMayflyUiNode', () => {
     [new Date(), 'plain object'],
     [{ kind: 'text' }, 'required'],
     [{ kind: 'text', content: 1 }, 'string'],
+    [{ kind: 'rich-text', spans: [{ text: 'x', styles: ['strong', 'strong'] }] }, 'styles contains duplicates'],
     [{ kind: 'actions', id: 'x', items: 'bad' }, 'array'],
     [{ kind: 'actions', id: 'x', items: [{ id: 'a', label: 'A', disabled: 'yes' }] }, 'boolean'],
     [{ kind: 'tabs', id: 'x', activeId: 'a', items: [{ id: 'a', label: 'A', count: -1 }] }, 'finite integer'],
@@ -41,7 +42,7 @@ describe('validateMayflyUiNode', () => {
   it('canonicalizes every public node kind and drops unknown fields', () => {
     const all = ui.stack.column([
       ui.text('text', { tone: 'accent' }),
-      ui.fields([{ label: 'field', value: [{ text: 'value', emphasis: 'strong' }] }]),
+      ui.fields([{ label: 'field', value: [{ text: 'value', styles: ['strong'] }] }]),
       ui.code('const x = 1', { language: 'ts' }),
       ui.diff('before', 'after'),
       ui.sections([{ title: 'section', body: ui.text('body'), collapsed: false }]),
@@ -49,7 +50,7 @@ describe('validateMayflyUiNode', () => {
       ui.surface({ title: 'title', subtitle: 'subtitle', badges: [{ text: 'badge' }], chrome: 'surface', padding: 1, child: ui.text('child'), footer: ui.text('footer') }),
       ui.scroll(ui.text('scroll'), { follow: 'start', scrollbar: true }),
       ui.tabs({ id: 'tabs', activeId: 'one', items: [{ id: 'one', label: 'One', count: 2 }, { id: 'two', label: 'Two', disabled: true }] }),
-      ui.list({ id: 'list', mode: 'multiple', selectedIds: ['one'], filter: 'o', items: [{ id: 'one', label: 'One', detail: 'detail', detailSpans: [{ text: '\x1b[31mcurrent', tone: 'accent', emphasis: 'strong' }], badge: 'badge', group: 'g' }], empty: ui.empty({ title: 'none' }) }),
+      ui.list({ id: 'list', mode: 'multiple', selectedIds: ['one'], filter: 'o', items: [{ id: 'one', label: 'One', detail: 'detail', detailSpans: [{ text: '\x1b[31mcurrent', tone: 'accent', styles: ['strong'] }], badge: 'badge', group: 'g' }], empty: ui.empty({ title: 'none' }) }),
       ui.form({ id: 'form', fields: [
         { kind: 'input', id: 'input', label: 'Input', value: 'v', placeholder: 'p', error: 'e' },
         { kind: 'textarea', id: 'area', label: 'Area', value: 'v' },
@@ -63,8 +64,8 @@ describe('validateMayflyUiNode', () => {
       ui.progress({ label: 'progress', value: 15, max: 10 }),
       ui.spacer({ size: 2 }),
       ui.divider({ label: 'divider' }),
-      ui.document({ format: 'markdown', source: '# Document' }),
-      ui.document({ format: 'mermaid', source: 'graph LR; A --> B' }),
+      ui.markdown('# Document'),
+      ui.diagram('graph LR; A --> B'),
       ui.chart({ chart: 'line', title: 'Latency', xLabel: 'minute', yLabel: 'ms', height: 8, series: [
         { id: 'api', label: 'API', tone: 'accent', points: [{ x: 0, y: 4 }, { x: 1, y: null }] },
       ] }),
@@ -88,12 +89,12 @@ describe('validateMayflyUiNode', () => {
     expect((result.children[14]!.node as { value: number }).value).toBe(10)
     expect(Object.isFrozen(result)).toBe(true)
     expect(Object.isFrozen(result.children)).toBe(true)
-    expect((result.children[9]!.node as { items: readonly { detailSpans?: readonly { text: string }[] }[] }).items[0]!.detailSpans).toEqual([{ text: 'current', tone: 'accent', emphasis: 'strong' }])
+    expect((result.children[9]!.node as { items: readonly { detailSpans?: readonly { text: string }[] }[] }).items[0]!.detailSpans).toEqual([{ text: 'current', tone: 'accent', styles: ['strong'] }])
     expect(Object.isFrozen((result.children[9]!.node as { items: readonly { detailSpans?: readonly unknown[] }[] }).items[0]!.detailSpans)).toBe(true)
   })
 
   it.each([
-    [{ kind: 'document', format: 'html', source: 'x' }, 'format'],
+    [{ kind: 'diagram', diagram: 'html', source: 'x' }, 'diagram'],
     [{ kind: 'chart', chart: 'line', series: [{ id: 'a', points: [{ x: 0, y: Number.NaN }] }] }, 'finite number'],
     [{ kind: 'chart', chart: 'line', height: 21, series: [] }, 'height'],
     [{ kind: 'chart', chart: 'line', series: [{ id: 'a', points: [] }, { id: 'a', points: [] }] }, 'duplicate ids'],
@@ -133,10 +134,10 @@ describe('validateMayflyUiNode', () => {
     })).toMatchObject({ ok: true })
   })
 
-  it('keeps document and chart out of narrowed status and editor trees', () => {
-    expect(validateMayflyStatusNode(ui.document({ format: 'markdown', source: 'x' }))).toMatchObject({ ok: false })
+  it('keeps rich documents and charts out of narrowed status and editor trees', () => {
+    expect(validateMayflyStatusNode(ui.markdown('x'))).toMatchObject({ ok: false })
     expect(validateMayflyEditorShellNode({ kind: 'stack', direction: 'column', children: [
-      { node: ui.document({ format: 'markdown', source: 'x' }) },
+      { node: ui.diagram('graph TD') },
       { node: { kind: 'editor-control' } },
     ] })).toMatchObject({ ok: false })
   })
@@ -385,7 +386,7 @@ describe('validateMayflyUiNode', () => {
     expect(validateMayflyUiNode({ kind: 'empty', title: 'x', actions: { kind: 'text', content: 'wrong' } })).toMatchObject({ ok: false, message: expect.stringContaining('actions node') })
     expect(validateMayflyUiNode({ kind: 'loader', message: 'x', cancelActionId: '' })).toMatchObject({ ok: false, message: expect.stringContaining('empty') })
     expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [], submitActionId: '' })).toMatchObject({ ok: false, message: expect.stringContaining('empty') })
-    expect(validateMayflyUiNode({ kind: 'sections', sections: [{ body: { kind: 'rich-text', spans: [] } }] })).toMatchObject({ ok: false, message: expect.stringContaining('MayflyView') })
+    expect(validateMayflyUiNode({ kind: 'sections', sections: [{ body: { kind: 'rich-text', spans: [] } }] })).toMatchObject({ ok: false, message: expect.stringContaining('section content') })
     expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [{ kind: 'input', id: '', label: 'Empty', value: '' }] })).toMatchObject({ ok: false, message: expect.stringContaining('empty') })
     expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [{ kind: 'input', id: 'f', label: 'Duplicate', value: '' }] })).toMatchObject({ ok: false, message: expect.stringContaining('duplicated') })
     expect(validateMayflyUiNode({ kind: 'form', id: 'f', fields: [], submitActionId: 'submit', cancelActionId: 'submit' })).toMatchObject({ ok: false, message: expect.stringContaining('duplicated') })

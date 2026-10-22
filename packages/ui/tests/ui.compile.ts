@@ -23,7 +23,7 @@ export const metric = defineMayflyComponent<MetricProps>({
 
 export const node: MayflyUiNode = metric.render({ label: 'Context', value: 42 })
 export const child: MayflyUiChild = ui.child(node, { shrink: 1 })
-export const document = ui.document({ format: 'mermaid', source: 'graph TD\nA --> B' })
+export const document = ui.diagram('graph TD\nA --> B')
 export const chart = ui.chart({ chart: 'line', series: [{ id: 'load', points: [{ x: 0, y: 1 }] }] })
 
 // @ts-expect-error rich documents are not status nodes

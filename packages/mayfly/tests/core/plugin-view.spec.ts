@@ -1,12 +1,12 @@
 /**
- * Canonical MayflyView leaf tests: sanitization, every view variant, limits,
+ * Canonical basic-content leaf tests: sanitization, every variant, limits,
  * semantic paints, and width containment.
  *
  * @module @ephemeral-ai/mayfly/core/tests/plugin-view
  */
 
 import { describe, expect, it } from 'vitest'
-import type { MayflyView } from '../../../ui/src/contracts.ts'
+import type { MayflySectionContentNode } from '../../../ui/src/contracts.ts'
 import {
   PLUGIN_VIEW_MAX_CHARS,
   PLUGIN_VIEW_MAX_DEPTH,
@@ -29,11 +29,11 @@ const components = {
   truncateToWidth,
 } as MayflyComponents
 
-function renderView(view: MayflyView, width: number, maxRows = 20): string[] {
+function renderView(view: MayflySectionContentNode, width: number, maxRows = 20): string[] {
   return renderCanonicalView(view, width, components, colors, maxRows)
 }
 
-describe('canonical MayflyView leaf renderer', () => {
+describe('canonical basic-content leaf renderer', () => {
   it('strips ANSI, OSC, and unsafe controls while retaining layout whitespace', () => {
     expect(sanitizePluginText('\x1b[31mred\x1b[0m\x1b]0;bad\x07\x00\nnext\t')).toBe('red\nnext\t')
   })
@@ -42,18 +42,22 @@ describe('canonical MayflyView leaf renderer', () => {
     expect(paintPluginTone(colors, undefined)('x')).toBe('<text>x</text>')
     expect(paintPluginTone(colors, 'default')('x')).toBe('<text>x</text>')
     expect(paintPluginTone(colors, 'muted')('x')).toBe('<muted>x</muted>')
-    expect(paintPluginTone(colors, 'accent')('x')).toBe('<primary>x</primary>')
+    expect(paintPluginTone(colors, 'primary')('x')).toBe('<primary>x</primary>')
+    expect(paintPluginTone(colors, 'accent')('x')).toBe('<accent>x</accent>')
+    expect(paintPluginTone(colors, 'user')('x')).toBe('<roleUser>x</roleUser>')
     expect(paintPluginTone(colors, 'success')('x')).toBe('<success>x</success>')
     expect(paintPluginTone(colors, 'warning')('x')).toBe('<warning>x</warning>')
     expect(paintPluginTone(colors, 'danger')('x')).toBe('<error>x</error>')
   })
 
   it('renders text, fields, code, diff, and nested sections through width helpers', () => {
-    expect(renderView({ kind: 'text', content: 'hello', tone: 'accent' }, 80)).toEqual(['<primary>hello</primary>'])
+    expect(renderView({ kind: 'text', content: 'hello', tone: 'accent' }, 80)).toEqual(['<accent>hello</accent>'])
     expect(renderView({
       kind: 'fields',
       rows: [{ label: 'state', value: [
-        { text: 'ready', tone: 'success', emphasis: 'strong' },
+        { text: 'ready', tone: 'success', styles: ['strong'] },
+        { text: ' softly', styles: ['italic'] },
+        { text: ' retired', styles: ['strike'] },
         { text: ' now' },
       ] }],
     }, 80)[0]).toContain('<muted>state: </muted>')
@@ -90,7 +94,7 @@ describe('canonical MayflyView leaf renderer', () => {
 
   it('rejects malformed and oversized view data without trusting casts', () => {
     expect(() => renderView(null as never, 20)).toThrow('view must be an object')
-    expect(() => renderView({ kind: 'unknown' } as never, 20)).toThrow('unknown MayflyView kind')
+    expect(() => renderView({ kind: 'unknown' } as never, 20)).toThrow('unknown basic content kind')
     expect(() => renderView({ kind: 'text', content: 1 } as never, 20)).toThrow('must be a string')
     expect(() => renderView({ kind: 'text', content: 'x'.repeat(PLUGIN_VIEW_MAX_CHARS + 1) }, 20)).toThrow('exceeds')
     expect(() => renderView({ kind: 'fields', rows: null } as never, 20)).toThrow('fields rows')
@@ -99,14 +103,14 @@ describe('canonical MayflyView leaf renderer', () => {
     expect(() => renderView({ kind: 'sections', sections: null } as never, 20)).toThrow('sections must')
     expect(() => renderView({ kind: 'sections', sections: [null] } as never, 20)).toThrow('section is invalid')
 
-    let nested: MayflyView = { kind: 'text', content: 'deep' }
+    let nested: MayflySectionContentNode = { kind: 'text', content: 'deep' }
     for (let i = 0; i <= PLUGIN_VIEW_MAX_DEPTH; i += 1) nested = { kind: 'sections', sections: [{ body: nested }] }
     expect(() => renderView(nested, 20)).toThrow('view nesting exceeds')
   })
 
   it('caps rows, summarizes every view kind, and rejects invalid summaries', () => {
-    const fields: MayflyView = { kind: 'fields', rows: [{ label: 'a', value: [{ text: 'b' }] }] }
-    const sections: MayflyView = { kind: 'sections', sections: [
+    const fields: MayflySectionContentNode = { kind: 'fields', rows: [{ label: 'a', value: [{ text: 'b' }] }] }
+    const sections: MayflySectionContentNode = { kind: 'sections', sections: [
       { title: 'named', body: { kind: 'text', content: 'ignored' } },
       { body: fields },
     ] }
@@ -118,14 +122,14 @@ describe('canonical MayflyView leaf renderer', () => {
     expect(summarizePluginView({ kind: 'diff', before: '', after: '' })).toBe('diff contribution')
     expect(summarizePluginView(sections)).toBe('named · a: b')
     expect(() => summarizePluginView(null as never)).toThrow('view must be an object')
-    expect(() => summarizePluginView({ kind: 'unknown' } as never)).toThrow('unknown MayflyView kind')
+    expect(() => summarizePluginView({ kind: 'unknown' } as never)).toThrow('unknown basic content kind')
   })
 
   for (const fixture of ADVERSARIAL) {
     it(`keeps canonical ${fixture.name} rows inside every scanned width`, () => {
       for (const width of SCAN_WIDTHS) {
         const rows = renderView({ kind: 'text', content: fixture.text, tone: 'accent' }, width)
-        expectLinesFit(`MayflyView/${fixture.name}`, rows, width)
+        expectLinesFit(`content/${fixture.name}`, rows, width)
       }
     })
   }

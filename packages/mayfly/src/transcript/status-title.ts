@@ -14,7 +14,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyStatusEntry } from './status-model.ts'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { SessionFactsService } from './session-facts.ts'
 
 /** Stable Cordis plugin name. */
@@ -30,14 +30,14 @@ export const inject = ['mayflyStatus', 'mayflySessionFacts']
 export function apply(ctx: Context): void {
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService
   let text = facts.currentTitle ?? ''
+  const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'muted' }
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.title', priority: 30, band: 'right' }, node())
   const offTitle = facts.subscribeTitle((title) => {
     const next = title ?? ''
     if (next === text) return
     text = next
-    ctx.mayflyStatus.refresh('mayfly.status.title')
+    status.set(node())
   })
   ctx.effect(() => () => offTitle())
 
-  const model = (): MayflyStatusEntry => ({ id: 'mayfly.status.title', priority: 30, band: 'right', node: { kind: 'text', content: text, tone: 'muted' }, visible: text !== '' })
-  ctx.mayflyStatus.register(model)
 }

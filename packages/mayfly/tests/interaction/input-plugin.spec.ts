@@ -21,9 +21,10 @@ import { __setCatalogForTest } from '../../src/interaction/skills-catalog.ts'
 import * as paneQueuePlugin from '../../src/interaction/pane-queue.ts'
 import {
   getSharedEditor,
-  mountEditorReplacement,
 } from '../../src/interaction/editor-instance.ts'
+import { mountEditorReplacement } from '../../src/interaction/editor-panel-controller.ts'
 import { setExternalEditorLauncher } from '../../src/interaction/external-editor.ts'
+import { EditorDockHost } from '../../src/interaction/editor-dock-host.ts'
 import { fakeMayflyContext, KEY, type FakeMayflyComponents, type FakeMayflyEditor, type FakeScreen } from './fakes.ts'
 
 /** One settled-skill double for the catalog seam. */
@@ -130,7 +131,8 @@ async function mount(options: {
   const fiber = await ctx.plugin(inputPlugin)
   const editor = components.editors.at(-1)!
   const editorRoot = screen.children[0] as MayflyFocusable & MayflyComponent
-  const hint = screen.children[1] as MayflyComponent
+  const dock = screen.slotTargets.get('editor.prompt') as EditorDockHost
+  const hint: MayflyComponent = { render: width => dock.renderHint(width), invalidate: () => dock.invalidate() }
   // The terminal paints one frame before it can deliver focused input. The
   // shell compiler synchronizes its nested editor focus during that frame.
   editorRoot.render(screen.columns)
@@ -151,7 +153,7 @@ describe('mayfly-input plugin', () => {
 
   it('mounts the editor and hint line focused at the bottom of the tree', async () => {
     const { ctx, screen, editor, editorRoot, hint } = await mount()
-    expect(screen.children).toEqual([editorRoot, hint])
+    expect(screen.children).toEqual([editorRoot])
     expect(screen.focused).toBe(editorRoot)
     expect(editor.focused).toBe(true)
     // The editor mounts with the rounded-box chrome's prerequisites — the
@@ -164,12 +166,12 @@ describe('mayfly-input plugin', () => {
   })
 
   it('stays pinned below transcript content mounted after it', async () => {
-    const { screen, editorRoot, hint } = await mount()
+    const { screen, editorRoot } = await mount()
     // Transcript components only mount once a session exists — long after
     // the editor — yet must render above it.
     const transcriptRow: Parameters<FakeScreen['addChild']>[0] = { render: () => ['transcript'], invalidate: () => {} }
     screen.addChild(transcriptRow)
-    expect(screen.children).toEqual([transcriptRow, editorRoot, hint])
+    expect(screen.children).toEqual([transcriptRow, editorRoot])
   })
 
   it('pauses tail-follow, advertises new messages, and resumes on End', async () => {
@@ -442,7 +444,7 @@ describe('mayfly-input plugin', () => {
     // Esc closes back to the editor, still without a dispatch.
     panel.handleInput(KEY.escape)
     expect(handler).not.toHaveBeenCalled()
-    expect(screen.children).toEqual([editorRoot, expect.anything()])
+    expect(screen.children).toEqual([editorRoot])
     expect(screen.focused).toBe(editorRoot)
   })
 
@@ -461,7 +463,7 @@ describe('mayfly-input plugin', () => {
     await vi.waitFor(() => { expect(hint.render(80)).toEqual(['~preset read-only~']) })
     expect(handler).toHaveBeenCalledOnce()
     // No panel ever took the editor slot.
-    expect(screen.children).toHaveLength(2)
+    expect(screen.children).toHaveLength(1)
   })
 
   it('falls through a bare /permission to unknown-command without the preset service', async () => {
@@ -669,7 +671,7 @@ describe('mayfly-input plugin', () => {
 
   it('unmounts the editor, clears the shared reference, and releases focus on dispose', async () => {
     const { ctx, screen, fiber } = await mount()
-    expect(screen.children).toHaveLength(2)
+    expect(screen.children).toHaveLength(1)
     expect(getSharedEditor(ctx)).toBeDefined()
     await fiber.dispose()
     expect(screen.children).toHaveLength(0)
@@ -711,10 +713,13 @@ describe('mayfly-input plugin', () => {
       const restore = mountEditorReplacement(ctx, first)
       // The editor and hint left the dock; the panel took the slot and
       // the focus.
-      expect(screen.children).toEqual([first])
-      expect(screen.focused).toBe(first)
+      expect(screen.children).toEqual([editorRoot])
+      expect(editorRoot.render(80)).toEqual(['first'])
+      expect(first.focused).toBe(true)
+      expect(screen.focused).toBe(editorRoot)
       restore()
-      expect(screen.children).toEqual([editorRoot, hint])
+      expect(screen.children).toEqual([editorRoot])
+      expect(hint.render(80)).toEqual([])
       expect(screen.focused).toBe(editorRoot)
     })
 
@@ -724,13 +729,15 @@ describe('mayfly-input plugin', () => {
       const inner = panel('inner')
       const restoreOuter = mountEditorReplacement(ctx, outer)
       const restoreInner = mountEditorReplacement(ctx, inner)
-      expect(screen.children).toEqual([outer, inner])
+      expect(screen.children).toEqual([editorRoot])
+      expect(editorRoot.render(80)).toEqual(['inner'])
       restoreInner()
       // The outer panel stays mounted and regains focus.
-      expect(screen.children).toEqual([outer])
-      expect(screen.focused).toBe(outer)
+      expect(screen.children).toEqual([editorRoot])
+      expect(editorRoot.render(80)).toEqual(['outer'])
+      expect(outer.focused).toBe(true)
       restoreOuter()
-      expect(screen.children).toEqual([editorRoot, expect.anything()])
+      expect(screen.children).toEqual([editorRoot])
       expect(screen.focused).toBe(editorRoot)
     })
 
@@ -742,8 +749,9 @@ describe('mayfly-input plugin', () => {
       const restoreInner = mountEditorReplacement(ctx, inner)
       // Out-of-order: the first-mounted panel goes while the top stays.
       restoreOuter()
-      expect(screen.children).toEqual([inner])
-      expect(screen.focused).toBe(inner)
+      expect(screen.children).toEqual([editorRoot])
+      expect(editorRoot.render(80)).toEqual(['inner'])
+      expect(inner.focused).toBe(true)
       restoreInner()
       expect(screen.focused).toBe(editorRoot)
     })
@@ -756,6 +764,7 @@ describe('mayfly-input plugin', () => {
       // The teardown unmounted the panel; the late disposer must not
       // resurrect the editor against the disposed fiber's screen handle.
       expect(screen.children).toEqual([])
+      expect(() => restore()).not.toThrow()
       expect(() => restore()).not.toThrow()
       expect(screen.children).toEqual([])
       expect(screen.focused).toBeNull()

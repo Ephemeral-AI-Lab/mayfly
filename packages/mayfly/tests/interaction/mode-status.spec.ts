@@ -53,17 +53,17 @@ async function mount(initial: PlanState = { active: false }, withPlan = true) {
 describe('mayfly-status-mode', () => {
   it('registers native normal, plan, pending, and yolo states at priority 2', async () => {
     const normal = await mount()
-    expect(normal.entry()).toMatchObject({ priority: 2, visible: false, node: { content: '' } })
+    expect(normal.entry()).toMatchObject({ definition: { priority: 2 }, node: null })
 
     const active = await mount({ active: true })
-    expect(active.entry()).toMatchObject({ visible: true, node: { kind: 'text', content: 'plan', tone: 'accent' } })
+    expect(active.entry()).toMatchObject({ node: { kind: 'text', content: 'plan', tone: 'accent' } })
 
     const pending = await mount({ active: true, pending: true })
     expect(pending.entry()?.node).toMatchObject({ content: 'plan...' })
 
     active.permissions.set(active.agent, 'danger-full-access')
     active.agent.session.append('permission/preset', { preset: 'danger-full-access' })
-    expect(active.entry()).toMatchObject({ visible: true, node: { content: 'yolo', tone: 'warning' } })
+    expect(active.entry()).toMatchObject({ node: { content: 'yolo', tone: 'warning' } })
   })
 
   it('refreshes from the current Session event stream', async () => {
@@ -83,7 +83,7 @@ describe('mayfly-status-mode', () => {
     const next = world.agentFor(nextSession)
     ;(world.ctx.get('testSession') as { current: Agent | null }).current = next
     world.ctx.emit('test/session-changed', next)
-    expect(world.entry()).toMatchObject({ visible: false, node: { content: '' } })
+    expect(world.entry()).toMatchObject({ node: null })
 
     world.states.set(next, { active: true })
     next.session.append('plan/mode', { active: true })
@@ -94,13 +94,13 @@ describe('mayfly-status-mode', () => {
     const world = await mount({ active: true })
     ;(world.ctx.get('testSession') as { current: Agent | null }).current = null
     world.ctx.emit('test/session-changed', null)
-    expect(world.entry()?.visible).toBe(false)
+    expect(world.entry()?.node).toBeNull()
     await world.fiber.dispose()
     expect(world.entry()).toBeUndefined()
   })
 
   it('hides when the plan projection is absent and permissions are normal', async () => {
     const world = await mount({ active: true }, false)
-    expect(world.entry()).toMatchObject({ visible: false, node: { content: '' } })
+    expect(world.entry()).toMatchObject({ node: null })
   })
 })

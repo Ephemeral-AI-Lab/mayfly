@@ -10,6 +10,7 @@
 // merges belong to the contract layer because the `mayflyTheme` provider is
 // replaceable by the theme plugin family outside this package.
 import type {} from '@deepseek-ai/cordis'
+import type { MayflyOverlayAnchor, MayflyOverlaySize } from '@ephemeral-ai/mayfly-ui'
 
 /**
  * A renderable Mayfly component. Structurally compatible with pi-tui's
@@ -40,6 +41,16 @@ export interface MayflyDockOptions {
   readonly priority?: number
 }
 
+/** Core-private stable named slot mounted into the screen shell. */
+export interface MayflyScreenSlot {
+  readonly id: string
+  readonly disposed: boolean
+  readonly component: MayflyFocusable
+  replace(component: MayflyComponent | null): void
+  focus(): void
+  dispose(): void
+}
+
 /**
  * A {@link MayflyComponent} that can hold keyboard focus and display the
  * hardware cursor. The screen sets `focused` on focus changes; focused
@@ -61,20 +72,7 @@ export interface MayflyFocusIdentity {
   readonly tabControlId?: string
 }
 
-/** Absolute column/row count or a percentage of the terminal dimension. */
-export type MayflyOverlaySize = number | `${number}%`
-
-/** Anchor point used to position an overlay on the terminal. */
-export type MayflyOverlayAnchor =
-  | 'center'
-  | 'top-left'
-  | 'top-right'
-  | 'bottom-left'
-  | 'bottom-right'
-  | 'top-center'
-  | 'bottom-center'
-  | 'left-center'
-  | 'right-center'
+export type { MayflyOverlayAnchor, MayflyOverlaySize }
 
 /** Positioning and sizing options for {@link MayflyScreen.showOverlay}. */
 export interface MayflyOverlayOptions {
@@ -102,7 +100,7 @@ export interface MayflyOverlayOptions {
   nonCapturing?: boolean
 }
 
-/** Options for {@link MayflyOverlayHandle.unfocus}. */
+/** Options for {@link MayflyScreenOverlayHandle.unfocus}. */
 export interface MayflyOverlayUnfocusOptions {
   /** Explicit component to focus after releasing this overlay. */
   target: MayflyComponent | null
@@ -112,7 +110,7 @@ export interface MayflyOverlayUnfocusOptions {
  * Handle controlling one mounted overlay. Overlays are modal: focus and
  * dismissal flow exclusively through this handle.
  */
-export interface MayflyOverlayHandle {
+export interface MayflyScreenOverlayHandle {
   /** Permanently remove the overlay; it cannot be shown again. */
   hide(): void
   /**
@@ -146,43 +144,10 @@ export interface MayflyOverlayHandle {
  * or keybinding responsibility.
  */
 export interface MayflyScreen {
-  /**
-   * Mount a flexible bottom-dock component. Flexible components share the
-   * rows left after the editor, dialogs, and footer have been reserved.
-   * Older structural screen adapters may omit this method; use the exported
-   * `mountDockChild` helper when mounting a flexible pane.
-   * @param component - the flexible component to mount.
-   * @param options - row-allocation metadata.
-   * @returns a disposer that unmounts the component; safe to call twice.
-   */
-  addDockChild?(component: MayflyComponent, options?: MayflyDockOptions): () => void
-  /**
-   * Mount a component at the root of the tree, above every bottom-pinned
-   * component regardless of mount order.
-   * @param component - the component to mount.
-   * @returns a disposer that unmounts the component; safe to call twice.
-   */
-  addChild(component: MayflyComponent): () => void
-  /**
-   * Mount a component pinned to the bottom of the root tree: it renders
-   * after every component mounted with {@link MayflyScreen.addChild}, so
-   * late-mounted transcript content never lands below the input editor.
-   * When the mounted content is shorter than the viewport, blank filler
-   * keeps the pinned block on the terminal's last rows.
-   * @param component - the component to pin.
-   * @param position - `'bottom'` renders the component below the rest of
-   *   the dock (the two-row footer shell mounts there, keeping the status
-   *   on the terminal's last rows beneath the editor and any dialog panel
-   *   that pulls up over it — the kimi layout).
-   * @returns a disposer that unmounts the component; safe to call twice.
-   */
-  addBottomChild(component: MayflyComponent, position?: 'bottom'): () => void
-  /**
-   * Unmount a component previously mounted with {@link MayflyScreen.addChild}.
-   * Unmounting an absent component is a no-op.
-   * @param component - the component to unmount.
-   */
-  removeChild(component: MayflyComponent): void
+  /** Mount one stable content slot in the scroll region. */
+  mountContentSlot(id: string, component: MayflyComponent | null): MayflyScreenSlot
+  /** Mount one stable dock slot; footer slots remain below ordinary dock slots. */
+  mountDockSlot(id: string, component: MayflyComponent | null, position?: 'bottom'): MayflyScreenSlot
   /**
    * Move keyboard focus. Overlays may reclaim focus per the overlay stack
    * discipline; `null` releases focus entirely.
@@ -205,7 +170,7 @@ export interface MayflyScreen {
    * @param options - positioning and sizing options.
    * @returns the overlay's control handle.
    */
-  showOverlay(component: MayflyComponent, options?: MayflyOverlayOptions): MayflyOverlayHandle
+  showOverlay(component: MayflyComponent, options?: MayflyOverlayOptions): MayflyScreenOverlayHandle
   /**
    * Schedule a re-render. Rendering is throttled; pass `force` to reset
    * cached diff state and redraw everything.
@@ -788,6 +753,12 @@ export interface MayflyTopRuleOptions {
  * re-exported under Mayfly signatures so no consumer imports pi-tui.
  */
 export interface MayflyComponents {
+  /** Apply renderer-owned strong emphasis without exposing ANSI. */
+  strong(text: string): string
+  /** Apply renderer-owned italic emphasis without exposing ANSI. */
+  italic(text: string): string
+  /** Apply renderer-owned strike-through emphasis without exposing ANSI. */
+  strike(text: string): string
   /**
    * Create a multi-line input editor themed from the active palette.
    * @param options - editor options.

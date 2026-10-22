@@ -3,7 +3,7 @@ import type {
   MayflyActionsNode,
   MayflyChartNode,
   MayflyDividerNode,
-  MayflyDocumentNode,
+  MayflyDiagramNode,
   MayflyEmptyNode,
   MayflyFormNode,
   MayflyInlineSpan,
@@ -19,14 +19,13 @@ import type {
   MayflyTabsNode,
   MayflyUiChild,
   MayflyUiNode,
-  MayflyView,
+  MayflyMarkdownNode,
+  MayflyTextNode,
+  MayflyFieldsNode,
+  MayflyCodeNode,
+  MayflyDiffNode,
+  MayflySectionsNode,
 } from './contracts.ts'
-
-type MayflyTextNode = Extract<MayflyView, { readonly kind: 'text' }>
-type MayflyFieldsNode = Extract<MayflyView, { readonly kind: 'fields' }>
-type MayflyCodeNode = Extract<MayflyView, { readonly kind: 'code' }>
-type MayflyDiffNode = Extract<MayflyView, { readonly kind: 'diff' }>
-type MayflySectionsNode = Extract<MayflyView, { readonly kind: 'sections' }>
 
 type TextOptions = Omit<MayflyTextNode, 'kind' | 'content'>
 type CodeOptions = Omit<MayflyCodeNode, 'kind' | 'code'>
@@ -44,7 +43,9 @@ export function deepFreeze<Value>(value: Value): Value {
   const visit = (current: unknown): void => {
     if (current === null || typeof current !== 'object' || seen.has(current)) return
     seen.add(current)
-    for (const child of Object.values(current)) visit(child)
+    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(current))) {
+      if ('value' in descriptor) visit(descriptor.value)
+    }
     Object.freeze(current)
   }
   visit(value)
@@ -62,19 +63,29 @@ function cloneWire<Value>(value: Value): Value {
     const copy: unknown[] | Record<string, unknown> = Array.isArray(current) ? [] : {}
     clones.set(current, copy)
     active.add(current)
-    for (const [key, child] of Object.entries(current)) (copy as Record<string, unknown>)[key] = clone(child)
+    for (const key of Object.keys(current)) {
+      const descriptor = Object.getOwnPropertyDescriptor(current, key)!
+      if ('value' in descriptor) (copy as Record<string, unknown>)[key] = clone(descriptor.value)
+      else Object.defineProperty(copy, key, descriptor)
+    }
     active.delete(current)
     return copy
   }
   return clone(value) as Value
 }
 
-function frozen<Value>(value: Value): Value {
+export function freezeWire<Value>(value: Value): Value {
   return deepFreeze(cloneWire(value))
 }
 
+const frozen = freezeWire
+
 function text(content: string, options: TextOptions = {}): MayflyTextNode {
   return frozen({ ...options, kind: 'text', content })
+}
+
+function markdown(source: string): MayflyMarkdownNode {
+  return frozen({ kind: 'markdown', source })
 }
 
 function fields(rows: MayflyFieldsNode['rows']): MayflyFieldsNode {
@@ -160,8 +171,8 @@ function divider(options: Omit<MayflyDividerNode, 'kind'> = {}): MayflyDividerNo
   return frozen({ ...options, kind: 'divider' })
 }
 
-function document(options: Omit<MayflyDocumentNode, 'kind'>): MayflyDocumentNode {
-  return frozen({ ...options, kind: 'document' })
+function diagram(source: string): MayflyDiagramNode {
+  return frozen({ kind: 'diagram', diagram: 'mermaid', source })
 }
 
 function chart(options: ChartOptions): MayflyChartNode {
@@ -171,6 +182,7 @@ function chart(options: ChartOptions): MayflyChartNode {
 /** Pure builder namespace. Every result is recursively frozen. */
 export const ui = Object.freeze({
   text,
+  markdown,
   fields,
   code,
   diff,
@@ -192,7 +204,7 @@ export const ui = Object.freeze({
   progress,
   spacer,
   divider,
-  document,
+  diagram,
   chart,
 })
 

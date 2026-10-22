@@ -130,9 +130,6 @@
     - id: mayfly-transcript
       name: '@ephemeral-ai/mayfly/transcript'
 
-    - id: mayfly-transcript-official
-      name: '@ephemeral-ai/mayfly/official-model'
-
     - id: mayfly-status-basic
       name: '@ephemeral-ai/mayfly/status-basic-model'
     - id: mayfly-status-cwd
@@ -169,9 +166,6 @@
       name: '@ephemeral-ai/mayfly/paste-image'
       config:
         backend: auto
-    - id: mayfly-editor-plus
-      name: '@ephemeral-ai/mayfly/editor-plus'
-
     - id: mayfly-jobs
       name: '@ephemeral-ai/mayfly/jobs'
     - id: mayfly-agents-command

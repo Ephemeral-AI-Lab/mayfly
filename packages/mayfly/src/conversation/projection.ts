@@ -43,6 +43,7 @@ const imageSchema = z.object({
 const entryBase = {
   id: z.string(),
   seq: z.number().int(),
+  updatedSeq: z.number().int(),
   turn: z.number().int().nonnegative(),
 }
 
@@ -148,22 +149,26 @@ function entryIndex(entries: readonly ConversationEntry[], id: string | null): n
 function replaceEntry(
   state: ConversationProjectionState,
   id: string,
+  updatedSeq: number,
   replace: (entry: ConversationEntry) => ConversationEntry,
 ): ConversationProjectionState {
   const index = entryIndex(state.entries, id)
   if (index < 0) return state
+  const current = state.entries[index]!
+  const replacement = replace(current)
+  if (replacement === current) return state
   const entries = [...state.entries]
-  entries[index] = replace(entries[index]!)
+  entries[index] = { ...replacement, updatedSeq }
   return { ...state, entries }
 }
 
-function settleStreaming(state: ConversationProjectionState): ConversationProjectionState {
+function settleStreaming(state: ConversationProjectionState, updatedSeq: number): ConversationProjectionState {
   let next = state
   if (state.streamingThinkingId !== null) {
-    next = replaceEntry(next, state.streamingThinkingId, entry => entry.kind === 'thinking' ? { ...entry, streaming: false } : entry)
+    next = replaceEntry(next, state.streamingThinkingId, updatedSeq, entry => entry.kind === 'thinking' ? { ...entry, streaming: false } : entry)
   }
   if (state.streamingAssistantId !== null) {
-    next = replaceEntry(next, state.streamingAssistantId, entry => entry.kind === 'assistant' ? { ...entry, streaming: false } : entry)
+    next = replaceEntry(next, state.streamingAssistantId, updatedSeq, entry => entry.kind === 'assistant' ? { ...entry, streaming: false } : entry)
   }
   if (next.streamingStep === null && next.streamingAssistantId === null && next.streamingThinkingId === null && next.pendingReasoning === '') return next
   return {
@@ -223,10 +228,10 @@ function retractTurn(state: ConversationProjectionState, turn: number): Conversa
   }
 }
 
-function openStreamingStep(state: ConversationProjectionState, turn: number, step: number): ConversationProjectionState {
+function openStreamingStep(state: ConversationProjectionState, turn: number, step: number, updatedSeq: number): ConversationProjectionState {
   const key = stepKey(turn, step)
   if (state.streamingStep === key) return state
-  const settled = settleStreaming(state)
+  const settled = settleStreaming(state, updatedSeq)
   return {
     ...settled,
     currentTurn: turn,
@@ -244,7 +249,7 @@ function applyReasoningChunk(
   text: string,
 ): ConversationProjectionState {
   if (state.streamingThinkingId !== null) {
-    return replaceEntry(state, state.streamingThinkingId, entry => entry.kind === 'thinking'
+    return replaceEntry(state, state.streamingThinkingId, event.seq, entry => entry.kind === 'thinking'
       ? { ...entry, text: entry.text + text }
       : entry)
   }
@@ -255,6 +260,7 @@ function applyReasoningChunk(
     kind: 'thinking',
     id,
     seq: event.seq,
+    updatedSeq: event.seq,
     turn: event.data.turn,
     step: event.data.step,
     text: pendingReasoning,
@@ -272,7 +278,7 @@ function applyTextChunk(
   text: string,
 ): ConversationProjectionState {
   if (state.streamingAssistantId !== null) {
-    return replaceEntry(state, state.streamingAssistantId, entry => entry.kind === 'assistant'
+    return replaceEntry(state, state.streamingAssistantId, event.seq, entry => entry.kind === 'assistant'
       ? { ...entry, text: entry.text + text }
       : entry)
   }
@@ -281,6 +287,7 @@ function applyTextChunk(
     kind: 'assistant',
     id,
     seq: event.seq,
+    updatedSeq: event.seq,
     turn: event.data.turn,
     step: event.data.step,
     text,
@@ -296,19 +303,19 @@ function finalizeAssistant(
   const { turn, step, message } = event.data
   const key = stepKey(turn, step)
   if (state.finalizedSteps.includes(key) || state.interruptedTurns.includes(turn)) return state
-  let next = state.streamingStep === key ? state : settleStreaming(state)
+  let next = state.streamingStep === key ? state : settleStreaming(state, event.seq)
   const reasoning = reasoningText(message.content)
   const answer = visibleText(message.content).trim()
   const thinkingId = `thinking:${key}`
   const assistantId = `assistant:${key}`
   const thinkingIndex = entryIndex(next.entries, next.streamingThinkingId)
   if (thinkingIndex >= 0) {
-    next = replaceEntry(next, next.streamingThinkingId!, entry => entry.kind === 'thinking'
+    next = replaceEntry(next, next.streamingThinkingId!, event.seq, entry => entry.kind === 'thinking'
       ? { ...entry, text: reasoning, streaming: false }
       : entry)
   } else if (reasoning.trim() !== '') {
     const thinking: ConversationThinkingEntry = {
-      kind: 'thinking', id: thinkingId, seq: event.seq, turn, step, text: reasoning, streaming: false,
+      kind: 'thinking', id: thinkingId, seq: event.seq, updatedSeq: event.seq, turn, step, text: reasoning, streaming: false,
     }
     const entries = [...next.entries]
     const assistantIndex = entryIndex(entries, next.streamingAssistantId)
@@ -317,12 +324,12 @@ function finalizeAssistant(
   }
   const assistantIndex = entryIndex(next.entries, next.streamingAssistantId)
   if (assistantIndex >= 0) {
-    next = replaceEntry(next, next.streamingAssistantId!, entry => entry.kind === 'assistant'
+    next = replaceEntry(next, next.streamingAssistantId!, event.seq, entry => entry.kind === 'assistant'
       ? { ...entry, text: answer, streaming: false }
       : entry)
   } else if (answer !== '') {
     next = appendEntry(next, {
-      kind: 'assistant', id: assistantId, seq: event.seq, turn, step, text: answer, streaming: false,
+      kind: 'assistant', id: assistantId, seq: event.seq, updatedSeq: event.seq, turn, step, text: answer, streaming: false,
     })
   }
   return {
@@ -355,13 +362,14 @@ function applyToolResult(
   }
   const pairedId = state.toolEntryIds[callId]
   if (pairedId !== undefined) {
-    return replaceEntry(state, pairedId, entry => entry.kind === 'tool' ? { ...entry, result } : entry)
+    return replaceEntry(state, pairedId, event.seq, entry => entry.kind === 'tool' ? { ...entry, result } : entry)
   }
   const id = `tool:${callId}`
   const entry: ConversationToolEntry = {
     kind: 'tool',
     id,
     seq: event.seq,
+    updatedSeq: event.seq,
     turn: event.data.turn,
     step: event.data.step,
     callId,
@@ -392,18 +400,19 @@ export function foldConversationProjection(
       return { ...state, currentTurn: event.data.turn, active: true }
     case 'step/start': {
       if (state.retractedTurns.includes(event.data.turn)) return state
-      const settled = settleStreaming(state)
+      const settled = settleStreaming(state, event.seq)
       return { ...settled, currentTurn: event.data.turn, active: true }
     }
     case 'turn/end': {
       if (state.retractedTurns.includes(event.data.turn)) return state
-      let next = { ...settleStreaming(state), currentTurn: event.data.turn, active: false }
+      let next = { ...settleStreaming(state, event.seq), currentTurn: event.data.turn, active: false }
       if (event.data.reason.kind === 'error') {
         const failure = event.data.reason.error
         return appendEntry(next, {
           kind: 'error',
           id: `error:${String(event.seq)}`,
           seq: event.seq,
+          updatedSeq: event.seq,
           turn: event.data.turn,
           message: failure.message,
           ...(failure.code === '' ? {} : { code: failure.code }),
@@ -412,7 +421,7 @@ export function foldConversationProjection(
       if (event.data.reason.kind !== 'aborted' && event.data.reason.kind !== 'interrupted') return next
       if (next.interruptedTurns.includes(event.data.turn)) return next
       next = appendEntry(next, {
-        kind: 'interrupted', id: `interrupted:${String(event.data.turn)}`, seq: event.seq, turn: event.data.turn,
+        kind: 'interrupted', id: `interrupted:${String(event.data.turn)}`, seq: event.seq, updatedSeq: event.seq, turn: event.data.turn,
       })
       return { ...next, interruptedTurns: [...next.interruptedTurns, event.data.turn] }
     }
@@ -425,6 +434,7 @@ export function foldConversationProjection(
         kind: 'user',
         id: `user:${String(event.seq)}`,
         seq: event.seq,
+        updatedSeq: event.seq,
         turn: state.currentTurn,
         text,
         images: imagesOf(event.data.content),
@@ -436,7 +446,7 @@ export function foldConversationProjection(
       const key = stepKey(turn, step)
       if (state.interruptedTurns.includes(turn) || state.finalizedSteps.includes(key)) return state
       if (chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta') return state
-      const opened = openStreamingStep(state, turn, step)
+      const opened = openStreamingStep(state, turn, step, event.seq)
       return chunk.type === 'reasoning-delta'
         ? applyReasoningChunk(opened, event, chunk.text)
         : applyTextChunk(opened, event, chunk.text)
@@ -452,6 +462,7 @@ export function foldConversationProjection(
         kind: 'tool',
         id,
         seq: event.seq,
+        updatedSeq: event.seq,
         turn: event.data.turn,
         step: event.data.step,
         callId: String(event.data.callId),
@@ -489,5 +500,5 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
     viewSchema: conversationProjectionSchema,
     view: state => ({ entries: state.entries, streaming: state.active }),
   },
-  stateVersion: 2,
+  stateVersion: 3,
 }

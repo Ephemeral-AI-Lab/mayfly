@@ -20,7 +20,7 @@ import type { SkillSummary } from '@deepseek-ai/dsh-skill'
 import type { InfoRow, InfoSection } from './info-panel.ts'
 import { InfoPanel } from './info-panel.ts'
 import { displayServices } from './display-services.ts'
-import { mountEditorReplacement } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { refresh, userInvocableSkills } from './skills-catalog.ts'
 
 /**

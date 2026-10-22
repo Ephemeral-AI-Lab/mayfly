@@ -107,6 +107,8 @@ describe('updater/check runUpdateCheck', () => {
       lastNotifiedVersion: OFFER_VERSION,
       lastOffer: { version: OFFER_VERSION, publishedAt: Date.parse('2026-08-23T00:00:00.000Z') },
     })
+    await world.ctx.fiber.dispose()
+    expect(world.screen.children).toEqual([])
   })
 
   it('re-mounts the notice from the cached offer inside the 24h window', async () => {
@@ -257,6 +259,8 @@ describe('updater/check runUpdateCheck', () => {
     expect(rows[0]).toContain('a previous /update to v0.1.0-rc.8 was interrupted')
     expect(rows[1]).toContain(backup)
     expect(rows[1]).toContain('run /update to retry')
+    await world.ctx.fiber.dispose()
+    expect(world.screen.children).toEqual([])
   })
 
   it('warns on an unparseable marker, even with the check switched off, and never throws without a screen', async () => {

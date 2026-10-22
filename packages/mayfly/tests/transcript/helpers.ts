@@ -31,6 +31,9 @@ import { topRule } from '../../src/core/chrome.ts'
  */
 export function fakeMayflyComponents(): MayflyComponents {
   return {
+    strong: text => `\x1b[1m${text}\x1b[22m`,
+    italic: text => `\x1b[3m${text}\x1b[23m`,
+    strike: text => `\x1b[9m${text}\x1b[29m`,
     createMarkdown(options = {}): MayflyMarkdown {
       let text = options.text ?? ''
       return {

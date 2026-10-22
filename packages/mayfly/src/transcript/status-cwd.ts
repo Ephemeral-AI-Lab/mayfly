@@ -10,7 +10,7 @@
 
 import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyStatusEntry } from './status-model.ts'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { SessionFactsService } from './session-facts.ts'
 
 /** Stable Cordis plugin name. */
@@ -52,15 +52,15 @@ export function shortenCwd(path: string, home: string): string {
 export function apply(ctx: Context): void {
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
   let text = shortenCwd(facts?.currentAgent?.session.header.cwd ?? process.cwd(), homedir())
+  const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'muted' }
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.cwd', priority: 5 }, node())
 
   const offAgent = facts?.subscribeAgent((agent) => {
     const next = shortenCwd(agent?.session.header.cwd ?? process.cwd(), homedir())
     if (next === text) return
     text = next
-    ctx.mayflyStatus.refresh('mayfly.status.cwd')
+    status.set(node())
   })
   ctx.effect(() => () => offAgent?.())
 
-  const model = (): MayflyStatusEntry => ({ id: 'mayfly.status.cwd', priority: 5, node: { kind: 'text', content: text, tone: 'muted' }, visible: text !== '' })
-  ctx.mayflyStatus.register(model)
 }

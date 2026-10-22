@@ -59,7 +59,7 @@ import type { MayflyComponents, MayflyFocusable, MayflyKeymap, MayflyTheme } fro
 import type { MayflyTranslate } from '../frontend/index.ts'
 import { CanonicalPanelAdapter, type CanonicalNodeSource } from './canonical-panel.ts'
 import { displayServices } from './display-services.ts'
-import { mountEditorReplacement } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { currentMayflySettings } from './settings.ts'
 import { CanonicalFormController } from './form-panel.ts'

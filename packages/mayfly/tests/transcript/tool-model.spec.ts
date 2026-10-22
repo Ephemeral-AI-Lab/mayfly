@@ -1,37 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyComponent, MayflyScreen, MayflySemanticColors } from '../../src/core/index.ts'
-import type { ToolPresentationModel } from '../../src/frontend/index.ts'
-import { createToolPresentationModel, toolCallNode, toolResultNode, toolResultChip, MayflyModelToolService, ToolModelComponent } from '../../src/transcript/tool-model.ts'
+import type { MayflySemanticColors } from '../../src/core/index.ts'
+import { createToolPresentationModel, toolCallNode, toolResultNode, toolResultChip, ToolModelComponent } from '../../src/transcript/tool-model.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
 
 const renderer = { components: fakeMayflyComponents(), colors: COLORS as MayflySemanticColors }
 
-function screenFixture() {
-  const children: MayflyComponent[] = []; const renders: number[] = []
-  const screen = { addChild: (component: MayflyComponent) => { children.push(component); return () => { const index = children.indexOf(component); if (index >= 0) children.splice(index, 1) } }, requestRender: () => { renders.push(1) } } as unknown as MayflyScreen
-  return { screen, children, renders }
-}
-
-const tool = (id: string, expanded = true): ToolPresentationModel => ({
-  kind: 'tool', id, name: id,
-  call: { kind: 'text', content: 'call' },
-  result: { kind: 'text', content: 'result' },
-  expanded,
-})
-
-describe('MayflyModelToolService', () => {
-  it('mounts dynamic tools and renders canonical call/result nodes', () => {
-    const ctx = new Context(); const fixture = screenFixture(); const service = new MayflyModelToolService(ctx, undefined, renderer); service.attach(fixture.screen); let current = tool('one'); const dispose = service.register(() => current); const component = fixture.children[0] as ToolModelComponent; expect(component.render(10)).toEqual(['result']); component.setExpanded(false); expect(component.render(10)).toEqual(['call']); component.setExpanded(true); expect(component.render(10)).toEqual(['result']); component.setExpanded(false); current = tool('one', false); service.refresh('one'); service.refresh('missing'); expect(fixture.children).toHaveLength(1); expect((fixture.children[0] as ToolModelComponent).render(10)).toEqual(['call']); expect(service.list()).toHaveLength(1); dispose(); dispose(); expect(component.render(10)).toEqual([])
-  })
-  it('handles absent, duplicate, late attach, collapsed and unload', () => {
-    const ctx = new Context(); const service = new MayflyModelToolService(ctx, undefined, renderer); const absent = service.register(() => null); absent(); const late = service.register(tool('late')); expect(service.list()).toHaveLength(1); const fixture = screenFixture(); service.attach(fixture.screen); expect(fixture.children).toHaveLength(1); expect(() => service.register(tool('late'))).toThrow(/already registered/); const hidden = service.register(tool('hidden', false)); hidden(); late(); service.register(tool('active')); expect(fixture.children).toHaveLength(1); service.dispose(); expect(fixture.children).toHaveLength(0)
-  })
-  it('keeps a headless registry inert until renderer dependencies exist', () => {
-    const fixture = screenFixture(); const service = new MayflyModelToolService(new Context(), fixture.screen); service.register(tool('headless')); expect(service.list()).toHaveLength(1); expect(fixture.children).toEqual([]); service.dispose()
-  })
+describe('ToolModelComponent', () => {
   it('renders missing nodes and invalidates safely', () => { const empty = new ToolModelComponent(() => ({ kind: 'tool', id: 'empty', name: 'empty' }), renderer); expect(empty.render(10)).toEqual([]); empty.invalidate(); const none = new ToolModelComponent(() => null, renderer); expect(none.render(10)).toEqual([]); none.invalidate() })
   it('falls back to the call node when expanded without a result', () => {
     const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'call-only', name: 'call-only', expanded: true, call: { kind: 'text', content: 'pending call' } }), renderer)
@@ -53,9 +29,6 @@ describe('MayflyModelToolService', () => {
     const component = new ToolModelComponent(() => ({ kind: 'tool', id: 'invalid', name: 'invalid', call: invalid }), { ...renderer, viewportRows: () => Number.NaN })
     expect(component.render(Number.NaN).join('')).toContain('May')
   })
-  it('renders a statically registered model and cleans reattached screens', () => {
-    const first = screenFixture(); const second = screenFixture(); const service = new MayflyModelToolService(new Context(), first.screen, renderer); service.register(tool('static')); expect((first.children[0] as ToolModelComponent).render(10)).toEqual(['result']); service.attach(second.screen); expect(first.children).toHaveLength(0); expect(second.children).toHaveLength(1); service.dispose()
-  })
 })
 
 describe('canonical tool presentation builder', () => {
@@ -67,9 +40,15 @@ describe('canonical tool presentation builder', () => {
     expect(toolCallNode({ card: 'generic', title: 'Cycle', rawInput: cyclic })).toMatchObject({ sections: [{ body: { content: '[object Object]' } }] })
     expect(toolCallNode({ card: 'generic', title: 'Symbol', rawInput: Symbol('x') })).toMatchObject({ sections: [{ body: { content: 'Symbol(x)' } }] })
     expect(toolCallNode({ card: 'generic', title: 'String', rawInput: 'literal' })).toMatchObject({ sections: [{ body: { content: 'literal' } }] })
-    expect(toolCallNode({ card: 'terminal', title: 'pnpm test', description: 'Tests', cwd: '/repo' })).toMatchObject({ kind: 'sections', sections: [{ title: 'Tests' }, { title: 'Command', body: { kind: 'code' } }] })
-    expect((toolCallNode({ card: 'terminal', title: 'pnpm test', description: 'Tests' }) as { sections: readonly unknown[] }).sections[0]).toMatchObject({ title: 'Tests', body: { content: '' } })
-    expect((toolCallNode({ card: 'terminal', title: 'pwd', cwd: '/repo' }) as { sections: readonly unknown[] }).sections[0]).toMatchObject({ title: 'cwd', body: { content: '/repo' } })
+    expect(toolCallNode({ card: 'terminal', title: 'pnpm test', description: 'Tests', cwd: '/repo' })).toMatchObject({ kind: 'stack', direction: 'column', gap: 0, children: [
+      { node: { kind: 'text', content: 'Tests', tone: 'muted' } },
+      { node: { kind: 'sections', sections: [{ title: 'cwd', body: { kind: 'text', content: '/repo' } }, { title: 'Command', body: { kind: 'code', code: 'pnpm test' } }] } },
+    ] })
+    expect(toolCallNode({ card: 'terminal', title: 'pnpm test', description: 'Tests' })).toMatchObject({ kind: 'stack', children: [
+      { node: { kind: 'text', content: 'Tests', tone: 'muted' } },
+      { node: { kind: 'sections', sections: [{ title: 'Command', body: { kind: 'code', code: 'pnpm test' } }] } },
+    ] })
+    expect(toolCallNode({ card: 'terminal', title: 'pwd', cwd: '/repo' })).toMatchObject({ kind: 'sections', sections: [{ title: 'cwd', body: { kind: 'text', content: '/repo' } }, { title: 'Command', body: { kind: 'code' } }] })
     expect(toolCallNode({ card: 'terminal', title: 'pwd' })).toMatchObject({ sections: [{ title: 'Command' }] })
     expect(toolCallNode({ card: 'diff', title: 'Write', diffs: [{ path: 'a.ts', oldText: 'old', newText: 'new' }] })).toMatchObject({ sections: [{ title: 'a.ts · +1 −1', body: { kind: 'diff', before: 'old', after: 'new' } }] })
     expect(toolCallNode({ card: 'diff', title: 'Write', diffs: [] })).toMatchObject({ sections: [{ title: 'Write', body: { content: '(no changes)' } }] })
@@ -88,7 +67,7 @@ describe('canonical tool presentation builder', () => {
     expect(toolResultNode({ card: 'search', shape: 'matches', files: [{ path: 'a.ts', matches: [{ lineNumber: 2, line: 'hit' }] }], truncated: false, total: 1 }, undefined, 'tool')).toMatchObject({ rows: [{ label: 'files', value: [{ text: '1' }] }, { label: 'matches', value: [{ text: '1' }] }] })
     expect(toolResultNode({ card: 'search', shape: 'matches', files: [{ path: 'a.ts', matches: [{ lineNumber: 2, line: 'hit' }, { lineNumber: 4, line: 'hit' }] }], truncated: true, total: 250 }, undefined, 'tool')).toMatchObject({ rows: [{}, { label: 'matches', value: [{ text: '2 of 250' }] }] })
     expect(toolResultNode({ card: 'search', shape: 'matches', files: [], truncated: false, total: 0 }, undefined, 'tool')).toMatchObject({ rows: [{ label: 'files', value: [{ text: '0' }] }, { label: 'matches', value: [{ text: '0' }] }] })
-    expect(toolResultNode({ card: 'read', path: 'a.ts', offset: 1, lines: [{ number: 1, text: 'const x = 1' }], totalLines: 1, lang: 'ts' }, undefined, 'tool')).toMatchObject({ rows: [{ label: 'path', value: [{ text: 'a.ts' }] }, { label: 'lines', value: [{ text: '1-1' }] }] })
+    expect(toolResultNode({ card: 'read', path: 'a.ts', offset: 1, lines: [{ number: 1, text: 'const x = 1' }], totalLines: 1, lang: 'ts' }, undefined, 'tool')).toMatchObject({ rows: [{ label: 'path', value: [{ text: 'a.ts' }] }, { label: 'lang', value: [{ text: 'ts' }] }, { label: 'lines', value: [{ text: '1-1' }] }] })
     expect(toolResultNode({ card: 'read', path: 'a.ts', offset: 1, lines: [{ number: 3, text: 'x' }, { number: 9, text: 'y' }], totalLines: 40 }, undefined, 'tool')).toMatchObject({ rows: [{}, { value: [{ text: '3-9 of 40' }] }] })
     expect(toolResultNode({ card: 'read', title: 'Read', path: 'a', offset: 5, lines: [], totalLines: 0 }, undefined, 'tool')).toMatchObject({ rows: [{ label: 'path' }, { label: 'lines', value: [{ text: 'from line 5' }] }] })
     expect(toolResultNode({ card: 'web', kind: 'fetch', url: 'https://example.com', statusCode: 200, truncated: true }, undefined, 'tool')).toMatchObject({ rows: [{ value: [{ text: 'https://example.com' }] }, { value: [{ text: '200' }] }, { value: [{ text: 'yes' }] }] })
@@ -96,6 +75,22 @@ describe('canonical tool presentation builder', () => {
     expect(toolResultNode({ card: 'web', kind: 'search', sources: [{ url: 'u', title: 'Title', snippet: 'Snippet' }, { url: 'v' }], truncated: false }, undefined, 'tool')).toMatchObject({ id: 'tool-web-sources', selectedIds: [], items: [{ label: 'Title', detail: 'Snippet' }, { label: 'v', detail: 'v' }] })
     expect(toolResultNode(undefined, { content: [], isError: false }, 'tool')).toEqual({ kind: 'text', content: '(no output)' })
     expect(toolResultNode(undefined, { content: [{ type: 'text', text: 'failed' }], isError: true }, 'tool')).toEqual({ kind: 'text', content: 'failed', tone: 'danger' })
+  })
+
+  it('maps follow-along locations, replacement titles, and web metadata', () => {
+    expect(toolCallNode({ card: 'generic', title: 'Edit', locations: [{ path: 'a.ts', line: 3 }, { path: 'b.ts' }] })).toEqual({ kind: 'sections', sections: [
+      { title: 'Edit', body: { kind: 'text', content: '' } },
+      { title: 'files', body: { kind: 'text', content: 'a.ts:3\nb.ts' } },
+    ] })
+    expect(toolCallNode({ card: 'generic', title: 'Edit', locations: [] })).toEqual({ kind: 'sections', sections: [{ title: 'Edit', body: { kind: 'text', content: '' } }] })
+    expect(toolResultNode({ card: 'search', shape: 'paths', title: 'Glob *.ts', paths: ['a.ts'], truncated: false, total: 1 }, undefined, 'tool')).toEqual({ kind: 'sections', sections: [{ title: 'Glob *.ts', body: { kind: 'fields', rows: [{ label: 'paths', value: [{ text: '1' }] }] } }] })
+    expect(toolResultNode({ card: 'search', shape: 'matches', title: '', files: [], truncated: false, total: 0 }, undefined, 'tool')).toEqual({ kind: 'fields', rows: [{ label: 'files', value: [{ text: '0' }] }, { label: 'matches', value: [{ text: '0' }] }] })
+    expect(toolResultNode({ card: 'read', path: 'a.ts', offset: 1, lines: [], totalLines: 0, lang: '' }, undefined, 'tool')).toEqual({ kind: 'fields', rows: [{ label: 'path', value: [{ text: 'a.ts' }] }, { label: 'lines', value: [{ text: 'from line 1' }] }] })
+    expect(toolResultNode({ card: 'web', kind: 'search', sources: [{ url: 'u', publishedAt: '' }], truncated: false, answer: '' }, undefined, 'tool')).toEqual({ kind: 'list', id: 'tool-web-sources', selectedIds: [], items: [{ id: 'source-0', label: 'u', detail: 'u' }] })
+    expect(toolResultNode({ card: 'web', kind: 'search', sources: [{ url: 'u', title: 'T', snippet: 'S', publishedAt: '2024-05-01' }], truncated: false, answer: 'Answer' }, undefined, 'tool')).toEqual({ kind: 'stack', direction: 'column', gap: 0, children: [
+      { node: { kind: 'text', content: 'Answer' } },
+      { node: { kind: 'list', id: 'tool-web-sources', selectedIds: [], items: [{ id: 'source-0', label: 'T', detail: 'S', badge: '2024-05-01' }] } },
+    ] })
   })
 
   it('preserves terminal card row budgets without language headings', () => {
@@ -107,6 +102,27 @@ describe('canonical tool presentation builder', () => {
     expect(resultRows.join('\n')).not.toContain('console')
     expect(callRows).toHaveLength(2)
     expect(resultRows).toHaveLength(4)
+  })
+
+  it('renders the description as a muted line above the terminal card', () => {
+    const call = toolCallNode({ card: 'terminal', title: 'pnpm test', description: 'Runs the suite', cwd: '/repo' })
+    const rows = new ToolModelComponent(() => ({ kind: 'tool', id: 'described', name: 'described', call }), renderer).render(40)
+    expect(rows).toEqual(['Runs the suite', '\x1b[1mcwd\x1b[22m', '/repo', '\x1b[1mCommand\x1b[22m', 'pnpm test'])
+  })
+
+  it('renders follow-along files, compact metadata, and the web answer through the tool component', () => {
+    const call = toolCallNode({ card: 'generic', title: 'Read a.ts', rawInput: 'a.ts', locations: [{ path: 'a.ts', line: 10 }] })
+    expect(new ToolModelComponent(() => ({ kind: 'tool', id: 'located', name: 'read', call }), renderer).render(40))
+      .toEqual(['\x1b[1mRead a.ts\x1b[22m', 'a.ts', '\x1b[1mfiles\x1b[22m', 'a.ts:10'])
+    const search = toolResultNode({ card: 'search', shape: 'matches', title: 'Grep foo', files: [{ path: 'a.ts', matches: [{ lineNumber: 1, line: 'foo' }] }], truncated: false, total: 1 }, undefined, 'grep')
+    expect(new ToolModelComponent(() => ({ kind: 'tool', id: 'titled-search', name: 'grep', result: search, expanded: true }), renderer).render(40))
+      .toEqual(['\x1b[1mGrep foo\x1b[22m', 'files: 1', 'matches: 1'])
+    const read = toolResultNode({ card: 'read', path: 'a.ts', offset: 1, lines: [{ number: 1, text: 'x' }], totalLines: 1, lang: 'ts' }, undefined, 'read')
+    expect(new ToolModelComponent(() => ({ kind: 'tool', id: 'lang-read', name: 'read', result: read, expanded: true }), renderer).render(40))
+      .toEqual(['path: a.ts', 'lang: ts', 'lines: 1-1'])
+    const web = toolResultNode({ card: 'web', kind: 'search', answer: 'The answer', sources: [{ url: 'https://x', title: 'X', snippet: 'Snippet', publishedAt: '2024-05-01' }], truncated: false }, undefined, 'web_search')
+    expect(new ToolModelComponent(() => ({ kind: 'tool', id: 'answered-web', name: 'web_search', result: web, expanded: true }), renderer).render(60))
+      .toEqual(['The answer', '   X [2024-05-01] — Snippet'])
   })
 
   it('summarizes XML-envelope fallbacks and nested tool-call arguments', () => {

@@ -24,7 +24,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { ConversationFacts } from '../conversation/index.ts'
 import type { SessionFactsService } from './session-facts.ts'
-import type { MayflyStatusEntry } from './status-model.ts'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-context'
@@ -111,21 +111,20 @@ export function apply(ctx: Context): void {
   let facts: ConversationFacts = factsService?.current ?? {
     phase: 'idle', active: false, turn: 0, flowDownChars: 0, todos: [], contextTokens: 0, agentCalls: [],
   }
-  const offFacts = factsService?.subscribe(next => {
-    const changed = next.contextTokens !== facts.contextTokens || next.contextWindow !== facts.contextWindow
-    facts = next
-    if (changed) ctx.mayflyStatus.refresh('mayfly.status.context')
-  })
-  ctx.effect(() => () => offFacts?.())
-
-  const model = (): MayflyStatusEntry => {
+  const node = (): MayflyStatusNode | null => {
     const max = normalizeWindow(facts.contextWindow)
     const text = facts.contextTokens <= 0
       ? ''
       : max === undefined
         ? `ctx ${formatTokens(facts.contextTokens)}`
         : `context: ${String(contextPercent(facts.contextTokens, max))}% (${formatTokens(facts.contextTokens)}/${formatTokens(max)})`
-    return { id: 'mayfly.status.context', priority: 20, band: 'right', row: 2, overflow: 'hide', node: { kind: 'text', content: text }, visible: text !== '' }
+    return text === '' ? null : { kind: 'text', content: text }
   }
-  ctx.mayflyStatus.register(model)
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 20, band: 'right', row: 2, overflow: 'hide' }, node())
+  const offFacts = factsService?.subscribe(next => {
+    const changed = next.contextTokens !== facts.contextTokens || next.contextWindow !== facts.contextWindow
+    facts = next
+    if (changed) status.set(node())
+  })
+  ctx.effect(() => () => offFacts?.())
 }

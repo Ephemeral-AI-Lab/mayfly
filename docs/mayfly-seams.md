@@ -25,10 +25,10 @@ command。
 
 | Service | 注册形态 | Renderer |
 | --- | --- | --- |
-| `mayflyPanes` | `register({ id, placement, render, ... })` | core 的 header/left/right/bottom lanes |
-| `mayflyStatus` | `register(entryOrSource)` | transcript footer |
-| `mayflyOverlays` | `open({ id, render, ... })` | core overlay stack |
-| `mayflyEditorExtensions` | `register({ id, before, after, complete, transformSubmit, ... })` | interaction editor |
+| `mayflyPanes` | `register(definition, node)` / `set(node \| null)` | core 的 header/left/right/bottom lanes |
+| `mayflyStatus` | `register(definition, node)` / `set(node \| null)` | transcript footer |
+| `mayflyOverlays` | `open(definition, node)` / `set(node)` | core overlay stack |
+| `mayflyEditorExtensions` | `register(definition, decoration)` / `set(decoration)` | interaction editor |
 
 这些服务由 `@ephemeral-ai/mayfly-ui` 提供。贡献使用 renderer-neutral
 `MayflyUiNode`，可由 `@ephemeral-ai/mayfly-ui` 构造。core 在渲染前执行 schema、
@@ -41,8 +41,11 @@ quota、控制字符与宽度校验。
 range、overscan、cache、measurement 或 scroll controller API，插件仍负责自身
 的网络与数据库取数。
 
-注册 handle 提供 `refresh()` 和 `dispose()`；pane 还提供
-`setHidden()`，overlay 提供 `close()`。即使调用方不手动 dispose，
+Provider 在 snapshot 成功冻结后为每次 `set()` 生成单调 revision，并通过
+upsert/remove delta 通知 core。Pane、overlay 与 editor-extension 事件可以把
+callback 的 `context.revision` 作为 `eventRevision` 回写；renderer 将其视为同一
+操作的 internal refresh，而外部替换会 abort 旧 continuation。
+Pane/status 的 null snapshot 不占布局；overlay 提供 `focus/hide/show/close`。即使调用方不手动 dispose，
 Cordis Fiber unload 也会清理 registration。
 
 ## 当前 Agent
@@ -69,5 +72,5 @@ if (agent !== null) {
 dsh command handler 保持 dsh 自己的返回类型。没有 grant、manifest admission、
 gesture token、owner generation、buffer replay 或跨 realm proxy。
 
-Renderer 暂时缺位时 registry definition 仍可存在；renderer 恢复后从
-`list()/subscribe()` 重新取得当前值。外部插件卸载时它的定义立即消失。
+Renderer 暂时缺位时 registry snapshot 仍可存在；renderer 恢复后通过
+`subscribe()` replay 当前 upsert。外部插件卸载时 provider 发布 remove delta。

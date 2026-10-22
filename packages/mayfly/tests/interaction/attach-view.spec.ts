@@ -14,7 +14,8 @@ import {
   mountChildAttach,
   type MayflyChildAttachTarget,
 } from '../../src/interaction/attach-view.ts'
-import { EditorHostService, setEditorSlotSwap } from '../../src/interaction/editor-instance.ts'
+import { PromptEditorController } from '../../src/interaction/editor-instance.ts'
+import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
 import { FakeMayflyComponents, FakeScreen, FakeTheme } from './fakes.ts'
 import { expectLinesFit } from '../core/width-scan.ts'
 
@@ -25,8 +26,8 @@ function plain(rows: readonly string[]): readonly string[] {
 function conversation(text: string, seq = 2): unknown {
   return {
     entries: [
-      { id: 'u1', seq: seq - 1, turn: 1, kind: 'user', text: 'hello child', images: [] },
-      { id: 'a1', seq, turn: 1, kind: 'assistant', step: 0, text, streaming: false },
+      { id: 'u1', seq: seq - 1, updatedSeq: seq - 1, turn: 1, kind: 'user', text: 'hello child', images: [] },
+      { id: 'a1', seq, updatedSeq: seq, turn: 1, kind: 'assistant', step: 0, text, streaming: false },
     ],
     streaming: false,
   }
@@ -36,8 +37,8 @@ function longConversation(turns: number): unknown {
   const entries: unknown[] = []
   for (let index = 0; index < turns; index += 1) {
     entries.push(
-      { id: `u${String(index)}`, seq: index * 2 + 1, turn: index + 1, kind: 'user', text: `line ${String(index)}`, images: [] },
-      { id: `a${String(index)}`, seq: index * 2 + 2, turn: index + 1, kind: 'assistant', step: 0, text: `reply ${String(index)}`, streaming: false },
+      { id: `u${String(index)}`, seq: index * 2 + 1, updatedSeq: index * 2 + 1, turn: index + 1, kind: 'user', text: `line ${String(index)}`, images: [] },
+      { id: `a${String(index)}`, seq: index * 2 + 2, updatedSeq: index * 2 + 2, turn: index + 1, kind: 'assistant', step: 0, text: `reply ${String(index)}`, streaming: false },
     )
   }
   return { entries, streaming: false }
@@ -46,7 +47,7 @@ function longConversation(turns: number): unknown {
 function toolConversation(): unknown {
   return {
     entries: [{
-      id: 'tool-1', seq: 1, turn: 1, kind: 'tool', step: 0, callId: 'call-1',
+      id: 'tool-1', seq: 1, updatedSeq: 1, turn: 1, kind: 'tool', step: 0, callId: 'call-1',
       name: 'bash', arguments: '{"command":"pwd"}', startedAt: 1, channel: 'transcript',
     }],
     streaming: false,
@@ -451,8 +452,9 @@ describe('mountChildAttach', () => {
     base.ctx.provide('agents', { get: () => childAgent } as never)
     const toolGet = vi.fn(() => undefined)
     base.ctx.provide('tools', { get: toolGet } as never)
-    new EditorHostService(base.ctx)
-    setEditorSlotSwap(base.ctx, { mount: component => base.screen.mountDialogPanel(component) })
+    new PromptEditorController(base.ctx)
+    new EditorPanelController(base.ctx)
+    base.ctx.mayflyEditorPanels.setHost({ mount: component => base.screen.mountDialogPanel(component) })
     const closed = vi.fn()
     const handle = mountChildAttach(base.ctx, base.parent, { id: 'child', mode: 'one-shot' }, closed)
     expect(handle).toBeDefined()
@@ -472,8 +474,9 @@ describe('mountChildAttach', () => {
     noResident.ctx.provide('agents', { get: () => undefined } as never)
     const noResidentGet = vi.fn(() => undefined)
     noResident.ctx.provide('tools', { get: noResidentGet } as never)
-    new EditorHostService(noResident.ctx)
-    setEditorSlotSwap(noResident.ctx, { mount: component => noResident.screen.mountDialogPanel(component) })
+    new PromptEditorController(noResident.ctx)
+    new EditorPanelController(noResident.ctx)
+    noResident.ctx.mayflyEditorPanels.setHost({ mount: component => noResident.screen.mountDialogPanel(component) })
     const noResidentHandle = mountChildAttach(noResident.ctx, noResident.parent, { id: 'child', mode: 'one-shot' }, () => {})
     await vi.waitFor(() => expect(noResidentGet).toHaveBeenCalledWith('bash', undefined))
     noResidentHandle?.close()

@@ -11,3 +11,16 @@
  */
 
 export { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '@earendil-works/pi-tui'
+
+import { sliceByColumn, visibleWidth } from '@earendil-works/pi-tui'
+
+/** Clamp an arbitrary viewport width to a usable positive column count. */
+export function safeWidth(width: number): number {
+  return Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
+}
+
+/** Keep a row as-is when it fits, otherwise cut it to the column budget. */
+export function fitText(value: string, width: number): string {
+  const available = safeWidth(width)
+  return visibleWidth(value) <= available ? value : sliceByColumn(value, 0, available, true)
+}

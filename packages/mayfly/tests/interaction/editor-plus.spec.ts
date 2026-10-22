@@ -19,7 +19,7 @@ import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
 import * as editorPlus from '../../src/interaction/editor-plus.ts'
 import * as fileMention from '../../src/interaction/file-mention.ts'
-import { clearSharedEditor, setSharedEditor } from '../../src/interaction/editor-instance.ts'
+import { EditorDockHost } from '../../src/interaction/editor-dock-host.ts'
 import { __setCatalogForTest } from '../../src/interaction/skills-catalog.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { fakeMayflyContext, FakeMayflyEditor, KEY, type FakeMayflyComponents, type FakeScreen } from './fakes.ts'
@@ -45,7 +45,6 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
   agent: Agent
   followup: ReturnType<typeof vi.fn>
   inputFiber: { dispose(): Promise<void> }
-  plusFiber: { dispose(): Promise<void> }
   locale: MayflyLocaleService | undefined
 }> {
   const { ctx, screen, components } = fakeMayflyContext()
@@ -59,11 +58,10 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
   const followup = vi.fn()
   const agent = { id: session.id, session, status: 'idle', followup } as unknown as Agent
   ctx.provide('testSession', { current: options.withAgent === false ? null : agent, modelRef: undefined })
-  const plusFiber = options.plusFirst === true ? await ctx.plugin(editorPlus) : undefined
   const inputFiber = await ctx.plugin(inputPlugin)
   const editor = components.editors.at(-1)!
-  // mayfly-input mounts the editor first, then the hint line below it.
-  const hint = screen.children.at(-1) as MayflyComponent
+  const dock = screen.slotTargets.get('editor.prompt') as EditorDockHost
+  const hint: MayflyComponent = { render: width => dock.renderHint(width), invalidate: () => dock.invalidate() }
   return {
     ctx,
     screen,
@@ -73,7 +71,6 @@ async function mount(options: { withAgent?: boolean, plusFirst?: boolean, locale
     agent,
     followup,
     inputFiber,
-    plusFiber: plusFiber ?? await ctx.plugin(editorPlus),
     locale,
   }
 }
@@ -90,14 +87,14 @@ function echoes(screen: FakeScreen): MayflyComponent[] {
 
 describe('mayfly-editor-plus input modes', () => {
   it("switches to bash mode on a bare '!' without polluting the buffer", async () => {
-    const { ctx, editor } = await mount()
+    const { editor } = await mount()
     type(editor, '!')
     expect(editor.getText()).toBe('')
     expect(editor.borderColor('x')).toBe('$x$')
   })
 
   it('applies the bash triple: ! symbol, border label, and shell hue', async () => {
-    const { ctx, editor } = await mount()
+    const { editor } = await mount()
     expect(editor.promptSymbol).toBe('>')
     type(editor, '!')
     expect(editor.promptSymbol).toBe('!')
@@ -106,7 +103,7 @@ describe('mayfly-editor-plus input modes', () => {
   })
 
   it('keeps the shell hue over the slash-context resolution while bash is active', async () => {
-    const { ctx, editor } = await mount()
+    const { editor } = await mount()
     type(editor, '!')
     // A leading `/` is a path separator in bash mode; mayfly-input's
     // primary-highlight must not win over the re-asserted shell hue.
@@ -169,7 +166,7 @@ describe('mayfly-editor-plus input modes', () => {
   })
 
   it('executes a bash submission, echoes it, records history, and reverts to prompt mode', async () => {
-    const { screen, editor, followup } = await mount()
+    const { screen, editor, followup, inputFiber } = await mount()
     editorPlus.setShellExecutor(() => Promise.resolve({ code: 0, stdout: 'hi there\n', stderr: '' }))
     type(editor, '!')
     type(editor, 'echo hi')
@@ -187,6 +184,8 @@ describe('mayfly-editor-plus input modes', () => {
     type(editor, 'back to prompt')
     editor.handleInput(KEY.enter)
     expect(followup).toHaveBeenCalledOnce()
+    await inputFiber.dispose()
+    expect(echoes(screen)).toEqual([])
   })
 
   it('requests a render when the shell echo mounts, not only on the next keypress', async () => {
@@ -239,7 +238,7 @@ describe('mayfly-editor-plus input modes', () => {
   })
 
   it('drops the echo when the fiber unloads before the shell settles', async () => {
-    const { screen, editor, plusFiber } = await mount()
+    const { screen, editor, inputFiber } = await mount()
     // A shell gate the test settles by hand, so the theme-swap unload can
     // land while the command is still running.
     const gate = Promise.withResolvers<editorPlus.ShellExecution>()
@@ -247,7 +246,7 @@ describe('mayfly-editor-plus input modes', () => {
     type(editor, '!')
     type(editor, 'slow')
     editor.handleInput(KEY.enter)
-    await plusFiber.dispose()
+    await inputFiber.dispose()
     gate.resolve({ code: 0, stdout: 'late\n', stderr: '' })
     await new Promise(resolve => setImmediate(resolve))
     // The continuation saw the unloaded fiber: no echo, and no throw through
@@ -256,13 +255,13 @@ describe('mayfly-editor-plus input modes', () => {
   })
 
   it('drops the echo when the fiber unloads before the shell fails', async () => {
-    const { screen, editor, plusFiber } = await mount()
+    const { screen, editor, inputFiber } = await mount()
     const gate = Promise.withResolvers<editorPlus.ShellExecution>()
     editorPlus.setShellExecutor(() => gate.promise)
     type(editor, '!')
     type(editor, 'slow')
     editor.handleInput(KEY.enter)
-    await plusFiber.dispose()
+    await inputFiber.dispose()
     gate.reject(new Error('late spawn'))
     await new Promise(resolve => setImmediate(resolve))
     expect(echoes(screen)).toHaveLength(0)
@@ -433,20 +432,6 @@ describe('mayfly-editor-plus attach lifecycle', () => {
     expect(editor.getText()).toBe('')
   })
 
-  it('restores the previous editor handlers when the fiber disposes', async () => {
-    const { editor, followup, plusFiber } = await mount()
-    await plusFiber.dispose()
-    type(editor, '!')
-    // No mode switch anymore: the '!' stays in the buffer, the frame keeps
-    // the prompt-mode look, and the submit routes as a plain follow-up
-    // through the restored mayfly-input handler.
-    expect(editor.getText()).toBe('!')
-    expect(editor.promptSymbol).toBe('>')
-    expect(editor.borderColor('x')).toBe('x')
-    editor.handleInput(KEY.enter)
-    expect(followup).toHaveBeenCalledOnce()
-  })
-
   it('re-attaches to the new editor when mayfly-input remounts (theme reload)', async () => {
     const { ctx, components, editor, inputFiber } = await mount()
     type(editor, '!')
@@ -476,30 +461,6 @@ describe('mayfly-editor-plus attach lifecycle', () => {
     expect(remounted.borderColor('x')).toBe('$x$')
   })
 
-  it('tolerates a shared editor that carries no prior handlers', async () => {
-    const { ctx } = await mount({ plusFirst: true })
-    const bare = new FakeMayflyEditor()
-    const submitPrompt = vi.fn()
-    setSharedEditor(ctx, { editor: bare, submitPrompt })
-    ctx.emit('mayfly/input-editor-changed')
-    type(bare, '!')
-    expect(bare.borderColor('x')).toBe('$x$')
-    // Leave bash mode again, so the re-attach below starts from the
-    // stashed prompt mode rather than restoring the bash frame.
-    bare.handleInput(KEY.enter)
-    expect(bare.promptSymbol).toBe('>')
-    // Detach restores the (undefined) handlers without crashing.
-    clearSharedEditor(ctx)
-    ctx.emit('mayfly/input-editor-changed')
-    expect(bare.onChange).toBeUndefined()
-    expect(bare.onSubmit).toBeUndefined()
-    // A prompt-mode submit after re-attaching falls through to the router.
-    setSharedEditor(ctx, { editor: bare, submitPrompt })
-    ctx.emit('mayfly/input-editor-changed')
-    type(bare, 'hello')
-    bare.handleInput(KEY.enter)
-    expect(submitPrompt).toHaveBeenCalledWith('hello')
-  })
 })
 
 describe('mayfly-editor-plus slash completion', () => {
@@ -706,7 +667,7 @@ describe('mayfly-editor-plus # skill completion', () => {
   })
 
   it('declines with nothing settled', async () => {
-    const { ctx, editor } = await mount()
+    const { editor } = await mount()
     const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
     await expect(provider.getSuggestions(['#de'], 0, 3, { signal: signal() })).resolves.toBeNull()
   })
@@ -808,7 +769,7 @@ describe('mayfly-editor-plus argument-hint ghost', () => {
   })
 
   it('never shows the ghost in bash mode and clears it on detach', async () => {
-    const { ctx, editor, plusFiber } = await mount()
+    const { ctx, editor, inputFiber } = await mount()
     ctx.commands.register({
       name: 'btw',
       description: 'Ask a side question',
@@ -824,14 +785,14 @@ describe('mayfly-editor-plus argument-hint ghost', () => {
     editor.onKey?.(KEY.escape)
     type(editor, '/btw')
     expect(editor.ghostHint).toBe(' <question>')
-    await plusFiber.dispose()
+    await inputFiber.dispose()
     expect(editor.ghostHint).toBeUndefined()
   })
 
   it('ghosts a draft restored before the enhancement attaches', async () => {
     // A theme-swap reload order: mayfly-input restores the stashed draft, then
     // editor-plus attaches over it.
-    const { ctx, editor, plusFiber } = await mount()
+    const { ctx, editor, inputFiber, components } = await mount()
     ctx.commands.register({
       name: 'btw',
       description: 'Ask a side question',
@@ -840,12 +801,10 @@ describe('mayfly-editor-plus argument-hint ghost', () => {
     })
     type(editor, '/btw')
     expect(editor.ghostHint).toBe(' <question>')
-    await plusFiber.dispose()
-    editor.setText('/btw')
-    expect(editor.ghostHint).toBeUndefined()
-    const reattach = await ctx.plugin(editorPlus)
-    expect(editor.ghostHint).toBe(' <question>')
-    await reattach.dispose()
+    await inputFiber.dispose()
+    await ctx.plugin(inputPlugin)
+    const remounted = components.editors.at(-1)!
+    expect(remounted.ghostHint).toBe(' <question>')
   })
 })
 

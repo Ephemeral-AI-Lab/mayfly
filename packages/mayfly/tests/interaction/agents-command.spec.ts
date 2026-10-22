@@ -15,7 +15,8 @@ import {
   formatAgentElapsed,
   type MayflySubagentTreeEntry,
 } from '../../src/interaction/agents-command.ts'
-import { EditorHostService, setEditorSlotSwap, setSharedEditor } from '../../src/interaction/editor-instance.ts'
+import { PromptEditorController, setSharedEditor } from '../../src/interaction/editor-instance.ts'
+import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
 import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme } from './fakes.ts'
 
 function plain(rows: readonly string[]): readonly string[] {
@@ -103,8 +104,9 @@ async function mountCommand(options: { readonly display?: boolean, readonly curr
     ctx.provide('mayflyKeymap', new FakeKeymap() as never)
     ctx.provide('mayflyComponents', new FakeMayflyComponents() as never)
   }
-  new EditorHostService(ctx)
-  setEditorSlotSwap(ctx, { mount: component => screen.mountDialogPanel(component) })
+  new PromptEditorController(ctx)
+  new EditorPanelController(ctx)
+  ctx.mayflyEditorPanels.setHost({ mount: component => screen.mountDialogPanel(component) })
   const notices: string[] = []
   setSharedEditor(ctx, {
     editor: { focused: false, render: () => [], invalidate: () => {} } as never,

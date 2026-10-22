@@ -105,7 +105,7 @@ describe('core width-scan', () => {
         direction: 'row',
         gap: 1,
         children: [
-          { node: { kind: 'rich-text', spans: [{ text, tone: 'accent', emphasis: 'strong' }] }, grow: 1, shrink: 1 },
+          { node: { kind: 'rich-text', spans: [{ text, tone: 'accent', styles: ['strong'] }] }, grow: 1, shrink: 1 },
           { node: { kind: 'progress', label: text, value: 1, max: 3 }, basis: 12, shrink: 1 },
         ],
       }, {
@@ -130,7 +130,7 @@ describe('core width-scan', () => {
         kind: 'stack',
         direction: 'column',
         children: [
-          { node: { kind: 'rich-text', spans: [{ text, tone: 'accent', emphasis: 'strong' }] } },
+          { node: { kind: 'rich-text', spans: [{ text, tone: 'accent', styles: ['strong'] }] } },
           { node: { kind: 'editor-control' } },
         ],
       }, {

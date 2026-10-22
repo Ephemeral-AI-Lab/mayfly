@@ -9,25 +9,29 @@ import { Context } from '@deepseek-ai/cordis'
 import type { MayflyAutocompleteProvider, MayflyComponent, MayflyFocusable } from '../../src/core/index.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import {
-  applyReversibleSubmitTransformers,
   clearSharedEditor,
-  EditorHostService,
+  PromptEditorController,
   ENHANCEMENT_EDITOR_PLUS,
-  applySubmitTransformers,
   getSharedEditor,
   hasEditorEnhancement,
   markEditorEnhancement,
-  mountEditorReplacement,
   registerEditorAutocompleteSource,
-  registerSubmitTransformer,
   setSharedEditor,
-  setEditorSlotSwap,
   type SharedEditor,
 } from '../../src/interaction/editor-instance.ts'
+import { EditorPanelController, mountEditorReplacement } from '../../src/interaction/editor-panel-controller.ts'
+import {
+  applyReversibleSubmitTransformers,
+  applySubmitTransformers,
+  PromptSubmitPipeline,
+  registerSubmitTransformer,
+} from '../../src/interaction/prompt-submit-pipeline.ts'
 
 function editorContext(): Context {
   const ctx = new Context()
-  new EditorHostService(ctx)
+  new PromptEditorController(ctx)
+  new EditorPanelController(ctx)
+  new PromptSubmitPipeline(ctx)
   return ctx
 }
 
@@ -46,7 +50,7 @@ describe('editor extension host state', () => {
       submitPrompt: () => {},
     }
     let notifications = 0
-    ctx.mayflyEditorHost.subscribeEditorState(() => { notifications += 1 })
+    ctx.mayflyPromptEditor.subscribeEditorState(() => { notifications += 1 })
     setSharedEditor(ctx, shared)
     expect(getSharedEditor(ctx)).toBe(shared)
     clearSharedEditor(ctx)
@@ -54,7 +58,7 @@ describe('editor extension host state', () => {
 
     setSharedEditor(ctx, shared)
     let mounted = false
-    setEditorSlotSwap(ctx, {
+    ctx.mayflyEditorPanels.setHost({
       mount: () => {
         mounted = true
         return () => {}
@@ -65,9 +69,11 @@ describe('editor extension host state', () => {
     const unregisterAutocomplete = registerEditorAutocompleteSource(ctx, 'dispose-me', autocompleteProvider())
     const notificationsBeforeDispose = notifications
 
-    ctx.mayflyEditorHost.dispose()
+    ctx.mayflyPromptEditor.dispose()
+    ctx.mayflyEditorPanels.dispose()
+    ctx.mayflyPromptSubmissions.dispose()
     expect(getSharedEditor(ctx)).toBeUndefined()
-    expect(ctx.mayflyEditorHost.listAutocompleteSources()).toEqual([])
+    expect(ctx.mayflyPromptEditor.listAutocompleteSources()).toEqual([])
     expect(hasEditorEnhancement(ctx, 'dispose-me')).toBe(false)
     expect(applySubmitTransformers(ctx, 'plain')).toEqual([{ type: 'text', text: 'plain' }])
     mountEditorReplacement(ctx, {} as MayflyFocusable)
@@ -85,16 +91,16 @@ describe('editor extension host state', () => {
     const first = autocompleteProvider()
     const second = autocompleteProvider()
     let notifications = 0
-    const unsubscribe = ctx.mayflyEditorHost.subscribeEditorState(() => { notifications += 1 })
+    const unsubscribe = ctx.mayflyPromptEditor.subscribeEditorState(() => { notifications += 1 })
 
     const unregisterFirst = registerEditorAutocompleteSource(ctx, 'first', first)
-    const firstSnapshot = ctx.mayflyEditorHost.listAutocompleteSources()
+    const firstSnapshot = ctx.mayflyPromptEditor.listAutocompleteSources()
     expect(firstSnapshot).toEqual([first])
     expect(Object.isFrozen(firstSnapshot)).toBe(true)
     expect(notifications).toBe(1)
 
     const unregisterSecond = registerEditorAutocompleteSource(ctx, 'second', second)
-    expect(ctx.mayflyEditorHost.listAutocompleteSources()).toEqual([first, second])
+    expect(ctx.mayflyPromptEditor.listAutocompleteSources()).toEqual([first, second])
     expect(firstSnapshot).toEqual([first])
     expect(notifications).toBe(2)
     expect(() => registerEditorAutocompleteSource(ctx, 'second', first)).toThrow(
@@ -104,11 +110,11 @@ describe('editor extension host state', () => {
 
     unregisterFirst()
     unregisterFirst()
-    expect(ctx.mayflyEditorHost.listAutocompleteSources()).toEqual([second])
+    expect(ctx.mayflyPromptEditor.listAutocompleteSources()).toEqual([second])
     expect(notifications).toBe(3)
 
     unregisterSecond()
-    expect(ctx.mayflyEditorHost.listAutocompleteSources()).toEqual([])
+    expect(ctx.mayflyPromptEditor.listAutocompleteSources()).toEqual([])
     expect(notifications).toBe(4)
     unsubscribe()
   })
@@ -206,12 +212,17 @@ describe('enhancement presence marks', () => {
 })
 
 describe('editor-slot swap', () => {
+  it('degrades to a no-op when the optional panel service is absent', () => {
+    const restore = mountEditorReplacement(new Context(), {} as MayflyFocusable)
+    expect(() => restore()).not.toThrow()
+  })
+
   it('degrades to a no-op mount while no swap is installed', () => {
     const ctx = editorContext()
     // The module state may hold nothing (mayfly-input never mounted, or a
     // fresh module graph between suites): a dialog opening then degrades
     // instead of crashing, and the returned disposer is inert.
-    setEditorSlotSwap(ctx, undefined)
+    ctx.mayflyEditorPanels.setHost(undefined)
     const panel: MayflyFocusable & MayflyComponent = {
       focused: false,
       handleInput: () => {},
@@ -228,7 +239,7 @@ describe('editor-slot swap', () => {
   it('mounts through the installed swap and forwards the disposer', () => {
     const ctx = editorContext()
     const mounted: string[] = []
-    setEditorSlotSwap(ctx, {
+    ctx.mayflyEditorPanels.setHost({
       mount: (component) => {
         mounted.push(component.render(10)[0] ?? '')
         let restored = false
@@ -251,6 +262,6 @@ describe('editor-slot swap', () => {
     restore()
     expect(mounted).toEqual([])
     // Leave the module state clean for the suites that follow.
-    setEditorSlotSwap(ctx, undefined)
+    ctx.mayflyEditorPanels.setHost(undefined)
   })
 })

@@ -1,7 +1,7 @@
 # Built-in plugins
 
-The Mayfly bundle inserts 36 ordinary Cordis siblings over `dsh-base`: six dsh
-support rows and 30 Mayfly product rows. There is no group/isolate or private
+The Mayfly bundle inserts 34 ordinary Cordis siblings over `dsh-base`: six dsh
+support rows and 28 Mayfly product rows. There is no group/isolate or private
 service realm.
 
 <!-- BEGIN diagram:mayfly-composition -->
@@ -9,7 +9,7 @@ service realm.
 ```mermaid
 flowchart TB
     BASE["dsh-base"]
-    subgraph GRAPH["flat Cordis sibling graph · 36 inserted rows"]
+    subgraph GRAPH["flat Cordis sibling graph · 34 inserted rows"]
         SUPPORT["dsh support · 6 rows<br/>subagent settings · presets · host runner<br/>workspace · session controller · title"]
         UI["@ephemeral-ai/mayfly-ui provider<br/>four direct UI registries"]
         RUNTIME["@ephemeral-ai/mayfly runtime rows<br/>frontend · conversation · app · core<br/>transcript · status · panes · interaction"]

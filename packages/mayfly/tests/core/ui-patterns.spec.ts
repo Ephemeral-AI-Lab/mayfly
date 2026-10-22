@@ -29,7 +29,7 @@ describe('private UI pattern painters', () => {
       { text: 'accent', tone: 'accent' as const },
       { text: 'success', tone: 'success' as const },
       { text: 'warning', tone: 'warning' as const },
-      { text: 'danger', tone: 'danger' as const, emphasis: 'strong' as const },
+      { text: 'danger', tone: 'danger' as const, styles: ['strong'] as const },
     ]
     const none = ui.surface({ title: 'Title', subtitle: 'Subtitle', badges, child: ui.text('body') })
     expect(renderSurfaceHead(none, 120, colors)).toHaveLength(3)
@@ -143,7 +143,9 @@ describe('private UI pattern painters', () => {
         detailSpans: [
           { text: 'ctx 64k' },
           { text: ' [Low]', tone: 'muted' },
-          { text: ' [High]', tone: 'accent', emphasis: 'strong' },
+          { text: ' [High]', tone: 'accent', styles: ['strong'] },
+          { text: ' [Primary]', tone: 'primary', styles: ['italic'] },
+          { text: ' [User]', tone: 'user', styles: ['strike'] },
         ],
       }],
     })
@@ -153,6 +155,8 @@ describe('private UI pattern painters', () => {
     expect(idleRow).not.toContain('legacy detail')
     expect(idleRow).toContain('<muted> [Low]</muted>')
     expect(idleRow).toContain('\x1b[1m<accent> [High]</accent>\x1b[22m')
+    expect(idleRow).toContain('\x1b[3m [Primary]\x1b[23m')
+    expect(idleRow).toContain('\x1b[9m [User]\x1b[29m')
     expect(accent).toHaveBeenCalledTimes(1)
 
     const focusedRow = renderList(node, 80, 2, { key: 'model', focused: true, marker: '|' }, tracked)[0]!

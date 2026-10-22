@@ -30,10 +30,6 @@ const THINKING_MARKER = '● '
 /** Continuation indent: the marker's visible width, so body text aligns. */
 const THINKING_INDENT = '  '
 
-/** The SGR italics pair the muted body renders in. */
-const ITALIC_OPEN = '\x1b[3m'
-const ITALIC_CLOSE = '\x1b[23m'
-
 /** The timer primitives behind the live spinner; replaceable in tests. */
 export interface ThinkingTimers {
   /** Start a repeating callback; mirrors the global `setInterval`. */
@@ -169,7 +165,7 @@ export class ThinkingComponent implements MayflyComponent {
 
   /** One muted italic body line. */
   private styled(line: string): string {
-    return `${ITALIC_OPEN}${this.colors.muted(line)}${ITALIC_CLOSE}`
+    return this.components.italic(this.colors.muted(line))
   }
 
   private startSpinner(): void {

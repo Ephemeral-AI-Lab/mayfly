@@ -9,7 +9,8 @@ import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachme
 import type {
   MayflyEditorCompletionItem,
   MayflyEditorCompletionRequest,
-  MayflyEditorExtensionContribution,
+  MayflyEditorDecoration,
+  MayflyEditorExtensionDefinition,
   MayflyEditorSubmitRequest,
   MayflyEditorSubmitValue,
   MayflyUiEvent,
@@ -24,22 +25,33 @@ import { FakeMayflyEditor, fakeMayflyContext, KEY } from './fakes.ts'
 
 function success<Value>(value: Value): Value { return value }
 
+type TestEditorExtension = MayflyEditorExtensionDefinition & MayflyEditorDecoration
+
 function registerExtensions(
   ctx: ReturnType<typeof fakeMayflyContext>['ctx'],
-  entries: readonly MayflyEditorExtensionContribution[],
+  entries: readonly TestEditorExtension[],
 ): () => void {
-  const registrations = entries.map(entry => ctx.mayflyEditorExtensions.register(entry))
+  const registrations = entries.map(entry => {
+    const { before, after, hint, diagnostics, actions, ...definition } = entry
+    return ctx.mayflyEditorExtensions.register(definition, {
+      ...(before === undefined ? {} : { before }),
+      ...(after === undefined ? {} : { after }),
+      ...(hint === undefined ? {} : { hint }),
+      ...(diagnostics === undefined ? {} : { diagnostics }),
+      ...(actions === undefined ? {} : { actions }),
+    })
+  })
   return () => {
     for (const registration of registrations) registration.dispose()
   }
 }
 
-function runtimeFixture(entries: readonly MayflyEditorExtensionContribution[] = []): {
+function runtimeFixture(entries: readonly TestEditorExtension[] = []): {
   readonly ctx: ReturnType<typeof fakeMayflyContext>['ctx']
   readonly editor: FakeMayflyEditor
   readonly runtime: EditorExtensionRuntime
   readonly notices: string[]
-  readonly replace: (next: readonly MayflyEditorExtensionContribution[], revision?: number) => void
+  readonly replace: (next: readonly TestEditorExtension[], revision?: number) => void
 } {
   const { ctx } = fakeMayflyContext()
   const editor = new FakeMayflyEditor()
@@ -91,7 +103,7 @@ function imageRefForCoverage(id: string): ImageAttachmentRef {
 describe('editor extension completion multiplexer', () => {
   it('combines the Mayfly source with /, @, #, and manual extension requests', async () => {
     const requests: MayflyEditorCompletionRequest[] = []
-    const extension: MayflyEditorExtensionContribution = {
+    const extension: TestEditorExtension = {
       id: 'acme.complete',
       complete: async request => {
         requests.push(request)
@@ -169,7 +181,7 @@ describe('editor extension completion multiplexer', () => {
     const gates = [Promise.withResolvers<readonly MayflyEditorCompletionItem[]>(), Promise.withResolvers<readonly MayflyEditorCompletionItem[]>()]
     const signals: AbortSignal[] = []
     let call = 0
-    const extension: MayflyEditorExtensionContribution = {
+    const extension: TestEditorExtension = {
       id: 'acme.slow-complete',
       complete: (_request, context) => {
         signals.push(context.signal)
@@ -199,7 +211,7 @@ describe('editor extension completion multiplexer', () => {
     const gate = Promise.withResolvers<readonly MayflyEditorCompletionItem[]>()
     const signals: AbortSignal[] = []
     let calls = 0
-    const extension: MayflyEditorExtensionContribution = {
+    const extension: TestEditorExtension = {
       id: 'acme.session-complete',
       complete: (_request, context) => {
         signals.push(context.signal)
@@ -410,7 +422,7 @@ describe('editor extension submit barrier', () => {
   it('keeps the buffer until ordered async transforms settle, then commits once', async () => {
     const gate = Promise.withResolvers<MayflyEditorSubmitValue>()
     const requests: MayflyEditorSubmitRequest[] = []
-    const entries: MayflyEditorExtensionContribution[] = [
+    const entries: TestEditorExtension[] = [
       {
         id: 'acme.first',
         priority: 10,
@@ -697,7 +709,7 @@ describe('editor extension submit barrier', () => {
       name: 'capture.png',
     }
     const requests: MayflyEditorSubmitRequest[] = []
-    const entries: MayflyEditorExtensionContribution[] = [
+    const entries: TestEditorExtension[] = [
       { id: 'acme.one', transformSubmit: request => { requests.push(request); return success({ text: `one:${request.text}` }) } },
       { id: 'acme.two', transformSubmit: request => { requests.push(request); return success({ text: `two:${request.text}` }) } },
     ]
@@ -899,7 +911,7 @@ describe('editor extension shell and actions', () => {
       id: 'acme.opposite-rejections',
       before: { kind: 'unknown' },
       after: { kind: 'actions', id: 'interactive-after', items: [] },
-    }] as unknown as readonly MayflyEditorExtensionContribution[]
+    }] as unknown as readonly TestEditorExtension[]
     const { runtime, notices } = runtimeFixture(entries)
     expect(runtime.render(Infinity).length).toBeGreaterThan(0)
     const output = runtime.render(80).join('\n')
@@ -919,7 +931,7 @@ describe('editor extension shell and actions', () => {
   })
 
   it('falls back to the editor when separately valid extension trees exceed the shell quota', () => {
-    const entries = Array.from({ length: 256 }, (_, index): MayflyEditorExtensionContribution => ({
+    const entries = Array.from({ length: 256 }, (_, index): TestEditorExtension => ({
       id: `acme.quota-${String(index)}`,
       before: { kind: 'text', content: `row ${String(index)}` },
     }))
@@ -931,7 +943,7 @@ describe('editor extension shell and actions', () => {
 
   it('contains unknown actions and rejected handlers', async () => {
     const calls: MayflyUiEvent[] = []
-    const entries: readonly MayflyEditorExtensionContribution[] = [{
+    const entries: readonly TestEditorExtension[] = [{
       id: 'acme.action-results',
       actions: [{ id: 'run', label: 'Run' }],
       onEvent: async event => {
@@ -989,7 +1001,7 @@ describe('editor extension shell and actions', () => {
     const calls: string[] = []
     const signals: AbortSignal[] = []
     let count = 0
-    const entry: MayflyEditorExtensionContribution = {
+    const entry: TestEditorExtension = {
       id: 'acme.actions',
       actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
       onEvent: (event, context) => {
@@ -1010,7 +1022,7 @@ describe('editor extension shell and actions', () => {
     await vi.waitFor(() => expect(calls).toEqual(['run', 'run']))
 
     const late = Promise.withResolvers<void>()
-    const retiring: MayflyEditorExtensionContribution = {
+    const retiring: TestEditorExtension = {
       ...entry,
       onEvent: (_event, context) => {
         calls.push('late')
@@ -1032,12 +1044,45 @@ describe('editor extension shell and actions', () => {
     runtime.dispose()
   })
 
+  it('keeps an event-owned decoration update live and aborts an external replacement', async () => {
+    const { ctx } = fakeMayflyContext()
+    const editor = new FakeMayflyEditor()
+    const gate = Promise.withResolvers<void>()
+    let signal: AbortSignal | undefined
+    let registration!: ReturnType<typeof ctx.mayflyEditorExtensions.register>
+    registration = ctx.mayflyEditorExtensions.register({
+      id: 'acme.event-owned',
+      onEvent: (_event, context) => {
+        signal = context.signal
+        registration.set({ actions: [{ id: 'run', label: 'Updated' }] }, { eventRevision: context.revision })
+        return gate.promise
+      },
+    }, { actions: [{ id: 'run', label: 'Run' }] })
+    const runtime = new EditorExtensionRuntime({
+      ctx,
+      editor,
+      notice: () => {},
+      shouldTransformSubmit: () => true,
+    })
+    privateDispatch(runtime, { kind: 'activate', controlId: 'extension-0-0' })
+    await vi.waitFor(() => expect(signal).toBeDefined())
+    expect(signal?.aborted).toBe(false)
+    expect(runtime.render(80).join('\n')).toContain('Updated')
+
+    registration.set({ actions: [{ id: 'run', label: 'External' }] })
+    expect(signal?.aborted).toBe(true)
+    gate.resolve()
+    await new Promise(resolve => setImmediate(resolve))
+    runtime.dispose()
+    registration.dispose()
+  })
+
   it('fences queued action dispatch across session invalidation and starts the new lifecycle immediately', async () => {
     const hung = Promise.withResolvers<void>()
     const dispatch = vi.fn()
       .mockImplementationOnce(() => hung.promise)
       .mockResolvedValue(undefined)
-    const entry: MayflyEditorExtensionContribution = {
+    const entry: TestEditorExtension = {
       id: 'acme.session-action',
       actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
       onEvent: dispatch,
@@ -1070,7 +1115,7 @@ describe('editor extension shell and actions', () => {
   it('never dispatches a queued action after runtime disposal', async () => {
     const hung = Promise.withResolvers<void>()
     const dispatch = vi.fn().mockReturnValue(hung.promise)
-    const entry: MayflyEditorExtensionContribution = {
+    const entry: TestEditorExtension = {
       id: 'acme.dispose-action',
       actions: [{ id: 'run', label: 'Run', intent: 'primary' }],
       onEvent: dispatch,

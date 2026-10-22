@@ -13,7 +13,8 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import SessionStore from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import { openPermissionPanel, type PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
-import { EditorHostService, setSharedEditor } from '../../src/interaction/editor-instance.ts'
+import { PromptEditorController, setSharedEditor } from '../../src/interaction/editor-instance.ts'
+import { EditorPanelController } from '../../src/interaction/editor-panel-controller.ts'
 import { fakeMayflyContext } from './fakes.ts'
 import { KEY } from './fakes.ts'
 
@@ -242,11 +243,11 @@ describe('openPermissionPanel', () => {
 
   it('notices and does nothing when the Mayfly screen is not mounted', async () => {
     const bare = new Context()
-    new EditorHostService(bare)
+    new PromptEditorController(bare)
+    new EditorPanelController(bare)
     await bare.plugin(SessionStore)
     await bare.plugin(CommandRuntime)
-    const session = bare.sessions.create(SessionId('perm-bare'))
-    const agent = { id: session.id, session, status: 'idle' } as unknown as Agent
+    bare.sessions.create(SessionId('perm-bare'))
     bare.provide('permissionPresets', fakePresets())
     const notices: string[] = []
     setSharedEditor(bare, {
@@ -263,8 +264,7 @@ describe('openPermissionPanel', () => {
     // function's own guard keeps it inert if reached anyway.
     const { ctx, screen } = fakeMayflyContext()
     await ctx.plugin(SessionStore)
-    const session = ctx.sessions.create(SessionId('perm-noservice'))
-    const agent = { id: session.id, session, status: 'idle' } as unknown as Agent
+    ctx.sessions.create(SessionId('perm-noservice'))
     const notices: string[] = []
     setSharedEditor(ctx, {
       editor: { focused: false, render: () => [], invalidate: () => {} } as never,

@@ -138,7 +138,7 @@ function activityNode(state: ActivityState, t: MayflyTranslate): MayflyUiNode {
   return {
     kind: 'rich-text',
     spans: [
-      { text: frame, tone: 'accent', emphasis: 'strong' },
+      { text: frame, tone: 'accent', styles: ['strong'] },
       ...(!moon ? [{ text: t(WORKING_LABEL) } as const] : []),
       ...(state.flow === '' ? [] : [{ text: ` ${state.flow}`, tone: 'muted' as const }]),
       { text: `${t(TIP_LEAD)}${t(state.tip)}`, tone: 'muted' },
@@ -183,6 +183,9 @@ export function apply(ctx: Context): void {
   let tipKind: TipKind | undefined
   const rotation = buildTipRotation(STATUS_TIPS)
   let tipIndex = 0
+  const currentNode = (): MayflyUiNode | null => state.mode === 'hidden' || state.mode === 'thinking'
+    ? null
+    : activityNode(state, t)
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.activity',
     title: 'Activity',
@@ -190,10 +193,8 @@ export function apply(ctx: Context): void {
     priority: 10,
     size: { preferred: 1, max: 1 },
     narrow: 'bottom',
-    render: () => state.mode === 'hidden' || state.mode === 'thinking'
-      ? null
-      : activityNode(state, t),
-  })
+  }, currentNode())
+  const publish = (): void => pane.set(currentNode())
 
   const stopTimer = (): void => {
     if (timer === undefined) return
@@ -208,7 +209,7 @@ export function apply(ctx: Context): void {
     timerMs = ms
     timer = activityTimers.setInterval(() => {
       state.frame += 1
-      pane.refresh()
+      publish()
     }, ms)
   }
 
@@ -241,7 +242,7 @@ export function apply(ctx: Context): void {
     const changed = mode !== state.mode || tipChanged || nextFlow !== state.flow
     state.mode = mode
     state.flow = nextFlow
-    if (changed) pane.refresh()
+    if (changed) publish()
   }
 
   const offFacts = factsService?.subscribe(next => {
@@ -261,7 +262,7 @@ export function apply(ctx: Context): void {
   })
 
   const offLocale = observeTranscriptLocale(ctx, () => {
-    pane.refresh()
+    publish()
   })
   ctx.effect(() => offLocale)
   // Effect-bound so unloading this fiber stops the animation.

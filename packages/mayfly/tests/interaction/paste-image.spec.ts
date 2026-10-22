@@ -21,7 +21,7 @@ import {
   type ImageAttachmentRef,
   type SaveImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import { applyReversibleSubmitTransformers, applySubmitTransformers } from '../../src/interaction/editor-instance.ts'
+import { applyReversibleSubmitTransformers, applySubmitTransformers } from '../../src/interaction/prompt-submit-pipeline.ts'
 import { clearSharedEditor, setSharedEditor } from '../../src/interaction/editor-instance.ts'
 // The value import carries the `settings` Context merge and the
 // 'settings/updated' Events merge the override spec below uses.

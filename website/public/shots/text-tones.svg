@@ -11,9 +11,9 @@
 <text x="12" y="71" textLength="42" lengthAdjust="spacingAndGlyphs" fill="#888888">Muted</text>
 <text x="62.4" y="71" textLength="75.6" lengthAdjust="spacingAndGlyphs" fill="#888888">secondary</text>
 <text x="146.4" y="71" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#888888">text</text>
-<text x="12" y="90" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#4fa8ff">Accent</text>
-<text x="70.8" y="90" textLength="75.6" lengthAdjust="spacingAndGlyphs" fill="#4fa8ff">highlight</text>
-<text x="154.8" y="90" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#4fa8ff">text</text>
+<text x="12" y="90" textLength="50.4" lengthAdjust="spacingAndGlyphs" fill="#2bc8e8">Accent</text>
+<text x="70.8" y="90" textLength="75.6" lengthAdjust="spacingAndGlyphs" fill="#2bc8e8">highlight</text>
+<text x="154.8" y="90" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#2bc8e8">text</text>
 <text x="12" y="109" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#4ec87e">Success</text>
 <text x="79.2" y="109" textLength="100.8" lengthAdjust="spacingAndGlyphs" fill="#4ec87e">confirmation</text>
 <text x="188.4" y="109" textLength="33.6" lengthAdjust="spacingAndGlyphs" fill="#4ec87e">text</text>

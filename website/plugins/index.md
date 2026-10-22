@@ -36,8 +36,7 @@ export function apply(ctx: Context): void {
     id: 'acme.build-health',
     placement: 'right',
     narrow: 'bottom',
-    render: () => ui.text('healthy'),
-  })
+  }, ui.text('healthy'))
 }
 ```
 

@@ -31,6 +31,7 @@ export interface ConversationImage {
 interface ConversationEntryBase {
   readonly id: string
   readonly seq: number
+  readonly updatedSeq: number
   readonly turn: number
 }
 

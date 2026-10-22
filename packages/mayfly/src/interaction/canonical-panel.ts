@@ -45,7 +45,6 @@ export interface CanonicalPanelAdapterOptions {
   readonly onUnhandledEscape?: () => void
   readonly maxLeafRows?: number | (() => number)
   readonly leafRowWindowPath?: string
-  readonly markdownLeafPath?: string
   readonly leafRowOffset?: () => number
   readonly onLeafRowOffset?: (offset: number, totalRows: number, limit: number) => void
   readonly onTextSubmit?: (controlId: string, value: string) => void
@@ -150,7 +149,6 @@ export class CanonicalPanelAdapter implements MayflyFocusable {
       screenMode: 'main',
       maxLeafRows: typeof this.options.maxLeafRows === 'function' ? this.options.maxLeafRows() : this.options.maxLeafRows ?? 256,
       ...(this.options.leafRowWindowPath === undefined ? {} : { leafRowWindowPath: this.options.leafRowWindowPath }),
-      ...(this.options.markdownLeafPath === undefined ? {} : { markdownLeafPath: this.options.markdownLeafPath }),
       ...(this.options.leafRowOffset === undefined ? {} : { leafRowOffset: this.options.leafRowOffset }),
       ...(this.options.onLeafRowOffset === undefined ? {} : {
         onLeafRowOffset: (offset: number, totalRows: number, limit: number) => {

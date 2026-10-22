@@ -1,19 +1,24 @@
 /** Direct status registry footer layout and containment coverage. */
 import { Context } from '@deepseek-ai/cordis'
-import type { MayflyStatusEntry } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyStatusDefinition, MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
 import { describe, expect, it } from 'vitest'
 import { StatusFooterComponent } from '../../src/transcript/status-model.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
 
-function entry(id: string, content: string, options: Partial<MayflyStatusEntry> = {}): MayflyStatusEntry {
-  return { id, node: { kind: 'text', content }, visible: true, ...options }
+type StatusFixture = MayflyStatusDefinition & { readonly node: MayflyStatusNode | null }
+
+function entry(id: string, content: string, options: Partial<MayflyStatusDefinition> & { readonly node?: MayflyStatusNode | null } = {}): StatusFixture {
+  return { id, node: { kind: 'text', content }, ...options }
 }
 
-function registry(...entries: MayflyStatusEntry[]): MayflyStatusService {
+function registry(...entries: StatusFixture[]): MayflyStatusService {
   const service = new MayflyStatusService(new Context())
-  for (const value of entries) service.register(value)
+  for (const value of entries) {
+    const { node, ...definition } = value
+    service.register(definition, node)
+  }
   return service
 }
 
@@ -22,7 +27,7 @@ describe('StatusFooterComponent', () => {
     const components = fakeMayflyComponents()
     const service = registry(
       entry('left', 'left', { priority: 0, node: { kind: 'text', content: 'left', tone: 'accent' } }),
-      entry('hidden', 'hidden', { visible: false }),
+      entry('hidden', 'hidden', { node: null }),
       entry('right', 'right', { band: 'right', node: { kind: 'text', content: 'right', tone: 'success' } }),
       entry('second', 'second', { row: 2, node: { kind: 'text', content: 'second', tone: 'warning' } }),
       entry('wide', '0123456789', { row: 2, priority: 2, overflow: 'hide' }),
@@ -37,7 +42,6 @@ describe('StatusFooterComponent', () => {
   it('compiles status stacks, right-only rows, and invalid trees safely', () => {
     const service = registry({
       id: 'stack',
-      visible: true,
       band: 'right',
       node: { kind: 'stack', direction: 'row', gap: 1, children: [
         { node: { kind: 'text', content: 'one' } },
@@ -62,12 +66,10 @@ describe('StatusFooterComponent', () => {
       entry('empty', ''),
       {
         id: 'empty-stack',
-        visible: true,
         node: { kind: 'stack', direction: 'column', children: [] },
       },
       {
         id: 'overflow',
-        visible: true,
         overflow: 'hide',
         node: { kind: 'stack', direction: 'column', children: [
           { node: { kind: 'text', content: 'first' } },
@@ -84,4 +86,5 @@ describe('StatusFooterComponent', () => {
     const footer = new StatusFooterComponent(service, fakeMayflyComponents(), COLORS)
     expect(footer.render(20)).toEqual(['first  second       '])
   })
+
 })

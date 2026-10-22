@@ -7,13 +7,105 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { MayflyTerminalRuntime } from './terminal.ts'
-import type { MayflyComponent, MayflyDockOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen } from './types.ts'
+import type { MayflyComponent, MayflyFocusable, MayflyOverlayOptions, MayflyScreen, MayflyScreenOverlayHandle, MayflyScreenSlot } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
     mayflyScreen: MayflyScreenService
   }
 }
+
+class StableSlotHost implements MayflyFocusable {
+  private active = true
+  private focusedValue = false
+
+  constructor(
+    readonly id: string,
+    private target: MayflyComponent | null,
+    private readonly runtime: MayflyTerminalRuntime,
+  ) {}
+
+  get focused(): boolean { return this.active && this.focusedValue }
+  set focused(value: boolean) {
+    this.focusedValue = this.active && this.target !== null && value
+    const target = this.focusTarget()
+    if (target !== null) target.focused = this.focusedValue
+  }
+
+  replace(component: MayflyComponent | null): void {
+    if (!this.active || component === this.target) return
+    const previous = this.focusTarget()
+    if (previous !== null) previous.focused = false
+    this.target = component
+    const next = this.focusTarget()
+    if (next !== null) next.focused = this.focusedValue
+    this.runtime.requestRender()
+  }
+
+  focus(): void {
+    if (!this.active || this.target === null) return
+    this.runtime.setFocus(this)
+  }
+
+  render(width: number): string[] { return this.target?.render(width) ?? [] }
+  invalidate(): void { this.target?.invalidate() }
+  handleInput(data: string): void { this.target?.handleInput?.(data) }
+
+  clear(): void {
+    if (this.focusedValue) this.runtime.setFocus(null)
+    const target = this.focusTarget()
+    if (target !== null) target.focused = false
+    this.focusedValue = false
+    this.target = null
+    this.runtime.requestRender()
+  }
+
+  deactivate(): void {
+    this.clear()
+    this.active = false
+  }
+
+  private focusTarget(): MayflyFocusable | null {
+    return this.target !== null && typeof (this.target as MayflyFocusable).focused === 'boolean'
+      ? this.target as MayflyFocusable
+      : null
+  }
+}
+
+class ScreenSlotLease implements MayflyScreenSlot {
+  private live = true
+
+  constructor(
+    readonly id: string,
+    private readonly host: StableSlotHost,
+    private readonly release: () => void,
+  ) {}
+
+  get disposed(): boolean { return !this.live }
+  get component(): MayflyFocusable { return this.host }
+
+  replace(component: MayflyComponent | null): void { if (this.live) this.host.replace(component) }
+  focus(): void { if (this.live) this.host.focus() }
+
+  dispose(): void {
+    if (!this.live) return
+    this.live = false
+    this.release()
+  }
+}
+
+/** Fixed root region containing ephemeral local notices and shell echoes. */
+class LocalActivityRegion implements MayflyComponent {
+  private readonly children = new Map<string, StableSlotHost>()
+
+  add(id: string, child: StableSlotHost): void { this.children.set(id, child) }
+  remove(id: string): void { this.children.delete(id) }
+  render(width: number): string[] { return [...this.children.values()].flatMap(child => child.render(width)) }
+  invalidate(): void { for (const child of this.children.values()) child.invalidate() }
+}
+
+const CONTENT_HOSTS = ['transcript.prelude', 'transcript.conversation'] as const
+const DOCK_HOSTS = ['editor.prompt', 'status.footer'] as const
 
 /**
  * The `mayflyScreen` service. Registered by the `mayfly-core` plugin together
@@ -22,6 +114,9 @@ declare module '@deepseek-ai/cordis' {
  */
 export class MayflyScreenService extends Service implements MayflyScreen {
   private readonly runtime: MayflyTerminalRuntime
+  private readonly fixed = new Map<string, StableSlotHost>()
+  private readonly claimed = new Set<string>()
+  private readonly local = new LocalActivityRegion()
 
   /**
    * Create and register the service.
@@ -31,6 +126,19 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   constructor(ctx: Context, runtime: MayflyTerminalRuntime) {
     super(ctx, 'mayflyScreen')
     this.runtime = runtime
+    for (const id of CONTENT_HOSTS) {
+      const host = new StableSlotHost(id, null, runtime)
+      this.fixed.set(id, host)
+      runtime.addChild(host)
+    }
+    runtime.addChild(this.local)
+    const editor = new StableSlotHost('editor.prompt', null, runtime)
+    const footer = new StableSlotHost('status.footer', null, runtime)
+    this.fixed.set('editor.prompt', editor)
+    this.fixed.set('status.footer', footer)
+    runtime.addBottomChild(editor)
+    runtime.addBottomChild(footer, 'bottom')
+    runtime.requestRender()
   }
 
   /** Current terminal width in columns. */
@@ -43,56 +151,42 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     return this.runtime.rows
   }
 
-  /**
-   * Mount a component at the root of the tree, above every bottom-pinned
-   * component regardless of mount order.
-   * @param component - the component to mount.
-   * @returns a disposer that unmounts the component; safe to call twice.
-   */
-  addChild(component: MayflyComponent): () => void {
-    this.runtime.addChild(component)
-    return () => {
-      this.runtime.removeChild(component)
-    }
+  mountContentSlot(id: string, component: MayflyComponent | null): MayflyScreenSlot {
+    const fixed = this.fixed.get(id)
+    return fixed === undefined ? this.mountLocal(id, component) : this.claim(id, fixed, component)
   }
 
-  /**
-   * Mount a component pinned to the bottom of the tree (the input editor
-   * dock); short content is padded so the pinned block spans the terminal's
-   * last rows. `position: 'bottom'` renders the component below the rest of
-   * the dock — the footer shell uses it to stay on the terminal's last rows
-   * beneath the editor (the kimi layout, and what dialog panels pull up
-   * over).
-   * @param component - the component to pin.
-   * @param position - `'bottom'` for the dock's lowest slot.
-   * @returns a disposer that unmounts the component; safe to call twice.
-   */
-  addBottomChild(component: MayflyComponent, position?: 'bottom'): () => void {
-    this.runtime.addBottomChild(component, position)
-    return () => {
-      this.runtime.removeChild(component)
+  mountDockSlot(id: string, component: MayflyComponent | null, position?: 'bottom'): MayflyScreenSlot {
+    const host = this.fixed.get(id)
+    if (host === undefined || !DOCK_HOSTS.includes(id as typeof DOCK_HOSTS[number])) {
+      throw new Error(`unknown dock slot "${id}"`)
     }
+    if ((id === 'status.footer') !== (position === 'bottom')) throw new Error(`dock slot "${id}" has a fixed position`)
+    return this.claim(id, host, component)
   }
 
-  /**
-   * Mount a flexible component in the shared bottom-dock row allocator.
-   * @param component - the flexible component to mount.
-   * @param options - row-allocation metadata.
-   * @returns a disposer that unmounts the component; safe to call twice.
-   */
-  addDockChild(component: MayflyComponent, options?: MayflyDockOptions): () => void {
-    this.runtime.addDockChild(component, options)
-    return () => {
-      this.runtime.removeChild(component)
-    }
+  private claim(id: string, host: StableSlotHost, component: MayflyComponent | null): MayflyScreenSlot {
+    if (this.claimed.has(id)) throw new Error(`screen slot "${id}" is already mounted`)
+    this.claimed.add(id)
+    host.replace(component)
+    return new ScreenSlotLease(id, host, () => {
+      host.clear()
+      this.claimed.delete(id)
+    })
   }
 
-  /**
-   * Unmount a component; unmounting an absent component is a no-op.
-   * @param component - the component to unmount.
-   */
-  removeChild(component: MayflyComponent): void {
-    this.runtime.removeChild(component)
+  private mountLocal(id: string, component: MayflyComponent | null): MayflyScreenSlot {
+    if (this.claimed.has(id)) throw new Error(`screen slot "${id}" is already mounted`)
+    const host = new StableSlotHost(id, component, this.runtime)
+    this.claimed.add(id)
+    this.local.add(id, host)
+    this.runtime.requestRender()
+    return new ScreenSlotLease(id, host, () => {
+      host.deactivate()
+      this.local.remove(id)
+      this.claimed.delete(id)
+      this.runtime.requestRender()
+    })
   }
 
   /**
@@ -129,7 +223,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
    * @param options - positioning and sizing options.
    * @returns the overlay's control handle.
    */
-  showOverlay(component: MayflyComponent, options?: MayflyOverlayOptions): MayflyOverlayHandle {
+  showOverlay(component: MayflyComponent, options?: MayflyOverlayOptions): MayflyScreenOverlayHandle {
     return this.runtime.showOverlay(component, options)
   }
 

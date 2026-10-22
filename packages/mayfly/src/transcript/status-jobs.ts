@@ -6,7 +6,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { JobSnapshot } from '@deepseek-ai/dsh-jobs'
-import type { MayflyStatusEntry } from './status-model.ts'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-jobs'
@@ -22,6 +22,8 @@ export function liveJobCount(jobs: readonly JobSnapshot[]): number {
 /** Register the direct status contribution. */
 export function apply(ctx: Context): void {
   let text = ''
+  let status: ReturnType<typeof ctx.mayflyStatus.register>
+  const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'primary' }
   const refresh = (): void => {
     const agent = ctx.mayflyCurrentAgent.current()
     let count = 0
@@ -33,15 +35,12 @@ export function apply(ctx: Context): void {
     const next = count > 0 ? `⏵ ${String(count)} jobs` : ''
     if (next === text) return
     text = next
-    ctx.mayflyStatus.refresh('mayfly.status.jobs')
+    status?.set(node())
   }
-  const model = (): MayflyStatusEntry => ({
+  status = ctx.mayflyStatus.register({
     id: 'mayfly.status.jobs',
     priority: 3,
-    node: { kind: 'text', content: text, tone: 'accent' },
-    visible: text !== '',
-  })
-  ctx.mayflyStatus.register(model)
+  }, node())
   const offJobs = ctx.jobs.onJobsChanged((owner) => {
     const current = ctx.mayflyCurrentAgent.current()
     if (owner === undefined || owner === current) refresh()

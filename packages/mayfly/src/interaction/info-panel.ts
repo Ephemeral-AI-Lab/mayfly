@@ -66,7 +66,7 @@ function tone(style: InfoStyle | undefined): MayflyTone {
 function appendSpan(spans: MayflyInlineSpan[], span: MayflyInlineSpan): void {
   if (span.text.length === 0) return
   const previous = spans.at(-1)
-  if (previous !== undefined && previous.tone === span.tone && previous.emphasis === span.emphasis) {
+  if (previous !== undefined && previous.tone === span.tone && (previous.styles ?? []).join() === (span.styles ?? []).join()) {
     spans[spans.length - 1] = { ...previous, text: `${previous.text}${span.text}` }
     return
   }
@@ -135,7 +135,7 @@ export class InfoPanel implements MayflyFocusable {
       appendSpan(spans, {
         text: `${sectionIndex === 0 ? '' : '\n\n'}${section.heading}`,
         tone: 'accent',
-        emphasis: 'strong',
+        styles: ['strong'],
       })
       for (const row of section.rows) {
         const segments = row.segments.map(segment => ({ text: segment.text, tone: tone(segment.style) }))

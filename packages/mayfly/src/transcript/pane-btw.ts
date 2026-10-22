@@ -98,7 +98,7 @@ function btwNode(state: BtwState): MayflyUiNode | null {
   const children: { readonly node: MayflyUiNode }[] = []
   for (const [index, turn] of state.turns.entries()) {
     if (index > 0) children.push({ node: { kind: 'divider' } })
-    children.push({ node: { kind: 'rich-text', spans: [{ text: `> ${turn.question}`, tone: 'accent', emphasis: 'strong' }] } })
+    children.push({ node: { kind: 'rich-text', spans: [{ text: `> ${turn.question}`, tone: 'accent', styles: ['strong'] }] } })
     if (turn.reply !== '') children.push({ node: { kind: 'text', content: turn.reply } })
     if (turn.thinking) children.push({ node: { kind: 'loader', message: 'thinking...', variant: 'braille' } })
   }
@@ -141,10 +141,9 @@ export function apply(ctx: Context): void {
     placement: 'bottom',
     priority: 100,
     narrow: 'bottom',
-    render: () => btwNode(state),
-  })
+  }, btwNode(state))
   const refreshDock = (): void => {
-    pane.refresh()
+    pane.set(btwNode(state))
   }
 
   /** Unsubscribe and dispose the live side agent, if any. */
@@ -177,7 +176,7 @@ export function apply(ctx: Context): void {
     state.open = true
     state.turns = [{ question, reply: '', thinking: true, afterSeq: Number.MAX_SAFE_INTEGER }]
     ctx.emit('mayfly/editor-connected-above', true, true)
-    pane.refresh()
+    pane.set(btwNode(state))
     // Single slot: a fresh question replaces the previous side agent.
     await clearSlot()
     let handle: AgentHandle | undefined
@@ -273,7 +272,7 @@ export function apply(ctx: Context): void {
       },
     }
     handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: question }], source: { kind: 'user' } }))
-    pane.refresh()
+    pane.set(btwNode(state))
     return { kind: 'success', text: 'asked the side question' }
   }
 

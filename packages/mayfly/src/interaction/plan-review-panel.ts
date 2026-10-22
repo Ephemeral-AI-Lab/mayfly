@@ -71,7 +71,6 @@ export class PlanReviewPanel implements MayflyFocusable {
       onUnhandledEscape: options.onCancel,
       maxLeafRows: () => this.planWindowRows(),
       leafRowWindowPath: PLAN_LEAF_PATH,
-      markdownLeafPath: PLAN_LEAF_PATH,
       leafRowOffset: () => this.scrollTop,
       onLeafRowOffset: (offset, totalRows, limit) => {
         const changed = offset !== this.scrollTop || totalRows !== this.planRows || limit !== this.planLimit
@@ -120,7 +119,7 @@ export class PlanReviewPanel implements MayflyFocusable {
         kind: 'scroll',
         child: {
           kind: 'stack', direction: 'column', children: [
-            { node: { kind: 'text', content: this.options.question.detail ?? '' } },
+            { node: { kind: 'markdown', source: this.options.question.detail ?? '' } },
             ...planTail,
           ],
         },

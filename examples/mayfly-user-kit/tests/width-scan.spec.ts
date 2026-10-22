@@ -39,7 +39,7 @@ describe('example width contracts', () => {
       for (const plugin of [header, inspector, bottomLog, uiGallery]) await ctx.plugin(plugin)
       expect(ctx.mayflyPanes.list()).toHaveLength(4)
       for (const entry of ctx.mayflyPanes.list()) {
-        const node = entry.contribution.render()
+        const node = entry.node
         expect(node).not.toBeNull()
         uiRows(entry.id, node!)
       }
@@ -47,7 +47,7 @@ describe('example width contracts', () => {
         chrome: 'overlay',
         title: overlayRequest.title,
         padding: 1,
-        child: overlayRequest.render(),
+        child: overlayRequest.node,
       }))
     } finally {
       await ctx.fiber.dispose()

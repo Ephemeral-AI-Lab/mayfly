@@ -55,7 +55,7 @@ export const SCENARIOS = [
     width: 64,
     build: ui => ui.richText([
       { text: 'Model ', tone: 'muted' },
-      { text: 'deepseek-chat', tone: 'accent', emphasis: 'strong' },
+      { text: 'deepseek-chat', tone: 'accent', styles: ['strong'] },
     ]),
   },
   {
@@ -65,9 +65,9 @@ export const SCENARIOS = [
     width: 56,
     build: ui => ui.richText([
       { text: 'Rebuild of ', tone: 'muted' },
-      { text: 'packages/mayfly', tone: 'accent', emphasis: 'strong' },
+      { text: 'packages/mayfly', tone: 'accent', styles: ['strong'] },
       { text: ' failed after ', tone: 'muted' },
-      { text: '42s', emphasis: 'strong' },
+      { text: '42s', styles: ['strong'] },
       { text: ' with 2 errors', tone: 'danger' },
     ]),
   },
@@ -87,7 +87,7 @@ export const SCENARIOS = [
     title: 'fields — multi-row with span composition',
     width: 64,
     build: ui => ui.fields([
-      { label: 'Session', value: [{ text: 'fix-width-scan', tone: 'accent', emphasis: 'strong' }] },
+      { label: 'Session', value: [{ text: 'fix-width-scan', tone: 'accent', styles: ['strong'] }] },
       { label: 'Branch', value: [{ text: 'p2/' }, { text: 'ui-gallery', tone: 'accent' }] },
       { label: 'Status', value: [{ text: 'Running', tone: 'success' }, { text: ' · 2 panes', tone: 'muted' }] },
       { label: 'Elapsed', value: [{ text: '4m 12s', tone: 'muted' }] },
@@ -520,7 +520,7 @@ export const SCENARIOS = [
         child: ui.stack.row([
           ui.richText([
             { text: props.label, tone: 'muted' },
-            { text: ` ${props.value}`, tone: 'accent', emphasis: 'strong' },
+            { text: ` ${props.value}`, tone: 'accent', styles: ['strong'] },
           ]),
           ui.child(ui.text(props.detail, { tone: 'muted' }), {
             grow: 1,

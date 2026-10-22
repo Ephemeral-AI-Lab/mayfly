@@ -33,6 +33,7 @@
  */
 
 import { exec } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
   MayflyAutocompleteItem,
@@ -45,7 +46,6 @@ import type {
 import type { MayflyTranslate } from '../frontend/index.ts'
 import {
   ENHANCEMENT_EDITOR_PLUS,
-  getSharedEditor,
   markEditorEnhancement,
   registerEditorAutocompleteSource,
   type SharedEditor,
@@ -56,21 +56,6 @@ import { extractSkillPrefix, refresh, userInvocableSkills } from './skills-catal
 import { sanitizeShellOutput } from './shell-sanitize.ts'
 import { filterSlashCommands, slashCommandLabel } from './slash-filter.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
-
-/** Stable Cordis plugin name. */
-export const name = 'mayfly-editor-plus'
-/** Services required before the enhancement layer can attach. */
-export const inject = [
-  'mayflyScreen',
-  'mayflyTheme',
-  'mayflyComponents',
-  'mayflyKeymap',
-  'mayflyEditorHost',
-  'mayflyCurrentAgent',
-  'mayflySkillsCatalog',
-  'mayflyInteractionState',
-  'commands',
-]
 
 /** Shell echo output caps: both bounds apply, whichever trips first. */
 const SHELL_MAX_LINES = 200
@@ -162,7 +147,6 @@ function createAutocompleteProvider(
   notice: (text: string) => void,
 ): MayflyAutocompleteProvider {
   const t = interactionTranslator(ctx)
-  const cwd = process.cwd()
   // Captured before any unload: the fd probe settles asynchronously and a
   // theme-swap reload may dispose this fiber first — the service object
   // reference stays callable where the context proxy would not.
@@ -171,10 +155,9 @@ function createAutocompleteProvider(
   // at suggestion time, so a late detection needs a fresh instance. Until
   // then fdPath is null and the @ branch runs the filesystem fallback.
   let fdPath: string | null = null
-  let inner = components.createFileMentionProvider(cwd, null)
+  let inner = components.createFileMentionProvider(process.cwd(), null)
   void detectFdPath(ctx.mayflyInteractionState.fdProbe).then(resolved => {
     fdPath = resolved
-    inner = components.createFileMentionProvider(cwd, resolved)
   })
   return {
     triggerCharacters: ['/', '@', '#'],
@@ -182,6 +165,8 @@ function createAutocompleteProvider(
       const line = lines[cursorLine] ?? ''
       const atPrefix = extractAtPrefix(line.slice(0, cursorCol))
       if (atPrefix !== null) {
+        const cwd = process.cwd()
+        inner = components.createFileMentionProvider(cwd, fdPath)
         let suggestions: MayflyAutocompleteSuggestions | null = null
         // Empty-tail tokens (a bare `@` or a directory drill-down) take the
         // one-level listing: deterministic, shallow, exactly the entries of
@@ -424,9 +409,9 @@ function runShell(ctx: Context, command: string, isUnloaded: () => boolean): voi
     // render must be asked for here or the echo stays invisible until the
     // next keypress.
     ctx.effect(() => {
-      const remove = ctx.mayflyScreen.addChild(echo)
+      const slot = ctx.mayflyScreen.mountContentSlot(`local.shell.${randomUUID()}`, echo)
       ctx.mayflyScreen.requestRender()
-      return remove
+      return () => slot.dispose()
     })
   }
   void shellExecutor(command, process.cwd()).then(
@@ -608,32 +593,15 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
  * when it unmounts or this fiber disposes.
  * @param ctx - plugin context.
  */
-export function apply(ctx: Context): void {
-  /**
-   * Set when this fiber unloads: a bash-mode shell can settle after a
-   * theme-swap reload disposed the fiber, and its late echo mount must not
-   * touch services through the dead context.
-   */
-  let unloaded = false
-  ctx.effect(() => () => {
-    unloaded = true
-  })
-  let detach: (() => void) | undefined
-  const reattach = (): void => {
-    detach?.()
-    detach = undefined
-    const shared = getSharedEditor(ctx)
-    if (shared !== undefined) detach = attach(ctx, shared, () => unloaded)
-  }
-  ctx.effect(() => () => {
-    detach?.()
-  })
+export function mountEditorPlus(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): () => void {
+  const detach = attach(ctx, shared, isUnloaded)
   const offLocale = observeInteractionLocale(ctx, () => {
-    const editor = getSharedEditor(ctx)?.editor
+    const editor = shared.editor
     if (editor?.isShowingAutocomplete() === true) editor.refreshAutocomplete()
     ctx.mayflyScreen.requestRender()
   })
-  ctx.effect(() => offLocale)
-  ctx.on('mayfly/input-editor-changed', reattach)
-  reattach()
+  return () => {
+    offLocale()
+    detach()
+  }
 }

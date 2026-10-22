@@ -95,7 +95,7 @@ describe('CanonicalDocumentController', () => {
     expect(value.panel.render(80).join('\n')).toContain('[Low]')
     expect(extractList(value.panel.currentNode()).items[0]!.detailSpans).toEqual([
       { text: 'ctx 64k' },
-      { text: ' [Low]', tone: 'accent', emphasis: 'strong' },
+      { text: ' [Low]', tone: 'accent', styles: ['strong'] },
       { text: ' [High]', tone: 'muted' },
     ])
     value.panel.handleInput(KEY.enter)
@@ -104,7 +104,7 @@ describe('CanonicalDocumentController', () => {
     expect(extractList(value.panel.currentNode()).items[0]!.detailSpans).toEqual([
       { text: 'ctx 64k' },
       { text: ' [Low]', tone: 'muted' },
-      { text: ' [High]', tone: 'accent', emphasis: 'strong' },
+      { text: ' [High]', tone: 'accent', styles: ['strong'] },
     ])
     value.panel.handleInput(KEY.enter)
     value.panel.handleInput(KEY.tab)
@@ -155,9 +155,9 @@ describe('CanonicalDocumentController', () => {
     value.panel.handleInput(KEY.enter)
     value.panel.handleInput(KEY.right)
     value.panel.handleInput(KEY.right)
-    expect(extractList(value.panel.currentNode()).items[0]!.detailSpans).toContainEqual({ text: ' [High]', tone: 'accent', emphasis: 'strong' })
+    expect(extractList(value.panel.currentNode()).items[0]!.detailSpans).toContainEqual({ text: ' [High]', tone: 'accent', styles: ['strong'] })
     value.panel.handleInput(KEY.left)
-    expect(extractList(value.panel.currentNode()).items[0]!.detailSpans).toContainEqual({ text: '[Low]', tone: 'accent', emphasis: 'strong' })
+    expect(extractList(value.panel.currentNode()).items[0]!.detailSpans).toContainEqual({ text: '[Low]', tone: 'accent', styles: ['strong'] })
     expect(value.panel.render(80).join('\n')).toContain('←→ thinking')
     value.panel.handleInput(KEY.right)
     value.panel.handleInput(KEY.tab)
@@ -187,7 +187,7 @@ describe('CanonicalDocumentController', () => {
     const ungrouped = fixture({ mode: 'select', title: 'Ungrouped', variantNavigation: 'inline', items: [row] }, { focused: false })
     ungrouped.panel.handleInput(KEY.right)
     expect(extractList(ungrouped.panel.currentNode()).items[0]!.detailSpans)
-      .toContainEqual({ text: ' [High]', tone: 'accent', emphasis: 'strong' })
+      .toContainEqual({ text: ' [High]', tone: 'accent', styles: ['strong'] })
 
     const grouped = fixture({
       mode: 'select', title: 'Grouped', grouped: true, variantNavigation: 'inline',
@@ -195,7 +195,7 @@ describe('CanonicalDocumentController', () => {
     }, { focused: false })
     grouped.panel.handleInput(KEY.left)
     expect(extractList(grouped.panel.currentNode()).items[0]!.detailSpans)
-      .toContainEqual({ text: '[Low]', tone: 'accent', emphasis: 'strong' })
+      .toContainEqual({ text: '[Low]', tone: 'accent', styles: ['strong'] })
   })
 
   it('renders named counted tabs, group empty states, badges, and disabled variants', () => {
@@ -222,7 +222,7 @@ describe('CanonicalDocumentController', () => {
     })
     expect(extractList(node).items[0]).toMatchObject({ badge: 'ready' })
     expect(extractList(node).items[0]!.detailSpans).toEqual([
-      { text: '[Verify]', tone: 'accent', emphasis: 'strong' },
+      { text: '[Verify]', tone: 'accent', styles: ['strong'] },
       { text: ' [Remove]', tone: 'muted' },
       { text: ' · v1' },
     ])
@@ -373,7 +373,7 @@ describe('CanonicalDocumentController', () => {
     expect(inlineWithoutVariants.panel.render(80).join('\n')).toContain('Inline')
     const variantsFirst = fixture({ mode: 'select', title: 'First', items: [{ id: 'a', label: 'A', variantsFirst: true, variants: [{ id: 'only', label: 'Only' }] }] })
     expect(extractList(variantsFirst.panel.currentNode()).items[0]!.detailSpans).toEqual([
-      { text: '[Only]', tone: 'accent', emphasis: 'strong' },
+      { text: '[Only]', tone: 'accent', styles: ['strong'] },
     ])
 
     const events = variant.panel as unknown as { onEvent(event: { kind: string, controlId: string, value?: unknown, tabId?: string }): void }

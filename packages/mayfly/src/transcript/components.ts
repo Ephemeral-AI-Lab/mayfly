@@ -74,10 +74,6 @@ export const USER_MESSAGE_BULLET = '» '
 /** Continuation indent: the bullet's visible width (kimi `MESSAGE_INDENT`). */
 export const MESSAGE_INDENT = '  '
 
-/** Bold SGR pair — S18 wraps the user echo the way kimi's `boldFg` does. */
-const BOLD_OPEN = '\x1b[1m'
-const BOLD_CLOSE = '\x1b[22m'
-
 /** Maximum rendered height of one user-message image, in terminal cells. */
 export const USER_IMAGE_MAX_HEIGHT_CELLS = 12
 
@@ -138,7 +134,6 @@ export class UserMessageComponent implements MayflyComponent {
   private readonly t: MayflyTranslate
   /** Per-image outcome: the image component, null for a failed load. */
   private readonly resolved = new Map<number, MayflyImage | null>()
-  private imagesRequested = false
   private imageVersion = 0
   private expanded = false
   private cache: RenderCache | null = null
@@ -162,6 +157,7 @@ export class UserMessageComponent implements MayflyComponent {
     this.onReady = images.onReady
     this.presentation = images.presentation ?? (() => DEFAULT_TRANSCRIPT_PRESENTATION)
     this.t = images.t ?? interpolateLocaleMessage
+    if (this.loadImage !== undefined && item.images.length > 0) this.requestImages(this.loadImage)
   }
 
   /** Drop the cached lines; the next render rebuilds from the item. */
@@ -188,8 +184,6 @@ export class UserMessageComponent implements MayflyComponent {
 
   /** Kick off all image loads once; each settle stores its outcome. */
   private requestImages(load: UserImageLoader): void {
-    if (this.imagesRequested) return
-    this.imagesRequested = true
     this.item.images.forEach((ref, index) => {
       const settle = (data: Uint8Array | undefined): void => {
         this.resolved.set(index, data === undefined
@@ -215,11 +209,11 @@ export class UserMessageComponent implements MayflyComponent {
   render(width: number): string[] {
     const key = `${this.item.seq}:${width}:${this.imageVersion}:${this.expanded}`
     if (this.cache?.key === key) return this.cache.lines
-    const bullet = `${BOLD_OPEN}${this.colors.roleUser(USER_MESSAGE_BULLET)}${BOLD_CLOSE}`
+    const bullet = this.components.strong(this.colors.roleUser(USER_MESSAGE_BULLET))
     const bulletWidth = this.components.visibleWidth(USER_MESSAGE_BULLET)
     const contentWidth = Math.max(1, width - bulletWidth)
     const wrapped = this.components.wrapText(this.item.text, contentWidth)
-    const bold = (text: string): string => `${BOLD_OPEN}${this.colors.roleUser(text)}${BOLD_CLOSE}`
+    const bold = (text: string): string => this.components.strong(this.colors.roleUser(text))
     const indent = ' '.repeat(bulletWidth)
     // The fold gates on `expanded`, never on the wrapped count: a resize
     // changes wrapping but never refolds an expanded message back.
@@ -236,9 +230,7 @@ export class UserMessageComponent implements MayflyComponent {
       })
       lines.push(indent + this.colors.textMuted(this.components.truncateToWidth(hint, contentWidth)))
     }
-    const load = this.loadImage
-    if (load !== undefined && this.item.images.length > 0) {
-      this.requestImages(load)
+    if (this.loadImage !== undefined && this.item.images.length > 0) {
       for (let index = 0; index < this.item.images.length; index += 1) {
         const image = this.resolved.get(index)
         if (image) lines.push(...image.render(contentWidth).map(line => indent + line))
@@ -340,7 +332,7 @@ export class AssistantMessageComponent implements MayflyComponent {
  * build for a consumer that does not exist.
  */
 export class ToolCallComponent implements MayflyComponent {
-  private readonly item: TranscriptToolItem
+  private item: TranscriptToolItem
   private readonly colors: MayflySemanticColors
   private readonly components: MayflyComponents
   private expanded = false
@@ -357,7 +349,7 @@ export class ToolCallComponent implements MayflyComponent {
     colors: MayflySemanticColors,
     components: MayflyComponents,
     private readonly presentedBody?: MayflyComponent & { setExpanded?(expanded: boolean): void },
-    private readonly resultChip?: string,
+    private resultChip?: string,
   ) {
     this.item = item
     this.colors = colors
@@ -381,6 +373,20 @@ export class ToolCallComponent implements MayflyComponent {
     this.presentedBody?.setExpanded?.(expanded)
   }
 
+  /** Replace the semantic result summary after a pending tool settles. */
+  setResultChip(resultChip: string | undefined): void {
+    if (this.resultChip === resultChip) return
+    this.resultChip = resultChip
+    this.invalidate()
+  }
+
+  /** Replace one projected tool snapshot while preserving component identity. */
+  update(item: TranscriptToolItem, resultChip: string | undefined): void {
+    this.item = item
+    this.resultChip = resultChip
+    this.invalidate()
+  }
+
   /** The header row: bullet, verb, bold name, key arg, and the lines chip. */
   private renderHeader(width: number): string {
     const { result } = this.item
@@ -396,10 +402,10 @@ export class ToolCallComponent implements MayflyComponent {
     let header: string
     if (this.item.name === 'bash') {
       const label = result === undefined ? 'Running a command' : 'Ran a command'
-      header = `${bullet}${BOLD_OPEN}${colors.primary(label)}${BOLD_CLOSE}`
+      header = `${bullet}${this.components.strong(colors.primary(label))}`
     } else {
       const verb = result === undefined ? 'Using' : 'Used'
-      const name = `${BOLD_OPEN}${colors.primary(this.item.name)}${BOLD_CLOSE}`
+      const name = this.components.strong(colors.primary(this.item.name))
       const keyArg = extractKeyArgument(this.item)
       const argStr = keyArg === undefined ? '' : colors.muted(` (${keyArg})`)
       header = `${bullet}${verb} ${name}${argStr}`
@@ -422,19 +428,25 @@ export class ToolCallComponent implements MayflyComponent {
     return this.components.truncateToWidth(header, width)
   }
 
-  /** The bash fallback's command lines, or undefined for a non-bash card. */
-  private commandPreview(): string[] | undefined {
+  /** The bash fallback's command lines and description, or undefined for a non-bash card. */
+  private commandPreview(): { description?: string, lines: string[] } | undefined {
     if (this.item.name !== 'bash') return undefined
     const parsed = this.item.parsedArguments
     if (parsed === undefined || typeof parsed !== 'object' || parsed === null) return undefined
-    const command = (parsed as Record<string, unknown>)['command']
+    const args = parsed as Record<string, unknown>
+    const command = args['command']
     if (typeof command !== 'string' || command === '') return undefined
-    return command.split('\n')
+    const description = args['description']
+    return {
+      ...(typeof description === 'string' && description !== '' ? { description } : {}),
+      lines: command.split('\n'),
+    }
   }
 
   /**
-   * The body rows: the kimi shell chrome for a bash fallback command
-   * (`$ ` shellMode + the command one step dimmer, continuations indented,
+   * The body rows: the kimi shell chrome for a bash fallback command (a
+   * model-supplied `description` line first when present, then `$ `
+   * shellMode + the command one step dimmer, continuations indented,
    * the collapsed preview capped at {@link COMMAND_PREVIEW_LINES}), then
    * the result preview — the kimi wrap-aware 3-row cap with the expand
    * hint collapsed, every wrapped line expanded.
@@ -447,11 +459,16 @@ export class ToolCallComponent implements MayflyComponent {
     const lines: string[] = []
     const command = this.commandPreview()
     if (command !== undefined) {
+      if (command.description !== undefined) {
+        for (const line of command.description.split('\n')) {
+          lines.push(components.truncateToWidth(`${PREVIEW_INDENT}${colors.muted(line)}`, width))
+        }
+      }
       const cap = this.expanded
-        ? command.length
-        : Math.min(command.length, COMMAND_PREVIEW_LINES)
+        ? command.lines.length
+        : Math.min(command.lines.length, COMMAND_PREVIEW_LINES)
       for (let index = 0; index < cap; index += 1) {
-        const body = colors.muted(command[index]!)
+        const body = colors.muted(command.lines[index]!)
         // Budgeted like every other composed row (the select-list idiom): a
         // long one-liner command must truncate to the viewport, not reach
         // pi-tui's width guard (the #15 family — an 186-column grep
@@ -501,7 +518,7 @@ export class ToolCallComponent implements MayflyComponent {
     const presentedWidth = Math.max(1, width - this.components.visibleWidth(PREVIEW_INDENT))
     const presentedRows = this.presentedBody?.render(presentedWidth)
       .map(row => this.components.truncateToWidth(`${PREVIEW_INDENT}${row}`, width))
-    const lines = ['', this.renderHeader(width), ...(presentedRows ?? this.renderBody(width, result))]
+    const lines = ['', this.renderHeader(width), ...(presentedRows !== undefined && presentedRows.length > 0 ? presentedRows : this.renderBody(width, result))]
     this.cache = { key, lines }
     return lines
   }

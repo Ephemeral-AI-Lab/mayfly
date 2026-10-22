@@ -11,26 +11,24 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
-import type { MayflyStatusEntry } from '@ephemeral-ai/mayfly-ui'
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
-import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandle, MayflyScreen } from '../../src/core/index.ts'
+import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyScreen, MayflyScreenOverlayHandle } from '../../src/core/index.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import { ACTION_TOGGLE_COLLAPSE, apply } from '../../src/transcript/index.ts'
-import * as officialModel from '../../src/transcript/official-model.ts'
 import * as statusBasicModel from '../../src/transcript/status-basic-model.ts'
-import { createToolPresentationModel } from '../../src/transcript/tool-model.ts'
-import { createTranscriptModel } from '../../src/transcript/transcript-model.ts'
-import { setThinkingTimers } from '../../src/transcript/thinking.ts'
-import { assistantEvent, fakeMayflyComponents, imageBlock, resetSeq, textDelta, toolCallEvent, toolResultEvent, userEvent } from './helpers.ts'
+import { assistantEvent, fakeMayflyComponents, imageBlock, reasoningDelta, resetSeq, textDelta, toolCallEvent, toolResultEvent, userEvent } from './helpers.ts'
 import { FakeProjectionService } from './pane-fakes.ts'
+import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
+import { setThinkingTimers } from '../../src/transcript/thinking.ts'
 
 registerTempDirCleanup()
 
 const disposers: Array<() => Promise<void>> = []
 afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose()
+  setThinkingTimers(undefined)
 })
 
 const id = (text: string): string => text
@@ -49,6 +47,12 @@ class FakeScreen implements MayflyScreen {
   readonly renderRequests: Array<boolean | undefined> = []
   readonly columns = 80
   readonly rows = 24
+  mountContentSlot(id: string, component: MayflyComponent | null) {
+    return mountFakeScreenSlot(id, component, shell => this.addChild(shell), target => this.setFocus(target), () => this.requestRender())
+  }
+  mountDockSlot(id: string, component: MayflyComponent | null) {
+    return mountFakeScreenSlot(id, component, shell => this.addBottomChild(shell), target => this.setFocus(target), () => this.requestRender())
+  }
   addChild(component: MayflyComponent): () => void {
     this.children.push(component)
     return () => { this.removeChild(component) }
@@ -65,7 +69,7 @@ class FakeScreen implements MayflyScreen {
     if (index !== -1) this.children.splice(index, 1)
   }
   setFocus(): void {}
-  showOverlay(): MayflyOverlayHandle { throw new Error('overlays are out of scope') }
+  showOverlay(): MayflyScreenOverlayHandle { throw new Error('overlays are out of scope') }
   requestRender(force?: boolean): void { this.renderRequests.push(force) }
   contentChanged(): boolean { this.requestRender(); return false }
   suspend<T>(fn: () => Promise<T>): Promise<T> { return fn() }
@@ -117,9 +121,8 @@ interface Harness {
 
 function fixtureApply(ctx: Context): void {
   ctx.mayflyStatus.register({
-    id: 'fixture.status', priority: 30, visible: true,
-    node: { kind: 'text', content: 'fixture-entry', tone: 'muted' },
-  } satisfies MayflyStatusEntry)
+    id: 'fixture.status', priority: 30,
+  }, { kind: 'text', content: 'fixture-entry', tone: 'muted' })
 }
 
 async function bootTranscript(
@@ -128,19 +131,15 @@ async function bootTranscript(
     readonly fixture?: boolean
     readonly settings?: Record<string, unknown>
     readonly attachments?: { readImage(ref: unknown): Promise<{ data: Uint8Array }> }
+    readonly tools?: { get(name: string, agent?: Agent): unknown }
   } = {},
 ): Promise<Harness> {
   const dir = mkdtempTracked('mayfly-transcript-')
   const entries = [
     {
       file: 'transcript.mjs', name: 'mayfly-transcript',
-      inject: ['mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections', 'sessions'],
+      inject: ['mayflyConversationReady', 'mayflyScreen', 'mayflyTheme', 'mayflyComponents', 'mayflyKeymap', 'mayflyStatus', 'mayflyCurrentAgent', 'sessionProjections', 'sessions', 'tools'],
       global: '__mayflyTranscriptApply',
-    },
-    {
-      file: 'official.mjs', name: 'mayfly-transcript-official',
-      inject: ['mayflyConversationReady', 'sessionProjections', 'mayflyCurrentAgent', 'mayflyTranscriptModels', 'tools'],
-      global: '__mayflyTranscriptOfficialApply',
     },
     {
       file: 'status.mjs', name: 'mayfly-status-basic-model',
@@ -165,7 +164,6 @@ async function bootTranscript(
 
   const globals = globalThis as unknown as Record<string, (ctx: Context) => void>
   globals.__mayflyTranscriptApply = apply
-  globals.__mayflyTranscriptOfficialApply = officialModel.apply
   globals.__mayflyStatusBasicApply = statusBasicModel.apply
   globals.__mayflyStatusFixtureApply = fixtureApply
 
@@ -173,7 +171,7 @@ async function bootTranscript(
   const screen = new FakeScreen()
   const keymap = new FakeKeymap()
   const projections = new FakeProjectionService()
-  const status = new MayflyStatusService(ctx)
+  const _status = new MayflyStatusService(ctx)
   let active = initial
   let revision = 0
   const listeners = new Set<(agent: Agent | null, revision: number) => void>()
@@ -200,7 +198,7 @@ async function bootTranscript(
     sessionProjections: projections,
     sessions: { list: () => active === null ? [] : [active.session] },
     mayflyConversationReady: { key: 'mayflyConversation' },
-    tools: { get: () => undefined },
+    tools: options.tools ?? { get: () => undefined },
     ...(options.settings === undefined ? {} : { settings: { get: (ns: string) => options.settings?.[ns] } }),
     ...(options.attachments === undefined ? {} : { attachments: options.attachments }),
   }
@@ -259,16 +257,55 @@ describe('mayfly-transcript through the real Loader', () => {
     expect(text).toContain('final')
     expect(text).toContain('Used')
     expect(text).toContain('file.txt')
+    select(null)
+    expect(contentLines(screen)).toEqual([])
   })
 
-  it('renders a sibling plugin registration from the same direct mayflyStatus service', async () => {
-    const { screen } = await bootTranscript(fakeAgent([]), { fixture: true })
-    const footer = footerLines(screen).join('\n')
-    expect(footer).toContain('deepseek-chat')
-    expect(footer).toContain('fixture-entry')
+  it('isolates populated sessions whose transcript ids and revisions collide', async () => {
+    resetSeq()
+    const first = fakeAgent([
+      userEvent('session A prompt'),
+      assistantEvent(1, 1, [{ type: 'text', text: 'session A answer' }]),
+    ])
+    resetSeq()
+    const second = fakeAgent([
+      userEvent('session B prompt'),
+      assistantEvent(1, 1, [{ type: 'text', text: 'session B answer' }]),
+    ])
+    second.id = 'parent-2'
+    second.session.id = 'parent-2'
+    const { screen, select } = await bootTranscript(first)
+    expect(contentLines(screen).join('\n')).toContain('session A answer')
+
+    select(second)
+    const switched = contentLines(screen).join('\n')
+    expect(switched).toContain('session B prompt')
+    expect(switched).toContain('session B answer')
+    expect(switched).not.toContain('session A')
   })
 
-  it('renders direct tool/transcript model consumers through the shared renderer callbacks', async () => {
+  it('uses exact-Agent tool presenters and admits definitions without presenters', async () => {
+    resetSeq()
+    const presentCall = vi.fn(() => ({ card: 'generic', title: 'Presented call' }))
+    const presentResult = vi.fn(() => ({ card: 'generic', title: 'Presented result' }))
+    const get = vi.fn((toolName: string) => toolName === 'presented'
+      ? { presentCall, presentResult }
+      : toolName === 'plain' ? {} : undefined)
+    const agent = fakeAgent([
+      userEvent('tools'),
+      toolCallEvent(1, 1, 'presented-call', 'presented', '{}'),
+      toolResultEvent(1, 1, 'presented-call', 'done'),
+      toolCallEvent(1, 1, 'plain-call', 'plain', '{}'),
+    ])
+    const { screen } = await bootTranscript(agent, { tools: { get } })
+    contentLines(screen)
+    expect(get).toHaveBeenCalledWith('presented', agent)
+    expect(get).toHaveBeenCalledWith('plain', agent)
+    expect(presentCall).toHaveBeenCalled()
+    expect(presentResult).toHaveBeenCalled()
+  })
+
+  it('requests a frame when the renderer-owned thinking spinner advances', async () => {
     let tick: (() => void) | undefined
     setThinkingTimers({
       setInterval(callback) {
@@ -277,28 +314,20 @@ describe('mayfly-transcript through the real Loader', () => {
       },
       clearInterval() {},
     })
-    const { ctx, screen } = await bootTranscript(fakeAgent([]))
-    const offTool = ctx.mayflyToolModels.register(createToolPresentationModel({
-      id: 'fixture-tool',
-      name: 'fixture',
-      call: { card: 'generic', title: 'Fixture tool', content: [{ type: 'text', text: 'tool body' }] },
-    }))
-    const offTranscript = ctx.mayflyTranscriptModels.register(createTranscriptModel('fixture-transcript', [{
-      kind: 'transcript-thinking',
-      id: 'fixture-thinking',
-      seq: 1,
-      turn: 1,
-      step: 0,
-      text: 'live thought',
-      streaming: true,
-    }], true))
-    expect(contentLines(screen).join('\n')).toContain('Fixture tool')
+    const agent = fakeAgent([userEvent('think')])
+    const { ctx, screen } = await bootTranscript(agent)
+    ctx.emit('session/event', agent.session, reasoningDelta(1, 1, 'working'))
+    expect(contentLines(screen).join('\n')).toContain('working')
     const baseline = screen.renderRequests.length
     tick?.()
     expect(screen.renderRequests.length).toBeGreaterThan(baseline)
-    offTranscript()
-    offTool()
-    setThinkingTimers(undefined)
+  })
+
+  it('renders a sibling plugin registration from the same direct mayflyStatus service', async () => {
+    const { screen } = await bootTranscript(fakeAgent([]), { fixture: true })
+    const footer = footerLines(screen).join('\n')
+    expect(footer).toContain('deepseek-chat')
+    expect(footer).toContain('fixture-entry')
   })
 
   it('loads transcript images through the optional attachment service and contains failures', async () => {
@@ -326,9 +355,10 @@ describe('mayfly-transcript through the real Loader', () => {
     const { ctx, screen, keymap } = await bootTranscript(null, {
       settings: { mayfly: { collapseToolCalls: false, expandTurns: 2, userFoldLines: 12 } },
     })
-    expect(ctx.mayflyTranscriptModels.presentationPolicy()).toMatchObject({ toolsExpanded: true, expandTurns: 2, userFoldLines: 12 })
+    const settingsBaseline = screen.renderRequests.length
     ctx.emit('settings/updated', 'mayfly' as SettingsNamespace, { expandTurns: 4, userFoldChars: 700 }, {}, 'provider')
-    expect(ctx.mayflyTranscriptModels.presentationPolicy()).toMatchObject({ expandTurns: 4, userFoldChars: 700 })
+    expect(screen.renderRequests.length).toBeGreaterThan(settingsBaseline)
+    expect(screen.renderRequests.at(-1)).toBe(true)
     ctx.emit('settings/updated', 'mayfly' as SettingsNamespace, { expandTurns: 4, userFoldChars: 700 }, {}, 'provider')
     ctx.emit('settings/updated', 'other' as SettingsNamespace, { expandTurns: 8 }, {}, 'provider')
 

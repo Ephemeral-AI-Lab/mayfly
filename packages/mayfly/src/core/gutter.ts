@@ -13,7 +13,7 @@
 
 import type { MayflyComponent } from './types.ts'
 import { clampRowsToWidth, padColumns } from './chrome.ts'
-import { truncateToWidth } from './width.ts'
+import { safeWidth, truncateToWidth } from './width.ts'
 
 /**
  * Renders one wrapped child inside the kimi one-column gutter.
@@ -39,10 +39,10 @@ export class GutterComponent implements MayflyComponent {
    * @returns the child's rows, squeezed, gutter-padded, width-bounded.
    */
   render(width: number): string[] {
-    const inner = Math.max(1, width - 2 * this.n)
+    const inner = safeWidth(width - 2 * this.n)
     const rows = padColumns(this.child.render(inner), this.n)
     if (width >= 2 * this.n + 2) return rows
-    return clampRowsToWidth(rows, Math.max(1, width), (text, target) => truncateToWidth(text, target))
+    return clampRowsToWidth(rows, safeWidth(width), (text, target) => truncateToWidth(text, target))
   }
 
   /** Forward the cache drop to the wrapped child. */

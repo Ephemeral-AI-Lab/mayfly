@@ -9,7 +9,7 @@ import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import type { WorkflowAgentInfo } from '@deepseek-ai/dsh-workflow'
 import { displayServices } from './display-services.ts'
-import { mountEditorReplacement } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { interactionTranslator } from './locale.ts'
 import { CanonicalSelectController, type SelectRow } from './select-list.ts'
 import { mountChildAttach, type ChildAttachHandle } from './attach-view.ts'
@@ -26,7 +26,7 @@ export const inject = [
   'sessions',
   'sessionProjections',
   'mayflyCurrentAgent',
-  'mayflyEditorHost',
+  'mayflyEditorPanels',
   'tools',
 ]
 

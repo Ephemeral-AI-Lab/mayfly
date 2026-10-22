@@ -1,13 +1,13 @@
 /**
- * Renderer-neutral transcript model registry and the semantic TUI consumer.
- * Producers supply projected entries; this module owns only component
- * reconciliation, bounded mounting, width-safe rendering, and screen change
- * notification.
+ * Renderer-neutral transcript projection consumer and its semantic TUI
+ * controller. The selected session supplies one source; this module owns
+ * generation-isolated reconciliation, bounded mounting, width-safe rendering,
+ * and screen change notification.
  *
  * @module @ephemeral-ai/mayfly/transcript/transcript-model
  */
 
-import { Service, type Context } from '@deepseek-ai/cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import { AttachmentId, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import {
@@ -49,7 +49,6 @@ import {
 
 interface ExpandableComponent extends MayflyComponent { setExpanded?(expanded: boolean): void }
 
-declare module '@deepseek-ai/cordis' { interface Context { mayflyTranscriptModels: TranscriptModelService } }
 type Source = TranscriptModel | (() => TranscriptModel | null)
 
 /** Maximum semantic entries mounted by one transcript model component. */
@@ -68,10 +67,9 @@ export interface TranscriptModelRenderer extends CanonicalNodeRenderer {
   readonly semantic?: boolean
 }
 
-/** Optional service hooks used by the legacy/plain fallback owner. */
-export interface TranscriptModelServiceHooks {
+/** Renderer dependencies owned by the one product conversation controller. */
+export interface TranscriptControllerOptions {
   readonly renderer?: TranscriptModelRenderer
-  readonly onPresenceChanged?: (present: boolean) => void
 }
 
 /** Build an immutable transcript model from already-projected entries. */
@@ -79,8 +77,9 @@ export function createTranscriptModel(
   id: string,
   entries: readonly (MayflyUiNode | TranscriptEntryModel)[],
   streaming?: boolean,
+  generation = 0,
 ): TranscriptModel {
-  return freezeModel({ kind: 'transcript', id, entries: [...entries], ...(streaming === undefined ? {} : { streaming }) })
+  return freezeModel({ kind: 'transcript', id, generation, entries: [...entries], ...(streaming === undefined ? {} : { streaming }) })
 }
 
 /** Append one projected canonical node or semantic entry without folding events. */
@@ -89,7 +88,7 @@ export function appendTranscriptNode(
   entry: MayflyUiNode | TranscriptEntryModel,
   streaming = model.streaming,
 ): TranscriptModel {
-  return createTranscriptModel(model.id, [...model.entries, entry], streaming)
+  return createTranscriptModel(model.id, [...model.entries, entry], streaming, model.generation)
 }
 
 function isSemantic(entry: MayflyUiNode | TranscriptEntryModel): entry is TranscriptEntryModel {
@@ -126,14 +125,21 @@ function asImageRef(image: TranscriptImageModel): ImageAttachmentRef {
   }
 }
 
-function signature(entry: TranscriptEntryModel): string {
-  return JSON.stringify(entry)
-}
-
 interface CachedComponent {
-  readonly signature: string
+  readonly kind: TranscriptEntryModel['kind']
   readonly component: MayflyComponent
   readonly target: MayflyComponent
+  revision: number
+  rows: EntryRowsCache | undefined
+  readonly update: (entry: TranscriptEntryModel) => boolean
+}
+
+interface EntryRowsCache {
+  readonly revision: number
+  readonly width: number
+  readonly expanded: boolean
+  readonly policy: TranscriptPresentationSnapshot
+  readonly rows: string[]
 }
 
 interface RenderedRowsCache {
@@ -144,11 +150,16 @@ interface RenderedRowsCache {
   readonly rows: string[]
 }
 
+function entryRevision(entry: TranscriptEntryModel): number {
+  return entry.updatedSeq ?? Number.NaN
+}
+
 /** Bounded semantic transcript component with id-based reconciliation. */
 export class TranscriptModelComponent implements MayflyComponent {
   private readonly cached = new Map<string, CachedComponent>()
   private expanded = false
   private renderedRows: RenderedRowsCache | undefined
+  private generation: number | undefined
 
   constructor(
     private readonly source: () => TranscriptModel | null,
@@ -160,7 +171,13 @@ export class TranscriptModelComponent implements MayflyComponent {
     if (model === null) {
       this.renderedRows = undefined
       this.prune(new Set())
+      this.generation = undefined
       return []
+    }
+    if (this.generation !== model.generation) {
+      this.renderedRows = undefined
+      this.prune(new Set())
+      this.generation = model.generation
     }
     const bounded = model.entries.slice(-TRANSCRIPT_MODEL_WINDOW)
     const policy = this.presentation()
@@ -176,7 +193,7 @@ export class TranscriptModelComponent implements MayflyComponent {
     const live = new Set(entries.filter(isSemantic).map(entry => entry.id))
     this.prune(live)
     const rows = entries.flatMap(entry => isSemantic(entry)
-      ? this.renderSemantic(entry, width, expandableTurns.has(entry.turn))
+      ? this.renderSemantic(entry, width, expandableTurns.has(entry.turn), policy)
       : renderCanonicalNode(entry, width, this.renderer))
     this.renderedRows = { model, width, expanded: this.expanded, policy, rows }
     return rows
@@ -187,12 +204,18 @@ export class TranscriptModelComponent implements MayflyComponent {
     if (this.expanded === expanded) return
     this.expanded = expanded
     this.renderedRows = undefined
-    for (const { target } of this.cached.values()) target.invalidate()
+    for (const cached of this.cached.values()) {
+      cached.rows = undefined
+      cached.target.invalidate()
+    }
   }
 
   invalidate(): void {
     this.renderedRows = undefined
-    for (const { component } of this.cached.values()) component.invalidate()
+    for (const cached of this.cached.values()) {
+      cached.rows = undefined
+      cached.component.invalidate()
+    }
   }
 
   /** Dispose timers and async renderer resources held by cached components. */
@@ -201,18 +224,37 @@ export class TranscriptModelComponent implements MayflyComponent {
     this.prune(new Set())
   }
 
-  private renderSemantic(entry: TranscriptEntryModel, width: number, expandable: boolean): string[] {
+  private renderSemantic(entry: TranscriptEntryModel, width: number, expandable: boolean, policy: TranscriptPresentationSnapshot): string[] {
     if (this.renderer.semantic === false) return renderCanonicalNode({ kind: 'text', content: this.plainText(entry) }, width, this.renderer)
-    const currentSignature = signature(entry)
+    const revision = entryRevision(entry)
     let cached = this.cached.get(entry.id)
-    if (cached?.signature !== currentSignature) {
-      if (cached !== undefined) this.disposeComponent(cached.target)
-      const target = this.createComponent(entry)
-      cached = { signature: currentSignature, target, component: new GutterComponent(target) }
-      this.cached.set(entry.id, cached)
+    if (cached !== undefined && (cached.kind !== entry.kind || (cached.revision !== revision && !cached.update(entry)))) {
+      this.disposeComponent(cached.target)
+      this.cached.delete(entry.id)
+      cached = undefined
     }
-    this.applyExpansion(cached.target, entry, expandable)
-    return cached.component.render(width)
+    if (cached === undefined) {
+      cached = this.createComponent(entry)
+      this.cached.set(entry.id, cached)
+    } else if (cached.revision !== revision) {
+      cached.revision = revision
+      cached.rows = undefined
+    }
+    const expanded = this.applyExpansion(cached.target, entry, expandable, policy)
+    const rendered = cached.rows
+    if (rendered?.revision === revision
+      && rendered.width === width
+      && rendered.expanded === expanded
+      && rendered.policy === policy) return rendered.rows
+    const rows = cached.component.render(width)
+    cached.rows = { revision, width, expanded, policy, rows }
+    return rows
+  }
+
+  private invalidateEntry(id: string): void {
+    const cached = this.cached.get(id)
+    if (cached !== undefined) cached.rows = undefined
+    this.renderedRows = undefined
   }
 
   /** Current tree policy, or immutable shipped defaults for standalone consumers. */
@@ -221,8 +263,7 @@ export class TranscriptModelComponent implements MayflyComponent {
   }
 
   /** Compose Ctrl-O's recent-turn override over category defaults. */
-  private applyExpansion(target: MayflyComponent, entry: TranscriptEntryModel, expandable: boolean): void {
-    const policy = this.presentation()
+  private applyExpansion(target: MayflyComponent, entry: TranscriptEntryModel, expandable: boolean, policy: TranscriptPresentationSnapshot): boolean {
     const expanded = this.expanded && expandable
       ? true
       : entry.kind === 'transcript-thinking'
@@ -231,55 +272,102 @@ export class TranscriptModelComponent implements MayflyComponent {
           ? policy.toolsExpanded
           : false
     ;(target as ExpandableComponent).setExpanded?.(expanded)
+    return expanded
   }
 
-  private createComponent(entry: TranscriptEntryModel): MayflyComponent {
+  private createComponent(entry: TranscriptEntryModel): CachedComponent {
     const renderer = this.renderer
+    let target: MayflyComponent
+    let update: (entry: TranscriptEntryModel) => boolean = () => false
     switch (entry.kind) {
       case 'transcript-user': {
         const images = renderer.images()
-        const component = new UserMessageComponent({
+        target = new UserMessageComponent({
           kind: 'user', seq: entry.seq, turn: entry.turn, text: entry.text, images: entry.images.map(asImageRef),
         }, renderer.colors, renderer.components, {
           ...images,
           onReady: () => {
-            this.invalidate()
+            this.invalidateEntry(entry.id)
             images.onReady?.()
           },
           presentation: () => this.presentation(),
           ...(renderer.t === undefined ? {} : { t: renderer.t }),
         })
-        return component
+        break
       }
-      case 'transcript-assistant':
-        return new AssistantMessageComponent({
-          kind: 'assistant', seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text,
-        }, renderer.colors, renderer.components)
+      case 'transcript-assistant': {
+        const item = { kind: 'assistant' as const, seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text }
+        target = new AssistantMessageComponent(item, renderer.colors, renderer.components)
+        update = (next): boolean => {
+          const assistant = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-assistant' }>
+          item.text = assistant.text
+          target.invalidate()
+          return true
+        }
+        break
+      }
       case 'transcript-thinking': {
-        const component = new ThinkingComponent({
-          kind: 'thinking', seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming,
-        }, renderer.colors, renderer.components, () => {
-          this.renderedRows = undefined
+        const item = { kind: 'thinking' as const, seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text, streaming: entry.streaming }
+        target = new ThinkingComponent(item, renderer.colors, renderer.components, () => {
+          this.invalidateEntry(entry.id)
           renderer.requestRender()
         })
-        return component
+        update = (next): boolean => {
+          const thinking = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-thinking' }>
+          item.text = thinking.text
+          item.streaming = thinking.streaming
+          target.invalidate()
+          return true
+        }
+        break
       }
       case 'transcript-tool': {
-        const presentation = entry.presentation
-        const body = presentation === undefined ? undefined : new ToolModelComponent(() => presentation, renderer)
-        return new ToolCallComponent(asToolItem(entry), renderer.colors, renderer.components, body, toolResultChip(presentation))
+        let tool = entry
+        const body = new ToolModelComponent(() => tool.presentation ?? null, renderer)
+        const component = new ToolCallComponent(asToolItem(entry), renderer.colors, renderer.components, body, toolResultChip(entry.presentation))
+        target = component
+        update = (next): boolean => {
+          tool = next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>
+          component.update(asToolItem(tool), toolResultChip(tool.presentation))
+          return true
+        }
+        break
       }
-      case 'transcript-read-group':
-        return new ReadGroupComponent(entry, renderer.colors, renderer.components)
-      case 'transcript-search-group':
-        return new SearchGroupComponent(entry, renderer.colors, renderer.components)
+      case 'transcript-read-group': {
+        const group = new ReadGroupComponent(entry, renderer.colors, renderer.components)
+        target = group
+        update = (next): boolean => {
+          group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-read-group' }>)
+          return true
+        }
+        break
+      }
+      case 'transcript-search-group': {
+        const group = new SearchGroupComponent(entry, renderer.colors, renderer.components)
+        target = group
+        update = (next): boolean => {
+          group.update(next as Extract<TranscriptEntryModel, { readonly kind: 'transcript-search-group' }>)
+          return true
+        }
+        break
+      }
       case 'transcript-error':
-        return new ErrorMessageComponent({
+        target = new ErrorMessageComponent({
           kind: 'error', seq: entry.seq, turn: entry.turn, message: entry.message,
           ...(entry.code === undefined ? {} : { code: entry.code }),
         }, renderer.colors, renderer.components)
+        break
       case 'transcript-interrupted':
-        return new InterruptedMarkerComponent(renderer.colors, renderer.components, renderer.t)
+        target = new InterruptedMarkerComponent(renderer.colors, renderer.components, renderer.t)
+        break
+    }
+    return {
+      kind: entry.kind,
+      revision: entryRevision(entry),
+      target,
+      component: new GutterComponent(target),
+      rows: undefined,
+      update,
     }
   }
 
@@ -318,54 +406,40 @@ export class TranscriptModelComponent implements MayflyComponent {
   }
 }
 
-interface MountedModel {
+interface MountedTranscript {
   readonly component: TranscriptModelComponent
   readonly unmount: () => void
 }
 
-/** Renderer-neutral transcript registry with an additive/replacement TUI bridge. */
-export class TranscriptModelService extends Service {
-  private readonly models = new Map<string, Source>()
-  private readonly mounted = new Map<string, MountedModel>()
+/** Single-source bridge from the selected conversation projection to its fixed slot. */
+export class TranscriptController {
+  private source: Source | undefined
+  private mounted: MountedTranscript | undefined
   private screen: MayflyScreen | undefined
   private expanded = false
 
   constructor(
     private readonly owner: Context,
     screen?: MayflyScreen,
-    private readonly hooks: TranscriptModelServiceHooks = {},
+    private readonly options: TranscriptControllerOptions = {},
   ) {
-    super(owner, 'mayflyTranscriptModels')
     this.screen = screen
   }
 
   attach(screen: MayflyScreen): void {
-    for (const id of this.mounted.keys()) this.unmount(id)
+    this.unmount()
     this.screen = screen
-    for (const id of this.models.keys()) this.mount(id)
+    this.mount()
   }
 
-  register(source: Source): () => void {
-    const initial = typeof source === 'function' ? source() : source
-    if (initial === null) return () => undefined
-    if (this.models.has(initial.id)) throw new Error(`transcript model "${initial.id}" is already registered`)
-    const wasEmpty = this.models.size === 0
-    this.models.set(initial.id, source)
-    this.mount(initial.id)
-    if (wasEmpty) this.hooks.onPresenceChanged?.(true)
-    let disposed = false
-    return () => {
-      if (disposed) return
-      disposed = true
-      this.models.delete(initial.id)
-      this.unmount(initial.id)
-      this.screen?.requestRender()
-      if (this.models.size === 0) this.hooks.onPresenceChanged?.(false)
-    }
+  setSource(source: Source): void {
+    this.unmount()
+    this.source = source
+    this.mount()
   }
 
-  refresh(id: string): void {
-    if (!this.models.has(id)) return
+  refresh(): void {
+    if (this.source === undefined) return
     const screen = this.screen
     if (screen === undefined) return
     const paused = screen.contentChanged()
@@ -375,64 +449,52 @@ export class TranscriptModelService extends Service {
 
   setExpanded(expanded: boolean): void {
     this.expanded = expanded
-    for (const { component } of this.mounted.values()) component.setExpanded(expanded)
+    this.mounted?.component.setExpanded(expanded)
   }
 
   /** Re-read presentation policy and invalidate mounted semantic components. */
   refreshPresentationPolicy(): void {
-    for (const { component } of this.mounted.values()) component.invalidate()
+    this.mounted?.component.invalidate()
     this.screen?.requestRender(true)
   }
 
   /** Invalidate renderer-owned copy after a locale provider revision. */
   refreshLocale(): void {
-    for (const { component } of this.mounted.values()) component.invalidate()
+    this.mounted?.component.invalidate()
     this.screen?.requestRender(true)
   }
 
   /** Expose the current immutable policy for diagnostics and tests. */
   presentationPolicy(): TranscriptPresentationSnapshot {
-    return this.hooks.renderer?.presentation?.snapshot() ?? DEFAULT_TRANSCRIPT_PRESENTATION
-  }
-
-  hasModels(): boolean {
-    return this.models.size > 0
-  }
-
-  list(): readonly TranscriptModel[] {
-    return [...this.models.values()]
-      .map(source => typeof source === 'function' ? source() : source)
-      .filter((model): model is TranscriptModel => model !== null)
+    return this.options.renderer?.presentation?.snapshot() ?? DEFAULT_TRANSCRIPT_PRESENTATION
   }
 
   dispose(): void {
-    const hadModels = this.models.size > 0
-    for (const id of this.mounted.keys()) this.unmount(id)
-    this.models.clear()
+    this.unmount()
+    this.source = undefined
     this.screen = undefined
-    if (hadModels) this.hooks.onPresenceChanged?.(false)
   }
 
-  private mount(id: string): void {
+  private mount(): void {
     const screen = this.screen
-    const source = this.models.get(id)
-    const renderer = this.hooks.renderer
+    const source = this.source
+    const renderer = this.options.renderer
     if (screen === undefined || source === undefined || renderer === undefined) return
-    this.unmount(id)
-    const component = new TranscriptModelComponent(() => {
-      const current = this.models.get(id)
-      return current === undefined ? null : typeof current === 'function' ? current() : current
-    }, renderer)
+    const component = new TranscriptModelComponent(
+      () => typeof source === 'function' ? source() : source,
+      renderer,
+    )
     component.setExpanded(this.expanded)
-    this.mounted.set(id, { component, unmount: screen.addChild(component) })
+    const slot = screen.mountContentSlot('transcript.conversation', component)
+    this.mounted = { component, unmount: () => slot.dispose() }
     screen.requestRender()
   }
 
-  private unmount(id: string): void {
-    const mounted = this.mounted.get(id)
+  private unmount(): void {
+    const mounted = this.mounted
     if (mounted === undefined) return
     mounted.component.dispose()
     mounted.unmount()
-    this.mounted.delete(id)
+    this.mounted = undefined
   }
 }

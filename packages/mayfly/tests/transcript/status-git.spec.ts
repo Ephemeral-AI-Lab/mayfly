@@ -10,7 +10,7 @@
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as git from '../../src/transcript/status-git.ts'
 import type { GitBadgeStatus } from '../../src/transcript/status-git.ts'
 import { asAgent, bootStatusPlugin, fakeAgent } from './status-fakes.ts'
@@ -21,12 +21,28 @@ registerTempDirCleanup()
 
 /** The fake epoch every spec starts from — past both TTLs, like Date.now(). */
 const T0 = 100_000
+let tick = (): void => {}
 
 /** Restore the real git invocation and clock after every spec. */
 afterEach(() => {
   git.setGitCommandRunner(undefined)
   git.setGitClock(undefined)
+  git.setGitStatusTimers(undefined)
 })
+
+function captureTicker(): void {
+  git.setGitStatusTimers({
+    setInterval(callback) {
+      tick = callback
+      return { unref() {} } as unknown as ReturnType<typeof setInterval>
+    },
+    clearInterval() {},
+  })
+}
+
+async function settleProbe(): Promise<void> {
+  await new Promise<void>(resolve => setImmediate(resolve))
+}
 
 /** A scripted git invocation: every call records itself and replays `out`. */
 function scriptedGit(out: Record<string, string | null>): {
@@ -66,6 +82,22 @@ describe('formatGitBadge', () => {
 })
 
 describe('mayfly-status-git', () => {
+  it('reuses cached branch and status facts inside both TTLs', async () => {
+    const { runner, calls } = scriptedGit({
+      'branch --show-current': 'main',
+      'status --porcelain -b': '## main\n',
+    })
+    git.setGitCommandRunner(runner)
+    git.setGitClock(() => T0)
+    const cache = git.createGitBadgeCache('/repo')
+    await expect(cache.getStatus()).resolves.toMatchObject({ branch: 'main' })
+    await expect(cache.getStatus()).resolves.toMatchObject({ branch: 'main' })
+    expect(calls.map(args => args.join(' '))).toEqual([
+      'branch --show-current',
+      'status --porcelain -b',
+    ])
+  })
+
   it('shows the probed badge at priority 10 in the muted tier', async () => {
     const { runner } = scriptedGit({
       'branch --show-current': 'main',
@@ -92,6 +124,7 @@ describe('mayfly-status-git', () => {
   })
 
   it('reveals a repository that appears after an initially empty probe', async () => {
+    captureTicker()
     let branch: string | null = null
     git.setGitCommandRunner(args => args[0] === 'branch' ? branch : '## main\n')
     let now = T0
@@ -100,6 +133,8 @@ describe('mayfly-status-git', () => {
     expect(harness.entry.render(80)).toBe('')
     branch = 'main'
     now += git.BRANCH_TTL_MS
+    tick()
+    await settleProbe()
     expect(harness.entry.render(80)).toBe('main')
     await harness.dispose()
   })
@@ -193,6 +228,7 @@ describe('mayfly-status-git', () => {
   })
 
   it('re-probes each slot only after its TTL expires', async () => {
+    captureTicker()
     const { runner, calls } = scriptedGit({
       'branch --show-current': 'main',
       'status --porcelain -b': '## main\n M x\n',
@@ -208,12 +244,14 @@ describe('mayfly-status-git', () => {
 
     // Inside both TTLs: nothing re-probes.
     now += git.BRANCH_TTL_MS - 1
-    harness.entry.render(80)
+    tick()
+    await settleProbe()
     expect(calls).toHaveLength(3)
 
     // Past the branch TTL (5s) but inside the status TTL (15s): branch only.
     now = T0 + git.BRANCH_TTL_MS
-    harness.entry.render(80)
+    tick()
+    await settleProbe()
     expect(calls.map(args => args.join(' '))).toEqual([
       'branch --show-current',
       'status --porcelain -b',
@@ -223,12 +261,14 @@ describe('mayfly-status-git', () => {
 
     // Past the status TTL: everything re-probes.
     now = T0 + git.STATUS_TTL_MS
-    harness.entry.render(80)
+    tick()
+    await settleProbe()
     expect(calls).toHaveLength(7)
     await harness.dispose()
   })
 
   it('re-probes on the cadence even across renders far apart', async () => {
+    captureTicker()
     // A failed status probe degrades to the bare branch, not to nothing.
     const { runner, calls } = scriptedGit({
       'branch --show-current': 'main',
@@ -241,6 +281,8 @@ describe('mayfly-status-git', () => {
     expect(harness.entry.render(80)).toBe('main')
 
     now += git.STATUS_TTL_MS
+    tick()
+    await settleProbe()
     expect(harness.entry.render(80)).toBe('main')
     expect(calls.map(args => args.join(' '))).toEqual([
       'branch --show-current',
@@ -270,6 +312,7 @@ describe('mayfly-status-git', () => {
 
     dumps['branch --show-current'] = 'beta'
     ctx.emit('test/session-changed', asAgent(fakeAgent([], { cwd: '/repo-b' })))
+    await settleProbe()
     // The rebuilt cache probes lazily: the next render drives it.
     expect(entry.render(80)).toBe('beta')
     expect(cwds.at(-1)).toBe('/repo-b')
@@ -278,10 +321,31 @@ describe('mayfly-status-git', () => {
     // An unchanged probe result still requests its one redraw per switch; a
     // session without a header cwd falls back to the process cwd.
     ctx.emit('test/session-changed', asAgent(fakeAgent([])))
+    await settleProbe()
     expect(entry.render(80)).toBe('beta')
     expect(cwds.at(-1)).toBe(process.cwd())
     expect(screen.renderRequests.length).toBe(baseline + 2)
     await dispose()
+  })
+
+  it('drops a late probe from the previous session generation', async () => {
+    const oldBranch = Promise.withResolvers<string | null>()
+    git.setGitCommandRunner((args, cwd) => {
+      if (cwd === '/repo-old' && args[0] === 'branch') return oldBranch.promise
+      if (args[0] === 'branch') return 'new'
+      return '## new\n'
+    })
+    git.setGitClock(() => T0)
+    const old = fakeAgent([], { cwd: '/repo-old' })
+    const harness = await bootStatusPlugin(git, old)
+    harness.ctx.emit('test/session-changed', asAgent(fakeAgent([], { cwd: '/repo-new' })))
+    await settleProbe()
+    expect(harness.entry.render(80)).toBe('new')
+
+    oldBranch.resolve('old')
+    await settleProbe()
+    expect(harness.entry.render(80)).toBe('new')
+    await harness.dispose()
   })
 
   it('truncates a long badge to the offered budget', async () => {
@@ -313,7 +377,7 @@ describe('mayfly-status-git', () => {
     const dir = mkdtempTracked('mayfly-git-')
     execFileSync('git', ['init', '-b', 'trunk', dir])
     const harness = await bootStatusPlugin(git, fakeAgent([], { cwd: dir }))
-    expect(harness.entry.render(80)).toBe('trunk')
+    await vi.waitFor(() => expect(harness.entry.render(80)).toBe('trunk'))
     await harness.dispose()
   })
 

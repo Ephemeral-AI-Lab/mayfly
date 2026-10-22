@@ -6,6 +6,24 @@
  * @module @ephemeral-ai/mayfly/core/ui-validator
  */
 
+import {
+  MAYFLY_ACTION_INTENTS,
+  MAYFLY_BAR_CHART_LAYOUTS,
+  MAYFLY_CHART_KINDS,
+  MAYFLY_DIAGRAM_FORMATS,
+  MAYFLY_FORM_FIELD_KINDS,
+  MAYFLY_LIST_MODES,
+  MAYFLY_LOADER_VARIANTS,
+  MAYFLY_SCROLL_FOLLOWS,
+  MAYFLY_SPACER_SIZES,
+  MAYFLY_STACK_ALIGNS,
+  MAYFLY_STACK_DIRECTIONS,
+  MAYFLY_STACK_GAPS,
+  MAYFLY_SURFACE_CHROMES,
+  MAYFLY_SURFACE_PADDINGS,
+  MAYFLY_TEXT_STYLES,
+  MAYFLY_TONES,
+} from '@ephemeral-ai/mayfly-ui'
 import type {
   MayflyActionItem,
   MayflyBarChartSeries,
@@ -17,15 +35,16 @@ import type {
   MayflyInlineSpan,
   MayflyListItem,
   MayflySection,
+  MayflySectionContentNode,
   MayflyStatusChild,
   MayflyStatusNode,
   MayflyTabItem,
   MayflyUiChild,
   MayflyUiNode,
   MayflyViewportCondition,
-  MayflyView,
 } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyEditorChild, MayflyEditorShellNode, MayflyValidationResult } from './ui-contracts.ts'
+import { someUiNode, walkUiNode } from './ui-walk.ts'
 
 /** Maximum aggregate UTF-16 source units accepted in one tree. */
 export const MAYFLY_UI_MAX_TEXT = 20_000
@@ -202,10 +221,13 @@ function enter<Value>(value: unknown, path: string, state: ValidationState, visi
 function span(value: unknown, path: string, state: ValidationState): MayflyInlineSpan {
   return enter(value, path, state, object => {
     const toneValue = own(object, 'tone', path)
-    const emphasisValue = own(object, 'emphasis', path)
-    const tone = toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'accent', 'success', 'warning', 'danger'], `${path}.tone`)
-    const emphasis = emphasisValue === undefined ? undefined : enumeration(emphasisValue, ['normal', 'strong'], `${path}.emphasis`)
-    return { text: text(required(object, 'text', path), `${path}.text`, state), ...optional(tone, 'tone'), ...optional(emphasis, 'emphasis') }
+    const stylesValue = own(object, 'styles', path)
+    const tone = toneValue === undefined ? undefined : enumeration(toneValue, MAYFLY_TONES, `${path}.tone`)
+    const styles = stylesValue === undefined
+      ? undefined
+      : collection(stylesValue, `${path}.styles`).map((style, index) => enumeration(style, MAYFLY_TEXT_STYLES, `${path}.styles[${String(index)}]`))
+    if (styles !== undefined && new Set(styles).size !== styles.length) invalid(`${path}.styles contains duplicates`)
+    return { text: text(required(object, 'text', path), `${path}.text`, state), ...optional(tone, 'tone'), ...optional(styles, 'styles') }
   })
 }
 
@@ -443,7 +465,7 @@ function actionItem(value: unknown, path: string, state: ValidationState): Mayfl
     return {
       id: text(required(object, 'id', path), `${path}.id`, state),
       label: text(required(object, 'label', path), `${path}.label`, state),
-      ...optional(intentValue === undefined ? undefined : enumeration(intentValue, ['primary', 'secondary', 'danger'], `${path}.intent`), 'intent'),
+      ...optional(intentValue === undefined ? undefined : enumeration(intentValue, MAYFLY_ACTION_INTENTS, `${path}.intent`), 'intent'),
       ...optional(disabledValue === undefined ? undefined : boolean(disabledValue, `${path}.disabled`), 'disabled'),
       ...optional(busyValue === undefined ? undefined : boolean(busyValue, `${path}.busy`), 'busy'),
       ...optional(optionalText(object, 'confirm', path, state), 'confirm'),
@@ -468,11 +490,9 @@ function viewportCondition(value: unknown, path: string): MayflyViewportConditio
   })
 }
 
-const CHART_TONES = ['default', 'muted', 'accent', 'success', 'warning', 'danger'] as const
-
 function chartTone(object: Record<string, unknown>, path: string): MayflyInlineSpan['tone'] | undefined {
   const value = own(object, 'tone', path)
-  return value === undefined ? undefined : enumeration(value, CHART_TONES, `${path}.tone`)
+  return value === undefined ? undefined : enumeration(value, MAYFLY_TONES, `${path}.tone`)
 }
 
 function addChartCells(state: ValidationState, count: number): void {
@@ -570,7 +590,7 @@ function uiChild<Node>(
   })
 }
 
-function view(value: unknown, path: string, state: ValidationState, depth: number): MayflyView {
+function view(value: unknown, path: string, state: ValidationState, depth: number): MayflySectionContentNode {
   return node(value, path, state, depth, 'ui', true)
 }
 
@@ -587,7 +607,7 @@ function section(value: unknown, path: string, state: ValidationState, depth: nu
 
 function formField(value: unknown, path: string, state: ValidationState): MayflyFormField {
   return enter(value, path, state, object => {
-    const kind = enumeration(required(object, 'kind', path), ['input', 'textarea', 'secret', 'select', 'toggle'], `${path}.kind`)
+    const kind = enumeration(required(object, 'kind', path), MAYFLY_FORM_FIELD_KINDS, `${path}.kind`)
     const id = text(required(object, 'id', path), `${path}.id`, state)
     const label = text(required(object, 'label', path), `${path}.label`, state)
     const error = optionalText(object, 'error', path, state)
@@ -614,7 +634,7 @@ function formField(value: unknown, path: string, state: ValidationState): Mayfly
 }
 
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'ui', viewOnly?: false): MayflyUiNode
-function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'ui', viewOnly: true): MayflyView
+function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'ui', viewOnly: true): MayflySectionContentNode
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'status', viewOnly?: false): MayflyStatusNode
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'editor', viewOnly?: false, editorSlotAllowed?: boolean): MayflyEditorShellNode
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly = false, editorSlotAllowed = false): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
@@ -630,13 +650,14 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
       return { kind }
     }
     if (mode === 'status' && !['text', 'rich-text', 'fields', 'progress', 'stack'].includes(kind)) invalid(`status node kind "${kind}" is interactive or unsupported`)
-    if (mode === 'editor' && (kind === 'document' || kind === 'chart')) invalid(`editor node kind "${kind}" is unsupported`)
-    if (viewOnly && !['text', 'fields', 'code', 'diff', 'sections'].includes(kind)) invalid(`${path} must be a MayflyView`)
+    if (mode === 'editor' && (kind === 'diagram' || kind === 'chart')) invalid(`editor node kind "${kind}" is unsupported`)
+    if (viewOnly && !['text', 'fields', 'code', 'diff', 'sections'].includes(kind)) invalid(`${path} must be section content`)
     switch (kind) {
       case 'text': {
         const toneValue = own(object, 'tone', path)
-        return { kind, content: text(required(object, 'content', path), `${path}.content`, state), ...optional(toneValue === undefined ? undefined : enumeration(toneValue, ['default', 'muted', 'accent', 'success', 'warning', 'danger'], `${path}.tone`), 'tone') }
+        return { kind, content: text(required(object, 'content', path), `${path}.content`, state), ...optional(toneValue === undefined ? undefined : enumeration(toneValue, MAYFLY_TONES, `${path}.tone`), 'tone') }
       }
+      case 'markdown': return { kind, source: text(required(object, 'source', path), `${path}.source`, state) }
       case 'fields': return { kind, rows: collection(required(object, 'rows', path), `${path}.rows`).map((item, index) => field(item, `${path}.rows[${String(index)}]`, state)) }
       case 'code': return { kind, code: text(required(object, 'code', path), `${path}.code`, state), ...optional(optionalText(object, 'language', path, state), 'language') }
       case 'diff': return { kind, before: text(required(object, 'before', path), `${path}.before`, state), after: text(required(object, 'after', path), `${path}.after`, state) }
@@ -647,9 +668,9 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         const alignValue = own(object, 'align', path)
         const stack = {
           kind,
-          direction: enumeration(required(object, 'direction', path), ['row', 'column'], `${path}.direction`),
-          ...optional(gapValue === undefined ? undefined : enumeration(gapValue, [0, 1, 2] as const, `${path}.gap`), 'gap'),
-          ...optional(alignValue === undefined ? undefined : enumeration(alignValue, ['stretch', 'start', 'center', 'end'], `${path}.align`), 'align'),
+          direction: enumeration(required(object, 'direction', path), MAYFLY_STACK_DIRECTIONS, `${path}.direction`),
+          ...optional(gapValue === undefined ? undefined : enumeration(gapValue, MAYFLY_STACK_GAPS, `${path}.gap`), 'gap'),
+          ...optional(alignValue === undefined ? undefined : enumeration(alignValue, MAYFLY_STACK_ALIGNS, `${path}.align`), 'align'),
         } as const
         const entries = collection(required(object, 'children', path), `${path}.children`)
         if (mode === 'status') {
@@ -675,7 +696,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         const paddingValue = own(object, 'padding', path)
         const badgesValue = own(object, 'badges', path)
         const footerValue = own(object, 'footer', path)
-        const surface = { kind, ...optional(optionalText(object, 'title', path, state), 'title'), ...optional(optionalText(object, 'subtitle', path, state), 'subtitle'), ...optional(badgesValue === undefined ? undefined : spans(badgesValue, `${path}.badges`, state), 'badges'), ...optional(chromeValue === undefined ? undefined : enumeration(chromeValue, ['none', 'lane', 'surface', 'overlay'], `${path}.chrome`), 'chrome'), ...optional(paddingValue === undefined ? undefined : enumeration(paddingValue, [0, 1, 2] as const, `${path}.padding`), 'padding') } as const
+        const surface = { kind, ...optional(optionalText(object, 'title', path, state), 'title'), ...optional(optionalText(object, 'subtitle', path, state), 'subtitle'), ...optional(badgesValue === undefined ? undefined : spans(badgesValue, `${path}.badges`, state), 'badges'), ...optional(chromeValue === undefined ? undefined : enumeration(chromeValue, MAYFLY_SURFACE_CHROMES, `${path}.chrome`), 'chrome'), ...optional(paddingValue === undefined ? undefined : enumeration(paddingValue, MAYFLY_SURFACE_PADDINGS, `${path}.padding`), 'padding') } as const
         if (mode === 'editor') {
           const child = node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'editor', false, true)
           const footer = footerValue === undefined ? undefined : node(footerValue, `${path}.footer`, state, depth + 1, 'editor', false, true)
@@ -691,7 +712,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         const scrollbarValue = own(object, 'scrollbar', path)
         state.scrollDepth += 1
         try {
-          return { kind, child: node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'ui'), ...optional(followValue === undefined ? undefined : enumeration(followValue, ['none', 'start', 'end'], `${path}.follow`), 'follow'), ...optional(scrollbarValue === undefined ? undefined : boolean(scrollbarValue, `${path}.scrollbar`), 'scrollbar') }
+          return { kind, child: node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'ui'), ...optional(followValue === undefined ? undefined : enumeration(followValue, MAYFLY_SCROLL_FOLLOWS, `${path}.follow`), 'follow'), ...optional(scrollbarValue === undefined ? undefined : boolean(scrollbarValue, `${path}.scrollbar`), 'scrollbar') }
         } finally {
           state.scrollDepth -= 1
         }
@@ -722,7 +743,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
         if (new Set(selectedIds).size !== selectedIds.length) invalid(`${path}.selectedIds contains duplicate ids`)
         if ((modeValue ?? 'single') === 'single' && selectedIds.length > 1) invalid(`${path}.selectedIds has more than one id in single mode`)
         if (itemCount <= MAYFLY_UI_MAX_COLLECTION && selectedIds.some(id => admittedListIndex(items, id) < 0)) invalid(`${path}.selectedIds contains an unknown id`)
-        return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, ['single', 'multiple'], `${path}.mode`), 'mode'), selectedIds, items, ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
+        return { kind, id: identifier(required(object, 'id', path), `${path}.id`, state, true), ...optional(modeValue === undefined ? undefined : enumeration(modeValue, MAYFLY_LIST_MODES, `${path}.mode`), 'mode'), selectedIds, items, ...optional(optionalText(object, 'filter', path, state), 'filter'), ...optional(emptyValue === undefined ? undefined : node(emptyValue, `${path}.empty`, state, depth + 1, 'ui'), 'empty') }
       }
       case 'form': {
         const fields = collection(required(object, 'fields', path), `${path}.fields`).map((item, index) => formField(item, `${path}.fields[${String(index)}]`, state))
@@ -761,7 +782,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           if (state.budget.controlIds.has(cancelActionId)) invalid(`control id "${cancelActionId}" is duplicated`)
           state.budget.controlIds.add(cancelActionId)
         }
-        return { kind, message: text(required(object, 'message', path), `${path}.message`, state), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['braille', 'tide'], `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId') }
+        return { kind, message: text(required(object, 'message', path), `${path}.message`, state), ...optional(variantValue === undefined ? undefined : enumeration(variantValue, MAYFLY_LOADER_VARIANTS, `${path}.variant`), 'variant'), ...optional(elapsedValue === undefined ? undefined : finiteInteger(elapsedValue, `${path}.elapsedMs`), 'elapsedMs'), ...optional(cancelActionId, 'cancelActionId') }
       }
       case 'empty': {
         const actionsValue = own(object, 'actions', path)
@@ -776,16 +797,12 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
       }
       case 'spacer': {
         const sizeValue = own(object, 'size', path)
-        return { kind, ...optional(sizeValue === undefined ? undefined : enumeration(sizeValue, [1, 2] as const, `${path}.size`), 'size') }
+        return { kind, ...optional(sizeValue === undefined ? undefined : enumeration(sizeValue, MAYFLY_SPACER_SIZES, `${path}.size`), 'size') }
       }
       case 'divider': return { kind, ...optional(optionalText(object, 'label', path, state), 'label') }
-      case 'document': return {
-        kind,
-        format: enumeration(required(object, 'format', path), ['markdown', 'mermaid'], `${path}.format`),
-        source: text(required(object, 'source', path), `${path}.source`, state),
-      }
+      case 'diagram': return { kind, diagram: enumeration(required(object, 'diagram', path), MAYFLY_DIAGRAM_FORMATS, `${path}.diagram`), source: text(required(object, 'source', path), `${path}.source`, state) }
       case 'chart': {
-        const chart = enumeration(required(object, 'chart', path), ['line', 'point', 'bar', 'sparkline', 'heatmap'], `${path}.chart`)
+        const chart = enumeration(required(object, 'chart', path), MAYFLY_CHART_KINDS, `${path}.chart`)
         if (chart === 'line' || chart === 'point') {
           const series = collection(required(object, 'series', path), `${path}.series`)
             .map((item, index) => chartSeries(item, `${path}.series[${String(index)}]`, state))
@@ -808,7 +825,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
           if (series.length > 20) limit(`${path}.series exceeds 20 entries`)
           uniqueIds(series, `${path}.series`)
           if (series.some(item => item.values.length !== categories.length)) invalid(`${path}.series values must match categories`)
-          const layout = layoutValue === undefined ? undefined : enumeration(layoutValue, ['grouped', 'stacked', 'normalized'], `${path}.layout`)
+          const layout = layoutValue === undefined ? undefined : enumeration(layoutValue, MAYFLY_BAR_CHART_LAYOUTS, `${path}.layout`)
           if (layout === 'normalized') {
             if (series.some(item => item.values.some(value => value !== null && value < 0))) invalid(`${path}.series normalized values must be non-negative`)
             for (let index = 0; index < categories.length; index += 1) {
@@ -866,31 +883,34 @@ function freeze<Value>(value: Value): Value {
 }
 
 function containsEditorControl(node: MayflyEditorShellNode): boolean {
-  if (node.kind === 'editor-control') return true
-  if (node.kind === 'stack') return node.children.some(child => containsEditorControl(child.node))
-  if (node.kind === 'surface') return containsEditorControl(node.child) || (node.footer !== undefined && containsEditorControl(node.footer))
-  return false
+  return someUiNode(
+    node,
+    current => current.kind === 'editor-control',
+    current => current.kind === 'stack' || current.kind === 'surface',
+  )
 }
 
 function assertEditorControlVisible(node: MayflyEditorShellNode, path = '$'): void {
-  if (node.kind === 'stack') {
-    for (const [index, child] of node.children.entries()) {
-      const childPath = `${path}.children[${String(index)}]`
-      if (containsEditorControl(child.node)) {
-        if (child.when !== undefined) invalid(`${childPath}.when cannot hide editor-control`)
-        if (child.maxSize === 0) invalid(`${childPath}.maxSize cannot hide editor-control`)
-        if (child.basis === 0 && (child.grow ?? 0) === 0 && (child.minSize ?? 0) === 0) {
-          invalid(`${childPath} cannot allocate zero size to editor-control`)
+  walkUiNode(node, path, (current, currentPath, descend) => {
+    if (current.kind === 'stack') {
+      descend(edge => {
+        const childPath = `${currentPath}.children[${String(edge.index!)}]`
+        const wrapper = edge.wrapper!
+        if (containsEditorControl(edge.node as MayflyEditorShellNode)) {
+          if (wrapper.when !== undefined) invalid(`${childPath}.when cannot hide editor-control`)
+          if (wrapper.maxSize === 0) invalid(`${childPath}.maxSize cannot hide editor-control`)
+          if (wrapper.basis === 0 && (wrapper.grow ?? 0) === 0 && (wrapper.minSize ?? 0) === 0) {
+            invalid(`${childPath} cannot allocate zero size to editor-control`)
+          }
         }
-      }
-      assertEditorControlVisible(child.node, `${childPath}.node`)
+        return `${childPath}.node`
+      })
+      return
     }
-    return
-  }
-  if (node.kind === 'surface') {
-    assertEditorControlVisible(node.child, `${path}.child`)
-    if (node.footer !== undefined) assertEditorControlVisible(node.footer, `${path}.footer`)
-  }
+    if (current.kind === 'surface') {
+      descend(edge => edge.kind === 'surface-child' ? `${currentPath}.child` : `${currentPath}.footer`)
+    }
+  })
 }
 
 function validate<Value>(value: unknown, mode: ValidationMode): MayflyValidationResult<Value> {

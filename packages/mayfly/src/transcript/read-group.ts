@@ -87,7 +87,7 @@ export class ReadGroupComponent implements MayflyComponent {
   private cache: { key: string; lines: string[] } | null = null
 
   constructor(
-    private readonly model: TranscriptReadGroupModel,
+    private model: TranscriptReadGroupModel,
     private readonly colors: MayflySemanticColors,
     private readonly components: MayflyComponents,
   ) {}
@@ -97,6 +97,9 @@ export class ReadGroupComponent implements MayflyComponent {
 
   /** Drop the cached lines; the next render rebuilds. */
   invalidate(): void { this.cache = null }
+
+  /** Replace the immutable group snapshot while preserving expansion state. */
+  update(model: TranscriptReadGroupModel): void { this.model = model; this.invalidate() }
 
   /** @param width - current viewport width in columns. @returns the rows. */
   render(width: number): string[] {
@@ -126,7 +129,7 @@ export class ReadGroupComponent implements MayflyComponent {
     const files = groupReadsByFile(reads).length
     const pending = reads.filter(read => read.state === 'pending').length
     const failed = reads.filter(read => read.state === 'error').length
-    const bold = (text: string): string => `\x1b[1m${String(text)}\x1b[22m`
+    const bold = (text: string): string => components.strong(String(text))
     const label = pending > 0
       ? bold(colors.primary(`Reading ${String(files)} ${files === 1 ? 'file' : 'files'}…`))
       : failed === reads.length

@@ -6,9 +6,8 @@
  * counts, and the ahead/behind sync against the upstream (from
  * `git status --porcelain -b`); a clean synced tree shows the bare branch.
  * The probe data flows through a TTL cache (branch 5 s, status 15 s, the
- * kimi cadences) refreshed lazily inside `render` — Mayfly's redraws are
- * event-driven, so a branch switch lands on the next redraw of any kind
- * (typing, streaming, the tips ticker's 10 s beat) rather than on a watcher.
+ * kimi cadences) refreshed asynchronously by the controller timer. Rendering
+ * only reads the latest immutable status snapshot and never starts a process.
  * The working directory comes from the app-owned current-session snapshot,
  * falling back to `process.cwd()`, and a session switch rebuilds the cache
  * for the new cwd. Outside a git repository (or on any
@@ -19,9 +18,9 @@
  * @module @ephemeral-ai/mayfly/transcript/status-git
  */
 
-import { spawnSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyStatusEntry } from './status-model.ts'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { SessionFactsService } from './session-facts.ts'
 
 /** Stable Cordis plugin name. */
@@ -63,24 +62,21 @@ export interface GitBadgeStatus {
  * stdout or null when the command fails, times out, or the binary is
  * missing — every probe degrades to "nothing to show".
  */
-export type GitCommandRunner = (args: readonly string[], cwd: string) => string | null
+export type GitCommandRunner = (args: readonly string[], cwd: string) => string | null | Promise<string | null>
 
 /**
- * The default invocation: synchronous with a short timeout and ignored
+ * The default invocation: asynchronous with a short timeout and ignored
  * stdin/stderr, so a hung or chatty git can neither block nor pollute the
  * UI beyond the cap.
  */
-const defaultGitCommandRunner: GitCommandRunner = (args, cwd) => {
-  const result = spawnSync('git', args, {
+const defaultGitCommandRunner: GitCommandRunner = (args, cwd) => new Promise(resolve => {
+  execFile('git', [...args], {
     cwd,
     encoding: 'utf8',
     timeout: SPAWN_TIMEOUT_MS,
-    stdio: ['ignore', 'pipe', 'ignore'],
     maxBuffer: 4 * 1024 * 1024,
-  })
-  if (result.error !== undefined || result.status !== 0) return null
-  return result.stdout
-}
+  }, (error, stdout) => { resolve(error === null ? stdout : null) })
+})
 
 let gitCommandRunner: GitCommandRunner = defaultGitCommandRunner
 
@@ -99,12 +95,26 @@ const defaultGitClock: GitClock = () => Date.now()
 
 let gitClock: GitClock = defaultGitClock
 
+/** Timer primitives driving controller-side probes independently of render. */
+export interface GitStatusTimers {
+  setInterval: (callback: () => void, ms: number) => ReturnType<typeof setInterval>
+  clearInterval: (handle: ReturnType<typeof setInterval>) => void
+}
+
+const defaultGitStatusTimers: GitStatusTimers = { setInterval, clearInterval }
+let gitStatusTimers = defaultGitStatusTimers
+
 /**
  * Replace the TTL clock (tests inject a fake here).
  * @param clock - the replacement, or `undefined` to restore the default.
  */
 export function setGitClock(clock: GitClock | undefined): void {
   gitClock = clock ?? defaultGitClock
+}
+
+/** Replace the controller timer primitives for deterministic tests. */
+export function setGitStatusTimers(timers: GitStatusTimers | undefined): void {
+  gitStatusTimers = timers ?? defaultGitStatusTimers
 }
 
 /**
@@ -170,7 +180,7 @@ export interface GitBadgeCache {
    * The current facts, probing whatever its TTL expired.
    * @returns the facts, or null outside a repository.
    */
-  getStatus(): GitBadgeStatus | null
+  getStatus(): Promise<GitBadgeStatus | null>
 }
 
 /**
@@ -187,23 +197,23 @@ export function createGitBadgeCache(cwd: string): GitBadgeCache {
     },
   }
 
-  const probeStatus = (fetchedAt: number): CacheSlots['status'] => {
-    const output = gitCommandRunner(['status', '--porcelain', '-b'], cwd)
+  const probeStatus = async (fetchedAt: number): Promise<CacheSlots['status']> => {
+    const output = await gitCommandRunner(['status', '--porcelain', '-b'], cwd)
     if (output === null) {
       return { value: { dirty: false, ahead: 0, behind: 0, diffAdded: 0, diffDeleted: 0 }, fetchedAt }
     }
     const base = readStatusDump(output)
     const diff = base.dirty
-      ? readNumstatDump(gitCommandRunner(['diff', '--numstat', 'HEAD', '--'], cwd) ?? '')
+      ? readNumstatDump(await gitCommandRunner(['diff', '--numstat', 'HEAD', '--'], cwd) ?? '')
       : { added: 0, deleted: 0 }
     return { value: { ...base, diffAdded: diff.added, diffDeleted: diff.deleted }, fetchedAt }
   }
 
   return {
-    getStatus: () => {
+    getStatus: async () => {
       const now = gitClock()
       if (now - slots.branch.fetchedAt >= BRANCH_TTL_MS) {
-        const output = gitCommandRunner(['branch', '--show-current'], cwd)
+        const output = await gitCommandRunner(['branch', '--show-current'], cwd)
         slots.branch = {
           value: output === null ? null : output.trim() === '' ? null : output.trim(),
           fetchedAt: now,
@@ -212,7 +222,7 @@ export function createGitBadgeCache(cwd: string): GitBadgeCache {
       if (slots.branch.value === null) return null
 
       if (now - slots.status.fetchedAt >= STATUS_TTL_MS) {
-        slots.status = probeStatus(now)
+        slots.status = await probeStatus(now)
       }
       return { branch: slots.branch.value, ...slots.status.value }
     },
@@ -238,31 +248,47 @@ export function formatGitBadge(status: GitBadgeStatus): string {
 
 /**
  * Register the git entry. Builds the cache for the current session's cwd on
- * load and rebuilds it on session snapshot changes; the badge itself
- * re-reads the cache (refreshing whatever expired) each time the shell lays
- * the entry out.
+ * load and rebuilds it on session snapshot changes. A generation fence drops
+ * probes that settle after the selected working directory changed.
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
   const facts = ctx.get('mayflySessionFacts') as SessionFactsService
   let cwd = facts.currentAgent?.session.header.cwd ?? process.cwd()
   let cache = createGitBadgeCache(cwd)
+  let text = ''
+  let probeGeneration = 0
+  let inFlight: Promise<void> | undefined
+  const node = (): MayflyStatusNode | null => text === '' ? null : { kind: 'text', content: text, tone: 'muted' }
+  const status = ctx.mayflyStatus.register({ id: 'mayfly.status.git', priority: 10 }, node())
+  const publish = (force = false): Promise<void> => {
+    if (inFlight !== undefined) return inFlight
+    const generation = probeGeneration
+    const source = cache
+    const task = source.getStatus().then(next => {
+      if (generation !== probeGeneration || source !== cache) return
+      const nextText = next === null ? '' : formatGitBadge(next)
+      if (!force && nextText === text) return
+      text = nextText
+      status.set(node())
+    }).finally(() => { if (inFlight === task) inFlight = undefined })
+    inFlight = task
+    return task
+  }
+  void publish(true)
 
   const offAgent = facts.subscribeAgent((agent) => {
     const next = agent?.session.header.cwd ?? process.cwd()
     if (next === cwd) return
     cwd = next
     cache = createGitBadgeCache(cwd)
-    ctx.mayflyStatus.refresh('mayfly.status.git')
+    probeGeneration += 1
+    inFlight = undefined
+    void publish(true)
   })
   ctx.effect(() => () => offAgent())
 
-  const model = (): MayflyStatusEntry => {
-    const status = cache.getStatus()
-    const text = status === null ? '' : formatGitBadge(status)
-    // Keep the empty entry mounted: any later footer redraw must be able to
-    // drive the TTL probe and reveal a repository that appeared in this cwd.
-    return { id: 'mayfly.status.git', priority: 10, node: { kind: 'text', content: text, tone: 'muted' }, visible: true }
-  }
-  ctx.mayflyStatus.register(model)
+  const timer = gitStatusTimers.setInterval(() => { void publish() }, BRANCH_TTL_MS)
+  timer.unref()
+  ctx.effect(() => () => gitStatusTimers.clearInterval(timer))
 }

@@ -12,11 +12,11 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type {
   MayflyComponent,
-  MayflyOverlayHandle,
   MayflyScreen,
+  MayflyScreenOverlayHandle,
   MayflySemanticColors,
 } from '../../src/core/index.ts'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   BANNER_MIN_WIDTH,
   bannerLayout,
@@ -28,6 +28,7 @@ import {
   type BannerDeps,
 } from '../../src/transcript/banner.ts'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
+import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 import * as banner from '../../src/transcript/banner.ts'
 import { LOGO_COLS, LOGO_GRADIENT } from '../../src/transcript/banner-art.ts'
 import { visibleWidth, truncateToWidth } from '../../src/core/width.ts'
@@ -52,7 +53,11 @@ const LOGO_WIDTH_COLS = LOGO_COLS
 /** Identity deps: structure assertions see text, not escape codes. */
 const components = fakeMayflyComponents()
 const DEPS: BannerDeps = {
-  colors: COLORS as MayflySemanticColors,
+  colors: {
+    ...COLORS,
+    modelHighlight: text => `\x1b[38;2;140;168;255m${text}\x1b[39m`,
+    logoGradient: LOGO_GRADIENT.map((_hex, index) => text => wrapLogo(text, index)),
+  } as MayflySemanticColors,
   truncate: (text, width) => components.truncateToWidth(text, width),
   visibleWidth: text => components.visibleWidth(text),
 }
@@ -157,6 +162,15 @@ describe('composeBannerLines', () => {
     expect(text).toContain('版本：     9.9.9-test')
   })
 
+  it('falls back to the accent role when a theme has no model highlight', () => {
+    const accent = vi.fn((text: string) => `<accent>${text}</accent>`)
+    const colors = { ...DEPS.colors, accent } as MayflySemanticColors & { modelHighlight?: (text: string) => string }
+    delete colors.modelHighlight
+    const lines = composeBannerLines({ ...DEPS, colors }, CONTENT, 100)
+    expect(lines.join('\n')).toContain('<accent>Model:     m · p')
+    expect(accent).toHaveBeenCalled()
+  })
+
   it('composes the same frameless block on narrow terminals', () => {
     const lines = composeBannerLines(DEPS, CONTENT, 48)
     expect(lines).toHaveLength(9)
@@ -206,6 +220,12 @@ class BannerFakeScreen implements MayflyScreen {
   readonly columns = 80
   readonly rows = 24
 
+  mountContentSlot(id: string, component: MayflyComponent | null) {
+    return mountFakeScreenSlot(id, component, shell => this.addChild(shell), target => this.setFocus(target), () => this.requestRender())
+  }
+
+  mountDockSlot(): never { throw new Error('fake mountDockSlot is out of scope for banner plugin tests') }
+
   addChild(component: MayflyComponent): () => void {
     this.children.push(component)
     let done = false
@@ -225,7 +245,7 @@ class BannerFakeScreen implements MayflyScreen {
 
   setFocus(): void {}
 
-  showOverlay(): MayflyOverlayHandle {
+  showOverlay(): MayflyScreenOverlayHandle {
     throw new Error('fake showOverlay is out of scope for banner plugin tests')
   }
 

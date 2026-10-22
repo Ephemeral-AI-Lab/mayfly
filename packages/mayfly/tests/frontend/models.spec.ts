@@ -11,7 +11,7 @@ describe('renderer-neutral model fixture', () => {
   it('snapshots canonical nodes without renderer objects', () => {
     const nodes: MayflyUiNode[] = [
       { kind: 'text', content: 'hello' },
-      { kind: 'rich-text', spans: [{ text: 'strong', emphasis: 'strong' }] },
+      { kind: 'rich-text', spans: [{ text: 'strong', styles: ['strong'] }] },
       { kind: 'fields', rows: [{ label: 'mode', value: [{ text: 'normal' }] }] },
       { kind: 'sections', sections: [{ title: 'details', body: { kind: 'text', content: 'body' } }] },
       { kind: 'list', id: 'fixture', items: [{ id: 'one', label: 'One' }], selectedIds: ['one'] },

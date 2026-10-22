@@ -23,7 +23,6 @@ import {
   ToolCallComponent,
   UserMessageComponent,
 } from '../../src/transcript/components.ts'
-import { AgentGroupComponent } from '../../src/transcript/agent-group.ts'
 import { ReadGroupComponent } from '../../src/transcript/read-group.ts'
 import { SearchGroupComponent } from '../../src/transcript/search-group.ts'
 import { ThinkingComponent } from '../../src/transcript/thinking.ts'
@@ -57,7 +56,7 @@ function translator(catalog: MayflyLocaleCatalog, locale: MayflyLocaleId): Mayfl
   return (key, values) => interpolateLocaleMessage(catalog[locale][key] ?? catalog.en[key] ?? key, values)
 }
 
-/** A bash tool item carrying the fixture text as its command. */
+/** A bash tool item carrying the fixture text as its command and description. */
 function bashItem(text: string): TranscriptToolItem {
   return {
     kind: 'tool',
@@ -66,20 +65,7 @@ function bashItem(text: string): TranscriptToolItem {
     callId: 'c1',
     name: 'bash',
     arguments: '{}',
-    parsedArguments: { command: text, run_in_background: true },
-  } as TranscriptToolItem
-}
-
-/** A subagent tool item whose description is the fixture text. */
-function subagentItem(text: string): TranscriptToolItem {
-  return {
-    kind: 'tool',
-    seq: 1,
-    turn: 1,
-    callId: 'c2',
-    name: 'subagent',
-    arguments: '{}',
-    parsedArguments: { description: text, prompt: text },
+    parsedArguments: { command: text, description: text, run_in_background: true },
   } as TranscriptToolItem
 }
 
@@ -252,13 +238,6 @@ describe('transcript width-scan', () => {
         expectLinesFit(`TranscriptModel/${name}`, component.render(width), width)
       }
       component.dispose()
-    })
-
-    it(`AgentGroupComponent survives ${name}`, () => {
-      const components = fakeMayflyComponents()
-      for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`AgentGroup/${name}`, new AgentGroupComponent(subagentItem(text), colors, components).render(width), width)
-      }
     })
 
     it(`workflow pane survives ${name}`, () => {

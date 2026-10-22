@@ -10,7 +10,8 @@ import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { JobId, type JobSnapshot } from '@deepseek-ai/dsh-jobs'
 import type { Action, MayflyTranslate } from '../frontend/index.ts'
 import { displayServices } from './display-services.ts'
-import { getSharedEditor, mountEditorReplacement } from './editor-instance.ts'
+import { getSharedEditor } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { CanonicalDocumentController, type FrontendPanelDocument, type FrontendPanelItem } from './frontend-panel.ts'
 import { interactionTranslator } from './locale.ts'
 
@@ -18,7 +19,7 @@ import { interactionTranslator } from './locale.ts'
 export const name = 'mayfly-jobs'
 
 /** Native and Mayfly services required by the command. */
-export const inject = ['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyEditorHost']
+export const inject = ['commands', 'jobs', 'mayflyCurrentAgent', 'mayflyPromptEditor', 'mayflyEditorPanels']
 
 /** Status glyphs painted at the left of every job row. */
 export const JOB_STATUS_MARKS: Readonly<Record<JobSnapshot['status'], string>> = {

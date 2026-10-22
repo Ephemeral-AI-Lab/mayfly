@@ -231,4 +231,17 @@ describe('SearchGroupComponent', () => {
     const narrow = new SearchGroupComponent(group([search({ callId: 'w', pattern: 'x'.repeat(60), shape: 'paths', paths: ['y'.repeat(60)], total: 1 })]), IDENTITY, COMPONENTS).render(24)
     for (const row of narrow) expect(COMPONENTS.visibleWidth(row)).toBeLessThanOrEqual(24)
   })
+
+  it('replaces its immutable snapshot and invalidates cached rows', () => {
+    const component = new SearchGroupComponent(group([
+      search({ callId: 'before', pattern: 'before', state: 'ok' }),
+    ]), IDENTITY, COMPONENTS)
+    const before = component.render(80)
+    component.update(group([
+      search({ callId: 'after', pattern: 'after', state: 'ok' }),
+    ]))
+    const after = component.render(80)
+    expect(after).not.toBe(before)
+    expect(after.join('\n')).toContain('after')
+  })
 })

@@ -36,7 +36,7 @@ export class SearchGroupComponent implements MayflyComponent {
   private cache: { key: string; lines: string[] } | null = null
 
   constructor(
-    private readonly model: TranscriptSearchGroupModel,
+    private model: TranscriptSearchGroupModel,
     private readonly colors: MayflySemanticColors,
     private readonly components: MayflyComponents,
   ) {}
@@ -46,6 +46,9 @@ export class SearchGroupComponent implements MayflyComponent {
 
   /** Drop the cached lines; the next render rebuilds. */
   invalidate(): void { this.cache = null }
+
+  /** Replace the immutable group snapshot while preserving expansion state. */
+  update(model: TranscriptSearchGroupModel): void { this.model = model; this.invalidate() }
 
   /** @param width - current viewport width in columns. @returns the rows. */
   render(width: number): string[] {
@@ -73,7 +76,7 @@ export class SearchGroupComponent implements MayflyComponent {
     const searches = this.model.searches
     const pending = searches.filter(call => call.state === 'pending').length
     const failed = searches.filter(call => call.state === 'error').length
-    const bold = (text: string): string => `\x1b[1m${String(text)}\x1b[22m`
+    const bold = (text: string): string => components.strong(String(text))
     const label = pending > 0
       ? bold(colors.primary(`Searching ${String(searches.length)} ${searches.length === 1 ? 'pattern' : 'patterns'}…`))
       : failed === searches.length

@@ -19,6 +19,5 @@ export function apply(ctx: Context): void {
     placement: 'header',
     size: { min: 1, preferred: 3, max: 4 },
     narrow: 'hidden',
-    render: () => summaryMetric.render({ label: 'Branch', value: 'main', detail: 'Mayfly ecosystem example' }),
-  })
+  }, summaryMetric.render({ label: 'Branch', value: 'main', detail: 'Mayfly ecosystem example' }))
 }

@@ -14,16 +14,15 @@ export function apply(ctx: Context): void {
     placement: 'right',
     size: { min: 20, preferred: 30, max: 40 },
     narrow: 'bottom',
-    render: () => ({ kind: 'text', content: 'healthy' }),
-  })
+  }, { kind: 'text', content: 'healthy' })
 
   // 领域状态变化后调用：
-  pane.refresh()
+  pane.set({ kind: 'text', content: 'updated' })
 }
 ```
 
 `narrow` 可设为 `bottom`、`overlay` 或 `hidden`。Handle 另有
-`setHidden(boolean)`。
+`set(null)` 会释放 lane，直到下一次发布非 null snapshot。
 
 ## Overlay
 
@@ -42,8 +41,7 @@ export function apply(ctx: Context): void {
         capturing: true,
         anchor: 'center',
         width: '70%',
-        render: () => ({ kind: 'text', content: 'healthy' }),
-      })
+      }, { kind: 'text', content: 'healthy' })
       return { kind: 'success', text: 'opened health details' }
     },
   })
@@ -53,5 +51,5 @@ export function apply(ctx: Context): void {
 Capturing overlay 取得 focus，默认可由 Escape 关闭；只有显式
 `dismissible: false` 才禁用。非 capturing overlay 不得包含交互控件。
 
-Pane/overlay id 在 registry 内唯一。Render 与 event callback 产生的数据仍会
+Pane/overlay id 在 registry 内唯一。Snapshot 与 event callback 产生的数据仍会
 经过 core admission。Fiber unload 会移除 pane，并关闭该 Fiber 打开的 overlay。

@@ -40,9 +40,8 @@ export function apply(ctx: Context): void {
     placement: 'bottom',
     priority: 20,
     narrow: 'bottom',
-    render,
-  })
-  const refresh = (): void => pane.refresh()
+  }, render())
+  const refresh = (): void => pane.set(render())
   const offAgent = ctx.mayflyCurrentAgent.subscribe(refresh)
   const offInserted = ctx.on('agent/inbox/inserted', ({ agent }) => {
     if (agent === ctx.mayflyCurrentAgent.current()) refresh()

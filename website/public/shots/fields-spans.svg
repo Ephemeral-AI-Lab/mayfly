@@ -6,10 +6,10 @@
 <circle cx="54" cy="25" r="6" fill="#28c840"/>
 <g font-family="'JetBrains Mono',monospace" font-size="14">
 <text x="12" y="52" textLength="67.2" lengthAdjust="spacingAndGlyphs" fill="#888888">Session:</text>
-<text x="87.6" y="52" textLength="117.6" lengthAdjust="spacingAndGlyphs" fill="#4fa8ff" font-weight="bold">fix-width-scan</text>
+<text x="87.6" y="52" textLength="117.6" lengthAdjust="spacingAndGlyphs" fill="#2bc8e8" font-weight="bold">fix-width-scan</text>
 <text x="12" y="71" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#888888">Branch:</text>
 <text x="79.2" y="71" textLength="25.2" lengthAdjust="spacingAndGlyphs" fill="#e0e0e0">p2/</text>
-<text x="104.4" y="71" textLength="84" lengthAdjust="spacingAndGlyphs" fill="#4fa8ff">ui-gallery</text>
+<text x="104.4" y="71" textLength="84" lengthAdjust="spacingAndGlyphs" fill="#2bc8e8">ui-gallery</text>
 <text x="12" y="90" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#888888">Status:</text>
 <text x="79.2" y="90" textLength="58.8" lengthAdjust="spacingAndGlyphs" fill="#4ec87e">Running</text>
 <text x="146.4" y="90" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#888888">·</text>

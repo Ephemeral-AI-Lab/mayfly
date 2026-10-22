@@ -28,7 +28,7 @@ import {
   type TranscriptModelRenderer,
 } from '../transcript/index.ts'
 import { displayServices } from './display-services.ts'
-import { mountEditorReplacement } from './editor-instance.ts'
+import { mountEditorReplacement } from './editor-panel-controller.ts'
 import { interactionTranslator } from './locale.ts'
 import { formatTokens } from './usage.ts'
 

@@ -5,7 +5,7 @@
  */
 
 import { renderMermaidASCII, type AsciiRenderOptions } from 'beautiful-mermaid'
-import { visibleWidth } from '@earendil-works/pi-tui'
+import { safeWidth, visibleWidth } from './width.ts'
 
 export const MERMAID_MAX_SOURCE_BYTES = 8 * 1024
 export const MERMAID_MAX_NON_EMPTY_LINES = 100
@@ -108,12 +108,12 @@ function renderAttempt(source: string, width: number, options: AsciiRenderOption
 
 /** Render one Mermaid source without ANSI, or return undefined for the source-fence fallback. */
 export function renderMermaidRows(source: string, width: number): string[] | undefined {
-  const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
+  const available = safeWidth(width)
   if (new TextEncoder().encode(source).byteLength > MERMAID_MAX_SOURCE_BYTES) return undefined
   if (source.split(/\r?\n/u).filter(line => line.trim().length > 0).length > MERMAID_MAX_NON_EMPTY_LINES) return undefined
-  const plain = renderAttempt(source, safeWidth, { colorMode: 'none' })
+  const plain = renderAttempt(source, available, { colorMode: 'none' })
   if (plain !== undefined) return plain
-  return renderAttempt(source, safeWidth, {
+  return renderAttempt(source, available, {
     colorMode: 'none',
     paddingX: 1,
     paddingY: 1,
