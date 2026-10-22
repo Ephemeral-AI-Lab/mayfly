@@ -38,9 +38,10 @@ function sleepSync(ms) {
 function npmView(spec, field) {
   let last
   for (let attempt = 1; attempt <= 4; attempt += 1) {
-    const result = spawnSync('npm', ['view', spec, field, '--json'], { cwd: ROOT, encoding: 'utf8' })
+    const result = spawnSync('npm', ['view', spec, field, '--json'], { cwd: ROOT, encoding: 'utf8', timeout: 30_000 })
     const failure = `${result.stderr ?? ''}${result.error?.message ?? ''}`
-    if (result.status === 0 || !RETRYABLE_NPM.test(failure)) return readNpmView(result, spec, field)
+    const timedOut = result.error?.code === 'ETIMEDOUT' || result.signal !== null
+    if (result.status === 0 || (!timedOut && !RETRYABLE_NPM.test(failure))) return readNpmView(result, spec, field)
     last = new Error(`npm view ${spec} ${field} failed during a registry outage (attempt ${attempt}/4)`)
     if (attempt < 4) sleepSync(attempt * 3_000)
   }
