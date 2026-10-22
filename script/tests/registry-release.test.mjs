@@ -117,6 +117,28 @@ test('recognizes npm staged-publish conflicts and reports approval guidance', as
   assert.deepEqual(world.calls.filter(([action]) => action === 'publish').map(([, name]) => name), packages.slice(0, 2).map(pkg => pkg.name))
 })
 
+test('a staged publish that only needed processing becomes visible without approval', async () => {
+  const world = fixture()
+  const publish = world.registry.publish
+  world.registry.publish = pkg => {
+    if (pkg.name === packages[2].name) throw new Error(`Cannot publish over previously staged version "${version}".`)
+    publish(pkg)
+  }
+  const view = world.registry.view
+  let reads = 0
+  world.registry.view = (spec, field) => {
+    if (spec === `${packages[2].name}@${version}` && field === 'dist.integrity') {
+      reads += 1
+      if (reads <= 20) return undefined
+      return `sha512-${packages[2].filename}`
+    }
+    return view(spec, field)
+  }
+  await releaseRegistry('publish', packages, { ...world, log() {}, warn() {} })
+  assert.ok(reads > 20)
+  assert.equal(world.calls.filter(([action]) => action === 'publish').length, packages.length - 1)
+})
+
 test('an approved staged release resumes without republishing immutable versions', async () => {
   const world = fixture()
   const publish = world.registry.publish
