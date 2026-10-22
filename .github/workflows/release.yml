@@ -99,17 +99,25 @@ jobs:
       # OIDC migration replaces this isolated auth step only. Candidate and
       # promotion behavior deliberately know nothing about credential source.
       - name: verify npm publisher identity
-        run: npm whoami --registry=https://registry.npmjs.org
+        shell: bash
+        run: |
+          for attempt in $(seq 1 10); do
+            if npm whoami --registry=https://registry.npmjs.org; then exit 0; fi
+            echo "npm whoami failed (attempt ${attempt}/10); retrying after the registry settles"
+            sleep 30
+          done
+          exit 1
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: node script/release-packages.mjs publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       # Staged publishing can accept a publish without making it installable.
-      # Surface the maintainer approval queue in the failing run's log.
+      # Surface the maintainer approval queue in the failing run's log. Bound
+      # the npx download so a registry outage cannot hang the job for hours.
       - name: list npm staged releases awaiting approval
         if: failure()
-        run: npx --yes npm@12 stage list || true
+        run: timeout 180 npx --yes npm@12 stage list || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
