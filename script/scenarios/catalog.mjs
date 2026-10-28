@@ -1,8 +1,9 @@
 /**
  * The scenario catalog: every named state of the live product that review, frames, goldens, and perf read. A scenario
- * names its source (a replay of `replays.mjs`, an empty session, or the UI gallery), the sources it `covers` (the
- * change-based selection reads them), its sizes, and the script the runner plays: `play` to a mark or the end, keys,
- * mouse, resizes, and named checkpoints (see `steps.mjs`). `pnpm run scenario --list` prints it.
+ * names its source (a replay of `replays.mjs`, an empty session, the UI gallery, or a manual remote Host), the sources
+ * it `covers` (the change-based selection reads them), its sizes, and the script the runner plays: `play` to a mark or
+ * the end, keys, mouse, resizes, and named checkpoints (see `steps.mjs`). Manual scenarios have no runner script or
+ * golden. `pnpm run scenario --list` prints the catalog.
  * @module script/scenarios/catalog
  */
 
@@ -854,12 +855,46 @@ const LIVE = {
   },
 }
 
-/** The catalog, by scenario name: the replays, the live-session scenarios, the Website's app shots, and the perf scenarios. */
+/** Owner-only scenarios that need an external service and never produce goldens. */
+const MANUAL = {
+  remoteLifecycle: {
+    manual: true,
+    summary: 'the independent remote Host attach/list/create/open lifecycle at 60 columns, then detach',
+    source: { remote: true },
+    covers: ['packages/remote/src/', 'script/scenarios/remote-lifecycle.mjs'],
+    sizes: [[60, 24]],
+    review: {
+      reference: 'the independent Node Client boundary in packages/remote/AGENTS.md',
+      implemented: [
+        'A separate Node process attaches to the supplied dsh Host through the official Client, refreshes its Session list, creates a Session, and opens it without starting a model turn.',
+        'The remote transcript, banner, editor, footer, and plain panels use the published Mayfly 0.1.4-rc.2 visuals.',
+        'Detach releases only the local Client and clears the selected conversation; it does not stop the remote Host or Session.',
+      ],
+      focus: [
+        { look: 'The initial attach, list refresh, and automatic create/open; the banner, editor, and Session footer', how: 'watch startup, then use /status to inspect the opened Session' },
+        { look: 'The Host Session list and an explicit open', how: 'run /sessions, choose the created Session, and press Enter' },
+        { look: 'Another create/open through the local command router', how: 'run /new and inspect the new Session with /status' },
+        { look: 'Narrow rendering of the footer, command feedback, and plain panels', how: 'the scenario starts at 60x24; review /status, /help, and a long /host result without leaving the scenario' },
+        { look: 'Detach lifecycle and clean local exit', how: 'run /detach, confirm the conversation clears and the Host is only detached locally, then run /quit' },
+      ],
+      differs: [
+        'The editor uses the stock rc.2 presentation; the removed prompt-symbol override is not recreated.',
+      ],
+      pending: [
+        'The owner supplies MAYFLY_DSH_STARTUP_URL and judges the live Host lifecycle; no real-Host acceptance, final tests, or goldens are claimed in this round.',
+      ],
+    },
+    script: [],
+  },
+}
+
+/** The catalog, by scenario name: the replays, the live-session scenarios, the Website's app shots, the manual reviews, and the perf scenarios. */
 export const CATALOG = Object.freeze({
   ...Object.fromEntries(Object.entries(REPLAYS).map(([name, replay]) => [name, replayScenario(name, replay)])),
   ...LIVE,
   ...APP,
   ...DEMO,
+  ...MANUAL,
   ...PERF,
 })
 
@@ -867,7 +902,7 @@ export const CATALOG = Object.freeze({
 export const APP_SHOTS = Object.freeze(Object.entries(CATALOG).flatMap(([name, scenario]) => Object.entries(scenario.shots ?? {}).map(([checkpointName, id]) => ({ id, scenario: name, checkpoint: checkpointName, cols: scenario.sizes[0][0], rows: scenario.sizes[0][1] }))))
 
 /** The scenarios checked against goldens, and the perf scenarios. */
-export const GOLDEN_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf === undefined && CATALOG[name].demo !== true)
+export const GOLDEN_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf === undefined && CATALOG[name].demo !== true && CATALOG[name].manual !== true)
 export const PERF_SCENARIOS = Object.keys(CATALOG).filter(name => CATALOG[name].perf !== undefined)
 
 /**

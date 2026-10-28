@@ -31,6 +31,7 @@ export function releaseDistTags(version) {
 export const RELEASE_PACKAGE_DIRS = [
   'packages/ui',
   'packages/mayfly',
+  'packages/remote',
   'packages/cli',
 ]
 

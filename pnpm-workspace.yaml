@@ -1,5 +1,7 @@
 packages:
   - 'packages/*'
+  # The independent Frontend resolves its published dependency graph separately.
+  - '!packages/remote'
   - 'examples/*'
   - 'website'
 

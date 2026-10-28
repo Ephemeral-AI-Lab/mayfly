@@ -1,0 +1,239 @@
+import { describe, expect, it, vi } from 'vitest'
+
+const mocks = vi.hoisted(() => ({
+  apps: [] as Array<{
+    attach: ReturnType<typeof vi.fn>
+    selectOrCreate: ReturnType<typeof vi.fn>
+    execute: ReturnType<typeof vi.fn>
+    cancel: ReturnType<typeof vi.fn>
+    registry: { list: () => unknown[], detach: ReturnType<typeof vi.fn> }
+  }>,
+  editorActions: undefined as { submit: (text: string) => Promise<void>, onError: (error: unknown) => void, cancel: () => Promise<void>, exit: () => void } | undefined,
+  attachError: undefined as Error | undefined,
+  coreError: undefined as Error | undefined,
+  refreshTranscript: undefined as (() => void) | undefined,
+  toolPresentation: undefined as { get: () => undefined } | undefined,
+  transcriptSource: undefined as (() => unknown) | undefined,
+  renderer: undefined as { images: () => unknown, requestRender: () => void } | undefined,
+  conversationOptions: undefined as {
+    onPresentation: () => void
+    onCommandResult: (result: { kind: 'success' | 'error', text?: string }) => void
+  } | undefined,
+  noticeSet: vi.fn(),
+  editorDispose: vi.fn(),
+  editorFocus: vi.fn(),
+  panelDispose: vi.fn(),
+  restoreFocus: undefined as (() => void) | undefined,
+  bannerFacts: undefined as (() => unknown) | undefined,
+  statusFacts: undefined as (() => unknown) | undefined,
+}))
+
+vi.mock('../../src/remote/app.ts', () => ({
+  RemoteApp: class {
+    readonly registry: { list: () => unknown[], detach: ReturnType<typeof vi.fn> }
+
+    constructor() {
+      this.registry = {
+        list: () => [{ key: 'local' }],
+        detach: vi.fn(async () => {}),
+      }
+      const app = {
+        attach: vi.fn(async () => {
+          if (mocks.attachError !== undefined) throw mocks.attachError
+          return {}
+        }),
+        selectOrCreate: vi.fn(async () => ({})),
+        execute: vi.fn(async (text: string) => ({ exit: text === '/quit' })),
+        cancel: vi.fn(async () => {}),
+        registry: this.registry,
+      }
+      mocks.apps.push(app)
+      return app
+    }
+  },
+}))
+
+vi.mock('../../src/remote/editor.ts', () => ({
+  mountRemoteEditor: vi.fn((_ctx, _screen, _components, _colors, actions) => {
+    mocks.editorActions = actions
+    return { notice: { set: mocks.noticeSet }, focus: mocks.editorFocus, dispose: mocks.editorDispose }
+  }),
+}))
+
+vi.mock('../../src/remote/banner.ts', () => ({
+  RemoteBannerComponent: class {
+    constructor(_colors, _components, facts) { mocks.bannerFacts = facts }
+  },
+}))
+
+vi.mock('../../src/remote/panels.ts', () => ({
+  RemotePanelController: class {
+    readonly dispose = mocks.panelDispose
+    constructor(_screen, _components, _colors, restoreFocus) { mocks.restoreFocus = restoreFocus }
+  },
+}))
+
+vi.mock('../../src/remote/status.ts', () => ({
+  RemoteStatusComponent: class {
+    constructor(_components, _colors, facts) { mocks.statusFacts = facts }
+  },
+}))
+
+vi.mock('../../src/transcript/remote-model.ts', () => ({
+  RemoteConversationModelSource: class {
+    readonly attach = vi.fn()
+    readonly snapshot = vi.fn()
+    readonly presentation = vi.fn(() => ({}))
+    readonly dispose = vi.fn()
+
+    constructor(_tools, refresh, options) {
+      mocks.toolPresentation = _tools
+      mocks.refreshTranscript = refresh
+      mocks.conversationOptions = options
+    }
+  },
+}))
+
+vi.mock('@ephemeral-ai/mayfly/transcript', () => ({
+  TranscriptController: class {
+    readonly setSource = vi.fn(source => { mocks.transcriptSource = source })
+    readonly attach = vi.fn()
+    readonly refresh = vi.fn()
+    readonly dispose = vi.fn()
+
+    constructor(_ctx, _screen, options) {
+      mocks.renderer = {
+        images: () => options.renderer.images(),
+        requestRender: () => options.renderer.requestRender(),
+      }
+    }
+  },
+}))
+
+vi.mock('@ephemeral-ai/mayfly/core', () => ({
+  name: 'core',
+  Config: undefined,
+  inject: [],
+  apply: (ctx: any) => {
+    if (mocks.coreError !== undefined) throw mocks.coreError
+    ctx.provide('mayflyScreen', {
+      mountDockSlot: vi.fn(() => ({ dispose: vi.fn(), focus: vi.fn() })),
+      mountContentSlot: vi.fn(() => ({ dispose: vi.fn() })),
+      requestRender: vi.fn(),
+    })
+    ctx.provide('mayflyComponents', {})
+    ctx.provide('mayflyTheme', { colors: {} })
+  },
+}))
+vi.mock('@ephemeral-ai/mayfly/frontend', () => ({ name: 'frontend', apply: () => {}, Config: undefined, inject: [] }))
+vi.mock('@ephemeral-ai/mayfly/theme-dark', () => ({ name: 'theme-dark', apply: () => {}, Config: undefined, inject: [] }))
+vi.mock('@ephemeral-ai/mayfly-ui/provider', () => ({ name: 'ui-provider', apply: () => {}, Config: undefined, inject: [] }))
+
+import { runRemoteFrontend } from '../../src/remote/runtime.ts'
+
+const startupUrl = 'http://127.0.0.1:3080/?token=secret'
+
+describe('runRemoteFrontend', () => {
+  it('starts, attaches, selects, and tears down through the editor exit action', async () => {
+    mocks.apps.length = 0
+    mocks.editorActions = undefined
+    const running = runRemoteFrontend({ startupUrl })
+    await vi.waitFor(() => { expect(mocks.editorActions).toBeDefined() })
+    mocks.editorActions!.exit()
+    await running
+    expect(mocks.apps[0]!.attach).toHaveBeenCalledWith(startupUrl, undefined)
+    expect(mocks.apps[0]!.selectOrCreate).toHaveBeenCalledOnce()
+    expect(mocks.apps[0]!.registry.detach).toHaveBeenCalledWith('local')
+  })
+
+  it('invokes renderer and editor callbacks without depending on a real TTY', async () => {
+    mocks.apps.length = 0
+    mocks.editorActions = undefined
+    mocks.renderer = undefined
+    const running = runRemoteFrontend({ startupUrl })
+    await vi.waitFor(() => { expect(mocks.editorActions).toBeDefined() })
+    mocks.transcriptSource!()
+    mocks.toolPresentation!.get()
+    mocks.refreshTranscript!()
+    await mocks.editorActions!.submit('hello')
+    expect(mocks.apps[0]!.execute).toHaveBeenCalledWith('hello')
+    await mocks.editorActions!.onError(new Error('offline'))
+    await mocks.editorActions!.onError('disconnect')
+    expect(mocks.noticeSet).toHaveBeenCalledWith('offline')
+    expect(mocks.noticeSet).toHaveBeenCalledWith('disconnect')
+    mocks.conversationOptions!.onPresentation()
+    mocks.conversationOptions!.onCommandResult({ kind: 'success' })
+    mocks.conversationOptions!.onCommandResult({ kind: 'error', text: 'command failed' })
+    expect(mocks.noticeSet).toHaveBeenCalledWith('command failed')
+    expect(mocks.bannerFacts!()).toEqual({})
+    expect(mocks.statusFacts!()).toEqual({})
+    mocks.restoreFocus!()
+    expect(mocks.editorFocus).toHaveBeenCalled()
+    await mocks.editorActions!.submit('/quit')
+    await running
+    await mocks.editorActions!.cancel()
+    expect(mocks.apps[0]!.cancel).toHaveBeenCalledOnce()
+    expect(mocks.renderer).toBeDefined()
+    expect(mocks.renderer!.images()).toEqual({})
+    mocks.renderer!.requestRender()
+    mocks.editorActions!.exit()
+    await running
+    expect(mocks.editorDispose).toHaveBeenCalled()
+    expect(mocks.panelDispose).toHaveBeenCalled()
+  })
+
+  it('stops through SIGINT and SIGTERM', async () => {
+    for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+      mocks.apps.length = 0
+      mocks.editorActions = undefined
+      const running = runRemoteFrontend({ startupUrl })
+      await vi.waitFor(() => { expect(mocks.editorActions).toBeDefined() })
+      process.emit(signal)
+      await running
+      expect(mocks.apps[0]!.registry.detach).toHaveBeenCalledWith('local')
+    }
+  })
+
+  it('honors a startup task that requests exit', async () => {
+    mocks.apps.length = 0
+    mocks.editorActions = undefined
+    await runRemoteFrontend({ startupUrl, hostId: 'local', task: '/quit' })
+    expect(mocks.apps[0]!.attach).toHaveBeenCalledWith(startupUrl, 'local')
+    expect(mocks.apps[0]!.execute).toHaveBeenCalledWith('/quit')
+    expect(mocks.apps[0]!.registry.detach).toHaveBeenCalledWith('local')
+  })
+
+  it('cleans up local resources when initial attach fails', async () => {
+    mocks.apps.length = 0
+    mocks.editorActions = undefined
+    mocks.attachError = new Error('offline')
+    await expect(runRemoteFrontend({ startupUrl })).rejects.toThrow('offline')
+    expect(mocks.apps[0]!.registry.detach).toHaveBeenCalledWith('local')
+    mocks.attachError = undefined
+  })
+
+  it('waits for exit after an empty startup task and stops only once', async () => {
+    mocks.apps.length = 0
+    mocks.editorActions = undefined
+    const running = runRemoteFrontend({ startupUrl, task: ' ' })
+    await vi.waitFor(() => { expect(mocks.editorActions).toBeDefined() })
+    expect(mocks.apps[0]!.execute).not.toHaveBeenCalled()
+    mocks.editorActions!.exit()
+    process.emit('SIGINT')
+    process.emit('SIGTERM')
+    await running
+    expect(mocks.apps[0]!.registry.detach).toHaveBeenCalledOnce()
+  })
+
+  it('cleans up when UI plugin initialization fails', async () => {
+    mocks.apps.length = 0
+    mocks.editorActions = undefined
+    mocks.coreError = new Error('renderer failed')
+    try {
+      await expect(runRemoteFrontend({ startupUrl })).rejects.toThrow('renderer failed')
+    } finally {
+      mocks.coreError = undefined
+    }
+    expect(mocks.apps).toEqual([])
+  })
+})

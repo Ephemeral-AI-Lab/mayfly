@@ -133,6 +133,7 @@ export function prepareProfiles({ root, dshBin, names }) {
 export async function runScenario(name, { root, dshBin, cols, rows, keys = [], onCheckpoint, env: extraEnv = {}, profileDir, backend = 'headless' }) {
   const scenario = scenarioNamed(name)
   if (scenario === undefined) throw new Error(`unknown scenario "${name}"`)
+  if (scenario.manual === true) throw new Error(`manual scenario "${name}" runs only through pnpm run scenario`)
   const [width, height] = [cols ?? scenario.sizes[0][0], rows ?? scenario.sizes[0][1]]
   const started = performance.now()
   const profile = ensureThrowawayProfile({ repo: root, gallery: scenario.source.gallery === true, dshBin, artifacts: join(root, '.artifacts/bench') })

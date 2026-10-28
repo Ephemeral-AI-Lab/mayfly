@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Open the real product on a catalog scenario (`script/scenarios/catalog.mjs`) for a person to watch and use, without
- * a model, tools, or quota: its replay plays into the live session on its timeline, and
- * `.artifacts/replay/driver.log` records what the driver did.
+ * Open a catalog scenario (`script/scenarios/catalog.mjs`) for a person to watch and use. A replay needs no model,
+ * tools, or quota: it plays into the live session on its timeline, and `.artifacts/replay/driver.log` records what the
+ * driver did. A manual remote scenario instead attaches to the owner-supplied Host.
  *
  *   pnpm run scenario <name> [--width N] [--height N] [--no-color] [--ascii] [--speed N]
  *   pnpm run scenario --list
  *
  * A scenario's brief (its `review` field) prints before the product opens, and `--list` marks the briefed ones.
  *
- * Like the runner, it gives the session a home, a session store, and storages of its own. @module script/scenario
+ * Like the runner, a replay gives the session a home, a session store, and storages of its own. @module script/scenario
  */
 
 import { fileURLToPath } from 'node:url'
@@ -61,6 +61,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   const brief = briefText(scenario.name, scenario)
   if (brief !== '') console.log(brief)
+  if (scenario.source.remote === true) {
+    const { superviseRemote } = await import('./scenarios/remote-lifecycle.mjs')
+    const session = superviseRemote({
+      cwd: process.cwd(),
+      env: { ...process.env, ...presentationEnv(options) },
+      cols: options.cols ?? scenario.sizes[0][0],
+      rows: options.rows ?? scenario.sizes[0][1],
+    })
+    process.exit(await session.done)
+  }
   const dshBin = resolveDshBin()
   assertDshVersion(dshBin)
   const profile = ensureThrowawayProfile({ repo: root, gallery: scenario.source.gallery === true, dshBin, artifacts: join(root, '.artifacts/bench') })

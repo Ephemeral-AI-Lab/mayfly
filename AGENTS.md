@@ -63,9 +63,11 @@ through these steps in order, and tests come last:
    all of the round's effects together, including a narrow width and a
    lifecycle case, paced so a person can operate each state in the live
    `pnpm run scenario` (long `pause()`s; what ends a state writes the events the
-   product would). Do not add a scenario per state, and do not point the owner
-   at older scenarios to see the round. Do not run it against goldens and do
-   not write goldens.
+   product would). An independent-process integration may instead use one
+   `manual` catalog scenario over an owner-supplied external service; it has no
+   replay or golden, and `frame` refuses it. Do not add a scenario per state,
+   and do not point the owner at older scenarios to see the round. Do not run
+   it against goldens and do not write goldens.
 5. **Hand over.** Give the owner that one scenario: its name, the command that
    opens it (`pnpm run scenario <name>` or `dsh --profile mayfly-<tag>`), the
    order in which it shows the effects, and what to try. Then stop and tell the

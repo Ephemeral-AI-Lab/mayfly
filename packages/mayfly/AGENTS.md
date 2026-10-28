@@ -328,8 +328,9 @@ The scenario catalog (`script/scenarios/catalog.mjs`) is the registry of live
 states behind `pnpm run scenario` and `pnpm run frame`, kept small: a round adds
 one long scenario (root `AGENTS.md`, Round workflow), a replay of
 `script/scenarios/replays.mjs` with the marks its script plays to, played into the real product by
-`script/scenarios/driver.mjs`. The Website's app shots are checkpoints of the
-`app-*` scenarios, painted from their goldens.
+`script/scenarios/driver.mjs`. A `manual` entry is owner-only, runs through
+`pnpm run scenario`, and has no frame or golden. The Website's app shots are
+checkpoints of the `app-*` scenarios, painted from their goldens.
 
 The canonical UI pipeline takes an optional core-private work-counter sink
 (`core/ui-work-counters.ts`) through the validator and compiler options; production
