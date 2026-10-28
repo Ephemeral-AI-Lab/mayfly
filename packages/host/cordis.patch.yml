@@ -1,0 +1,18 @@
+# Applied after dsh-base and dsh-web-app in the mayfly-host profile. Keep the
+# complete Web Host composition; this layer changes only browser/URL handoff
+# and adds the Mayfly Host services. Restate the other web-runtime values
+# because a patch replaces the targeted row's whole config.
+
+- id: web-runtime
+  config:
+    openBrowser: false
+    printUrl: false
+    publicUrl: !!js ctx.webStartup.publicUrl
+    surfaceContext: true
+
+- insert:
+    - id: mayfly-host
+      name: '@ephemeral-ai/mayfly-host'
+
+    - id: mayfly-host-startup
+      name: '@ephemeral-ai/mayfly-host/startup'
