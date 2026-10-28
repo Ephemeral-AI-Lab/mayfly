@@ -31,8 +31,6 @@ export function releaseVersionChanges(root, next) {
   }
   const replacements = new Map([
     ['packages/mayfly/src/transcript/banner-content.ts', [`MAYFLY_VERSION = '${old}'`, `MAYFLY_VERSION = '${next}'`]],
-    ['packages/cli/tests/main.spec.ts', [`const PIN = '${old}'`, `const PIN = '${next}'`]],
-    ['packages/cli/tests/runtime.spec.ts', [`const VERSION = '${old}'`, `const VERSION = '${next}'`]],
   ])
   for (const [relativePath, [from, to]] of replacements) {
     const source = readFileSync(join(root, relativePath), 'utf8')

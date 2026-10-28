@@ -28,6 +28,8 @@ allowBuilds:
 # Keep each Cordis generation on its own optional plugin generation. Sharing
 # Include across them creates duplicate Context declaration merges.
 overrides:
+  # Link the independently locked, not-yet-published Remote bin for local CLI development.
+  '@ephemeral-ai/mayfly-remote': 'link:packages/remote'
   '@deepseek-ai/cordis@4.0.5>@deepseek-ai/cordis-plugin-include': '1.0.10'
   '@deepseek-ai/cordis@4.0.5>@deepseek-ai/cordis-plugin-timer': '1.1.7'
   '@deepseek-ai/cordis@4.0.6-alpha.1>@deepseek-ai/cordis-plugin-include': '1.0.11-alpha.1'

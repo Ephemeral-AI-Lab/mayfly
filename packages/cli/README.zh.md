@@ -1,19 +1,34 @@
 # @ephemeral-ai/mayfly-cli
 
-`mayfly` 将经过测试的 dsh 宿主封装为预打包的公共层和平台运行时归档。npm 只安装一个无依赖包，不会解析 Harness 依赖图，也不会执行其中的生命周期脚本。
+`mayfly` 命令是独立的终端 UI 启动器。它通过 `@ephemeral-ai/mayfly-remote` 连接单独运行的 dsh Host；自身不包含、不解压、不启动也不停止 dsh Host、Agent Loop、模型提供方、工具运行时或 Session 存储。
 
-安装 profile 管理所需的 pnpm 11，然后用一条 Mayfly 安装命令完成安装：
+安装启动器，并在另一个终端中使用 `mayfly-host` profile 启动 Host：
 
 ```sh
-npm i -g pnpm@11
 npm -g install @ephemeral-ai/mayfly-cli
+dsh --profile mayfly-host --host 127.0.0.1 --port 3080
+```
+
+把 Host 打印的带认证信息的启动 URL 写入规范环境变量，再在另一个终端启动 Mayfly：
+
+```sh
+export MAYFLY_DSH_STARTUP_URL='<Host-打印的认证启动-URL>'
 mayfly
 ```
 
-第一个需要 dsh 的命令只会把公共层和当前平台层以有界内存、原子发布的方式展开到 `DSH_HOME` 下的版本化用户缓存；后续调用直接复用，解压过程不访问 npm。profile 继续由 dsh 官方的 pnpm 工作区路径管理。profile 已经携带壳包精确版本后，普通启动不会再次调用 pnpm。重装壳包即可升级；需要显式管理 profile 时使用 `mayfly plugin`。
+该 URL 必须使用 HTTP(S)，并恰好包含一个非空 `token` 查询参数。token 和由此获得的 cookie 只保存在进程内存中，不接受通过命令行参数传入，也不会写入普通诊断信息。不要把带认证信息的 URL 放进 `mayfly` 的参数；已有终端会话也可以使用各自的密钥安全环境机制提供该值。
 
-运行时缓存按操作系统和 CPU 架构隔离。每次启动会检查宿主入口和少量预打包原生文件；文件缺失或被截断时，会自动从已安装的归档重建缓存。旧启动器创建的缓存目录会保留。
+Mayfly 只支持独立 Remote 选项：
 
-壳包只拥有三个参数面，其余参数原样转发给固定宿主。`mayfly -V`（或 `--version`）无需展开运行时即可输出壳包版本、固定的 `@ephemeral-ai/mayfly` bundle 版本与内嵌 Harness 版本。`mayfly plugin ...` 映射为内嵌宿主的 plugin 子命令，并在 `plugin` 一词之后插入 `--profile mayfly`。用户传入的任何 `--profile` 都会被吞掉：profile 永远是 `mayfly`。
+```text
+mayfly [--host <无密钥-URL>] [--resume <session-id>] [--cwd <path>] [task ...]
+mayfly --session <session-id>
+mayfly --version
+mayfly --help
+```
 
-创造模式完全由 `@ephemeral-ai/mayfly` bundle 提供；启动器只负责交付宿主和选择 profile。
+`--host` 可以更改 HTTP(S) Host URL，但不接受凭据、查询参数或片段；token 仍从 `MAYFLY_DSH_STARTUP_URL` 读取。`--resume` 和 `--session` 选择已有的 Host Session；两者都未提供时，Mayfly 使用 `--cwd` 或当前工作目录创建 Session。位置参数会合并为一个初始任务；以连字符开头的任务应放在 `--` 之后。
+
+对应参数未提供时，`MAYFLY_SESSION_ID`、`MAYFLY_CWD` 和 `MAYFLY_TASK` 分别提供环境默认值，命令行值优先。需要交互式选择 Session 时，在 TUI 内使用 `/sessions` 或 `/resume`。
+
+npm 包只包含小型启动器、文档，以及对 `@ephemeral-ai/mayfly-remote` 的精确版本依赖。包中没有捆绑的 dsh CLI 运行时归档，也没有首次运行时的 profile 校准或解压缓存。重装 `@ephemeral-ai/mayfly-cli` 即可升级 TUI；Host 由 dsh 独立升级和运维。

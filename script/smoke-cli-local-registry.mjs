@@ -1,37 +1,27 @@
 #!/usr/bin/env node
 /**
- * Exercise a packed CLI's first-run calibration without publishing packages.
- * A loopback registry serves the packed Mayfly artifacts and read-only proxies
- * all other package downloads to npm for the lifetime of this process.
+ * Install the packed pure-TUI CLI through a loopback registry and exercise its
+ * Host-free help/version and credential-rejection surfaces. Other package
+ * downloads proxy to npm; no Host or legacy profile is started.
  *
  * Run after `pnpm run check:pack`.
  * @module script/smoke-cli-local-registry
  */
 
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import {
-  createReadStream,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
-import { ROOT } from './package-contract.mjs'
+import { RELEASE_PACKAGE_DIRS, ROOT, readManifest } from './package-contract.mjs'
 
 const packRoot = join(ROOT, '.artifacts', 'pack')
 const indexPath = join(packRoot, 'index.json')
 if (!existsSync(indexPath)) throw new Error('pack index is missing; run `pnpm run check:pack` first')
 
 const index = JSON.parse(readFileSync(indexPath, 'utf8'))
-const expectedNames = ['@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-cli']
+const expectedNames = RELEASE_PACKAGE_DIRS.map(directory => readManifest(directory).name)
 if (JSON.stringify(index.packages?.map(pkg => pkg.name)) !== JSON.stringify(expectedNames)) {
   throw new Error(`pack index must contain exactly ${expectedNames.join(', ')}`)
 }
@@ -50,10 +40,10 @@ const releases = new Map(index.packages.map((record) => {
   }]
 }))
 
-const version = releases.get('@ephemeral-ai/mayfly')?.manifest.version
-if (typeof version !== 'string') throw new Error('packed Mayfly version is missing')
-const harnessLine = /export const HARNESS_LINE = '([^']+)'/.exec(readFileSync(join(ROOT, 'packages/cli/src/runtime.ts'), 'utf8'))?.[1]
-if (harnessLine === undefined) throw new Error('packed CLI harness line is missing')
+const version = releases.get('@ephemeral-ai/mayfly-cli')?.manifest.version
+if (typeof version !== 'string') throw new Error('packed CLI version is missing')
+const cliTarball = releases.get('@ephemeral-ai/mayfly-cli')?.tarball
+if (cliTarball === undefined) throw new Error('packed CLI tarball is missing')
 
 const fixtureParent = join(ROOT, '.artifacts', 'tmp')
 mkdirSync(fixtureParent, { recursive: true })
@@ -65,15 +55,6 @@ const fixtureTemp = join(fixtureRoot, 'tmp')
 mkdirSync(cliRoot)
 mkdirSync(userHome)
 mkdirSync(fixtureTemp)
-
-const cliTarball = releases.get('@ephemeral-ai/mayfly-cli')?.tarball
-if (cliTarball === undefined) throw new Error('packed CLI tarball is missing')
-const install = spawnSync('npm', [
-  'install', '--prefix', cliRoot, '--ignore-scripts', '--no-audit', '--no-fund', cliTarball,
-], { cwd: ROOT, encoding: 'utf8', timeout: 120_000 })
-if (install.status !== 0) {
-  throw new Error(`packed CLI install failed:\n${install.stderr || install.stdout}`)
-}
 
 const requested = new Set()
 let registryUrl
@@ -88,7 +69,7 @@ function json(response, status, value) {
   response.end(body)
 }
 
-/** Build the minimal npm packument pnpm needs for one local release. */
+/** Build the minimal npm packument for one local release. */
 function packument(name, release) {
   const manifest = {
     ...release.manifest,
@@ -182,14 +163,12 @@ try {
   writeFileSync(userConfig, `registry=${registryUrl}\n`)
 
   const env = { ...process.env }
-  delete env.NODE_AUTH_TOKEN
-  delete env.NPM_TOKEN
+  for (const name of ['NODE_AUTH_TOKEN', 'NPM_TOKEN', 'MAYFLY_DSH_STARTUP_URL', 'MAYFLY_ENDPOINT', 'MAYFLY_SESSION_ID', 'MAYFLY_CWD', 'MAYFLY_TASK']) delete env[name]
   Object.assign(env, {
     HOME: userHome,
     XDG_CONFIG_HOME: join(userHome, '.config'),
     TMPDIR: fixtureTemp,
     DSH_HOME: dshHome,
-    DEEPSEEK_API_KEY: 'mayfly-local-registry-smoke',
     NO_COLOR: '1',
     COREPACK_NPM_REGISTRY: registryUrl.slice(0, -1),
     NPM_CONFIG_USERCONFIG: userConfig,
@@ -198,27 +177,37 @@ try {
     PNPM_CONFIG_MINIMUM_RELEASE_AGE: '0',
   })
 
-  const cliBin = join(cliRoot, 'node_modules', '.bin', 'mayfly')
-  const result = await run(cliBin, ['--dump-config'], env)
-  if (result.code !== 0) {
-    throw new Error(`first-run calibration failed (${result.signal ?? result.code}):\n${result.stderr}\n${result.stdout}`)
-  }
+  const install = await run('npm', [
+    'install', '--prefix', cliRoot, '--ignore-scripts', '--no-audit', '--no-fund', cliTarball,
+  ], env)
+  if (install.code !== 0) throw new Error(`packed CLI install failed:\n${install.stderr}\n${install.stdout}`)
 
-  const expectedRequests = ['@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui']
-  for (const name of expectedRequests) {
-    if (!requested.has(name)) throw new Error(`first-run calibration never requested ${name}`)
-    const manifest = JSON.parse(readFileSync(join(dshHome, 'profiles', 'mayfly', 'node_modules', ...name.split('/'), 'package.json'), 'utf8'))
+  for (const name of ['@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui']) {
+    if (!requested.has(name)) throw new Error(`packed CLI install never requested ${name}`)
+    const manifest = JSON.parse(readFileSync(join(cliRoot, 'node_modules', ...name.split('/'), 'package.json'), 'utf8'))
     if (manifest.version !== version) throw new Error(`${name}: expected ${version}, got ${manifest.version}`)
   }
-  const profile = JSON.parse(readFileSync(join(dshHome, 'profiles', 'mayfly', 'package.json'), 'utf8'))
-  if (profile.dependencies?.['@ephemeral-ai/mayfly'] !== version) {
-    throw new Error(`profile spec is not the exact Mayfly version ${version}`)
-  }
-  // The runtime cache is one platform-scoped directory per version-line.
-  const cache = join(dshHome, 'cache', 'mayfly-cli-runtime', `${version}-${harnessLine}-${process.platform}-${process.arch}`)
-  if (!existsSync(cache) || readdirSync(cache).length === 0) throw new Error('packed CLI did not materialize its runtime cache')
 
-  console.log(`CLI_LOCAL_REGISTRY_SMOKE_PASS mayfly=${version} profile=mayfly packages=2`)
+  const cliBin = join(cliRoot, 'node_modules', '.bin', 'mayfly')
+  const reportedVersion = await run(cliBin, ['--version'], env)
+  if (reportedVersion.code !== 0 || reportedVersion.stdout !== `mayfly ${version}\n`) {
+    throw new Error(`packed CLI --version failed:\n${reportedVersion.stderr}\n${reportedVersion.stdout}`)
+  }
+  const help = await run(cliBin, ['--help'], env)
+  if (help.code !== 0 || !help.stdout.includes('Usage: mayfly') || !help.stdout.includes('MAYFLY_DSH_STARTUP_URL')) {
+    throw new Error(`packed CLI --help failed:\n${help.stderr}\n${help.stdout}`)
+  }
+
+  const secret = 'mayfly-pack-smoke-secret'
+  const rejected = await run(cliBin, [`--host=http://127.0.0.1:3080/?token=${secret}`], env)
+  if (rejected.code !== 1 || !rejected.stderr.includes('MAYFLY_DSH_STARTUP_URL') || rejected.stderr.includes(secret) || rejected.stdout.includes(secret)) {
+    throw new Error('packed CLI did not reject and redact a token-bearing argument')
+  }
+  if (existsSync(join(dshHome, 'cache', 'mayfly-cli-runtime')) || existsSync(join(dshHome, 'profiles', 'mayfly'))) {
+    throw new Error('packed CLI created a legacy runtime cache or profile')
+  }
+
+  console.log(`CLI_LOCAL_REGISTRY_SMOKE_PASS mayfly=${version} remote=${version} hostProcesses=0`)
 } finally {
   await new Promise(resolve => server.close(resolve))
   rmSync(fixtureRoot, { recursive: true, force: true })

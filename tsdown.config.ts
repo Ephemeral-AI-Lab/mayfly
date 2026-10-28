@@ -29,6 +29,5 @@ export default defineConfig(packageDirs.map(relativeDir => {
     fixedExtension: false,
     dts: false,
     clean: false,
-    deps: relativeDir === 'packages/cli' ? { alwaysBundle: ['tar', 'proper-lockfile'] } : undefined,
   }
 }))
