@@ -6,7 +6,7 @@
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "engines": {
-    "node": "^22.19.0 || >=24.0.0"
+    "node": ">=24.9.0"
   },
   "scripts": {
     "postinstall": "pnpm --dir packages/remote install --ignore-scripts",
@@ -43,7 +43,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/dsh-llm-mock-server": "0.2.1-rc.2",
-    "@types/node": "^22.20.0",
+    "@types/node": "^24.9.0",
     "@vitest/coverage-v8": "^4.1.8",
     "@xterm/addon-webgl": "0.19.0",
     "@xterm/headless": "6.0.0",

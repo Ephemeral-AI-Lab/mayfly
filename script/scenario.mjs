@@ -61,6 +61,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   const brief = briefText(scenario.name, scenario)
   if (brief !== '') console.log(brief)
+  if (scenario.source.host === true) {
+    const { runHostScenario } = await import('./scenarios/host-conversation.mjs')
+    process.exit(await runHostScenario({ cwd: process.cwd(), env: process.env }))
+  }
   if (scenario.source.remote === true) {
     const { superviseRemote } = await import('./scenarios/remote-lifecycle.mjs')
     const session = superviseRemote({

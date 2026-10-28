@@ -67,7 +67,7 @@
     "directory": "packages/host"
   },
   "engines": {
-    "node": ">=24.9"
+    "node": ">=24.9.0"
   },
   "dsh": {
     "bundle": {

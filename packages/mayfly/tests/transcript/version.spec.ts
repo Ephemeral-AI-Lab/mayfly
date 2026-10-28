@@ -1,26 +1,24 @@
 /**
- * The global version-control guard: Mayfly has ONE release version (the
- * current release line, `0.1.4-rc.2` — the number the website's tagline and
- * quickstart promise) and ONE harness dependency line (the `dsh-*` pins,
- * which stay on their own prerelease line while Mayfly's number moves).
+ * The global version-control guard for one Mayfly release version and the two
+ * Harness lines used during the split preview: the legacy bundle keeps its
+ * compatible pins, while the independent Host/Client and archived CLI runtime
+ * share the newer line.
  *
- * Mayfly side: the three release package.json versions plus the website (whose
- * package.json must agree with its own tagline),
- * and the `MAYFLY_VERSION` constant the banner title and the `/version`
- * notice read, all equal. The website's user-facing version mentions
- * (index.md tagline, guide/faq) are pinned here too, so the site can
- * never advertise a different number than the code ships.
+ * Mayfly side: the three legacy release package.json versions plus the website
+ * (whose package.json must agree with its own tagline), and the
+ * `MAYFLY_VERSION` constant the banner title and the `/version` notice read,
+ * all equal. The website's user-facing version mentions (index.md tagline,
+ * guide/faq) are pinned here too, so the site can never advertise a different
+ * number than the code ships.
  *
- * Harness side: every exact-pinned `@deepseek-ai/dsh-*` dev dependency,
- * every `^`-ranged dsh peer, every `pnpm-workspace.yaml`
- * `minimumReleaseAgeExclude` pin, and the `/version` notice's harness
- * line all agree with each other — and are NOT tied to Mayfly's release
- * number.
+ * Harness side: legacy dependency and peer pins agree with the `/version`
+ * notice. The CLI seed, extractor, and workspace release-age exclusions agree
+ * with the independent Host/Client line. Neither line is tied to Mayfly's
+ * release number.
  *
  * A bump edits one side at a time: publishing Mayfly bumps the release
- * manifests + MAYFLY_VERSION + the website copy; upgrading the harness line
- * bumps the dsh pins + HARNESS_LINE. Any drift fails loudly here, so a
- * half-bumped tree can never ship.
+ * manifests + MAYFLY_VERSION + the website copy; upgrading either Harness line
+ * updates its owning pins and sentinels together.
  */
 
 import { readFileSync } from 'node:fs'
@@ -29,8 +27,10 @@ import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 
 /** The published release version (the website's advertised number). */
 const RELEASE_VERSION = '0.1.4-rc.2'
-/** The harness prerelease line the dsh pins ride. */
+/** The harness prerelease line the legacy dsh pins ride. */
 const HARNESS_LINE = '0.2.1-rc.2'
+/** The independent Host/Client and archived CLI runtime line. */
+const CLI_HARNESS_LINE = '0.2.2-alpha.2'
 
 /** One workspace package manifest. */
 interface Manifest {
@@ -130,11 +130,11 @@ describe('the harness dependency line', () => {
     expect([...specs]).toEqual([`${HARNESS_LINE}`])
   })
 
-  it('the archived CLI runtime seed and extractor pin the same host line', () => {
+  it('the archived CLI runtime seed and extractor pin the independent host line', () => {
     const seed = manifest('../../../cli/runtime/package.json')
-    expect(seed.dependencies?.['@deepseek-ai/dsh']).toBe(HARNESS_LINE)
+    expect(seed.dependencies?.['@deepseek-ai/dsh']).toBe(CLI_HARNESS_LINE)
     const source = readFileSync(new URL('../../../cli/src/runtime.ts', import.meta.url), 'utf8')
-    expect(source).toContain(`export const HARNESS_LINE = '${HARNESS_LINE}'`)
+    expect(source).toContain(`export const HARNESS_LINE = '${CLI_HARNESS_LINE}'`)
   })
 
   it('every dsh peer dependency ranges exactly one line up from the pins', () => {
@@ -146,12 +146,12 @@ describe('the harness dependency line', () => {
     }
   })
 
-  it('the workspace release-age excludes pin the same line', () => {
+  it('the workspace release-age excludes pin the independent host line', () => {
     const workspace = readFileSync(new URL('../../../../pnpm-workspace.yaml', import.meta.url), 'utf8')
     const pins = [...workspace.matchAll(/'(@deepseek-ai\/dsh-[a-z-]+)@([^']+)'/g)]
     expect(pins.length).toBeGreaterThan(0)
     for (const [, name, spec] of pins) {
-      expect(spec, `pnpm-workspace exclude ${name}`).toBe(`${HARNESS_LINE}`)
+      expect(spec, `pnpm-workspace exclude ${name}`).toBe(`${CLI_HARNESS_LINE}`)
     }
   })
 

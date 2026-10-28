@@ -1,7 +1,7 @@
 {
   "name": "@ephemeral-ai/mayfly-remote",
   "description": "Independent HTTP/WebSocket Mayfly frontend for one or more dsh Hosts",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.4-rc.2",
   "publishConfig": { "access": "public" },
   "type": "module",
   "engines": {
@@ -17,7 +17,9 @@
   },
   "files": ["lib/*.js", "lib/types/**/*.d.ts"],
   "license": "MIT",
-  "repository": { "type": "git", "url": "git+https://github.com/ephemeral-ai/mayfly.git", "directory": "packages/remote" },
+  "homepage": "https://may-fly.dev",
+  "bugs": { "url": "https://github.com/Ephemeral-AI-Lab/mayfly/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/Ephemeral-AI-Lab/mayfly.git", "directory": "packages/remote" },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.6-alpha.1",
     "@deepseek-ai/dsh-api-gateway": "0.2.2-alpha.2",

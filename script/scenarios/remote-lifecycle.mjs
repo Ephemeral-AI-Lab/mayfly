@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const REMOTE_BIN = fileURLToPath(new URL('../../packages/remote/lib/remote-bin.js', import.meta.url))
 
-function endpoint(startupUrl) {
+export function endpoint(startupUrl) {
   let url
   try {
     url = new URL(startupUrl)

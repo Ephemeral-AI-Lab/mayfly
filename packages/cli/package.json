@@ -29,7 +29,7 @@
     "directory": "packages/cli"
   },
   "engines": {
-    "node": "^22.19.0 || >=24.0.0"
+    "node": ">=24.9.0"
   },
   "devDependencies": {
     "@types/proper-lockfile": "4.1.4",

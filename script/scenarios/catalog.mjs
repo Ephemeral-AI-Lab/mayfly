@@ -886,6 +886,34 @@ const MANUAL = {
     },
     script: [],
   },
+  hostConversation: {
+    manual: true,
+    summary: 'the generated Host capabilities handshake and mayflyConversation projection, with an optional live turn',
+    source: { host: true },
+    covers: ['packages/host/src/', 'packages/remote/src/client/', 'script/scenarios/host-conversation.mjs'],
+    sizes: [[80, 24]],
+    review: {
+      reference: 'the Mayfly Host projection and generated Remote artifact in packages/host/src/',
+      implemented: [
+        'The headless Client mounts the generated mayflyHost Remote artifact, calls capabilities, and checks the advertised mayflyConversation feature.',
+        'The same Client opens an existing or newly created Session and reads its mayflyConversation entries, streaming state, and turn count.',
+        'An optional real prompt drives the projection to a settled assistant entry; cleanup unmounts only the local Remote and detaches the Client.',
+      ],
+      focus: [
+        { look: 'The protocol, Host, and dsh versions and the mayflyConversation capability', how: 'read the capabilities line printed first' },
+        { look: 'Existing conversation history in the Host projection', how: 'set MAYFLY_DSH_SESSION_ID to a Session with history and inspect the initial entry kinds and turn count' },
+        { look: 'A live user/assistant fold and settlement', how: 'set MAYFLY_SCENARIO_PROMPT to a short request and compare the initial and settled summaries' },
+        { look: 'Local-only cleanup', how: 'the script unmounts its generated Remote and detaches without stopping the Host or Session' },
+      ],
+      differs: [
+        'This is a headless Host contract review, not the independent remote terminal UI; remoteLifecycle remains the attach/list/create/open UI scenario.',
+      ],
+      pending: [
+        'The owner supplies MAYFLY_DSH_STARTUP_URL and judges the live Host behavior; no real-Host acceptance, final tests, or goldens are claimed in this round.',
+      ],
+    },
+    script: [],
+  },
 }
 
 /** The catalog, by scenario name: the replays, the live-session scenarios, the Website's app shots, the manual reviews, and the perf scenarios. */

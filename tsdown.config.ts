@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsdown'
+import hostConfig from './packages/host/tsdown.config.ts'
 import { BUILD_PACKAGE_DIRS, packageDir, readManifest, sourceEntries } from './script/package-contract.mjs'
 
 const requestedPackages = new Set((process.env.MAYFLY_BUILD_PACKAGES ?? '').split(',').filter(Boolean))
@@ -16,15 +17,18 @@ if (requestedPackages.size > 0 && packageDirs.length !== requestedPackages.size)
  * lib/ layout. tsc -b owns declaration emission; tsdown owns runtime bundling.
  * Package dependencies and peerDependencies stay external.
  */
-export default defineConfig(packageDirs.map(relativeDir => ({
-  cwd: packageDir(relativeDir),
-  entry: sourceEntries(relativeDir, readManifest(relativeDir)),
-  outDir: 'lib',
-  format: ['esm'],
-  platform: 'node',
-  target: 'es2024',
-  fixedExtension: false,
-  dts: false,
-  clean: false,
-  deps: relativeDir === 'packages/cli' ? { alwaysBundle: ['tar', 'proper-lockfile'] } : undefined,
-})))
+export default defineConfig(packageDirs.map(relativeDir => {
+  if (relativeDir === 'packages/host') return hostConfig
+  return {
+    cwd: packageDir(relativeDir),
+    entry: sourceEntries(relativeDir, readManifest(relativeDir)),
+    outDir: 'lib',
+    format: ['esm'],
+    platform: 'node',
+    target: 'es2024',
+    fixedExtension: false,
+    dts: false,
+    clean: false,
+    deps: relativeDir === 'packages/cli' ? { alwaysBundle: ['tar', 'proper-lockfile'] } : undefined,
+  }
+}))
