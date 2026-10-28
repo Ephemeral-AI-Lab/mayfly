@@ -4,14 +4,17 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  MayflyComponent,
-  MayflyComponents,
-  MayflyEditor,
-  MayflyFocusable,
-  MayflyScreen,
-  MayflySemanticColors,
+import {
+  compileMayflyEditorShellNode,
+  type MayflyComponent,
+  type MayflyComponents,
+  type MayflyEditor,
+  type MayflyEditorShellComponent,
+  type MayflyFocusable,
+  type MayflyScreenService,
+  type MayflySemanticColors,
 } from '@ephemeral-ai/mayfly/core'
+import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteNotice } from './notice.ts'
 
 /** Local commands emitted by the small standalone remote editor. */
@@ -52,36 +55,37 @@ class RemoteHint implements MayflyComponent {
 
 class RemoteEditorDock implements MayflyFocusable {
   constructor(
-    private readonly editor: MayflyEditor,
+    private readonly shell: MayflyEditorShellComponent,
     private readonly hint: RemoteHint,
   ) {}
 
-  get focused(): boolean { return this.editor.focused }
-  set focused(value: boolean) { this.editor.focused = value }
+  get focused(): boolean { return this.shell.focused }
+  set focused(value: boolean) { this.shell.focused = value }
 
   handleInput(data: string): void {
-    this.editor.handleInput?.(data)
+    this.shell.handleInput?.(data)
   }
 
   render(width: number): string[] {
-    return [...this.editor.render(width), ...this.hint.render(width)]
+    const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
+    return [...this.shell.render(safeWidth), ...this.hint.render(safeWidth)]
   }
 
   invalidate(): void {
-    this.editor.invalidate()
+    this.shell.invalidate()
     this.hint.invalidate()
   }
 }
 
 /** Mount the standalone editor without any Host Agent, command registry, or Session object. */
 export function mountRemoteEditor(
-  _ctx: Context,
-  screen: MayflyScreen,
+  ctx: Context,
+  screen: MayflyScreenService,
   components: MayflyComponents,
   colors: MayflySemanticColors,
   actions: RemoteEditorActions,
 ): RemoteEditorHandle {
-  const editor: MayflyEditor = components.createEditor({ paddingX: 4 })
+  const editor: MayflyEditor = components.createEditor()
   const hint = new RemoteHint(components, colors)
   editor.onChange = () => { hint.set('') }
   editor.onSubmit = (value) => {
@@ -107,7 +111,29 @@ export function mountRemoteEditor(
     }
     return false
   }
-  const slot = screen.mountDockSlot('editor.prompt', new RemoteEditorDock(editor, hint))
+  const compiled = compileMayflyEditorShellNode(ui.surface({
+    chrome: 'surface',
+    hint: 'completions',
+    titleAlign: 'right',
+    titleCut: 'end',
+    child: ui.prompt({
+      id: 'prompt',
+      symbol: '> ',
+      placeholder: ['Ask anything · / commands', 'Ask anything'],
+    }),
+  }), {
+    editor,
+    components,
+    colors,
+    getViewport: () => screen.editorViewport,
+    screenMode: 'main',
+    keymap: ctx.mayflyKeymap,
+    emit: () => {},
+  })
+  if (!compiled.ok) throw new Error(compiled.message)
+  const shell = compiled.value.component
+  shell.focusEditor()
+  const slot = screen.mountDockSlot('editor.prompt', new RemoteEditorDock(shell, hint))
   slot.focus()
   return {
     notice: {
