@@ -9,6 +9,7 @@ import { createHostClient } from '../client/host-client.ts'
 import type { HostClient, HostKey, SessionRef } from '../client/types.ts'
 import { mountMayflyHostRemote } from '../frontend/host-mount.ts'
 import type { RemoteToolPresentationGeneration } from '../frontend/tool-presentations.ts'
+import { mayflyHostRemote } from '../frontend/host-mount.ts'
 
 const PROTOCOL_VERSION = 1
 const HOST_VERSION = '0.1.4-rc.2'
@@ -21,7 +22,7 @@ export async function attachMayflyHostClient(key: HostKey, startupUrl: string): 
   const client = await createHostClient({ key, startupUrl })
   try {
     await mountMayflyHostRemote(client, TYPERT_REMOTE)
-    const result = await client.remote.mayflyHost.capabilities()
+    const result = await mayflyHostRemote(client).capabilities()
     if (!result.ok) throw new Error(`Mayfly Host capabilities request failed: ${result.error.message}`)
     validateCapabilities(result.value)
     capabilities.set(client, result.value)
@@ -43,7 +44,7 @@ export function resolveMayflyToolPresentation(
   if (capability === undefined) throw new Error(`Mayfly Host "${ref.host}" has no validated capabilities`)
   return {
     presentationRevision: `${String(capability.protocolVersion)}:${capability.hostVersion}:${capability.requiredDshVersion}`,
-    present: (request, signal) => client.remote.mayflyHost.presentTools(request, signal),
+    present: (request, signal) => mayflyHostRemote(client).presentTools(request, signal),
   }
 }
 

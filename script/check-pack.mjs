@@ -223,7 +223,10 @@ for (const relativeDir of PACKAGE_DIRS) {
   execFileSync(join(ROOT, 'node_modules', '.bin', 'publint'), ['run', tarball, '--strict'], { cwd: ROOT, stdio: 'inherit' })
   if (sourceManifest.name !== '@ephemeral-ai/mayfly-cli') {
     const attwArgs = [tarball, '--profile', 'esm-only', '--quiet']
-    if (sourceManifest.name === '@ephemeral-ai/mayfly') attwArgs.push('--exclude-entrypoints', './cordis.patch.yml')
+    // A composition patch is a dsh profile data file: the loader reads it as
+    // YAML, so it has no module resolution of its own to type-check.
+    const patchExport = Object.keys(sourceManifest.exports ?? {}).find(key => key.endsWith('.patch.yml'))
+    if (patchExport !== undefined) attwArgs.push('--exclude-entrypoints', patchExport)
     execFileSync('pnpm', ['dlx', '--package', '@arethetypeswrong/cli@0.18.5', 'attw', ...attwArgs], { cwd: ROOT, stdio: 'inherit' })
   }
   records.push({ name: manifest.name, version: manifest.version, filename: basename(tarball), files: files.length, bytes: files.reduce((sum, file) => sum + file.size, 0) })

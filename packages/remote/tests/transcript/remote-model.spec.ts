@@ -337,7 +337,11 @@ describe('RemoteConversationModelSource', () => {
     const model = projection<unknown>({ next: null, lastUsed: { model: 'deepseek-chat', provider: 'deepseek' } })
     const binding = {
       eventSource: events,
-      session: { projections: { faceOf: (key: string) => key === 'title' ? title : model } },
+      session: {
+        getSnapshot: () => ({ running: false }),
+        subscribe: () => () => {},
+        projections: { faceOf: (key: string) => key === 'title' ? title : model },
+      },
     } as unknown as SessionBinding
     const onPresentation = vi.fn()
     const onCommandResult = vi.fn()
@@ -430,7 +434,11 @@ describe('RemoteConversationModelSource', () => {
     }
     const binding = {
       eventSource: events,
-      session: { projections: { faceOf: (key: string) => key === 'title' ? title : model } },
+      session: {
+        getSnapshot: () => ({ running: false }),
+        subscribe: () => () => {},
+        projections: { faceOf: (key: string) => key === 'title' ? title : model },
+      },
     } as unknown as SessionBinding
     const onPresentation = vi.fn()
     const source = new RemoteConversationModelSource(tools, vi.fn(), { onPresentation })

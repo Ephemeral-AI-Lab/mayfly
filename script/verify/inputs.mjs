@@ -73,6 +73,12 @@ export const INERT = [
   /^\.gitignore$/u,
   /^docs\//u,
   /^(?:packages|examples)\/[^/]+\/(?:README(?:\.zh)?\.md|LICENSE|THIRD-PARTY-NOTICES\.md|\.gitignore|CHANGELOG\.md)$/u,
+  // Nested-workspace and build-face configuration the checks read by literal path, not through an import.
+  /^packages\/remote\/(?:pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig(?:\.tests)?\.json)$/u,
+  /^packages\/host\/tsconfig\.(?:client|host)\.json$/u,
+  /^packages\/[^/]+\/tsconfig\.tests\.json$/u,
+  // The typert generator is patched to accept out-of-tree Host protocol declarations.
+  /^patches\//u,
 ]
 
 /** A repository path that changes how a package is built rather than one implementation. */

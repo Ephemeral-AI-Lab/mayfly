@@ -6,6 +6,30 @@ linkWorkspacePackages: false
 overrides:
   # Resolve the same-version, not-yet-published client-safe Host artifact locally without changing the published manifest.
   '@ephemeral-ai/mayfly-host': 'link:../host'
+  # The published TUI pins its peers to the 0.1.x line; this process composes it
+  # beside the 0.2.2 Remote graph, so resolve every shared peer on that line.
+  # A half-0.1/half-0.2 graph registers two Cordis generations and no service
+  # augmentation or forwarded event resolves.
+  '@deepseek-ai/dsh-settings': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-agent': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-agent-preset': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-session-projection': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-system-prompt': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-commands': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-tools': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-user-approval': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-user-questions': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-compaction': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-skill': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-attachment': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-goal': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-workflow': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-working-directory': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-token-meter': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-session-stats': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-session-query': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-mcp-resources': '0.2.2-alpha.2'
+  '@deepseek-ai/dsh-subagent': '0.2.2-alpha.2'
 
 minimumReleaseAgeExclude:
   - qs@6.17.0
