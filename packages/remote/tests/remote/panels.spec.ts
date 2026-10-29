@@ -3,8 +3,16 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import { HostKey } from '../../src/client/types.ts'
 import { RemotePanelController } from '../../src/remote/panels.ts'
-import type { MayflyComponents, MayflyFocusable, MayflyScreen, MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
+import { RemotePlainPanels } from '../../src/remote/interactions/plain-panels.ts'
+import type { MayflyComponents, MayflyScreen, MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
 import type { RemotePresentationFacts } from '../../src/transcript/remote-model.ts'
+
+/** One mounted plain panel: it always renders, takes input, and invalidates. */
+interface RemotePanelComponent {
+  render(width: number): string[]
+  handleInput(data: string): void
+  invalidate(): void
+}
 
 function fixture() {
   const handle = { hide: vi.fn() }
@@ -18,9 +26,10 @@ function fixture() {
     muted: (text: string) => text,
   } as MayflySemanticColors
   const restoreFocus = vi.fn()
-  const panels = new RemotePanelController(screen, components, colors, restoreFocus)
-  const panel = (): MayflyFocusable => vi.mocked(screen.showOverlay).mock.calls.at(-1)![0] as MayflyFocusable
-  return { handle, screen, panels, panel, restoreFocus }
+  const overlays = new RemotePanelController(screen, restoreFocus)
+  const panels = new RemotePlainPanels(overlays, components, colors)
+  const panel = (): RemotePanelComponent => vi.mocked(screen.showOverlay).mock.calls.at(-1)![0] as unknown as RemotePanelComponent
+  return { handle, screen, overlays, panels, panel, restoreFocus }
 }
 
 function facts(overrides: Partial<RemotePresentationFacts> = {}): RemotePresentationFacts {
@@ -30,6 +39,9 @@ function facts(overrides: Partial<RemotePresentationFacts> = {}): RemotePresenta
     title: 'Remote architecture',
     model: 'deepseek-chat',
     provider: 'deepseek',
+    mode: undefined,
+    status: undefined,
+    queue: [],
     contextTokens: 1024,
     contextWindow: 2048,
     active: true,
@@ -42,9 +54,9 @@ function session(id: string, displayTitle: string): SessionSummary {
   return { id: SessionId(id), displayTitle, running: false, blank: false, updatedAt: 0, retainedBy: {} }
 }
 
-describe('RemotePanelController', () => {
+describe('RemotePlainPanels over RemotePanelController', () => {
   it('scrolls command help, closes with focus restoration, and disposes replacements', () => {
-    const { handle, panels, panel, restoreFocus } = fixture()
+    const { handle, overlays, panels, panel, restoreFocus } = fixture()
     panels.showHelp(Array.from({ length: 20 }, (_, index) => ({ name: `command-${String(index)}`, description: 'test' })))
     expect(panel().render(100).join('\n')).toContain('1-14/20')
     panel().handleInput('\x1b[B')
@@ -63,7 +75,7 @@ describe('RemotePanelController', () => {
     expect(panel().render(80).join('\n')).toContain('Mayfly v')
     panels.showHelp([{ name: 'compact', description: 'Compact history' }])
     expect(handle.hide).toHaveBeenCalledTimes(2)
-    panels.dispose()
+    overlays.dispose()
     expect(handle.hide).toHaveBeenCalledTimes(3)
     expect(restoreFocus).toHaveBeenCalledOnce()
   })

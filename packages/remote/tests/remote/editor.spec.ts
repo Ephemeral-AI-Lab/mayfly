@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { mountRemoteEditor } from '../../src/remote/editor.ts'
-import type { MayflyComponents, MayflyEditor, MayflyScreen, MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
+import type {
+  MayflyComponents, MayflyEditor, MayflyFocusable, MayflyScreenService, MayflySemanticColors,
+} from '@ephemeral-ai/mayfly/core'
 
 const colors = { muted: (text: string) => text } as MayflySemanticColors
 
@@ -18,9 +20,9 @@ function fixture() {
     render: vi.fn(() => ['editor']),
     invalidate: vi.fn(),
     focused: false,
-  } as MayflyEditor
+  } as unknown as MayflyEditor
   const slot = { focus: vi.fn(), dispose: vi.fn() }
-  const screen = { mountDockSlot: vi.fn(() => slot), requestRender: vi.fn() } as unknown as MayflyScreen
+  const screen = { mountDockSlot: vi.fn(() => slot), requestRender: vi.fn() } as unknown as MayflyScreenService
   const components = {
     createEditor: () => editor,
     wrapText: (text: string) => [text],
@@ -90,7 +92,7 @@ describe('mountRemoteEditor', () => {
     const { editor, screen, components } = fixture()
     const actions = { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
     const handle = mountRemoteEditor(new Context(), screen, components, colors, actions)
-    const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]!
+    const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]! as MayflyFocusable
     handle.notice.set(Array.from({ length: 10 }, (_, index) => `line ${String(index)}`).join('\n'))
     expect(dock.render(80)).toHaveLength(9)
     expect(dock.render(80)[1]).toBe('line 0')

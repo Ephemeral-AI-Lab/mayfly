@@ -16,7 +16,7 @@ const colors = {
   muted: (text: string) => text,
   text: (text: string) => text,
   modelHighlight: (text: string) => text,
-  logoGradient: Array.from({ length: 9 }, () => (text: string) => text),
+  logoInks: Array.from({ length: 5 }, () => (text: string) => text) as readonly ((text: string) => string)[],
 } as MayflySemanticColors
 
 function facts(model: string | undefined): RemotePresentationFacts {
@@ -26,6 +26,9 @@ function facts(model: string | undefined): RemotePresentationFacts {
     title: undefined,
     model,
     provider: 'deepseek',
+    mode: undefined,
+    status: undefined,
+    queue: [],
     contextTokens: 0,
     contextWindow: undefined,
     active: false,

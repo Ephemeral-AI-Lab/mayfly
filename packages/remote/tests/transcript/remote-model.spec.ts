@@ -110,7 +110,7 @@ function assistant(text: string, turn: number, seq: number, file = false): Sessi
         message: {
           role: 'assistant',
           id: MessageId(`assistant-${String(seq)}`),
-          source: { kind: 'model' },
+          source: { kind: 'model', model: 'deepseek-chat', provider: 'deepseek' },
           content: content(text, file),
         },
         stream: [],
@@ -170,7 +170,7 @@ function toolResult(seq: number, isError?: boolean): SessionEventLikeEntry {
         message: {
           role: 'tool',
           id: MessageId(`tool-${String(seq)}`),
-          source: { kind: 'tool' },
+          source: { kind: 'tool', callId: ToolCallId('call-1') },
           toolCallId: ToolCallId('call-1'),
           content: content('contents', true),
           ...(isError === undefined ? {} : { isError }),
@@ -338,7 +338,7 @@ describe('RemoteConversationModelSource', () => {
     const binding = {
       eventSource: events,
       session: { projections: { faceOf: (key: string) => key === 'title' ? title : model } },
-    } as SessionBinding
+    } as unknown as SessionBinding
     const onPresentation = vi.fn()
     const onCommandResult = vi.fn()
     const source = new RemoteConversationModelSource(tools, vi.fn(), { onPresentation, onCommandResult })
@@ -431,7 +431,7 @@ describe('RemoteConversationModelSource', () => {
     const binding = {
       eventSource: events,
       session: { projections: { faceOf: (key: string) => key === 'title' ? title : model } },
-    } as SessionBinding
+    } as unknown as SessionBinding
     const onPresentation = vi.fn()
     const source = new RemoteConversationModelSource(tools, vi.fn(), { onPresentation })
     source.attach(binding)

@@ -5,11 +5,11 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
 import { RemoteApp } from '../../src/remote/app.ts'
 import type { RemoteNotice } from '../../src/remote/notice.ts'
-import type { RemoteAppPanels } from '../../src/remote/panels.ts'
+import type { RemoteAppPanels } from '../../src/remote/interactions/plain-panels.ts'
 import type { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
 
-const defaultCreateHostClient = vi.hoisted(() => vi.fn())
-vi.mock('../../src/client/host-client.ts', () => ({ createHostClient: defaultCreateHostClient }))
+const defaultAttachHostClient = vi.hoisted(() => vi.fn())
+vi.mock('../../src/remote/host-composition.ts', () => ({ attachMayflyHostClient: defaultAttachHostClient }))
 
 function clientFixture(key: HostKey) {
   const sessionId = SessionId('shared-session')
@@ -24,7 +24,7 @@ function clientFixture(key: HostKey) {
     cancel: vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } })),
     command: vi.fn(async () => ({ ok: true as const, value: { matched: false } })),
   }
-  const binding = { sessionId, eventSource, session, ctx: {} as never } as SessionBinding
+  const binding = { sessionId, eventSource, session, ctx: {} as never } as unknown as SessionBinding
   const reference: SessionReference = {
     sessionId,
     binding,
@@ -33,6 +33,12 @@ function clientFixture(key: HostKey) {
     [Symbol.dispose]: vi.fn(),
   }
   const summary = { id: sessionId, displayTitle: 'Shared Session', cwd: '/workspace' }
+  const listSnapshot = vi.fn(() => ({
+    ids: [sessionId],
+    byId: { [sessionId]: summary },
+    phase: 'ready' as const,
+    projectionsBySession: {},
+  }))
   const client: HostClient = {
     key,
     connection: {} as never,
@@ -45,17 +51,20 @@ function clientFixture(key: HostKey) {
         })),
       },
     } as never,
+    fileUpload: {} as never,
+    origin: 'http://127.0.0.1:3080',
+    state: {} as never,
     workspaces: {} as never,
     sessions: {
       refresh: vi.fn(async () => {}),
       create: vi.fn(async () => sessionId),
       retain: vi.fn(() => reference),
       using: vi.fn(async (_id, _options, operation) => operation(reference)),
-      list: { getSnapshot: () => ({ ids: [sessionId], byId: { [sessionId]: summary } }) },
+      list: { getSnapshot: listSnapshot, subscribe: () => () => {} },
     } as never,
     detach: vi.fn(async () => {}),
   }
-  return { client, session, reference, sessionId }
+  return { client, session, reference, sessionId, listSnapshot }
 }
 
 function appFixture() {
@@ -177,16 +186,13 @@ describe('RemoteApp', () => {
     await expect(app.selectOrCreate('other-session')).rejects.toThrow('Selected Session has no Client binding')
   })
 
-  it('uses the configured Host identity with the default dynamic Client factory', async () => {
+  it('uses the configured Host identity with the default composition attach', async () => {
     const fixture = clientFixture(HostKey('stable-host'))
-    defaultCreateHostClient.mockResolvedValue(fixture.client)
+    defaultAttachHostClient.mockResolvedValue(fixture.client)
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels)
     await app.attach('http://127.0.0.1:3080/?token=secret', 'stable-host')
-    expect(defaultCreateHostClient).toHaveBeenCalledWith({
-      key: HostKey('stable-host'),
-      startupUrl: 'http://127.0.0.1:3080/?token=secret',
-    })
+    expect(defaultAttachHostClient).toHaveBeenCalledWith(HostKey('stable-host'), 'http://127.0.0.1:3080/?token=secret')
   })
 
   it('rejects an unregistered endpoint and derives default HTTP and HTTPS ports', async () => {
@@ -195,14 +201,14 @@ describe('RemoteApp', () => {
     await expect(app.registry.attach(HostKey('missing'))).rejects.toThrow('No endpoint registered for Host "missing"')
     const http = clientFixture(HostKey('host:80'))
     const https = clientFixture(HostKey('host:443'))
-    defaultCreateHostClient.mockClear()
-    defaultCreateHostClient
+    defaultAttachHostClient.mockClear()
+    defaultAttachHostClient
       .mockResolvedValueOnce(http.client)
       .mockResolvedValueOnce(https.client)
     await app.attach('http://host/')
     await app.attach('https://host/')
-    expect(defaultCreateHostClient).toHaveBeenNthCalledWith(1, { key: HostKey('host:80'), startupUrl: 'http://host/' })
-    expect(defaultCreateHostClient).toHaveBeenNthCalledWith(2, { key: HostKey('host:443'), startupUrl: 'https://host/' })
+    expect(defaultAttachHostClient).toHaveBeenNthCalledWith(1, HostKey('host:80'), 'http://host/')
+    expect(defaultAttachHostClient).toHaveBeenNthCalledWith(2, HostKey('host:443'), 'https://host/')
   })
 
   it('does not clear activeHost when detaching a different Host', async () => {
@@ -294,10 +300,7 @@ describe('RemoteApp', () => {
 
   it('falls back when catalog cwd and rows are absent', async () => {
     const fixture = clientFixture(HostKey('127.0.0.1:3080'))
-    fixture.client.sessions.list = {
-      getSnapshot: vi.fn(() => ({ ids: ['missing'], byId: {}, phase: 'ready', projectionsBySession: {} })),
-      subscribe: () => () => {},
-    }
+    fixture.listSnapshot.mockReturnValue({ ids: [SessionId('missing')], byId: {}, phase: 'ready', projectionsBySession: {} })
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
     await app.attach('http://127.0.0.1:3080/?token=secret')
