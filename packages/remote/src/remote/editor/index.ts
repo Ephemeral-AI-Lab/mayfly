@@ -26,6 +26,7 @@ import { copyLocalText } from '../local/clipboard.ts'
 import { editLocalText, resolveExternalEditorCommand } from '../local/external-editor.ts'
 import { clipboardFailureNotice, LocalImagePaste } from '../local/image-paste.ts'
 import { LocalProcessOwner } from '../local/process.ts'
+import { remotePanelOverlayOptions } from '../panels.ts'
 import type {
   EditorFeatureController,
   EditorFeatureOptions,
@@ -231,9 +232,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
       filename: image.name,
       maxHeightCells: Math.max(4, Math.min(40, options.screen.rows - 6)),
     })
-    const handle = options.screen.showOverlay(new ImagePreview(component, closePreview), {
-      width: '85%', maxHeight: '90%',
-    })
+    const handle = options.screen.showOverlay(new ImagePreview(component, closePreview), remotePanelOverlayOptions(options.screen, { maxHeight: '90%' }))
     preview = handle
   }
 

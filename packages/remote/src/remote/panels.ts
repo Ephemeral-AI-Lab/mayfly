@@ -37,6 +37,31 @@ class OpaqueOverlay implements MayflyFocusable {
   invalidate(): void { this.inner.invalidate() }
 }
 
+/**
+ * The one sizing policy for a Remote panel overlay.
+ *
+ * A panel is a plain component here, not a `ui.surface` with `chrome:
+ * 'overlay'`, so it inherits none of that surface's guarantees. Two of them
+ * matter and both are defects when missing: a percentage width leaves the
+ * columns beside the panel showing whatever it was supposed to cover, and
+ * rows that stop at their own text length let the covered rows show through
+ * the gaps. The host therefore owns the full row and pads every panel row.
+ * @param screen - the owner of the terminal dimensions.
+ * @param options - caller overrides applied over the defaults.
+ * @returns overlay options that cover the whole row.
+ */
+export function remotePanelOverlayOptions(
+  screen: MayflyScreen,
+  options: MayflyOverlayOptions = {},
+): MayflyOverlayOptions {
+  return {
+    width: screen.columns,
+    maxHeight: '80%',
+    anchor: 'center',
+    ...options,
+  }
+}
+
 /** Options for one component overlay owned by the Remote panel host. */
 export interface RemoteOverlayOpenOptions extends MayflyOverlayOptions {
   /** Called once when this lease closes, is replaced, or its owner is disposed. */
@@ -94,15 +119,10 @@ export class RemotePanelController implements RemoteOverlayHost {
     const opaque: MayflyComponent = this.opaque
       ? new OpaqueOverlay(component) as unknown as MayflyComponent
       : component
-    const handle = this.screen.showOverlay(opaque, {
-      // Full width: a centred 80% panel leaves the columns beside it showing
-      // the transcript it is supposed to cover, which reads as interleaved
-      // text. The panel decides its own inner width; the overlay owns the row.
-      width: this.screen.columns,
+    const handle = this.screen.showOverlay(opaque, remotePanelOverlayOptions(this.screen, {
       maxHeight: '70%',
-      anchor: 'center',
       ...overlayOptions,
-    })
+    }))
     record = { generation, handle, ...onClosed === undefined ? {} : { onClosed }, closed: false }
     this.active = record
     // The overlay covers rows the content already painted. The differential

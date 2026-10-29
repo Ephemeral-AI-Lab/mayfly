@@ -14,6 +14,7 @@ import type { SkillEntry } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { EditorSkills } from './skills.ts'
 import { errorMessage } from './utils.ts'
+import { remotePanelOverlayOptions } from '../panels.ts'
 
 interface SkillsPanelOptions {
   readonly skills: EditorSkills
@@ -187,7 +188,7 @@ export class EditorSkillsPanel {
       if (generation === this.generation) this.options.screen.requestRender()
     }
     const panel = new SkillsPanel(this.options, close, refresh)
-    this.handle = this.options.screen.showOverlay(panel, { width: '85%', maxHeight: '75%' })
+    this.handle = this.options.screen.showOverlay(panel, remotePanelOverlayOptions(this.options.screen, { maxHeight: '75%' }))
     this.options.screen.requestRender()
   }
 
