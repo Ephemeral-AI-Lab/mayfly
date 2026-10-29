@@ -74,6 +74,8 @@ export interface HostClient {
   readonly fileUpload: FileUploadService
   readonly sessions: ISessions
   readonly workspaces: IWorkspaces
+  /** Configured origin (scheme/host/port) without token, path, or credentials. */
+  readonly origin: string
   /** Redacted authentication and Connection state for frontend presentation. */
   readonly state: HostConnectionStateSource
   /** Release only this Client's resources; never stop the remote Agent or Host. */

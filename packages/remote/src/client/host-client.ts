@@ -17,6 +17,7 @@ import type { FileUploadService } from '@deepseek-ai/dsh-client-file-upload/clie
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { IWorkspaces } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { loadClientPlugins, type ClientPlugin } from './bundle.ts'
+import { resolveHostEndpoint } from './auth.ts'
 import { NodeConnectionTransport } from './transport.ts'
 import { HostKey, type HostClient } from './types.ts'
 import { withNodeFileUpload } from './upload.ts'
@@ -91,6 +92,7 @@ export async function createHostClient(options: CreateHostClientOptions): Promis
       fileUpload,
       sessions,
       workspaces,
+      origin: resolveHostEndpoint(options.startupUrl).baseUrl.origin,
       state: transport.state,
       detach() {
         detaching ??= (async () => {

@@ -6,6 +6,7 @@
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
+import type { RemoteStreamHandle } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConversationJson } from '@ephemeral-ai/mayfly/conversation'
 import type { ToolPresentationFacts } from '@ephemeral-ai/mayfly/transcript'
 
@@ -14,7 +15,7 @@ export type MayflyHostFeature =
   | 'mayflyConversation' | 'presentTools' | 'followWorkflow' | 'gitStatus' | 'mcpCatalog' | 'toolCatalog'
   | 'mayflySettings' | 'skillCatalog' | 'retractTurn' | 'modelCatalogDetails' | 'defaultModel'
   | 'authorization' | 'permissionCatalogDetails' | 'providerBalance' | 'settingsDocument'
-  | 'subagentDrain' | 'workspaceChanges' | 'workspacePath' | 'mcpResources'
+  | 'subagentDrain' | 'workspaceChanges' | 'workspacePath' | 'mcpResources' | 'mcpTransportHealth'
 export interface MayflyHostCapabilities {
   readonly protocolVersion: number
   readonly hostVersion: string
@@ -191,11 +192,105 @@ export interface MayflyMcpServer {
   readonly registeredCount: number
   readonly toolsVisible: readonly MayflyToolSchema[]
   readonly config: MayflyMcpServerConfig
+  /** Sanitized native connection phase; absent without the mcpTransportHealth capability. */
+  readonly connection?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | undefined
 }
 export interface MayflyMcpCatalog {
   readonly servers: readonly MayflyMcpServer[]
   readonly orphanCount: number
   readonly sessionLive: true
+}
+
+/** Server-scoped paged resource/template listing over native MCP operations. */
+export interface MayflyMcpResourceListRequest extends MayflyHostSessionRequest {
+  readonly server: string
+  readonly kind: 'resources' | 'templates'
+  readonly cursor?: string | undefined
+}
+/** JSON-safe MCP metadata row with provider-specific fields preserved. */
+export type MayflyMcpResourceItem = Readonly<Record<string, ConversationJson>>
+/** One resource/template page and its server-owned continuation cursor. */
+export interface MayflyMcpResourcePage {
+  readonly items: readonly MayflyMcpResourceItem[]
+  readonly cursor?: string | undefined
+}
+/** Explicit resource body read from one exact Agent's MCP scope. */
+export interface MayflyMcpResourceReadRequest extends MayflyHostSessionRequest {
+  readonly server: string
+  readonly uri: string
+}
+/** Text and binary summaries; raw binary bytes never cross Remote. */
+export interface MayflyMcpResourceBody { readonly text: string }
+
+/** One native credential-key authorization operation request. */
+export interface MayflyAuthorizationRequest {
+  readonly key: string
+  readonly method?: string | undefined
+}
+/** Presentation-safe progress report; never carries a secret. */
+export interface MayflyAuthorizationNotice {
+  readonly message: string
+  readonly url?: string | undefined
+  readonly code?: string | undefined
+}
+/** Presentation-safe prompt data with native AbortSignals removed. */
+export type MayflyAuthorizationPrompt =
+  | { readonly kind: 'text' | 'secret', readonly message: string, readonly placeholder?: string | undefined }
+  | {
+    readonly kind: 'select'
+    readonly message: string
+    readonly options: readonly { readonly id: string, readonly label: string, readonly description?: string | undefined }[]
+  }
+/** Structured authorization operation events. */
+export type MayflyAuthorizationFrame =
+  | { readonly type: 'started', readonly operationId: string }
+  | { readonly type: 'notice', readonly operationId: string, readonly notice: MayflyAuthorizationNotice }
+  | { readonly type: 'prompt', readonly operationId: string, readonly promptId: string, readonly prompt: MayflyAuthorizationPrompt }
+  | { readonly type: 'prompt-ended', readonly operationId: string, readonly promptId: string }
+  | { readonly type: 'settled', readonly operationId: string, readonly status: 'authorized' | 'cancelled' }
+/** Client answers addressed to one exact operation and prompt. */
+export type MayflyAuthorizationAnswer =
+  | { readonly type: 'answer', readonly operationId: string, readonly promptId: string, readonly value: string }
+  | { readonly type: 'decline', readonly operationId: string, readonly promptId: string }
+
+/** Native knob bundle behind one selectable permission row. */
+export interface MayflyPermissionSpec {
+  readonly sandbox: 'read-only' | 'workspace-write' | 'danger-full-access'
+  readonly approval: 'ask' | 'never'
+}
+/** Permission rows and their resolved bundles, plus yolo state for an optional current value. */
+export interface MayflyPermissionCatalogDetails {
+  readonly options: readonly { readonly value: string, readonly name: string, readonly description?: string | undefined }[]
+  readonly defaultOptions: readonly { readonly value: string, readonly name: string, readonly description?: string | undefined }[]
+  readonly defaultPreset: string
+  readonly specs: Readonly<Record<string, MayflyPermissionSpec>>
+  readonly yolo: boolean
+}
+/** Optional current-preset input for yolo evaluation. */
+export interface MayflyPermissionCatalogRequest { readonly currentPreset?: string | undefined }
+
+/** One API wallet, preserving decimal strings exactly as the provider returned them. */
+export interface MayflyWallet {
+  readonly currency: 'CNY' | 'USD'
+  readonly total: string
+  readonly toppedUp?: string | undefined
+  readonly granted?: string | undefined
+}
+/** Balance of the official API-key route, without its credential or endpoint internals. */
+export type MayflyProviderBalance =
+  | { readonly status: 'ready', readonly wallets: readonly MayflyWallet[], readonly available?: boolean | undefined }
+  | { readonly status: 'unavailable', readonly reason: 'network' | 'rejected' | 'no-key' }
+
+/** The actual settings document and its content revision. */
+export interface MayflySettingsDocument {
+  readonly writable: boolean
+  readonly content: string
+  readonly revision: string
+}
+/** Compare-and-write input for the actual settings document. */
+export interface MayflySettingsDocumentWrite {
+  readonly content: string
+  readonly expectedRevision: string
 }
 
 /** Generated mayflyHost methods consumed by Domain. */
@@ -214,4 +309,12 @@ export interface MayflyHostRemote {
   workspacePath(request: MayflyWorkspacePathRequest, signal?: AbortSignal): Promise<RemoteResult<MayflyWorkspace | null>>
   toolCatalog(request: MayflyHostSessionRequest, signal?: AbortSignal): Promise<RemoteResult<MayflyToolCatalog>>
   mcpCatalog(request: MayflyHostSessionRequest, signal?: AbortSignal): Promise<RemoteResult<MayflyMcpCatalog>>
+  listMcpResources(request: MayflyMcpResourceListRequest, signal?: AbortSignal): Promise<RemoteResult<MayflyMcpResourcePage>>
+  readMcpResource(request: MayflyMcpResourceReadRequest, signal?: AbortSignal): Promise<RemoteResult<MayflyMcpResourceBody>>
+  authorize(request: MayflyAuthorizationRequest, signal?: AbortSignal): RemoteStreamHandle<MayflyAuthorizationFrame, MayflyAuthorizationAnswer>
+  cancelAuthorization(request: MayflyAuthorizationRequest, signal?: AbortSignal): Promise<RemoteResult<void>>
+  permissionCatalogDetails(request: MayflyPermissionCatalogRequest, signal?: AbortSignal): Promise<RemoteResult<MayflyPermissionCatalogDetails>>
+  providerBalance(signal?: AbortSignal): Promise<RemoteResult<MayflyProviderBalance>>
+  readSettingsDocument(signal?: AbortSignal): Promise<RemoteResult<MayflySettingsDocument>>
+  writeSettingsDocument(request: MayflySettingsDocumentWrite, signal?: AbortSignal): Promise<RemoteResult<MayflySettingsDocument>>
 }

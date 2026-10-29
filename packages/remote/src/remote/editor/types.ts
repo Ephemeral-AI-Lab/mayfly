@@ -183,8 +183,6 @@ export interface EditorFeatureController {
 
 /** Host DTOs and orchestration deliberately left to the Host/domain lanes. */
 export const EDITOR_INTEGRATION_REQUIREMENTS = Object.freeze({
-  skillCatalogDetail: 'Extend SkillEntry with source and provider to restore grouped source/provider detail.',
   commandFileReceipts: 'This alpha accepts encoded images only; add the focused command file-receipt DTO before dispatching file-bearing commands.',
-  retractTurn: 'Add a Host guard, claimed-turn cancellation, turn-close commit, and replacement-marker DTO; ordinary cancel is not retraction.',
   btwFork: 'D-D/Host must fork, clean inherited queue entries, restore model and preset, select the child, then prompt.',
 } as const)
