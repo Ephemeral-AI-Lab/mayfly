@@ -5,7 +5,7 @@ import { HostActions } from '../frontend/host-actions.ts'
 import { HostRegistry } from '../frontend/host-registry.ts'
 import type { RemoteConversationModelSource } from '../transcript/remote-model.ts'
 import type { RemoteNotice } from './notice.ts'
-import type { RemoteAppPanels, RemoteCommandDescriptor } from './panels.ts'
+import type { RemoteAppPanels, RemoteCommandDescriptor } from './interactions/plain-panels.ts'
 
 const FRONTEND_COMMANDS = [
   { name: 'quit', description: 'Exit Mayfly (/q, /exit)' },
@@ -25,6 +25,7 @@ export class RemoteApp {
   readonly actions: HostActions
 
   private readonly endpoints = new Map<HostKey, string>()
+  private readonly topologyListeners = new Set<() => void>()
   private activeHost: HostKey | undefined
   private defaultModelGeneration = 0
 
@@ -44,6 +45,12 @@ export class RemoteApp {
     this.actions = new HostActions(this.registry)
   }
 
+  /** Observe committed Host attach/detach and Session selection changes without owning them. */
+  subscribeTopology(listener: () => void): () => void {
+    this.topologyListeners.add(listener)
+    return () => this.topologyListeners.delete(listener)
+  }
+
   async attach(startupUrl: string, hostId?: string): Promise<HostClient> {
     const url = new URL(startupUrl)
     const key = hostId === undefined
@@ -53,6 +60,7 @@ export class RemoteApp {
     this.endpoints.set(key, startupUrl)
     const client = await this.registry.attach(key)
     this.activeHost = key
+    this.publishTopology()
     const [, defaultModel] = await Promise.all([client.sessions.refresh(), this.actions.defaultModel(key)])
     if (generation === this.defaultModelGeneration) this.conversation.setDefaultModel(defaultModel)
     return client
@@ -65,11 +73,16 @@ export class RemoteApp {
       : { host, sessionId: SessionId(sessionId) }
     await this.actions.select(ref)
     this.activeHost = ref.host
+    this.publishTopology()
     const binding = this.registry.currentReference?.binding
     if (binding === undefined) throw new Error('Selected Session has no Client binding')
     const summary = this.registry.get(ref.host)?.sessions.list.getSnapshot().byId[ref.sessionId]
     this.conversation.attach(binding, { ref, cwd: summary?.cwd ?? (sessionId === undefined ? cwd : '') })
     return ref
+  }
+
+  private publishTopology(): void {
+    for (const listener of this.topologyListeners) listener()
   }
 
   async execute(text: string): Promise<{ readonly exit: boolean }> {
@@ -124,8 +137,10 @@ export class RemoteApp {
         this.defaultModelGeneration += 1
         this.conversation.setDefaultModel(undefined)
         this.conversation.attach(null)
-        await this.registry.detach(host)
+        const detaching = this.registry.detach(host)
         if (this.activeHost === host) this.activeHost = undefined
+        this.publishTopology()
+        await detaching
         this.notice.set(`Detached ${host}`)
       }
       return { exit: false }

@@ -1,0 +1,92 @@
+/**
+ * Feature-mount contracts and the single registration manifest for independent Remote UI lanes.
+ * @module @ephemeral-ai/mayfly/remote/features
+ */
+
+import type { Context } from '@deepseek-ai/cordis'
+import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type {
+  MayflyComponents,
+  MayflyScreenService,
+  MayflySemanticColors,
+} from '@ephemeral-ai/mayfly/core'
+import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
+import type { HostClient, SessionRef } from '../client/types.ts'
+import { mountApprovalInteractions } from './interactions/approval.ts'
+import { mountRemoteInteractionLocale } from './interactions/locale.ts'
+import type { RemoteNotice } from './notice.ts'
+import type { RemoteOverlayHost } from './panels.ts'
+import { mountQuestionInteractions } from './interactions/questions.ts'
+
+/** Exact selected Client generation and borrowed binding, valid only while the accessor still returns it. */
+export interface RemoteFeatureSelection {
+  readonly ref: SessionRef
+  readonly client: HostClient
+  readonly binding: SessionBinding
+}
+
+/** Read-only topology and selection seam; HostRegistry remains the sole owner. */
+export interface RemoteFeatureHosts {
+  /** Committed Host Clients, used to mount and retire per-Host event listeners. */
+  list(): readonly HostClient[]
+  /** Current exact selection and binding, absent during detach or incomplete selection. */
+  current(): RemoteFeatureSelection | undefined
+  /** Observe Host attach/detach and Session selection commits. */
+  subscribe(listener: () => void): () => void
+}
+
+/** Shared composition available to every focused Remote feature module. */
+export interface RemoteFeatureMountContext {
+  readonly ctx: Context
+  readonly screen: MayflyScreenService
+  readonly components: MayflyComponents
+  readonly colors: MayflySemanticColors
+  readonly overlays: RemoteOverlayHost
+  readonly hosts: RemoteFeatureHosts
+  readonly notice: RemoteNotice
+}
+
+/** Feature context after the manifest installs its shared locale catalog. */
+export interface RemoteFeatureContext extends RemoteFeatureMountContext {
+  readonly t: MayflyTranslate
+  readonly subscribeLocale: (listener: () => void) => () => void
+}
+
+/** One focused feature mount; its disposer owns every listener, stream, and pending panel. */
+export type RemoteFeatureMount = (context: RemoteFeatureContext) => void | (() => void)
+
+/** Generic teardown of all mounted Remote features. */
+export interface RemoteFeatureHandle {
+  dispose(): void
+}
+
+const MOUNTS: readonly RemoteFeatureMount[] = [
+  mountApprovalInteractions,
+  mountQuestionInteractions,
+]
+
+/** Mount the registered feature lanes without exposing their controllers to runtime composition. */
+export function mountRemoteFeatures(base: RemoteFeatureMountContext): RemoteFeatureHandle {
+  const context: RemoteFeatureContext = {
+    ...base,
+    t: mountRemoteInteractionLocale(base.ctx),
+    subscribeLocale: listener => base.ctx.mayflyLocale.subscribe(() => listener()),
+  }
+  const disposers: Array<() => void> = []
+  let disposed = false
+  const dispose = (): void => {
+    if (disposed) return
+    disposed = true
+    for (const disposer of disposers.splice(0).reverse()) disposer()
+  }
+  try {
+    for (const mount of MOUNTS) {
+      const disposer = mount(context)
+      if (disposer !== undefined) disposers.push(disposer)
+    }
+  } catch (error) {
+    dispose()
+    throw error
+  }
+  return { dispose }
+}

@@ -8,6 +8,8 @@ import { RemoteConversationModelSource } from '../transcript/remote-model.ts'
 import { RemoteApp } from './app.ts'
 import { RemoteBannerComponent } from './banner.ts'
 import { mountRemoteEditor, type RemoteEditorHandle } from './editor.ts'
+import { mountRemoteFeatures, type RemoteFeatureHandle } from './features.ts'
+import { RemotePlainPanels } from './interactions/plain-panels.ts'
 import { RemotePanelController } from './panels.ts'
 import { RemoteStatusComponent } from './status.ts'
 
@@ -26,6 +28,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
   const apps: RemoteApp[] = []
   let editor: RemoteEditorHandle | undefined
   let panels: RemotePanelController | undefined
+  let features: RemoteFeatureHandle | undefined
   let conversation: RemoteConversationModelSource | undefined
   let transcript: TranscriptController | undefined
   let stopped = false
@@ -75,9 +78,29 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       cancel: () => app!.cancel(),
       exit: stop,
     })
-    panels = new RemotePanelController(screen, ctx.mayflyComponents, ctx.mayflyTheme.colors, () => editor?.focus())
-    app = new RemoteApp(conversation, editor.notice, panels)
+    panels = new RemotePanelController(screen, () => editor?.focus())
+    app = new RemoteApp(conversation, editor.notice, new RemotePlainPanels(panels, ctx.mayflyComponents, ctx.mayflyTheme.colors))
     apps.push(app)
+    features = mountRemoteFeatures({
+      ctx,
+      screen,
+      components: ctx.mayflyComponents,
+      colors: ctx.mayflyTheme.colors,
+      overlays: panels,
+      notice: editor.notice,
+      hosts: {
+        list: () => app!.registry.list(),
+        current: () => {
+          const ref = app!.registry.current
+          const reference = app!.registry.currentReference
+          if (ref === undefined || reference === undefined) return undefined
+          const client = app!.registry.get(ref.host)
+          if (client === undefined) return undefined
+          return { ref, client, binding: reference.binding }
+        },
+        subscribe: listener => app!.subscribeTopology(listener),
+      },
+    })
     const statusSlot = screen.mountDockSlot('status.footer', new RemoteStatusComponent(
       ctx.mayflyComponents,
       ctx.mayflyTheme.colors,
@@ -91,6 +114,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
   } finally {
     process.removeListener('SIGINT', sigint)
     process.removeListener('SIGTERM', sigterm)
+    features?.dispose()
     panels?.dispose()
     editor?.dispose()
     conversation?.dispose()
