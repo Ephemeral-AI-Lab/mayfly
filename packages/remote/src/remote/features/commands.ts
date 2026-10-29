@@ -51,3 +51,27 @@ export class RemoteFeatureCommandRegistry implements RemoteFeatureCommandSource 
     this.entries.clear()
   }
 }
+
+/** Combined read of several instance-owned sources; the first source owning a name wins it. */
+export function mergeRemoteFeatureCommandSources(
+  ...sources: readonly RemoteFeatureCommandSource[]
+): RemoteFeatureCommandSource {
+  return {
+    list: () => {
+      const seen = new Set<string>()
+      const merged: RemoteFeatureCommandDefinition[] = []
+      for (const definition of sources.flatMap(source => source.list())) {
+        if (seen.has(definition.name)) continue
+        seen.add(definition.name)
+        merged.push(definition)
+      }
+      return merged.toSorted((left, right) => left.name.localeCompare(right.name))
+    },
+    async execute(name, rawInput, signal) {
+      for (const source of sources) {
+        if (await source.execute(name, rawInput, signal)) return true
+      }
+      return false
+    },
+  }
+}
