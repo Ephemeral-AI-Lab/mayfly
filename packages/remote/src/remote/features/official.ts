@@ -1,8 +1,21 @@
 /**
- * Official Client result handling and exact-generation operation scopes for
- * Remote configuration features.
+ * Official Client declarations, results, and exact-generation operation scopes.
  * @module @ephemeral-ai/mayfly/remote/features/official
  */
+
+import type {} from '@deepseek-ai/dsh-goal/remote'
+import type {} from '@deepseek-ai/dsh-schedule/remote'
+import type {} from '@deepseek-ai/dsh-api-job-controller/remote'
+
+export type {
+  JobFollowFrame,
+  JobFollowRequest,
+  JobKillValue,
+  JobListFrame,
+  JobView,
+} from '@deepseek-ai/dsh-api-job-controller/types'
+export type { GoalView } from '@deepseek-ai/dsh-goal/client'
+export type { ScheduleCatalogEntry, ScheduleRecord } from '@deepseek-ai/dsh-schedule/client'
 
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { HostClient } from '../../client/types.ts'

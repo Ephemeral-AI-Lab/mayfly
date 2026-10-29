@@ -17,6 +17,17 @@ import { mountRemoteInteractionLocale } from './interactions/locale.ts'
 import type { RemoteNotice } from './notice.ts'
 import type { RemoteOverlayHost } from './panels.ts'
 import { mountQuestionInteractions } from './interactions/questions.ts'
+import { RemoteFeatureCommandRegistry, type RemoteFeatureCommandSource } from './features/commands.ts'
+import { mountActivityFeature } from './features/activity.ts'
+import { mountCatalogFeature } from './features/catalog.ts'
+import { mountGitFeature } from './features/git.ts'
+import { mountGoalFeature } from './features/goal.ts'
+import { mountJobsFeature } from './features/jobs.ts'
+import { mountPlanFeature } from './features/plan.ts'
+import { mountScheduleFeature } from './features/schedule.ts'
+import { mountTodoFeature } from './features/todo.ts'
+import { mountWorkflowFeature } from './features/workflow.ts'
+import { mountRemoteProductivityLocales } from './features/locales.ts'
 
 /** Exact selected Client generation and borrowed binding, valid only while the accessor still returns it. */
 export interface RemoteFeatureSelection {
@@ -46,31 +57,45 @@ export interface RemoteFeatureMountContext {
   readonly notice: RemoteNotice
 }
 
-/** Feature context after the manifest installs its shared locale catalog. */
+/** Feature context after the manifest installs its shared locale catalog and command registry. */
 export interface RemoteFeatureContext extends RemoteFeatureMountContext {
   readonly t: MayflyTranslate
   readonly subscribeLocale: (listener: () => void) => () => void
+  readonly commands: RemoteFeatureCommandRegistry
 }
 
 /** One focused feature mount; its disposer owns every listener, stream, and pending panel. */
 export type RemoteFeatureMount = (context: RemoteFeatureContext) => void | (() => void)
 
-/** Generic teardown of all mounted Remote features. */
+/** Mounted feature teardown plus its instance-owned local command source. */
 export interface RemoteFeatureHandle {
+  readonly commands: RemoteFeatureCommandSource
   dispose(): void
 }
 
 const MOUNTS: readonly RemoteFeatureMount[] = [
   mountApprovalInteractions,
   mountQuestionInteractions,
+  mountActivityFeature,
+  mountGoalFeature,
+  mountTodoFeature,
+  mountPlanFeature,
+  mountScheduleFeature,
+  mountJobsFeature,
+  mountWorkflowFeature,
+  mountGitFeature,
+  mountCatalogFeature,
 ]
 
 /** Mount the registered feature lanes without exposing their controllers to runtime composition. */
 export function mountRemoteFeatures(base: RemoteFeatureMountContext): RemoteFeatureHandle {
+  const commands = new RemoteFeatureCommandRegistry()
+  mountRemoteProductivityLocales(base.ctx)
   const context: RemoteFeatureContext = {
     ...base,
     t: mountRemoteInteractionLocale(base.ctx),
     subscribeLocale: listener => base.ctx.mayflyLocale.subscribe(() => listener()),
+    commands,
   }
   const disposers: Array<() => void> = []
   let disposed = false
@@ -78,6 +103,7 @@ export function mountRemoteFeatures(base: RemoteFeatureMountContext): RemoteFeat
     if (disposed) return
     disposed = true
     for (const disposer of disposers.splice(0).reverse()) disposer()
+    commands.clear()
   }
   try {
     for (const mount of MOUNTS) {
@@ -88,5 +114,5 @@ export function mountRemoteFeatures(base: RemoteFeatureMountContext): RemoteFeat
     dispose()
     throw error
   }
-  return { dispose }
+  return { commands, dispose }
 }
