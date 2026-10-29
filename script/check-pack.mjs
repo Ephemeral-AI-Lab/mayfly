@@ -204,7 +204,9 @@ for (const relativeDir of PACKAGE_DIRS) {
 
   const files = walk(packageRoot)
   for (const file of files) {
-    if (/\.(?:map|ts|tsx)$/.test(file.path) && !file.path.endsWith('.d.ts')) fail(`${sourceManifest.name}: forbidden packed file ${file.path}`)
+    // A declaration map is the only source map a package may ship: it points
+    // a published .d.ts at the .ts it was emitted from for editor navigation.
+    if (/\.(?:map|ts|tsx)$/.test(file.path) && !/\.d\.ts(?:\.map)?$/.test(file.path)) fail(`${sourceManifest.name}: forbidden packed file ${file.path}`)
     if (file.path.startsWith('src/')) fail(`${sourceManifest.name}: source directory leaked into tarball`)
   }
   if (sourceManifest.name === '@ephemeral-ai/mayfly-cli') {
