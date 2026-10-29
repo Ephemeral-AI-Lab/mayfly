@@ -1,0 +1,204 @@
+/**
+ * Shared seams for the operations composition: narrow mount options, one
+ * presented side view, and backwards event pagination over the official
+ * session journal.
+ * @module @ephemeral-ai/mayfly/remote/operations/support
+ */
+
+import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type {
+  SessionAddress, SessionPageRequest, SessionWireEvent,
+} from '@deepseek-ai/dsh-api-session-controller/types'
+import type { HostClient, SessionRef } from '../../client/types.ts'
+import type { RemoteBtwService } from '../../frontend/btw.ts'
+import type { HostViewLease } from '../../frontend/host-registry.ts'
+import { remoteValue } from '../features/official.ts'
+import type { RemoteFeatureContext } from '../features.ts'
+
+/** Narrow integrator seam the operations composition is mounted with. */
+export interface RemoteOperationsOptions {
+  /** Local directory owning `/export` output; writes resolve inside its `mayfly-exports/` child only. */
+  readonly localCwd: string
+  /** BTW orchestration over the integrator's HostActions/HostRegistry pair. */
+  readonly btw: RemoteBtwService
+  /** Show one independent side view for a forked or cold child binding. */
+  readonly present?: (ref: SessionRef, binding: SessionBinding) => void
+  /** Close the side view; it never touches the Host Session behind it. */
+  readonly closePresent?: () => void
+  /** Copy text through the integrator's clipboard path. */
+  readonly copy?: (text: string) => Promise<void>
+}
+
+/** One operations module mount over the shared feature context, options, and presented view. */
+export interface RemoteOperationsContext {
+  readonly base: RemoteFeatureContext
+  readonly options: RemoteOperationsOptions
+  /** The composition's single presented side view, shared by `/agents` and `/btw`. */
+  readonly presentSlot: RemotePresentSlot
+}
+
+/** Register one operations locale namespace with English keys and Chinese messages. */
+export function registerRemoteOperationsLocale(
+  base: RemoteFeatureContext,
+  namespace: string,
+  zh: Readonly<Record<string, string>>,
+): void {
+  base.ctx.effect(() => base.ctx.mayflyLocale.register(namespace, {
+    en: Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key]))),
+    zh,
+  }))
+}
+
+/** One presented side view; owns at most the lease it adopted itself. */
+export class RemotePresentSlot {
+  private owned: HostViewLease | undefined
+  private generation = 0
+
+  constructor(private readonly options: Pick<RemoteOperationsOptions, 'present' | 'closePresent'>) {}
+
+  /** Adopt one owned cold-view lease and present its binding, releasing any previous view. */
+  async adopt(ref: SessionRef, lease: HostViewLease): Promise<void> {
+    const generation = ++this.generation
+    let binding: SessionBinding
+    try {
+      binding = await lease.ready
+    } catch (error) {
+      lease.release()
+      throw error
+    }
+    if (generation !== this.generation) {
+      lease.release()
+      return
+    }
+    this.dropOwned()
+    this.owned = lease
+    this.options.present?.(ref, binding)
+  }
+
+  /** Present a binding owned elsewhere, for example the live BTW service lease. */
+  present(ref: SessionRef, binding: SessionBinding): void {
+    this.generation += 1
+    this.dropOwned()
+    this.options.present?.(ref, binding)
+  }
+
+  /** Close the presented view and release the lease this slot owns. */
+  close(): void {
+    this.generation += 1
+    this.dropOwned()
+    this.options.closePresent?.()
+  }
+
+  /** Release an owned lease without asking the integrator to close its view. */
+  dispose(): void {
+    this.generation += 1
+    this.dropOwned()
+  }
+
+  private dropOwned(): void {
+    const lease = this.owned
+    this.owned = undefined
+    lease?.release()
+  }
+}
+
+/** Bounds of one backwards journal walk. */
+export interface RemoteEventsQuery {
+  readonly address: SessionAddress
+  /** Page size passed as `maxMessages`; the official default applies when omitted. */
+  readonly maxMessages?: number
+  /** Hard page ceiling so a misbehaving journal cannot loop forever. */
+  readonly maxPages?: number
+  /** Stop once this many events are collected, before requesting another page. */
+  readonly minEvents?: number
+  readonly signal?: AbortSignal
+}
+
+/**
+ * Read durable events backwards through `session.events` pages until history
+ * exhaustion, the page ceiling, or cancellation, returning them in seq order.
+ */
+export async function collectRemoteSessionEvents(
+  client: HostClient,
+  query: RemoteEventsQuery,
+): Promise<readonly SessionWireEvent[]> {
+  const maxPages = query.maxPages ?? 1_000
+  const events: SessionWireEvent[] = []
+  let beforeSeq: number | undefined
+  for (let page = 0; page < maxPages; page += 1) {
+    const request: SessionPageRequest = {
+      address: query.address,
+      ...(query.maxMessages === undefined ? {} : { maxMessages: query.maxMessages }),
+      ...(beforeSeq === undefined ? {} : { beforeSeq }),
+    }
+    const result = await remoteValue(client.remote.session.events(request, query.signal))
+    const records = result.records.flatMap(record => (record.type === 'event' ? [record.event] : []))
+    events.push(...records)
+    if (!result.hasMore || records.length === 0) break
+    if (query.minEvents !== undefined && events.length >= query.minEvents) break
+    const floor = Math.min(...records.map(event => event.seq))
+    if (beforeSeq !== undefined && floor >= beforeSeq) break
+    beforeSeq = floor
+  }
+  return events.toSorted((left, right) => left.seq - right.seq)
+}
+
+/** Latest durable event seq currently visible through one binding, when the journal is non-empty. */
+export function remoteLatestDurableSeq(binding: SessionBinding): number | undefined {
+  return binding.eventSource.getSnapshot().entries.findLast(entry => entry.type === 'event')?.event.seq
+}
+
+/** Structural record test shared by every defensive projection and wire reader. */
+export function isRemoteRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Read one string property, or undefined for an absent or non-string value. */
+export function remoteReadString(value: unknown, key: string): string | undefined {
+  const nested = isRemoteRecord(value) ? value[key] : undefined
+  return typeof nested === 'string' ? nested : undefined
+}
+
+/** Read one finite number property, or undefined for an absent or non-numeric value. */
+export function remoteReadNumber(value: unknown, key: string): number | undefined {
+  const nested = isRemoteRecord(value) ? value[key] : undefined
+  return typeof nested === 'number' && Number.isFinite(nested) ? nested : undefined
+}
+
+/** Collect each row's first matching string field out of `container[containerKey]`. */
+export function readOnlyPaths(
+  value: unknown,
+  keys: readonly string[],
+  containerKey = 'files',
+): readonly string[] {
+  if (!isRemoteRecord(value)) return []
+  const rows = value[containerKey]
+  if (!Array.isArray(rows)) return []
+  const paths: string[] = []
+  for (const row of rows) {
+    if (!isRemoteRecord(row)) continue
+    for (const key of keys) {
+      const candidate = row[key]
+      if (typeof candidate === 'string' && candidate !== '') {
+        paths.push(candidate)
+        break
+      }
+    }
+  }
+  return paths
+}
+
+const SECRET_KEY_PATTERN = /token|secret|password|passphrase|authorization|cookie|credential|api[-_]?key/iu
+
+/** Deep-copy one wire value with every secret-named field replaced by a marker. */
+export function redactRemoteSecrets<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(redactRemoteSecrets) as T
+  if (isRemoteRecord(value)) {
+    const copy: Record<string, unknown> = {}
+    for (const [key, nested] of Object.entries(value)) {
+      copy[key] = SECRET_KEY_PATTERN.test(key) ? '[redacted]' : redactRemoteSecrets(nested)
+    }
+    return copy as T
+  }
+  return value
+}
