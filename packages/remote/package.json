@@ -37,6 +37,7 @@
     "@deepseek-ai/dsh-session": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-subagent": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-typert-registry": "0.2.2-alpha.2",
+    "@deepseek-ai/schemastery": "3.18.6-alpha.1",
     "@ephemeral-ai/mayfly": "0.1.4-rc.2",
     "@ephemeral-ai/mayfly-host": "0.1.4-rc.2",
     "@ephemeral-ai/mayfly-ui": "0.1.4-rc.2",
@@ -46,6 +47,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-api-account-controller": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-api-settings-controller": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-permission-presets": "0.2.2-alpha.2",
     "@types/node": "^24.9.0",
     "@types/ws": "8.18.1",
     "vitest": "^4.1.8"
