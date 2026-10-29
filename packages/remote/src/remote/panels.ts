@@ -4,11 +4,38 @@
  */
 
 import type {
+  MayflyComponent,
   MayflyFocusable,
   MayflyOverlayHandle,
   MayflyOverlayOptions,
   MayflyScreen,
 } from '@ephemeral-ai/mayfly/core'
+
+/**
+ * Make a panel an opaque overlay: every rendered row is padded to the overlay's
+ * width, so the row the content painted underneath cannot show through the
+ * columns a panel row happens to leave empty. The in-process TUI gets this from
+ * the `chrome: 'overlay'` surface; Remote panels are plain components, so the
+ * host applies it once here instead of in every feature's painter.
+ */
+class OpaqueOverlay implements MayflyFocusable {
+  constructor(private readonly inner: MayflyFocusable) {}
+
+  get focused(): boolean { return this.inner.focused }
+  set focused(value: boolean) { this.inner.focused = value }
+
+  handleInput(data: string): void { this.inner.handleInput?.(data) }
+
+  render(width: number): string[] {
+    return this.inner.render(width).map((row) => {
+      const plain = row.replace(/\x1b\[[0-9;]*m/gu, '')
+      const missing = width - [...plain].length
+      return missing > 0 ? `${row}${' '.repeat(missing)}` : row
+    })
+  }
+
+  invalidate(): void { this.inner.invalidate() }
+}
 
 /** Options for one component overlay owned by the Remote panel host. */
 export interface RemoteOverlayOpenOptions extends MayflyOverlayOptions {
@@ -47,6 +74,8 @@ export class RemotePanelController implements RemoteOverlayHost {
   constructor(
     private readonly screen: MayflyScreen,
     private readonly restoreFocus: () => void,
+    /** Present when the host should paint panels as opaque overlays. */
+    private readonly opaque: boolean = false,
   ) {}
 
   open(component: MayflyFocusable, options: RemoteOverlayOpenOptions = {}): RemoteOverlayLease {
@@ -62,13 +91,25 @@ export class RemotePanelController implements RemoteOverlayHost {
         this.closeActive(true)
       },
     }
-    const handle = this.screen.showOverlay(component, {
-      width: '80%',
+    const opaque: MayflyComponent = this.opaque
+      ? new OpaqueOverlay(component) as unknown as MayflyComponent
+      : component
+    const handle = this.screen.showOverlay(opaque, {
+      // Full width: a centred 80% panel leaves the columns beside it showing
+      // the transcript it is supposed to cover, which reads as interleaved
+      // text. The panel decides its own inner width; the overlay owns the row.
+      width: this.screen.columns,
       maxHeight: '70%',
+      anchor: 'center',
       ...overlayOptions,
     })
     record = { generation, handle, ...onClosed === undefined ? {} : { onClosed }, closed: false }
     this.active = record
+    // The overlay covers rows the content already painted. The differential
+    // writer only emits cells whose value changed, so cells where the panel's
+    // row happens to repeat the transcript (spaces, shared glyphs) would keep
+    // the old text visible under it. A forced repaint rewrites the whole frame.
+    this.screen.requestRender(true)
     return lease
   }
 
@@ -93,6 +134,9 @@ export class RemotePanelController implements RemoteOverlayHost {
       record.onClosed?.()
     } finally {
       if (restore && this.active === undefined) this.restoreFocus()
+      // Closing restores the rows the panel covered; their content differs from
+      // the panel's, so the next frame must be painted whole.
+      this.screen.requestRender(true)
     }
   }
 }

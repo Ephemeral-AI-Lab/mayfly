@@ -15,6 +15,7 @@ import { RemoteApp } from './app.ts'
 import { RemoteBannerComponent } from './banner.ts'
 import { mountRemoteConfigurationComposition, remoteClientVersion, type RemoteConfigurationCompositionHandle } from './configuration-composition.ts'
 import { mountEditorComposition, type EditorCompositionHandle } from './editor-composition.ts'
+import { mountRemoteCompletionDrawer } from './completion-drawer.ts'
 import { mountRemoteEditor, type RemoteEditorHandle } from './editor.ts'
 import { mountRemoteFeatures, type RemoteFeatureHandle } from './features.ts'
 import { mergeRemoteFeatureCommandSources, type RemoteFeatureCommandSource } from './features/commands.ts'
@@ -39,6 +40,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
   const ctx = new Context()
   const apps: RemoteApp[] = []
   let editor: RemoteEditorHandle | undefined
+  let completionDrawer: { dispose(): void } | undefined
   let editorComposition: EditorCompositionHandle | undefined
   let panels: RemotePanelController | undefined
   let features: RemoteFeatureHandle | undefined
@@ -151,8 +153,9 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       cancel: () => app!.cancel(),
       exit: stop,
     })
+    completionDrawer = mountRemoteCompletionDrawer(screen, editor.editor, ctx.mayflyTheme.colors, ctx.mayflyComponents)
     sideViews = new RemoteSideViews(transcript, toolPresentations, screen, editor.notice)
-    panels = new RemotePanelController(screen, () => editor?.focus())
+    panels = new RemotePanelController(screen, () => editor?.focus(), true)
     app = new RemoteApp(conversation, editor.notice, new RemotePlainPanels(panels, ctx.mayflyComponents, ctx.mayflyTheme.colors))
     apps.push(app)
     ctx.effect(() => ctx.mayflyUiImages.provide(async (attachmentId) => {
@@ -236,6 +239,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     sideViews?.dispose()
     editorComposition?.dispose()
     panels?.dispose()
+    completionDrawer?.dispose()
     editor?.dispose()
     conversation?.dispose()
     transcript?.dispose()
