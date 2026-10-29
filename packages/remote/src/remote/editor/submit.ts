@@ -113,10 +113,19 @@ export class EditorSubmit {
     return true
   }
 
-  /** Explicit queue undo is a fresh prompt/request identity, never a same-message replay. */
-  requeue(text: string): void {
+  /** Restore a removed queue draft without submitting it. */
+  restoreQueued(text: string): void {
+    if (text.length === 0) return
+    this.options.editor.setText(text)
+    this.stashDraft()
+    this.options.screen.setFocus(this.options.editor)
+    this.options.screen.requestRender()
+  }
+
+  /** Explicit queue undo is a fresh prompt/request identity in the original lane, never a same-message replay. */
+  requeue(text: string, lane: 'turn' | 'step'): void {
     if (text.trim().length === 0) return
-    this.begin(text.trim(), 'queue', emptyDraft(text))
+    this.begin(text.trim(), lane === 'step' ? 'steer' : 'queue', emptyDraft(text))
   }
 
   /** Ordinary cancellation only; this method is deliberately not a claimed-turn retraction. */

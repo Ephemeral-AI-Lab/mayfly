@@ -3,6 +3,10 @@ packages:
 
 linkWorkspacePackages: false
 
+overrides:
+  # Resolve the same-version, not-yet-published client-safe Host artifact locally without changing the published manifest.
+  '@ephemeral-ai/mayfly-host': 'link:../host'
+
 minimumReleaseAgeExclude:
   - qs@6.17.0
   - '@deepseek-ai/cosmokit@1.8.7-alpha.1'

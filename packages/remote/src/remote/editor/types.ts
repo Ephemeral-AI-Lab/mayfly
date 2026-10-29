@@ -159,8 +159,12 @@ export interface EditorFeatureController {
   openSkills(): Promise<void>
   /** Apply one official pending-queue mutation without replaying failures. */
   updateQueue(itemId: MessageId, action: QueueAction): Promise<boolean>
-  /** Re-admit removed queue text as a new prompt/request identity, never a same-item replay. */
-  requeue(text: string): void
+  /** Restore one removed queue draft without submitting it. */
+  restoreQueued(text: string): void
+  /** Re-admit removed queue text into its original lane as a new prompt/request identity. */
+  requeue(text: string, lane: 'turn' | 'step'): void
+  /** Open transcript text in the Remote-local external editor without changing the prompt. */
+  openText(text: string): Promise<void>
   /** Read a durable image through the selected official Session. */
   readAttachment(attachment: ImageAttachmentRef): Promise<Uint8Array | undefined>
   /** Read the selected Session's image admission limits. */

@@ -364,9 +364,31 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
       detectSelection()
       return submit.updateQueue(itemId, action)
     },
-    requeue(text: string): void {
+    restoreQueued(text: string): void {
       detectSelection()
-      submit.requeue(text)
+      submit.restoreQueued(text)
+    },
+    requeue(text: string, lane: 'turn' | 'step'): void {
+      detectSelection()
+      submit.requeue(text, lane)
+    },
+    async openText(text: string): Promise<void> {
+      if (externalRunning || disposed) return
+      const command = resolveExternalEditorCommand(process.env, options.local.editorCommand?.() ?? '')
+      if (command === undefined) {
+        options.notice.set(t('set $VISUAL or $EDITOR to edit drafts externally'))
+        return
+      }
+      externalRunning = true
+      const operation = processes.operation(routeLifetime.signal)
+      try {
+        await options.screen.suspend(async () => { await editLocalText(text, command, operation.signal) })
+      } catch (error) {
+        if (!disposed && !operation.signal.aborted) options.notice.set(errorMessage(error, 'external editor failed'))
+      } finally {
+        operation.done()
+        externalRunning = false
+      }
     },
     async readAttachment(attachment: ImageAttachmentRef): Promise<Uint8Array | undefined> {
       detectSelection()

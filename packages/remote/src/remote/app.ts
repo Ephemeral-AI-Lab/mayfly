@@ -7,13 +7,14 @@ import type { RemoteConversationModelSource } from '../transcript/remote-model.t
 import type { RemoteNotice } from './notice.ts'
 import type { RemoteAppPanels, RemoteCommandDescriptor } from './interactions/plain-panels.ts'
 
-const FRONTEND_COMMANDS = [
+export const FRONTEND_COMMANDS = [
   { name: 'quit', description: 'Exit Mayfly (/q, /exit)' },
   { name: 'new', description: 'Start a new Session (/clear)' },
   { name: 'sessions', description: 'List Sessions, or resume by id (/resume)' },
   { name: 'host', description: 'List attached Hosts' },
   { name: 'attach', description: 'Attach a Host URL, then create a Session' },
   { name: 'detach', description: 'Detach the current Host without stopping it' },
+  { name: 'skills', description: 'List available skills' },
   { name: 'help', description: 'Show local and Host commands' },
   { name: 'status', description: 'Show current Session facts' },
   { name: 'version', description: 'Show the Mayfly version' },
@@ -39,8 +40,8 @@ export class RemoteApp {
       const startupUrl = this.endpoints.get(key)
       if (startupUrl === undefined) throw new Error(`No endpoint registered for Host "${key}"`)
       if (attach !== undefined) return attach(key, startupUrl)
-      const { createHostClient } = await import('../client/host-client.ts')
-      return createHostClient({ key, startupUrl })
+      const { attachMayflyHostClient } = await import('./host-composition.ts')
+      return attachMayflyHostClient(key, startupUrl)
     })
     this.actions = new HostActions(this.registry)
   }

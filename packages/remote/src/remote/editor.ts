@@ -27,6 +27,8 @@ export interface RemoteEditorActions {
 
 /** Mounted editor, notice channel, and focus restoration handle. */
 export interface RemoteEditorHandle {
+  /** Actual shared editor engine used by the composition's feature attachment. */
+  readonly editor: MayflyEditor
   readonly notice: RemoteNotice
   focus(): void
   dispose(): void
@@ -136,6 +138,7 @@ export function mountRemoteEditor(
   const slot = screen.mountDockSlot('editor.prompt', new RemoteEditorDock(shell, hint))
   slot.focus()
   return {
+    editor,
     notice: {
       set(text) {
         hint.set(text)

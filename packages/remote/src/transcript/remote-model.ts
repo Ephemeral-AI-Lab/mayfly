@@ -5,7 +5,7 @@
 import type {
   SessionBinding, SessionEventSource, SessionSnapshot,
 } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { ConversationFactsState, ConversationProjection } from '@ephemeral-ai/mayfly/conversation'
+import type { ConversationFactsState, ConversationImage, ConversationProjection } from '@ephemeral-ai/mayfly/conversation'
 import { freezeModel, type TranscriptEntryModel, type TranscriptModel } from '@ephemeral-ai/mayfly/frontend'
 import { conversationTranscriptModel, createTranscriptModel } from '@ephemeral-ai/mayfly/transcript'
 import type { ToolPresentationSource } from '@ephemeral-ai/mayfly/transcript'
@@ -95,6 +95,18 @@ export class RemoteConversationModelSource {
   /** Return the selected Session's official lifecycle and standard projection values. */
   sessionFacts(): RemoteSessionFactsSnapshot {
     return this.facts.snapshot()
+  }
+
+  /** Resolve one image reference from the authoritative Host projection or current official live window. */
+  imageAttachment(attachmentId: string): ConversationImage | undefined {
+    for (const projection of [this.live?.projection, this.durable]) {
+      for (const entry of projection?.entries ?? []) {
+        if (entry.kind !== 'user') continue
+        const image = entry.images.find(candidate => candidate.attachmentId === attachmentId)
+        if (image !== undefined) return image
+      }
+    }
+    return undefined
   }
 
   /** Set the Host-advertised fallback used before a Session records a model route. */

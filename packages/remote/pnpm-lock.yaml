@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@ephemeral-ai/mayfly-host': link:../host
+
 importers:
 
   .:
@@ -59,6 +62,9 @@ importers:
       '@ephemeral-ai/mayfly':
         specifier: 0.1.4-rc.2
         version: 0.1.4-rc.2(e912b9b70885a1d35d5af29598ded36c)
+      '@ephemeral-ai/mayfly-host':
+        specifier: link:../host
+        version: link:../host
       '@ephemeral-ai/mayfly-ui':
         specifier: 0.1.4-rc.2
         version: 0.1.4-rc.2(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)(@deepseek-ai/cordis@4.0.6-alpha.1)

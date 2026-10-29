@@ -10,7 +10,7 @@
   },
   "scripts": {
     "postinstall": "pnpm --dir packages/remote install --ignore-scripts",
-    "build": "node script/clean-lib.mjs && tsc -b tsconfig.json --force && node script/prune-types.mjs && tsdown",
+    "build": "node script/clean-lib.mjs && pnpm --filter @ephemeral-ai/mayfly-host bundle && tsc -b tsconfig.json --force && node script/prune-types.mjs && tsdown",
     "test": "vitest run",
     "test:repo-workflow": "node --test script/tests/*.test.mjs",
     "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.tests.json",

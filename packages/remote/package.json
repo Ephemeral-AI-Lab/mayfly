@@ -38,6 +38,7 @@
     "@deepseek-ai/dsh-subagent": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-typert-registry": "0.2.2-alpha.2",
     "@ephemeral-ai/mayfly": "0.1.4-rc.2",
+    "@ephemeral-ai/mayfly-host": "0.1.4-rc.2",
     "@ephemeral-ai/mayfly-ui": "0.1.4-rc.2",
     "immer": "^10.1.1",
     "ws": "^8.21.3",
