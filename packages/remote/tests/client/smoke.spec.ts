@@ -52,6 +52,13 @@ function fixture() {
     key: HostKey('local'),
     sessions,
     connection: {} as ConnectionHandle,
+    remote: {} as HostClient['remote'],
+    fileUpload: {} as HostClient['fileUpload'],
+    origin: 'http://127.0.0.1:3080',
+    state: {
+      getSnapshot: () => ({ status: 'connected', generation: 0 }),
+      subscribe: () => () => {},
+    } satisfies HostClient['state'],
     workspaces: {} as IWorkspaces,
     detach: vi.fn().mockResolvedValue(undefined),
   } satisfies HostClient

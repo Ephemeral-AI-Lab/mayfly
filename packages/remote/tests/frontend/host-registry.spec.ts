@@ -42,6 +42,10 @@ function makeHost(
     client: {
       key,
       connection: {} as HostClient['connection'],
+      remote: {} as HostClient['remote'],
+      fileUpload: {} as HostClient['fileUpload'],
+      origin: 'http://127.0.0.1:3080',
+      state: {} as HostClient['state'],
       sessions,
       workspaces: {} as HostClient['workspaces'],
       detach,

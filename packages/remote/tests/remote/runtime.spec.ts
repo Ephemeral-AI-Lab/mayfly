@@ -14,7 +14,11 @@ const mocks = vi.hoisted(() => ({
   refreshTranscript: undefined as (() => void) | undefined,
   toolPresentation: undefined as { get: () => undefined } | undefined,
   transcriptSource: undefined as (() => unknown) | undefined,
-  renderer: undefined as { images: () => unknown, requestRender: () => void } | undefined,
+  transcriptOptions: undefined as {
+    readonly t: unknown
+    readonly queued: () => unknown
+    readonly context: () => unknown
+  } | undefined,
   conversationOptions: undefined as {
     onPresentation: () => void
     onCommandResult: (result: { kind: 'success' | 'error', text?: string }) => void
@@ -62,20 +66,20 @@ vi.mock('../../src/remote/editor.ts', () => ({
 
 vi.mock('../../src/remote/banner.ts', () => ({
   RemoteBannerComponent: class {
-    constructor(_colors, _components, facts) { mocks.bannerFacts = facts }
+    constructor(_colors: unknown, _components: unknown, facts: () => unknown) { mocks.bannerFacts = facts }
   },
 }))
 
 vi.mock('../../src/remote/panels.ts', () => ({
   RemotePanelController: class {
     readonly dispose = mocks.panelDispose
-    constructor(_screen, _components, _colors, restoreFocus) { mocks.restoreFocus = restoreFocus }
+    constructor(_screen: unknown, restoreFocus: () => void) { mocks.restoreFocus = restoreFocus }
   },
 }))
 
 vi.mock('../../src/remote/status.ts', () => ({
   RemoteStatusComponent: class {
-    constructor(_components, _colors, facts) { mocks.statusFacts = facts }
+    constructor(_components: unknown, _colors: unknown, facts: () => unknown) { mocks.statusFacts = facts }
   },
 }))
 
@@ -86,7 +90,10 @@ vi.mock('../../src/transcript/remote-model.ts', () => ({
     readonly presentation = vi.fn(() => ({}))
     readonly dispose = vi.fn()
 
-    constructor(_tools, refresh, options) {
+    constructor(_tools: { get: () => undefined }, refresh: () => void, options: {
+      onPresentation: () => void
+      onCommandResult: (result: { kind: 'success' | 'error', text?: string }) => void
+    }) {
       mocks.toolPresentation = _tools
       mocks.refreshTranscript = refresh
       mocks.conversationOptions = options
@@ -96,16 +103,14 @@ vi.mock('../../src/transcript/remote-model.ts', () => ({
 
 vi.mock('@ephemeral-ai/mayfly/transcript', () => ({
   TranscriptController: class {
-    readonly setSource = vi.fn(source => { mocks.transcriptSource = source })
+    readonly setView = vi.fn((_name: string, source: () => unknown) => { mocks.transcriptSource = source })
+    readonly show = vi.fn()
     readonly attach = vi.fn()
     readonly refresh = vi.fn()
     readonly dispose = vi.fn()
 
-    constructor(_ctx, _screen, options) {
-      mocks.renderer = {
-        images: () => options.renderer.images(),
-        requestRender: () => options.renderer.requestRender(),
-      }
+    constructor(options: { readonly t: unknown, readonly queued: () => unknown, readonly context: () => unknown }) {
+      mocks.transcriptOptions = options
     }
   },
 }))
@@ -146,10 +151,10 @@ describe('runRemoteFrontend', () => {
     expect(mocks.apps[0]!.registry.detach).toHaveBeenCalledWith('local')
   })
 
-  it('invokes renderer and editor callbacks without depending on a real TTY', async () => {
+  it('invokes editor and transcript callbacks without depending on a real TTY', async () => {
     mocks.apps.length = 0
     mocks.editorActions = undefined
-    mocks.renderer = undefined
+    mocks.transcriptSource = undefined
     const running = runRemoteFrontend({ startupUrl })
     await vi.waitFor(() => { expect(mocks.editorActions).toBeDefined() })
     mocks.transcriptSource!()
@@ -167,15 +172,16 @@ describe('runRemoteFrontend', () => {
     expect(mocks.noticeSet).toHaveBeenCalledWith('command failed')
     expect(mocks.bannerFacts!()).toEqual({})
     expect(mocks.statusFacts!()).toEqual({})
+    expect(mocks.transcriptOptions).toBeDefined()
+    expect(mocks.transcriptOptions!.t).toBeDefined()
+    mocks.transcriptOptions!.queued()
+    mocks.transcriptOptions!.context()
     mocks.restoreFocus!()
     expect(mocks.editorFocus).toHaveBeenCalled()
     await mocks.editorActions!.submit('/quit')
     await running
     await mocks.editorActions!.cancel()
     expect(mocks.apps[0]!.cancel).toHaveBeenCalledOnce()
-    expect(mocks.renderer).toBeDefined()
-    expect(mocks.renderer!.images()).toEqual({})
-    mocks.renderer!.requestRender()
     mocks.editorActions!.exit()
     await running
     expect(mocks.editorDispose).toHaveBeenCalled()
