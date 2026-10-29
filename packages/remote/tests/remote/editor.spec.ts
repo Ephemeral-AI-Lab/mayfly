@@ -5,11 +5,28 @@ import type {
   MayflyComponents, MayflyEditor, MayflyFocusable, MayflyScreenService, MayflySemanticColors,
 } from '@ephemeral-ai/mayfly/core'
 
-const colors = { muted: (text: string) => text } as MayflySemanticColors
+const identity = (text: string): string => text
+// The compiled editor shell paints its chrome and motion cells through the
+// full semantic palette; a single-tone stub makes its breath probe call an
+// undefined `paint`.
+const colors = {
+  primary: identity,
+  border: identity,
+  accent: identity,
+  text: identity,
+  muted: identity,
+  textMuted: identity,
+  success: identity,
+  warning: identity,
+  error: identity,
+  modelHighlight: identity,
+  logoInks: Array.from({ length: 5 }, () => identity),
+} as unknown as MayflySemanticColors
 
 function fixture() {
   const editor = {
     setPromptSymbol: vi.fn(),
+    setPlaceholder: vi.fn(),
     onSubmit: undefined as MayflyEditor['onSubmit'],
     onChange: undefined as MayflyEditor['onChange'],
     onKey: undefined as MayflyEditor['onKey'],
@@ -27,6 +44,8 @@ function fixture() {
     createEditor: () => editor,
     wrapText: (text: string) => [text],
     truncateToWidth: (text: string) => text,
+    visibleWidth: (text: string) => text.length,
+    strong: (text: string) => text,
   } as unknown as MayflyComponents
   return { editor, slot, screen, components }
 }
@@ -94,13 +113,17 @@ describe('mountRemoteEditor', () => {
     const handle = mountRemoteEditor(new Context(), screen, components, colors, actions)
     const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]! as MayflyFocusable
     handle.notice.set(Array.from({ length: 10 }, (_, index) => `line ${String(index)}`).join('\n'))
-    expect(dock.render(80)).toHaveLength(9)
-    expect(dock.render(80)[1]).toBe('line 0')
+    const notices = dock.render(80).filter(row => /^line \d+$/u.test(row))
+    expect(notices).toEqual(Array.from({ length: 8 }, (_, index) => `line ${String(index)}`))
     expect(screen.requestRender).toHaveBeenCalled()
     editor.onChange?.('next')
-    expect(dock.render(80)).toEqual(['editor'])
+    const cleared = dock.render(80)
+    expect(cleared.some(row => row.includes('editor'))).toBe(true)
+    expect(cleared.some(row => row.includes('line 0'))).toBe(false)
     dock.focused = true
     expect(dock.focused).toBe(true)
+    // The compiled shell applies its focus to the host editor while painting.
+    dock.render(80)
     expect(editor.focused).toBe(true)
     dock.handleInput?.('x')
     expect(editor.handleInput).toHaveBeenCalledWith('x')

@@ -15,8 +15,8 @@ const originalExitCode = process.exitCode
 
 registerTempDirCleanup()
 
-function endpoint(): string {
-  return JSON.stringify({ id: 'local', url: 'http://127.0.0.1:3080/', token: 'secret' })
+function startupUrl(): string {
+  return 'http://127.0.0.1:3080/?token=secret'
 }
 
 afterEach(() => {
@@ -27,30 +27,33 @@ afterEach(() => {
 })
 
 describe('remote-bin environment entry', () => {
-  it('passes the endpoint and optional startup values to the runtime', async () => {
+  it('passes the startup URL and optional values to the runtime', async () => {
     process.env = {
-      MAYFLY_ENDPOINT: endpoint(),
+      MAYFLY_DSH_STARTUP_URL: startupUrl(),
       MAYFLY_SESSION_ID: 'session-1',
       MAYFLY_TASK: 'hello',
       MAYFLY_CWD: '/workspace',
     }
     await main()
     expect(runRemoteFrontend).toHaveBeenCalledWith({
-      startupUrl: 'http://127.0.0.1:3080/?token=secret',
-      hostId: 'local',
+      startupUrl: startupUrl(),
       sessionId: 'session-1',
       task: 'hello',
       cwd: '/workspace',
     })
   })
 
-  it('rejects missing, malformed, and incomplete endpoint input', async () => {
+  it('rejects missing, malformed, and incomplete startup URL input', async () => {
     process.env = {}
-    await expect(main()).rejects.toThrow('MAYFLY_ENDPOINT is required')
-    process.env = { MAYFLY_ENDPOINT: '{' }
+    await expect(main()).rejects.toThrow('MAYFLY_DSH_STARTUP_URL is required')
+    process.env = { MAYFLY_DSH_STARTUP_URL: '{' }
     await expect(main()).rejects.toThrow()
-    process.env = { MAYFLY_ENDPOINT: JSON.stringify({ id: 'missing-fields' }) }
-    await expect(main()).rejects.toThrow('MAYFLY_ENDPOINT must contain id, url, and token')
+    process.env = { MAYFLY_DSH_STARTUP_URL: 'http://127.0.0.1:3080/' }
+    await expect(main()).rejects.toThrow('must be an HTTP(S) URL with exactly one non-empty token')
+    process.env = { MAYFLY_DSH_STARTUP_URL: 'http://127.0.0.1:3080/?token=one&token=two' }
+    await expect(main()).rejects.toThrow('must be an HTTP(S) URL with exactly one non-empty token')
+    process.env = { MAYFLY_DSH_STARTUP_URL: 'ftp://127.0.0.1:3080/?token=secret' }
+    await expect(main()).rejects.toThrow('must be an HTTP(S) URL with exactly one non-empty token')
   })
 
   it('redacts tokens in direct execution and diagnostics', async () => {
@@ -62,11 +65,11 @@ describe('remote-bin environment entry', () => {
     vi.resetModules()
     await import('../src/remote-bin.ts')
     await vi.waitFor(() => { expect(process.exitCode).toBe(1) })
-    expect(write).toHaveBeenCalledWith('mayfly remote: MAYFLY_ENDPOINT is required\n')
+    expect(write).toHaveBeenCalledWith('mayfly: MAYFLY_DSH_STARTUP_URL is required; start dsh with the mayfly-host profile and set its authenticated startup URL\n')
   })
 
   it('runs main when invoked as the binary entry', async () => {
-    process.env = { MAYFLY_ENDPOINT: endpoint() }
+    process.env = { MAYFLY_DSH_STARTUP_URL: startupUrl() }
     process.argv[1] = fileURLToPath(new URL('../src/remote-bin.ts', import.meta.url))
     runRemoteFrontend.mockClear()
     vi.resetModules()
@@ -78,7 +81,7 @@ describe('remote-bin environment entry', () => {
     const root = mkdtempTracked('mayfly-remote-bin-')
     const linkedBin = join(root, 'remote-bin.ts')
     symlinkSync(fileURLToPath(new URL('../src/remote-bin.ts', import.meta.url)), linkedBin)
-    process.env = { MAYFLY_ENDPOINT: endpoint() }
+    process.env = { MAYFLY_DSH_STARTUP_URL: startupUrl() }
     process.argv[1] = linkedBin
     runRemoteFrontend.mockClear()
     vi.resetModules()

@@ -8,6 +8,12 @@ import type { RemoteNotice } from '../../src/remote/notice.ts'
 import type { RemoteAppPanels } from '../../src/remote/interactions/plain-panels.ts'
 import type { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
 
+vi.mock('../../src/frontend/btw.ts', () => ({
+  RemoteBtwService: class {
+    readonly ask = vi.fn()
+    readonly close = vi.fn()
+  },
+}))
 const defaultAttachHostClient = vi.hoisted(() => vi.fn())
 vi.mock('../../src/remote/host-composition.ts', () => ({ attachMayflyHostClient: defaultAttachHostClient }))
 
