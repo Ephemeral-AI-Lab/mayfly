@@ -32,10 +32,7 @@ export class HostNotAttachedError extends Error {
 export class HostOperationSupersededError extends Error {
   override readonly name = 'HostOperationSupersededError'
 
-  /**
-   * @param operation - superseded operation.
-   * @param host - affected Host identity.
-   */
+  /** @param operation - superseded operation. @param host - affected Host identity. */
   constructor(readonly operation: 'attach' | 'select', readonly host: HostKey) {
     super(`Host ${operation} for "${host}" was superseded`)
   }
@@ -62,15 +59,46 @@ interface Selection {
   readonly revision: number
 }
 
-/** Owns attached Host Clients and one retained current Session selection per registry. */
+/** UI-owned binding role; distinct roles never share registry.current. */
+export type HostViewRole = string
+
+/** Exact identity of one independent Transcript, BTW, subagent, or cold-history binding. */
+export interface HostViewKey {
+  readonly ref: SessionRef
+  readonly role: HostViewRole
+}
+
+/** Reference-counted lease over one registry-owned view binding. */
+export interface HostViewLease {
+  readonly key: HostViewKey
+  /** Borrowed official reference; call lease.release(), never reference.release(). */
+  readonly reference: SessionReference
+  readonly ready: Promise<SessionReference['binding']>
+  release(): void
+}
+
+interface ViewRecord {
+  readonly key: HostViewKey
+  readonly reference: SessionReference
+  leases: number
+}
+
+/** Stable map key for one exact Host/Session/view-role binding. */
+export function hostViewKey(key: HostViewKey): string {
+  return JSON.stringify([key.ref.host, key.ref.sessionId, key.role])
+}
+
+/** Owns attached Host Clients, the primary selection, and independent view-role bindings. */
 export class HostRegistry {
   private readonly clients = new Map<HostKey, HostClient>()
   private readonly attaching = new Map<HostKey, AttachRecord>()
   private readonly detaching = new Map<HostKey, Promise<void>>()
   private readonly revisions = new Map<HostKey, number>()
   private readonly pendingSelections = new Map<HostKey, Set<SessionReference>>()
+  private readonly views = new Map<string, ViewRecord>()
   private selection: Selection | undefined
   private selectionGeneration = 0
+  private selectionTail: Promise<void> = Promise.resolve()
 
   /** @param attachFactory - factory used for new Host generations; never called for an attached or in-flight key. */
   constructor(private readonly attachFactory: HostAttachFactory) {}
@@ -80,38 +108,22 @@ export class HostRegistry {
     return this.selection?.ref
   }
 
-  /**
-   * Borrowed current reference owned by this registry. Consumers must not release it;
-   * acquire an independent reference for work that outlives the selection.
-   */
+  /** Borrowed current reference owned by this registry; acquire a view lease for independent panels. */
   get currentReference(): SessionReference | undefined {
     return this.selection?.reference
   }
 
-  /**
-   * List committed Host Clients in attach order. Pending and detached generations are absent.
-   * @returns a new readonly snapshot of attached Clients.
-   */
+  /** List committed Host Clients in attach order. */
   list(): readonly HostClient[] {
     return [...this.clients.values()]
   }
 
-  /**
-   * Find one attached Host Client.
-   * @param key - Host identity.
-   * @returns the committed Client, or undefined while absent or attaching.
-   */
+  /** Find one attached Host Client, or undefined while absent or attaching. */
   get(key: HostKey): HostClient | undefined {
     return this.clients.get(key)
   }
 
-  /**
-   * Attach one Host generation. Concurrent calls for a key share one factory call;
-   * a failed generation can be retried. Detaching invalidates the pending generation,
-   * whose eventual Client is released instead of committed.
-   * @param key - Host identity to attach.
-   * @returns the committed Client, or a rejection when attachment or stale cleanup fails.
-   */
+  /** Attach one shared Host generation and release stale or mismatched Clients. */
   attach(key: HostKey): Promise<HostClient> {
     const attached = this.clients.get(key)
     if (attached !== undefined) return Promise.resolve(attached)
@@ -161,14 +173,7 @@ export class HostRegistry {
     return promise
   }
 
-  /**
-   * Select and retain an exact Host/Session pair. The previous selection remains
-   * committed until the new reference is ready. Only the newest selection on the
-   * same Host revision may commit; stale and failed acquisitions release themselves.
-   * @param ref - Host-namespaced Session identity.
-   * @param signal - optional cancellation of this acquisition wait, not Agent cancellation.
-   * @returns the committed immutable selection.
-   */
+  /** Select the primary Host/Session pair in serialized, stale-fenced call order. */
   select(ref: SessionRef, signal?: AbortSignal): Promise<SessionRef> {
     const generation = ++this.selectionGeneration
     const client = this.clients.get(ref.host)
@@ -179,36 +184,92 @@ export class HostRegistry {
       && this.selection.client === client
       && this.selection.revision === revision) return Promise.resolve(this.selection.ref)
 
-    let reference: SessionReference
-    try {
-      reference = client.sessions.retain(ref.sessionId, {
-        source: mayflySessionReferenceSource,
-        signal,
-      })
-    } catch (error) {
-      return Promise.reject(error)
+    const operation = this.selectionTail.then(() => this.acquireSelection(ref, client, revision, generation, signal))
+    this.selectionTail = operation.then(() => undefined, () => undefined)
+    return operation
+  }
+
+  private async acquireSelection(
+    ref: SessionRef,
+    client: HostClient,
+    revision: number,
+    generation: number,
+    signal: AbortSignal | undefined,
+  ): Promise<SessionRef> {
+    if (generation !== this.selectionGeneration
+      || revision !== this.revisionOf(ref.host)
+      || this.clients.get(ref.host) !== client) {
+      throw new HostOperationSupersededError('select', ref.host)
     }
+    const reference = client.sessions.retain(ref.sessionId, {
+      source: mayflySessionReferenceSource,
+      signal,
+    })
     let references = this.pendingSelections.get(ref.host)
     if (references === undefined) {
       references = new Set()
       this.pendingSelections.set(ref.host, references)
     }
     references.add(reference)
-    return this.commitSelection(ref, client, reference, revision, generation).finally(() => {
+    try {
+      return await this.commitSelection(ref, client, reference, revision, generation)
+    } finally {
       references.delete(reference)
       if (references.size === 0 && this.pendingSelections.get(ref.host) === references) {
         this.pendingSelections.delete(ref.host)
       }
+    }
+  }
+
+  /** Retain one independent official binding for a UI role, refcounted per exact key. */
+  retainView(ref: SessionRef, role: HostViewRole): HostViewLease {
+    if (role.trim() === '') throw new Error('Host view role must not be empty')
+    const client = this.clients.get(ref.host)
+    if (client === undefined) throw new HostNotAttachedError(ref.host)
+    const key: HostViewKey = {
+      ref: Object.freeze({ host: ref.host, sessionId: ref.sessionId }),
+      role,
+    }
+    const identity = hostViewKey(key)
+    let record = this.views.get(identity)
+    if (record === undefined) {
+      const reference = client.sessions.retain(ref.sessionId, { source: mayflySessionReferenceSource })
+      record = { key, reference, leases: 0 }
+      this.views.set(identity, record)
+    }
+    record.leases += 1
+    const retained = record
+    let released = false
+    return Object.freeze({
+      key: retained.key,
+      reference: retained.reference,
+      ready: retained.reference.ready,
+      release: () => {
+        if (released || this.views.get(identity) !== retained) return
+        released = true
+        retained.leases -= 1
+        if (retained.leases > 0) return
+        this.views.delete(identity)
+        retained.reference.release()
+      },
     })
   }
 
-  /**
-   * Withdraw one Host synchronously, then release only its selected/pending references
-   * and Client generations. A later attach or select on the same key is independent;
-   * completion of this detach cannot clear or release that newer generation.
-   * @param key - Host identity to detach.
-   * @returns after captured cleanups settle; cleanup failures reject after all cleanups finish.
-   */
+  /** List all currently retained view identities, including cold and background panels. */
+  viewKeys(): readonly HostViewKey[] {
+    return [...this.views.values()].map(record => record.key)
+  }
+
+  /** Force-close one view binding and invalidate its outstanding leases. */
+  closeView(key: HostViewKey): void {
+    const identity = hostViewKey(key)
+    const record = this.views.get(identity)
+    if (record === undefined) return
+    this.views.delete(identity)
+    record.reference.release()
+  }
+
+  /** Withdraw one Host and release only its selected, pending, and view generations. */
   detach(key: HostKey): Promise<void> {
     this.bumpRevision(key)
     const client = this.clients.get(key)
@@ -224,6 +285,11 @@ export class HostRegistry {
     if (selecting !== undefined) {
       this.pendingSelections.delete(key)
       for (const reference of selecting) reference.release()
+    }
+    for (const [identity, record] of [...this.views]) {
+      if (record.key.ref.host !== key) continue
+      this.views.delete(identity)
+      record.reference.release()
     }
 
     const cleanups: Promise<void>[] = []

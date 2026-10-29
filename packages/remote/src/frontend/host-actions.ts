@@ -3,12 +3,16 @@
  * @module @ephemeral-ai/mayfly/frontend/host-actions
  */
 import type {
-  BeginSubmissionInput, ISessions, SessionFace, SessionReference,
+  BeginSubmissionInput, ISessions, SessionFace, SessionReference, SessionSearchResultItem,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { PromptContentPart } from '@deepseek-ai/dsh-api-session-controller/types'
+import type {
+  ClientRemote, ModelSelection, RemoteResult,
+} from '@deepseek-ai/dsh-api-remotes/client'
 import type { HostClient, HostKey, SessionRef } from '../client/types.ts'
 import {
   HostNotAttachedError, HostRegistry, mayflySessionReferenceSource,
+  type HostViewLease, type HostViewRole,
 } from './host-registry.ts'
 
 /** Options for one Host Session creation, matching the official Session service. */
@@ -20,6 +24,20 @@ export interface HostPromptInput extends BeginSubmissionInput {
   readonly content: PromptContentPart[]
   /** Cancels only acquisition/admission transport; it never cancels the remote Agent turn. */
   readonly signal?: AbortSignal
+}
+
+/** Options for forking an exact source Session through ClientSessions. */
+export type HostSessionForkOptions = Omit<Parameters<ISessions['fork']>[0], 'sessionId'>
+
+/** One Host-namespaced Session content-search result. */
+export interface HostSessionSearchItem extends SessionSearchResultItem {
+  readonly ref: SessionRef
+}
+
+/** Bounded Host Session search response. */
+export interface HostSessionSearchValue {
+  readonly items: HostSessionSearchItem[]
+  readonly hasMore: boolean
 }
 
 /** Routes navigation and Session behavior through Host-namespaced official references. */
@@ -69,6 +87,16 @@ export class HostActions {
     })
   }
 
+  /** Retain an independent view-role binding without changing the primary selection. */
+  retainView(ref: SessionRef, role: HostViewRole): HostViewLease {
+    return this.registry.retainView(ref, role)
+  }
+
+  /** Force-close one view role, invalidating its leases without affecting other Sessions or roles. */
+  closeView(ref: SessionRef, role: HostViewRole): void {
+    this.registry.closeView({ ref, role })
+  }
+
   /**
    * Create a Host Session once. The new identity is not selected implicitly and is never replayed on failure.
    * @param host - owning Host identity.
@@ -77,6 +105,41 @@ export class HostActions {
    */
   create(host: HostKey, options?: HostSessionCreateOptions): Promise<SessionRef> {
     return this.host(host).sessions.create(options).then(sessionId => Object.freeze({ host, sessionId }))
+  }
+
+  /** Refresh one Host's official Session catalog without creating a parallel list. */
+  refresh(host: HostKey): Promise<void> {
+    return this.host(host).sessions.refresh()
+  }
+
+  /** Retry the official projection read for one Session without opening its conversation. */
+  refreshProjections(ref: SessionRef): Promise<void> {
+    return this.host(ref.host).sessions.refreshProjections(ref.sessionId)
+  }
+
+  /**
+   * Search one Host's message index and namespace every result with that Host.
+   * @param ref - any identity on the Host to search.
+   * @param query - non-blank literal phrase.
+   * @param signal - cancellation for a superseded search.
+   * @returns the official bounded result with Host-safe identities.
+   */
+  async search(ref: SessionRef, query: string, signal: AbortSignal): Promise<RemoteResult<HostSessionSearchValue>> {
+    const result = await this.host(ref.host).sessions.search(query, signal)
+    if (!result.ok) return result
+    return {
+      ok: true,
+      value: {
+        hasMore: result.value.hasMore,
+        items: result.value.items.map(item => ({ ...item, ref: Object.freeze({ host: ref.host, sessionId: item.sessionId }) })),
+      },
+    }
+  }
+
+  /** Fork an exact source prefix once; the child is catalogued but not selected implicitly. */
+  fork(ref: SessionRef, options: HostSessionForkOptions = {}): Promise<SessionRef> {
+    return this.host(ref.host).sessions.fork({ ...options, sessionId: ref.sessionId })
+      .then(sessionId => Object.freeze({ host: ref.host, sessionId }))
   }
 
   /**
@@ -92,6 +155,7 @@ export class HostActions {
         mode: input.mode,
         text: input.text,
         attachments: input.attachments,
+        ...(input.onAccept === undefined ? {} : { onAccept: input.onAccept }),
         ...(input.onRetire === undefined ? {} : { onRetire: input.onRetire }),
       })
       try {
@@ -101,6 +165,37 @@ export class HostActions {
         throw error
       }
     })
+  }
+
+  /** Steer the running turn once through the official prompt admission path. */
+  steer(ref: SessionRef, input: Omit<HostPromptInput, 'mode'>): ReturnType<SessionFace['prompt']> {
+    return this.prompt(ref, { ...input, mode: 'steer' })
+  }
+
+  /** Apply one edit, remove, or steer action to a pending official Inbox occurrence. */
+  updateQueue(
+    ref: SessionRef,
+    itemId: Parameters<SessionFace['updateQueue']>[0],
+    action: Parameters<SessionFace['updateQueue']>[1],
+  ): ReturnType<SessionFace['updateQueue']> {
+    return this.using(ref, undefined, session => session.updateQueue(itemId, action))
+  }
+
+  /** Resolve authenticated, Host-issued image bytes through the exact Session permission scope. */
+  readAttachment(
+    ref: SessionRef,
+    attachment: Parameters<SessionFace['readAttachment']>[0],
+  ): ReturnType<SessionFace['readAttachment']> {
+    return this.using(ref, undefined, session => session.readAttachment(attachment))
+  }
+
+  /** Select the provider, model, and optional reasoning effort for one exact Session. */
+  selectModel(ref: SessionRef, selection: ModelSelection): ReturnType<ClientRemote['session']['selectModel']> {
+    const client = this.host(ref.host)
+    return this.using(ref, undefined, () => client.remote.session.selectModel({
+      sessionId: ref.sessionId,
+      ...selection,
+    }))
   }
 
   /**
@@ -132,29 +227,41 @@ export class HostActions {
     return this.using(ref, undefined, session => session.command(line))
   }
 
-  /**
-   * Read the current Host command catalog while retaining the exact Session generation.
-   * @param ref - Host-namespaced Session identity.
-   * @returns the Host's current command descriptors.
-   */
-  async listCommands(ref: SessionRef): Promise<readonly { readonly name: string, readonly description: string }[]> {
+  /** Read the official command catalog with its structured failure branch intact. */
+  commandCatalog(ref: SessionRef): ReturnType<ClientRemote['commands']['list']> {
     const client = this.host(ref.host)
-    return await this.using(ref, undefined, async () => {
-      const result = await client.remote.commands.list(ref.sessionId)
-      if (!result.ok) throw new Error(result.error.message)
-      return result.value
-    })
+    return this.using(ref, undefined, () => client.remote.commands.list(ref.sessionId))
   }
 
-  /**
-   * Read the Host-advertised model route used before a Session has its own selection.
-   * @param host - owning Host identity.
-   * @returns the default provider and model.
-   */
+  /** Read command descriptors for the current minimal command panel. */
+  async listCommands(ref: SessionRef): Promise<readonly { readonly name: string, readonly description: string }[]> {
+    const result = await this.commandCatalog(ref)
+    if (!result.ok) throw result.error
+    return result.value
+  }
+
+  /** Read the complete official model catalog and its per-provider failures. */
+  modelCatalog(host: HostKey): ReturnType<ClientRemote['session']['modelCatalog']> {
+    return this.host(host).remote.session.modelCatalog()
+  }
+
+  /** Read the Host-advertised model route used before a Session has its own selection. */
   async defaultModel(host: HostKey): Promise<{ readonly provider: string, readonly model: string }> {
-    const result = await this.host(host).remote.session.modelCatalog()
-    if (!result.ok) throw new Error(result.error.message)
+    const result = await this.modelCatalog(host)
+    if (!result.ok) throw result.error
     return result.value.default
+  }
+
+  /** List human-invocable Skills for the exact Session composition. */
+  listSkills(ref: SessionRef, signal?: AbortSignal): ReturnType<ClientRemote['skills']['list']> {
+    const client = this.host(ref.host)
+    return this.using(ref, signal, () => client.remote.skills.list({ sessionId: ref.sessionId }, signal))
+  }
+
+  /** Search Host file references through the exact Session permission scope. */
+  listFileReferences(ref: SessionRef, query: string, signal?: AbortSignal): ReturnType<ClientRemote['fileReferences']['list']> {
+    const client = this.host(ref.host)
+    return this.using(ref, signal, () => client.remote.fileReferences.list(ref.sessionId, query, signal))
   }
 
   /**
