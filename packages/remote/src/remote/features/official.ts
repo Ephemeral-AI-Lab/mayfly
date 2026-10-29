@@ -6,6 +6,7 @@
 import type {} from '@deepseek-ai/dsh-goal/remote'
 import type {} from '@deepseek-ai/dsh-schedule/remote'
 import type {} from '@deepseek-ai/dsh-api-job-controller/remote'
+import type {} from '../../client/remote-face.ts'
 
 export type {
   JobFollowFrame,

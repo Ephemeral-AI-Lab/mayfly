@@ -23,7 +23,7 @@ import {
 import { isRemoteFeatureSelection } from '../interactions/selection.ts'
 import { RemoteFeatureLifecycle } from './lifecycle.ts'
 import { RemoteJobFollowReader } from './jobs-follow.ts'
-import type { JobKillValue, JobView } from './official.ts'
+import type { JobView } from './official.ts'
 
 const DONE_LINGER_MS = 5_000
 
@@ -75,7 +75,7 @@ class RemoteJobsController {
   private readonly options: RemoteFeatureContext
   private readonly t: MayflyTranslate
   private readonly lifecycle: RemoteFeatureLifecycle
-  private readonly source: RemoteJobSource<JobView, JobView['id'], JobKillValue>
+  private readonly source: RemoteJobSource
   private readonly offSource: () => void
   private readonly pane: MayflyPaneRegistration
   private readonly history = new Map<string, JobView>()
@@ -97,13 +97,7 @@ class RemoteJobsController {
     this.options = options
     this.t = memoizedLocaleTranslator(options.ctx, 'remote-jobs').translate
     this.lifecycle = new RemoteFeatureLifecycle(options, this.attach)
-    this.source = new RemoteJobSource((ref, id) => {
-      const current = options.hosts.current()
-      if (current === undefined || !isRemoteFeatureSelection(current, current.client, ref)) {
-        return Promise.reject(new Error('The selected Session changed before the Job stop'))
-      }
-      return current.client.remote.job.kill({ sessionId: ref.sessionId, jobId: id })
-    })
+    this.source = new RemoteJobSource()
     this.offSource = this.source.subscribe(this.publish)
     this.pane = options.ctx.mayflyPanes.register({
       id: 'mayfly.view.jobs',
@@ -155,16 +149,13 @@ class RemoteJobsController {
     if (current === undefined) {
       this.browser?.close()
       this.detail?.close()
-      void this.source.attach(null, undefined, undefined)
+      void this.source.attach(null)
     } else {
       this.stopEvents = current.binding.eventSource.subscribe(() => {
         if (this.lifecycle.owns(generation)) this.readEvents(current)
       })
       this.readEvents(current)
-      void this.source.attach(current.client, current.ref, {
-        name: 'Remote Job roster',
-        open: signal => current.client.remote.job.list({ sessionId: current.ref.sessionId }, signal),
-      }).catch((error: unknown) => {
+      void this.source.attach(current.client, current.ref).catch((error: unknown) => {
         if (this.lifecycle.owns(generation)) this.options.notice.set(error instanceof Error ? error.message : String(error))
       })
     }
@@ -284,10 +275,7 @@ class RemoteJobsController {
   private async refreshRoster(): Promise<void> {
     const current = this.options.hosts.current()
     if (current === undefined) return
-    await this.source.attach(current.client, current.ref, {
-      name: 'Remote Job roster refresh',
-      open: signal => current.client.remote.job.list({ sessionId: current.ref.sessionId }, signal),
-    })
+    await this.source.attach(current.client, current.ref)
   }
 
   private async recheckAndKill(job: JobView): Promise<string | undefined> {
