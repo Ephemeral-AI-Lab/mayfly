@@ -73,7 +73,11 @@ test('every scenario has a known source, real sizes, its marks, and covers globs
       assert.deepEqual(reviewProblems(scenario.review), [], `${name}: review`)
       const checkpoints = new Set(scenario.script.filter(step => step.step === 'checkpoint').map(step => step.name))
       // A focus walk names a checkpoint of its scenario, one that `--keys` adds (runner.mjs captures the keys as `keys`), or another catalog scenario it opens.
-      for (const { how } of scenario.review.focus) assert.ok([...(how.includes('--keys') ? [...checkpoints, 'keys'] : checkpoints)].some(point => how.includes(point)) || Object.keys(CATALOG).some(other => how.includes(other)), `${name}: focus walk "${how}" names none of its checkpoints`)
+      // A scripted scenario's focus walk must name one of its checkpoints; a
+      // manual review has none, so its walks describe owner-driven steps.
+      if (scenario.manual !== true) {
+        for (const { how } of scenario.review.focus) assert.ok([...(how.includes('--keys') ? [...checkpoints, 'keys'] : checkpoints)].some(point => how.includes(point)) || Object.keys(CATALOG).some(other => how.includes(other)), `${name}: focus walk "${how}" names none of its checkpoints`)
+      }
     }
     assert.ok(scenario.sizes.length > 0 && scenario.sizes.every(([cols, rows]) => Number.isInteger(cols) && Number.isInteger(rows) && cols >= 20 && rows >= 10), name)
     for (const glob of scenario.covers) assert.ok(matches(glob), `${name}: ${glob} names no file`)
@@ -83,7 +87,11 @@ test('every scenario has a known source, real sizes, its marks, and covers globs
       const marks = new Set(compile(replay.items, replay.options).filter(action => action.op === 'mark').map(action => action.name))
       for (const step of scenario.script) if (step.step === 'play' && step.until !== undefined) assert.ok(marks.has(step.until), `${name}: no mark ${step.until}`)
     }
-    assert.ok(scenario.script.some(step => step.step === (scenario.perf === undefined ? 'checkpoint' : 'measure') || step.step === 'idle'), `${name} captures nothing`)
+    // A manual review is driven by the owner against a supplied external Host;
+    // it has no script and captures no checkpoint of its own.
+    if (scenario.manual !== true) {
+      assert.ok(scenario.script.some(step => step.step === (scenario.perf === undefined ? 'checkpoint' : 'measure') || step.step === 'idle'), `${name} captures nothing`)
+    }
   }
 })
 

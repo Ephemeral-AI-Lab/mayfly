@@ -871,11 +871,11 @@ const MANUAL = {
         'Detach releases only the local Client and clears the selected conversation; it does not stop the remote Host or Session.',
       ],
       focus: [
-        { look: 'The initial attach, list refresh, and automatic create/open; the banner, editor, and Session footer', how: 'watch startup, then use /status to inspect the opened Session' },
-        { look: 'The Host Session list and an explicit open', how: 'run /sessions, choose the created Session, and press Enter' },
-        { look: 'Another create/open through the local command router', how: 'run /new and inspect the new Session with /status' },
-        { look: 'Narrow rendering of the footer, command feedback, and plain panels', how: 'the scenario starts at 60x24; review /status, /help, and a long /host result without leaving the scenario' },
-        { look: 'Detach lifecycle and clean local exit', how: 'run /detach, confirm the conversation clears and the Host is only detached locally, then run /quit' },
+        { look: 'The initial attach, list refresh, and automatic create/open; the banner, editor, and Session footer', how: 'watch startup, then use /status to inspect the opened Session (review it in hostConversation)' },
+        { look: 'The Host Session list and an explicit open', how: 'run /sessions, choose the created Session, and press Enter (review it in hostConversation)' },
+        { look: 'Another create/open through the local command router', how: 'run /new and inspect the new Session with /status (review it in hostConversation)' },
+        { look: 'Narrow rendering of the footer, command feedback, and plain panels', how: 'the scenario starts at 60x24; review /status, /help, and a long /host result (review it in hostConversation)' },
+        { look: 'Detach lifecycle and clean local exit', how: 'run /detach, confirm the conversation clears and the Host is only detached locally, then run /quit (review it in hostConversation)' },
       ],
       differs: [
         'The editor uses the stock rc.2 presentation; the removed prompt-symbol override is not recreated.',

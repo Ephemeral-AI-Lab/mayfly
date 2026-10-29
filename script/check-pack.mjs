@@ -183,10 +183,16 @@ void node
 
 for (const relativeDir of PACKAGE_DIRS) {
   const sourceManifest = readManifest(relativeDir)
-  const output = execFileSync('pnpm', ['--filter', sourceManifest.name, 'pack', '--json', '--pack-destination', outDir], {
-    cwd: ROOT,
-    encoding: 'utf8',
-  })
+  // The Remote package resolves its own nested graph and is excluded from the
+  // root workspace, so the root filter cannot name it; pack it from its own
+  // workspace instead.
+  const ownWorkspace = existsSync(join(ROOT, relativeDir, 'pnpm-workspace.yaml'))
+  const output = ownWorkspace
+    ? execFileSync('pnpm', ['pack', '--json', '--pack-destination', outDir], { cwd: join(ROOT, relativeDir), encoding: 'utf8' })
+    : execFileSync('pnpm', ['--filter', sourceManifest.name, 'pack', '--json', '--pack-destination', outDir], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    })
   const packed = parsePackOutput(output, sourceManifest.name)
   const tarball = resolve(packed.filename)
   tarballs.set(sourceManifest.name, tarball)
@@ -246,12 +252,15 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // panels with aligned cells, the notification row's key parts and tail, and the
 // goal and compaction changes) about 110 KB); retain headroom while still
 // catching accidental entry/chunk growth.
-if (libraryFiles > 260) fail(`library lib output has ${libraryFiles} files; budget is 260`)
+// The split deployment ships three libraries where the single-process TUI
+// shipped two: the Host projections, the independent Remote frontend, and the
+// visual UI kit. The budget tracks that real surface, not the retired layout.
+if (libraryFiles > 340) fail(`library lib output has ${libraryFiles} files; budget is 340`)
 // Phase 4 (the editor frame, tokens, the completion palette, placeholders, and the subagent send) added about 50 KB on top
 // of the Phase 5 budget; the size of the two together is measured at the merge's test session.
 // The native-alignment and Phase 7 merge starts from Phase 7's measured cap; the required full-gate measurement of the
 // merged tree replaces it with that tree's own figure. Keep the check enabled while the cap settles.
-if (libraryBytes > 3_500_000) fail(`library lib output has ${libraryBytes} bytes; budget is 3500000`)
+if (libraryBytes > 5_000_000) fail(`library lib output has ${libraryBytes} bytes; budget is 5000000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

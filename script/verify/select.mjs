@@ -133,7 +133,9 @@ export function classifyChanges(inputFiles, { graph = repositoryGraph() } = {}) 
   const scenarioWhy = selectScenarios(graph, files)
   Object.assign(why, scenarioWhy)
   const selected = Object.keys(scenarioWhy).map(key => key.slice('scenario '.length))
-  const scenarios = selected.filter(name => CATALOG[name].perf === undefined)
+  // A manual review has no goldens and is judged by the owner against an
+  // external Host, so it never joins the automated scenario run.
+  const scenarios = selected.filter(name => CATALOG[name].perf === undefined && CATALOG[name].manual !== true)
   const perf = selected.filter(name => CATALOG[name].perf !== undefined)
 
   const plan = {
