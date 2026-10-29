@@ -183,6 +183,9 @@ importers:
 
   packages/host:
     dependencies:
+      '@deepseek-ai/dsh-util-values':
+        specifier: 0.2.2-alpha.2
+        version: 0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)
       '@deepseek-ai/dsh-web-app':
         specifier: 0.2.2-alpha.2
         version: 0.2.2-alpha.2(8cb41c6174fe57f3e9619a7cd15f5f66)
@@ -199,6 +202,12 @@ importers:
       '@deepseek-ai/dsh':
         specifier: 0.2.2-alpha.2
         version: 0.2.2-alpha.2(3e4497e65a4f597802a72475aa35a746)
+      '@deepseek-ai/dsh-agent':
+        specifier: 0.2.2-alpha.2
+        version: 0.2.2-alpha.2(c09e321863b8ebb6167f522cda8f63dc)
+      '@deepseek-ai/dsh-api-session-controller':
+        specifier: 0.2.2-alpha.2
+        version: 0.2.2-alpha.2(e3aac75262e4bc23dc1275e2458005b7)
       '@deepseek-ai/dsh-client-connection':
         specifier: 0.2.2-alpha.2
         version: 0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-scope@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1))
@@ -220,6 +229,12 @@ importers:
       '@deepseek-ai/dsh-session-projection':
         specifier: 0.2.2-alpha.2
         version: 0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-session@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-scope@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)))
+      '@deepseek-ai/dsh-tool-workflow':
+        specifier: 0.2.2-alpha.2
+        version: 0.2.2-alpha.2(ded1aaa15f03108588d6c7301f59addf)
+      '@deepseek-ai/dsh-tools':
+        specifier: 0.2.2-alpha.2
+        version: 0.2.2-alpha.2(d570a50fd9051dfa7084c71da173b036)
       '@deepseek-ai/dsh-typert-generator':
         specifier: 0.2.2-alpha.2
         version: 0.2.2-alpha.2(patch_hash=01bfcc96558f78b2dbd7af1ed99b220d28f2d70e1898a83fc03e7da3fa0076ea)(@deepseek-ai/cordis@4.0.6-alpha.1)
@@ -229,6 +244,12 @@ importers:
       '@deepseek-ai/dsh-user-questions':
         specifier: 0.2.2-alpha.2
         version: 0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-agent@0.2.2-alpha.2(c09e321863b8ebb6167f522cda8f63dc))(@deepseek-ai/dsh-llm@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1))(@deepseek-ai/dsh-scope@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1))(@deepseek-ai/dsh-session-projection@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-session@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-scope@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1))))(@deepseek-ai/dsh-session@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-scope@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)))(@deepseek-ai/dsh-typert-protocol@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1))
+      '@deepseek-ai/dsh-workflow':
+        specifier: 0.2.2-alpha.2
+        version: 0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-agent@0.2.2-alpha.2(c09e321863b8ebb6167f522cda8f63dc))(@deepseek-ai/dsh-brand@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1))(@deepseek-ai/dsh-llm@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1))(@deepseek-ai/dsh-session@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-scope@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)))
+      '@deepseek-ai/dsh-working-directory':
+        specifier: 0.2.2-alpha.2
+        version: 0.2.2-alpha.2(d5be6689d1b436c4ecc42e3e1a3e2260)
 
   packages/mayfly:
     dependencies:
