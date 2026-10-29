@@ -22,11 +22,24 @@ function sessionRef(host: HostKey, id = 'shared'): SessionRef {
 
 function makeReference(id: SessionId, ready?: Promise<SessionBinding>): SessionReference {
   const binding = { sessionId: id } as SessionBinding
+  const readiness = Promise.withResolvers<SessionBinding>()
+  if (ready === undefined) readiness.resolve(binding)
+  else void ready.then(readiness.resolve, readiness.reject)
+  let released = false
   const reference: SessionReference = {
     sessionId: id,
-    binding,
-    ready: ready ?? Promise.resolve(binding),
-    release: vi.fn(),
+    get binding() {
+      if (released) throw new Error(`Session reference "${id}" is released`)
+      return binding
+    },
+    ready: readiness.promise,
+    release: vi.fn(() => {
+      if (released) return
+      released = true
+      // The official reference rejects its readiness when released, which is
+      // how detach unblocks an in-flight commitSelection await.
+      readiness.reject(new Error(`Session reference "${id}" is released`))
+    }),
     [Symbol.dispose]: () => { reference.release() },
   }
   return reference
@@ -170,11 +183,8 @@ describe('HostRegistry', () => {
 
     await registry.select(sessionRef(hostA, 'initial'))
     const lateSelect = registry.select(sessionRef(hostA))
-    const selectedRef = await registry.select(sessionRef(hostB))
-    expect(selectedRef).toEqual(sessionRef(hostB))
-    expect(registry.current).toBe(selectedRef)
-    expect(registry.currentReference).toBe(selected)
-    expect(initial.release).toHaveBeenCalledOnce()
+    await vi.waitFor(() => { expect(retainA).toHaveBeenCalledTimes(2) })
+    const committing = registry.select(sessionRef(hostB))
 
     const lateRejection = expect(lateSelect).rejects.toMatchObject({
       name: 'HostOperationSupersededError', operation: 'select', host: hostA,
@@ -183,7 +193,12 @@ describe('HostRegistry', () => {
     await lateRejection
     expect(lateReference.release).toHaveBeenCalledOnce()
     expect(selected.release).not.toHaveBeenCalled()
-    expect(registry.current).toEqual(sessionRef(hostB))
+
+    const selectedRef = await committing
+    expect(selectedRef).toEqual(sessionRef(hostB))
+    expect(registry.current).toBe(selectedRef)
+    expect(registry.currentReference).toBe(selected)
+    expect(initial.release).toHaveBeenCalledOnce()
 
     await expect(registry.select(sessionRef(hostB))).resolves.toBe(selectedRef)
     expect(retainB).toHaveBeenCalledOnce()
@@ -199,17 +214,19 @@ describe('HostRegistry', () => {
     const firstReference = makeReference(sessionId('first'), firstReady.promise)
     const secondReference = makeReference(sessionId('second'), secondReady.promise)
     const references = [firstReference, secondReference]
-    const client = makeHost(host, () => references.shift()!)
+    const retain = vi.fn(() => references.shift()!)
+    const client = makeHost(host, retain)
     const registry = new HostRegistry(() => client.client)
     await registry.attach(host)
 
     const first = registry.select(sessionRef(host, 'first'))
+    await vi.waitFor(() => { expect(retain).toHaveBeenCalledOnce() })
     const second = registry.select(sessionRef(host, 'second'))
     secondReady.resolve(secondReference.binding)
-    await expect(second).resolves.toEqual(sessionRef(host, 'second'))
-    const firstRejection = expect(first).rejects.toBeInstanceOf(HostOperationSupersededError)
     firstReady.resolve(firstReference.binding)
+    const firstRejection = expect(first).rejects.toBeInstanceOf(HostOperationSupersededError)
     await firstRejection
+    await expect(second).resolves.toEqual(sessionRef(host, 'second'))
 
     expect(firstReference.release).toHaveBeenCalledOnce()
     expect(secondReference.release).not.toHaveBeenCalled()
@@ -292,21 +309,23 @@ describe('HostRegistry', () => {
     const readyB = deferred<SessionBinding>()
     const referenceA = makeReference(sessionId('shared'), readyA.promise)
     const referenceB = makeReference(sessionId('shared'), readyB.promise)
-    const a = makeHost(hostA, () => referenceA)
-    const b = makeHost(hostB, () => referenceB)
+    const retainA = vi.fn(() => referenceA)
+    const retainB = vi.fn(() => referenceB)
+    const a = makeHost(hostA, retainA)
+    const b = makeHost(hostB, retainB)
     const clients = new Map([[hostA, a.client], [hostB, b.client]])
     const registry = new HostRegistry(key => clients.get(key)!)
     await Promise.all([registry.attach(hostA), registry.attach(hostB)])
 
     const selectingA = registry.select(sessionRef(hostA))
+    await vi.waitFor(() => { expect(retainA).toHaveBeenCalledOnce() })
     const selectingB = registry.select(sessionRef(hostB))
     const detachedA = registry.detach(hostA)
     expect(referenceA.release).toHaveBeenCalledOnce()
     expect(referenceB.release).not.toHaveBeenCalled()
+    const staleA = expect(selectingA).rejects.toThrow('released')
     readyB.resolve(referenceB.binding)
-    await selectingB
-    const staleA = expect(selectingA).rejects.toBeInstanceOf(HostOperationSupersededError)
-    readyA.resolve(referenceA.binding)
+    await expect(selectingB).resolves.toEqual(sessionRef(hostB))
     await staleA
     await detachedA
 

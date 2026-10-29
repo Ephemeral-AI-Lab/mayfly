@@ -28,7 +28,10 @@ describe('createHostClient assembly failures', () => {
       sessions: missing === 'sessions' ? empty() : { inject: [], apply: (ctx: Context) => { ctx.provide('sessions', {}) } },
       workspaces: missing === 'workspaces' ? empty() : { inject: [], apply: (ctx: Context) => { ctx.provide('workspaces', {}) } },
     })
-    await expect(createHostClient({ key: HostKey('local'), startupUrl: 'http://example.test/?token=secret' }))
-      .rejects.toThrow('did not provide its object layer')
+    const expected = missing === 'connection'
+      ? 'did not provide its Connection'
+      : 'did not provide its object layer'
+    await expect(createHostClient({ key: HostKey('local'), startupUrl: 'http://127.0.0.1:3080/?token=secret' }))
+      .rejects.toThrow(expected)
   })
 })

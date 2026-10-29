@@ -78,7 +78,7 @@ describe('NodeConnectionTransport', () => {
     let generation = 0
     const sockets: FakeSocket[] = []
     const unaryCookies: Array<string | null> = []
-    const transport = new NodeConnectionTransport('http://example.test/?token=secret', {
+    const transport = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
       fetch: (input, init) => {
         if (requestUrl(input).pathname === '/connect') {
           generation++
@@ -93,11 +93,11 @@ describe('NodeConnectionTransport', () => {
         return socket
       },
     })
-    const first = transport.createWebSocket('ws://example.test/api/remote.mux')
+    const first = transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     await vi.waitFor(() => { expect(sockets).toHaveLength(1) })
     sockets[0]!.open()
     await transport.fetch('api/one', {})
-    const second = transport.createWebSocket('ws://example.test/api/remote.mux')
+    const second = transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     await vi.waitFor(() => { expect(sockets).toHaveLength(2) })
     sockets[1]!.open()
     await vi.waitFor(() => { expect(sockets[0]!.readyState).toBe(3) })
@@ -117,7 +117,7 @@ describe('NodeConnectionTransport', () => {
     const exchanges: Array<PromiseWithResolvers<Response>> = []
     const sockets: Array<{ cookie: string }> = []
     const unaryCookies: Array<string | null> = []
-    const transport = new NodeConnectionTransport('http://example.test/?token=secret', {
+    const transport = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
       fetch: (input, init) => {
         if (requestUrl(input).pathname === '/connect') {
           const exchange = Promise.withResolvers<Response>()
@@ -132,10 +132,10 @@ describe('NodeConnectionTransport', () => {
         return new FakeSocket()
       },
     })
-    transport.createWebSocket('ws://example.test/api/remote.mux')
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     await vi.waitFor(() => { expect(exchanges).toHaveLength(1) })
     const pendingUnary = transport.fetch('api/current', {})
-    transport.createWebSocket('ws://example.test/api/remote.mux')
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     expect(exchanges).toHaveLength(1)
     exchanges[0]!.resolve(connectResponse('dsh=old'))
     await vi.waitFor(() => { expect(exchanges).toHaveLength(2) })
@@ -152,7 +152,7 @@ describe('NodeConnectionTransport', () => {
     const unaryCalls: Array<PromiseWithResolvers<Response>> = []
     const sockets: FakeSocket[] = []
     let generation = 0
-    const transport = new NodeConnectionTransport('http://example.test/?token=secret', {
+    const transport = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
       fetch: input => {
         if (requestUrl(input).pathname === '/connect') {
           generation++
@@ -167,11 +167,11 @@ describe('NodeConnectionTransport', () => {
         return socket
       },
     })
-    transport.createWebSocket('ws://example.test/api/remote.mux')
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     await vi.waitFor(() => { expect(sockets).toHaveLength(1) })
     const pending = transport.fetch('api/slow', {})
     await vi.waitFor(() => { expect(unaryCalls).toHaveLength(1) })
-    transport.createWebSocket('ws://example.test/api/remote.mux')
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     unary.resolve(new Response('old'))
     await expect(pending).rejects.toThrow('superseded connection')
     await vi.waitFor(() => { expect(sockets).toHaveLength(2) })
@@ -180,16 +180,16 @@ describe('NodeConnectionTransport', () => {
 
   it('drops a socket whose resolved credential was superseded before attachment', async () => {
     const socketFactory = vi.fn(() => new FakeSocket())
-    const transport = new NodeConnectionTransport('http://example.test/?token=secret', {
+    const transport = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
       fetch: input => Promise.resolve(requestUrl(input).pathname === '/connect'
         ? connectResponse()
         : new Response('ok')),
       createWebSocket: socketFactory,
     })
     await transport.fetch('api/authenticate', {})
-    transport.createWebSocket('ws://example.test/api/remote.mux')
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     const pending = transport.fetch('api/current', {})
-    transport.createWebSocket('ws://example.test/api/remote.mux')
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     await pending
     await vi.waitFor(() => { expect(socketFactory).toHaveBeenCalledOnce() })
     await transport.detach()
@@ -198,18 +198,18 @@ describe('NodeConnectionTransport', () => {
   it('closes a physical socket superseded reentrantly by its factory', async () => {
     const sockets: FakeSocket[] = []
     let transport: NodeConnectionTransport
-    transport = new NodeConnectionTransport('http://example.test/?token=secret', {
+    transport = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
       fetch: input => Promise.resolve(requestUrl(input).pathname === '/connect'
         ? connectResponse()
         : new Response('ok')),
       createWebSocket: () => {
         const socket = new FakeSocket()
         sockets.push(socket)
-        if (sockets.length === 1) transport.createWebSocket('ws://example.test/api/remote.mux')
+        if (sockets.length === 1) transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
         return socket
       },
     })
-    transport.createWebSocket('ws://example.test/api/remote.mux')
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     await vi.waitFor(() => { expect(sockets).toHaveLength(2) })
     await vi.waitFor(() => { expect(sockets[0]!.readyState).toBe(3) })
     await transport.detach()
@@ -218,20 +218,20 @@ describe('NodeConnectionTransport', () => {
   it('closes a raw socket attached after its wrapper was cancelled', async () => {
     const raw = new FakeSocket()
     let wrapper: ReturnType<NodeConnectionTransport['createWebSocket']> | undefined
-    const transport = new NodeConnectionTransport('http://example.test/?token=secret', {
+    const transport = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
       fetch: () => Promise.resolve(connectResponse()),
       createWebSocket: () => {
         wrapper?.close()
         return raw
       },
     })
-    wrapper = transport.createWebSocket('ws://example.test/api/remote.mux')
+    wrapper = transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     await vi.waitFor(() => { expect(raw.readyState).toBe(3) })
     await transport.detach()
   })
 
   it('handles detach on both sides of a unary await', async () => {
-    const afterAuth = new NodeConnectionTransport('http://example.test/?token=secret', {
+    const afterAuth = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
       fetch: input => Promise.resolve(requestUrl(input).pathname === '/connect'
         ? connectResponse()
         : new Response('ok')),
@@ -243,15 +243,23 @@ describe('NodeConnectionTransport', () => {
 
     const response = Promise.withResolvers<Response>()
     const slow = vi.fn()
-    const duringFetch = new NodeConnectionTransport('http://example.test/?token=secret', {
-      fetch: input => {
+    const duringFetch = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
+      fetch: (input, init) => {
         if (requestUrl(input).pathname === '/connect') return Promise.resolve(connectResponse())
         slow()
-        return response.promise
+        // A real fetch rejects when the caller's transport lifetime aborts; the
+        // fake must honour the signal or detach's local-quiescence await waits
+        // on a response the test itself resolves after detach.
+        return new Promise<Response>((resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The operation was aborted.', 'AbortError'))
+          }, { once: true })
+          void response.promise.then(resolve, reject)
+        })
       },
       createWebSocket: () => new FakeSocket(),
     })
-    duringFetch.createWebSocket('ws://example.test/api/remote.mux')
+    duringFetch.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     const request = duringFetch.fetch('api/slow', {})
     await vi.waitFor(() => { expect(slow).toHaveBeenCalledOnce() })
     await duringFetch.detach()
@@ -260,11 +268,11 @@ describe('NodeConnectionTransport', () => {
   })
 
   it('surfaces socket factory failures and rejects missing or malformed cookies', async () => {
-    const transport = new NodeConnectionTransport('http://example.test/?token=secret', {
+    const transport = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
       fetch: () => Promise.resolve(connectResponse()),
       createWebSocket: () => { throw new Error('factory failed') },
     })
-    const socket = transport.createWebSocket('ws://example.test/api/remote.mux')
+    const socket = transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     const failure = vi.fn()
     const closed = vi.fn()
     socket.addEventListener('error', failure)
@@ -282,10 +290,10 @@ describe('NodeConnectionTransport', () => {
       status: 302,
       headers: { 'set-cookie': 'not-a-cookie' },
     })]) {
-      const invalid = new NodeConnectionTransport('http://example.test/?token=secret', {
+      const invalid = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
         fetch: () => Promise.resolve(response),
       })
-      await expect(invalid.fetch('api/list', {})).rejects.toThrow('omitted its cookie')
+      await expect(invalid.fetch('api/list', {})).rejects.toThrow('omitted a valid API Peer cookie')
       await invalid.detach()
     }
   })
@@ -293,7 +301,7 @@ describe('NodeConnectionTransport', () => {
   it('aborts an in-flight authentication on detach', async () => {
     const started = vi.fn()
     const socketFactory = vi.fn(() => new FakeSocket())
-    const transport = new NodeConnectionTransport('http://example.test/?token=secret', {
+    const transport = new NodeConnectionTransport('http://127.0.0.1:3080/?token=secret', {
       fetch: (_input, init) => {
         started()
         return new Promise<Response>((_resolve, reject) => {
@@ -302,7 +310,7 @@ describe('NodeConnectionTransport', () => {
       },
       createWebSocket: socketFactory,
     })
-    transport.createWebSocket('ws://example.test/api/remote.mux')
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     await vi.waitFor(() => { expect(started).toHaveBeenCalledOnce() })
     await transport.detach()
     expect(socketFactory).not.toHaveBeenCalled()
@@ -311,11 +319,11 @@ describe('NodeConnectionTransport', () => {
   it('detaches during authentication without allowing a late socket or leaking the token', async () => {
     const exchange = Promise.withResolvers<Response>()
     const socketFactory = vi.fn(() => new FakeSocket())
-    const transport = new NodeConnectionTransport('http://example.test/?token=do-not-print', {
+    const transport = new NodeConnectionTransport('http://127.0.0.1:3080/?token=do-not-print', {
       fetch: () => exchange.promise,
       createWebSocket: socketFactory,
     })
-    const socket = transport.createWebSocket('ws://example.test/api/remote.mux')
+    const socket = transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
     const closing = transport.detach()
     expect(transport.detach()).toBe(closing)
     exchange.resolve(connectResponse())
@@ -323,7 +331,7 @@ describe('NodeConnectionTransport', () => {
     expect(socket.readyState).toBe(3)
     expect(socketFactory).not.toHaveBeenCalled()
     await expect(transport.fetch('api/list', {})).rejects.toThrow('Host Client is detached')
-    expect(() => transport.createWebSocket('ws://example.test/api/remote.mux')).toThrow('Host Client is detached')
+    expect(() => transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')).toThrow('Host Client is detached')
     try {
       await transport.fetch('api/list', {})
     } catch (error) {
@@ -347,30 +355,31 @@ describe('NodeConnectionTransport', () => {
         },
       })
     }
-    const first = makeTransport('first.test')
-    const second = makeTransport('second.test')
-    first.createWebSocket('ws://first.test/api/remote.mux')
-    second.createWebSocket('ws://second.test/api/remote.mux')
+    const first = makeTransport('127.0.0.1')
+    const second = makeTransport('127.0.0.2')
+    first.createWebSocket('ws://127.0.0.1/api/remote.mux')
+    second.createWebSocket('ws://127.0.0.2/api/remote.mux')
     await vi.waitFor(() => {
-      expect(sockets.get('first.test')).toHaveLength(1)
-      expect(sockets.get('second.test')).toHaveLength(1)
+      expect(sockets.get('127.0.0.1')).toHaveLength(1)
+      expect(sockets.get('127.0.0.2')).toHaveLength(1)
     })
     await first.detach()
     await expect(second.fetch('api/list', {})).resolves.toBeInstanceOf(Response)
-    expect(sockets.get('second.test')?.[0]?.readyState).toBe(0)
+    expect(sockets.get('127.0.0.2')?.[0]?.readyState).toBe(0)
     await second.detach()
   })
 
   it('validates startup inputs and sanitizes authentication failures', async () => {
     for (const url of [
-      'http://example.test/',
-      'http://example.test/?token=one&token=two',
-      'ftp://example.test/?token=secret',
-      'http://user:pass@example.test/?token=secret',
+      'http://127.0.0.1:3080/',
+      'http://127.0.0.1:3080/?token=one&token=two',
+      'ftp://127.0.0.1:3080/?token=secret',
+      'http://user:pass@127.0.0.1:3080/?token=secret',
+      'http://example.test/?token=secret',
     ]) {
       expect(() => new NodeConnectionTransport(url)).toThrow()
     }
-    const rejected = new NodeConnectionTransport('http://example.test/?token=very-secret', {
+    const rejected = new NodeConnectionTransport('http://127.0.0.1:3080/?token=very-secret', {
       fetch: input => Promise.reject(new Error(`failed ${String(input)}`)),
     })
     const failure = await rejected.fetch('api/list', {}).catch((error: unknown) => error)
@@ -378,17 +387,17 @@ describe('NodeConnectionTransport', () => {
     expect(String(failure)).not.toContain('very-secret')
     await rejected.detach()
 
-    const unauthorized = new NodeConnectionTransport('http://example.test/connect?token=very-secret', {
+    const unauthorized = new NodeConnectionTransport('http://127.0.0.1:3080/connect?token=very-secret', {
       fetch: () => Promise.resolve(new Response('very-secret', { status: 401 })),
     })
     const status = await unauthorized.fetch('api/list', {}).catch((error: unknown) => error)
-    expect(String(status)).toContain('HTTP 401')
+    expect(String(status)).toContain('Host startup token was rejected')
     expect(String(status)).not.toContain('very-secret')
     await unauthorized.detach()
 
-    const transport = new NodeConnectionTransport('http://example.test/mount/?token=secret')
-    await expect(transport.fetch('https://other.test/api', {})).rejects.toThrow('outside the configured mount')
-    await expect(transport.fetch('../outside', {})).rejects.toThrow('outside the configured mount')
+    const transport = new NodeConnectionTransport('http://127.0.0.1:3080/mount/?token=secret')
+    await expect(transport.fetch('https://other.test/api', {})).rejects.toThrow('outside the configured origin or mount')
+    await expect(transport.fetch('../outside', {})).rejects.toThrow('outside the configured origin or mount')
     await transport.detach()
   })
 })

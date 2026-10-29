@@ -101,6 +101,57 @@ vi.mock('../../src/transcript/remote-model.ts', () => ({
   },
 }))
 
+vi.mock('../../src/remote/side-views.ts', () => ({
+  RemoteSideViews: class {
+    readonly present = vi.fn()
+    readonly close = vi.fn()
+    readonly dispose = vi.fn()
+  },
+}))
+
+vi.mock('../../src/remote/interactions/plain-panels.ts', () => ({
+  RemotePlainPanels: class {},
+}))
+
+vi.mock('../../src/remote/features.ts', () => ({
+  mountRemoteFeatures: vi.fn(() => ({ context: {}, commands: [], dispose: mocks.panelDispose })),
+}))
+
+vi.mock('../../src/remote/features/commands.ts', () => ({
+  mergeRemoteFeatureCommandSources: vi.fn(() => []),
+}))
+
+vi.mock('../../src/remote/configuration-composition.ts', () => ({
+  mountRemoteConfigurationComposition: vi.fn(() => ({ commands: [], dispose: mocks.panelDispose })),
+  remoteClientVersion: vi.fn(() => '0.1.4-rc.2'),
+}))
+
+vi.mock('../../src/remote/operations-composition.ts', () => ({
+  mountRemoteOperationsComposition: vi.fn(() => ({ commands: [], dispose: mocks.panelDispose })),
+}))
+
+vi.mock('../../src/remote/editor-composition.ts', () => ({
+  mountEditorComposition: vi.fn(() => ({
+    controller: {
+      copyText: vi.fn(async () => 'native'),
+      openText: vi.fn(async () => {}),
+      readAttachment: vi.fn(async () => undefined),
+      updateQueue: vi.fn(async () => false),
+      requeue: vi.fn(),
+      restoreQueued: vi.fn(),
+    },
+    dispose: mocks.panelDispose,
+  })),
+}))
+
+vi.mock('../../src/remote/host-composition.ts', () => ({
+  attachMayflyHostClient: vi.fn(),
+  resolveMayflyToolPresentation: vi.fn(() => ({
+    presentationRevision: 'test:test:test',
+    present: vi.fn(),
+  })),
+}))
+
 vi.mock('@ephemeral-ai/mayfly/transcript', () => ({
   TranscriptController: class {
     readonly setView = vi.fn((_name: string, source: () => unknown) => { mocks.transcriptSource = source })
@@ -128,9 +179,13 @@ vi.mock('@ephemeral-ai/mayfly/core', () => ({
     })
     ctx.provide('mayflyComponents', {})
     ctx.provide('mayflyTheme', { colors: {} })
+    ctx.provide('mayflyUiImages', { provide: vi.fn(() => vi.fn()) })
   },
 }))
-vi.mock('@ephemeral-ai/mayfly/frontend', () => ({ name: 'frontend', apply: () => {}, Config: undefined, inject: [] }))
+vi.mock('@ephemeral-ai/mayfly/frontend', () => ({
+  name: 'frontend', apply: () => {}, Config: undefined, inject: [],
+  interpolateLocaleMessage: (key: string) => key,
+}))
 vi.mock('@ephemeral-ai/mayfly/theme-dark', () => ({ name: 'theme-dark', apply: () => {}, Config: undefined, inject: [] }))
 vi.mock('@ephemeral-ai/mayfly-ui/provider', () => ({ name: 'ui-provider', apply: () => {}, Config: undefined, inject: [] }))
 

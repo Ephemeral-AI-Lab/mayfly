@@ -10,13 +10,19 @@ const components = {
   truncateToWidth: (text: string, width: number) => text.slice(0, width),
   visibleWidth: (text: string) => text.length,
 } as MayflyComponents
+const identity = (text: string): string => text
 const colors = {
-  primary: (text: string) => text,
-  accent: (text: string) => text,
-  muted: (text: string) => text,
-  text: (text: string) => text,
-  modelHighlight: (text: string) => text,
-  logoInks: Array.from({ length: 5 }, () => (text: string) => text) as readonly ((text: string) => string)[],
+  primary: identity,
+  accent: identity,
+  border: identity,
+  muted: identity,
+  textMuted: identity,
+  text: identity,
+  success: identity,
+  warning: identity,
+  error: identity,
+  modelHighlight: identity,
+  logoInks: Array.from({ length: 5 }, () => identity) as readonly ((text: string) => string)[],
 } as MayflySemanticColors
 
 function facts(model: string | undefined): RemotePresentationFacts {
@@ -49,12 +55,12 @@ describe('RemoteBannerComponent', () => {
     expect(() => banner.invalidate()).not.toThrow()
   })
 
-  it('uses default provider and unknown directory fallbacks and hides below the minimum width', () => {
+  it('uses default provider and unknown directory fallbacks and hides at zero width', () => {
     const current = facts(undefined)
     const banner = new RemoteBannerComponent(colors, components, () => ({ ...current, provider: undefined, cwd: '' }))
     const rendered = banner.render(100).join('\n')
     expect(rendered).toContain('default · default')
-    expect(rendered).toContain('Directory: unknown')
-    expect(banner.render(20)).toEqual([])
+    expect(rendered).toContain('unknown')
+    expect(banner.render(0)).toEqual([])
   })
 })

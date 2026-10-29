@@ -9,11 +9,62 @@ import type {
 import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { MessageId, ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import type { LlmAttemptId } from '@deepseek-ai/dsh-llm/brand'
+import {
+  foldConversationProjection, initialConversationState, type ConversationProjection,
+} from '@ephemeral-ai/mayfly/conversation'
 import { HostKey } from '../../src/client/types.ts'
 import { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
 import type { ToolPresentationSource } from '@ephemeral-ai/mayfly/transcript'
 
 const tools = { get: () => undefined } as ToolPresentationSource
+
+function projection<T>(initial: T) {
+  let value = initial
+  const listeners = new Set<() => void>()
+  return {
+    getSnapshot: () => value,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    set(next: T) {
+      value = next
+      for (const listener of listeners) listener()
+    },
+  }
+}
+
+/** The Host's `mayflyConversation` wire view folded from the same durable events. */
+function foldConversation(entries: readonly SessionEventLikeEntry[]): ConversationProjection {
+  let state = initialConversationState()
+  for (const entry of entries) {
+    if (entry.type !== 'event') continue
+    state = foldConversationProjection(state, entry.event as never)
+  }
+  return {
+    entries: state.entries,
+    streaming: state.active,
+    settledSteps: state.finalizedSteps,
+    turns: state.turns,
+  }
+}
+
+/** The Host's `contextPressure` projection: prompt-side tokens of the latest assistant step. */
+function contextPressure(entries: readonly SessionEventLikeEntry[]): unknown {
+  for (const entry of entries) {
+    if (entry.type !== 'event' || entry.event.type !== 'assistant/message') continue
+    const usage = (entry.event.data as unknown as {
+      readonly usage?: {
+        readonly inputTokens?: number
+        readonly cacheReadTokens?: number
+        readonly cacheWriteTokens?: number
+      }
+    }).usage
+    if (usage?.inputTokens === undefined) continue
+    return { projectedTokens: usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0) }
+  }
+  return undefined
+}
 
 class TestEventSource implements SessionEventSource {
   private readonly listeners = new Set<() => void>()
@@ -21,6 +72,26 @@ class TestEventSource implements SessionEventSource {
   private hasMore = false
   private revision = 0
   private change: SessionEventChange = { kind: 'replace', entries: [] }
+  private readonly conversation = projection<ConversationProjection>(foldConversation([]))
+  private readonly pressure = projection<unknown>(undefined)
+  private readonly faces = { mayflyConversation: this.conversation, contextPressure: this.pressure }
+
+  /** A Session face carrying the Host projections this source's events would produce. */
+  binding(
+    overrides: Readonly<Record<string, { getSnapshot: () => unknown, subscribe: (listener: () => void) => () => void }>> = {},
+  ): SessionBinding {
+    const faces: Readonly<Record<string, unknown>> = { ...this.faces, ...overrides }
+    const empty = { getSnapshot: () => undefined, subscribe: () => () => {} }
+    return {
+      sessionId: SessionId('session-1'),
+      eventSource: this,
+      session: {
+        getSnapshot: () => ({ running: false }),
+        subscribe: () => () => {},
+        projections: { faceOf: (key: string) => faces[key] ?? empty },
+      },
+    } as unknown as SessionBinding
+  }
 
   getSnapshot() {
     return { entries: this.entries, hasMore: this.hasMore, revision: this.revision, change: this.change }
@@ -62,6 +133,8 @@ class TestEventSource implements SessionEventSource {
   }
 
   private publish(change: SessionEventChange): void {
+    this.conversation.set(foldConversation(this.entries))
+    this.pressure.set(contextPressure(this.entries))
     this.change = change
     this.revision += 1
     for (const listener of this.listeners) listener()
@@ -186,7 +259,7 @@ describe('RemoteConversationModelSource', () => {
     const events = new TestEventSource()
     const publish = vi.fn()
     const source = new RemoteConversationModelSource(tools, publish)
-    source.attach(events)
+    source.attach(events.binding())
     events.append(turn(1, 1))
     events.append(user('question', 2))
     events.append(live('Hel', 1, 2.5, 0))
@@ -209,7 +282,7 @@ describe('RemoteConversationModelSource', () => {
   it('adapts current tool result messages to the existing tool presentation fold', () => {
     const events = new TestEventSource()
     const source = new RemoteConversationModelSource(tools, vi.fn())
-    source.attach(events)
+    source.attach(events.binding())
     events.append(turn(1, 1))
     events.append({
       type: 'event',
@@ -223,15 +296,15 @@ describe('RemoteConversationModelSource', () => {
     events.append(toolResult(3, true))
     expect(source.snapshot().entries.find(entry => entry.kind === 'transcript-tool')).toMatchObject({
       callId: 'call-1',
-      result: { text: 'contents\n[file: a.txt]', isError: true },
+      result: { text: 'contents', isError: true },
     })
     events.append(toolResult(4))
     expect(source.snapshot().entries.find(entry => entry.kind === 'transcript-tool')).toMatchObject({
-      result: { text: 'contents\n[file: a.txt]', isError: false },
+      result: { text: 'contents', isError: false },
     })
   })
 
-  it('adapts durable file blocks and ignores callbacks from a replaced source', () => {
+  it('adapts durable messages and ignores callbacks from a replaced source', () => {
     const events = new TestEventSource()
     const publish = vi.fn()
     let staleListener!: () => void
@@ -241,13 +314,13 @@ describe('RemoteConversationModelSource', () => {
       return subscribe(listener)
     })
     const source = new RemoteConversationModelSource(tools, publish)
-    source.attach(events)
+    source.attach(events.binding())
     events.append(turn(1, 1))
     events.append(user('attachment', 2, true))
     events.append(assistant('attachment', 1, 3, true))
     expect(source.snapshot().entries).toEqual([
-      expect.objectContaining({ kind: 'transcript-user', text: 'attachment\n[file: a.txt]' }),
-      expect.objectContaining({ kind: 'transcript-assistant', text: 'attachment\n[file: a.txt]' }),
+      expect.objectContaining({ kind: 'transcript-user', text: 'attachment' }),
+      expect.objectContaining({ kind: 'transcript-assistant', text: 'attachment' }),
     ])
     source.attach(new TestEventSource())
     const count = publish.mock.calls.length
@@ -258,7 +331,7 @@ describe('RemoteConversationModelSource', () => {
   it('rebuilds on replace and prepend instead of mixing generations', () => {
     const events = new TestEventSource()
     const source = new RemoteConversationModelSource(tools, vi.fn())
-    source.attach(events)
+    source.attach(events.binding())
     events.append(turn(1, 1))
     events.append(user('old', 2))
     const oldGeneration = source.snapshot().generation
@@ -275,7 +348,7 @@ describe('RemoteConversationModelSource', () => {
   it('adapts file block boundaries without changing the transcript semantics', () => {
     const events = new TestEventSource()
     const source = new RemoteConversationModelSource(tools, vi.fn())
-    source.attach(events)
+    source.attach(events.binding())
     events.append(liveBlock('block-start', 1, 2.5))
     events.append(liveBlock('block-end', 1, 2.6))
     expect(source.snapshot().entries).toEqual([])
@@ -285,7 +358,7 @@ describe('RemoteConversationModelSource', () => {
     const events = new TestEventSource()
     const publish = vi.fn()
     const source = new RemoteConversationModelSource(tools, publish)
-    source.attach(events)
+    source.attach(events.binding())
     events.append(turn(1, 1))
     const count = publish.mock.calls.length
     events.replay()
@@ -298,7 +371,7 @@ describe('RemoteConversationModelSource', () => {
     const events = new TestEventSource()
     const publish = vi.fn()
     const source = new RemoteConversationModelSource(tools, publish)
-    source.attach(events)
+    source.attach(events.binding())
     source.attach(null)
     expect(source.snapshot().entries).toEqual([])
     expect(publish).toHaveBeenLastCalledWith(expect.objectContaining({ entries: [] }))
@@ -308,7 +381,7 @@ describe('RemoteConversationModelSource', () => {
     const events = new TestEventSource()
     const publish = vi.fn()
     const source = new RemoteConversationModelSource(tools, publish)
-    source.attach(events)
+    source.attach(events.binding())
     source.dispose()
     const count = publish.mock.calls.length
     events.append(turn(1, 1))
@@ -318,31 +391,9 @@ describe('RemoteConversationModelSource', () => {
 
   it('publishes remote presentation facts and only live command outcomes', () => {
     const events = new TestEventSource()
-    const projection = <T>(initial: T) => {
-      let value = initial
-      const listeners = new Set<() => void>()
-      return {
-        getSnapshot: () => value,
-        subscribe: (listener: () => void) => {
-          listeners.add(listener)
-          return () => { listeners.delete(listener) }
-        },
-        set(next: T) {
-          value = next
-          for (const listener of listeners) listener()
-        },
-      }
-    }
     const title = projection<unknown>(undefined)
     const model = projection<unknown>({ next: null, lastUsed: { model: 'deepseek-chat', provider: 'deepseek' } })
-    const binding = {
-      eventSource: events,
-      session: {
-        getSnapshot: () => ({ running: false }),
-        subscribe: () => () => {},
-        projections: { faceOf: (key: string) => key === 'title' ? title : model },
-      },
-    } as unknown as SessionBinding
+    const binding = events.binding({ title, modelSelection: model })
     const onPresentation = vi.fn()
     const onCommandResult = vi.fn()
     const source = new RemoteConversationModelSource(tools, vi.fn(), { onPresentation, onCommandResult })
