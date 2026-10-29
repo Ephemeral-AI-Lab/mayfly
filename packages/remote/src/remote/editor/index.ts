@@ -5,7 +5,6 @@
 
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { QueueAction, SkillEntry } from '@deepseek-ai/dsh-api-remotes/client'
 import type { FileUploadValue } from '@deepseek-ai/dsh-client-file-upload/client'
 import type {
@@ -17,6 +16,7 @@ import { EditorAttachments } from './attachments.ts'
 import { EditorAutocomplete } from './autocomplete.ts'
 import { EditorCommands } from './commands.ts'
 import { mentionPath, readHostFile as readWorkspaceFile } from './mentions.ts'
+import { onAgentPresetSelected } from './official.ts'
 import { EditorShell } from './shell.ts'
 import { EditorSkills } from './skills.ts'
 import { EditorSkillsPanel } from './skills-panel.ts'
@@ -171,7 +171,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     offCommands = selected.client.remote.$on('commands/change', () => {
       if (!disposed && options.session()?.client === selected.client) void commands.refresh()
     })
-    offPreset = selected.client.remote.$on('agent-preset/selected', (sessionId: SessionId) => {
+    offPreset = onAgentPresetSelected(selected.client, (sessionId) => {
       const current = options.session()
       if (!disposed && current?.client === selected.client && current.ref.sessionId === sessionId) controller.presetChanged()
     })

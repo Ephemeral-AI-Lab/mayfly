@@ -3,14 +3,27 @@
  * @module @ephemeral-ai/mayfly/remote/interactions/official
  */
 
-import type { Events } from '@deepseek-ai/cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { HostClient } from '../../client/types.ts'
 
-export type ApprovalRequest = Omit<Parameters<Events['approval/request']>[0], 'agent'>
-export type ApprovalOutcome = Awaited<ReturnType<Events['approval/request']>>
+/** Official approval request without its transport-resolved Agent Context. */
+export interface ApprovalRequest {
+  readonly toolName: string
+  readonly callId?: ToolCallId
+  readonly reason?: string
+  readonly displayReason?: { readonly en: string, readonly [locale: string]: string }
+  readonly signal?: AbortSignal
+}
+
+export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
+export type ApprovalListener = (
+  this: Context,
+  request: ApprovalRequest,
+  next: () => Promise<ApprovalOutcome>,
+) => Promise<ApprovalOutcome>
 
 export interface QuestionOption {
   readonly label: string
@@ -86,4 +99,12 @@ export interface OfficialUserQuestionsRemote {
 /** Read the official namespace omitted by the nested lock's ClientRemote declarations. */
 export function officialUserQuestions(client: HostClient): OfficialUserQuestionsRemote {
   return (client.remote as HostClient['remote'] & { readonly userQuestions: OfficialUserQuestionsRemote }).userQuestions
+}
+
+/** Subscribe to the official approval waterfall key missing from the nested handoff declarations. */
+export function onApprovalRequest(client: HostClient, listener: ApprovalListener): () => void {
+  const remote = client.remote as HostClient['remote'] & {
+    $on(event: 'approval/request', listener: ApprovalListener): () => void
+  }
+  return remote.$on('approval/request', listener)
 }

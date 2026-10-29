@@ -11,7 +11,7 @@ import type { HostClient, SessionRef } from '../../client/types.ts'
 import type { RemoteFeatureContext } from '../features.ts'
 import { DecisionCard } from './decision-card.ts'
 import { readDecision } from './decision-actions.ts'
-import type { ApprovalOutcome, ApprovalRequest } from './official.ts'
+import { onApprovalRequest, type ApprovalOutcome, type ApprovalRequest } from './official.ts'
 import { requestOverlay, type RemoteRequestOverlay } from './request-overlay.ts'
 import { isRemoteFeatureSelection } from './selection.ts'
 
@@ -100,7 +100,7 @@ class RemoteApprovalController {
     for (const client of attached) {
       if (this.listeners.has(client)) continue
       const controller = this
-      const dispose = client.remote.$on('approval/request', function (this: Context, request: ApprovalRequest, next: () => Promise<ApprovalOutcome>) {
+      const dispose = onApprovalRequest(client, function (this: Context, request: ApprovalRequest, next: () => Promise<ApprovalOutcome>) {
         const sessionId = client.sessions.scopeOf(this)
         return controller.receive(client, sessionId, request, next)
       })

@@ -8,10 +8,7 @@ import type { MayflyHostCapabilities } from '@ephemeral-ai/mayfly-host/types'
 import { createHostClient } from '../client/host-client.ts'
 import type { HostClient, HostKey, SessionRef } from '../client/types.ts'
 import { mountMayflyHostRemote } from '../frontend/host-mount.ts'
-import type {
-  RemoteToolPresentationGeneration,
-  RemoteToolPresentationRequest,
-} from '../frontend/tool-presentations.ts'
+import type { RemoteToolPresentationGeneration } from '../frontend/tool-presentations.ts'
 
 const PROTOCOL_VERSION = 1
 const HOST_VERSION = '0.1.4-rc.2'
@@ -46,7 +43,7 @@ export function resolveMayflyToolPresentation(
   if (capability === undefined) throw new Error(`Mayfly Host "${ref.host}" has no validated capabilities`)
   return {
     presentationRevision: `${String(capability.protocolVersion)}:${capability.hostVersion}:${capability.requiredDshVersion}`,
-    present: (request, signal) => presentTools(client, request, signal),
+    present: (request, signal) => client.remote.mayflyHost.presentTools(request, signal),
   }
 }
 
@@ -58,29 +55,4 @@ function validateCapabilities(value: MayflyHostCapabilities): void {
   const missing = REQUIRED_FEATURES.filter(feature => !value.features.includes(feature))
   if (missing.length > 0) mismatches.push(`missing features: ${missing.join(', ')}`)
   if (mismatches.length > 0) throw new Error(`Unsupported Mayfly Host capabilities: ${mismatches.join('; ')}`)
-}
-
-async function presentTools(
-  client: HostClient,
-  request: RemoteToolPresentationRequest,
-  signal: AbortSignal,
-): ReturnType<RemoteToolPresentationGeneration['present']> {
-  const result = await client.remote.mayflyHost.presentTools({
-    entries: request.calls.map(call => ({
-      sessionId: call.sessionId,
-      callId: call.callId,
-      updatedSeq: call.updatedSeq,
-      name: call.name,
-      arguments: rawArguments(call.arguments),
-      ...call.result === undefined ? {} : { result: call.result },
-    })),
-  }, signal)
-  if (!result.ok) return result
-  return { ok: true, value: result.value.presentations[String(request.ref.sessionId)] ?? {} }
-}
-
-function rawArguments(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (value === undefined) return ''
-  return JSON.stringify(value)
 }
