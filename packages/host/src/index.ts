@@ -9,6 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import { conversationProjectionDefinition } from './conversation/projection.ts'
 import { MayflyHostService } from './remote/service.ts'
+import { mayflyRetractionProjectionDefinition } from './remote/retraction.ts'
 import { mayflyWorkflowProjectionDefinition } from './remote/workflow.ts'
 
 export type * from './types.ts'
@@ -28,5 +29,6 @@ export const inject = ['sessionProjections']
 export async function apply(ctx: Context): Promise<void> {
   await ctx.sessionProjections.register(conversationProjectionDefinition)
   await ctx.sessionProjections.register(mayflyWorkflowProjectionDefinition)
+  await ctx.sessionProjections.register(mayflyRetractionProjectionDefinition)
   ctx.plugin(MayflyHostService)
 }

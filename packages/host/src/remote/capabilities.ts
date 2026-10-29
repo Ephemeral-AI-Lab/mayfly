@@ -11,5 +11,10 @@ export const MAYFLY_HOST_CAPABILITIES: MayflyHostCapabilities = Object.freeze({
   protocolVersion: 1,
   hostVersion: '0.1.4-rc.2',
   requiredDshVersion: '0.2.2-alpha.2',
-  features: Object.freeze(['mayflyConversation', 'presentTools', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog'] as const),
+  features: Object.freeze([
+    'mayflyConversation', 'presentTools', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog',
+    'mayflySettings', 'skillCatalog', 'retractTurn', 'modelCatalogDetails', 'defaultModel', 'authorization',
+    'permissionCatalogDetails', 'providerBalance', 'settingsDocument', 'subagentDrain', 'workspaceChanges',
+    'workspacePath', 'mcpResources',
+  ] as const),
 })

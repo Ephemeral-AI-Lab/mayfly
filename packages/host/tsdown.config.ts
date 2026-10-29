@@ -6,6 +6,7 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     startup: 'src/startup.ts',
+    settings: 'src/settings.ts',
     'types/types': 'src/types.ts',
   },
   outDir: 'lib',

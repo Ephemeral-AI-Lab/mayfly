@@ -16,3 +16,6 @@
 
     - id: mayfly-host-startup
       name: '@ephemeral-ai/mayfly-host/startup'
+
+    - id: mayfly
+      name: '@ephemeral-ai/mayfly-host/settings'

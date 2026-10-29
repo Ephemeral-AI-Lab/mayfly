@@ -5,16 +5,38 @@
  */
 
 import type { ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm/types'
+import type { CredentialKey } from '@deepseek-ai/dsh-credentials/types'
+import type { AuthorizationNotice } from '@deepseek-ai/dsh-authorization/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools/presentation'
 import type { TypertResource } from '@deepseek-ai/dsh-typert-protocol'
+import type { WorkspaceChangesSummary, WorkspaceFileDiff } from '@deepseek-ai/dsh-workspace-changes/types'
 import type { WorkflowAgentOutcome, WorkflowPhase, WorkflowStopReason } from '@deepseek-ai/dsh-workflow/types'
 import type { ConversationJson } from './conversation/types.ts'
 
 export type * from './conversation/types.ts'
 
 /** Mayfly Host features advertised by the capabilities handshake. */
-export type MayflyHostFeature = 'mayflyConversation' | 'presentTools' | 'followWorkflow' | 'gitStatus' | 'mcpCatalog' | 'toolCatalog'
+export type MayflyHostFeature =
+  | 'mayflyConversation'
+  | 'presentTools'
+  | 'followWorkflow'
+  | 'gitStatus'
+  | 'mcpCatalog'
+  | 'toolCatalog'
+  | 'mayflySettings'
+  | 'skillCatalog'
+  | 'retractTurn'
+  | 'modelCatalogDetails'
+  | 'defaultModel'
+  | 'authorization'
+  | 'permissionCatalogDetails'
+  | 'providerBalance'
+  | 'settingsDocument'
+  | 'subagentDrain'
+  | 'workspaceChanges'
+  | 'workspacePath'
+  | 'mcpResources'
 
 /** Version and feature facts a Client validates before entering its UI. */
 export interface MayflyHostCapabilities {
@@ -40,6 +62,15 @@ export type MayflyHostErrorCode =
   | 'mayflyHost/agent-unavailable'
   | 'mayflyHost/session-stale'
   | 'mayflyHost/session-directory-unavailable'
+  | 'mayflyHost/authorization-unavailable'
+  | 'mayflyHost/authorization-in-flight'
+  | 'mayflyHost/authorization-failed'
+  | 'mayflyHost/settings-conflict'
+  | 'mayflyHost/settings-read-only'
+  | 'mayflyHost/settings-document-unavailable'
+  | 'mayflyHost/subagent-drain-unavailable'
+  | 'mayflyHost/subagent-drain-unauthorized'
+  | 'mayflyHost/mcp-resource-failed'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertResourceMap {
@@ -56,6 +87,24 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'mayflyHost/session-stale': MayflyHostSessionRequest
     /** Neither the working-directory projection nor Session metadata names a Host directory. */
     'mayflyHost/session-directory-unavailable': MayflyHostSessionRequest
+    /** No native authorization flow or requested method exists for this key. */
+    'mayflyHost/authorization-unavailable': { readonly key: string }
+    /** This credential already has an active authorization operation. */
+    'mayflyHost/authorization-in-flight': { readonly key: string }
+    /** The native authorization flow failed without a public outcome. */
+    'mayflyHost/authorization-failed': { readonly key: string }
+    /** The settings document changed since the caller's content revision. */
+    'mayflyHost/settings-conflict': { readonly expectedRevision: string, readonly actualRevision: string }
+    /** The settings document is not writable. */
+    'mayflyHost/settings-read-only': Record<string, never>
+    /** The settings document could not be read or prepared. */
+    'mayflyHost/settings-document-unavailable': Record<string, never>
+    /** A requested subagent drain failed its current native catalog/liveness guards. */
+    'mayflyHost/subagent-drain-unavailable': { readonly childId: string, readonly reason: string }
+    /** The exact direct parent no longer owns the resident child activation. */
+    'mayflyHost/subagent-drain-unauthorized': { readonly childId: string }
+    /** A native MCP resource operation returned an error result. */
+    'mayflyHost/mcp-resource-failed': { readonly server: string, readonly message: string }
   }
 }
 
@@ -196,3 +245,192 @@ export interface MayflyWorkflowSnapshot {
 export type MayflyWorkflowFrame =
   | { readonly type: 'baseline'; readonly value: MayflyWorkflowSnapshot }
   | { readonly type: 'replacement'; readonly value: MayflyWorkflowSnapshot }
+
+/** Exact running human message retraction request. */
+export interface MayflyRetractTurnRequest extends MayflyHostSessionRequest {
+  readonly messageId: string
+}
+
+/** One user-invocable skill with the source/provider detail current panels display. */
+export interface MayflySkillSummary {
+  readonly path?: string | undefined
+  readonly name: string
+  readonly description: string
+  readonly whenToUse?: string | undefined
+  readonly source: string
+  readonly provider: string
+  readonly modelInvocable: boolean
+}
+
+/** One complete skill discovery observation. */
+export interface MayflySkillCatalog {
+  readonly skills: readonly MayflySkillSummary[]
+  readonly complete: boolean
+}
+
+/** One picker row with exact adapter-owned context and reasoning metadata. */
+export interface MayflyModelCatalogItem {
+  readonly provider: string
+  readonly id: string
+  readonly name: string
+  readonly providerLabel: string
+  readonly contextWindow?: number | undefined
+  readonly efforts?: readonly string[] | undefined
+  readonly defaultEffort?: string | undefined
+}
+
+/** Optional provider filter for model detail discovery. */
+export interface MayflyModelCatalogRequest {
+  readonly provider?: string | undefined
+}
+
+/** Provider rows whose listings loaded, with failures omitted as advisory catalogs permit. */
+export interface MayflyModelCatalogDetails {
+  readonly items: readonly MayflyModelCatalogItem[]
+}
+
+/** Provider/model/reasoning selection independent of a Session. */
+export interface MayflyModelSelection {
+  readonly provider: string
+  readonly model: string
+  readonly reasoningEffort?: string | undefined
+}
+
+/** Read the saved default or replace it through the native default-model owner. */
+export type MayflyDefaultModelRequest =
+  | { readonly operation: 'read' }
+  | ({ readonly operation: 'select' } & MayflyModelSelection)
+
+/** One credential authorization attempt. */
+export interface MayflyAuthorizationRequest {
+  readonly key: CredentialKey
+  readonly method?: string | undefined
+}
+
+/** Presentation-safe prompt data with native AbortSignals removed. */
+export type MayflyAuthorizationPrompt =
+  | { readonly kind: 'text' | 'secret', readonly message: string, readonly placeholder?: string | undefined }
+  | {
+    readonly kind: 'select'
+    readonly message: string
+    readonly options: readonly { readonly id: string, readonly label: string, readonly description?: string | undefined }[]
+  }
+
+/** Structured authorization operation events. */
+export type MayflyAuthorizationFrame =
+  | { readonly type: 'started', readonly operationId: string }
+  | { readonly type: 'notice', readonly operationId: string, readonly notice: AuthorizationNotice }
+  | { readonly type: 'prompt', readonly operationId: string, readonly promptId: string, readonly prompt: MayflyAuthorizationPrompt }
+  | { readonly type: 'prompt-ended', readonly operationId: string, readonly promptId: string }
+  | { readonly type: 'settled', readonly operationId: string, readonly status: 'authorized' | 'cancelled' }
+
+/** Client answers addressed to one exact operation and prompt. */
+export type MayflyAuthorizationAnswer =
+  | { readonly type: 'answer', readonly operationId: string, readonly promptId: string, readonly value: string }
+  | { readonly type: 'decline', readonly operationId: string, readonly promptId: string }
+
+/** Native knob bundle behind one selectable permission row. */
+export interface MayflyPermissionSpec {
+  readonly sandbox: 'read-only' | 'workspace-write' | 'danger-full-access'
+  readonly approval: 'ask' | 'never'
+}
+
+/** Permission rows and their resolved bundles, plus yolo state for an optional current value. */
+export interface MayflyPermissionCatalogDetails {
+  readonly options: readonly { readonly value: string, readonly name: string, readonly description?: string | undefined }[]
+  readonly defaultOptions: readonly { readonly value: string, readonly name: string, readonly description?: string | undefined }[]
+  readonly defaultPreset: string
+  readonly specs: Readonly<Record<string, MayflyPermissionSpec>>
+  readonly yolo: boolean
+}
+
+/** Optional current-preset input for yolo evaluation. */
+export interface MayflyPermissionCatalogRequest {
+  readonly currentPreset?: string | undefined
+}
+
+/** One API wallet, preserving decimal strings exactly as the provider returned them. */
+export interface MayflyWallet {
+  readonly currency: 'CNY' | 'USD'
+  readonly total: string
+  readonly toppedUp?: string | undefined
+  readonly granted?: string | undefined
+}
+
+/** Balance of the official API-key route, without its credential or endpoint internals. */
+export type MayflyProviderBalance =
+  | { readonly status: 'ready', readonly wallets: readonly MayflyWallet[], readonly available?: boolean | undefined }
+  | { readonly status: 'unavailable', readonly reason: 'network' | 'rejected' | 'no-key' }
+
+/** Raw settings text and its SHA-256 content revision. */
+export interface MayflySettingsDocument {
+  readonly writable: boolean
+  readonly content: string
+  readonly revision: string
+}
+
+/** Compare-and-write input for the actual settings document. */
+export interface MayflySettingsDocumentWrite {
+  readonly content: string
+  readonly expectedRevision: string
+}
+
+/** Exact direct-parent child drain request. */
+export interface MayflySubagentDrainRequest {
+  readonly parentSessionId: SessionId
+  readonly childSessionId: SessionId
+}
+
+/** One recorded per-turn summary identity. */
+export interface MayflyWorkspaceChangesRequest extends MayflyHostSessionRequest {
+  readonly seq: number
+}
+
+/** One changed-file comparison identity within that summary. */
+export interface MayflyWorkspaceDiffRequest extends MayflyWorkspaceChangesRequest {
+  readonly index: number
+}
+
+/** Native summary values are returned directly; `null` replaces an unavailable record. */
+export type MayflyWorkspaceChangesSummaryResult = WorkspaceChangesSummary | null
+/** Native diff values are returned directly; `null` replaces an unavailable record. */
+export type MayflyWorkspaceFileDiffResult = WorkspaceFileDiff | null
+
+/** Canonical existing-workspace lookup by path, without creation or mutation. */
+export interface MayflyWorkspacePathRequest {
+  readonly path: string
+}
+
+/** Client-safe workspace identity used by placement code. */
+export interface MayflyWorkspace {
+  readonly id: string
+  readonly path: string
+  readonly title: string
+}
+
+/** Page of resources or resource templates from one exact Agent's MCP scope. */
+export interface MayflyMcpResourceListRequest extends MayflyHostSessionRequest {
+  readonly server: string
+  readonly kind: 'resources' | 'templates'
+  readonly cursor?: string | undefined
+}
+
+/** JSON-safe MCP metadata row with provider-specific fields preserved. */
+export type MayflyMcpResourceItem = Readonly<Record<string, ConversationJson>>
+
+/** One resource/template page and its server-owned continuation cursor. */
+export interface MayflyMcpResourcePage {
+  readonly items: readonly MayflyMcpResourceItem[]
+  readonly cursor?: string | undefined
+}
+
+/** Explicit resource body read from one exact Agent's MCP scope. */
+export interface MayflyMcpResourceReadRequest extends MayflyHostSessionRequest {
+  readonly server: string
+  readonly uri: string
+}
+
+/** Text and binary summaries; raw binary bytes never cross Remote. */
+export interface MayflyMcpResourceBody {
+  readonly text: string
+}
