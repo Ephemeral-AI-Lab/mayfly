@@ -8,30 +8,33 @@
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import type { HostClient } from '../../client/types.ts'
 import { RemoteAccountController } from './account.ts'
+import type { RemoteConfigurationHost } from './configuration-host.ts'
+import { RemoteFeatureCommandRegistry } from './commands.ts'
 import { REMOTE_CONFIGURATION_LOCALE } from './locale.ts'
 import type {
   RemoteFeatureAdapters,
   RemoteFeatureContext,
   RemoteLocalPresentation,
 } from './contracts.ts'
-import { RemoteModelsController, type RemoteModelCatalogDetails } from './models.ts'
+import { RemoteModelsController } from './models.ts'
 import { RemoteOnboardingController } from './onboarding.ts'
-import { RemotePermissionsController, type RemotePermissionCatalogDetails } from './permissions.ts'
+import { RemotePermissionsController } from './permissions.ts'
 import { RemotePreferencesController } from './preferences.ts'
 import { CordisRemoteLocalPresentation } from './presentation.ts'
 import { RemoteAgentPresetsController } from './presets.ts'
 import { RemoteProvidersController } from './providers.ts'
-import { RemoteSettingsController } from './settings.ts'
+import { RemoteSettingsController, type RemoteSettingsEdit } from './settings.ts'
 
 /** Foundation context before the optional local presentation adapter is installed. */
 export type RemoteConfigurationMountContext = Omit<RemoteFeatureContext, 'presentation'> & {
   readonly presentation?: RemoteLocalPresentation
+  readonly commands: RemoteFeatureCommandRegistry
 }
 
-/** Optional focused Host detail adapters under active DTO development. */
+/** Optional focused Host DTO adapters and the integration-owned settings editor. */
 export interface RemoteConfigurationAdapters extends RemoteFeatureAdapters {
-  readonly modelDetails?: RemoteModelCatalogDetails
-  readonly permissionDetails?: RemotePermissionCatalogDetails
+  readonly host?: RemoteConfigurationHost
+  readonly settingsEdit?: RemoteSettingsEdit
 }
 
 /** Controllers exposed for foundation command routing plus their joint lifetime. */
@@ -59,11 +62,11 @@ export function createRemoteConfigurationFeatures(
     t: memoizedLocaleTranslator(base.ctx, 'remote-configuration').translate,
     presentation,
   }
-  const settings = new RemoteSettingsController(context)
-  const models = new RemoteModelsController(context, adapters.modelDetails)
+  const settings = new RemoteSettingsController(context, adapters.host, adapters.settingsEdit)
+  const models = new RemoteModelsController(context, adapters.host, adapters.host)
   const account = new RemoteAccountController(context, adapters.accountIO, adapters.clientVersion)
-  const providers = new RemoteProvidersController(context, client => account.open(client))
-  const permissions = new RemotePermissionsController(context, settings, adapters.permissionDetails)
+  const providers = new RemoteProvidersController(context, client => account.open(client), adapters.host, adapters.host)
+  const permissions = new RemotePermissionsController(context, settings, adapters.host)
   const preferences = new RemotePreferencesController(context, settings)
   const presets = new RemoteAgentPresetsController(context, settings)
   const onboarding = new RemoteOnboardingController(context, providers, account, settings, permissions, preferences, models)

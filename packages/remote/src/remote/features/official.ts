@@ -134,15 +134,15 @@ export abstract class RemoteFeatureController {
   }
 
   /** Begin an exact Host operation; detached Clients cannot be captured. */
-  protected hostOperation(client: HostClient): RemoteFeatureOperation | undefined {
+  protected hostOperation(client: HostClient, parent?: AbortSignal): RemoteFeatureOperation | undefined {
     if (this.disposed || !this.context.hosts.list().includes(client)) return undefined
-    return this.track(new RemoteFeatureOperation(this.context, client))
+    return this.track(new RemoteFeatureOperation(this.context, client, undefined, parent))
   }
 
   /** Begin an exact displayed Session operation, including binding replacement fencing. */
-  protected sessionOperation(selection: RemoteFeatureSelection): RemoteFeatureOperation | undefined {
+  protected sessionOperation(selection: RemoteFeatureSelection, parent?: AbortSignal): RemoteFeatureOperation | undefined {
     if (this.disposed || !this.context.hosts.list().includes(selection.client)) return undefined
-    return this.track(new RemoteFeatureOperation(this.context, selection.client, selection))
+    return this.track(new RemoteFeatureOperation(this.context, selection.client, selection, parent))
   }
 
   /** Dispose only operations rooted at one detached Host generation. */

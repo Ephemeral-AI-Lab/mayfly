@@ -20,12 +20,15 @@ import {
 import { openRemoteFeaturePanel, type RemoteMountedPanel } from './panel.ts'
 import type { RemoteSettingsController } from './settings.ts'
 
-/** Resolved sandbox/approval details require the focused Host permissionCatalogDetails DTO. */
-export const REMOTE_PERMISSION_DETAILS_GAP = 'Resolved permission sandbox/approval bundles require the Host permissionCatalogDetails DTO.'
-
-/** Optional future Host-owned detail adapter; switching never depends on it. */
+/** Resolved bundle detail for one preset value, plus the current-preset yolo flag. */
 export interface RemotePermissionCatalogDetails {
+  readonly yolo: boolean
   detail(value: string): string | undefined
+}
+
+/** Per-Host resolved detail source; a Host without the DTO contributes none. */
+export interface RemotePermissionDetailSource {
+  resolve(client: HostClient, currentPreset?: string, parent?: AbortSignal): Promise<RemotePermissionCatalogDetails | undefined>
 }
 
 /** Read the official permissions projection. */
@@ -38,7 +41,7 @@ export class RemotePermissionsController extends RemoteFeatureController {
   constructor(
     context: RemoteFeatureContext,
     private readonly settings: RemoteSettingsController,
-    private readonly details?: RemotePermissionCatalogDetails,
+    private readonly source?: RemotePermissionDetailSource,
   ) {
     super(context)
   }
@@ -62,9 +65,12 @@ export class RemotePermissionsController extends RemoteFeatureController {
     const operation = this.sessionOperation(selection)
     if (operation === undefined) return
     try {
-      const initial = await remoteValue(selection.client.remote.permissionPresets.catalog())
+      const [initial, details] = await Promise.all([
+        remoteValue(selection.client.remote.permissionPresets.catalog()),
+        this.loadDetails(operation, selection.client, remotePermissionSelection(selection.binding.session.projections.faceOf('permissions').getSnapshot())),
+      ])
       if (!operation.valid()) { operation.dispose(); return }
-      this.mountSession(operation, selection, initial)
+      this.mountSession(operation, selection, initial, details)
     } catch (error) {
       if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
       operation.dispose()
@@ -81,15 +87,26 @@ export class RemotePermissionsController extends RemoteFeatureController {
     finally { operation.dispose() }
   }
 
+  private async loadDetails(
+    operation: RemoteFeatureOperation,
+    client: HostClient,
+    currentPreset: string | undefined,
+  ): Promise<RemotePermissionCatalogDetails | undefined> {
+    if (this.source === undefined) return undefined
+    try { return await this.source.resolve(client, currentPreset, operation.signal) }
+    catch { return undefined }
+  }
+
   private async openDefault(): Promise<void> {
     const client = this.context.hosts.list()[0]
     if (client === undefined) return
     const operation = this.hostOperation(client)
     if (operation === undefined) return
     try {
-      const [catalog, settings] = await Promise.all([
+      const [catalog, settings, details] = await Promise.all([
         remoteValue(client.remote.permissionPresets.catalog()),
         remoteValue(client.remote.settings.describe()),
+        this.loadDetails(operation, client, undefined),
       ])
       const descriptor = settings.namespaces.find((candidate: import('@deepseek-ai/dsh-api-remotes/client').SettingsNamespaceView) => candidate.ns === 'permission')
       if (descriptor === undefined || !operation.valid()) { operation.dispose(); return }
@@ -100,9 +117,10 @@ export class RemotePermissionsController extends RemoteFeatureController {
         rows: catalog.defaultOptions.map((option: RemotePermissionCatalog['options'][number]) => ({
           id: option.value,
           text: option.name,
-          detail: this.details?.detail(option.value) ?? option.description,
+          detail: details?.detail(option.value) ?? option.description,
           current: option.value === catalog.defaultPreset,
         })),
+        footer: details?.yolo === true ? this.context.t('This preset disables the sandbox and every approval') : undefined,
       }, (action, value) => {
         if (action !== 'accept' || value === undefined || !catalog.defaultOptions.some((option: RemotePermissionCatalog['options'][number]) => option.value === value)) return
         void (async () => {
@@ -120,8 +138,14 @@ export class RemotePermissionsController extends RemoteFeatureController {
     }
   }
 
-  private mountSession(operation: RemoteFeatureOperation, selection: RemoteFeatureSelection, initial: RemotePermissionCatalog): void {
+  private mountSession(
+    operation: RemoteFeatureOperation,
+    selection: RemoteFeatureSelection,
+    initial: RemotePermissionCatalog,
+    initialDetails: RemotePermissionCatalogDetails | undefined,
+  ): void {
     let catalog = initial
+    let details = initialDetails
     let current = remotePermissionSelection(selection.binding.session.projections.faceOf('permissions').getSnapshot())
     let mounted: RemoteMountedPanel | undefined
     const view = () => ({
@@ -130,17 +154,22 @@ export class RemotePermissionsController extends RemoteFeatureController {
         ...catalog.options.map((option: RemotePermissionCatalog['options'][number]) => ({
           id: option.value,
           text: option.name,
-          detail: this.details?.detail(option.value) ?? option.description,
+          detail: details?.detail(option.value) ?? option.description,
           current: option.value === current,
         })),
         ...current === 'custom' ? [{ text: 'custom', detail: this.context.t('custom is the derived state — pick a preset'), current: true, disabled: true }] : [],
       ],
+      footer: details?.yolo === true ? this.context.t('This preset disables the sandbox and every approval') : undefined,
     })
     const refresh = async (): Promise<void> => {
       try {
-        const next = await remoteValue(selection.client.remote.permissionPresets.catalog())
+        const [next, nextDetails] = await Promise.all([
+          remoteValue(selection.client.remote.permissionPresets.catalog()),
+          this.loadDetails(operation, selection.client, current),
+        ])
         if (!operation.valid() || mounted === undefined) return
         catalog = next
+        details = nextDetails
         mounted.panel.update(view())
       } catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error)) }
     }
