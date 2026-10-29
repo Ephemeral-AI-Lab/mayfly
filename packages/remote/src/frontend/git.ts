@@ -3,7 +3,9 @@
  * @module @ephemeral-ai/mayfly/frontend/git
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
-import type { SessionRef } from '../client/types.ts'
+import type { HostClient, SessionRef } from '../client/types.ts'
+import type { MayflyGitStatus } from './host-contract.ts'
+import { mayflyHostRemote } from './host-mount.ts'
 
 /** One Host Git read; integration supplies the generated mayflyHost method. */
 export type RemoteGitRead<Value> = (ref: SessionRef, signal: AbortSignal) => Promise<RemoteResult<Value>>
@@ -130,5 +132,13 @@ export class RemoteGitPoller<Value> {
 
   private publish(): void {
     for (const listener of [...this.listeners]) listener()
+  }
+}
+
+/** Create the official Host Git read consumed by RemoteGitPoller. */
+export function createMayflyGitRead(client: HostClient): RemoteGitRead<MayflyGitStatus | null> {
+  return (ref, signal) => {
+    if (client.key !== ref.host) throw new Error('Git Host Client and SessionRef must identify the same Host')
+    return mayflyHostRemote(client).gitStatus({ sessionId: ref.sessionId }, signal)
   }
 }

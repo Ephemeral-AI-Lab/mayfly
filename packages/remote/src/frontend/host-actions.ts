@@ -3,12 +3,13 @@
  * @module @ephemeral-ai/mayfly/frontend/host-actions
  */
 import type {
-  BeginSubmissionInput, ISessions, SessionFace, SessionReference, SessionSearchResultItem,
+  BeginSubmissionInput, ISessions, SessionFace, SessionReference, SessionSearchResultItem, SessionTarget,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { PromptContentPart } from '@deepseek-ai/dsh-api-session-controller/types'
 import type {
   ClientRemote, ModelSelection, RemoteResult,
 } from '@deepseek-ai/dsh-api-remotes/client'
+import type { CreateGoalRequest, EditGoalRequest, GoalRef } from '@deepseek-ai/dsh-goal/client'
 import type { HostClient, HostKey, SessionRef } from '../client/types.ts'
 import {
   HostNotAttachedError, HostRegistry, mayflySessionReferenceSource,
@@ -88,8 +89,8 @@ export class HostActions {
   }
 
   /** Retain an independent view-role binding without changing the primary selection. */
-  retainView(ref: SessionRef, role: HostViewRole): HostViewLease {
-    return this.registry.retainView(ref, role)
+  retainView(ref: SessionRef, role: HostViewRole, target: SessionTarget = ref.sessionId): HostViewLease {
+    return this.registry.retainView(ref, role, target)
   }
 
   /** Force-close one view role, invalidating its leases without affecting other Sessions or roles. */
@@ -250,6 +251,48 @@ export class HostActions {
     const result = await this.modelCatalog(host)
     if (!result.ok) throw result.error
     return result.value.default
+  }
+
+  /** Read the current Goal through the official goals namespace. */
+  goal(ref: SessionRef): ReturnType<ClientRemote['goals']['get']> {
+    const client = this.host(ref.host)
+    return this.using(ref, undefined, () => client.remote.goals.get(ref.sessionId))
+  }
+
+  /** Create a Goal through the official goals namespace. */
+  createGoal(ref: SessionRef, request: CreateGoalRequest): ReturnType<ClientRemote['goals']['create']> {
+    const client = this.host(ref.host)
+    return this.using(ref, undefined, () => client.remote.goals.create(ref.sessionId, request))
+  }
+
+  /** Edit one exact Goal revision through the official goals namespace. */
+  editGoal(ref: SessionRef, goal: GoalRef, request: EditGoalRequest): ReturnType<ClientRemote['goals']['edit']> {
+    const client = this.host(ref.host)
+    return this.using(ref, undefined, () => client.remote.goals.edit(ref.sessionId, goal, request))
+  }
+
+  /** Pause one exact Goal revision through the official goals namespace. */
+  pauseGoal(ref: SessionRef, goal: GoalRef): ReturnType<ClientRemote['goals']['pause']> {
+    const client = this.host(ref.host)
+    return this.using(ref, undefined, () => client.remote.goals.pause(ref.sessionId, goal))
+  }
+
+  /** Resume one exact Goal revision through the official goals namespace. */
+  resumeGoal(ref: SessionRef, goal: GoalRef): ReturnType<ClientRemote['goals']['resume']> {
+    const client = this.host(ref.host)
+    return this.using(ref, undefined, () => client.remote.goals.resume(ref.sessionId, goal))
+  }
+
+  /** Complete one exact Goal revision through the official goals namespace. */
+  completeGoal(ref: SessionRef, goal: GoalRef): ReturnType<ClientRemote['goals']['complete']> {
+    const client = this.host(ref.host)
+    return this.using(ref, undefined, () => client.remote.goals.complete(ref.sessionId, goal))
+  }
+
+  /** Clear one exact Goal revision through the official goals namespace. */
+  clearGoal(ref: SessionRef, goal: GoalRef): ReturnType<ClientRemote['goals']['clear']> {
+    const client = this.host(ref.host)
+    return this.using(ref, undefined, () => client.remote.goals.clear(ref.sessionId, goal))
   }
 
   /** List human-invocable Skills for the exact Session composition. */

@@ -2,7 +2,7 @@
  * Multi-Host Client ownership and generation-safe Session selection.
  * @module @ephemeral-ai/mayfly/frontend/host-registry
  */
-import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionReference, SessionTarget } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { HostClient, HostKey, SessionRef } from '../client/types.ts'
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
@@ -79,6 +79,7 @@ export interface HostViewLease {
 
 interface ViewRecord {
   readonly key: HostViewKey
+  readonly target: SessionTarget
   readonly reference: SessionReference
   leases: number
 }
@@ -222,7 +223,7 @@ export class HostRegistry {
   }
 
   /** Retain one independent official binding for a UI role, refcounted per exact key. */
-  retainView(ref: SessionRef, role: HostViewRole): HostViewLease {
+  retainView(ref: SessionRef, role: HostViewRole, target: SessionTarget = ref.sessionId): HostViewLease {
     if (role.trim() === '') throw new Error('Host view role must not be empty')
     const client = this.clients.get(ref.host)
     if (client === undefined) throw new HostNotAttachedError(ref.host)
@@ -232,9 +233,12 @@ export class HostRegistry {
     }
     const identity = hostViewKey(key)
     let record = this.views.get(identity)
+    if (record !== undefined && !sameSessionTarget(record.target, target)) {
+      throw new Error(`Host view "${role}" changed its Session target for "${ref.sessionId}"`)
+    }
     if (record === undefined) {
-      const reference = client.sessions.retain(ref.sessionId, { source: mayflySessionReferenceSource })
-      record = { key, reference, leases: 0 }
+      const reference = client.sessions.retain(target, { source: mayflySessionReferenceSource })
+      record = { key, target, reference, leases: 0 }
       this.views.set(identity, record)
     }
     record.leases += 1
@@ -362,4 +366,9 @@ async function settleCleanups(key: HostKey, cleanups: readonly Promise<void>[]):
   for (const result of results) if (result.status === 'rejected') errors.push(result.reason)
   if (errors.length === 1) throw errors[0]
   if (errors.length > 1) throw new AggregateError(errors, `Multiple cleanups failed while detaching Host "${key}"`)
+}
+
+function sameSessionTarget(a: SessionTarget, b: SessionTarget): boolean {
+  if (typeof a === 'string' || typeof b === 'string') return a === b
+  return a.parentSessionId === b.parentSessionId && a.childSessionId === b.childSessionId && a.mode === b.mode
 }

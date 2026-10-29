@@ -2,36 +2,24 @@
  * Incremental Host tool-presentation cache for the synchronous published Transcript mapper.
  * @module @ephemeral-ai/mayfly/frontend/tool-presentations
  */
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ConversationProjection, ConversationToolEntry } from '@ephemeral-ai/mayfly/conversation'
-import { parseToolArguments, type ToolPresentationFacts, type ToolPresentationSource } from '@ephemeral-ai/mayfly/transcript'
-import type { SessionRef } from '../client/types.ts'
-
-type ToolOutcome = NonNullable<ToolPresentationFacts['outcome']>
+import type { ToolPresentationSource } from '@ephemeral-ai/mayfly/transcript'
+import type { HostClient, SessionRef } from '../client/types.ts'
+import type {
+  MayflyPresentToolsRequest, MayflyPresentToolsResponse, MayflyToolPresentation,
+  MayflyToolPresentationInput, MayflyToolResultInput,
+} from './host-contract.ts'
+import { mayflyHostRemote } from './host-mount.ts'
 
 /** Official Host-computed call and result views for one tool entry. */
-export interface RemoteToolPresentation {
-  readonly call?: ToolPresentationFacts['call']
-  readonly result?: ToolPresentationFacts['result']
-}
+export type RemoteToolPresentation = MayflyToolPresentation
 
 /** One changed tool entry sent to the generated Host presentation adapter. */
-export interface RemoteToolPresentationCall {
-  readonly sessionId: SessionId
-  readonly callId: string
-  readonly updatedSeq: number
-  readonly name: string
-  readonly arguments: unknown
-  readonly result?: ToolOutcome
-}
+export type RemoteToolPresentationCall = MayflyToolPresentationInput
 
 /** One batch of changed entries from one exact Host/Session/revision generation. */
-export interface RemoteToolPresentationRequest {
-  readonly ref: SessionRef
-  readonly presentationRevision: string
-  readonly calls: readonly RemoteToolPresentationCall[]
-}
+export type RemoteToolPresentationRequest = MayflyPresentToolsRequest
 
 /** Generated-Host adapter supplied after the mayflyHost Remote contribution is mounted. */
 export interface RemoteToolPresentationGeneration {
@@ -39,7 +27,7 @@ export interface RemoteToolPresentationGeneration {
   readonly present: (
     request: RemoteToolPresentationRequest,
     signal: AbortSignal,
-  ) => Promise<RemoteResult<Readonly<Record<string, RemoteToolPresentation>>>>
+  ) => Promise<RemoteResult<MayflyPresentToolsResponse>>
 }
 
 /** Resolve the current generated Host presenter and its revision for an exact Session. */
@@ -187,9 +175,7 @@ export class RemoteToolPresentationCache implements ScopedRemoteToolPresentation
     const controller = new AbortController()
     const operation = { generation, controller, promise: Promise.resolve() }
     const promise = Promise.resolve().then(() => remote.present({
-      ref,
-      presentationRevision: remote.presentationRevision,
-      calls: batch.calls,
+      entries: batch.calls,
     }, controller.signal)).then((result) => {
       if (!this.owns(generation)) return
       if (!result.ok) {
@@ -199,7 +185,12 @@ export class RemoteToolPresentationCache implements ScopedRemoteToolPresentation
       let changed = false
       for (const [index, key] of batch.keys.entries()) {
         const call = batch.calls[index]!
-        this.values.set(key, result.value[call.callId] ?? {})
+        const presentation = result.value.presentations[String(call.sessionId)]?.[call.callId]
+        if (presentation === undefined || presentation.updatedSeq !== call.updatedSeq) {
+          this.errors.set(key, new Error(`Host returned no current presentation for "${String(call.sessionId)}/${call.callId}"`))
+          continue
+        }
+        this.values.set(key, presentation)
         changed = true
       }
       if (changed) this.publish()
@@ -242,14 +233,29 @@ function presentationCall(ref: SessionRef, entry: ConversationToolEntry): Remote
     callId: entry.callId,
     updatedSeq: entry.updatedSeq,
     name: entry.name,
-    arguments: parseToolArguments(entry.arguments),
+    arguments: entry.arguments,
     ...(result === undefined ? {} : {
       result: {
-        content: structuredClone(result.content) as ToolOutcome['content'],
+        content: structuredClone(result.content) as unknown as MayflyToolResultInput['content'],
         isError: result.isError,
         ...(result.meta === undefined ? {} : { meta: structuredClone(result.meta) }),
       },
     }),
+  }
+}
+
+/** Create the stable generated-Host resolver consumed by RemoteToolPresentationCache. */
+export function createMayflyToolPresentationResolver(
+  client: HostClient,
+  presentationRevision: string,
+): RemoteToolPresentationResolver {
+  const generation: RemoteToolPresentationGeneration = {
+    presentationRevision,
+    present: (request, signal) => mayflyHostRemote(client).presentTools(request, signal),
+  }
+  return (ref) => {
+    if (client.key !== ref.host) throw new Error('Tool presentation Host Client and SessionRef must identify the same Host')
+    return generation
   }
 }
 

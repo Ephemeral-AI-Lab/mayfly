@@ -18,7 +18,7 @@ import {
   type RemoteSessionFactsSnapshot,
 } from '../frontend/session-facts.ts'
 import type { ScopedRemoteToolPresentationSource } from '../frontend/tool-presentations.ts'
-import { MAYFLY_CONVERSATION_PROJECTION, MAYFLY_FACTS_PROJECTION } from '../frontend/host-mount.ts'
+import { MAYFLY_CONVERSATION_PROJECTION } from '../frontend/host-mount.ts'
 
 export type { RemotePresentationSelection } from '../frontend/session-facts.ts'
 
@@ -110,9 +110,7 @@ export class RemoteConversationModelSource {
     const snapshot = this.facts.snapshot()
     const selectedModel = readModelSelection(snapshot.values['modelSelection'])
     const context = readContextPressure(snapshot.values['contextPressure'])
-    const conversationFacts = readConversationFacts(snapshot.values[MAYFLY_FACTS_PROJECTION])
     const active = snapshot.session?.running === true
-      || conversationFacts?.active === true
       || this.durable.streaming
       || this.live?.projection.streaming === true
     const title = snapshot.values['title']
@@ -129,7 +127,7 @@ export class RemoteConversationModelSource {
       active,
       phase: this.live?.projection.streaming === true
         ? livePhase(this.live)
-        : conversationFacts?.phase ?? (active ? 'waiting' : 'idle'),
+        : active ? 'waiting' : 'idle',
       queue: snapshot.queue,
     }
   }
@@ -217,7 +215,10 @@ export class RemoteConversationModelSource {
     const value = this.binding?.session.projections.faceOf(MAYFLY_CONVERSATION_PROJECTION).getSnapshot()
     if (Object.is(value, this.durableValue)) return false
     this.durableValue = value
-    this.durable = readConversationProjection(value) ?? EMPTY_CONVERSATION
+    const projection = readConversationProjection(value)
+    this.durable = projection === undefined
+      ? EMPTY_CONVERSATION
+      : visibleConversationProjection(projection, this.selection?.historyFloorSeq)
     return true
   }
 
@@ -299,11 +300,19 @@ function readConversationProjection(value: unknown): ConversationProjection | un
   }
 }
 
-function readConversationFacts(value: unknown): Pick<ConversationFactsState, 'active' | 'phase'> | undefined {
-  if (!isRecord(value) || typeof value['active'] !== 'boolean') return undefined
-  const phase = value['phase']
-  if (phase !== 'idle' && phase !== 'waiting' && phase !== 'thinking' && phase !== 'composing' && phase !== 'tool') return undefined
-  return { active: value['active'], phase }
+function visibleConversationProjection(
+  projection: ConversationProjection,
+  historyFloorSeq: number | undefined,
+): ConversationProjection {
+  if (historyFloorSeq === undefined) return projection
+  const entries = projection.entries.filter(entry => entry.seq > historyFloorSeq)
+  const turns = new Set(entries.map(entry => entry.turn))
+  return {
+    entries,
+    streaming: projection.streaming,
+    settledSteps: projection.settledSteps.filter(key => turns.has(Number(key.split(':', 1)[0]))),
+    turns: projection.turns.filter(turn => turns.has(turn.turn)),
+  }
 }
 
 function readContextPressure(value: unknown): { readonly contextTokens: number, readonly contextWindow?: number } {

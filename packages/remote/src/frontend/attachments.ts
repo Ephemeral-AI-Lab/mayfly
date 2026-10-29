@@ -5,13 +5,24 @@
 import type { FileUploadService } from '@deepseek-ai/dsh-client-file-upload/client'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { SessionRef } from '../client/types.ts'
+import type { HostClient, SessionRef } from '../client/types.ts'
 import type { HostActions } from './host-actions.ts'
 
 /** Resolve the official upload service owned by the same Host Client as the Session. */
 export interface RemoteAttachmentUploads {
   /** Return the exact Host's Client upload service. */
   forSession(ref: SessionRef): FileUploadService
+}
+
+/** Adapt the official fileUpload service exposed by the current Client Runtime. */
+export function createRemoteAttachmentUploads(client: HostClient): RemoteAttachmentUploads {
+  const upload = (client as HostClient & { readonly fileUpload: FileUploadService }).fileUpload
+  return {
+    forSession(ref) {
+      if (client.key !== ref.host) throw new Error('Attachment Host Client and SessionRef must identify the same Host')
+      return upload
+    },
+  }
 }
 
 /** Attachment bytes and media type supplied by a Node editor or image consumer. */

@@ -6,6 +6,10 @@ import {
   RemoteSnapshotStream, RemoteStreamCarrierError, type RemoteStream,
 } from '@deepseek-ai/dsh-api-gateway/client'
 import type { HostClient, SessionRef } from '../client/types.ts'
+import type {
+  MayflyWorkflowBaselineFrame, MayflyWorkflowReplacementFrame,
+} from './host-contract.ts'
+import { mayflyHostRemote } from './host-mount.ts'
 
 /** Generated-Host stream adapter for one selected Workflow. */
 export interface RemoteWorkflowStreamOptions<Baseline, Frame> {
@@ -141,4 +145,17 @@ export class RemoteWorkflowSource<Baseline, Frame> {
 
 function emptyWorkflow<Baseline, Frame>(generation: number, ref?: SessionRef): RemoteWorkflowSnapshot<Baseline, Frame> {
   return { ref, generation, baseline: undefined, frame: undefined, streaming: false }
+}
+
+/** Create the official followWorkflow adapter for RemoteWorkflowSource. */
+export function createMayflyWorkflowStreamOptions(
+  client: HostClient,
+  ref: SessionRef,
+): RemoteWorkflowStreamOptions<MayflyWorkflowBaselineFrame, MayflyWorkflowReplacementFrame> {
+  if (client.key !== ref.host) throw new Error('Workflow Host Client and SessionRef must identify the same Host')
+  return {
+    name: `mayfly workflow ${String(ref.sessionId)}`,
+    open: signal => mayflyHostRemote(client).followWorkflow({ sessionId: ref.sessionId }, signal),
+    isBaseline: (frame): frame is MayflyWorkflowBaselineFrame => frame.type === 'baseline',
+  }
 }

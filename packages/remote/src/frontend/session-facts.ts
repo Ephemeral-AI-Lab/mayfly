@@ -11,6 +11,8 @@ import type { SessionRef } from '../client/types.ts'
 export interface RemotePresentationSelection {
   readonly ref: SessionRef
   readonly cwd: string
+  /** Hide inherited fork entries at or below this durable event sequence. */
+  readonly historyFloorSeq?: number
 }
 
 /** Projection keys consumed by the published Mayfly status, dock, and pane surfaces. */
@@ -18,6 +20,7 @@ export const REMOTE_SESSION_PROJECTION_KEYS = [
   'title',
   'workingDirectory',
   'modelSelection',
+  'agentPreset',
   'contextPressure',
   'contextBreakdown',
   'tokenUsage',
@@ -33,7 +36,7 @@ export const REMOTE_SESSION_PROJECTION_KEYS = [
   'subagentTiming',
   'userQuestions',
   'mayflyConversation',
-  'mayflyConversationFacts',
+  'mayflyRetraction',
 ] as const
 
 /** One human-authored pending Inbox row, projected only for presentation. */
