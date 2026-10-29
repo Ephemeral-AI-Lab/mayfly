@@ -212,13 +212,110 @@ export interface ConversationProjectionState {
   readonly turns: readonly ConversationTurn[]
 }
 
+/** Session facts shared by status surfaces: the terminal phase, output measurements, retries, marks, and run outcome. */
+export interface ConversationFacts {
+  readonly phase: 'idle' | 'waiting' | 'thinking' | 'composing' | 'tool'
+  readonly active: boolean
+  readonly turn: number
+  /** Envelope time of the latest `turn/start`; the activity row's elapsed anchor. */
+  readonly turnStartedAt?: number | undefined
+  readonly currentStep?: number | undefined
+  readonly lastCompletedStep?: number | undefined
+  readonly flowDownChars: number
+  /** Current reasoning or answer phase only; cleared at stream boundaries. */
+  readonly outputProgress?: OutputProgress | undefined
+  /** Cache-read share of the latest step's prompt-side usage; absent when the provider did not report it. */
+  readonly contextCacheReadTokens?: number | undefined
+  /** Latest human prompt in the current run, used for fork-child correlation. */
+  readonly promptText?: string | undefined
+  /** Per-run dispatched tool count, reset by `turn/start`. */
+  readonly epochToolCount?: number | undefined
+  /** Per-run token total with replace-per-step usage semantics. */
+  readonly epochTokens?: number | undefined
+  /** Projection-private usage buckets retained as plain readonly data. */
+  readonly usageByStep?: Readonly<Record<string, number>> | undefined
+  /** Per-run output tokens with the same replace-per-step semantics; the rest of `epochTokens` is input (cache included). */
+  readonly epochOutputTokens?: number | undefined
+  readonly outputByStep?: Readonly<Record<string, number>> | undefined
+  /**
+   * Latest running activity marker; `preparing` marks a call whose arguments
+   * are still streaming.
+   */
+  readonly activity?: Readonly<{
+    readonly kind: 'reasoning' | 'text' | 'tool'
+    readonly name?: string | undefined
+    readonly preparing?: boolean | undefined
+  }> | undefined
+  /**
+   * The non-spawn calls in flight: committed and awaiting their result, or (from the live draft) still streaming their
+   * arguments. The stream's pending lines and the activity row's tool phase both read this one list.
+   */
+  readonly inFlight?: readonly Readonly<{ readonly callId: string, readonly name: string, readonly detail?: string | undefined, readonly preparing?: boolean | undefined }>[] | undefined
+  /** A provider request being retried after a failure: which retry, when it was scheduled, and how long it waits. */
+  readonly retrying?: Readonly<{ readonly retry: number, readonly maxRetries: number, readonly at: number, readonly delayMs: number, readonly reason?: string | undefined, readonly status?: number | undefined }> | undefined
+  /** The context occupancy around each recent compaction, kept so its settled row reads the same numbers for good. */
+  readonly compactions?: readonly CompactionMark[] | undefined
+  /** The approvals put to the answerer, each with the outcome once it is known; the newest few. */
+  readonly approvals?: readonly ApprovalMark[] | undefined
+  /** Terminal outcome of the latest run. */
+  readonly runOutcome?: 'completed' | 'failed' | undefined
+  /** The run ended because it was stopped (aborted or interrupted), not because it failed on its own. */
+  readonly runStopped?: boolean | undefined
+  /** Envelope timestamp of the latest terminal outcome. */
+  readonly endedAt?: number | undefined
+  readonly agentCalls: readonly ConversationAgentCall[]
+}
+
+/** One approval asked of the user: the call it was about, when the asker named it, and how it ended. */
+export interface ApprovalMark {
+  readonly id: string
+  readonly callId?: string | undefined
+  readonly outcome?: 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable' | undefined
+}
+
+/**
+ * The prompt-side tokens a compaction began with and ended with, derived from
+ * the presentation step-usage record so the settled row keeps its numbers. The
+ * live context and its window are native projection values and are not copied
+ * here.
+ */
+export interface CompactionMark {
+  readonly id: string
+  readonly before: number
+  /** Set when the summary lands: the occupancy with the checkpoint in place of the shadowed history. */
+  readonly after?: number | undefined
+  readonly window?: number | undefined
+}
+
+/** Projection facts for one spawn-class (`subagent` or `subagent_*`) call. */
+export interface ConversationAgentCall {
+  readonly seq: number
+  readonly turn: number
+  readonly step: number
+  readonly callId: string
+  readonly name: string
+  readonly arguments: string
+  readonly startedAt: number
+  readonly result?: {
+    readonly text: string
+    readonly isError: boolean
+    readonly endedAt: number
+  } | undefined
+}
+
+/** Plain-JSON state checkpointed for {@link ConversationFacts}. */
+export type ConversationFactsState = ConversationFacts
+
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {
     /** Full conversation entries; excluded from Session summary payloads. */
     mayflyConversation: SessionProjectionSummaryExcluded<ConversationProjection>
+    /** Session facts for status surfaces; excluded from Session summary payloads. */
+    mayflyConversationFacts: SessionProjectionSummaryExcluded<ConversationFacts>
   }
 
   interface SessionProjectionStateMap {
     mayflyConversation: ConversationProjectionState
+    mayflyConversationFacts: ConversationFactsState
   }
 }

@@ -1,9 +1,9 @@
 /**
- * Presentation-only activity derivation from official Conversation and Session snapshots.
+ * Presentation-only activity derivation from official Facts, Conversation, and Session snapshots.
  * @module @ephemeral-ai/mayfly/remote/status/activity
  */
 
-import type { ConversationProjection, OutputProgress } from '@ephemeral-ai/mayfly-host/types'
+import type { ConversationFacts, ConversationProjection, OutputProgress } from '@ephemeral-ai/mayfly-host/types'
 import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import { formatTokens } from '@ephemeral-ai/mayfly/status-context'
 
@@ -27,11 +27,43 @@ export interface RemoteActivitySnapshot {
   readonly latestOutcome?: string
 }
 
-/** Derive current activity without retaining a second Conversation projection. */
+/** Map the Facts fold's terminal phase onto the activity row's presentation phase. */
+function factsPhase(phase: ConversationFacts['phase'], active: boolean): RemoteActivitySnapshot['phase'] {
+  if (!active) return 'idle'
+  if (phase === 'thinking') return 'thinking'
+  if (phase === 'composing') return 'writing'
+  if (phase === 'tool') return 'tool'
+  return 'diving'
+}
+
+/**
+ * Derive current activity without retaining a second Conversation projection.
+ * The Host's `mayflyConversationFacts` value leads every field it carries; the
+ * Conversation projection remains the fallback for Hosts without the Facts
+ * projection.
+ */
 export function deriveRemoteActivity(
   projection: ConversationProjection | undefined,
   session: SessionSnapshot | undefined,
+  facts?: ConversationFacts | undefined,
 ): RemoteActivitySnapshot {
+  if (facts !== undefined) {
+    return {
+      active: facts.active,
+      phase: factsPhase(facts.phase, facts.active),
+      turn: facts.turn,
+      ...facts.turnStartedAt === undefined ? {} : { turnStartedAt: facts.turnStartedAt },
+      ...facts.outputProgress === undefined ? {} : { outputProgress: facts.outputProgress },
+      flowDownChars: facts.flowDownChars,
+      inFlight: (facts.inFlight ?? []).map(call => ({
+        callId: call.callId,
+        name: call.name,
+        ...call.detail === undefined ? {} : { detail: call.detail },
+        preparing: call.preparing === true,
+      })),
+      ...facts.runOutcome === undefined ? {} : { latestOutcome: facts.runOutcome },
+    }
+  }
   const turn = projection?.turns.at(-1)
   const turnId = turn?.turn ?? 0
   const entries = projection?.entries.filter(entry => entry.turn === turnId) ?? []

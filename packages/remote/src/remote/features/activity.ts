@@ -3,7 +3,7 @@
  * @module @ephemeral-ai/mayfly/remote/features/activity
  */
 
-import type { ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
+import type { ConversationFacts, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import type { MayflyPaneRegistration, MayflyTone, MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import { contextPercent } from '@ephemeral-ai/mayfly/status-context'
@@ -30,6 +30,12 @@ const THINKING_STAGES: readonly { readonly from: number, readonly label: string,
   { from: 45_000, label: 'Fathoming', tone: 'accent', strong: true },
 ]
 
+/** Retry-notification copy owned by this lane; the shared `remote-activity` namespace stays with the locale lane. */
+const zh: Readonly<Record<string, string>> = {
+  'retrying in {seconds}s · {attempt}': '{seconds} 秒后重试 · {attempt}',
+  'rate limited': '已被限流',
+}
+
 interface ContextPressure {
   readonly projectedTokens?: number
   readonly pressureTokens?: number
@@ -39,6 +45,7 @@ interface ContextPressure {
 class RemoteActivityController {
   private readonly options: RemoteFeatureContext
   private readonly t: MayflyTranslate
+  private readonly tr: MayflyTranslate
   private readonly lifecycle: RemoteFeatureLifecycle
   private readonly activityPane: MayflyPaneRegistration
   private readonly notificationPane: MayflyPaneRegistration
@@ -57,19 +64,26 @@ class RemoteActivityController {
   private now = Date.now()
   private pressure: ContextPressure | undefined
   private reportedContext = 0
+  private retrying: ConversationFacts['retrying'] | undefined
   private timer: ReturnType<typeof setInterval> | undefined
   private disposed = false
 
   constructor(options: RemoteFeatureContext) {
     this.options = options
     this.t = memoizedLocaleTranslator(options.ctx, 'remote-activity').translate
+    this.tr = memoizedLocaleTranslator(options.ctx, 'remote-activity-retry').translate
     this.lifecycle = new RemoteFeatureLifecycle(options, this.attach)
     this.activityPane = options.ctx.mayflyPanes.register({ id: 'mayfly.pane.activity', placement: 'bottom', priority: 10, narrow: 'bottom' }, null)
     this.notificationPane = options.ctx.mayflyPanes.register({ id: 'mayfly.pane.notification', placement: 'bottom', priority: 9, narrow: 'bottom' }, RemoteNotificationLine(undefined))
     this.notifications = options.ctx.mayflyUiInteraction.createNotificationOwner('remote.activity')
     this.offInteraction = options.ctx.mayflyUiInteraction.subscribe(this.publishNotifications)
+    options.ctx.effect(() => options.ctx.mayflyLocale.register('remote-activity-retry', {
+      en: Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key]))),
+      zh,
+    }))
     this.offLocale = options.subscribeLocale(() => {
       this.publishActivity()
+      this.publishRetry()
       this.publishNotifications()
     })
     this.lifecycle.start()
@@ -78,6 +92,7 @@ class RemoteActivityController {
       this.ticks += 1
       if (this.ticks % 15 === 0) this.nextTip()
       this.publishActivity()
+      this.publishRetry()
     }, 1_000)
     this.timer.unref()
   }
@@ -107,25 +122,31 @@ class RemoteActivityController {
     this.phaseSeenAt = undefined
     this.pressure = undefined
     this.reportedContext = 0
+    this.retrying = undefined
     this.notifications.clearAll()
     const current = this.lifecycle.selection(generation)
     if (current !== undefined) {
       const conversation = current.binding.session.projections.faceOf('mayflyConversation')
+      const facts = current.binding.session.projections.faceOf('mayflyConversationFacts')
       const questions = current.binding.session.projections.faceOf('userQuestions')
       const pressure = current.binding.session.projections.faceOf('contextPressure')
       const update = (): void => {
         if (!this.lifecycle.owns(generation)) return
-        this.activity = deriveRemoteActivity(conversation.getSnapshot() as ConversationProjection | undefined, current.binding.session.getSnapshot())
+        const factsValue = facts.getSnapshot() as ConversationFacts | undefined
+        this.activity = deriveRemoteActivity(conversation.getSnapshot() as ConversationProjection | undefined, current.binding.session.getSnapshot(), factsValue)
+        this.retrying = factsValue?.retrying
         const projectedQuestions = questions.getSnapshot() as { readonly active?: readonly unknown[] } | undefined
         this.waiting = (projectedQuestions?.active?.length ?? 0) > 0
         if (this.waiting && this.waitingSince === undefined) this.waitingSince = Date.now()
         if (!this.waiting) this.waitingSince = undefined
         this.pressure = pressure.getSnapshot() as ContextPressure | undefined
         this.publishActivity()
+        this.publishRetry()
         this.publishNotifications()
       }
       this.subscriptions = [
         conversation.subscribe(update),
+        facts.subscribe(update),
         questions.subscribe(update),
         pressure.subscribe(update),
         current.binding.session.subscribe(update),
@@ -141,6 +162,7 @@ class RemoteActivityController {
       }
     }
     this.publishActivity()
+    this.publishRetry()
     this.publishNotifications()
   }
 
@@ -178,6 +200,30 @@ class RemoteActivityController {
       ...info === undefined ? {} : { info },
       ...info === undefined && phase !== 'tool' ? { tip: `${this.t('Tip: ')}${this.t(this.tip)}` } : {},
     }))
+  }
+
+  /** Report or withdraw the retry countdown; the 1s tick keeps the remaining seconds current. */
+  private publishRetry(): void {
+    if (this.disposed) return
+    const current = this.options.hosts.current()
+    const retrying = this.retrying
+    if (retrying === undefined || current === undefined) {
+      this.notifications.clear('retry')
+      return
+    }
+    const seconds = Math.max(0, Math.ceil((retrying.at + retrying.delayMs - this.now) / 1_000))
+    const attempt = `${String(retrying.retry)}/${String(retrying.maxRetries)}`
+    const parts = [
+      ...retrying.status === undefined ? [] : [retrying.status === 429 ? this.tr('rate limited') : `HTTP ${String(retrying.status)}`],
+      ...retrying.reason === undefined || retrying.reason === '' ? [] : [retrying.reason],
+      this.tr('retrying in {seconds}s · {attempt}', { seconds, attempt }),
+    ]
+    this.notifications.report('retry', { kind: 'session', sessionId: current.ref.sessionId }, {
+      severity: 'warning',
+      purpose: 'progress',
+      message: parts.join(' · '),
+      tail: attempt,
+    })
   }
 
   private publishNotifications(): void {

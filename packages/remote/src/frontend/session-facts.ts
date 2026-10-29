@@ -37,6 +37,8 @@ export const REMOTE_SESSION_PROJECTION_KEYS = [
   'userQuestions',
   'mayflyConversation',
   'mayflyRetraction',
+  'mayflyConversationFacts',
+  'mayflyDeliverables',
 ] as const
 
 /** One human-authored pending Inbox row, projected only for presentation. */

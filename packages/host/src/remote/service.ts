@@ -10,7 +10,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-session/types'
 import { Remote, RemoteError, TypertRemoteService, type RemoteStream } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from 'zod'
-import { MAYFLY_HOST_CAPABILITIES } from './capabilities.ts'
+import { mayflyHostCapabilities } from './capabilities.ts'
 import type { MayflyAuthorizationAnswer, MayflyAuthorizationFrame, MayflyAuthorizationRequest, MayflyDefaultModelRequest, MayflyGitStatus, MayflyHostCapabilities, MayflyHostSessionRequest, MayflyMcpCatalog, MayflyMcpResourceBody, MayflyMcpResourceListRequest, MayflyMcpResourcePage, MayflyMcpResourceReadRequest, MayflyModelCatalogDetails, MayflyModelCatalogRequest, MayflyModelSelection, MayflyPermissionCatalogDetails, MayflyPermissionCatalogRequest, MayflyPresentToolsRequest, MayflyPresentToolsResponse, MayflyProviderBalance, MayflyRetractTurnRequest, MayflySettingsDocument, MayflySettingsDocumentWrite, MayflySkillCatalog, MayflySubagentDrainRequest, MayflyToolCatalog, MayflyWorkspace, MayflyWorkspaceChangesRequest, MayflyWorkspaceChangesSummaryResult, MayflyWorkspaceDiffRequest, MayflyWorkspaceFileDiffResult, MayflyWorkspacePathRequest, MayflyWorkflowFrame } from '../types.ts'
 import { authorize, cancelAuthorization } from './authorization.ts'
 import { providerBalance } from './balance.ts'
@@ -60,12 +60,13 @@ export class MayflyHostService extends TypertRemoteService {
   }
 
   /**
-   * Return the protocol, package, dsh versions, and implemented feature keys.
-   * @returns the immutable capabilities implemented by this Host package.
+   * Return the protocol, package, dsh versions, and the feature keys this live
+   * composition currently implements.
+   * @returns the immutable capabilities computed from the installed services.
    */
   @Remote('capabilities')
   capabilities(): MayflyHostCapabilities {
-    return MAYFLY_HOST_CAPABILITIES
+    return mayflyHostCapabilities(this.ctx)
   }
 
   /** Present changed tool entries through each authorized exact Agent's native definitions. */
