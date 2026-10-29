@@ -25,7 +25,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   projections to the published Mayfly presentation folds. One event pass feeds
   conversation and facts; only live command completion produces a notice.
   It is a presentation adapter, not a Host projection.
-- `src/remote-bin.ts` receives credentials only through `MAYFLY_ENDPOINT`.
+- `src/remote-bin.ts` receives credentials only through the authenticated
+  `MAYFLY_DSH_STARTUP_URL` environment variable; a non-secret `--host` URL is
+  accepted, and a token in argv or a log is refused.
   Tokens never enter argv, logs, screenshots, or ordinary error text.
 
 The published `@ephemeral-ai/mayfly` and `@ephemeral-ai/mayfly-ui` packages are

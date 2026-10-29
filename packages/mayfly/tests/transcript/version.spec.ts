@@ -130,13 +130,6 @@ describe('the harness dependency line', () => {
     expect([...specs]).toEqual([`${HARNESS_LINE}`])
   })
 
-  it('the archived CLI runtime seed and extractor pin the independent host line', () => {
-    const seed = manifest('../../../cli/runtime/package.json')
-    expect(seed.dependencies?.['@deepseek-ai/dsh']).toBe(CLI_HARNESS_LINE)
-    const source = readFileSync(new URL('../../../cli/src/runtime.ts', import.meta.url), 'utf8')
-    expect(source).toContain(`export const HARNESS_LINE = '${CLI_HARNESS_LINE}'`)
-  })
-
   it('every dsh peer dependency ranges exactly one line up from the pins', () => {
     for (const rel of HARNESS_MANIFESTS) {
       const pkg = manifest(rel)

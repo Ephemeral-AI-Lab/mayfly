@@ -46,6 +46,12 @@ const approvedPresentation = new Set([
   "padding:packages/mayfly/src/transcript/splash.ts:return gap < 2 ? deps.truncate(left, width) : left + ' '.repeat(gap) + right",
   "padding:packages/mayfly/src/transcript/splash.ts:text + ' '.repeat(Math.max(0, width - deps.visibleWidth(text)))",
   "padding:packages/mayfly/src/transcript/tool-calls.ts:const lead = names[index]!.padEnd(wide)",
+  // The independent Remote frontend renders through the published UI kit, so
+  // its own business surfaces pad rows and align footer halves the same way the
+  // in-process TUI's do.
+  "padding:packages/remote/src/remote/editor/skills-panel.ts:return this.options.components.truncateToWidth(`${left}${' '.repeat(padding)}  ${right}`, width)",
+  "padding:packages/remote/src/remote/panels/operations/agents.ts:label: `${'  '.repeat(row.depth)}${row.label}`,",
+  "padding:packages/remote/src/remote/status.ts:return this.components.truncateToWidth(`${leftText}${' '.repeat(gap)}${rightText}`, width)",
   "pointer:packages/mayfly/src/interaction/update-command.ts:detail: [`v${fromVersion} \u2192 v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' \u00b7 '),",
   "pointer:packages/mayfly/src/interaction/update-command.ts:{ kind: 'divider', label: `v${fromVersion} \u2192 v${toVersion}` },",
   "pointer:packages/mayfly/src/transcript/stream-facts.ts:const tokens = mark?.before !== undefined && mark.after !== undefined ? `${approx(mark.before)} \u2192 ${approx(mark.after)} ${t('tokens')}`",
@@ -62,6 +68,10 @@ async function sourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true })
   const files: string[] = []
   for (const entry of entries) {
+    // The Remote package resolves its own nested graph, so third-party sources
+    // live under packages/remote/node_modules; the guard audits this
+    // repository's sources, never a dependency's.
+    if (entry.name === 'node_modules') continue
     const path = resolve(directory, entry.name)
     if (entry.isDirectory()) files.push(...await sourceFiles(path))
     else if (entry.name.endsWith('.ts')) files.push(path)
