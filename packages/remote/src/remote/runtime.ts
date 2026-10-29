@@ -13,12 +13,16 @@ import { RemoteToolPresentationCache } from '../frontend/tool-presentations.ts'
 import { RemoteConversationModelSource } from '../transcript/remote-model.ts'
 import { RemoteApp } from './app.ts'
 import { RemoteBannerComponent } from './banner.ts'
+import { mountRemoteConfigurationComposition, remoteClientVersion, type RemoteConfigurationCompositionHandle } from './configuration-composition.ts'
 import { mountEditorComposition, type EditorCompositionHandle } from './editor-composition.ts'
 import { mountRemoteEditor, type RemoteEditorHandle } from './editor.ts'
 import { mountRemoteFeatures, type RemoteFeatureHandle } from './features.ts'
+import { mergeRemoteFeatureCommandSources, type RemoteFeatureCommandSource } from './features/commands.ts'
 import { resolveMayflyToolPresentation } from './host-composition.ts'
 import { RemotePlainPanels } from './interactions/plain-panels.ts'
+import { mountRemoteOperationsComposition, type RemoteOperationsCompositionHandle } from './operations-composition.ts'
 import { RemotePanelController } from './panels.ts'
+import { RemoteSideViews } from './side-views.ts'
 import { RemoteStatusComponent } from './status.ts'
 
 /** Inputs for one independent Mayfly Frontend process. */
@@ -38,6 +42,10 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
   let editorComposition: EditorCompositionHandle | undefined
   let panels: RemotePanelController | undefined
   let features: RemoteFeatureHandle | undefined
+  let configuration: RemoteConfigurationCompositionHandle | undefined
+  let operations: RemoteOperationsCompositionHandle | undefined
+  let sideViews: RemoteSideViews | undefined
+  let commandSource: RemoteFeatureCommandSource | undefined
   let toolPresentations: RemoteToolPresentationCache | undefined
   let conversation: RemoteConversationModelSource | undefined
   let transcript: TranscriptController | undefined
@@ -132,6 +140,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     transcript.setView('remote', () => conversation!.snapshot())
     transcript.show('remote')
     transcript.attach(screen)
+
     const execute = async (text: string): Promise<void> => {
       const result = await app!.execute(text)
       if (result.exit) stop()
@@ -142,20 +151,10 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       cancel: () => app!.cancel(),
       exit: stop,
     })
+    sideViews = new RemoteSideViews(transcript, toolPresentations, screen, editor.notice)
     panels = new RemotePanelController(screen, () => editor?.focus())
     app = new RemoteApp(conversation, editor.notice, new RemotePlainPanels(panels, ctx.mayflyComponents, ctx.mayflyTheme.colors))
     apps.push(app)
-    editorComposition = mountEditorComposition({
-      app,
-      editor: editor.editor,
-      screen,
-      components: ctx.mayflyComponents,
-      colors: ctx.mayflyTheme.colors,
-      keymap: ctx.mayflyKeymap,
-      notice: editor.notice,
-      localCwd: options.cwd ?? process.cwd(),
-      exit: stop,
-    })
     ctx.effect(() => ctx.mayflyUiImages.provide(async (attachmentId) => {
       const reference = conversation!.imageAttachment(attachmentId)
       if (reference === undefined) return undefined
@@ -190,6 +189,34 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         subscribe: listener => app!.subscribeTopology(listener),
       },
     })
+    const featureContext = features.context
+    configuration = mountRemoteConfigurationComposition(featureContext, {
+      clientVersion: remoteClientVersion(),
+    })
+    operations = mountRemoteOperationsComposition(featureContext, {
+      localCwd: options.cwd ?? process.cwd(),
+      btw: app.btw,
+      present: (ref, binding) => { sideViews!.present(binding, { ref, cwd: '' }) },
+      closePresent: () => { sideViews!.close() },
+      copy: (text) => editorComposition!.controller.copyText(text).then(() => undefined),
+    })
+    commandSource = mergeRemoteFeatureCommandSources(
+      features.commands,
+      configuration.commands,
+      operations.commands,
+    )
+    editorComposition = mountEditorComposition({
+      app,
+      editor: editor.editor,
+      screen,
+      components: ctx.mayflyComponents,
+      colors: ctx.mayflyTheme.colors,
+      keymap: ctx.mayflyKeymap,
+      notice: editor.notice,
+      localCwd: options.cwd ?? process.cwd(),
+      exit: stop,
+      featureCommands: commandSource,
+    })
     const statusSlot = screen.mountDockSlot('status.footer', new RemoteStatusComponent(
       ctx.mayflyComponents,
       ctx.mayflyTheme.colors,
@@ -203,7 +230,10 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
   } finally {
     process.removeListener('SIGINT', sigint)
     process.removeListener('SIGTERM', sigterm)
+    operations?.dispose()
+    configuration?.dispose()
     features?.dispose()
+    sideViews?.dispose()
     editorComposition?.dispose()
     panels?.dispose()
     editor?.dispose()

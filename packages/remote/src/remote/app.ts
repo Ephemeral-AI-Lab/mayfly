@@ -2,6 +2,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey, type SessionRef } from '../client/types.ts'
 import type { HostClient } from '../client/types.ts'
 import { HostActions } from '../frontend/host-actions.ts'
+import { RemoteBtwService } from '../frontend/btw.ts'
 import { HostRegistry } from '../frontend/host-registry.ts'
 import type { RemoteConversationModelSource } from '../transcript/remote-model.ts'
 import type { RemoteNotice } from './notice.ts'
@@ -24,6 +25,8 @@ export const FRONTEND_COMMANDS = [
 export class RemoteApp {
   readonly registry: HostRegistry
   readonly actions: HostActions
+  /** Independent BTW side-question orchestration over this app's actions and registry. */
+  readonly btw: RemoteBtwService
 
   private readonly endpoints = new Map<HostKey, string>()
   private readonly topologyListeners = new Set<() => void>()
@@ -44,6 +47,7 @@ export class RemoteApp {
       return attachMayflyHostClient(key, startupUrl)
     })
     this.actions = new HostActions(this.registry)
+    this.btw = new RemoteBtwService(this.actions, this.registry)
   }
 
   /** Observe committed Host attach/detach and Session selection changes without owning them. */

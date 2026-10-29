@@ -67,9 +67,11 @@ export interface RemoteFeatureContext extends RemoteFeatureMountContext {
 /** One focused feature mount; its disposer owns every listener, stream, and pending panel. */
 export type RemoteFeatureMount = (context: RemoteFeatureContext) => void | (() => void)
 
-/** Mounted feature teardown plus its instance-owned local command source. */
+/** Mounted feature teardown plus its instance-owned local command source and shared context. */
 export interface RemoteFeatureHandle {
   readonly commands: RemoteFeatureCommandSource
+  /** The exact context every productive mount received, for lane compositions to join. */
+  readonly context: RemoteFeatureContext
   dispose(): void
 }
 
@@ -114,5 +116,5 @@ export function mountRemoteFeatures(base: RemoteFeatureMountContext): RemoteFeat
     dispose()
     throw error
   }
-  return { commands, dispose }
+  return { commands, context, dispose }
 }

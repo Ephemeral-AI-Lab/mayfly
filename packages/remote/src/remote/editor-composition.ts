@@ -23,6 +23,7 @@ import type {
   EditorHostFiles,
   EditorLocalAdapter,
 } from './editor/types.ts'
+import type { RemoteFeatureCommandSource } from './features/commands.ts'
 import type { RemoteNotice } from './notice.ts'
 
 /** Generic ownership of the attached editor features and their lifecycle subscriptions. */
@@ -41,6 +42,8 @@ interface EditorCompositionOptions {
   readonly notice: RemoteNotice
   readonly localCwd: string
   readonly exit: () => void | Promise<void>
+  /** Feature-owned slash-command contributions routed before Host command dispatch. */
+  readonly featureCommands?: RemoteFeatureCommandSource | undefined
 }
 
 const ALIASES: Readonly<Record<string, readonly string[]>> = {
@@ -72,6 +75,11 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
         ...command,
         ...ALIASES[command.name] === undefined ? {} : { aliases: ALIASES[command.name] },
       })),
+      ...(options.featureCommands?.list() ?? []).map(command => ({
+        name: command.name,
+        description: command.description,
+        ...command.input === undefined ? {} : { input: command.input },
+      })),
       { name: 'skills', description: 'List available skills' },
     ] satisfies readonly EditorCommandDescriptor[],
     async execute(invocation) {
@@ -80,6 +88,9 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
       }
       if (invocation.name === 'skills') {
         await controller.openSkills()
+        return { kind: 'success' }
+      }
+      if (await options.featureCommands?.execute(invocation.name, invocation.rawInput, invocation.signal) === true) {
         return { kind: 'success' }
       }
       const result = await options.app.execute(invocation.line)
