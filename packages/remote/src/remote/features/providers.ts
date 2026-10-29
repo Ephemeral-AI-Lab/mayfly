@@ -14,6 +14,8 @@ import type {
   SettingsNamespaceView,
   SettingsPathOpView,
 } from '@deepseek-ai/dsh-api-remotes/client'
+import type { MayflyProviderBalance } from '@ephemeral-ai/mayfly-host/types'
+import type { MayflyAuthorizationNotice } from '../../frontend/host-contract.ts'
 import type { HostClient } from '../../client/types.ts'
 import type { RemoteFeatureContext } from './contracts.ts'
 import {
@@ -23,6 +25,7 @@ import {
   remoteErrorMessage,
   remoteValue,
 } from './official.ts'
+import { unavailableCapability } from './capabilities.ts'
 import { openRemoteFeaturePanel, type RemoteMountedPanel, type RemotePanelModel } from './panel.ts'
 import {
   deriveRemoteProviderKeyRef,
@@ -35,14 +38,49 @@ import {
   type RemoteProviderProfile,
 } from './provider-profile.ts'
 
-/** Generic OAuth operation streams are not mounted by the official Client assembly. */
-export const REMOTE_AUTHORIZATION_GAP = 'Generic provider authorization requires the Host authorization operation-stream DTO.'
-/** API keys never reach the TUI; API-key balance requires a Host-side providerBalance DTO. */
-export const REMOTE_PROVIDER_BALANCE_GAP = 'Official API-key provider balance requires a Host providerBalance DTO; Remote never receives the key.'
+/** Presentation-safe progress notice carried by one authorization frame. */
+export type RemoteAuthorizationNotice = MayflyAuthorizationNotice
+
+/** Presentation-safe prompt data the authorization panel collects an answer for. */
+export interface RemoteAuthorizationPromptView {
+  readonly kind: 'text' | 'secret' | 'select'
+  readonly message: string
+  readonly placeholder?: string | undefined
+  readonly options?: readonly { readonly id: string, readonly label: string, readonly description?: string | undefined }[] | undefined
+}
+
+/** One collected prompt answer; undefined settles as a decline. */
+export type RemoteAuthorizationPromptReply =
+  | { readonly type: 'answer', readonly value: string }
+  | { readonly type: 'decline' }
+
+/** UI callbacks driven by one Host authorization operation stream. */
+export interface RemoteAuthorizationInteraction {
+  notice(notice: RemoteAuthorizationNotice): void
+  prompt(prompt: RemoteAuthorizationPromptView): Promise<RemoteAuthorizationPromptReply | undefined>
+}
+
+/** OAuth credential configuration through the Host authorization operation stream. */
+export interface RemoteProviderAuthorization {
+  authorize(
+    client: HostClient,
+    key: string,
+    method: string | undefined,
+    interaction: RemoteAuthorizationInteraction,
+    parent?: AbortSignal,
+  ): Promise<'authorized' | 'cancelled'>
+}
+
+/** Official API-key balance through the Host providerBalance DTO. */
+export interface RemoteProviderBalanceSource {
+  balance(client: HostClient, parent?: AbortSignal): Promise<MayflyProviderBalance | undefined>
+}
 
 const PROTOCOLS = ['openai-completions', 'openai-responses', 'anthropic-messages'] as const
 const EFFORTS = ['default', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 const ACCOUNT_PROVIDER = 'deepseek-account'
+/** Credential-key namespace of the native OAuth-capable provider adapters. */
+const OAUTH_KEY_SCOPE = 'llm-pi-ai'
 
 type SettingValue = Extract<SettingsPathOpView, { readonly op: 'set' }>['value']
 
@@ -67,7 +105,12 @@ export function remoteProviderCredentialRefs(directory: RemoteProviderDirectory)
 
 /** Provider controller for one feature mount. */
 export class RemoteProvidersController extends RemoteFeatureController {
-  constructor(context: RemoteFeatureContext, private readonly openAccount?: (client: HostClient) => Promise<void>) {
+  constructor(
+    context: RemoteFeatureContext,
+    private readonly openAccount?: (client: HostClient) => Promise<void>,
+    private readonly authorization?: RemoteProviderAuthorization,
+    private readonly balanceSource?: RemoteProviderBalanceSource,
+  ) {
     super(context)
   }
 
@@ -150,10 +193,13 @@ export class RemoteProvidersController extends RemoteFeatureController {
     } finally { operation.dispose() }
   }
 
-  /** Explicit unsupported API-key balance behavior; Platform account balance lives in account.ts. */
-  apiKeyBalance(): never { throw new Error(REMOTE_PROVIDER_BALANCE_GAP) }
+  /** Read the official API-key balance, or undefined when the Host lacks the DTO. */
+  async balance(client: HostClient): Promise<MayflyProviderBalance | undefined> {
+    if (this.balanceSource === undefined) return undefined
+    return await this.balanceSource.balance(client)
+  }
 
-  /** Open the merged live/dormant provider roster. */
+  /** Open the merged live/dormant provider roster with the API-key balance row. */
   async open(client = this.context.hosts.current()?.client ?? this.context.hosts.list()[0]): Promise<void> {
     if (client === undefined) return
     const directory = await this.directory(client).catch((error: unknown) => {
@@ -161,17 +207,20 @@ export class RemoteProvidersController extends RemoteFeatureController {
       return undefined
     })
     if (directory === undefined) return
-    const routes = new Map<string, { readonly name: string, readonly live: boolean, readonly detail?: string | undefined }>()
+    const routes = new Map<string, { readonly name: string, readonly live: boolean, readonly oauth: boolean, readonly detail?: string | undefined }>()
     for (const entry of directory.configurable) routes.set(entry.provider, {
       name: entry.displayName,
       live: directory.live.some(provider => provider.id === entry.provider),
-      detail: entry.nativeAuth?.oauth === true ? REMOTE_AUTHORIZATION_GAP : entry.error,
+      oauth: entry.nativeAuth?.oauth === true,
+      detail: entry.nativeAuth?.oauth === true ? this.context.t('Sign in with OAuth') : entry.error,
     })
-    for (const provider of directory.live) routes.set(provider.id, { ...routes.get(provider.id), name: provider.name, live: true })
+    for (const provider of directory.live) routes.set(provider.id, { ...routes.get(provider.id), name: provider.name, live: true, oauth: routes.get(provider.id)?.oauth ?? false })
+    const balance = await this.loadBalanceDetail(client)
     let mounted: RemoteMountedPanel | undefined
     const model: RemotePanelModel = {
       title: this.context.t('Providers'),
       rows: [
+        ...balance === undefined ? [] : [{ id: '__balance__', text: this.context.t('API key balance'), detail: balance, disabled: true }],
         ...[...routes.entries()].map(([route, entry]) => ({
           id: route,
           text: entry.name,
@@ -183,12 +232,29 @@ export class RemoteProvidersController extends RemoteFeatureController {
       hint: '↑↓ select · Enter configure · Esc close',
     }
     mounted = openRemoteFeaturePanel(this.context, model, (action, route) => {
-      if (action !== 'accept' || route === undefined) return
+      if (action !== 'accept' || route === undefined || route === '__balance__') return
       mounted?.lease.close()
       if (route === '__add__') { void this.openAdd(client); return }
       if (route === ACCOUNT_PROVIDER && this.openAccount !== undefined) { void this.openAccount(client); return }
+      if (routes.get(route)?.oauth === true && !routes.get(route)?.live) { void this.openAuthorize(client, route); return }
       void this.openEditor(client, route)
     }, () => {})
+  }
+
+  /** Format the API-key balance row detail, including the absent-capability text. */
+  private async loadBalanceDetail(client: HostClient): Promise<string | undefined> {
+    if (this.balanceSource === undefined) return undefined
+    const balance = await this.balance(client).catch(() => undefined)
+    if (balance === undefined) return unavailableCapability('providerBalance')
+    if (balance.status === 'ready') {
+      return [
+        balance.wallets.map(wallet => `${wallet.total} ${wallet.currency}`).join(' · ') || '—',
+        ...balance.available === false ? [this.context.t('No balance is available on this key')] : [],
+      ].join(' · ')
+    }
+    return balance.reason === 'no-key' ? this.context.t('No API key is configured')
+      : balance.reason === 'rejected' ? this.context.t('The provider rejected the balance request')
+        : this.context.t('The balance service could not be reached')
   }
 
   /** Open one adapter-addressed profile editor with explicit revision checks. */
@@ -241,6 +307,133 @@ export class RemoteProvidersController extends RemoteFeatureController {
       if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
       operation.dispose()
     }
+  }
+
+  /** Run OAuth credential setup through the Host authorization operation stream. */
+  async openAuthorize(client: HostClient, route: string): Promise<void> {
+    if (this.authorization === undefined) { this.context.notice.set(unavailableCapability('authorization')); return }
+    const operation = this.hostOperation(client)
+    if (operation === undefined) return
+    let mounted: RemoteMountedPanel | undefined
+    let notice: RemoteAuthorizationNotice | undefined
+    let phase: 'ready' | 'running' = 'ready'
+    let prompt: {
+      readonly view: RemoteAuthorizationPromptView
+      readonly settle: (reply: RemoteAuthorizationPromptReply | undefined) => void
+    } | undefined
+    const noticeText = (): string | undefined => notice === undefined ? undefined : [
+      notice.message,
+      notice.url,
+      notice.code === undefined ? undefined : `${this.context.t('Code')}: ${notice.code}`,
+    ].filter((part): part is string => part !== undefined).join('\n')
+    const view = (): RemotePanelModel => {
+      const current = prompt?.view
+      if (current !== undefined) {
+        return {
+          title: this.context.t('Authorize {route}', { route }),
+          subtitle: current.message,
+          ...(current.kind === 'select'
+            ? {
+              rows: (current.options ?? []).map(option => ({ id: option.id, text: option.label, ...option.description === undefined ? {} : { detail: option.description } })),
+            }
+            : {
+              fields: [{
+                id: 'answer',
+                label: this.context.t('Answer'),
+                kind: current.kind === 'secret' ? 'secret' : 'input',
+                ...current.placeholder === undefined ? {} : { placeholder: current.placeholder },
+              }],
+            }),
+          footer: noticeText(),
+          hint: current.kind === 'select' ? '↑↓ select · Enter answer · Esc decline and close' : 'Enter answer · Esc decline and close',
+        }
+      }
+      return {
+        title: this.context.t('Authorize {route}', { route }),
+        subtitle: phase === 'ready' ? undefined : this.context.t('Waiting for authorization'),
+        rows: [{ id: '__start__', text: this.context.t('Sign in'), disabled: phase === 'running' }],
+        footer: noticeText(),
+        hint: 'Enter start · Esc close',
+      }
+    }
+    const start = async (): Promise<void> => {
+      if (phase !== 'ready' || !operation.valid()) return
+      phase = 'running'
+      notice = undefined
+      mounted?.panel.update(view())
+      try {
+        const outcome = await this.authorization!.authorize(client, `${OAUTH_KEY_SCOPE}/${route}`, 'oauth', {
+          notice: next => {
+            if (!operation.valid()) return
+            notice = next
+            mounted?.panel.update(view())
+          },
+          prompt: async requested => await new Promise(resolve => {
+            prompt = {
+              view: requested,
+              settle: reply => {
+                prompt = undefined
+                resolve(reply)
+              },
+            }
+            if (!operation.valid()) prompt.settle(undefined)
+            else mounted?.panel.update(view())
+          }),
+        }, operation.signal)
+        if (!operation.valid()) return
+        notice = undefined
+        prompt = undefined
+        if (outcome === 'authorized') {
+          await this.ensureAuthorizedProfile(client, route)
+          if (!operation.valid()) return
+          this.context.notice.set(this.context.t('Authorization completed'))
+          mounted?.lease.close()
+          return
+        }
+        phase = 'ready'
+        this.context.notice.set(this.context.t('Authorization cancelled'))
+        mounted?.panel.update(view())
+      } catch (error) {
+        if (operation.valid()) {
+          phase = 'ready'
+          this.context.notice.set(remoteErrorMessage(error))
+          mounted?.panel.update(view())
+        }
+      }
+    }
+    mounted = openRemoteFeaturePanel(this.context, view(), (action, id, values) => {
+      if (!operation.valid()) { mounted?.lease.close(); return }
+      if (prompt !== undefined) {
+        if (action === 'accept' && id !== undefined) prompt.settle({ type: 'answer', value: id })
+        else if (action === 'submit') prompt.settle({ type: 'answer', value: values.answer ?? '' })
+        else if (action === 'cancel') prompt.settle({ type: 'decline' })
+        return
+      }
+      if (action === 'accept' && id === '__start__') void start()
+    }, () => {
+      prompt?.settle(undefined)
+      operation.dispose()
+    })
+  }
+
+  /** Create the empty OAuth provider profile after its credential was stored. */
+  private async ensureAuthorizedProfile(client: HostClient, route: string): Promise<void> {
+    const operation = this.hostOperation(client)
+    if (operation === undefined) return
+    try {
+      const [configurable, settings] = await Promise.all([
+        remoteValue(client.remote.llm.listConfigurableProviders()),
+        remoteValue(client.remote.settings.describe()),
+      ])
+      const address = remoteProviderAddress(configurable, route)
+      if (address === undefined || address.path.length === 0) return
+      const descriptor = settings.namespaces.find((candidate: SettingsNamespaceView) => candidate.ns === address.ns)
+      if (descriptor === undefined || remoteProviderProfileAt(descriptor.value, address.path) !== undefined) return
+      await remoteValue(client.remote.settings.mutate(address.ns, [{ op: 'set', path: [...address.path], value: {} as SettingValue }], descriptor.revision))
+      if (operation.valid()) this.context.notice.set(this.context.t('provider "{route}" added', { route }))
+    } catch (error) {
+      if (operation.valid()) this.context.notice.set(`${this.context.t('Signed in, but the provider profile could not be created')}: ${remoteErrorMessage(error)}`)
+    } finally { operation.dispose() }
   }
 
   private mountEditor(

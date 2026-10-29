@@ -9,10 +9,11 @@ import type {
   SettingsNamespaceView,
   SettingsPathOpView,
 } from '@deepseek-ai/dsh-api-remotes/client'
+import type { MayflySettingsDocument } from '@ephemeral-ai/mayfly-host/types'
 import type { HostClient } from '../../client/types.ts'
 import type { RemoteFeatureContext } from './contracts.ts'
-import { onRemoteSettingsDocumentUpdated, RemoteFeatureController, remoteErrorMessage, remoteValue } from './official.ts'
-import { openRemoteFeaturePanel, type RemoteMountedPanel } from './panel.ts'
+import { onRemoteSettingsDocumentUpdated, RemoteCallError, RemoteFeatureController, remoteErrorMessage, remoteValue } from './official.ts'
+import { openRemoteFeaturePanel, type RemoteMountedPanel, type RemotePanelModel } from './panel.ts'
 import {
   remoteSettingsOperations,
   remoteSettingsProjection,
@@ -23,8 +24,15 @@ import {
 
 /** Host follow-up required before Mayfly preferences can persist through official settings. */
 export const REMOTE_MAYFLY_SETTINGS_REQUIREMENT = 'mayfly-host must register the existing Mayfly settings schema under the "mayfly" namespace; Remote applies theme/locale locally and creates no competing settings store.'
-/** Exact local raw-document editing needs a read/content-revision/write DTO. */
-export const REMOTE_SETTINGS_DOCUMENT_GAP = 'Exact local raw settings-document editing requires the Host settingsDocument content/revision DTO.'
+
+/** Actual settings document read and compare-and-write through the Host settingsDocument DTO. */
+export interface RemoteSettingsDocuments {
+  readDocument(client: HostClient, parent?: AbortSignal): Promise<MayflySettingsDocument>
+  writeDocument(client: HostClient, content: string, expectedRevision: string, parent?: AbortSignal): Promise<MayflySettingsDocument>
+}
+
+/** External editor hook the integration layer owns; undefined cancels the edit. */
+export type RemoteSettingsEdit = (client: HostClient, content: string, signal: AbortSignal) => Promise<string | undefined>
 
 type SettingsPatch = Parameters<HostClient['remote']['settings']['update']>[1]
 type SettingsSection = Parameters<HostClient['remote']['settings']['replace']>[1]
@@ -42,7 +50,11 @@ export function remoteMayflySettingsPersistence(settings: SettingsDescribeValue)
 
 /** Settings controller and plain namespace forms. */
 export class RemoteSettingsController extends RemoteFeatureController {
-  constructor(context: RemoteFeatureContext) { super(context) }
+  constructor(
+    context: RemoteFeatureContext,
+    private readonly documents?: RemoteSettingsDocuments,
+    private readonly edit?: RemoteSettingsEdit,
+  ) { super(context) }
 
   /** Read all redacted namespaces for one current Host generation. */
   async describe(client: HostClient): Promise<SettingsDescribeValue | undefined> {
@@ -95,7 +107,7 @@ export class RemoteSettingsController extends RemoteFeatureController {
     return { descriptor: descriptor.revision, fields: remoteSettingsProjection(descriptor, writable, choices, this.context.t).revision }
   }
 
-  /** Open the namespace roster. */
+  /** Open the namespace roster, with the raw document entry when its DTO is composed. */
   async open(client = this.context.hosts.current()?.client ?? this.context.hosts.list()[0]): Promise<void> {
     if (client === undefined) return
     try {
@@ -105,14 +117,78 @@ export class RemoteSettingsController extends RemoteFeatureController {
       mounted = openRemoteFeaturePanel(this.context, {
         title: this.context.t('Settings'),
         subtitle: remoteMayflySettingsPersistence(settings) === 'available' ? undefined : REMOTE_MAYFLY_SETTINGS_REQUIREMENT,
-        rows: settings.namespaces.map((namespace: SettingsNamespaceView) => ({ id: namespace.ns, text: namespace.ns, detail: `revision ${namespace.revision}` })),
-        footer: settings.namespaces.length === 0 ? this.context.t('No settings namespaces') : undefined,
+        rows: [
+          ...settings.namespaces.map((namespace: SettingsNamespaceView) => ({ id: namespace.ns, text: namespace.ns, detail: `revision ${namespace.revision}` })),
+          ...this.documents === undefined ? [] : [{ id: '__document__', text: this.context.t('Settings document'), detail: this.context.t('View and edit the raw settings document') }],
+        ],
+        footer: settings.namespaces.length === 0 && this.documents === undefined ? this.context.t('No settings namespaces') : undefined,
       }, (action, ns) => {
         if (action !== 'accept' || ns === undefined) return
         mounted?.lease.close()
+        if (ns === '__document__') { void this.openDocument(client); return }
         void this.openNamespace(client, ns)
       }, () => {})
     } catch (error) { this.context.notice.set(remoteErrorMessage(error)) }
+  }
+
+  /** Open the raw settings document; editing goes through the integration-owned editor. */
+  async openDocument(client: HostClient): Promise<void> {
+    const documents = this.documents
+    const edit = this.edit
+    if (documents === undefined) return
+    const operation = this.hostOperation(client)
+    if (operation === undefined) return
+    try {
+      let document = await documents.readDocument(client, operation.signal)
+      if (!operation.valid()) { operation.dispose(); return }
+      let editing = false
+      let mounted: RemoteMountedPanel | undefined
+      const view = (): RemotePanelModel => ({
+        title: this.context.t('Settings document'),
+        subtitle: `${this.context.t('revision')} ${document.revision.slice(0, 12)}${document.writable ? '' : ` · ${this.context.t('read-only')}`}`,
+        rows: [
+          ...document.content.split('\n').slice(0, 10).map(line => ({ text: line === '' ? ' ' : line })),
+          { id: '__edit__', text: this.context.t('Edit in external editor'), disabled: !document.writable || editing },
+        ],
+        footer: editing ? this.context.t('Editing in the external editor…') : undefined,
+        hint: 'Enter edit · Esc close',
+      })
+      const runEdit = async (): Promise<void> => {
+        if (editing || !document.writable) return
+        if (edit === undefined) { this.context.notice.set(this.context.t('No external editor is configured for the settings document')); return }
+        editing = true
+        mounted?.panel.update(view())
+        try {
+          const edited = await edit(client, document.content, operation.signal)
+          if (edited === undefined || edited === document.content) return
+          document = await documents.writeDocument(client, edited, document.revision, operation.signal)
+          if (operation.valid()) this.context.notice.set(this.context.t('Settings document saved'))
+        } catch (error) {
+          if (operation.valid()) this.context.notice.set(settingsDocumentError(error, this.context.t))
+        } finally {
+          editing = false
+          if (operation.valid()) mounted?.panel.update(view())
+        }
+      }
+      mounted = openRemoteFeaturePanel(this.context, view(), (action, id) => {
+        if (action === 'accept' && id === '__edit__') void runEdit()
+      }, () => { operation.dispose() })
+      const offSettings = onRemoteSettingsDocumentUpdated(client, () => {
+        void (async () => {
+          try {
+            const next = await documents.readDocument(client, operation.signal)
+            if (operation.valid() && !editing) {
+              document = next
+              mounted?.panel.update(view())
+            }
+          } catch { /* A newer revision still shows through the next explicit open. */ }
+        })()
+      })
+      operation.onDispose(offSettings)
+    } catch (error) {
+      if (operation.valid()) this.context.notice.set(settingsDocumentError(error, this.context.t))
+      operation.dispose()
+    }
   }
 
   /** Open one redacted namespace form; external changes mark it stale without overwriting drafts. */
@@ -214,4 +290,12 @@ export class RemoteSettingsController extends RemoteFeatureController {
       ...presets.status === 'fulfilled' ? { agentPresets: presets.value.presets.filter(preset => preset.broken === undefined).map(preset => preset.id) } : {},
     }
   }
+}
+
+/** Present a settings-document failure, making compare-and-write conflicts actionable. */
+function settingsDocumentError(error: unknown, t: (key: string) => string): string {
+  if (error instanceof RemoteCallError && error.code === 'mayflyHost/settings-conflict') {
+    return t('The settings document changed elsewhere (mayflyHost/settings-conflict); reopen it and review before saving')
+  }
+  return remoteErrorMessage(error)
 }
