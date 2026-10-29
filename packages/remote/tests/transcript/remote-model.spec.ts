@@ -266,8 +266,11 @@ describe('RemoteConversationModelSource', () => {
     events.append(live('lo', 1, 2.6, 1))
 
     let model = source.snapshot()
-    const assistantEntry = model.entries.find(entry => entry.kind === 'transcript-assistant')
-    expect(assistantEntry).toMatchObject({ text: 'Hello', streaming: true })
+    // The live attempt is an overlay beside the durable entries, not a durable
+    // row of its own: the Host projection owns history, the live window owns
+    // only the in-flight step.
+    const liveEntry = model.live?.entries.find(entry => entry.kind === 'transcript-assistant')
+    expect(liveEntry).toMatchObject({ text: 'Hello', streaming: true })
 
     events.settleAssistant('attempt-1' as LlmAttemptId, assistant('Hello', 1, 3))
     model = source.snapshot()

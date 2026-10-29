@@ -24,7 +24,9 @@ export function projectLiveConversation(entries: readonly SessionEventLikeEntry[
   const chunks = entries.filter((entry): entry is Extract<SessionEventLikeEntry, { readonly type: 'transient' }> => (
     entry.type === 'transient' && String(entry.event.data.attemptId) === attemptId
   ))
-  const stream = chunks.map(entry => ({ time: entry.event.time, chunk: entry.event.data.chunk }))
+  // A raw stream record carries its discriminant: the fold validates records
+  // at the durable boundary, and a record without `type` is dropped silently.
+  const stream = chunks.map(entry => ({ type: 'chunk' as const, time: entry.event.time, chunk: entry.event.data.chunk }))
   const { turn, step } = latest.event.data
   const event = {
     type: 'assistant/attempt',

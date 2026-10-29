@@ -4,7 +4,6 @@
  */
 import { randomUUID } from 'node:crypto'
 import { MessageId } from '@deepseek-ai/dsh-llm/brand'
-import { SessionForkError } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/types'
 import type {
   ModelSelection, RemoteFailure, RemoteResult,
@@ -15,6 +14,20 @@ import type { HostActions, HostSessionForkOptions } from './host-actions.ts'
 import type { HostRegistry } from './host-registry.ts'
 import type { HostViewLease, HostViewRole } from './host-registry.ts'
 import type { RemotePresentationSelection } from './session-facts.ts'
+
+/**
+ * The official fork failure, recognized structurally. The class lives in the
+ * lexical Client page bundle, which this Node process may not import: the
+ * handoff loader evaluates it behind a module table, so a statically imported
+ * copy would also be a different class identity. Its stable `name` and
+ * `rpcError` fields are the contract the Client publishes.
+ */
+function forkFailureOf(error: unknown): RemoteFailure | undefined {
+  if (typeof error !== 'object' || error === null) return undefined
+  if (Reflect.get(error, 'name') !== 'SessionForkError') return undefined
+  const rpcError = Reflect.get(error, 'rpcError')
+  return typeof rpcError === 'object' && rpcError !== null ? rpcError as RemoteFailure : undefined
+}
 
 /** Input for one ordinary forked side question. */
 export interface RemoteBtwAskOptions extends Pick<HostSessionForkOptions, 'atSeq' | 'allowMigration'> {
@@ -199,7 +212,8 @@ export class RemoteBtwService {
           ...(options.allowMigration === undefined ? {} : { allowMigration: options.allowMigration }),
         })
       } catch (error) {
-        if (error instanceof SessionForkError) return { ok: false, error: error.rpcError }
+        const failure = forkFailureOf(error)
+        if (failure !== undefined) return { ok: false, error: failure }
         throw error
       }
       this.assertCurrent(generation, signal)
