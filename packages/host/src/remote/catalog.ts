@@ -1,10 +1,11 @@
-/** Construction-frozen MCP and session-tool catalogs projected from native schemas. @module */
+/** Construction-frozen MCP and session-tool catalogs projected from native schemas and public transport health. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { ConversationJson } from '../conversation/types.ts'
 import type { MayflyMcpCatalog, MayflyMcpServer, MayflyMcpStatus, MayflyToolCatalog, MayflyToolSchema } from '../types.ts'
+import { mcpCatalogServers, type McpCatalogServerRow } from './mcp-catalog-face.ts'
 import { frozen, jsonSnapshot } from './json.ts'
 import { resolveExactAgent } from './session.ts'
 
@@ -21,6 +22,22 @@ function statusOf(registeredCount: number, visibleCount: number): MayflyMcpStatu
   return visibleCount === 0 ? 'restricted' : 'synced'
 }
 
+/**
+ * Strip userinfo and query from one endpoint defensively: the native catalog
+ * already redacts, but a composition must not leak credentials through this
+ * DTO even when its face does not.
+ */
+function sanitizeEndpoint(endpoint: string | null): string | null {
+  if (typeof endpoint !== 'string' || endpoint === '') return null
+  try {
+    const url = new URL(endpoint)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+    return `${url.origin}${url.pathname}`
+  } catch {
+    return null
+  }
+}
+
 function schemaDtos(schemas: readonly ToolSchema[]): readonly MayflyToolSchema[] {
   return schemas.map((schema): MayflyToolSchema => {
     const parameters = jsonSnapshot(schema.parameters as Record<string, ConversationJson>)
@@ -34,10 +51,29 @@ function schemaDtos(schemas: readonly ToolSchema[]): readonly MayflyToolSchema[]
   }).toSorted((left, right) => left.name.localeCompare(right.name))
 }
 
-/** Read global and exact-Agent schema views once and join them into the current MCP panel DTO. */
+/** Merge the registered/visible tool counts with one optional sanitized native health row. */
+function serverDto(serverName: string, registeredCount: number, toolsVisible: readonly MayflyToolSchema[], health: McpCatalogServerRow | undefined): MayflyMcpServer {
+  const configuredWithoutTools = health !== undefined && !health.toolsVisible
+  return {
+    entryId: serverName,
+    serverName,
+    status: configuredWithoutTools || registeredCount === 0 ? 'no-tools' : statusOf(registeredCount, toolsVisible.length),
+    registeredCount,
+    toolsVisible,
+    config: health === undefined
+      ? { transport: null, endpoint: null }
+      : { transport: health.transport, endpoint: sanitizeEndpoint(health.endpoint) },
+    ...health === undefined ? {} : { connection: health.connection },
+  }
+}
+
+/** Read global and exact-Agent schema views once and join them, with optional native health, into the current MCP panel DTO. */
 export function collectMcpCatalog(ctx: Context, agent: Agent): MayflyMcpCatalog {
   const globalSchemas = ctx.tools.schemas()
   const visibleSchemas = ctx.tools.schemas(agent)
+  const healthRows = mcpCatalogServers(ctx)
+  const health = new Map<string, McpCatalogServerRow>()
+  if (healthRows !== undefined) for (const row of healthRows) if (!health.has(row.serverName)) health.set(row.serverName, row)
   const registered = new Map<string, number>()
   let orphanCount = 0
   for (const name of new Set([...globalSchemas, ...visibleSchemas].map(schema => schema.name))) {
@@ -57,20 +93,9 @@ export function collectMcpCatalog(ctx: Context, agent: Agent): MayflyMcpCatalog 
     tools.push(schema)
     visible.set(parsed.serverName, tools)
   }
-  const servers = [...new Set([...registered.keys(), ...visible.keys()])]
+  const servers = [...new Set([...registered.keys(), ...visible.keys(), ...health.keys()])]
     .toSorted((left, right) => left.localeCompare(right))
-    .map((serverName): MayflyMcpServer => {
-      const registeredCount = registered.get(serverName) ?? 0
-      const toolsVisible = schemaDtos(visible.get(serverName) ?? [])
-      return {
-        entryId: serverName,
-        serverName,
-        status: statusOf(registeredCount, toolsVisible.length),
-        registeredCount,
-        toolsVisible,
-        config: { transport: null, endpoint: null },
-      }
-    })
+    .map((serverName): MayflyMcpServer => serverDto(serverName, registered.get(serverName) ?? 0, schemaDtos(visible.get(serverName) ?? []), health.get(serverName)))
   return frozen({ servers, orphanCount, sessionLive: true })
 }
 

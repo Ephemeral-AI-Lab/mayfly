@@ -7,6 +7,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-session-projection'
+import { deliverablesProjection } from './conversation/deliverables.ts'
+import { conversationFactsProjectionDefinition } from './conversation/facts.ts'
 import { conversationProjectionDefinition } from './conversation/projection.ts'
 import { MayflyHostService } from './remote/service.ts'
 import { mayflyRetractionProjectionDefinition } from './remote/retraction.ts'
@@ -14,6 +16,8 @@ import { mayflyWorkflowProjectionDefinition } from './remote/workflow.ts'
 
 export type * from './types.ts'
 export * from './conversation/projection.ts'
+export * from './conversation/facts.ts'
+export * from './conversation/deliverables.ts'
 export { MayflyHostService } from './remote/service.ts'
 
 /** Stable Cordis plugin name. */
@@ -28,6 +32,8 @@ export const inject = ['sessionProjections']
  */
 export async function apply(ctx: Context): Promise<void> {
   await ctx.sessionProjections.register(conversationProjectionDefinition)
+  await ctx.sessionProjections.register(conversationFactsProjectionDefinition)
+  await ctx.sessionProjections.register(deliverablesProjection)
   await ctx.sessionProjections.register(mayflyWorkflowProjectionDefinition)
   await ctx.sessionProjections.register(mayflyRetractionProjectionDefinition)
   ctx.plugin(MayflyHostService)

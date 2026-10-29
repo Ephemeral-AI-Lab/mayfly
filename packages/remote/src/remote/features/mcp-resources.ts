@@ -1,26 +1,26 @@
 /**
- * Typed follow-up contract for the Host mcpResources capability absent from this composition.
+ * Paged MCP resource and template browsing over the generated mayflyHost
+ * Remote namespace. The Host owns listing, cursors, and body reads through the
+ * fixed native MCP operations; this adapter narrows the JSON rows to the
+ * browser-safe fields and never executes a tool as a fallback.
+ *
  * @module @ephemeral-ai/mayfly/remote/features/mcp-resources
  */
 
-import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
+import type {
+  MayflyMcpResourceBody,
+  MayflyMcpResourceItem,
+  MayflyMcpResourcePage,
+} from '@ephemeral-ai/mayfly-host/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { HostClient } from '../../client/types.ts'
 
-/** Exact Session/server-scoped resource or template page request. */
-export interface RemoteMcpResourceListRequest {
-  readonly sessionId: SessionId
-  readonly serverName: string
-  readonly templates: boolean
-  readonly cursor?: string
-}
-
-/** Browser-safe resource metadata; binary bodies are summarized rather than executed as tools. */
+/** Browser-safe resource metadata; binary bodies stay summarized on the Host. */
 export interface RemoteMcpResourceItem {
   readonly uri: string
   readonly name?: string
   readonly description?: string
   readonly mimeType?: string
-  readonly binary?: { readonly bytes: number, readonly mediaType?: string }
 }
 
 /** One cursor page of resource or resource-template metadata. */
@@ -29,30 +29,78 @@ export interface RemoteMcpResourcePage {
   readonly nextCursor?: string
 }
 
-/** Exact resource body read request. */
-export interface RemoteMcpResourceReadRequest {
-  readonly sessionId: SessionId
+/** One server-scoped page request: kind, optional continuation cursor. */
+export interface RemoteMcpResourcePageRequest {
   readonly serverName: string
-  readonly uri: string
+  readonly templates: boolean
+  readonly cursor?: string
 }
 
-/** Lossless text or bounded base64 binary content returned by a future focused Host method. */
-export type RemoteMcpResourceContent =
-  | { readonly kind: 'text', readonly text: string, readonly mimeType?: string }
-  | { readonly kind: 'binary', readonly base64: string, readonly bytes: number, readonly mimeType?: string }
+/**
+ * Page loader over `client.remote.mayflyHost.listMcpResources`; a failed page
+ * rejects with the Remote failure for the owning feature to fence and show.
+ */
+export type RemoteMcpResourcePageLoader = (
+  client: HostClient,
+  sessionId: SessionId,
+  request: RemoteMcpResourcePageRequest,
+  signal: AbortSignal,
+) => Promise<RemoteMcpResourcePage>
 
-/** Body response for one resource URI. */
-export interface RemoteMcpResourceBody {
-  readonly uri: string
-  readonly contents: readonly RemoteMcpResourceContent[]
-  readonly truncated: boolean
+/**
+ * Body reader over `client.remote.mayflyHost.readMcpResource`; text and binary
+ * summaries arrive as one Host-summarized document.
+ */
+export type RemoteMcpResourceReader = (
+  client: HostClient,
+  sessionId: SessionId,
+  serverName: string,
+  uri: string,
+  signal: AbortSignal,
+) => Promise<MayflyMcpResourceBody>
+
+function textOf(row: MayflyMcpResourceItem, key: string): string | undefined {
+  const value = row[key]
+  return typeof value === 'string' && value !== '' ? value : undefined
 }
 
-/** Focused list/read seam required before claiming MCP resource browsing. */
-export interface RemoteMcpResources {
-  list(request: RemoteMcpResourceListRequest, signal: AbortSignal): Promise<RemoteResult<RemoteMcpResourcePage>>
-  read(request: RemoteMcpResourceReadRequest, signal: AbortSignal): Promise<RemoteResult<RemoteMcpResourceBody>>
+/** Narrow one JSON-safe Host row to the browser-safe fields the panel renders. */
+export function remoteMcpResourceItem(row: MayflyMcpResourceItem): RemoteMcpResourceItem {
+  const name = textOf(row, 'name')
+  const description = textOf(row, 'description')
+  const mimeType = textOf(row, 'mimeType')
+  return {
+    uri: textOf(row, 'uri') ?? '',
+    ...name === undefined ? {} : { name },
+    ...description === undefined ? {} : { description },
+    ...mimeType === undefined ? {} : { mimeType },
+  }
 }
 
-/** Accurate Host integration gap shown in the Resources tab. */
-export const REMOTE_MCP_RESOURCES_GAP = 'Host mcpResources is required for paged resource/template listing and body reads; this build does not execute tools as a fallback'
+function pageOf(page: MayflyMcpResourcePage): RemoteMcpResourcePage {
+  return {
+    items: page.items.filter(row => textOf(row, 'uri') !== undefined).map(remoteMcpResourceItem),
+    ...page.cursor === undefined ? {} : { nextCursor: page.cursor },
+  }
+}
+
+/** Load one page through the generated Host namespace with exact Session scope. */
+export const loadRemoteMcpResources: RemoteMcpResourcePageLoader = async (client, sessionId, request, signal) => {
+  const result = await client.remote.mayflyHost.listMcpResources({
+    sessionId,
+    server: request.serverName,
+    kind: request.templates ? 'templates' : 'resources',
+    ...request.cursor === undefined ? {} : { cursor: request.cursor },
+  }, signal)
+  signal.throwIfAborted()
+  if (!result.ok) throw result.error
+  return pageOf(result.value)
+}
+
+/** Read one resource body through the generated Host namespace with exact Session scope. */
+export const readRemoteMcpResource: RemoteMcpResourceReader = async (client, sessionId, serverName, uri, signal) => {
+  const result = await client.remote.mayflyHost.readMcpResource({ sessionId, server: serverName, uri }, signal)
+  signal.throwIfAborted()
+  if (!result.ok) throw result.error
+  return result.value
+}

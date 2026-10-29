@@ -37,6 +37,7 @@ export type MayflyHostFeature =
   | 'workspaceChanges'
   | 'workspacePath'
   | 'mcpResources'
+  | 'mcpTransportHealth'
 
 /** Version and feature facts a Client validates before entering its UI. */
 export interface MayflyHostCapabilities {
@@ -194,6 +195,8 @@ export interface MayflyMcpServer {
   readonly registeredCount: number
   readonly toolsVisible: readonly MayflyToolSchema[]
   readonly config: MayflyMcpServerConfig
+  /** Sanitized native connection phase; absent when the Host cannot resolve transport health. */
+  readonly connection?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | undefined
 }
 
 /** Construction-frozen MCP tool catalog for the current panel. */
