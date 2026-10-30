@@ -156,14 +156,24 @@ class RemotePlanController {
 /** Mount native plan behavior, pending next-Session application, and its badge/key action. */
 export function mountPlanFeature(options: RemoteFeatureContext): () => void {
   const controller = new RemotePlanController(options)
-  const unregister = options.commands.register({
-    name: 'plan',
-    description: 'Enter or leave plan mode',
-    input: { hint: '[off]' },
-    execute: controller.execute,
-  })
+  // `/mode` is the name the in-process TUI also answers to; the local command
+  // registry has no alias table, so the same executor is registered twice.
+  const unregister = [
+    options.commands.register({
+      name: 'plan',
+      description: 'Enter or leave plan mode',
+      input: { hint: '[off]' },
+      execute: controller.execute,
+    }),
+    options.commands.register({
+      name: 'mode',
+      description: 'Toggle plan mode (same as /plan or Shift+Tab)',
+      input: { hint: '[off]' },
+      execute: controller.execute,
+    }),
+  ]
   return () => {
-    unregister()
+    for (const dispose of unregister) dispose()
     controller.dispose()
   }
 }

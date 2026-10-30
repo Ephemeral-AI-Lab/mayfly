@@ -22,7 +22,25 @@ export const FRONTEND_COMMANDS = [
   { name: 'help', description: 'Show local and Host commands' },
   { name: 'status', description: 'Show current Session facts' },
   { name: 'version', description: 'Show the Mayfly version' },
+  { name: 'init', description: 'Analyze the codebase and write AGENTS.md' },
 ] satisfies readonly RemoteCommandDescriptor[]
+
+/**
+ * The one prompt `/init` sends. It asks for the same four findings and the same
+ * single-file output the in-process TUI asks for, so both frontends produce a
+ * comparable AGENTS.md instead of two personal styles of summary.
+ */
+const INIT_PROMPT = [
+  'Please explore the current project directory and analyze the codebase.',
+  '',
+  'Specifically:',
+  '1. Identify the key configuration files and the technology stack (languages, frameworks, package manager).',
+  '2. Understand the build process, the test setup, and how to run them.',
+  '3. Map how the code is organized: the main modules and what each owns.',
+  '4. Note project-specific development conventions: code style, testing strategy, anything unusual.',
+  '',
+  'Then write your findings to the AGENTS.md file in the project root, aimed at AI coding agents who know nothing about the project. If AGENTS.md already exists, read it first and carry forward whatever is still accurate — rewrite it into one coherent, up-to-date file rather than appending. Compose it from what you can verify in the repository, without assumptions or generalizations, and write it in the natural language the project\'s own comments and documentation mainly use.',
+].join('\n')
 
 /**
  * Turn a Host session-split failure into the one sentence a user can act on.
@@ -189,6 +207,19 @@ export class RemoteApp {
       if (child === undefined) return { exit: false }
       this.notice.set(`Rewound into ${child.sessionId} at ${input}`)
       await this.selectOrCreate(child.sessionId)
+      return { exit: false }
+    }
+    if (name === 'init') {
+      const ref = this.requireSelection()
+      const result = await this.actions.prompt(ref, {
+        mode: 'queue',
+        text: INIT_PROMPT,
+        attachments: [],
+        content: [{ type: 'text', text: INIT_PROMPT }],
+      })
+      this.notice.set(result.ok
+        ? 'Analyzing the codebase to write AGENTS.md'
+        : result.error.message)
       return { exit: false }
     }
     if (name === 'host') {
