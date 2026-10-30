@@ -244,4 +244,25 @@ describe('RemoteFeatureController', () => {
     expect(first.valid()).toBe(false)
     expect(second.valid()).toBe(true)
   })
+
+  it('never throws an empty message when the Host answers with a code only', async () => {
+    // A blank notice tells the user nothing; the code stands in for the text.
+    await expect(remoteValue(Promise.resolve({ ok: false, error: { code: 'rate-limited', message: '   ' } })))
+      .rejects.toThrow('rate-limited')
+  })
+
+  it('renders a multi-line Host message as one bounded line', () => {
+    const collapsed = remoteErrorMessage(new Error('line one\nline two\r\n  line three'))
+    expect(collapsed).not.toContain('\n')
+    expect(collapsed).toContain('line one')
+    expect(collapsed).toContain('line three')
+    // An over-long diagnostic is cut rather than allowed to fill the frame.
+    expect(remoteErrorMessage(new Error('x'.repeat(5_000))).length).toBeLessThanOrEqual(2_000)
+  })
+
+  it('reads a message off a plain wire error object instead of stringifying it', () => {
+    // The capability probe rejects with the wire shape; printing it with String()
+    // would render '[object Object]'.
+    expect(remoteErrorMessage({ code: 'denied', message: 'not allowed here' })).toBe('not allowed here')
+  })
 })

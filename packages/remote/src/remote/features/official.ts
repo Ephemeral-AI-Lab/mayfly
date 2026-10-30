@@ -38,17 +38,43 @@ export class RemoteCallError extends Error {
 /** Unwrap one official result without introducing a generic RPC surface. */
 export async function remoteValue<T>(operation: Promise<RemoteResult<T>>): Promise<T> {
   const result = await operation
-  if (!result.ok) throw new RemoteCallError(result.error.code, result.error.message)
+  // A Host may answer with a code and no text; an empty Error message leaves a
+  // blank notice, so the code stands in for it.
+  if (!result.ok) {
+    throw new RemoteCallError(
+      result.error.code,
+      result.error.message.trim() === '' ? result.error.code : result.error.message,
+    )
+  }
   return result.value
 }
 
-/** Render an operation error while removing every supplied secret value. */
-export function remoteErrorMessage(error: unknown, secrets: readonly string[] = []): string {
-  let message = error instanceof Error ? error.message : String(error)
+/** The longest Host message this frontend renders; longer text is cut. */
+const REMOTE_MESSAGE_LIMIT = 2_000
+
+/**
+ * One Host or transport message as a single bounded line.
+ *
+ * A Host may answer with a multi-line diagnostic or with nothing at all; both
+ * are useless in a notice row, so an empty message falls back to the code and
+ * a long one is collapsed and cut.
+ * @param error - the thrown value, of any shape.
+ * @param secrets - values to redact before the text can be shown or logged.
+ * @param fallback - the text to use when the value carries no message.
+ * @returns one line, never empty.
+ */
+export function remoteErrorMessage(error: unknown, secrets: readonly string[] = [], fallback = 'operation failed'): string {
+  const raw = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : String(error)
+  let message = raw
   for (const secret of secrets) {
     if (secret.length > 0) message = message.replaceAll(secret, '[redacted]')
   }
-  return message
+  const oneLine = message.replace(/\s*[\r\n]+\s*/gu, ' · ').trim()
+  return (oneLine === '' ? fallback : oneLine).slice(0, REMOTE_MESSAGE_LIMIT)
 }
 
 /** Narrow official settings event omitted by the installed generated stream union. */
