@@ -50,7 +50,7 @@ const approvedPresentation = new Set([
   // its own business surfaces pad rows and align footer halves the same way the
   // in-process TUI's do.
   "padding:packages/remote/src/remote/completion-drawer.ts:const lead = ' '.repeat(ARROW_COLUMN) + arrow + ' '",
-  "padding:packages/remote/src/remote/completion-drawer.ts:const name = fit(measure, row.name, nameColumn).padEnd(nameColumn)",
+  "padding:packages/remote/src/remote/completion-drawer.ts:const name = nameText + ' '.repeat(Math.max(0, nameColumn - measure.visibleWidth(nameText)))",
   "padding:packages/remote/src/remote/completion-drawer.ts:const padded = plain + ' '.repeat(Math.max(0, width - measure.visibleWidth(plain)))",
   "padding:packages/remote/src/remote/editor/skills-panel.ts:return this.options.components.truncateToWidth(`${left}${' '.repeat(padding)}  ${right}`, width)",
   "padding:packages/remote/src/remote/panels.ts:return missing > 0 ? `${row}${' '.repeat(missing)}` : row",

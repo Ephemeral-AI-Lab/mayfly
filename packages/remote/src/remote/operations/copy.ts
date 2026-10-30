@@ -72,7 +72,13 @@ class RemoteCopyCommand {
     if (signal.aborted) return
     if (rawInput.trim() !== '') throw new Error(this.t('Usage: /copy'))
     const current = this.context.base.hosts.current()
-    if (current === undefined) throw new Error(this.t('No current session'))
+    // A missing selection is an ordinary state, not a failed command: throwing
+    // here would surface as 'Submission was not confirmed; no retry was sent',
+    // which reads like a transport fault. Every other Remote command notices.
+    if (current === undefined) {
+      this.context.base.notice.set(this.t('No current session'))
+      return undefined
+    }
     const copy = this.context.options.copy
     if (copy === undefined) {
       this.context.base.notice.set(this.t('Clipboard is unavailable in this frontend'))
@@ -93,7 +99,11 @@ class RemoteCopyCommand {
     try {
       await copy(text)
     } catch (error: unknown) {
-      throw new Error(this.t('Could not copy: {message}', { message: remoteErrorMessage(error) }))
+      // A clipboard that refuses is an outcome, not a failed command: throwing
+      // would surface as 'Submission was not confirmed', which reads like a
+      // transport fault and hides the real reason.
+      this.context.base.notice.set(this.t('Could not copy: {message}', { message: remoteErrorMessage(error) }))
+      return
     }
     if (signal.aborted) return
     this.context.base.notice.set(this.t('Copied {count} characters', { count: text.length }))

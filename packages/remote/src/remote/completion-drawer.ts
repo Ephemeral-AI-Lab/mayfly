@@ -53,16 +53,22 @@ function paintRows(rows: readonly DrawerRow[], width: number, measure: Measure, 
   return rows.map((row) => {
     const arrow = row.focused ? '›' : ' '
     const lead = ' '.repeat(ARROW_COLUMN) + arrow + ' '
-    const name = fit(measure, row.name, nameColumn).padEnd(nameColumn)
+    // Pad by display width, not UTF-16 units: a wide glyph occupies two cells,
+    // and padEnd would both over-pad it and leave the row wider than the frame.
+    const nameText = fit(measure, row.name, nameColumn)
+    const name = nameText + ' '.repeat(Math.max(0, nameColumn - measure.visibleWidth(nameText)))
     const room = width - ARROW_COLUMN - 2 - nameColumn - 2
     const detail = row.detail === undefined || room < MIN_DETAIL_COLUMNS
       ? ''
       : fit(measure, row.detail, room)
     const plain = `${lead}${name}${detail === '' ? '' : `  ${detail}`}`
     const padded = plain + ' '.repeat(Math.max(0, width - measure.visibleWidth(plain)))
+    // Clamp: a detail that survived the room check can still be wide-glyph
+    // heavy, and an overlay row must never paint past its own frame.
+    const clamped = measure.visibleWidth(padded) <= width ? padded : measure.truncateToWidth(padded, width)
     return row.focused
-      ? colors.selectedBg(padded)
-      : padded
+      ? colors.selectedBg(clamped)
+      : clamped
   })
 }
 
@@ -90,7 +96,10 @@ class RemoteCompletionDrawer implements MayflyComponent {
     const count = Math.min(DRAWER_ROWS, view.items.length)
     const start = windowStart(view.items.length, view.index, count)
     const rows = view.items.slice(start, start + count).map((item, offset): DrawerRow => ({
-      name: item.value,
+      // The label, not the value: a command row carries `/name (alias, …)` as
+      // its label while the value is the bare insertion text, and a directory
+      // row's value is the quoted `@"dir/"` this palette must never display.
+      name: item.label,
       ...item.detail === undefined ? {} : { detail: item.detail },
       focused: start + offset === view.index,
     }))

@@ -21,6 +21,7 @@ const zh: Readonly<Record<string, string>> = {
   'Check for a newer Mayfly release': '检查 Mayfly 是否有新版本',
   'Plugins': '插件',
   'No plugins reported by this Host': '该 Host 未报告任何插件',
+  'No current session': '当前没有会话',
   'This Host does not expose the plugin manager': '该 Host 未提供插件管理器',
   'Refresh': '刷新',
   'Only the Host may change its own plugins; this frontend never installs, removes, or upgrades them.':
@@ -33,6 +34,29 @@ const zh: Readonly<Record<string, string>> = {
   'The registry could not be reached; try again later.': '无法连接软件源；请稍后再试。',
   'Upgrades are never automatic: they change the Host profile and require a restart.':
     '升级从不自动执行：它会改变 Host profile 并需要重启。',
+}
+
+/**
+ * Compare two dotted release versions without a semver dependency. Pre-release
+ * and build metadata are ignored, which is what a user asking "is there a newer
+ * release" means; a host that is ahead of the registry is not told to upgrade.
+ * @param left - a version string such as `0.1.4-rc.2`.
+ * @param right - the version it is compared against.
+ * @returns negative, zero, or positive in the usual comparator sense.
+ */
+function compareVersions(left: string, right: string): number {
+  const parts = (value: string): number[] => value
+    .split('-')[0]!
+    .split('.')
+    .map(part => Number.parseInt(part, 10))
+    .map(part => Number.isFinite(part) ? part : 0)
+  const a = parts(left)
+  const b = parts(right)
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0)
+    if (difference !== 0) return difference
+  }
+  return 0
 }
 
 /** One Host plugin entry as the panel renders it: no version is exposed, so the fiber phase takes that column. */
@@ -171,7 +195,7 @@ class RemotePluginsController {
         this.update = {
           current: hostVersion ?? '',
           latest: latest ?? '',
-          newer: latest !== undefined && hostVersion !== undefined && latest !== hostVersion,
+          newer: latest !== undefined && hostVersion !== undefined && compareVersions(latest, hostVersion) > 0,
         }
       }
     } catch {

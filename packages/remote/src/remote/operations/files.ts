@@ -111,7 +111,13 @@ class RemoteFilesController {
   readonly execute = (rawInput: string): void => {
     if (rawInput.trim() !== '') throw new Error(this.t('Usage: /files'))
     const current = this.context.base.hosts.current()
-    if (current === undefined) throw new Error(this.t('No current session'))
+    // A missing selection is an ordinary state, not a failed command: throwing
+    // here would surface as 'Submission was not confirmed; no retry was sent',
+    // which reads like a transport fault. Every other Remote command notices.
+    if (current === undefined) {
+      this.context.base.notice.set(this.t('No current session'))
+      return
+    }
     this.browser?.close()
     this.browser = openRemoteBrowser(this.context.base, {
       id: 'remote.operations.files',
