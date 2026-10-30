@@ -141,7 +141,10 @@ class RemotePlanController {
         this.options.notice.set(this.t('Send a message first: /plan with a message needs a session'))
         return
       }
-      this.setNextPlan(input !== 'off')
+      // A bare `/plan` toggles, exactly like Shift+Tab; only `/plan on`/`off`
+      // name a direction. Assigning true unconditionally made a second
+      // `/plan` re-enable what it was meant to leave.
+      this.setNextPlan(input === '' ? !(this.nextPlan ?? false) : input !== 'off')
       return
     }
     if (input === '') {
@@ -172,7 +175,11 @@ export function mountPlanFeature(options: RemoteFeatureContext): () => void {
       execute: controller.execute,
     }),
   ]
+  let disposed = false
   return () => {
+    // A second teardown must not re-run the registrations' disposers.
+    if (disposed) return
+    disposed = true
     for (const dispose of unregister) dispose()
     controller.dispose()
   }

@@ -108,6 +108,8 @@ const zh: Readonly<Record<string, string>> = {
   'Editing in the external editor…': '正在外部编辑器中编辑……',
   'No external editor is configured for the settings document': '没有为设置文档配置外部编辑器',
   'Settings document saved': '设置文档已保存',
+  'The settings document is empty': '设置文档为空',
+  '… {count} more lines; edit in an external editor to see them all': '… 还有 {count} 行；用外部编辑器查看全部内容',
   'The settings document changed elsewhere (mayflyHost/settings-conflict); reopen it and review before saving': '设置文档已在别处修改（mayflyHost/settings-conflict）；请重新打开并检查后再保存',
   'API key balance': 'API key 余额',
   'No API key is configured': '未配置 API key',

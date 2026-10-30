@@ -49,6 +49,23 @@ export function remoteMayflySettingsPersistence(settings: SettingsDescribeValue)
 }
 
 /** Settings controller and plain namespace forms. */
+/**
+ * The document as panel rows. An empty document says so instead of showing a
+ * blank row, and a long one ends with a count of what is not shown rather than
+ * dropping the remainder silently - the external editor still owns the whole
+ * text, so the panel must not imply that what it shows is all there is.
+ * @param content - the document text.
+ * @param t - the feature translator.
+ * @returns the rows for the panel body.
+ */
+function documentContentRows(content: string, t: RemoteFeatureContext['t']): readonly { readonly text: string }[] {
+  const lines = content.split('\n')
+  const shown = lines.slice(0, 10).map(line => ({ text: line === '' ? ' ' : line }))
+  if (content.trim() === '') return [{ text: t('The settings document is empty') }]
+  if (lines.length <= 10) return shown
+  return [...shown, { text: t('… {count} more lines; edit in an external editor to see them all', { count: lines.length - 10 }) }]
+}
+
 export class RemoteSettingsController extends RemoteFeatureController {
   constructor(
     context: RemoteFeatureContext,
@@ -147,7 +164,7 @@ export class RemoteSettingsController extends RemoteFeatureController {
         title: this.context.t('Settings document'),
         subtitle: `${this.context.t('revision')} ${document.revision.slice(0, 12)}${document.writable ? '' : ` · ${this.context.t('read-only')}`}`,
         rows: [
-          ...document.content.split('\n').slice(0, 10).map(line => ({ text: line === '' ? ' ' : line })),
+          ...documentContentRows(document.content, this.context.t),
           { id: '__edit__', text: this.context.t('Edit in external editor'), disabled: !document.writable || editing },
         ],
         footer: editing ? this.context.t('Editing in the external editor…') : undefined,
