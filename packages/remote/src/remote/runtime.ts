@@ -155,7 +155,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     })
     completionDrawer = mountRemoteCompletionDrawer(screen, editor.editor, ctx.mayflyTheme.colors, ctx.mayflyComponents)
     sideViews = new RemoteSideViews(transcript, toolPresentations, screen, editor.notice)
-    panels = new RemotePanelController(screen, () => editor?.focus(), true)
+    panels = new RemotePanelController(screen, () => editor?.focus(), true, ctx.mayflyComponents)
     app = new RemoteApp(conversation, editor.notice, new RemotePlainPanels(panels, ctx.mayflyComponents, ctx.mayflyTheme.colors))
     apps.push(app)
     ctx.effect(() => ctx.mayflyUiImages.provide(async (attachmentId) => {

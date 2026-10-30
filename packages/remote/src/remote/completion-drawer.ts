@@ -119,6 +119,11 @@ export function mountRemoteCompletionDrawer(
   colors: MayflySemanticColors,
   measure: Measure,
 ): { dispose(): void } {
+  // A headless screen (the one the frontend specs mount) has no overlay layer;
+  // the palette then simply does not exist rather than failing the whole boot.
+  if (typeof (screen as { showOverlay?: unknown }).showOverlay !== 'function') {
+    return { dispose() {} }
+  }
   const drawer = new RemoteCompletionDrawer(editor, measure, colors)
   const handle = screen.showOverlay(drawer, {
     anchor: 'bottom-left',

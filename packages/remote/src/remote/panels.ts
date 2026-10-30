@@ -5,6 +5,7 @@
 
 import type {
   MayflyComponent,
+  MayflyComponents,
   MayflyFocusable,
   MayflyOverlayHandle,
   MayflyOverlayOptions,
@@ -19,7 +20,10 @@ import type {
  * host applies it once here instead of in every feature's painter.
  */
 class OpaqueOverlay implements MayflyFocusable {
-  constructor(private readonly inner: MayflyFocusable) {}
+  constructor(
+    private readonly inner: MayflyFocusable,
+    private readonly measure: Pick<MayflyComponents, 'visibleWidth'>,
+  ) {}
 
   get focused(): boolean { return this.inner.focused }
   set focused(value: boolean) { this.inner.focused = value }
@@ -28,8 +32,9 @@ class OpaqueOverlay implements MayflyFocusable {
 
   render(width: number): string[] {
     return this.inner.render(width).map((row) => {
-      const plain = row.replace(/\x1b\[[0-9;]*m/gu, '')
-      const missing = width - [...plain].length
+      // Width comes from the shared measure, never from a local cell count:
+      // wide glyphs and grapheme clusters make the two disagree.
+      const missing = width - this.measure.visibleWidth(row)
       return missing > 0 ? `${row}${' '.repeat(missing)}` : row
     })
   }
@@ -101,7 +106,12 @@ export class RemotePanelController implements RemoteOverlayHost {
     private readonly restoreFocus: () => void,
     /** Present when the host should paint panels as opaque overlays. */
     private readonly opaque: boolean = false,
-  ) {}
+    measure: Pick<MayflyComponents, 'visibleWidth'> = { visibleWidth: text => text.replace(/\x1b\[[0-9;]*m/gu, '').length },
+  ) {
+    this.measure = measure
+  }
+
+  private readonly measure: Pick<MayflyComponents, 'visibleWidth'>
 
   open(component: MayflyFocusable, options: RemoteOverlayOpenOptions = {}): RemoteOverlayLease {
     this.closeActive(false)
@@ -117,7 +127,7 @@ export class RemotePanelController implements RemoteOverlayHost {
       },
     }
     const opaque: MayflyComponent = this.opaque
-      ? new OpaqueOverlay(component) as unknown as MayflyComponent
+      ? new OpaqueOverlay(component, this.measure) as unknown as MayflyComponent
       : component
     const handle = this.screen.showOverlay(opaque, remotePanelOverlayOptions(this.screen, {
       maxHeight: '70%',
@@ -125,11 +135,6 @@ export class RemotePanelController implements RemoteOverlayHost {
     }))
     record = { generation, handle, ...onClosed === undefined ? {} : { onClosed }, closed: false }
     this.active = record
-    // The overlay covers rows the content already painted. The differential
-    // writer only emits cells whose value changed, so cells where the panel's
-    // row happens to repeat the transcript (spaces, shared glyphs) would keep
-    // the old text visible under it. A forced repaint rewrites the whole frame.
-    this.screen.requestRender(true)
     return lease
   }
 
@@ -154,9 +159,6 @@ export class RemotePanelController implements RemoteOverlayHost {
       record.onClosed?.()
     } finally {
       if (restore && this.active === undefined) this.restoreFocus()
-      // Closing restores the rows the panel covered; their content differs from
-      // the panel's, so the next frame must be painted whole.
-      this.screen.requestRender(true)
     }
   }
 }

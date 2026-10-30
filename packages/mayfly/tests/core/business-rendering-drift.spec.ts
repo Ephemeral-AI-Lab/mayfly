@@ -49,7 +49,11 @@ const approvedPresentation = new Set([
   // The independent Remote frontend renders through the published UI kit, so
   // its own business surfaces pad rows and align footer halves the same way the
   // in-process TUI's do.
+  "padding:packages/remote/src/remote/completion-drawer.ts:const lead = ' '.repeat(ARROW_COLUMN) + arrow + ' '",
+  "padding:packages/remote/src/remote/completion-drawer.ts:const name = fit(measure, row.name, nameColumn).padEnd(nameColumn)",
+  "padding:packages/remote/src/remote/completion-drawer.ts:const padded = plain + ' '.repeat(Math.max(0, width - measure.visibleWidth(plain)))",
   "padding:packages/remote/src/remote/editor/skills-panel.ts:return this.options.components.truncateToWidth(`${left}${' '.repeat(padding)}  ${right}`, width)",
+  "padding:packages/remote/src/remote/panels.ts:return missing > 0 ? `${row}${' '.repeat(missing)}` : row",
   "padding:packages/remote/src/remote/panels/operations/agents.ts:label: `${'  '.repeat(row.depth)}${row.label}`,",
   "padding:packages/remote/src/remote/status.ts:return this.components.truncateToWidth(`${leftText}${' '.repeat(gap)}${rightText}`, width)",
   "pointer:packages/mayfly/src/interaction/update-command.ts:detail: [`v${fromVersion} \u2192 v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' \u00b7 '),",
