@@ -27,6 +27,9 @@ const zh: Readonly<Record<string, string>> = {
   'Only the Host may change its own plugins; this frontend never installs, removes, or upgrades them.':
     '只有 Host 才能更改自己的插件；本前端不会安装、删除或升级它们。',
   'Update check': '更新检查',
+  'Latest release': '最新发布版本',
+  'unavailable': '不可用',
+  'refresh': '刷新',
   'Mayfly version': 'Mayfly 版本',
   'A newer release is available; upgrade the Host profile to apply it.':
     '有新版本可用；升级 Host profile 以应用。',
@@ -146,7 +149,7 @@ class RemotePluginsController {
     const current = this.context.base.hosts.current()
     if (current === undefined) return
     this.panel?.close()
-    this.panel = openRemoteBrowser(this.context.base, {
+    const opened = openRemoteBrowser(this.context.base, {
       id: 'remote.operations.plugins',
       scope: { kind: 'session', sessionId: current.ref.sessionId },
       isCurrent: () => isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref),
@@ -158,8 +161,11 @@ class RemotePluginsController {
         }
         return { kind: 'completed' }
       },
-      onClosed: () => { this.panel = undefined },
+      // Only this panel's own close may clear the field: a late close from a
+      // panel that has already been replaced must not drop the live one.
+      onClosed: () => { if (this.panel === opened) this.panel = undefined },
     })
+    this.panel = opened
   }
 
   private openUpdate(): void {
@@ -190,12 +196,22 @@ class RemotePluginsController {
         this.updateError = this.t('The registry could not be reached; try again later.')
       } else {
         const body = await response.json() as { version?: unknown }
-        const latest = typeof body.version === 'string' ? body.version : undefined
-        this.updateError = undefined
-        this.update = {
-          current: hostVersion ?? '',
-          latest: latest ?? '',
-          newer: latest !== undefined && hostVersion !== undefined && compareVersions(latest, hostVersion) > 0,
+        // The body read is another suspension point: a teardown that landed
+        // while it was pending must not reopen a panel for a dead controller.
+        if (this.disposed) return
+        const latest = typeof body.version === 'string' && body.version.trim() !== '' ? body.version : undefined
+        if (latest === undefined) {
+          // A registry document with no version is not evidence that this build
+          // is current; saying so would be a confident wrong answer.
+          this.update = undefined
+          this.updateError = this.t('The registry could not be reached; try again later.')
+        } else {
+          this.updateError = undefined
+          this.update = {
+            current: hostVersion ?? '',
+            latest,
+            newer: hostVersion !== undefined && compareVersions(latest, hostVersion) > 0,
+          }
         }
       }
     } catch {
@@ -203,6 +219,7 @@ class RemotePluginsController {
       this.update = undefined
       this.updateError = this.t('The registry could not be reached; try again later.')
     }
+    if (this.disposed) return
     this.showUpdate()
   }
 
@@ -210,7 +227,7 @@ class RemotePluginsController {
     const current = this.context.base.hosts.current()
     if (current === undefined) return
     this.panel?.close()
-    this.panel = openRemoteBrowser(this.context.base, {
+    const opened = openRemoteBrowser(this.context.base, {
       id: 'remote.operations.update',
       scope: { kind: 'session', sessionId: current.ref.sessionId },
       isCurrent: () => isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref),
@@ -220,8 +237,9 @@ class RemotePluginsController {
         if (event.kind === 'activate' && event.actionId === 'update-refresh') void this.checkUpdate(current.client)
         return { kind: 'completed' }
       },
-      onClosed: () => { this.panel = undefined },
+      onClosed: () => { if (this.panel === opened) this.panel = undefined },
     })
+    this.panel = opened
   }
 
   readonly commands = (): ReadonlyArray<{ readonly name: string, readonly description: string, readonly run: (rawInput: string) => void }> => [
