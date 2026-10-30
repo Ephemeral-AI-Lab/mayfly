@@ -12,6 +12,9 @@ export const FRONTEND_COMMANDS = [
   { name: 'quit', description: 'Exit Mayfly (/q, /exit)' },
   { name: 'new', description: 'Start a new Session (/clear)' },
   { name: 'sessions', description: 'List Sessions, or resume by id (/resume)' },
+  { name: 'rename', description: 'Rename the current Session: /rename <title>' },
+  { name: 'fork', description: 'Fork the current Session and switch to the child: /fork [atSeq]' },
+  { name: 'rewind', description: 'Fork the Session at an event and switch to it: /rewind <seq>' },
   { name: 'host', description: 'List attached Hosts' },
   { name: 'attach', description: 'Attach a Host URL, then create a Session' },
   { name: 'detach', description: 'Detach the current Host without stopping it' },
@@ -20,6 +23,20 @@ export const FRONTEND_COMMANDS = [
   { name: 'status', description: 'Show current Session facts' },
   { name: 'version', description: 'Show the Mayfly version' },
 ] satisfies readonly RemoteCommandDescriptor[]
+
+/**
+ * Turn a Host session-split failure into the one sentence a user can act on.
+ * The Host rejects a fork with `fork-unavailable` when the Session has no
+ * completed turn to cut at, which is the common case for a new Session and says
+ * nothing useful on its own.
+ */
+function describeSessionSplitFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (message.includes('fork-unavailable')) {
+    return 'Nothing to fork yet: this Session has no completed turn. Send a prompt and retry.'
+  }
+  return message
+}
 
 /** Local command and Session router for the independent HTTP/WebSocket frontend. */
 export class RemoteApp {
@@ -128,6 +145,50 @@ export class RemoteApp {
           })
         })
       }
+      return { exit: false }
+    }
+    if (name === 'rename') {
+      const ref = this.requireSelection()
+      if (input === '') throw new Error('Usage: /rename <title>')
+      const result = await this.actions.rename(ref, input)
+      if (!result.ok) this.notice.set(result.error.message)
+      else this.notice.set(`Renamed to ${result.value.title}`)
+      return { exit: false }
+    }
+    if (name === 'fork') {
+      const ref = this.requireSelection()
+      const atSeq = input === '' ? undefined : Number(input)
+      if (atSeq !== undefined && (!Number.isSafeInteger(atSeq) || atSeq < 0)) {
+        throw new Error('Usage: /fork [atSeq]')
+      }
+      // A fork needs a completed turn to cut at, which an empty or entirely
+      // failed Session never has; report that instead of failing the submit.
+      const child = await this.actions.fork(ref, atSeq === undefined ? {} : { atSeq })
+        .catch((error: unknown) => {
+          this.notice.set(describeSessionSplitFailure(error))
+          return undefined
+        })
+      if (child === undefined) return { exit: false }
+      this.notice.set(`Forked into ${child.sessionId}`)
+      await this.selectOrCreate(child.sessionId)
+      return { exit: false }
+    }
+    if (name === 'rewind') {
+      const ref = this.requireSelection()
+      if (input === '') {
+        this.notice.set('/rewind <seq> forks this Session at that event and switches to the child')
+        return { exit: false }
+      }
+      const atSeq = Number(input)
+      if (!Number.isSafeInteger(atSeq) || atSeq < 0) throw new Error('Usage: /rewind <seq>')
+      const child = await this.actions.fork(ref, { atSeq })
+        .catch((error: unknown) => {
+          this.notice.set(describeSessionSplitFailure(error))
+          return undefined
+        })
+      if (child === undefined) return { exit: false }
+      this.notice.set(`Rewound into ${child.sessionId} at ${input}`)
+      await this.selectOrCreate(child.sessionId)
       return { exit: false }
     }
     if (name === 'host') {
