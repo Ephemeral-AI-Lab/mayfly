@@ -17,6 +17,8 @@ import { mountRemoteRetractOperations } from './operations/retract.ts'
 import { mountRemoteCopyOperations } from './operations/copy.ts'
 import { mountRemoteFilesOperations } from './operations/files.ts'
 import { mountRemotePluginOperations } from './operations/plugins.ts'
+import { mountRemotePresetOperations } from './operations/presets.ts'
+import { mountRemoteProviderOperations } from './operations/providers.ts'
 import { mountRemoteStatsOperations } from './operations/stats.ts'
 import { mountRemoteTitleOperations } from './operations/title.ts'
 import { mountRemoteTraceOperations } from './operations/trace.ts'
@@ -57,6 +59,8 @@ const MOUNTS = [
   mountRemotePluginOperations,
   mountRemoteCopyOperations,
   mountRemoteFilesOperations,
+  mountRemotePresetOperations,
+  mountRemoteProviderOperations,
   mountRemoteTitleOperations,
 ] as const
 

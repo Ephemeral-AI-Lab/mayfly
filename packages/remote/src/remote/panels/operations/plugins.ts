@@ -46,7 +46,7 @@ function pluginItems(rows: readonly RemotePluginRow[]): readonly MayflyListItem[
     id: `${String(index)}:${row.name}`,
     label: row.name,
     cells: [
-      { spans: [{ text: row.kind, tone: 'muted' as const }], align: 'right' as const, min: 8, shed: 2 },
+      { spans: [{ text: row.kind === '' ? '' : ` ${row.kind}`, tone: 'muted' as const }], align: 'right' as const, min: 9, shed: 2 },
       { spans: [{ text: row.state, tone: row.state === 'disabled' ? 'warning' as const : 'success' as const }], min: 9, shed: 1 },
       { spans: [{ text: row.detail, tone: 'muted' as const }], align: 'right' as const, min: 1, shed: 3 },
     ],
