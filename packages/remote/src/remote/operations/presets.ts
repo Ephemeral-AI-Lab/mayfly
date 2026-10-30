@@ -25,6 +25,7 @@ const zh: Readonly<Record<string, string>> = {
   'No Host is attached': '未连接 Host',
   'Unknown preset: {name}': '未知预设：{name}',
   'The preset cannot compose a session: {reason}': '该预设无法组合会话：{reason}',
+  'The preset cannot compose a session': '该预设无法组合会话',
   'preset selection is unavailable': '预设选择不可用',
   'Default preset: {preset}': '默认预设：{preset}',
   'Preset switched to {preset}': '已切换到预设 {preset}',
@@ -87,7 +88,12 @@ class RemotePresetOperationsController {
         return
       }
       if (match.broken !== undefined) {
-        this.context.base.notice.set(this.t('The preset cannot compose a session: {reason}', { reason: match.broken }))
+        // An empty reason still means broken; reporting a trailing colon with
+        // nothing after it tells the user nothing.
+        const reason = match.broken.trim()
+        this.context.base.notice.set(reason === ''
+          ? this.t('The preset cannot compose a session')
+          : this.t('The preset cannot compose a session: {reason}', { reason }))
         return
       }
       if (selection === undefined) {

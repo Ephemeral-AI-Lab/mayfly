@@ -169,20 +169,30 @@ class RemoteProviderOperationsController {
       this.context.base.notice.set(this.t('No Host is attached'))
       return
     }
-    if (input === '' || input.toLowerCase() === 'list') {
+    // Verbs are matched on the first word, case-insensitively: a bare `edit`
+    // and an upper-case `ADD` both used to fall through to the name lookup and
+    // answer "Unknown provider" instead of pointing at /providers.
+    const words = input.trim().split(/\s+/u)
+    const verb = (words[0] ?? '').toLowerCase()
+    if (input === '' || verb === 'list') {
       await this.openRoster(target, signal)
       return
     }
-    if (input === 'add' || input.startsWith('add ') || input.startsWith('edit ') || input.startsWith('remove ')) {
+    if (verb === 'add' || verb === 'edit' || verb === 'remove') {
       this.context.base.notice.set(this.t('Provider configuration and credentials are only editable from /providers'))
       return
     }
-    const name = input.startsWith('switch ') ? input.slice('switch '.length).trim() : input
-    if (name === '') {
-      await this.openRoster(target, signal)
+    // `switch` with no name is the roster, not a provider called "switch".
+    if (verb === 'switch') {
+      const name = words.slice(1).join(' ')
+      if (name === '') {
+        await this.openRoster(target, signal)
+        return
+      }
+      await this.switchTo(target, name, signal)
       return
     }
-    await this.switchTo(target, name, signal)
+    await this.switchTo(target, input, signal)
   }
 
   /** Whether an invocation or panel action may still publish. */
