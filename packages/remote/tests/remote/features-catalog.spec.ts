@@ -99,11 +99,11 @@ function fixture(options: {
   readonly tools?: unknown
 } = {}) {
   const ref: SessionRef = { host: HostKey('local'), sessionId: SessionId('session-1') }
-  const capabilities = vi.fn(async () => (console.log('CAP CALL'), {
+  const capabilities = vi.fn(async () => ({
     ok: true,
     value: { protocolVersion: 1, hostVersion: '0.1.4', requiredDshVersion: '0.1.0', features: options.features ?? ['mcpCatalog', 'toolCatalog'] },
   }))
-  const mcpCatalogRead = vi.fn(async () => (console.log('MCP CALL'), { ok: true, value: options.mcp ?? mcpCatalog([]) }))
+  const mcpCatalogRead = vi.fn(async () => ({ ok: true, value: options.mcp ?? mcpCatalog([]) }))
   const toolCatalogRead = vi.fn(async () => ({ ok: true, value: options.tools ?? toolCatalog([]) }))
   const client = {
     key: HostKey('local'),
@@ -180,6 +180,11 @@ function browserOf(index = 0): RemoteBrowserOptions {
 
 const signal = { aborted: false } as AbortSignal
 
+/** Wait until one refresh finished: the feature repaints its open panel last. */
+async function settled(panel: { readonly refresh: () => void }): Promise<void> {
+  await vi.waitFor(() => { expect(panel.refresh).toHaveBeenCalled() })
+}
+
 /** Ask an open catalog panel to refresh, as its hidden refresh action does. */
 async function refreshPanel(browser: RemoteBrowserOptions): Promise<void> {
   await browser.action!(
@@ -242,15 +247,14 @@ describe('mountCatalogFeature MCP catalog', () => {
   })
 
   it('paints an explicit empty state for an empty catalog instead of a bare list', async () => {
-    const { context, commands, mcpCatalogRead, capabilities } = fixture({ mcp: mcpCatalog([], 0) })
+    const { context, commands, mcpCatalogRead } = fixture({ mcp: mcpCatalog([], 0) })
+    const panel = { closed: false, refresh: vi.fn(), close: vi.fn() }
+    mocks.open.mockReturnValue(panel)
     const dispose = mountCatalogFeature(context)
 
     await commands[0]!.execute('')
-    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-    await new Promise(resolve => setTimeout(resolve, 30))
-    // One read per open is the contract; a projection publish may refresh it,
-    // but the panel must not require a second read to paint its empty state.
-    expect(mcpCatalogRead.mock.calls.length).toBeGreaterThanOrEqual(1)
+    await settled(panel)
+    expect(mcpCatalogRead).toHaveBeenCalled()
 
     const view = browserOf().view()
     expect(labelsOf(view)).toEqual([])
