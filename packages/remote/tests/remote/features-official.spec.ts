@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey } from '../../src/client/types.ts'
 import type { HostClient, SessionRef } from '../../src/client/types.ts'
-import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
+import type { RemoteFeatureContext as RemoteFeatureContextLike, RemoteFeatureSelection } from '../../src/remote/features/contracts.ts'
 import {
   RemoteCallError,
   RemoteFeatureController,
@@ -19,8 +19,9 @@ function ok<T>(value: T): { readonly ok: true, readonly value: T } {
 }
 
 /** One failed official result carrying the safe Host code and message. */
-function failed(code: string, message: string): { readonly ok: false, readonly error: { readonly code: string, readonly message: string } } {
-  return { ok: false, error: { code, message } }
+/** A failed RemoteResult; the loose cast mirrors what the wire sends. */
+function failed(code: string, message: string): Promise<never> {
+  return Promise.resolve({ ok: false, error: { code, message } } as never)
 }
 
 function fixture(options: { readonly attached?: boolean } = {}) {
@@ -36,7 +37,7 @@ function fixture(options: { readonly attached?: boolean } = {}) {
     current: vi.fn((): RemoteFeatureSelection | undefined => selection),
     subscribe: vi.fn(() => () => {}),
   }
-  const context = { hosts } as unknown as RemoteFeatureContext
+  const context = { hosts } as unknown as RemoteFeatureContextLike
   return {
     client,
     ref,
@@ -192,7 +193,7 @@ describe('RemoteFeatureOperation', () => {
 describe('RemoteFeatureController', () => {
   /** Expose the protected operation factories of the shared owner. */
   class ProbeController extends RemoteFeatureController {
-    constructor(context: RemoteFeatureContext) { super(context) }
+    constructor(context: RemoteFeatureContextLike) { super(context) }
     host(client: HostClient): RemoteFeatureOperation | undefined { return this.hostOperation(client) }
     session(selection: RemoteFeatureSelection): RemoteFeatureOperation | undefined { return this.sessionOperation(selection) }
     invalidate(client: HostClient): void { this.invalidateHost(client) }
@@ -247,7 +248,7 @@ describe('RemoteFeatureController', () => {
 
   it('never throws an empty message when the Host answers with a code only', async () => {
     // A blank notice tells the user nothing; the code stands in for the text.
-    await expect(remoteValue(Promise.resolve({ ok: false, error: { code: 'rate-limited', message: '   ' } })))
+    await expect(remoteValue(Promise.resolve({ ok: false, error: { code: 'rate-limited', message: '   ' } } as never)))
       .rejects.toThrow('rate-limited')
   })
 

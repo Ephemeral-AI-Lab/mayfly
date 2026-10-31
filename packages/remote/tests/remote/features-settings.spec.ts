@@ -52,7 +52,7 @@ function fixture(options: FixtureOptions = {}) {
   const replace = vi.fn(async (): Promise<unknown> => ({ ok: true, value: namespace('llm-deepseek') }))
   const mutate = vi.fn(async (): Promise<unknown> => ({ ok: true, value: namespace('llm-deepseek') }))
   const offSettings = vi.fn()
-  const on = vi.fn(() => offSettings)
+  const on = vi.fn((_event: string, _listener: (ns: string, revision: number) => void) => offSettings)
   const remote = {
     settings: { describe, update, replace, mutate },
     permissionPresets: { catalog: vi.fn(async () => ({ ok: true, value: { options: [] } })) },
@@ -67,7 +67,7 @@ function fixture(options: FixtureOptions = {}) {
     list: vi.fn(() => (attached() ? [client] : [])),
     subscribe: vi.fn(() => () => {}),
   }
-  const readDocument = vi.fn(async () => options.document ?? document())
+  const readDocument = vi.fn(async (_client: unknown, _signal: AbortSignal) => options.document ?? document())
   const writeDocument = vi.fn(async (_client: HostClient, content: string, _expectedRevision: string) =>
     document({ content, revision: `rev-${String(content.length)}` }))
   const documents = options.withDocuments === false ? undefined : { readDocument, writeDocument }

@@ -30,13 +30,13 @@ function harness(options: Partial<{
   const session = {
     id: 'session-1',
     surface: { nodes: [10, 12, 14, 20] },
-    append: vi.fn(),
+    append: vi.fn((_type: string, _data: object, _opts?: object): undefined => undefined),
   }
   const agent: Agent = {
     id: 'session-1',
     status: options.status ?? 'running',
     session,
-    cancel: vi.fn(),
+    cancel: vi.fn((): void => {}),
   } as unknown as Agent
   const ctx = {
     on: (name: string, listener: (session: unknown, event: unknown) => void): (() => void) => {
@@ -57,13 +57,12 @@ function harness(options: Partial<{
         turn: 3, startSeq: 10, step: 1, messageIds: options.messageIds ?? ['m-1'], toolActivity: options.toolActivity ?? false,
       } } },
     }) },
-    logger: { warn: vi.fn() },
+    logger: { warn: vi.fn((): void => {}) },
   } as unknown as Context
   const coordinator = new RetractionCoordinator(ctx)
   // Listeners here take one argument; the session/event pair shape is not needed.
   const emit = (name: string, first: unknown, second?: unknown): void => { listeners.get(name)?.(first, second) }
   return { coordinator, agent, session, appended, emit, ctx }
-    .valueOf() as never as ReturnType<typeof harness> & { readonly appended: object[] }
 }
 
 describe('mayflyRetractionProjectionDefinition', () => {
@@ -73,7 +72,7 @@ describe('mayflyRetractionProjectionDefinition', () => {
   })
 
   it('tracks one open turn and closes it on its own turn end', () => {
-    let state = mayflyRetractionProjectionDefinition.init()
+    let state = mayflyRetractionProjectionDefinition.init('session-1' as never, { id: 'session-1' } as never)
     expect(state.open).toBeNull()
     state = fold(state, event('turn/start', { turn: 2 }, 10) as never)
     expect(state.open).toMatchObject({ turn: 2, startSeq: 10, step: 0, toolActivity: false })
@@ -85,16 +84,16 @@ describe('mayflyRetractionProjectionDefinition', () => {
   })
 
   it('marks tool activity from calls, results, and tool-call blocks', () => {
-    let state = fold(mayflyRetractionProjectionDefinition.init(), event('turn/start', { turn: 1 }, 1) as never)
+    let state = fold(mayflyRetractionProjectionDefinition.init('session-1' as never, { id: 'session-1' } as never), event('turn/start', { turn: 1 }, 1) as never)
     state = fold(state, event('tool/call', { turn: 1 }) as never)
     expect(state.open?.toolActivity).toBe(true)
-    state = fold(mayflyRetractionProjectionDefinition.init(), event('turn/start', { turn: 1 }, 1) as never)
+    state = fold(mayflyRetractionProjectionDefinition.init('session-1' as never, { id: 'session-1' } as never), event('turn/start', { turn: 1 }, 1) as never)
     state = fold(state, event('assistant/message', { turn: 1, message: { content: [{ type: 'tool-call' }] } }) as never)
     expect(state.open?.toolActivity).toBe(true)
   })
 
   it('collects user message ids only for the open turn', () => {
-    let state = fold(mayflyRetractionProjectionDefinition.init(), event('turn/start', { turn: 1 }, 1) as never)
+    let state = fold(mayflyRetractionProjectionDefinition.init('session-1' as never, { id: 'session-1' } as never), event('turn/start', { turn: 1 }, 1) as never)
     state = fold(state, event('user/message', { source: { kind: 'user' }, id: 'm-1' }) as never)
     state = fold(state, event('user/message', { source: { kind: 'agent' }, id: 'm-2' }) as never)
     expect(state.open?.messageIds).toEqual(['m-1'])
@@ -138,10 +137,10 @@ describe('RetractionCoordinator persistence', () => {
     expect(session.append).not.toHaveBeenCalled()
     emit('session/event', session, { type: 'turn/end', data: { turn: 3 }, seq: 30 })
     await new Promise(resolve => setTimeout(resolve, 10))
-    const call = vi.mocked(session.append).mock.calls[0]
-    expect(call[0]).toBe('developer/message')
+    const args = vi.mocked(session.append).mock.calls.at(-1) as unknown as [string, object, object]
+    expect(args[0]).toBe('developer/message')
     // The replacement spans exactly the turn's nodes, excluding the markers.
-    expect(call[2]).toMatchObject({ surfaceOp: { op: 'replace', startSeq: 12, endSeq: 20 } })
+    expect(args[2]).toMatchObject({ surfaceOp: { op: 'replace', startSeq: 12, endSeq: 20 } })
   })
 
   it('drops the pending entry when the agent is disposed', async () => {
@@ -159,7 +158,7 @@ describe('RetractionCoordinator persistence', () => {
 describe('retractTurn', () => {
   it('resolves the exact Agent before applying the guard', async () => {
     const { coordinator, agent, ctx } = harness()
-    agent.cancel = vi.fn()
+    agent.cancel = vi.fn((): void => {})
     const value = await retractTurn(ctx, coordinator, SessionId('session-1'), 'm-1', new AbortController().signal)
     expect(value).toBe(true)
   })

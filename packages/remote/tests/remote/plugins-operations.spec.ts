@@ -46,7 +46,7 @@ function fixture(options: {
   readonly result?: unknown
   readonly current?: boolean
 } = {}) {
-  const listPlugins = vi.fn(async () => options.result ?? { ok: true, value: options.entries ?? [] })
+  const listPlugins = vi.fn(async (): Promise<unknown> => options.result ?? { ok: true, value: options.entries ?? [] })
   // `/update` reads the Host build through capabilities; tests re-stub it per case.
   const capabilities = vi.fn(async (): Promise<unknown> => ({ ok: true, value: { hostVersion: HOST_VERSION } }))
   const ref: SessionRef = { host: HostKey('local'), sessionId: SessionId('session-1') }
@@ -518,7 +518,7 @@ describe('mountRemotePluginOperations', () => {
     // No version in the document is not evidence that this build is current;
     // claiming "newest published release" would be a confident wrong answer.
     expect(children.filter(child => child.kind === 'text' && (child as MayflyTextNode).tone === 'danger')).toHaveLength(1)
-    expect(children.some(child => child.kind === 'text' && String((child as MayflyTextNode).text).includes('newest'))).toBe(false)
+    expect(children.some(child => child.kind === 'text' && String((child as unknown as { text?: string }).text ?? '').includes('newest'))).toBe(false)
     dispose()
   })
 

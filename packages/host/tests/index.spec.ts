@@ -14,7 +14,7 @@ const contexts: Context[] = []
 afterEach((): void => { contexts.length = 0 })
 
 /** A real context whose projection registry records registrations. */
-function harness(): { ctx: Context, registered: string[] } {
+function harness(): { ctx: Context, registered: string[], plugged: readonly string[] } {
   const ctx = new Context()
   contexts.push(ctx)
   const registered: string[] = []
@@ -23,11 +23,10 @@ function harness(): { ctx: Context, registered: string[] } {
   })
   // The Remote service plugin is recorded through the real plugin path.
   const plugged: string[] = []
-  const record = ctx.plugin.bind(ctx)
   ctx.plugin = (async (plugin: Plugin): Promise<unknown> => {
     plugged.push(String((plugin as { name?: string }).name ?? 'anonymous'))
-    return record(plugin)
-  }) as typeof ctx.plugin
+    return {}
+  }) as unknown as typeof ctx.plugin
   return { ctx, registered, plugged }
 }
 

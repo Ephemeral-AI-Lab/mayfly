@@ -53,8 +53,8 @@ function harness(overrides: Partial<{
 }> = {}): {
   ctx: Context
   uplink: ReturnType<typeof uplink>
-  begin: (interaction: { prompt(prompt: { kind: string, message: string, placeholder?: string, options?: readonly { id: string, label: string }[], signal?: AbortSignal }): Promise<string> }): Promise<{ status: string }>
   cancel: ReturnType<typeof vi.fn>
+  answer(): string | undefined
 } {
   const link = uplink()
   let capturedPrompt: ((prompt: { kind: string, message: string, placeholder?: string, options?: readonly { id: string, label: string }[], signal?: AbortSignal }) => Promise<string>) | undefined
@@ -94,7 +94,7 @@ function harness(overrides: Partial<{
 }
 
 /** Drain a stream to arrays of frames, stopping at settled or the first rejection. */
-async function drain(stream: AsyncGenerator): Promise<{ frames: unknown[], error?: unknown }> {
+async function drain(stream: AsyncIterable<unknown>): Promise<{ frames: unknown[], error?: unknown }> {
   const frames: unknown[] = []
   try {
     for await (const frame of stream) frames.push(frame)
@@ -107,57 +107,59 @@ async function drain(stream: AsyncGenerator): Promise<{ frames: unknown[], error
 describe('authorize', () => {
   it('runs a prompt round-trip: started, prompt, answer, prompt-ended, settled', async () => {
     const h = harness()
-    const stream = authorize(h.ctx, { key: 'deepseek/api' }, new AbortController().signal)
-    const started = await stream.next()
+    const stream = authorize(h.ctx, { key: 'deepseek/api' as never }, new AbortController().signal)
+    const iterator = stream[Symbol.asyncIterator]()
+    const started = await iterator.next()
     expect(started.value).toMatchObject({ type: 'started' })
     const operationId = (started.value as { operationId: string }).operationId
     // The native flow asks one secret prompt.
-    const promptFrame = await stream.next()
+    const promptFrame = await iterator.next()
     expect(promptFrame.value).toMatchObject({ type: 'prompt', operationId, prompt: { kind: 'secret', message: 'paste the key' } })
     const promptId = (promptFrame.value as { promptId: string }).promptId
     // The answer travels only uplink-to-prompt; the run settles once it lands.
     h.uplink.push({ operationId, promptId, type: 'answer', value: 'sk-typed' })
-    const ended = await stream.next()
+    const ended = await iterator.next()
     expect(ended.value).toMatchObject({ type: 'prompt-ended', promptId })
-    const settled = await stream.next()
+    const settled = await iterator.next()
     expect(settled.value).toMatchObject({ type: 'settled', status: 'granted' })
     expect(h.answer()).toBe('sk-typed')
-    const done = await stream.next()
+    const done = await iterator.next()
     expect(done.done).toBe(true)
   })
 
   it('refuses a key without a flow and a method the flow does not offer', async () => {
     const noFlow = harness({ methods: [] })
-    const outcome = await drain(authorize(noFlow.ctx, { key: 'unknown/service' }, new AbortController().signal))
+    const outcome = await drain(authorize(noFlow.ctx, { key: 'unknown/service' as never }, new AbortController().signal))
     expect(outcome.error).toMatchObject({ code: 'mayflyHost/authorization-unavailable' })
     const wrongMethod = harness({ methods: [{ id: 'oauth' }] })
-    const refused = await drain(authorize(wrongMethod.ctx, { key: 'deepseek/api', method: 'device-code' }, new AbortController().signal))
+    const refused = await drain(authorize(wrongMethod.ctx, { key: 'deepseek/api' as never, method: 'device-code' }, new AbortController().signal))
     expect(refused.error).toMatchObject({ code: 'mayflyHost/authorization-unavailable' })
   })
 
   it('refuses a malformed key and an already-running flow with the named codes', async () => {
     const malformed = harness()
-    const outcome = await drain(authorize(malformed.ctx, { key: 'no-slash-here' }, new AbortController().signal))
+    const outcome = await drain(authorize(malformed.ctx, { key: 'no-slash-here' as never }, new AbortController().signal))
     expect(outcome.error).toMatchObject({ code: 'mayflyHost/authorization-unavailable' })
     const running = harness({ inFlight: true })
-    const busy = await drain(authorize(running.ctx, { key: 'deepseek/api' }, new AbortController().signal))
+    const busy = await drain(authorize(running.ctx, { key: 'deepseek/api' as never }, new AbortController().signal))
     expect(busy.error).toMatchObject({ code: 'mayflyHost/authorization-in-flight' })
   })
 
   it('maps a native NO_FLOW and an unexpected failure to the closed codes', async () => {
     const denied = harness({ beginError: new AuthorizationError('no flow for this key', 'NO_FLOW') })
-    const outcome = await drain(authorize(denied.ctx, { key: 'deepseek/api' }, new AbortController().signal))
+    const outcome = await drain(authorize(denied.ctx, { key: 'deepseek/api' as never }, new AbortController().signal))
     expect(outcome.error).toMatchObject({ code: 'mayflyHost/authorization-unavailable' })
     const broken = harness({ beginError: new Error('native plugin crashed') })
-    const failed = await drain(authorize(broken.ctx, { key: 'deepseek/api' }, new AbortController().signal))
+    const failed = await drain(authorize(broken.ctx, { key: 'deepseek/api' as never }, new AbortController().signal))
     expect(failed.error).toMatchObject({ code: 'mayflyHost/authorization-failed' })
   })
 
   it('cancels the native attempt on early stream return', async () => {
     const h = harness()
-    const stream = authorize(h.ctx, { key: 'deepseek/api' }, new AbortController().signal)
-    await stream.next()
-    await stream.return(undefined as never)
+    const stream = authorize(h.ctx, { key: 'deepseek/api' as never }, new AbortController().signal)
+    const iterator = stream[Symbol.asyncIterator]()
+    await iterator.next()
+    await iterator.return?.(undefined as never)
     expect(h.cancel).toHaveBeenCalled()
   })
 })
@@ -165,14 +167,14 @@ describe('authorize', () => {
 describe('cancelAuthorization', () => {
   it('cancels exactly the named key and refuses an aborted signal', async () => {
     const h = harness()
-    cancelAuthorization(h.ctx, { key: 'deepseek/api' }, new AbortController().signal)
+    cancelAuthorization(h.ctx, { key: 'deepseek/api' as never }, new AbortController().signal)
     expect(h.cancel).toHaveBeenCalledOnce()
     const controller = new AbortController()
     controller.abort()
-    expect(() => cancelAuthorization(h.ctx, { key: 'deepseek/api' }, controller.signal)).toThrow()
+    expect(() => cancelAuthorization(h.ctx, { key: 'deepseek/api' as never }, controller.signal)).toThrow()
     // A malformed key is refused, never passed to the native service.
     const before = h.cancel.mock.calls.length
-    expect(() => cancelAuthorization(h.ctx, { key: 'bad' }, new AbortController().signal)).toThrow()
+    expect(() => cancelAuthorization(h.ctx, { key: 'bad' as never }, new AbortController().signal)).toThrow()
     expect(h.cancel.mock.calls.length).toBe(before)
   })
 })

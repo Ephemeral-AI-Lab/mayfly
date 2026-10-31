@@ -3,7 +3,7 @@
  * duplicate-entry refusal, and per-session Agent reuse.
  * @module
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { parseToolArguments, presentTool, presentTools } from '../../src/remote/presentation.ts'
@@ -80,11 +80,12 @@ describe('presentTool', () => {
 
 describe('presentTools', () => {
   /** A context resolving every requested session to one shared Agent. */
-  function ctx(): { ctx: Context, resolutions: { count: () => number } } {
+  interface Resolutions { count(): number }
+  function ctx(): { ctx: Context, resolutions: Resolutions } {
     let count = 0
     const shared = agent()
     const session = { id: 'session-1', header: { origin: 'user' } }
-    const registered = { ...shared, session }
+    const registered = { ...shared, session } as unknown as Agent
     const context = {
       agents: { get: (): Agent => registered },
       sessions: { get: (): unknown => session },

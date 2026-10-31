@@ -47,7 +47,6 @@ describe('isSpawnToolName', () => {
 })
 
 describe('isTurnRetraction', () => {
-  const base = { message: { content: [], source: { kind: 'user' } } }
 
   it('requires a replace surface op on an emptied message', () => {
     // The base carries the retraction source, so only the surface op varies.

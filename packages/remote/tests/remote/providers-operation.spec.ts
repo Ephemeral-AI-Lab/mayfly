@@ -129,8 +129,8 @@ function fixture(host: ReturnType<typeof makeClient>, selected?: RemoteFeatureSe
     list: () => [...entries.values()],
   }
   const notice = { set: vi.fn() }
-  const handle: OverlayHandle = { closed: false, set: vi.fn(), close: vi.fn() }
-  const overlay = { open: vi.fn(() => handle), subscribe: vi.fn(() => () => {}) }
+  const handle: OverlayHandle = { closed: false, set: vi.fn((_node: unknown) => {}), close: vi.fn() }
+  const overlay = { open: vi.fn((_component: unknown, _options: unknown) => handle), subscribe: vi.fn((_listener: () => void) => () => {}) }
   const ctx = {
     inject: vi.fn(),
     get: vi.fn(() => undefined),
@@ -157,10 +157,10 @@ function fixture(host: ReturnType<typeof makeClient>, selected?: RemoteFeatureSe
   const execute = async (input: string, signal = new AbortController().signal): Promise<void> => {
     await definition().execute(input, signal)
   }
-  const node = (): UiNode => overlay.open.mock.calls.at(-1)![1] as UiNode
-  const latestNode = (): UiNode => (handle.set.mock.calls.at(-1)?.[1] ?? overlay.open.mock.calls.at(-1)![1]) as UiNode
+  const node = (): UiNode => overlay.open.mock.calls.at(-1)![1] as unknown as UiNode
+  const latestNode = (): UiNode => (handle.set.mock.calls.at(-1)?.[1] ?? overlay.open.mock.calls.at(-1)![1]) as unknown as UiNode
   const action = async (event: unknown): Promise<unknown> => {
-    const opened = overlay.open.mock.calls.at(-1)![0] as {
+    const opened = overlay.open.mock.calls.at(-1)![0] as unknown as {
       onEvent: { action(event: unknown, context: unknown): Promise<unknown> }
     }
     return await opened.onEvent.action(event, { signal: new AbortController().signal })
@@ -228,7 +228,7 @@ describe('mountRemoteProviderOperations', () => {
     const ids = list.items.map(item => item.id)
     expect(ids).toEqual(['shared', 'config-only', 'live-only'])
     expect(new Set(ids).size).toBe(ids.length)
-    expect(list.items[0]!.label).toBe('Shared Live')
+    expect((list.items[0] as { label?: string }).label).toBe('Shared Live')
     dispose()
 
     const second = fixture(makeClient({ configurable: [{ provider: 'config-only', displayName: 'Config Only' }] }))

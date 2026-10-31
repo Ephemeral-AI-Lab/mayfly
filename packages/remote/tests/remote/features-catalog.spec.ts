@@ -88,11 +88,6 @@ function mutedTextsOf(view: MayflyUiNode): readonly string[] {
     .map(node => String(node.content))
 }
 
-interface CatalogCommands {
-  readonly 0: { execute(rawInput: string): Promise<void> }
-  readonly length: number
-}
-
 function fixture(options: {
   readonly features?: readonly string[]
   readonly mcp?: unknown
@@ -277,7 +272,7 @@ describe('mountCatalogFeature MCP catalog', () => {
 
   it('paints a failed capability probe as an error with no rows, never as a throw', async () => {
     const { context, commands, capabilities, mcpCatalogRead, toolCatalogRead } = fixture()
-    capabilities.mockResolvedValue({ ok: false, error: { code: 'mayflyHost/capability-unavailable', message: 'Host does not compose Mayfly' } })
+    vi.mocked(capabilities).mockResolvedValue({ ok: false, error: { code: 'mayflyHost/capability-unavailable', message: 'Host does not compose Mayfly' } } as never)
     const dispose = mountCatalogFeature(context)
 
     await commands[0]!.execute('')
@@ -314,7 +309,7 @@ describe('mountCatalogFeature MCP catalog', () => {
 
   it('surfaces a failed catalog read as a panel notice while the other catalog still renders', async () => {
     const { context, commands, mcpCatalogRead, toolCatalogRead } = fixture({ tools: toolCatalog(['read_file']) })
-    mcpCatalogRead.mockResolvedValue({ ok: false, error: { code: 'unavailable', message: 'catalog exploded' } })
+    vi.mocked(mcpCatalogRead).mockResolvedValue({ ok: false, error: { code: 'unavailable', message: 'catalog exploded' } } as never)
     const dispose = mountCatalogFeature(context)
 
     await commands[0]!.execute('')
@@ -379,7 +374,7 @@ describe('mountCatalogFeature probe ownership', () => {
     const browser = browserOf()
 
     // One refresh is in flight when the Host topology replaces the generation.
-    capabilities.mockImplementationOnce(async () => await stale)
+    capabilities.mockImplementationOnce(async () => await stale as never)
     const refresh = refreshPanel(browser)
     await vi.waitFor(() => { expect(capabilities).toHaveBeenCalledTimes(3) })
 

@@ -6,7 +6,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
-import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { WorkflowLiveCatalog, followWorkflow, mayflyWorkflowProjectionDefinition } from '../../src/remote/workflow.ts'
 
 const fold = mayflyWorkflowProjectionDefinition.apply
@@ -18,7 +17,7 @@ function event(type: string, data: object, time = 1, seq = 1): SessionEvent {
 
 /** Fold events over the initial snapshot for one session. */
 function run(events: readonly SessionEvent[]): { sessionId: string, runs: never[] | unknown[] } {
-  return events.reduce((state, item) => fold(state as never, item), mayflyWorkflowProjectionDefinition.init({ id: 'session-1' } as never)) as never
+  return events.reduce((state, item) => fold(state as never, item), mayflyWorkflowProjectionDefinition.init('session-1' as never, { id: 'session-1' } as never)) as never
 }
 
 /** A harness with event listeners the test can fire, over one parent session. */
@@ -29,7 +28,7 @@ function catalogHarness(): {
   session: Session
 } {
   const listeners = new Map<string, ((...args: readonly unknown[]) => void)[]>()
-  const session = { id: 'session-1', header: { origin: 'user' } }
+  const session = { id: 'session-1', header: { origin: 'user' } } as never as Session
   const projections = new Map<string, unknown>()
   const ctx = {
     on: (name: string, listener: (...args: readonly unknown[]) => void): (() => void) => {
@@ -72,7 +71,7 @@ describe('mayflyWorkflowProjectionDefinition', () => {
   })
 
   it('starts empty for the session and returns the same reference for foreign events', () => {
-    const initial = mayflyWorkflowProjectionDefinition.init({ id: 'session-1' } as never)
+    const initial = mayflyWorkflowProjectionDefinition.init('session-1' as never, { id: 'session-1' } as never)
     expect(initial.runs).toEqual([])
     expect(fold(initial, event('user/message', {}))).toBe(initial)
   })
@@ -153,7 +152,7 @@ describe('WorkflowLiveCatalog', () => {
     fire('workflow/start', info('r1'))
     fire('workflow/agent-start', info('r1'), { seq: 1, label: 'lint', childId: 'child-1' })
     fire('workflow/end', info('r1'), { stopReason: 'completed', agentsStarted: 3 })
-    const theRun = catalog.snapshot(ctx, session).runs[0]
+    const theRun = catalog.snapshot(ctx, session).runs[0]!
     expect(theRun).toMatchObject({ stopReason: 'completed', agentsStarted: 3 })
   })
 
@@ -169,11 +168,11 @@ describe('WorkflowLiveCatalog', () => {
     // A durable baseline run with no phase list.
     const durable = { sessionId: 'session-1', runs: [{ id: 'r1', name: 'deploy', phasesSeen: [], agents: [], startedAt: 5 }] }
     ;(ctx as unknown as { sessionProjections: { snapshot(target: Session, keys: readonly string[]): { values: Record<string, unknown> } } })
-      .sessionProjections.snapshot = (target, keys): { values: Record<string, unknown> } => ({
+      .sessionProjections.snapshot = (_target, keys): { values: Record<string, unknown> } => ({
         values: Object.fromEntries(keys.map(key => [key, key === 'mayflyWorkflow' ? durable : undefined])),
       })
     fire('workflow/start', { id: 'r1', meta: { name: 'deploy', phases: [{ title: 'build' }] } })
-    const merged = catalog.snapshot(ctx, session).runs[0]
+    const merged = catalog.snapshot(ctx, session).runs[0]!
     // The durable startedAt anchors ordering; the live phases describe the plan.
     expect(merged.startedAt).toBe(5)
     expect(merged.phases).toEqual([{ title: 'build' }])
@@ -197,10 +196,11 @@ describe('followWorkflow', () => {
   it('yields one baseline frame then a replacement only when the snapshot changes', async () => {
     const { ctx, catalog, session } = streamHarness()
     const stream = followWorkflow(ctx, catalog, 'session-1' as never, new AbortController().signal)
-    const baseline = await stream.next()
+    const iterator = stream[Symbol.asyncIterator]()
+    const baseline = await iterator.next()
     expect(baseline.value).toMatchObject({ type: 'baseline' })
     void session
-    await stream.return(undefined as never)
+    await iterator.return?.(undefined as never)
   })
 
   it('fails with the stale code when the exact Agent is disposed mid-stream', async () => {
@@ -218,9 +218,10 @@ describe('followWorkflow', () => {
       sessionProjections: (base.ctx as unknown as { sessionProjections: unknown }).sessionProjections,
     } as unknown as Context
     const stream = followWorkflow(ctx, base.catalog, 'session-1' as never, new AbortController().signal)
-    await stream.next()
+    const iterator = stream[Symbol.asyncIterator]()
+    await iterator.next()
     for (const listener of disposed.splice(0)) listener({ agent })
     // A failed queue makes the generator throw the error to its consumer.
-    await expect(stream.next()).rejects.toMatchObject({ code: 'mayflyHost/session-stale' })
+    await expect(iterator.next()).rejects.toMatchObject({ code: 'mayflyHost/session-stale' })
   })
 })

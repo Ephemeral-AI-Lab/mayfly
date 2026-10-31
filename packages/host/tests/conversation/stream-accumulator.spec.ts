@@ -4,6 +4,7 @@
  * @module
  */
 import { describe, expect, it } from 'vitest'
+import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import {
   foldAssistantStreamChunk,
   foldAssistantStreamRecords,
@@ -12,20 +13,18 @@ import {
 } from '../../src/conversation/stream-accumulator.ts'
 
 /** A reasoning delta with only the fields the fold reads. */
-function reasoning(text: string): { type: 'reasoning-delta', text: string } {
-  return { type: 'reasoning-delta', text }
+function reasoning(text: string): StreamChunk {
+  return { type: 'reasoning-delta', text } as StreamChunk
 }
 
 /** A text delta with only the fields the fold reads. */
-function text(text: string): { type: 'text-delta', text: string } {
-  return { type: 'text-delta', text }
+function text(text: string): StreamChunk {
+  return { type: 'text-delta', text } as StreamChunk
 }
 
 /** One tool-call argument delta as the fold reads it. */
-function delta(id: string, argumentsDelta: string, name?: string): {
-  type: 'tool-call-delta', id: string, argumentsDelta: string, name?: string
-} {
-  return { type: 'tool-call-delta', id, argumentsDelta, ...(name === undefined ? {} : { name }) }
+function delta(id: string, argumentsDelta: string, name?: string): StreamChunk {
+  return { type: 'tool-call-delta', id, argumentsDelta, ...(name === undefined ? {} : { name }) } as StreamChunk
 }
 
 describe('foldAssistantStreamChunk', () => {
@@ -79,7 +78,7 @@ describe('foldAssistantStreamChunk', () => {
     let state = foldAssistantStreamChunk(initialAssistantStream(), text('hello'), 20)
     expect(state.phase).toBe('composing')
     expect(state.outputProgress).not.toBeUndefined()
-    state = foldAssistantStreamChunk(state, { type: 'finish' }, 21)
+    state = foldAssistantStreamChunk(state, { type: 'finish' } as StreamChunk, 21)
     expect(state.phase).toBe('waiting')
     expect(state.outputProgress).toBeUndefined()
     // The visible text survives the seal.

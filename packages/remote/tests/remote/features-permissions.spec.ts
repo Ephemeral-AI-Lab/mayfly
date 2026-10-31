@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey } from '../../src/client/types.ts'
 import type { HostClient } from '../../src/client/types.ts'
-import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
+import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features/contracts.ts'
 import {
   RemotePermissionsController,
   remotePermissionSelection,
@@ -79,7 +79,7 @@ function fixture(options: {
     subscribe: vi.fn(() => () => {}),
   }
   const lease = { generation: 1, closed: false, close: vi.fn() }
-  const openOverlay = vi.fn(() => lease)
+  const openOverlay = vi.fn((_component: unknown) => lease)
   const translate = vi.fn((key: string, values?: Readonly<Record<string, string | number>>) => key.replace(
     /\{([A-Za-z][A-Za-z0-9_]*)\}/gu,
     (placeholder, name: string) => String(values?.[name] ?? placeholder),

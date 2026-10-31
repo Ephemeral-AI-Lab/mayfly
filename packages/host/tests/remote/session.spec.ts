@@ -42,13 +42,13 @@ function fixture(id = 'session-1', overrides: Partial<{
 describe('requireExactAgent', () => {
   it('accepts the exact registered Agent and Session objects', () => {
     const { ctx } = fixture()
-    const agent = ctx.agents.get('session-1')
+    const agent = (ctx.agents as { get(key: string): unknown }).get('session-1')
     expect(requireExactAgent(ctx, SessionId('session-1'), agent as never)).toBe(agent)
   })
 
   it('refuses a same-id Agent that is not the registered object', () => {
     const { ctx } = fixture()
-    const impostor = { id: 'session-1', session: ctx.sessions.get('session-1') }
+    const impostor = { id: 'session-1', session: (ctx.sessions as { get(key: string): unknown }).get('session-1') }
     // The refusal names the session, and its code is the stale-session one.
     expect(() => requireExactAgent(ctx, SessionId('session-1'), impostor as never))
       .toThrow(expect.objectContaining({ code: 'mayflyHost/session-stale' }) as never)
@@ -56,7 +56,7 @@ describe('requireExactAgent', () => {
 
   it('refuses an Agent whose session was replaced under the same id', () => {
     const { ctx } = fixture()
-    const live = ctx.agents.get('session-1') as { session: object }
+    const live = (ctx.agents as { get(key: string): unknown }).get('session-1') as { session: object }
     const replaced = { ...live, session: { id: 'session-1', header: {} } }
     expect(() => requireExactAgent(ctx, SessionId('session-1'), replaced as never)).toThrow()
   })
@@ -94,7 +94,7 @@ describe('resolveExactAgent', () => {
 
   it('propagates the controller error verbatim instead of wrapping it', async () => {
     const { ctx } = fixture('gone-1', { live: false,
-      resolveAgent: async () => ({ error: new RemoteError('session/not-found', 'no such session') }),
+      resolveAgent: async (): Promise<never> => ({ error: new RemoteError('session/not-found', 'no such session', { sessionId: 'gone-1' as never }) }) as never,
     })
     await expect(resolveExactAgent(ctx, SessionId('gone-1'), new AbortController().signal))
       .rejects.toMatchObject({ code: 'session/not-found' })
@@ -112,14 +112,14 @@ describe('sessionDirectory', () => {
   it('prefers the live working-directory projection over the header cwd', () => {
     const { ctx } = fixture()
     const projections = { snapshot: (_session: object, keys: readonly string[]) => ({ values: keys.includes('workingDirectory') ? { workingDirectory: '/live/dir' } : {} }) }
-    const session = ctx.sessions.get('session-1')
+    const session = (ctx.sessions as { get(key: string): unknown }).get('session-1')
     expect(sessionDirectory({ ...ctx, sessionProjections: projections } as unknown as Context, session as never)).toBe('/live/dir')
   })
 
   it('falls back to the header cwd when no projection is published', () => {
     const { ctx } = fixture()
     const projections = { snapshot: () => ({ values: {} }) }
-    const session = ctx.sessions.get('session-1')
+    const session = (ctx.sessions as { get(key: string): unknown }).get('session-1')
     expect(sessionDirectory({ ...ctx, sessionProjections: projections } as unknown as Context, session as never)).toBe('/host/work')
   })
 

@@ -1,173 +1,393 @@
-import { describe, expect, it, vi } from 'vitest'
-import type {
-  MayflyCompletionView,
-  MayflyEditor,
-  MayflyOverlayOptions,
-  MayflyScreenService,
-  MayflySemanticColors,
-} from '@ephemeral-ai/mayfly/core'
-import { mountRemoteCompletionDrawer } from '../../src/remote/completion-drawer.ts'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { MayflyUiActionEvent, MayflyUiEventContext, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { HostKey } from '../../src/client/types.ts'
+import type { HostClient, SessionRef } from '../../src/client/types.ts'
+import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
+import type { RemoteBrowserOptions } from '../../src/remote/panels/browser.ts'
+import { mountCatalogFeature } from '../../src/remote/features/catalog.ts'
+import { unavailableCapability } from '../../src/remote/features/capabilities.ts'
 
-/**
- * Display width as the terminal counts it: a CJK or fullwidth code point takes
- * two cells, everything else one. Using `text.length` here would hide exactly
- * the wide-glyph overflow this suite exists to catch.
- */
-function displayWidth(text: string): number {
-  let total = 0
-  for (const character of text) {
-    const code = character.codePointAt(0) ?? 0
-    total += code >= 0x1100 && (code <= 0x115F || (code >= 0x2E80 && code <= 0xA4CF)
-      || (code >= 0xAC00 && code <= 0xD7A3) || (code >= 0xF900 && code <= 0xFAFF)
-      || (code >= 0xFE30 && code <= 0xFE6F) || (code >= 0xFF00 && code <= 0xFF60)
-      || (code >= 0xFFE0 && code <= 0xFFE6) || (code >= 0x1F300 && code <= 0x1FAFF)) ? 2 : 1
-  }
-  return total
+const mocks = vi.hoisted(() => ({
+  open: vi.fn(),
+}))
+
+vi.mock('../../src/remote/panels/browser.ts', () => ({
+  openRemoteBrowser: mocks.open,
+}))
+
+/** One server schema the Host would publish for a session. */
+function toolSchema(name: string, description = 'Does a thing.'): unknown {
+  return { name, description, parameters: { type: 'object' } }
 }
 
-const measure = {
-  visibleWidth: displayWidth,
-  // Cut by display width, like the shared component measure: slicing by code
-  // point would keep a two-cell glyph that no longer fits.
-  truncateToWidth: (text: string, width: number) => {
-    let used = 0
-    let out = ''
-    for (const character of text) {
-      const cells = displayWidth(character)
-      if (used + cells > width) break
-      used += cells
-      out += character
-    }
-    return out
-  },
-}
-
-/** Only `selectedBg` is read; keeping it identity makes padding measurable. */
-const colors = {
-  selectedBg: (text: string) => text,
-} as unknown as MayflySemanticColors
-
-interface DrawerComponent {
-  render(width: number): string[]
-}
-
-function completion(overrides: Partial<MayflyCompletionView> = {}): MayflyCompletionView {
+/** One MCP server as the Host's wire shape declares it, with nullable config resolved. */
+function mcpServer(overrides: Readonly<Record<string, unknown>> = {}): Readonly<Record<string, unknown>> {
   return {
-    kind: 'commands',
-    items: [
-      { label: 'model', value: 'model', detail: 'Change the model' },
-      { label: 'mode', value: 'mode', detail: 'Change the mode' },
-    ],
-    index: 0,
-    prefix: '/',
+    entryId: 'entry-alpha',
+    serverName: 'alpha',
+    status: 'synced',
+    registeredCount: 0,
+    toolsVisible: [],
+    config: { transport: null, endpoint: null },
     ...overrides,
   }
 }
 
-function fixture(initial: MayflyCompletionView | undefined) {
-  const handle = { hide: vi.fn() }
-  const showOverlay = vi.fn(() => handle)
-  const screen = { showOverlay, columns: 40, editorRowsFromBottom: 2 } as unknown as MayflyScreenService
-  const state: { view: MayflyCompletionView | undefined } = { view: initial }
-  const editor = { completion: () => state.view } as unknown as MayflyEditor
-  const drawer = mountRemoteCompletionDrawer(screen, editor, colors, measure)
-  const component = (): DrawerComponent => vi.mocked(showOverlay).mock.calls.at(-1)![0] as unknown as DrawerComponent
-  const options = (): MayflyOverlayOptions => vi.mocked(showOverlay).mock.calls.at(-1)![1]!
-  return { drawer, handle, screen, showOverlay, state, component, options }
+/** One construction-frozen MCP catalog as the Host returns it. */
+function mcpCatalog(servers: readonly unknown[], orphanCount = 0): unknown {
+  return { servers, orphanCount, sessionLive: true }
 }
 
-describe('mountRemoteCompletionDrawer', () => {
-  it('mounts nothing when the screen has no overlay layer', () => {
-    const screen = { columns: 80, editorRowsFromBottom: 0 } as unknown as MayflyScreenService
-    const editor = { completion: () => completion() } as unknown as MayflyEditor
-    const drawer = mountRemoteCompletionDrawer(screen, editor, colors, measure)
-    expect(() => drawer.dispose()).not.toThrow()
+/** One construction-frozen tool catalog as the Host returns it. */
+function toolCatalog(names: readonly string[]): unknown {
+  return { tools: names.map(name => toolSchema(name)) }
+}
+
+/** Every node of one panel view, flattened for shape-independent assertions. */
+function nodesOf(node: unknown, found: Array<Record<string, unknown>> = []): Array<Record<string, unknown>> {
+  if (Array.isArray(node)) {
+    for (const child of node) nodesOf(child, found)
+    return found
+  }
+  if (node === null || typeof node !== 'object') return found
+  const record = node as Record<string, unknown>
+  if (typeof record.kind === 'string') found.push(record)
+  for (const value of Object.values(record)) nodesOf(value, found)
+  return found
+}
+
+/** The list node with one control id, which carries the mapped rows and its empty state. */
+function listOf(view: MayflyUiNode, id: string): Record<string, unknown> {
+  const list = nodesOf(view).find(node => node.kind === 'list' && node.id === id)
+  expect(list).toBeDefined()
+  return list!
+}
+
+/** The labels of one list node's rows, in painted order. */
+function labelsOf(view: MayflyUiNode, id = 'servers'): readonly string[] {
+  return (listOf(view, id).items as ReadonlyArray<{ readonly label: string }>).map(item => item.label)
+}
+
+/** The explicit empty-state title of one list node, absent when the list declares none. */
+function emptyTitleOf(view: MayflyUiNode, id: string): unknown {
+  return (listOf(view, id).empty as Record<string, unknown> | undefined)?.title
+}
+
+/** Every danger-tone text painted into a panel, which carries a failed read or a missing capability. */
+function errorTextsOf(view: MayflyUiNode): readonly string[] {
+  return nodesOf(view)
+    .filter(node => node.kind === 'text' && node.tone === 'danger')
+    .map(node => String(node.content))
+}
+
+/** The muted explanatory texts of a panel, where the orphan count is painted. */
+function mutedTextsOf(view: MayflyUiNode): readonly string[] {
+  return nodesOf(view)
+    .filter(node => node.kind === 'text' && node.tone === 'muted')
+    .map(node => String(node.content))
+}
+
+function fixture(options: {
+  readonly features?: readonly string[]
+  readonly mcp?: unknown
+  readonly tools?: unknown
+} = {}) {
+  const ref: SessionRef = { host: HostKey('local'), sessionId: SessionId('session-1') }
+  const capabilities = vi.fn(async () => ({
+    ok: true,
+    value: { protocolVersion: 1, hostVersion: '0.1.4', requiredDshVersion: '0.1.0', features: options.features ?? ['mcpCatalog', 'toolCatalog'] },
+  }))
+  const mcpCatalogRead = vi.fn(async () => ({ ok: true, value: options.mcp ?? mcpCatalog([]) }))
+  const toolCatalogRead = vi.fn(async () => ({ ok: true, value: options.tools ?? toolCatalog([]) }))
+  const client = {
+    key: HostKey('local'),
+    state: { getSnapshot: () => ({ generation: 1 }), subscribe: vi.fn(() => () => {}) },
+    remote: {
+      $on: vi.fn(() => () => {}),
+      mayflyHost: { capabilities, mcpCatalog: mcpCatalogRead, toolCatalog: toolCatalogRead },
+    },
+  } as unknown as HostClient
+  let selection: RemoteFeatureSelection = { ref, client, binding: {} as RemoteFeatureSelection['binding'] }
+  const topology: Array<() => void> = []
+  const hosts = {
+    current: vi.fn((): RemoteFeatureSelection | undefined => selection),
+    list: vi.fn((): readonly HostClient[] => [client]),
+    subscribe: vi.fn((listener: () => void) => {
+      topology.push(listener)
+      return () => {}
+    }),
+  }
+  const locale = {
+    register: vi.fn(),
+    subscribe: vi.fn(() => () => {}),
+    translate: vi.fn((_namespace: string, key: string) => key),
+  }
+  const effect = vi.fn((fn: () => unknown) => {
+    const dispose = fn()
+    return () => { if (typeof dispose === 'function') dispose() }
+  })
+  const ctx = {
+    effect,
+    inject: vi.fn((_dependencies: readonly string[], callback: (scope: unknown) => void) => {
+      callback({ mayflyLocale: locale, effect })
+    }),
+    get: vi.fn((name: string) => (name === 'mayflyLocale' ? locale : undefined)),
+    mayflyLocale: locale,
+  }
+  const commands: Array<{ readonly name: string, readonly execute: (rawInput: string) => Promise<void> }> = []
+  const disposers = [vi.fn(), vi.fn()]
+  const register = vi.fn((command: { readonly name: string, readonly execute: (rawInput: string) => Promise<void> }) => {
+    commands.push(command)
+    return disposers[commands.length - 1]!
+  })
+  const context = {
+    ctx,
+    hosts,
+    commands: { register },
+    t: vi.fn((key: string) => key),
+    subscribeLocale: vi.fn(() => () => {}),
+  } as unknown as RemoteFeatureContext
+  return {
+    context,
+    hosts,
+    locale,
+    client,
+    ref,
+    capabilities,
+    mcpCatalogRead,
+    toolCatalogRead,
+    commands,
+    disposers,
+    register,
+    /** Fire every topology listener, as a Host attach/detach or re-selection would. */
+    reselect: (): void => {
+      selection = { ref, client, binding: {} as RemoteFeatureSelection['binding'] }
+      for (const listener of [...topology]) listener()
+    },
+  }
+}
+
+/** The browser options of the n-th opened panel. */
+function browserOf(index = 0): RemoteBrowserOptions {
+  return mocks.open.mock.calls[index]![1] as RemoteBrowserOptions
+}
+
+const signal = { aborted: false } as AbortSignal
+
+/** Wait until one refresh finished: the feature repaints its open panel last. */
+async function settled(panel: { readonly refresh: () => void }): Promise<void> {
+  await vi.waitFor(() => { expect(panel.refresh).toHaveBeenCalled() })
+}
+
+/** Ask an open catalog panel to refresh, as its hidden refresh action does. */
+async function refreshPanel(browser: RemoteBrowserOptions): Promise<void> {
+  await browser.action!(
+    { kind: 'activate', actionId: 'refresh' } as MayflyUiActionEvent,
+    { signal } as unknown as MayflyUiEventContext,
+  )
+}
+
+beforeEach(() => {
+  mocks.open.mockReset()
+  mocks.open.mockReturnValue({ closed: false, refresh: vi.fn(), close: vi.fn() })
+})
+
+describe('mountCatalogFeature commands', () => {
+  it('registers exactly /mcp and /tools, refuses arguments, and unregisters both on teardown', async () => {
+    const { context, register, commands, disposers } = fixture()
+    const panel = { closed: false, refresh: vi.fn(), close: vi.fn() }
+    mocks.open.mockReturnValue(panel)
+    const dispose = mountCatalogFeature(context)
+
+    expect(register).toHaveBeenCalledTimes(2)
+    expect(commands.map(command => command.name)).toEqual(['mcp', 'tools'])
+    await expect(commands[0]!.execute(' alpha')).rejects.toThrow('Usage: /mcp')
+    await expect(commands[1]!.execute(' now')).rejects.toThrow('Usage: /tools')
+    expect(mocks.open).not.toHaveBeenCalled()
+
+    await commands[0]!.execute('')
+    const browser = browserOf()
+    expect(browser.id).toBe('remote.mcp')
+    expect(browser.scope).toEqual({ kind: 'session', sessionId: SessionId('session-1') })
+
+    dispose()
+    expect(panel.close).toHaveBeenCalledOnce()
+    for (const unregister of disposers) expect(unregister).toHaveBeenCalledOnce()
+  })
+})
+
+describe('mountCatalogFeature MCP catalog', () => {
+  it('maps the Host wire catalog to rows in status order and keeps an absent connection absent', async () => {
+    const servers = [
+      mcpServer({ entryId: 'entry-beta', serverName: 'beta', status: 'synced', connection: 'connected', registeredCount: 3 }),
+      mcpServer({ entryId: 'entry-alpha', serverName: 'alpha', status: 'no-tools' }),
+      mcpServer({ entryId: 'entry-zeta', serverName: 'zeta', status: 'restricted', connection: 'disconnected' }),
+    ]
+    const { context, commands } = fixture({ mcp: mcpCatalog(servers) })
+    const dispose = mountCatalogFeature(context)
+
+    await commands[0]!.execute('')
+    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
+    await vi.waitFor(() => { expect(labelsOf(browserOf().view())).toHaveLength(3) })
+
+    const view = browserOf().view()
+    expect(labelsOf(view)).toEqual(['alpha', 'zeta', 'beta'])
+    const items = listOf(view, 'servers').items as ReadonlyArray<{ readonly cells: readonly unknown[] }>
+    // alpha carries no connection phase, so its row has two cells; a fabricated
+    // empty third cell would paint an unexplained gap.
+    expect(items.map(item => item.cells.length)).toEqual([2, 3, 3])
+    expect(errorTextsOf(view)).toEqual([])
+    dispose()
   })
 
-  it('keeps the overlay invisible and paints no rows while no completion is open', () => {
-    const { component, options, state } = fixture(undefined)
-    expect(options().visible!(40, 24)).toBe(false)
-    expect(component().render(40)).toEqual([])
+  it('paints an explicit empty state for an empty catalog instead of a bare list', async () => {
+    const { context, commands, mcpCatalogRead } = fixture({ mcp: mcpCatalog([], 0) })
+    const panel = { closed: false, refresh: vi.fn(), close: vi.fn() }
+    mocks.open.mockReturnValue(panel)
+    const dispose = mountCatalogFeature(context)
 
-    state.view = completion()
-    expect(options().visible!(40, 24)).toBe(true)
-    expect(component().render(40)).toHaveLength(2)
+    await commands[0]!.execute('')
+    await settled(panel)
+    expect(mcpCatalogRead).toHaveBeenCalled()
+
+    const view = browserOf().view()
+    expect(labelsOf(view)).toEqual([])
+    expect(emptyTitleOf(view, 'servers')).toBe('No MCP servers are declared')
+    expect(mutedTextsOf(view).some(text => text.includes('have no declared server'))).toBe(false)
+    dispose()
   })
 
-  it('shows the palette as a non-capturing bottom-left overlay sized from the screen', () => {
-    const { drawer, handle, options, screen } = fixture(undefined)
-    const overlay = options()
-    expect(overlay.anchor).toBe('bottom-left')
-    expect(overlay.nonCapturing).toBe(true)
-    expect(overlay.width).toBe(screen.columns)
-    expect(overlay.offsetY).toBe(-screen.editorRowsFromBottom)
-    expect(overlay.visible!(40, 24)).toBe(false)
+  it('paints the orphan-tool line only when the Host counts orphans', async () => {
+    const { context, commands } = fixture({ mcp: mcpCatalog([mcpServer()], 2) })
+    const dispose = mountCatalogFeature(context)
 
-    drawer.dispose()
-    expect(handle.hide).toHaveBeenCalledOnce()
+    await commands[0]!.execute('')
+    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
+    await vi.waitFor(() => { expect(labelsOf(browserOf().view())).toHaveLength(1) })
+
+    expect(mutedTextsOf(browserOf().view()).some(text => text.includes('have no declared server'))).toBe(true)
+    dispose()
   })
 
-  it('paints one padded row per item, with the arrow only on the focused row', () => {
-    const { component } = fixture(completion({ index: 1 }))
-    const rows = component().render(36)
-    expect(rows).toHaveLength(2)
-    expect(rows[0]!.startsWith('    ')).toBe(true)
-    expect(rows[1]!.startsWith('  › ')).toBe(true)
-    expect(rows[1]).toContain('mode')
-    expect(rows[1]).toContain('  Change the mode')
-    expect(rows.filter(row => row.includes('›'))).toHaveLength(1)
-    for (const row of rows) expect(row).toHaveLength(36)
+  it('paints a failed capability probe as an error with no rows, never as a throw', async () => {
+    const { context, commands, capabilities, mcpCatalogRead, toolCatalogRead } = fixture()
+    vi.mocked(capabilities).mockResolvedValue({ ok: false, error: { code: 'mayflyHost/capability-unavailable', message: 'Host does not compose Mayfly' } } as never)
+    const dispose = mountCatalogFeature(context)
+
+    await commands[0]!.execute('')
+    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
+    await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual(['Host does not compose Mayfly']) })
+
+    const view = browserOf().view()
+    expect(labelsOf(view)).toEqual([])
+    expect(emptyTitleOf(view, 'servers')).toBe('No MCP servers are declared')
+    // An unreachable capability probe proves nothing about the feature set, so
+    // no catalog read is sent on a guess.
+    expect(mcpCatalogRead).not.toHaveBeenCalled()
+    expect(toolCatalogRead).not.toHaveBeenCalled()
+    dispose()
   })
 
-  it('caps the palette at six rows and windows them so the focused item stays visible', () => {
-    const items = Array.from({ length: 10 }, (_, index) => ({ label: `cmd-${String(index)}`, value: `cmd-${String(index)}` }))
+  it('reports an unadvertised capability with actionable copy and never sends its read', async () => {
+    const { context, commands, mcpCatalogRead, toolCatalogRead } = fixture({ features: ['toolCatalog'], tools: toolCatalog(['read_file']) })
+    const dispose = mountCatalogFeature(context)
 
-    const middle = fixture(completion({ items, index: 7 }))
-    const rows = middle.component().render(30)
-    expect(rows).toHaveLength(6)
-    expect(rows[0]).toContain('cmd-4')
-    expect(rows[5]).toContain('cmd-9')
-    expect(rows[3]!.startsWith('  › ')).toBe(true)
-    expect(rows.filter(row => row.includes('›'))).toHaveLength(1)
+    await commands[0]!.execute('')
+    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
+    await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual([unavailableCapability('mcpCatalog')]) })
 
-    const head = fixture(completion({ items, index: 0 })).component().render(30)
-    expect(head[0]!.startsWith('  › ')).toBe(true)
-    expect(head[0]).toContain('cmd-0')
-    expect(head).toHaveLength(6)
+    expect(mcpCatalogRead).not.toHaveBeenCalled()
 
-    const tail = fixture(completion({ items, index: 9 })).component().render(30)
-    expect(tail[5]!.startsWith('  › ')).toBe(true)
-    expect(tail[5]).toContain('cmd-9')
+    await commands[1]!.execute('')
+    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledTimes(2) })
+    await vi.waitFor(() => { expect(errorTextsOf(browserOf(1).view())).toEqual([]) })
+    expect(labelsOf(browserOf(1).view(), 'tools')).toEqual(['read_file'])
+    expect(toolCatalogRead).toHaveBeenCalled()
+    dispose()
   })
 
-  it('paints the item label, not the insertion value, and drops the detail on a narrow row', () => {
-    // The label is what the palette is for: a command row labels an alias match
-    // `/name (alias)` while its value is the bare insertion text, and a
-    // directory row's value is the quoted `@"dir/"` that must never be drawn.
-    const { component } = fixture(completion({
-      items: [{ label: '/model (m)', value: '/model', detail: 'Switch the model' }],
-      index: 0,
-    }))
-    const row = component().render(40)[0]!
-    expect(row).toContain('/model (m)')
-    expect(row).not.toContain('@"')
+  it('surfaces a failed catalog read as a panel notice while the other catalog still renders', async () => {
+    const { context, commands, mcpCatalogRead, toolCatalogRead } = fixture({ tools: toolCatalog(['read_file']) })
+    vi.mocked(mcpCatalogRead).mockResolvedValue({ ok: false, error: { code: 'unavailable', message: 'catalog exploded' } } as never)
+    const dispose = mountCatalogFeature(context)
 
-    const narrow = fixture(completion()).component().render(12)
-    for (const line of narrow) expect(line).toHaveLength(12)
-    expect(narrow[0]).not.toContain('Change')
+    await commands[0]!.execute('')
+    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
+    await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual(['catalog exploded']) })
+    expect(labelsOf(browserOf().view())).toEqual([])
+
+    await commands[1]!.execute('')
+    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledTimes(2) })
+    expect(toolCatalogRead.mock.calls.length).toBeGreaterThanOrEqual(1)
+    expect(errorTextsOf(browserOf(1).view())).toEqual([])
+    expect(labelsOf(browserOf(1).view(), 'tools')).toEqual(['read_file'])
+    dispose()
   })
 
-  it('never paints a row wider than the overlay when the name is double-width', () => {
-    // A wide glyph occupies two cells; padding by UTF-16 units would over-pad
-    // and push the detail past the frame, which the core painter never does.
-    const { component } = fixture(completion({
-      items: [{ label: '模型命令选择', value: '/model', detail: '切换当前会话使用的模型以及推理强度' }],
-      index: 0,
-    }))
-    for (const width of [24, 40, 60]) {
-      for (const line of component().render(width)) {
-        expect(displayWidth(line)).toBeLessThanOrEqual(width)
-      }
-    }
+  it('paints the tool catalog empty state with its own copy when the session sees no tools', async () => {
+    const { context, commands, toolCatalogRead } = fixture({ tools: toolCatalog([]) })
+    const dispose = mountCatalogFeature(context)
+
+    await commands[1]!.execute('')
+    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
+    expect(toolCatalogRead.mock.calls.length).toBeGreaterThanOrEqual(1)
+
+    const view = browserOf().view()
+    expect(labelsOf(view, 'tools')).toEqual([])
+    expect(emptyTitleOf(view, 'tools')).toBe('No tools visible to this session')
+    dispose()
+  })
+})
+
+describe('mountCatalogFeature probe ownership', () => {
+  it('probes capabilities once per open and never re-probes for a re-render', async () => {
+    const { context, commands, capabilities } = fixture({ mcp: mcpCatalog([mcpServer()]) })
+    const panel = { closed: false, refresh: vi.fn(), close: vi.fn() }
+    mocks.open.mockReturnValue(panel)
+    const dispose = mountCatalogFeature(context)
+
+    // The mount follows the committed selection once; opening the panel is a
+    // second explicit read of the same generation.
+    expect(capabilities).toHaveBeenCalledOnce()
+    await commands[0]!.execute('')
+    await vi.waitFor(() => { expect(capabilities).toHaveBeenCalledTimes(2) })
+    await vi.waitFor(() => { expect(labelsOf(browserOf().view())).toHaveLength(1) })
+
+    const browser = browserOf()
+    for (let paint = 0; paint < 3; paint += 1) browser.view()
+    panel.refresh()
+    // Re-painting a panel is a read of published facts, not another Host probe.
+    expect(capabilities).toHaveBeenCalledTimes(2)
+    dispose()
+  })
+
+  it('discards a catalog answer that lands after the selection generation changed', async () => {
+    let release!: (result: unknown) => void
+    const stale = new Promise(resolve => { release = resolve })
+    const { context, commands, capabilities, mcpCatalogRead, reselect } = fixture({ mcp: mcpCatalog([mcpServer({ entryId: 'old', serverName: 'old-server' })]) })
+    const dispose = mountCatalogFeature(context)
+
+    await commands[0]!.execute('')
+    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
+    await vi.waitFor(() => { expect(labelsOf(browserOf().view())).toEqual(['old-server']) })
+    const browser = browserOf()
+
+    // One refresh is in flight when the Host topology replaces the generation.
+    capabilities.mockImplementationOnce(async () => await stale as never)
+    const refresh = refreshPanel(browser)
+    await vi.waitFor(() => { expect(capabilities).toHaveBeenCalledTimes(3) })
+
+    mcpCatalogRead.mockResolvedValue({ ok: true, value: mcpCatalog([mcpServer({ entryId: 'new', serverName: 'new-server' })]) })
+    reselect()
+    await vi.waitFor(() => { expect(labelsOf(browser.view())).toEqual(['new-server']) })
+
+    // The old generation's late answer must not overwrite the new catalog.
+    release({ ok: true, value: { features: ['mcpCatalog', 'toolCatalog'] } })
+    await refresh
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(labelsOf(browser.view())).toEqual(['new-server'])
+    dispose()
   })
 })

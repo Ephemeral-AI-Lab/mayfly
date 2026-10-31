@@ -40,7 +40,7 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
     getSnapshot: vi.fn(() => snapshot),
     subscribe: subscribeProjection,
   }
-  const executeNative = vi.fn(async (): Promise<unknown> => ({
+  const executeNative = vi.fn(async (_session: unknown, _line: string, _args: unknown, _signal: AbortSignal): Promise<unknown> => ({
     ok: true,
     value: { result: { text: 'Plan mode is on' } },
   }))
@@ -48,7 +48,7 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
     key: HostKey('local'),
     state: { getSnapshot: () => ({ generation: 1 }), subscribe: vi.fn(() => () => {}) },
     remote: { commands: { execute: executeNative } },
-  }
+  } as unknown as HostClient
   const selection: RemoteFeatureSelection = {
     ref: { host: HostKey('local'), sessionId: SessionId('session-1') },
     client,

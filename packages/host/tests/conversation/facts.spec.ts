@@ -12,19 +12,19 @@ import {
 } from '../../src/conversation/facts.ts'
 import type { ConversationFactsState } from '../../src/conversation/types.ts'
 
-/** One committed session event with only the fields the fold reads. */
-function event(type: string, data: object, time = 1, seq = 1): object {
+/** One committed session event, typed as the union the fold reads. */
+function event(type: string, data: object, time = 1, seq = 1): never {
   return { type, data, time, seq } as never
 }
 
 /** A user-authored message event. */
-function userMessage(text: string): object {
+function userMessage(text: string): never {
   return event('user/message', { source: { kind: 'user' }, content: [{ type: 'text', text }] })
 }
 
 /** Fold a sequence of events over the initial state. */
-function run(events: readonly object[]): ConversationFactsState {
-  return events.reduce((state, item) => foldConversationFacts(state, item as never), initialConversationFacts())
+function run(events: readonly never[]): ConversationFactsState {
+  return events.reduce((state, item) => foldConversationFacts(state, item), initialConversationFacts())
 }
 
 describe('foldConversationFacts', () => {

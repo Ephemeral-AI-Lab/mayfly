@@ -98,6 +98,6 @@ describe('providerBalance', () => {
     fetchAnswer({ balance_infos: [{ currency: 'USD', total_balance: '9.00', granted_balance: '4.00' }] })
     const balance = await providerBalance(ctx('sk'), new AbortController().signal)
     expect(balance).toMatchObject({ wallets: [{ currency: 'USD', total: '9.00', granted: '4.00' }] })
-    expect((balance as { wallets: object[] }).wallets[0]).not.toHaveProperty('toppedUp')
+    expect((balance as unknown as { wallets: object[] }).wallets[0]).not.toHaveProperty('toppedUp')
   })
 })

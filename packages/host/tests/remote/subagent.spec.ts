@@ -8,6 +8,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { subagentDrain } from '../../src/remote/subagent.ts'
+import type { MayflySubagentDrainRequest } from '../../src/types.ts'
 
 /** One catalog entry as the drain reads it. */
 interface Child {
@@ -44,8 +45,9 @@ function harness(overrides: Partial<{
 }
 
 /** A drain request naming the parent and the child. */
-function request(childSessionId: string): { childSessionId: string, parentSessionId: string } {
-  return { childSessionId, parentSessionId: 'parent-1' }
+/** A drain request naming the parent and the child, branded for the wire type. */
+function request(childSessionId: string): MayflySubagentDrainRequest {
+  return { childSessionId, parentSessionId: 'parent-1' } as never
 }
 
 describe('subagentDrain', () => {
@@ -123,7 +125,7 @@ describe('subagentDrain', () => {
       liveIds: ['child-1'],
     })
     // The catalog read hands back the child; the parent registry then swaps.
-    const mutableCtx = ctx as unknown as { agents: { get: (id: string): Agent | undefined } }
+    const mutableCtx = ctx as unknown as { agents: { get(id: string): Agent | undefined } }
     listDescendants.mockImplementation(async (): Promise<readonly Child[]> => {
       const replaced = new Map<string, Agent>([['parent-1', { id: 'parent-1', session: { id: 'parent-1', header: {} } } as unknown as Agent]])
       Object.defineProperty(mutableCtx, 'agents', { value: { get: (id: string): Agent | undefined => replaced.get(id) } })
