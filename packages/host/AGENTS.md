@@ -40,3 +40,16 @@ test plus its refusal path, and the generated client artifact must be rebuilt
 runtime present and absent, a configured server without tools, and the
 redaction of every connection detail. The built artifacts are what the Remote
 package consumes, so rebuild before judging any client behavior.
+
+## Local split profile
+
+`script/install-host-dev.sh` builds the workspace and installs or refreshes
+the `mayfly-host` profile in one shot: it matches the global dsh line to the
+Host manifest, seeds the profile from the web template, denies the optional
+native build scripts before the first install, links this package as a bundle,
+and asserts the composed profile carries the Web runtime and the Mayfly rows.
+`script/mayfly-remote.sh '<url>'` launches the Remote TUI against the URL the
+profile prints. A spec that needs the hub or the plugin entry imports the
+built `lib/` (see service.spec.ts); `src/remote/service.ts` decorators do not
+survive vitest's oxc transform, and the `experimentalDecorators` tsconfig flag
+does not change that.
