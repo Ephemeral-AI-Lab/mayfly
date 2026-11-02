@@ -110,6 +110,32 @@ for row in 'id: web-runtime' 'id: connection' 'id: mayfly-host' 'id: mayfly-host
     || die "composed profile is missing '$row' — the bundle layer did not apply"
 done
 
+# Keep Web transport and browser services, but do not orient the model toward
+# a browser GUI when its actual frontend is the independent terminal process.
+MAYFLY_COMPOSED_CONFIG="$COMPOSED" node - "$HOST_PKG" <<'NODE'
+const assert = require('node:assert/strict')
+const { createRequire } = require('node:module')
+const { join } = require('node:path')
+const hostRequire = createRequire(join(process.argv[2], 'package.json'))
+const skillRequire = createRequire(hostRequire.resolve('@deepseek-ai/dsh-skill-filesystem/package.json'))
+const { parse } = skillRequire('yaml')
+const rows = parse(process.env.MAYFLY_COMPOSED_CONFIG, {
+  customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: value => value }],
+})
+const find = (id, entries = rows) => {
+  for (const row of entries) {
+    if (row.id === id) return row
+    if (row.group && Array.isArray(row.config)) {
+      const nested = find(id, row.config)
+      if (nested) return nested
+    }
+  }
+}
+assert.equal(find('web-runtime')?.config?.surfaceContext, false, 'Web-only shell context must be disabled')
+assert.equal(find('harness-dev-context')?.disabled, true, 'Web-only model prompt must be disabled')
+assert.equal(find('preset-mayfly-cordis')?.config?.id, 'mayfly-cordis', 'Mayfly creative preset must be registered')
+NODE
+
 chmod 755 "$REPO_ROOT/script/mayfly-remote.sh"
 
 cat <<EOF

@@ -4,7 +4,33 @@
 
 Mayfly Host 在完整的 `dsh-web-app` 组合中添加 `mayflyConversation` 会话投影和 `mayflyHost` Remote 命名空间。其 bundle patch 禁用浏览器交接和普通 Web URL 行，并在 Loader 稳定后输出一行经过身份验证的 `mayfly host: <url>` 就绪信息。
 
+Host 保留原生 Web 传输和浏览器服务，同时禁用 Web 专用的
+`harness-dev-context` 系统提示段和 `DSH_WEB_URL` shell 上下文。模型不会被告知
+终端用户正在操作 Web GUI。
+
 独立前端是 `@ephemeral-ai/mayfly-remote`；Host 不内嵌该前端。
+
+## Mayfly 创造模式 preset
+
+Host bundle 通过原生 `@deepseek-ai/dsh-agent-preset` 注册表注册
+`mayfly-cordis`（`Mayfly Cordis`）。它保留固定版本上游 Cordis preset 的工具和
+isolate 分组，添加说明两个进程边界的 persona，并从已发布的 Host payload 加载
+`cordis-plugin-development`、`mayfly-plugin-development` 和
+`editing-cordis-compositions` 技能。在原生 Session 的 turn 边界允许切换时，可用
+`/preset mayfly-cordis` 选择它。注册和技能加载均属于 Host；共享渲染包不发布旧
+preset 或进程内组合。
+
+创造模式可以检查原生服务，编写普通持久 Host bundle 和 Agent preset。
+Harness `0.2.2-alpha.2` 的 Cordis 模型工具只有 `cordis_inspect_list` 和
+`cordis_inspect_query`，已不再提供创建、挂载、运行、停止或移除动态包的模型工具。
+Host runner 仍保留程序调用的生命周期；`code.host` 在 Host 运行，`code.client`
+面向原生浏览器 runner。
+
+本版独立 TUI 没有公开的动态 UI 热加载或外部前端插件安装入口。Host 插件不能注入
+前端本地的 `mayflyPanes`、`mayflyStatus`、`mayflyOverlays` 或
+`mayflyEditorExtensions`，浏览器 client half 也不能访问这些服务。终端 UI 原型
+目前需要把源码接入 Remote 组合、构建、重启，并在专用 profile 中验收。仅安装 Host
+插件不会产生终端 UI 贡献。随包 persona 和技能均明确说明这一 API 限制。
 
 ## Remote 契约
 

@@ -4,7 +4,40 @@ English | [中文](README.zh.md)
 
 Mayfly Host adds the `mayflyConversation` session projection and the `mayflyHost` Remote namespace to a complete `dsh-web-app` composition. Its bundle patch disables the browser handoff and the ordinary Web URL line, then prints one authenticated `mayfly host: <url>` readiness line after Loader settlement.
 
+The Host keeps the native Web transport and browser services, while disabling
+the Web-only `harness-dev-context` system-prompt sections and the
+`DSH_WEB_URL` shell context. The model is not told that a terminal user is
+operating the Web GUI.
+
 The independent frontend is `@ephemeral-ai/mayfly-remote`; the Host does not embed it.
+
+## Mayfly creative preset
+
+The Host bundle registers `mayfly-cordis` (`Mayfly Cordis`) through the native
+`@deepseek-ai/dsh-agent-preset` registry. It preserves the pinned upstream
+Cordis preset's tools and isolate groups, adds a persona describing the two
+processes, and loads its own `cordis-plugin-development`,
+`mayfly-plugin-development`, and `editing-cordis-compositions` skills from the
+published Host payload. Select it with `/preset mayfly-cordis` where the native
+Session turn-boundary guard permits a preset change. Registration and skill
+loading belong to Host; the shared renderer package ships no legacy preset or
+in-process composition.
+
+Creative mode can inspect native services and author ordinary persistent Host
+bundles and Agent presets. Harness `0.2.2-alpha.2` supplies only
+`cordis_inspect_list` and `cordis_inspect_query` as Cordis model tools; it no
+longer supplies model tools to define, mount, run, stop, or remove dynamic
+packages. The Host runner retains a programmatic lifecycle, with `code.host`
+running on Host and `code.client` targeting the native browser runner.
+
+The independent TUI has no public dynamic UI hot-load or external frontend
+plugin installation entry in this release. Host plugins cannot inject the
+frontend-local `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, or
+`mayflyEditorExtensions`; a browser client half cannot reach them either. A
+terminal UI prototype currently requires source integration into the Remote
+composition, a build, restart, and dedicated-profile acceptance. A Host plugin
+installation alone does not render a terminal contribution. The bundled
+persona and skills explain this API limit explicitly.
 
 ## Remote contract
 

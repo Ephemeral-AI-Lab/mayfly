@@ -33,10 +33,22 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
   stale content revisions remain conflicts, including during validation.
 - `src/settings.ts` is the `mayfly` settings namespace schema; presentation
   application stays in the TUI. `cordis.patch.yml` composes the Host profile
-  over `dsh-base`/`dsh-web-app` and changes only the browser/URL handoff.
+  over `dsh-base`/`dsh-web-app`. Keep its Web services, transport, and browser
+  runner, but disable the Web-only `harness-dev-context` prompt plugin and
+  `web-runtime.surfaceContext`: terminal users must not be described to the
+  model as browser GUI users, or given a browser-only shell URL.
 - `src/startup.ts` prints the authenticated URL once after Loader settlement.
   That explicit readiness line is the credential handoff; tokens never enter
   argv or ordinary diagnostics.
+- `presets/mayfly-cordis.patch.yml` registers the native creative preset after
+  the Host patch. Its child rows match the pinned upstream Cordis preset except
+  persona and the Host-owned skill root. Its published skills describe the
+  actual split boundary: Host services and Agent-preset scopes cannot inject
+  the independent frontend's four UI services. Current native Cordis model
+  tools inspect only; programmatic Host/browser dynamic runners are not a
+  Remote TUI hot-load or frontend plugin installation API. Do not copy legacy
+  in-process UI, dynamic model-tool, or directory-preset instructions into this
+  payload. The shared renderer does not publish it.
 
 ## Verification
 
@@ -47,6 +59,10 @@ test plus its refusal path, and the generated client artifact must be rebuilt
 runtime present and absent, a configured server without tools, and the
 redaction of every connection detail. The built artifacts are what the Remote
 package consumes, so rebuild before judging any client behavior.
+Preset or skill changes require upstream-row comparison, published payload
+closure, native registry registration/mount and skill-catalog evidence, unload
+and second-Session isolation, plus dedicated-profile acceptance. Keep the two
+package READMEs synchronized with the actual API limits.
 
 ## Local split profile
 
@@ -54,7 +70,8 @@ package consumes, so rebuild before judging any client behavior.
 a dedicated `mayfly-*` profile (default `mayfly-dev`) in one shot: it checks
 the selected `DSH_BIN` against the Host manifest, seeds the profile from the web template, denies the optional
 native build scripts before the first install, links this package as a bundle,
-and asserts the composed profile carries the Web runtime and the Mayfly rows.
+and asserts the composed profile carries the Web runtime, the Mayfly rows,
+the creative preset, and the disabled Web-only model context.
 Pass the authenticated URL through `MAYFLY_DSH_STARTUP_URL` when launching the
 Remote, never through argv. Use dedicated acceptance profiles and a pinned
 local dsh binary; do not use the installer to change the global installation.

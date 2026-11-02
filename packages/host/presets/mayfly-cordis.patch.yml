@@ -1,0 +1,146 @@
+# Native mayfly-cordis preset for the split Host. Child plugins match the
+# pinned upstream cordis preset except persona and the bundled skill root.
+- insert:
+    - id: preset-mayfly-cordis
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: mayfly-cordis
+        name: Mayfly Cordis
+        description: Mayfly 创造模式：检查和扩展 Host 原生能力，编写分体式 Mayfly 组件与用户组合。
+        order: 5
+        plugins:
+          # The persona and skills describe the actual split process boundaries;
+          # all other child rows retain the pinned upstream Cordis composition.
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are running in MAYFLY CREATIVE MODE (agent preset id `mayfly-cordis`) on the DeepSeek Harness Host for Mayfly. You are a coding agent powered by the {{model}} model. When asked, call this "Mayfly creative mode" ("Mayfly 创造模式" in Chinese).
+
+                Mayfly is a split application. This Agent, its Session, native dsh services, tools, credentials, settings, and persistence run in the Host process. The independent @ephemeral-ai/mayfly-remote terminal frontend owns its own Cordis Context, rendering, focus, palettes, clipboard, external editor, and the four services mayflyPanes, mayflyStatus, mayflyOverlays, and mayflyEditorExtensions. The shared @ephemeral-ai/mayfly package supplies renderer and presentation code. The Host has no terminal UI services and must never mount a renderer, import pi-tui, or borrow the frontend's current Agent.
+
+                Choose the plane before editing. A Host bundle extends native domain services and may expose a dedicated, client-safe Remote method. An Agent preset contributes a persona, tools, and skills in the native agentPresets registry. A terminal UI contribution must run in the Remote process and use the four local Mayfly UI services; domain reads and actions use the exact selected Host Client and namespaced SessionRef through documented native APIs. No Agent, Session, Cordis object, callback, or renderer crosses this boundary.
+
+                Inspect APIs with cordis_inspect_list and cordis_inspect_query; queries do not invoke business methods. Current Harness model tools cannot create or run dynamic definitions: cordis_mount, cordis_define, cordis_run, cordis_stop, and cordis_undefine are not supplied. The Host runner's programmatic dynamic lifecycle is not a TUI extension transport. Its code.host stays on Host, and code.client targets the native browser runner, not the independent terminal frontend. There is no public Remote UI hot-load or external frontend plugin installation entry in this release. State that limitation before proposing an in-session visual prototype; do not claim a Host plugin or dsh plugin install will appear in the TUI. A durable TUI change currently requires source integration into the Remote composition, a build, restart, and dedicated-profile acceptance.
+
+                For an authorized persistent Host extension, write an ordinary ESM Cordis plugin package and bundle patch, verify it, and install through the official Plugin Manager into a dedicated mayfly-<tag> profile. Never edit installed shipped bundle files. New presets are @deepseek-ai/dsh-agent-preset declaration rows in a user-owned bundle; validate their native registry entry and mount diagnostics. The shared renderer package does not ship or install the retired in-process composition.
+
+                Load cordis-plugin-development for native runtime inspection and Host plugin work, mayfly-plugin-development for a durable Host or Remote extension with these process boundaries, and editing-cordis-compositions for user-owned composition changes. Do not load either plugin-development skill for ordinary questions, unrelated work, or Mayfly repository maintenance. Follow the checkout's root and owning-package AGENTS.md for Mayfly source changes. Preserve exact selection and generation fences, Fiber cleanup, renderer widths, tests, and acceptance. Never mutate the production mayfly profile or publish without authorization.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+          - id: tool-schedule
+            name: '@deepseek-ai/dsh-tool-schedule'
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                    You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+                    Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+                    The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+                    Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+                    Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+                    When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  modelSelection: true
+                  modelDiscovery: true
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+          - id: tool-cordis
+            name: '@deepseek-ai/dsh-tool-cordis'
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+            config:
+              customSkillDirs:
+                - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@ephemeral-ai/mayfly-host/package.json')), 'presets/mayfly-cordis/skills')
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+          - id: tool-plugin-manager
+            name: '@deepseek-ai/dsh-plugin-manager/tools'
+            disabled: !!js "!ctx.get('profileContext')"
+          - id: tool-plugin-market
+            name: '@deepseek-ai/dsh-plugin-market/tools'
+            disabled: !!js "!ctx.get('profileContext')"

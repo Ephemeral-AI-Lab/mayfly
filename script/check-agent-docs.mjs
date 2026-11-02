@@ -82,7 +82,7 @@ export function auditAgentDocs(root, options = {}) {
   }
 
   if (checkPreset) {
-    const presetRoot = join(root, 'packages', 'mayfly', 'presets', 'mayfly-cordis')
+    const presetRoot = join(root, 'packages', 'host', 'presets', 'mayfly-cordis')
     const skillRoot = join(presetRoot, 'skills')
     const expected = ['cordis-plugin-development', 'editing-cordis-compositions', 'mayfly-plugin-development']
     const actual = readdirSync(skillRoot, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()
@@ -93,7 +93,7 @@ export function auditAgentDocs(root, options = {}) {
     }
     // The dsh-agent-preset registry folds preset persona and skills into one
     // patch file; the guidance strings live in its persona rows now.
-    const composition = readFileSync(join(root, 'packages', 'mayfly', 'presets', 'mayfly-cordis.patch.yml'), 'utf8')
+    const composition = readFileSync(join(root, 'packages', 'host', 'presets', 'mayfly-cordis.patch.yml'), 'utf8')
     if (/mayfly-plugin-development[^\n]*changing Mayfly code/iu.test(composition)) {
       problems.push('mayfly-cordis routes Mayfly source changes to the external plugin author skill')
     }

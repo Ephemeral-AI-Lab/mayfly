@@ -261,6 +261,20 @@ describe('agent documentation drift', () => {
     assert.deepEqual(auditAgentDocs(root, { packageDirs: [], checkPreset: false }), [])
   })
 
+  test('audits shipped creative skills in the Host payload', () => {
+    const root = fixture('Use `pnpm run check` and `pnpm run check:agent-docs`.\n')
+    const preset = join(root, 'packages', 'host', 'presets')
+    const skills = join(preset, 'mayfly-cordis', 'skills')
+    for (const name of ['cordis-plugin-development', 'editing-cordis-compositions', 'mayfly-plugin-development']) {
+      mkdirSync(join(skills, name), { recursive: true })
+      writeFileSync(join(skills, name, 'SKILL.md'), `---\nname: ${name}\n---\n`)
+    }
+    writeFileSync(join(preset, 'mayfly-cordis.patch.yml'), 'Do not load either plugin-development skill for ordinary or repository work.\n')
+    assert.deepEqual(auditAgentDocs(root, { packageDirs: [] }), [])
+    writeFileSync(join(skills, 'cordis-plugin-development', 'SKILL.md'), '---\nname: wrong\n---\n')
+    assert.ok(auditAgentDocs(root, { packageDirs: [] }).some(problem => problem.includes('frontmatter name differs')))
+  })
+
   test('rejects expiring snapshots, dead links, and project skills', () => {
     const root = fixture('As of 2026-01-01, 10 passed. [missing](./missing.md)\npnpm run check, check:agent-docs\n')
     mkdirSync(join(root, '.agents', 'skills', 'old'), { recursive: true })
