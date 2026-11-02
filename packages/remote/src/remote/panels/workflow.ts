@@ -5,13 +5,13 @@
 
 import { workflowNode, type WorkflowRunState } from '@ephemeral-ai/mayfly/pane-workflow'
 import type { MayflyTranslate, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyWorkflowRun, MayflyWorkflowSnapshot } from '@ephemeral-ai/mayfly-host/types'
+import type { MayflyWorkflowRun, MayflyWorkflowSnapshot } from '../../frontend/host-contract.ts'
 
 function presentation(run: MayflyWorkflowRun): WorkflowRunState {
   return {
     id: run.id,
     name: run.name,
-    phases: run.phases,
+    phases: run.phases?.map(phase => ({ title: phase.title })),
     phasesSeen: [...run.phasesSeen],
     currentPhase: run.currentPhase,
     agents: run.agents.map(agent => ({

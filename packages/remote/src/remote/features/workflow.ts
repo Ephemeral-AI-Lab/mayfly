@@ -3,9 +3,9 @@
  * @module @ephemeral-ai/mayfly/remote/features/workflow
  */
 
-import type { MayflyWorkflowFrame } from '@ephemeral-ai/mayfly-host/types'
 import { ui, type MayflyPaneRegistration, type MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
+import type { MayflyWorkflowFrame } from '../../frontend/host-contract.ts'
 import { mayflyHostRemote } from '../../frontend/host-mount.ts'
 import { RemoteWorkflowSource } from '../../frontend/workflow.ts'
 import type { RemoteFeatureContext } from '../features.ts'

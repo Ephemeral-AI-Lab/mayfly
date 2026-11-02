@@ -5,10 +5,10 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { apply as uiProvider } from '@ephemeral-ai/mayfly-ui/provider'
 import { compileMayflyUiNode, visibleWidth } from '@ephemeral-ai/mayfly/core'
 import * as frontend from '@ephemeral-ai/mayfly/frontend'
-import type { MayflyWorkflowFrame, MayflyWorkflowRun, MayflyWorkflowSnapshot } from '@ephemeral-ai/mayfly-host/types'
 import type { MayflyUiEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
+import type { MayflyWorkflowFrame, MayflyWorkflowRun, MayflyWorkflowSnapshot } from '../../src/frontend/host-contract.ts'
 import { RemoteWorkflowSource } from '../../src/frontend/workflow.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
 import { mountWorkflowFeature } from '../../src/remote/features/workflow.ts'
@@ -284,6 +284,17 @@ describe('Remote Workflow shared presentation and physical stream ownership', ()
 })
 
 describe('Host Workflow DTO presentation', () => {
+  it('accepts Client phase metadata and passes the canonical renderer the phase titles it presents', async () => {
+    const f = await fixture()
+    const data = run({ currentPhase: 'Check', phasesSeen: ['Inspect', 'Check'], phases: [
+      { title: 'Inspect', detail: undefined, provider: undefined, model: undefined },
+      { title: 'Check', detail: 'Validate the code', provider: 'native-provider', model: 'native-model' },
+    ] })
+    const titles = { ...data, phases: data.phases!.map(phase => ({ title: phase.title })) }
+    expect(remoteWorkflowNode(snapshot([data]), 5_000, t)).toEqual(remoteWorkflowNode(snapshot([titles]), 5_000, t))
+    expect(f.render(remoteWorkflowNode(snapshot([data]), 5_000, t)).join('\n')).toContain('phase 2/2')
+  })
+
   it('treats missing and empty snapshots as absent and preserves member outcomes without mutating DTOs', async () => {
     const f = await fixture()
     expect(remoteWorkflowNode(undefined, 5_000, t)).toBeNull()
