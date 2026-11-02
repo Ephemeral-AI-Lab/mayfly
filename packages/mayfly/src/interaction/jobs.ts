@@ -17,7 +17,7 @@ const jobSource = (job: JobView) => [{ resourceId: `job/${job.id}`, revision: JS
 const STATUS_TONE: Readonly<Record<JobView['status'], MayflyTone>> = { running: 'primary', stopping: 'warning', completed: 'success', killed: 'muted', failed: 'danger' }
 
 /** The page one `/jobs` panel shows; all three share the single `mayfly.jobs` registration. */
-type JobsPage = { readonly kind: 'list' } | { readonly kind: 'detail', readonly id: JobId } | { readonly kind: 'output', readonly id: JobId }
+type JobsPage = { readonly kind: 'list' } | { readonly kind: 'detail', readonly id: JobId } | { readonly kind: 'output', readonly id: JobId, readonly feed: JobOutputFeed }
 
 export function isLiveJob(job: JobView): boolean { return job.status === 'running' || job.status === 'stopping' }
 
@@ -229,7 +229,6 @@ export function apply(ctx: Context): void {
     if (ctx.mayflyOverlays.focus('mayfly.jobs')) return { kind: 'success' }
     let root: MayflyOverlayHandle | undefined
     let page: JobsPage = { kind: 'list' }
-    let feed: JobOutputFeed | undefined
     let timer: ReturnType<typeof setInterval> | undefined
     const stopTimer = () => { if (timer !== undefined) { clearInterval(timer); timer = undefined } }
     const readList = () => jobs.list(agent.id)
@@ -238,13 +237,12 @@ export function apply(ctx: Context): void {
       if (root?.closed !== false || !current()) return
       if (page.kind === 'list') { root.set(jobListPanel(rows, available, t)); return }
       const pageId = page.id
-      const job = rows.find(item => item.id === pageId)
-      if (job === undefined) { page = { kind: 'list' }; feed = undefined; root.set(jobListPanel(rows, available, t)); return }
+      // Refresh already returns missing selections to the list before publish.
+      const job = rows.find(item => item.id === pageId)!
       if (page.kind === 'output') {
-        if (feed !== undefined) {
-          try { appendOutput(feed, jobs.readAt(job.id, feed.cursor, agent.id)) } catch { /* a failed catch-up leaves the held document */ }
-        }
-        root.set(jobOutputNode(job, feed ?? { cursor: 0, dropped: false, chunks: [] }, t), { source: jobSource(job) })
+        const feed = page.feed
+        try { appendOutput(feed, jobs.readAt(job.id, feed.cursor, agent.id)) } catch { /* a failed catch-up leaves the held document */ }
+        root.set(jobOutputNode(job, feed, t), { source: jobSource(job) })
         return
       }
       root.set(jobDetailsNode(job, t), { source: jobSource(job) })
@@ -255,7 +253,7 @@ export function apply(ctx: Context): void {
       let rows: readonly JobView[]
       try { rows = readList() } catch { root.set(jobListPanel([], false, t)); stopTimer(); return }
       const openId = page.kind === 'list' ? undefined : page.id
-      if (openId !== undefined && !rows.some(job => job.id === openId)) { page = { kind: 'list' }; feed = undefined }
+      if (openId !== undefined && !rows.some(job => job.id === openId)) page = { kind: 'list' }
       publish(rows)
       if (rows.some(isLiveJob)) { if (timer === undefined) { timer = setInterval(refresh, 1000); timer.unref() } }
       else stopTimer()
@@ -270,8 +268,8 @@ export function apply(ctx: Context): void {
       return async (event, context) => {
         if (context.signal.aborted || !current()) return { kind: 'cancelled', dismiss: true }
         if (event.kind === 'dismiss') {
-          if (page.kind === 'output') { page = { kind: 'detail', id: page.id }; feed = undefined; refresh(); return { kind: 'completed', dismiss: false } }
-          if (page.kind === 'detail') { page = { kind: 'list' }; feed = undefined; refresh(); return { kind: 'completed', dismiss: false } }
+          if (page.kind === 'output') { page = { kind: 'detail', id: page.id }; refresh(); return { kind: 'completed', dismiss: false } }
+          if (page.kind === 'detail') { page = { kind: 'list' }; refresh(); return { kind: 'completed', dismiss: false } }
           return { kind: 'completed' }
         }
         if (event.kind === 'activate' && event.actionId === 'refresh') { refresh(); return { kind: 'completed' } }
@@ -279,9 +277,9 @@ export function apply(ctx: Context): void {
           try {
             const output = jobs.readAt(page.id, 0, agent.id)
             if (context.signal.aborted || !current()) return { kind: 'cancelled' }
-            feed = { cursor: output.next, dropped: output.lossy, chunks: output.chunks.map(chunk => ui.chunk(chunk.text)) }
+            const feed = { cursor: output.next, dropped: output.lossy, chunks: output.chunks.map(chunk => ui.chunk(chunk.text)) }
             settleOutput(feed.chunks)
-            page = { kind: 'output', id: page.id }
+            page = { kind: 'output', id: page.id, feed }
             refresh()
             return { kind: 'completed' }
           } catch (error) { return { kind: 'failed', message: error instanceof Error ? error.message : String(error) } }
@@ -298,7 +296,6 @@ export function apply(ctx: Context): void {
         const id = JobId(event.selectedIds[0] ?? '')
         try { jobs.get(id, agent.id) } catch { return { kind: 'failed', message: t('The job is no longer available') } }
         page = { kind: 'detail', id }
-        feed = undefined
         refresh()
         return { kind: 'completed' }
       }
