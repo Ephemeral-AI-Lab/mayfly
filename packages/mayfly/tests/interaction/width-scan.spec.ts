@@ -24,6 +24,7 @@ import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/fronten
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
 import { rewindNode } from '../../src/interaction/rewind.ts'
 import { renamePanelModel } from '../../src/interaction/rename-model.ts'
+import { agentsPanelModel } from '../../src/interaction/agents-model.ts'
 import { createUpdateProgressState, updatePanelModel } from '../../src/interaction/update-model.ts'
 import { tracePanelModel } from '../../src/interaction/trace-model.ts'
 import { createRealSurface, probeComponents } from '../design/probe.ts'
@@ -97,6 +98,21 @@ describe('interaction width-scan', () => {
   }
 
   for (const { name, text } of ADVERSARIAL) {
+    it(`Subagent tree and its stop confirmation survive ${name}`, () => {
+      const entries = [
+        { kind: 'child' as const, id: SessionId('branch'), parentId: SessionId('root'), depth: 1, hasChildren: true, mode: 'continuable' as const, activity: 'running' as const, label: text, tokens: 2048, toolCount: 3, activeSince: 0 },
+        { kind: 'child' as const, id: SessionId('nested'), parentId: SessionId('branch'), depth: 2, hasChildren: false, mode: 'one-shot' as const, activity: 'inactive' as const, label: text, stopBlocked: text },
+        { kind: 'diagnostic' as const, id: SessionId('diagnostic'), parentId: SessionId('branch'), depth: 2, reason: text },
+      ]
+      for (const width of SCAN_WIDTHS) {
+        const surface = createRealSurface(agentsPanelModel(entries, 65_000, interpolateLocaleMessage), width, { components: probeComponents() })
+        try {
+          expectLinesFit(`agents/${name}`, surface.render(), width)
+          const confirmation = surface.press('x')
+          expectLinesFit(`agents-stop/${name}`, confirmation, width)
+        } finally { surface.dispose() }
+      }
+    })
     it(`Rename title editor survives ${name}`, () => {
       for (const width of SCAN_WIDTHS) {
         const surface = createRealSurface(renamePanelModel(text), width, { components: probeComponents() })

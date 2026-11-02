@@ -128,6 +128,9 @@ retain a Session, open history, or perform Workspace writes.
 builder alongside help, version, context, rewind, rename, and update presentation.
 The shared rename model preserves the reference title form and Enter action;
 each frontend owns native writes and the exact selected Session's lifetime.
+The shared subagent tree preserves the reference tree, slash filter, row metrics
+and selected-row stop confirmation. Owners supply native descendant facts and
+localized availability reasons; the model never lists or stops an Agent.
 The Remote router owns command admission; its app-scoped overlay owns locale
 subscriptions, scrolling, focus restoration, and disposal.
 

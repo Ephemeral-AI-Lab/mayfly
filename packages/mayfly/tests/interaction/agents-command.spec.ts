@@ -16,9 +16,9 @@ import {
   agentMetricsText,
   agentTreeItems,
   formatAgentElapsed,
-  WorkflowLabelCache,
   type MayflySubagentTreeEntry,
-} from '../../src/interaction/agents-command.ts'
+} from '../../src/interaction/agents-model.ts'
+import { WorkflowLabelCache } from '../../src/interaction/agents-command.ts'
 import { liveAgentDescendantCount } from '../../src/interaction/agents-stop.ts'
 import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme } from './fakes.ts'
 import { renderRequest, flushRequests } from './request-fixture.ts'
