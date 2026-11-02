@@ -18,7 +18,8 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   typed actions. Every Session identity includes `HostKey`; do not create a
   second Session, Connection, or projection state machine.
   Its native tool-presentation cache keys exact Host, Session, `callId`, durable
-  update and presenter revision. Both mapper phases resolve the same call id;
+  update and presenter revision. Both mapper phases use `getForCall` to resolve
+  the same call id, without passing it to the native registry scope parameter;
   repeated names and identical arguments never consume a positional cursor.
   Presenter batches retain native result metadata and retire on generation
   replacement, so builtin Read windows, Edit diffs and Write previews survive

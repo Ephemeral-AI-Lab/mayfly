@@ -16,7 +16,7 @@ describe('native builtin filesystem cards', () => {
     // source and the shared renderer's source in their own TS native realms.
     const projection = fixture.projection as ConversationProjection
     const presentations = fixture.presentations as MayflyPresentToolsResponse['presentations']
-    const native = { get: (_name: string, callId?: string) => {
+    const native = { get: () => undefined, getForCall: (_name: string, callId: string) => {
       const value = presentations.session?.[callId ?? '']
       return value === undefined ? undefined : { presentCall: () => value.call, presentResult: () => value.result }
     } }

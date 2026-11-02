@@ -16,7 +16,7 @@ import transport from '../../../remote/tests/fixtures/native-files-transport.jso
 describe('Host builtin filesystem wire rendering', () => {
   it('shows native line counts, applied diff and Unicode write bodies within narrow and wide widths', () => {
     const projection = conversationProjectionSchema.parse(transport.projection)
-    const model = conversationTranscriptModel(projection, { get: (_name, callId) => {
+    const model = conversationTranscriptModel(projection, { get: () => undefined, getForCall: (_name, callId) => {
       const view = Reflect.get(transport.presentations.session, callId ?? '') as { readonly call?: unknown, readonly result?: unknown } | undefined
       return view === undefined ? undefined : { presentCall: () => view.call, presentResult: () => view.result }
     } })

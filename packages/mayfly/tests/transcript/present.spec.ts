@@ -3,7 +3,7 @@
  * presenter-call matrix (unknown tool, no presenter, decline, throw, happy).
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { parseToolArguments, resolveCallView, resolveResultView, summarizeToolCall, type ToolPresentationSource } from '../../src/transcript/present.ts'
 
 /** A registry stub whose `get` returns the prearranged runtime (or nothing). */
@@ -106,11 +106,12 @@ describe('resolveResultView', () => {
 })
 
 describe('scoped native call identity', () => {
-  it('forwards the same exact call identity to both phases without changing native one-argument sources', () => {
+  it('forwards the same exact call identity to both phases without changing native registry scope', () => {
     const lookups: unknown[][] = []
     const result = { content: [], isError: false }
     const source: ToolPresentationSource = {
-      get(name, callId) {
+      get: vi.fn(() => undefined),
+      getForCall(name, callId) {
         lookups.push([name, callId])
         return { presentCall: args => args, presentResult: (_args, value) => value }
       },
@@ -118,6 +119,23 @@ describe('scoped native call identity', () => {
     expect(resolveCallView(source, 'read', { file_path: 'same.txt' }, 'exact-call')).toEqual({ file_path: 'same.txt' })
     expect(resolveResultView(source, 'read', {}, result, 'exact-call')).toBe(result)
     expect(lookups).toEqual([['read', 'exact-call'], ['read', 'exact-call']])
-    expect(resolveCallView(tools(name => ({ presentCall: () => name })), 'native', {})).toBe('native')
+    expect(resolveCallView(source, 'read', {})).toBeUndefined()
+    expect(resolveResultView(source, 'read', {}, result)).toBeUndefined()
+    expect(source.get).not.toHaveBeenCalled()
+    const native = { get: vi.fn((name: string, scope?: object) => {
+      expect(scope).toBeUndefined()
+      return { presentCall: () => name, presentResult: (_args: unknown, result: unknown) => result }
+    }) }
+    expect(resolveCallView(native, 'native', {}, 'exact-call')).toBe('native')
+    expect(resolveResultView(native, 'native', {}, result, 'exact-call')).toBe(result)
+    expect(native.get.mock.calls).toEqual([['native'], ['native']])
+  })
+
+  it('never falls back from a missing exact call to a native definition or another call', () => {
+    const source: ToolPresentationSource = { get: vi.fn(() => ({ presentCall: () => 'wrong call', presentResult: () => 'wrong result' })), getForCall: vi.fn(() => undefined) }
+    expect(resolveCallView(source, 'read', {}, 'missing')).toBeUndefined()
+    expect(resolveResultView(source, 'read', {}, { content: [], isError: false }, 'missing')).toBeUndefined()
+    expect(source.get).not.toHaveBeenCalled()
+    expect(source.getForCall).toHaveBeenCalledTimes(2)
   })
 })

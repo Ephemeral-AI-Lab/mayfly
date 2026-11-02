@@ -97,8 +97,9 @@ export class RemoteToolPresentationCache implements ScopedRemoteToolPresentation
     const entries = new Map(projection.entries.filter((entry): entry is ConversationToolEntry => entry.kind === 'tool').map(entry => [entry.callId, entry]))
     const revision = this.remote?.presentationRevision
     return {
-      get: (name: string, callId?: string) => {
-        const entry = callId === undefined ? undefined : entries.get(callId)
+      get: () => undefined,
+      getForCall: (name: string, callId: string) => {
+        const entry = entries.get(callId)
         if (entry === undefined || entry.name !== name || revision === undefined) return undefined
         const presentation = this.values.get(remoteToolPresentationKey({
           ref,

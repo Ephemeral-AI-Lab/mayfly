@@ -18,8 +18,15 @@ import type {
 
 /** The presenter-bearing face of a tool registry the resolvers read (structural, scope-agnostic). */
 export interface ToolPresentationSource {
-  /** Resolve one call identity; native registries may ignore the optional per-Session id. */
-  get(name: string, callId?: string): { readonly presentCall?: (args: unknown) => unknown; readonly presentResult?: (args: unknown, result: ToolResult) => unknown } | undefined
+  /** Resolve a native definition by name without supplying its registry's private scope argument. */
+  get(name: string): { readonly presentCall?: (args: unknown) => unknown; readonly presentResult?: (args: unknown, result: ToolResult) => unknown } | undefined
+  /** Resolve an exact per-Session call; a missing result never falls back to another call or native scope. */
+  getForCall?(name: string, callId: string): ReturnType<ToolPresentationSource['get']>
+}
+
+function presenter(tools: ToolPresentationSource, name: string, callId: string | undefined): ReturnType<ToolPresentationSource['get']> {
+  if (tools.getForCall === undefined) return tools.get(name)
+  return callId === undefined ? undefined : tools.getForCall(name, callId)
 }
 
 /**
@@ -98,7 +105,7 @@ export function resolveCallView(
   callId?: string,
 ): ToolCallView | undefined {
   try {
-    return tools.get(name, callId)?.presentCall?.(args) as ToolCallView | undefined
+    return presenter(tools, name, callId)?.presentCall?.(args) as ToolCallView | undefined
   } catch {
     return undefined
   }
@@ -122,7 +129,7 @@ export function resolveResultView(
   callId?: string,
 ): ToolResultView | undefined {
   try {
-    return tools.get(name, callId)?.presentResult?.(args, result) as ToolResultView | undefined
+    return presenter(tools, name, callId)?.presentResult?.(args, result) as ToolResultView | undefined
   } catch {
     return undefined
   }

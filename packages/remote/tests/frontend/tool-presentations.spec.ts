@@ -28,12 +28,12 @@ describe('exact call presentation cache', () => {
     expect(f.present).toHaveBeenCalledOnce(); expect(changed).toHaveBeenCalledOnce(); expect(f.cache.get()).toBeUndefined()
     const source = f.cache.source(ref(), input)
     for (const callId of ['two', 'one', 'two', 'pending']) {
-      expect(source.get('read', callId)?.presentCall?.({})).toEqual({ card: 'generic', title: `call ${callId}` })
-      expect(source.get('read', callId)?.presentResult?.({}, { content: [], isError: false })).toEqual({ card: 'generic', text: `result ${callId}` })
+      expect(source.getForCall?.('read', callId)?.presentCall?.({})).toEqual({ card: 'generic', title: `call ${callId}` })
+      expect(source.getForCall?.('read', callId)?.presentResult?.({}, { content: [], isError: false })).toEqual({ card: 'generic', text: `result ${callId}` })
     }
-    expect(source.get('read')).toBeUndefined(); expect(source.get('read', 'missing')).toBeUndefined(); expect(source.get('edit', 'one')).toBeUndefined()
+    expect(source.get('read')).toBeUndefined(); expect(source.getForCall?.('read', 'missing')).toBeUndefined(); expect(source.getForCall?.('edit', 'one')).toBeUndefined()
     off(); await f.cache.dispose(); await f.cache.dispose()
-    expect(f.cache.source(ref(), input).get('read', 'one')).toBeUndefined()
+    expect(f.cache.source(ref(), input).getForCall?.('read', 'one')).toBeUndefined()
   })
 
   it('queues only changed revisions, detaches result payloads, and omits absent call/result phases', async () => {
@@ -51,11 +51,11 @@ describe('exact call presentation cache', () => {
     f.cache.source(ref(), projection(entry('one', 2), second)); await tick()
     expect(f.present.mock.calls[1]![0].entries).toHaveLength(1)
     const source = f.cache.source(ref(), projection(entry('one', 2)))
-    expect(source.get('read', 'one')?.presentCall).toBeUndefined()
-    expect(source.get('read', 'one')?.presentResult?.({}, { content: [], isError: false })).toEqual({ card: 'generic', text: 'result only' })
+    expect(source.getForCall?.('read', 'one')?.presentCall).toBeUndefined()
+    expect(source.getForCall?.('read', 'one')?.presentResult?.({}, { content: [], isError: false })).toEqual({ card: 'generic', text: 'result only' })
     f.present.mockResolvedValueOnce(good({ presentations: { session: { one: { updatedSeq: 3, call: { card: 'generic', title: 'call only' } } } } }))
     f.cache.source(ref(), projection(entry('one', 3))); await tick()
-    expect(f.cache.source(ref(), projection(entry('one', 3))).get('read', 'one')?.presentResult).toBeUndefined()
+    expect(f.cache.source(ref(), projection(entry('one', 3))).getForCall?.('read', 'one')?.presentResult).toBeUndefined()
     await f.cache.dispose()
   })
 
@@ -68,7 +68,7 @@ describe('exact call presentation cache', () => {
       const changed = vi.fn(); f.cache.subscribe(changed)
       f.cache.source(ref(), projection(entry())); await tick()
       expect(f.cache.error(ref(), entry(), 'native:1')).toEqual(reject ? failure : { code: 'denied', message: 'native presentation refused' })
-      expect(f.cache.source(ref(), projection(entry())).get('read', 'one')).toBeUndefined()
+      expect(f.cache.source(ref(), projection(entry())).getForCall?.('read', 'one')).toBeUndefined()
       await tick(); expect(f.present).toHaveBeenCalledOnce(); expect(changed).not.toHaveBeenCalled()
       f.cache.source(ref(), projection(entry('one', 2))); await tick(); expect(f.present).toHaveBeenCalledTimes(2)
       expect(f.cache.error(ref(), entry('one', 2), 'native:1')).toBeUndefined()
@@ -83,7 +83,7 @@ describe('exact call presentation cache', () => {
     f.cache.source(ref(), projection(entry('one'), entry('two'), entry('three'))); await tick()
     expect(f.cache.error(ref(), entry('one'), 'native:1')).toEqual(new Error('Host returned no current presentation for "session/one"'))
     expect(f.cache.error(ref(), entry('three'), 'native:1')).toEqual(new Error('Host returned no current presentation for "session/three"'))
-    expect(f.cache.source(ref(), projection(entry('two'))).get('read', 'two')).toEqual({})
+    expect(f.cache.source(ref(), projection(entry('two'))).getForCall?.('read', 'two')).toEqual({})
     expect(changed).toHaveBeenCalledOnce(); await f.cache.dispose()
     const absent = fixture(); absent.present.mockResolvedValueOnce(good({ presentations: {} }))
     absent.cache.source(ref(), projection(entry())); await tick(); expect(absent.cache.error(ref(), entry(), 'native:1')).toBeInstanceOf(Error)
@@ -120,7 +120,7 @@ describe('exact call presentation cache', () => {
       await tick()
       expect(oldSignal.aborted).toBe(true)
       expect(f.cache.error(selected, entry(), replacement === 'revision' ? 'native:2' : 'native:1')).toBeUndefined()
-      expect(f.cache.source(selected, projection(entry())).get('read', 'one')?.presentCall?.({})).toEqual({ card: 'generic', title: 'call one' })
+      expect(f.cache.source(selected, projection(entry())).getForCall?.('read', 'one')?.presentCall?.({})).toEqual({ card: 'generic', title: 'call one' })
       await f.cache.dispose()
     }
   })
