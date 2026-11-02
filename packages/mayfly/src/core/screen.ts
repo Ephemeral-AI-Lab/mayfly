@@ -362,7 +362,8 @@ export class MayflyScreenService extends Service implements MayflyScreen {
       dispose: () => {
         if (!live) return
         live = false
-        if (this.searchLine === lease) this.searchLine = undefined
+        // A replacement retires its predecessor before taking the field; a live lease still owns it here.
+        this.searchLine = undefined
         const held = line.focused
         this.runtime.removeChild(line)
         if (held) this.fixed.get('editor.prompt')?.focus()

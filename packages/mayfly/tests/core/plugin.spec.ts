@@ -48,7 +48,7 @@ afterEach(async () => {
  * resolver, which cannot reach tsconfig paths).
  * @returns the root context and the terminal output observed so far.
  */
-async function bootMayflyCore(): Promise<{ ctx: Context; output: () => string; pane: StartupPaneProbe }> {
+async function bootMayflyCore(retireDuringProbe = false): Promise<{ ctx: Context; output: () => string; pane: StartupPaneProbe }> {
   const dir = mkdtempTracked('mayfly-core-')
   // The fixtures re-export the real plugins' namespace shape (name + apply)
   // so the Loader exercises the same unwrap path as a packaged install.
@@ -96,11 +96,14 @@ export const apply = ctx => globalThis.__externalPaneApply(ctx)
     __externalPaneApply: (ctx: Context) => void
   }
   const pane: StartupPaneProbe = { coreApplyStarted: false, appliedBeforeCore: false, appliedBeforeScreen: false, registerOk: false, renders: 0, gapRenders: 0 }
+  let coreContext: Context | undefined
+  let retirement: Promise<void> | undefined
   globals.__mayflyUiProviderApply = uiProviderApply
   globals.__mayflyFrontendApply = frontendApply
   globals.__delayMayflyCoreImport = () => new Promise<void>(resolve => setTimeout(resolve, 50))
   globals.__mayflyCoreApply = (ctx) => {
     pane.coreApplyStarted = true
+    coreContext = ctx
     return apply(ctx)
   }
   globals.__mayflyThemeDarkApply = themeDarkApply
@@ -121,6 +124,11 @@ export const apply = ctx => globalThis.__externalPaneApply(ctx)
   const chunks: string[] = []
   vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
     chunks.push(String(chunk))
+    if (retireDuringProbe && String(chunk) === '\x1b]11;?\x07') {
+      retirement = coreContext!.fiber.dispose()
+      // Let Fiber cleanup retire the owner before the real stdin probe resumes.
+      setImmediate(() => process.stdin.emit('data', Buffer.from('\x1b]11;rgb:0000/0000/0000\x07')))
+    }
     return true
   })
 
@@ -129,11 +137,22 @@ export const apply = ctx => globalThis.__externalPaneApply(ctx)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
+  await retirement
   disposers.push(async () => { await ctx.fiber.dispose() })
   return { ctx, output: () => chunks.join(''), pane }
 }
 
 describe('mayfly-core plugin through the real Loader', () => {
+  it('never starts a terminal when the core Fiber unloads during its background probe', async () => {
+    const { ctx, output, pane } = await bootMayflyCore(true)
+    expect(pane.coreApplyStarted).toBe(true)
+    expect(output()).toContain('\x1b]11;?\x07')
+    expect(output()).not.toContain('\x1b[?2004h')
+    expect(output()).not.toContain('\x1b[?1049h')
+    expect(ctx.get('mayflyScreen')).toBeUndefined()
+    expect(ctx.get('mayflyKeymap')).toBeUndefined()
+  })
+
   it('starts the terminal and registers the L1 services', async () => {
     const { ctx, output } = await bootMayflyCore()
     expect(ctx.get('mayflyScreen')).toBeDefined()

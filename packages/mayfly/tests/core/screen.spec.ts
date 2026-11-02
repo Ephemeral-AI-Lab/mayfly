@@ -26,6 +26,8 @@ interface Recorded {
   suspends: unknown[]
   titles: string[]
   scrolls: { direction: 'up' | 'down', amount: number | undefined }[]
+  scrollTargets: number[]
+  contentStarts: MayflyComponent[]
   scrollHandlers: (((data: string) => boolean) | undefined)[]
 }
 
@@ -38,7 +40,7 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
     unfocus: () => {},
     isFocused: () => true,
   }
-  const recorded: Recorded = { added: [], bottomAdded: [], dockAdded: [], removed: [], focused: [], overlays: [], renders: [], suspends: [], titles: [], scrolls: [], scrollHandlers: [] }
+  const recorded: Recorded = { added: [], bottomAdded: [], dockAdded: [], removed: [], focused: [], overlays: [], renders: [], suspends: [], titles: [], scrolls: [], scrollTargets: [], contentStarts: [], scrollHandlers: [] }
   const runtime = {
     ...recorded,
     columns: 120,
@@ -72,6 +74,11 @@ function recordingRuntime(laneRows = 0): MayflyTerminalRuntime & Recorded {
     scrollContent(direction, amount) {
       recorded.scrolls.push({ direction, amount })
       return true
+    },
+    scrollContentTo(row) { recorded.scrollTargets.push(row) },
+    contentStart(component) {
+      recorded.contentStarts.push(component)
+      return 7
     },
     setContentScrollbarColors() {},
     contentTail: () => undefined,
@@ -119,6 +126,7 @@ describe('MayflyScreenService', () => {
     slot.component.handleInput?.('x')
     expect(panel.handleInput).toHaveBeenCalledWith('x')
     expect(screen.editorViewport).toEqual({ columns: 120, rows: 22 })
+    expect(screen.editorRowsFromBottom).toBe(2)
     slot.dispose()
     expect(slot.component.render(80)).toEqual(['panel'])
     const restored = screen.mountDockSlot('editor.prompt', prompt)
@@ -245,6 +253,8 @@ describe('MayflyScreenService', () => {
 
     expect(screen.scrollContent('up', 3)).toBe(true)
     expect(runtime.scrolls).toEqual([{ direction: 'up', amount: 3 }])
+    screen.scrollContentTo(17)
+    expect(runtime.scrollTargets).toEqual([17])
 
     const handler = (data: string): boolean => data === 'x'
     const unset = screen.setContentScrollHandler(handler)
@@ -362,6 +372,27 @@ function slotCompiler(ctx: Context, extra: Partial<MayflyNodeSlotCompiler> = {})
 const STREAM = { pagePath: [], controlId: 'stream' }
 
 describe('MayflyScreenService node slots', () => {
+  it('locates a tracked conversation row through its runtime host and leaves local activity coordinates unknown', async () => {
+    const runtime = recordingRuntime()
+    const ctx = new Context()
+    await ctx.plugin(MayflyScreenService, runtime)
+    const screen = ctx.mayflyScreen
+    screen.bindNodeSlots(slotCompiler(ctx))
+    const content = screen.mountNodeSlot('transcript.conversation', { region: 'content' })
+    const local = screen.mountNodeSlot('local.tracked', { region: 'content' })
+    for (const slot of [content, local]) {
+      slot.set(streamList(streamItems(5)))
+      slot.track('stream', 'item-2')
+    }
+    runtime.added[1]!.render(80)
+    runtime.added[2]!.render(80)
+    expect(content.trackedRow()).toBe(9)
+    expect(runtime.contentStarts).toEqual([runtime.added[1]])
+    expect(local.trackedRow()).toBeUndefined()
+    expect(runtime.contentStarts).toHaveLength(1)
+    await ctx.fiber.dispose()
+  })
+
   it('leases a node slot in each region, and an unknown or taken host throws and leaves nothing behind', async () => {
     const runtime = recordingRuntime()
     const ctx = new Context()

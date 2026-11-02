@@ -790,6 +790,30 @@ describe('alternate-screen runtime', () => {
     terminal.dispose()
   })
 
+  it('lays out a new bottom lane before measurement and replans it after a structural change', async () => {
+    const terminal = new AltScreenTerminal(40, 12)
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
+    try {
+      const chrome = { render: () => ['────', 'first'], invalidate: () => {}, leadingRule: true }
+      runtime.surfaces.register({ id: 'first', placement: 'bottom', component: chrome })
+      const root = (runtime.tui as unknown as { layoutRoot: { [LAYOUT_NODE](): LayoutNode } }).layoutRoot[LAYOUT_NODE]()
+      if (root.type !== 'vstack') throw new Error('expected root stack')
+      const lane = root.entries[1]!.component as MayflyComponent & { [LAYOUT_NODE](): LayoutNode }
+      const first = lane[LAYOUT_NODE]()
+      if (first.type !== 'vstack') throw new Error('expected bottom stack')
+      expect(first.entries.length).toBeGreaterThan(0)
+      for (const entry of first.entries) entry.component.invalidate()
+      lane.render(40)
+      runtime.surfaces.register({ id: 'second', placement: 'bottom', component: textComponent('second') })
+      const replaced = lane[LAYOUT_NODE]()
+      if (replaced.type !== 'vstack') throw new Error('expected replaced bottom stack')
+      expect(replaced.entries.flatMap(entry => entry.component.render(40)).join('\n')).toContain('second')
+    } finally {
+      await runtime.stop()
+      terminal.dispose()
+    }
+  })
+
   it('repaints a bottom pane when its own rows change through replace', async () => {
     const terminal = new AltScreenTerminal(40, 12)
     const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
@@ -2125,6 +2149,21 @@ describe('content scroll reach and lifecycle edges', () => {
 })
 
 describe('content tail beside side lanes', () => {
+  it('keeps a one-column content viewport usable without a scrollbar source', async () => {
+    const terminal = new AltScreenTerminal(1, 8)
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
+    try {
+      runtime.addChild(textComponent('x'))
+      runtime.requestRender(true)
+      await waitForRender()
+      expect(runtime.contentTail()).toMatchObject({ width: 1, away: false })
+      expect((await terminal.screen()).join('')).toContain('x')
+    } finally {
+      await runtime.stop()
+      terminal.dispose()
+    }
+  })
+
   it('places the tail between the left and right lanes and reports the width the content keeps', async () => {
     const terminal = new AltScreenTerminal(120, 12)
     const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
@@ -2140,6 +2179,15 @@ describe('content tail beside side lanes', () => {
     expect(tail!.col).toBeGreaterThan(0)
     expect(tail!.col + tail!.width).toBeLessThan(120)
     expect(tail!.width).toBeGreaterThan(0)
+    runtime.scrollContentTo(3.9)
+    await waitForRender()
+    expect(runtime.contentTail()).toMatchObject({ top: 3, away: true })
+    runtime.scrollContentTo(-4)
+    await waitForRender()
+    expect(runtime.contentTail()).toMatchObject({ top: 0, away: true })
+    runtime.scrollContentTo(1_000)
+    await waitForRender()
+    expect(runtime.contentTail()).toMatchObject({ away: false })
     await runtime.stop()
     terminal.dispose()
   })
@@ -2193,6 +2241,7 @@ describe('mayfly terminal main-screen delegation edges', () => {
     const runtime = startMayflyTerminal(terminal)
     try {
       expect(runtime.contentTail()).toBeUndefined()
+      expect(() => runtime.scrollContentTo(10)).not.toThrow()
       expect(() => runtime.followContent()).not.toThrow()
       expect(runtime.dockRows()).toBe(0)
       runtime.addDockChild(textComponent('dock-row'))

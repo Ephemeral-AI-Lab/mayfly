@@ -206,8 +206,8 @@ class SurfaceLaneContainer implements Component {
       const animationRevision = this.manager.animationRevision
       // pi-tui measures the lane and then lays it out in the same frame; the plan renders every passive pane. Reuse
       // it while the layout, width, budget, pane content, and pane clock frame are unchanged instead of replanning.
-      const plan = measured?.layout === layout && measured.width === width && measured.maxRows === maxRows && measured.contentRevision === contentRevision && measured.animationRevision === animationRevision && measured.plan !== undefined
-        ? measured.plan
+      const plan = measured?.layout === layout && measured.width === width && measured.maxRows === maxRows && measured.contentRevision === contentRevision && measured.animationRevision === animationRevision
+        ? measured.plan!
         : planBottomLane(lane, width, maxRows)
       this.measured = { width, layout, maxRows, contentRevision, animationRevision, rows: plan.rows, plan }
       return bottomLaneRows(plan)
@@ -248,8 +248,8 @@ class SurfaceLaneContainer implements Component {
       const measured = this.measured
       /* a bottom measurement always carries a plan and precedes any layout */
       const maxRows = this.maxRows()
-      const plan = measured?.layout === layout && measured.maxRows === maxRows && measured.contentRevision === this.manager.contentRevision && measured.animationRevision === this.manager.animationRevision && measured.plan !== undefined
-        ? measured.plan
+      const plan = measured?.layout === layout && measured.maxRows === maxRows && measured.contentRevision === this.manager.contentRevision && measured.animationRevision === this.manager.animationRevision
+        ? measured.plan!
         : planBottomLane(lane, measured?.width ?? 1, maxRows)
       const fixed = (size: number) => ({ basis: size, grow: 0, shrink: 1, minSize: 0, maxSize: size })
       if (plan.rule !== undefined) stack.addChild(rowsLeaf([plan.rule]), fixed(1))
@@ -1262,8 +1262,9 @@ export function startMayflyTerminal(
     contentTail() {
       if (scrollView === undefined) return undefined
       const layout = surfaces.layout(terminal.columns, terminal.rows)
-      const left = layout.left === undefined ? 0 : (layout.left.width ?? 0) + 1
-      const right = layout.right === undefined ? 0 : (layout.right.width ?? 0) + 1
+      // SurfaceManager attaches a width to each retained side lane.
+      const left = layout.left === undefined ? 0 : layout.left.width! + 1
+      const right = layout.right === undefined ? 0 : layout.right.width! + 1
       const away = !scrollView.isFollowingEnd && scrollView.measuredHeight > scrollView.viewportHeight
       return {
         away,

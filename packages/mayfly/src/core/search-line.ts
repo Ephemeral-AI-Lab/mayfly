@@ -83,8 +83,7 @@ export class SearchLine implements MayflyFocusable {
     const lead = `${this.options.prefix} `
     // The Input draws its own `> ` prompt; the line puts its prefix in the same two columns.
     // Once accepted the pattern is plain text: the input's own cursor would say it can still be typed into.
-    const drawn = this.editable ? this.input.render(Math.max(3, width - MARGIN.length))[0] ?? '> ' : `> ${this.input.getValue()}`
-    const body = drawn.startsWith('> ') ? drawn.slice(2) : drawn
+    const body = this.editable ? this.input.render(Math.max(3, width - MARGIN.length))[0]!.slice(2) : this.input.getValue()
     const first = `${MARGIN}${colors === undefined ? lead : colors.primary(lead)}${body}`
     const second = `${' '.repeat(MARGIN.length + lead.length)}${muted(this.status)}`
     return [truncateToWidth(first, width), truncateToWidth(second, width)]

@@ -164,14 +164,10 @@ export async function apply(ctx: Context): Promise<void> {
   // Fiber's children dispose concurrently with it and must tolerate a
   // stopping runtime — a stopped TUI ignores late requestRender calls.
   let runtime: MayflyTerminalRuntime | undefined
-  let disposed = false
-  ctx.effect(() => () => {
-    disposed = true
-    return runtime?.stop()
-  })
+  ctx.effect(() => () => runtime?.stop())
   const background = backgroundFromRgb(await probeTerminalBackground())
-  // Unloaded during the probe: nothing was started, nothing to stop.
-  if (disposed) return
+  // Fiber invalidation is immediate; its effect cleanup waits for this asynchronous apply to settle.
+  if (ctx.fiber.uid === null) return
   runtime = startMayflyTerminal(undefined, {
     background,
     onSchemeChange: (scheme) => {

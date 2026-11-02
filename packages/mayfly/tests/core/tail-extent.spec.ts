@@ -5,7 +5,7 @@
  * its own frame, and a scroll the content cannot take lays out again.
  * @module @ephemeral-ai/mayfly/core/tests/tail-extent
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { startMayflyTerminal } from '../../src/core/terminal.ts'
 import { virtualRows, type RowSource } from '../../src/core/ui-rows.ts'
 import { AltScreenTerminal } from './alt-screen-terminal.ts'
@@ -38,6 +38,33 @@ async function bench(rows: () => string[]) {
 }
 
 describe('the content scroll extent', () => {
+  it('bounds automatic relayout when a lazy source keeps changing its extent while painting', async () => {
+    let length = 30
+    let revision = 0
+    const rows = virtualRows({
+      get length() { return length },
+      get revision() { return revision },
+      declaredWidth: 8,
+      markerFree: true,
+      row(index) {
+        if (index === length - 1) { length += 1; revision += 1 }
+        return `row-${String(index)}`
+      },
+    })
+    const { runtime, terminal } = await bench(() => rows)
+    try {
+      await vi.waitFor(() => expect(length).toBeGreaterThanOrEqual(39))
+      const bounded = length
+      await waitForRender()
+      await waitForRender()
+      expect(length).toBe(bounded)
+      expect(runtime.contentTail()!.width).toBeGreaterThan(0)
+    } finally {
+      await runtime.stop()
+      terminal.dispose()
+    }
+  })
+
   it('paints the window before it settles on a height, so follow-end lands on the last painted row', async () => {
     const document = lazyDocument(40, 60, { prepares: true })
     const { runtime } = await bench(() => document.rows)
