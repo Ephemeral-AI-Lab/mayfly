@@ -90,8 +90,62 @@ function appFixture() {
 }
 
 describe('RemoteApp', () => {
+  it('stays sessionless until the first prompt and clears the view without stopping Host work', async () => {
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://127.0.0.1:3080/?token=secret')
+    expect(app.registry.current).toBeUndefined()
+    expect(fixture.client.sessions.create).not.toHaveBeenCalled()
+    await app.execute('/help')
+    expect(panels.showHelp).toHaveBeenCalled()
+    expect(fixture.client.sessions.create).not.toHaveBeenCalled()
+
+    await Promise.all([app.execute('first'), app.execute('second')])
+    expect(fixture.client.sessions.create).toHaveBeenCalledOnce()
+    expect(fixture.session.prompt).toHaveBeenCalledTimes(2)
+    await app.execute('/new')
+    expect(app.registry.current).toBeUndefined()
+    expect(conversation.attach).toHaveBeenLastCalledWith(null)
+    expect(fixture.reference.release).toHaveBeenCalledOnce()
+    expect(fixture.session.cancel).not.toHaveBeenCalled()
+    expect(fixture.client.detach).not.toHaveBeenCalled()
+    await app.execute('/clear')
+    expect(fixture.client.sessions.create).toHaveBeenCalledOnce()
+  })
+
+  it('does not select or prompt a Session created after the user returned to the start view', async () => {
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
+    let resolve!: (id: SessionId) => void
+    vi.mocked(fixture.client.sessions.create).mockReturnValue(new Promise(done => { resolve = done }) as never)
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://127.0.0.1:3080/?token=secret')
+    const pending = app.execute('first')
+    await app.execute('/clear')
+    resolve(fixture.sessionId)
+    await expect(pending).rejects.toThrow('Session selection was superseded')
+    expect(app.registry.current).toBeUndefined()
+    expect(fixture.session.prompt).not.toHaveBeenCalled()
+    expect(fixture.client.sessions.retain).not.toHaveBeenCalled()
+  })
+
+  it('separates schemes and reverse-proxy mount paths without putting credentials in Host keys', async () => {
+    const { conversation, status, panels } = appFixture()
+    const attach = vi.fn(async (key: HostKey) => clientFixture(key).client)
+    const app = new RemoteApp(conversation, status, panels, attach)
+    await app.attach('http://same.test:3080/one/?token=secret')
+    await app.attach('http://same.test:3080/two?token=other')
+    await app.attach('https://same.test:3080/one/#token=third')
+    await app.attach('http://same.test:3080/one?token=changed')
+    expect(app.registry.list().map(client => client.key)).toEqual([
+      'http://same.test:3080/one/', 'http://same.test:3080/two/', 'https://same.test:3080/one/',
+    ])
+    expect(attach).toHaveBeenCalledTimes(3)
+  })
+
   it('routes create, select, and prompt through the selected Host', async () => {
-    const fixture = clientFixture(HostKey('127.0.0.1:3080'))
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
     await app.attach('http://127.0.0.1:3080/?token=secret')
@@ -116,10 +170,10 @@ describe('RemoteApp', () => {
   })
 
   it('keeps identical SessionIds isolated by Host and detaches only the selected Host', async () => {
-    const first = clientFixture(HostKey('one.test:3080'))
-    const second = clientFixture(HostKey('two.test:3081'))
+    const first = clientFixture(HostKey('http://one.test:3080/'))
+    const second = clientFixture(HostKey('http://two.test:3081/'))
     const { conversation, status, panels } = appFixture()
-    const app = new RemoteApp(conversation, status, panels, key => key === HostKey('one.test:3080') ? first.client : second.client)
+    const app = new RemoteApp(conversation, status, panels, key => key === HostKey('http://one.test:3080/') ? first.client : second.client)
     await app.attach('http://one.test:3080/?token=a')
     await app.selectOrCreate()
     await app.attach('http://two.test:3081/?token=b')
@@ -134,12 +188,12 @@ describe('RemoteApp', () => {
   })
 
   it('reports attached Hosts and routes unknown commands to the selected Host Session', async () => {
-    const fixture = clientFixture(HostKey('127.0.0.1:3080'))
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
     await app.attach('http://127.0.0.1:3080/?token=secret')
     await app.execute('/host')
-    expect(status.set).toHaveBeenCalledWith('127.0.0.1:3080')
+    expect(status.set).toHaveBeenCalledWith('http://127.0.0.1:3080/')
     await app.selectOrCreate()
     await app.execute('/not-a-command')
     expect(fixture.session.command).toHaveBeenCalledWith('/not-a-command')
@@ -148,18 +202,18 @@ describe('RemoteApp', () => {
   })
 
   it('supports new, resume, and attach commands with their actual Host routes', async () => {
-    const fixture = clientFixture(HostKey('127.0.0.1:3080'))
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
     await app.attach('http://127.0.0.1:3080/?token=secret')
     await app.execute('/new')
-    expect(fixture.client.sessions.create).toHaveBeenCalledOnce()
+    expect(fixture.client.sessions.create).not.toHaveBeenCalled()
     await app.execute('/resume shared-session')
-    expect(fixture.client.sessions.create).toHaveBeenCalledOnce()
+    expect(fixture.client.sessions.create).not.toHaveBeenCalled()
     await app.execute('/attach http://127.0.0.1:3080/?token=secret')
     expect(fixture.client.sessions.refresh).toHaveBeenCalledTimes(2)
     await app.execute('/host')
-    expect(status.set).toHaveBeenCalledWith('127.0.0.1:3080 *')
+    expect(status.set).toHaveBeenCalledWith('http://127.0.0.1:3080/ *')
   })
 
   it('rejects actions without an attached Host or selected Session and handles empty detach', async () => {
@@ -167,7 +221,7 @@ describe('RemoteApp', () => {
     const app = new RemoteApp(conversation, status, panels)
     await expect(app.selectOrCreate()).rejects.toThrow('Attach a Host before selecting a Session')
     await expect(app.execute('/quit')).resolves.toEqual({ exit: true })
-    await expect(app.execute('hello')).rejects.toThrow('Select or create a Session before prompting')
+    await expect(app.execute('hello')).rejects.toThrow('Attach a Host before selecting a Session')
     await app.execute('/host')
     expect(status.set).toHaveBeenCalledWith('No attached Hosts')
     await app.execute('/detach')
@@ -176,7 +230,7 @@ describe('RemoteApp', () => {
   })
 
   it('surfaces prompt and cancellation failures and a missing Client binding', async () => {
-    const fixture = clientFixture(HostKey('127.0.0.1:3080'))
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     fixture.session.prompt.mockResolvedValue({ ok: false, error: { code: 'denied', message: 'denied' } } as never)
     fixture.session.cancel.mockResolvedValue({ ok: false, error: { code: 'busy', message: 'busy' } } as never)
     const { conversation, status, panels } = appFixture()
@@ -205,23 +259,23 @@ describe('RemoteApp', () => {
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels)
     await expect(app.registry.attach(HostKey('missing'))).rejects.toThrow('No endpoint registered for Host "missing"')
-    const http = clientFixture(HostKey('host:80'))
-    const https = clientFixture(HostKey('host:443'))
+    const http = clientFixture(HostKey('http://host/'))
+    const https = clientFixture(HostKey('https://host/'))
     defaultAttachHostClient.mockClear()
     defaultAttachHostClient
       .mockResolvedValueOnce(http.client)
       .mockResolvedValueOnce(https.client)
     await app.attach('http://host/')
     await app.attach('https://host/')
-    expect(defaultAttachHostClient).toHaveBeenNthCalledWith(1, HostKey('host:80'), 'http://host/')
-    expect(defaultAttachHostClient).toHaveBeenNthCalledWith(2, HostKey('host:443'), 'https://host/')
+    expect(defaultAttachHostClient).toHaveBeenNthCalledWith(1, HostKey('http://host/'), 'http://host/')
+    expect(defaultAttachHostClient).toHaveBeenNthCalledWith(2, HostKey('https://host/'), 'https://host/')
   })
 
   it('does not clear activeHost when detaching a different Host', async () => {
-    const first = clientFixture(HostKey('one.test:3080'))
-    const second = clientFixture(HostKey('two.test:3081'))
+    const first = clientFixture(HostKey('http://one.test:3080/'))
+    const second = clientFixture(HostKey('http://two.test:3081/'))
     const { conversation, status, panels } = appFixture()
-    const app = new RemoteApp(conversation, status, panels, key => key === HostKey('one.test:3080') ? first.client : second.client)
+    const app = new RemoteApp(conversation, status, panels, key => key === HostKey('http://one.test:3080/') ? first.client : second.client)
     await app.attach('http://one.test:3080/?token=a')
     await app.selectOrCreate()
     await app.attach('http://two.test:3081/?token=b')
@@ -229,11 +283,11 @@ describe('RemoteApp', () => {
     expect(first.client.detach).toHaveBeenCalledOnce()
     await app.execute('/new')
     expect(first.client.sessions.create).toHaveBeenCalledOnce()
-    expect(second.client.sessions.create).toHaveBeenCalledOnce()
+    expect(second.client.sessions.create).not.toHaveBeenCalled()
   })
 
   it('shows live Host commands, Session facts, version, and the official Session catalog', async () => {
-    const fixture = clientFixture(HostKey('127.0.0.1:3080'))
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
     await app.attach('http://127.0.0.1:3080/?token=secret')
@@ -262,19 +316,19 @@ describe('RemoteApp', () => {
   })
 
   it('supports frontend aliases and validates attach input', async () => {
-    const fixture = clientFixture(HostKey('127.0.0.1:3080'))
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
     await app.attach('http://127.0.0.1:3080/?token=secret')
     await expect(app.execute('/q')).resolves.toEqual({ exit: true })
     await expect(app.execute('/exit')).resolves.toEqual({ exit: true })
     await app.execute('/clear')
-    expect(fixture.client.sessions.create).toHaveBeenCalledOnce()
+    expect(fixture.client.sessions.create).not.toHaveBeenCalled()
     await expect(app.execute('/attach')).rejects.toThrow('Usage: /attach <host-url>')
   })
 
   it('keeps successful Host commands quiet and surfaces command transport failures', async () => {
-    const fixture = clientFixture(HostKey('127.0.0.1:3080'))
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
     await app.attach('http://127.0.0.1:3080/?token=secret')
@@ -288,7 +342,7 @@ describe('RemoteApp', () => {
   })
 
   it('reports asynchronous Session selection failures from the catalog panel', async () => {
-    const fixture = clientFixture(HostKey('127.0.0.1:3080'))
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
     await app.attach('http://127.0.0.1:3080/?token=secret')
@@ -305,7 +359,7 @@ describe('RemoteApp', () => {
   })
 
   it('falls back when catalog cwd and rows are absent', async () => {
-    const fixture = clientFixture(HostKey('127.0.0.1:3080'))
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     fixture.listSnapshot.mockReturnValue({ ids: [SessionId('missing')], byId: {}, phase: 'ready', projectionsBySession: {} })
     const { conversation, status, panels } = appFixture()
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
@@ -319,8 +373,8 @@ describe('RemoteApp', () => {
   })
 
   it('ignores stale default-model responses and clears the fallback on detach', async () => {
-    const first = clientFixture(HostKey('one.test:3080'))
-    const second = clientFixture(HostKey('two.test:3081'))
+    const first = clientFixture(HostKey('http://one.test:3080/'))
+    const second = clientFixture(HostKey('http://two.test:3081/'))
     let settleFirst!: (value: unknown) => void
     first.client.remote.session.modelCatalog = vi.fn(() => new Promise(resolve => { settleFirst = resolve })) as never
     second.client.remote.session.modelCatalog = vi.fn(async () => ({
@@ -328,7 +382,7 @@ describe('RemoteApp', () => {
       value: { default: { model: 'new-model', provider: 'new-provider' } },
     })) as never
     const { conversation, status, panels } = appFixture()
-    const app = new RemoteApp(conversation, status, panels, key => key === HostKey('one.test:3080') ? first.client : second.client)
+    const app = new RemoteApp(conversation, status, panels, key => key === HostKey('http://one.test:3080/') ? first.client : second.client)
     const attaching = app.attach('http://one.test:3080/?token=a')
     await vi.waitFor(() => { expect(first.client.remote.session.modelCatalog).toHaveBeenCalledOnce() })
     await app.attach('http://two.test:3081/?token=b')

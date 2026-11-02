@@ -127,6 +127,8 @@ export interface EditorFeatureOptions {
   readonly colors: MayflySemanticColors
   readonly keymap: MayflyKeymap
   readonly session: () => EditorFeatureSession | undefined
+  /** Create the first Host Session on submission, never merely on editor mount. */
+  readonly ensureSession?: () => Promise<EditorFeatureSession>
   readonly notice: RemoteNotice
   readonly upload: EditorUpload
   readonly files: EditorHostFiles

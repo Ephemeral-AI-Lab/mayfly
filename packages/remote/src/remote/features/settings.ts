@@ -177,7 +177,7 @@ export class RemoteSettingsController extends RemoteFeatureController {
         mounted?.panel.update(view())
         try {
           const edited = await edit(client, document.content, operation.signal)
-          if (edited === undefined || edited === document.content) return
+          if (!operation.valid() || edited === undefined || edited === document.content) return
           document = await documents.writeDocument(client, edited, document.revision, operation.signal)
           if (operation.valid()) this.context.notice.set(this.context.t('Settings document saved'))
         } catch (error) {

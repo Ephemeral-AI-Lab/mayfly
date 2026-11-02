@@ -23,6 +23,7 @@ interface SubmitOptions {
   readonly editor: MayflyEditor
   readonly screen: MayflyScreen
   readonly session: () => EditorFeatureSession | undefined
+  readonly ensureSession?: () => Promise<EditorFeatureSession>
   readonly commands: EditorCommands
   readonly skills: EditorSkills
   readonly attachments: EditorAttachments
@@ -34,7 +35,7 @@ interface SubmitOptions {
 
 interface SubmissionRecord {
   readonly id: number
-  readonly selected: EditorFeatureSession | undefined
+  selected: EditorFeatureSession | undefined
   readonly source: string
   readonly historyText?: string
   readonly submitted: MayflySubmittedDraft
@@ -223,7 +224,9 @@ export class EditorSubmit {
         if (result.exit) await this.options.exit()
         return
       }
-      const selected = record.selected
+      const selected = record.selected ?? await this.options.ensureSession?.()
+      if (this.disposed || controller.signal.aborted) { this.fail(record, false); return }
+      record.selected = selected
       if (selected === undefined) {
         this.options.notice.set(this.options.t('Select or create a Session before prompting'))
         this.fail(record, false)

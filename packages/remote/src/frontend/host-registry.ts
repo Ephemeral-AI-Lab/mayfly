@@ -114,6 +114,14 @@ export class HostRegistry {
     return this.selection?.reference
   }
 
+  /** Leave the primary view without stopping its Session or releasing independent side views. */
+  clearSelection(): void {
+    this.selectionGeneration += 1
+    const previous = this.selection
+    this.selection = undefined
+    previous?.reference.release()
+  }
+
   /** List committed Host Clients in attach order. */
   list(): readonly HostClient[] {
     return [...this.clients.values()]

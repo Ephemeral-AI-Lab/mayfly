@@ -119,6 +119,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     editor,
     screen: options.screen,
     session: options.session,
+    ...options.ensureSession === undefined ? {} : { ensureSession: options.ensureSession },
     commands,
     skills,
     attachments,

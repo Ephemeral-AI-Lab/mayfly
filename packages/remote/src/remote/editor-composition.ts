@@ -105,6 +105,10 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     colors: options.colors,
     keymap: options.keymap,
     session,
+    async ensureSession() {
+      await options.app.ensureSession(options.localCwd)
+      return requireSelection(session())
+    },
     notice: options.notice,
     upload: (sessionId, data, name, signal) => requireSession(session(), sessionId).fileUpload.upload(sessionId, data, name, signal),
     files,

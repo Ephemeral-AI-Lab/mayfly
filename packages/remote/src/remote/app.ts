@@ -16,7 +16,7 @@ export const FRONTEND_COMMANDS = [
   { name: 'fork', description: 'Fork the current Session and switch to the child: /fork [atSeq]' },
   { name: 'rewind', description: 'Fork the Session at an event and switch to it: /rewind <seq>' },
   { name: 'host', description: 'List attached Hosts' },
-  { name: 'attach', description: 'Attach a Host URL, then create a Session' },
+  { name: 'attach', description: 'Attach a Host URL' },
   { name: 'detach', description: 'Detach the current Host without stopping it' },
   { name: 'skills', description: 'List available skills' },
   { name: 'help', description: 'Show local and Host commands' },
@@ -67,6 +67,8 @@ export class RemoteApp {
   private readonly topologyListeners = new Set<() => void>()
   private activeHost: HostKey | undefined
   private defaultModelGeneration = 0
+  private selectionGeneration = 0
+  private creating: Promise<SessionRef> | undefined
 
   constructor(
     private readonly conversation: RemoteConversationModelSource,
@@ -93,8 +95,10 @@ export class RemoteApp {
 
   async attach(startupUrl: string, hostId?: string): Promise<HostClient> {
     const url = new URL(startupUrl)
+    // Credentials and query parameters identify authentication, not the Host.
+    // Scheme and mount path do identify distinct backends behind one authority.
     const key = hostId === undefined
-      ? HostKey(`${url.hostname}:${url.port || (url.protocol === 'https:' ? '443' : '80')}`)
+      ? HostKey(`${url.origin}${url.pathname.replace(/\/+$/u, '')}/`)
       : HostKey(hostId)
     const generation = ++this.defaultModelGeneration
     this.endpoints.set(key, startupUrl)
@@ -107,11 +111,14 @@ export class RemoteApp {
   }
 
   async selectOrCreate(sessionId?: string, cwd = process.cwd()): Promise<SessionRef> {
+    const generation = ++this.selectionGeneration
     const host = this.requireHost()
     const ref = sessionId === undefined
       ? await this.actions.create(host, { cwd })
       : { host, sessionId: SessionId(sessionId) }
+    if (generation !== this.selectionGeneration) throw new Error('Session selection was superseded')
     await this.actions.select(ref)
+    if (generation !== this.selectionGeneration) throw new Error('Session selection was superseded')
     this.activeHost = ref.host
     this.publishTopology()
     const binding = this.registry.currentReference?.binding
@@ -121,13 +128,35 @@ export class RemoteApp {
     return ref
   }
 
+  /** Admit the first prompt into one shared creation, leaving startup sessionless. */
+  ensureSession(cwd = process.cwd()): Promise<SessionRef> {
+    const current = this.registry.current
+    if (current !== undefined) return Promise.resolve(current)
+    if (this.creating !== undefined) return this.creating
+    const creating = this.selectOrCreate(undefined, cwd)
+    this.creating = creating
+    void creating.finally(() => {
+      if (this.creating === creating) this.creating = undefined
+    }).catch(() => {})
+    return creating
+  }
+
+  /** Return to the empty start view without creating or stopping a Host Session. */
+  clearSession(): void {
+    this.selectionGeneration += 1
+    this.creating = undefined
+    this.registry.clearSelection()
+    this.conversation.attach(null)
+    this.publishTopology()
+  }
+
   private publishTopology(): void {
     for (const listener of this.topologyListeners) listener()
   }
 
   async execute(text: string): Promise<{ readonly exit: boolean }> {
     if (!text.startsWith('/')) {
-      const ref = this.requireSelection()
+      const ref = await this.ensureSession()
       const result = await this.actions.prompt(ref, {
         mode: 'queue',
         text,
@@ -143,7 +172,7 @@ export class RemoteApp {
     const input = separator === -1 ? '' : text.slice(separator).trim()
     if (name === 'quit' || name === 'q' || name === 'exit') return { exit: true }
     if (name === 'new' || name === 'clear') {
-      await this.selectOrCreate()
+      this.clearSession()
       return { exit: false }
     }
     if (name === 'sessions' || name === 'resume') {
@@ -210,7 +239,7 @@ export class RemoteApp {
       return { exit: false }
     }
     if (name === 'init') {
-      const ref = this.requireSelection()
+      const ref = await this.ensureSession()
       const result = await this.actions.prompt(ref, {
         mode: 'queue',
         text: INIT_PROMPT,
@@ -231,6 +260,8 @@ export class RemoteApp {
     if (name === 'detach') {
       const host = this.registry.current?.host ?? this.registry.list()[0]?.key
       if (host !== undefined) {
+        this.selectionGeneration += 1
+        this.creating = undefined
         this.defaultModelGeneration += 1
         this.conversation.setDefaultModel(undefined)
         this.conversation.attach(null)
@@ -245,11 +276,11 @@ export class RemoteApp {
     if (name === 'attach') {
       if (input === '') throw new Error('Usage: /attach <host-url>')
       await this.attach(input)
-      await this.selectOrCreate()
       return { exit: false }
     }
     if (name === 'help') {
-      const commands = await this.actions.listCommands(this.requireSelection())
+      const current = this.registry.current
+      const commands = current === undefined ? [] : await this.actions.listCommands(current)
       this.panels.showHelp([...FRONTEND_COMMANDS, ...commands])
       return { exit: false }
     }
