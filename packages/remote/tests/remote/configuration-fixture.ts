@@ -87,6 +87,7 @@ export function configurationFixture(open: Mock, options: { readonly session?: b
   const presentation = {
     snapshot, themes: REMOTE_THEMES,
     applyTheme: vi.fn(async (theme: string) => { snapshot.theme = theme; for (const listener of presentationListeners) listener() }),
+    applyCustomTheme: vi.fn(async (_path: string, _base = 'dark') => { snapshot.theme = 'custom'; for (const listener of presentationListeners) listener() }),
     reloadTheme: vi.fn(async () => {}),
     setLocale: vi.fn((language: string) => { snapshot.locale = language; locale.setPreference(language as 'en' | 'zh') }),
     subscribe: vi.fn((listener: () => void) => { presentationListeners.add(listener); return () => { presentationListeners.delete(listener) } }),

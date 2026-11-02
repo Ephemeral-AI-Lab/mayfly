@@ -7,6 +7,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@ephemeral-ai/mayfly/frontend'
 import type { Config as BuiltinThemeConfig } from '@ephemeral-ai/mayfly/theme-builtin'
+import type { Config as CustomThemeConfig } from '@ephemeral-ai/mayfly/theme-custom'
 import type { RemoteFeatureContext, RemoteLocalPresentation, RemoteThemeOption } from './contracts.ts'
 
 /** Language choices migrated from the Mayfly onboarding presentation. */
@@ -61,7 +62,8 @@ export function remoteThemeName(key: string): string {
 }
 
 /** Resolve the plugin module and config for one local built-in theme. */
-async function themeTarget(key: string): Promise<{ readonly module: Parameters<Context['plugin']>[0], readonly config?: BuiltinThemeConfig }> {
+async function themeTarget(key: string, custom?: CustomThemeConfig): Promise<{ readonly module: Parameters<Context['plugin']>[0], readonly config?: BuiltinThemeConfig | CustomThemeConfig }> {
+  if (key === 'custom') return { module: await import('@ephemeral-ai/mayfly/theme-custom'), ...custom === undefined ? {} : { config: custom } }
   if (key === 'dark') return { module: await import('@ephemeral-ai/mayfly/theme-dark') }
   if (key === 'auto') return { module: await import('@ephemeral-ai/mayfly/theme-auto') }
   const module = await import('@ephemeral-ai/mayfly/theme-builtin')
@@ -74,6 +76,7 @@ export class CordisRemoteLocalPresentation implements RemoteLocalPresentation {
   private readonly listeners = new Set<() => void>()
   private readonly offLocale: () => void
   private applying = Promise.resolve()
+  private customTheme: CustomThemeConfig | undefined
   private disposed = false
 
   constructor(private readonly context: Pick<RemoteFeatureContext, 'ctx' | 'subscribeLocale'>) {
@@ -101,6 +104,14 @@ export class CordisRemoteLocalPresentation implements RemoteLocalPresentation {
     return this.applying
   }
 
+  /** Load a Frontend-local palette through the same native custom provider as rc.2. */
+  applyCustomTheme(path: string, base = 'dark'): Promise<void> {
+    if (this.disposed) return Promise.resolve()
+    const custom = { path, base } as CustomThemeConfig
+    this.applying = this.applying.catch(() => {}).then(() => this.swapTheme('custom', custom))
+    return this.applying
+  }
+
   /** Restart only the local provider; Remote panel/form models retain their drafts. */
   async reloadTheme(): Promise<void> {
     if (this.disposed) return
@@ -111,7 +122,7 @@ export class CordisRemoteLocalPresentation implements RemoteLocalPresentation {
   private async restartTheme(): Promise<void> {
     if (this.disposed) return
     const current = this.context.ctx.get('mayflyInteractionState')?.currentThemeKey ?? 'dark'
-    const target = await themeTarget(current === 'custom' ? 'dark' : current)
+    const target = await themeTarget(current, this.customTheme)
     if (this.disposed) return
     const runtime = this.context.ctx.registry.get(target.module)
     if (runtime === undefined) return
@@ -132,13 +143,13 @@ export class CordisRemoteLocalPresentation implements RemoteLocalPresentation {
     this.listeners.clear()
   }
 
-  private async swapTheme(theme: string): Promise<void> {
+  private async swapTheme(theme: string, custom?: CustomThemeConfig): Promise<void> {
     if (this.disposed) return
     const state = this.context.ctx.get('mayflyInteractionState')
-    if ((state?.currentThemeKey ?? 'dark') === theme) return
+    if ((state?.currentThemeKey ?? 'dark') === theme && theme !== 'custom') return
     const current = state?.currentThemeKey ?? 'dark'
-    const previous = await themeTarget(current === 'custom' ? 'dark' : current)
-    const next = await themeTarget(theme)
+    const previous = await themeTarget(current, this.customTheme)
+    const next = await themeTarget(theme, custom)
     if (this.disposed) return
     const runtime = this.context.ctx.registry.delete(previous.module)
     if (runtime !== undefined) await Promise.all([...runtime.fibers].map(fiber => fiber.dispose()))
@@ -146,6 +157,7 @@ export class CordisRemoteLocalPresentation implements RemoteLocalPresentation {
     try {
       const fiber = await (next.config === undefined ? this.context.ctx.plugin(next.module) : this.context.ctx.plugin(next.module, next.config))
       if (this.disposed) { await fiber.dispose(); return }
+      this.customTheme = theme === 'custom' ? custom : undefined
       if (state !== undefined) {
         state.currentThemeKey = theme
         state.lastAppliedTheme = theme
@@ -156,6 +168,7 @@ export class CordisRemoteLocalPresentation implements RemoteLocalPresentation {
       if (this.disposed) return
       const fiber = await this.context.ctx.plugin(fallback.module)
       if (this.disposed) { await fiber.dispose(); return }
+      this.customTheme = undefined
       if (state !== undefined) state.currentThemeKey = 'dark'
       throw error
     }

@@ -80,6 +80,16 @@ describe('Remote reference theme and language pickers', () => {
     expect(test.notice.set).not.toHaveBeenCalledWith(expect.stringContaining('mayfly-host must register'))
   })
 
+  it('loads custom themes on the Frontend while the Host is readonly and never writes Host settings', async () => {
+    const test = fixture()
+    test.setSettings({ writable: false, hasDocument: true, namespaces: [namespace()] })
+    await test.controller.applyCustomTheme(test.client, '/local/palette.json', 'tide')
+    expect(test.presentation.applyCustomTheme).toHaveBeenCalledExactlyOnceWith('/local/palette.json', 'tide')
+    expect(test.presentation.snapshot.theme).toBe('custom')
+    expect(test.describe).not.toHaveBeenCalled()
+    expect(test.settings.mutate).not.toHaveBeenCalled()
+  })
+
   it('fences local theme completion and explicit default persistence when the caller aborts', async () => {
     const test = fixture()
     const applyingTheme = deferred<void>()

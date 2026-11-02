@@ -72,6 +72,7 @@ export interface RemoteLocalPresentation {
   readonly themes: readonly RemoteThemeOption[]
   setLocale(locale: string): void
   applyTheme(theme: string): Promise<void>
+  applyCustomTheme(path: string, base?: string): Promise<void>
   reloadTheme(): Promise<void>
   subscribe(listener: () => void): () => void
 }

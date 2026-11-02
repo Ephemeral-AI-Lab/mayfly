@@ -63,7 +63,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   replace its renderer settings. `/theme` changes live presentation without a
   settings write; unrelated Host writes retain that choice until its persisted
   default changes. Onboarding persists its theme default explicitly under its
-  caller's cancellation and Host generation.
+  caller's cancellation and Host generation. `/theme custom` reads its palette
+  through the Frontend-local public custom-theme provider; swaps and reloads
+  retire that provider exactly as they retire a builtin palette.
 - Raw settings editing uses `createRemoteSettingsEditor` with core-owned
   `screen.suspend`. Editing happens locally; writes use the original Host
   document revision and reject results after cancellation or selection change.

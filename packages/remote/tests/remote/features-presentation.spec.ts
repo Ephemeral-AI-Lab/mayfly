@@ -5,6 +5,7 @@ import { CordisRemoteLocalPresentation } from '../../src/remote/features/present
 vi.mock('@ephemeral-ai/mayfly/theme-dark', () => ({ name: 'dark', apply: () => {} }))
 vi.mock('@ephemeral-ai/mayfly/theme-builtin', () => ({ name: 'builtin', apply: () => {} }))
 vi.mock('@ephemeral-ai/mayfly/theme-auto', () => ({ name: 'auto', apply: () => {} }))
+vi.mock('@ephemeral-ai/mayfly/theme-custom', () => ({ name: 'custom', apply: () => {} }))
 
 function fixture(theme = 'dark') {
   const state = { currentThemeKey: theme, lastAppliedTheme: theme }
@@ -44,6 +45,33 @@ describe('Remote local presentation lifecycle', () => {
     test.presentation.dispose()
     test.presentation.dispose()
     expect(test.offLocale).toHaveBeenCalledOnce()
+  })
+
+  it('mounts local custom palettes, reloads their provider and releases it before a builtin swap', async () => {
+    const test = fixture()
+    await test.presentation.applyCustomTheme('/local/theme.json', 'tide')
+    expect(test.plugin).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }), { path: '/local/theme.json', base: 'tide' })
+    expect(test.state.currentThemeKey).toBe('custom')
+    await test.presentation.reloadTheme()
+    expect(test.registry.get).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }))
+    await test.presentation.applyCustomTheme('/local/second.json')
+    expect(test.registry.delete).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }))
+    expect(test.plugin).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }), { path: '/local/second.json', base: 'dark' })
+    await test.presentation.applyTheme('light')
+    expect(test.registry.delete).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }))
+    expect(test.state.currentThemeKey).toBe('light')
+    test.presentation.dispose()
+    await test.presentation.applyCustomTheme('/local/ignored.json')
+    expect(test.state.currentThemeKey).toBe('light')
+  })
+
+  it('restores dark if a custom provider rejects its base or fails to mount', async () => {
+    const test = fixture()
+    test.plugin.mockRejectedValueOnce(new Error('Invalid custom base'))
+    await expect(test.presentation.applyCustomTheme('/local/theme.json', 'invalid')).rejects.toThrow('Invalid custom base')
+    expect(test.plugin).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'dark' }))
+    expect(test.state.currentThemeKey).toBe('dark')
+    test.presentation.dispose()
   })
 
   it('drops theme work queued before disposal and never activates providers after unload', async () => {

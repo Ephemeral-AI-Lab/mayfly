@@ -86,7 +86,7 @@ export class RemotePreferencesController extends RemoteFeatureController {
     const mounted = openRemoteBrowser(this.context, {
       id: 'mayfly.theme', scope: { kind: 'app', targetId: 'theme' }, signal, isCurrent: current,
       view: () => panel({ title: t('Select a theme'), escapeLabel: 'close', body: ui.list({
-        id: 'themes', role: 'choose', selectedIds: [this.context.presentation.snapshot.theme],
+        id: 'themes', role: 'choose', selectedIds: this.context.presentation.themes.some(theme => theme.key === this.context.presentation.snapshot.theme) ? [this.context.presentation.snapshot.theme] : [],
         items: this.context.presentation.themes.map(theme => ({
           id: theme.key, label: themeName(theme.key, t), detail: themeIdea(theme.key, t), group: themeGroup(theme.key, t),
           ...theme.key === this.context.presentation.snapshot.theme ? { current: true } : {},
@@ -143,6 +143,18 @@ export class RemotePreferencesController extends RemoteFeatureController {
       await this.context.presentation.applyTheme(theme)
       if (signal.aborted || operation !== undefined && !operation.valid()) return
       this.context.notice.set(this.context.t('switched to theme "{key}"', { key: remoteThemeName(theme) }))
+    } finally { operation?.dispose() }
+  }
+
+  /** Apply a Frontend-local palette file without Host settings or filesystem access. */
+  async applyCustomTheme(client: HostClient | undefined, path: string, base = 'dark', parent?: AbortSignal): Promise<void> {
+    const signal = parent === undefined ? this.lifetime.signal : AbortSignal.any([parent, this.lifetime.signal])
+    const operation = client === undefined ? undefined : this.hostOperation(client, signal)
+    if (signal.aborted || client !== undefined && operation === undefined) return
+    try {
+      await this.context.presentation.applyCustomTheme(path, base)
+      if (signal.aborted || operation !== undefined && !operation.valid()) return
+      this.context.notice.set(this.context.t('switched to theme "{key}"', { key: 'Custom' }))
     } finally { operation?.dispose() }
   }
 

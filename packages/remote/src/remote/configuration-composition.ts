@@ -122,11 +122,21 @@ export function mountRemoteConfigurationComposition(
     base.commands.register({
       name: 'theme', scope: 'sessionless',
       description: 'Switch the color theme',
-      input: { hint: '[theme]' },
-      execute: async rawInput => {
-        const theme = rawInput.trim()
-        if (theme === '') { features.preferences.openTheme(); return }
-        await features.preferences.applyTheme(currentClient(), theme)
+      input: { hint: '[<theme>|auto|custom <path> [<base theme>]]' },
+      execute: async (rawInput, signal) => {
+        if (signal.aborted) return
+        const args = rawInput.trim().split(/\s+/u).filter(Boolean)
+        const theme = args.shift()
+        if (theme === undefined) { features.preferences.openTheme(); return }
+        if (theme === 'custom') {
+          const path = args.shift()
+          const base = args.shift() ?? 'dark'
+          if (path === undefined || args.length > 0) throw new Error('usage: /theme [<theme>|auto|custom <path> [<base theme>]]')
+          await features.preferences.applyCustomTheme(currentClient(), path, base, signal)
+          return
+        }
+        if (args.length > 0) throw new Error('usage: /theme [<theme>|auto|custom <path> [<base theme>]]')
+        await features.preferences.applyTheme(currentClient(), theme, signal)
       },
     }),
     base.commands.register({
