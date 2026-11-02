@@ -22,16 +22,14 @@ const zh: Readonly<Record<string, string>> = {
     '列出 Agent 预设或切换（仅空会话；在会话开始前设置默认值）',
   'Preset browsing is unavailable in this build': '此构建无法浏览预设',
   'No Host is attached': '未连接 Host',
-  'Unknown preset: {name}': '未知预设：{name}',
-  'The preset cannot compose a session: {reason}': '该预设无法组合会话：{reason}',
-  'The preset cannot compose a session': '该预设无法组合会话',
+  'cannot switch presets while the agent is running': 'Agent 运行时无法切换预设',
   'preset selection is unavailable': '预设选择不可用',
   'Default preset: {preset}': '默认预设：{preset}',
-  'Preset switched to {preset}': '已切换到预设 {preset}',
 }
 
 class RemotePresetOperationsController {
   private readonly t: MayflyTranslate
+  private readonly lifetime = new AbortController()
   private disposed = false
 
   constructor(private readonly context: RemoteOperationsContext) {
@@ -41,13 +39,14 @@ class RemotePresetOperationsController {
 
   readonly dispose = (): void => {
     this.disposed = true
+    this.lifetime.abort()
   }
 
   readonly execute = async (rawInput: string, signal: AbortSignal): Promise<void> => {
     const name = rawInput.trim()
     if (signal.aborted || this.disposed) return
     if (name === '') {
-      await this.openRoster(signal)
+      await this.openRoster(AbortSignal.any([signal, this.lifetime.signal]))
       return
     }
     await this.switchTo(name, signal)
@@ -76,40 +75,38 @@ class RemotePresetOperationsController {
       this.context.base.notice.set(this.t('No Host is attached'))
       return
     }
-    const operation = new RemoteFeatureOperation(this.context.base, client, selection, signal)
+    const operation = new RemoteFeatureOperation(this.context.base, client, selection, AbortSignal.any([signal, this.lifetime.signal]))
     try {
+      if (!operation.valid()) return
+      if (selection?.binding.session.getSnapshot().running) {
+        this.context.base.notice.set(this.t('cannot switch presets while the agent is running'), 'error')
+        return
+      }
       const roster = await remoteValue(client.remote.agentPresets.list())
       if (!operation.valid() || this.disposed) return
-      const needle = name.toLowerCase()
-      const match = roster.presets.find(preset => preset.id.toLowerCase() === needle)
-        ?? roster.presets.find(preset => preset.name?.toLowerCase() === needle)
+      const match = roster.presets.find(preset => preset.id === name)
       if (match === undefined) {
-        this.context.base.notice.set(this.t('Unknown preset: {name}', { name }))
+        this.context.base.notice.set(`Unknown agent preset: ${name}`, 'error')
         return
       }
       if (match.broken !== undefined) {
-        // An empty reason still means broken; reporting a trailing colon with
-        // nothing after it tells the user nothing.
-        const reason = match.broken.trim()
-        this.context.base.notice.set(reason === ''
-          ? this.t('The preset cannot compose a session')
-          : this.t('The preset cannot compose a session: {reason}', { reason }))
+        this.context.base.notice.set(match.broken, 'error')
         return
       }
       if (selection === undefined) {
-        await this.setDefault(client, match.id, match.name ?? match.id, operation)
+        await this.setDefault(client, match.id, operation)
         return
       }
       const selected = await remoteValue(client.remote.agentPresets.select(selection.ref.sessionId, match.id))
       if (!operation.valid() || this.disposed) return
-      this.context.base.notice.set(this.t('Preset switched to {preset}', { preset: selected }))
+      this.context.base.notice.set(`preset ${selected}`, 'success')
     } catch (error) {
-      if (!this.disposed && operation.valid()) this.context.base.notice.set(remoteErrorMessage(error))
+      if (!this.disposed && operation.valid()) this.context.base.notice.set(remoteErrorMessage(error), 'error')
     } finally { operation.dispose() }
   }
 
   /** Persist the preset a later blank Session takes, bound to the descriptor revision. */
-  private async setDefault(client: HostClient, id: string, label: string, operation: RemoteFeatureOperation): Promise<void> {
+  private async setDefault(client: HostClient, id: string, operation: RemoteFeatureOperation): Promise<void> {
     const settings = await remoteValue(client.remote.settings.describe())
     if (this.disposed || !operation.valid()) return
     const descriptor = settings.namespaces.find(candidate => candidate.ns === PRESET_SETTINGS_NS)
@@ -123,7 +120,7 @@ class RemotePresetOperationsController {
       descriptor.revision,
     ))
     if (this.disposed || !operation.valid()) return
-    this.context.base.notice.set(this.t('Default preset: {preset}', { preset: label }))
+    this.context.base.notice.set(this.t('Default preset: {preset}', { preset: id }), 'success')
   }
 }
 

@@ -72,7 +72,7 @@ function client(presets: readonly PresetRow[] = []) {
     remote: {
       agentPresets: {
         list: vi.fn(async () => ({ ok: true, value: { presets } })),
-        select: vi.fn(async () => ({ ok: true, value: 'Alpha' })),
+        select: vi.fn(async (_sessionId: string, id: string) => ({ ok: true, value: id })),
       },
       settings: {
         describe: vi.fn(async () => ({
@@ -89,7 +89,7 @@ function selection(host: HostClient, sessionId = 'session-1'): RemoteFeatureSele
   return {
     ref: { host: HostKey('local'), sessionId: SessionId(sessionId) },
     client: host,
-    binding: {},
+    binding: { session: { getSnapshot: () => ({ running: false }) } },
   } as unknown as RemoteFeatureSelection
 }
 
@@ -112,27 +112,26 @@ describe('mountRemotePresetOperations', () => {
     const dispose = mountRemotePresetOperations(f.context)
     const signal = new AbortController().signal
     await f.execute('', signal)
-    expect(f.commands.execute).toHaveBeenCalledExactlyOnceWith('presets', '', signal)
+    expect(f.commands.execute).toHaveBeenCalledExactlyOnceWith('presets', '', expect.any(AbortSignal))
     expect(f.overlayOpen).not.toHaveBeenCalled()
     expect((host.remote.agentPresets.list as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled()
     expect(f.notice.set).not.toHaveBeenCalled()
     dispose()
   })
 
-  it('resolves a name by id first, then by display name, case-insensitively', async () => {
+  it('resolves exact native ids and rejects display names or a different case', async () => {
     const f = fixture()
-    const host = client([
-      { id: 'alpha', name: 'Alpha' },
-      { id: 'other', name: 'Friendly' },
-    ])
+    const host = client([{ id: 'alpha', name: 'Alpha' }, { id: 'other', name: 'Friendly' }])
     f.attach(host as unknown as HostClient, selection(host as unknown as HostClient))
     const dispose = mountRemotePresetOperations(f.context)
-    await f.execute('ALPHA')
-    expect(host.remote.agentPresets.select).toHaveBeenCalledWith(SessionId('session-1'), 'alpha')
-    await f.execute('fRiEnDlY')
-    expect(host.remote.agentPresets.select).toHaveBeenLastCalledWith(SessionId('session-1'), 'other')
-    expect(host.remote.agentPresets.select).toHaveBeenCalledTimes(2)
-    expect(f.notice.set).toHaveBeenLastCalledWith('Preset switched to Alpha')
+    for (const name of ['ALPHA', 'Friendly', 'fRiEnDlY']) {
+      await f.execute(name)
+      expect(f.notice.set).toHaveBeenLastCalledWith(`Unknown agent preset: ${name}`, 'error')
+    }
+    expect(host.remote.agentPresets.select).not.toHaveBeenCalled()
+    await f.execute('alpha')
+    expect(host.remote.agentPresets.select).toHaveBeenCalledExactlyOnceWith(SessionId('session-1'), 'alpha')
+    expect(f.notice.set).toHaveBeenLastCalledWith('preset alpha', 'success')
     expect(host.remote.settings.mutate).not.toHaveBeenCalled()
     dispose()
   })
@@ -143,9 +142,27 @@ describe('mountRemotePresetOperations', () => {
     f.attach(host as unknown as HostClient, selection(host as unknown as HostClient))
     const dispose = mountRemotePresetOperations(f.context)
     await f.execute('ghost')
-    expect(f.notice.set).toHaveBeenCalledWith('Unknown preset: ghost')
+    expect(f.notice.set).toHaveBeenCalledWith('Unknown agent preset: ghost', 'error')
     expect(host.remote.agentPresets.select).not.toHaveBeenCalled()
     expect(host.remote.settings.mutate).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('rejects busy native Agents before catalog reads and ignores a detached selected Client', async () => {
+    const f = fixture()
+    const host = client([{ id: 'alpha' }])
+    const current = selection(host as unknown as HostClient)
+    vi.spyOn(current.binding.session, 'getSnapshot').mockReturnValue({ running: true } as never)
+    f.attach(host as unknown as HostClient, current)
+    const dispose = mountRemotePresetOperations(f.context)
+    await f.execute('alpha')
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('cannot switch presets while the agent is running', 'error')
+    expect(host.remote.agentPresets.list).not.toHaveBeenCalled()
+    expect(host.remote.agentPresets.select).not.toHaveBeenCalled()
+    f.hosts.list.mockReturnValue([])
+    await f.execute('alpha')
+    expect(f.notice.set).toHaveBeenCalledOnce()
+    expect(host.remote.agentPresets.list).not.toHaveBeenCalled()
     dispose()
   })
 
@@ -155,7 +172,7 @@ describe('mountRemotePresetOperations', () => {
     f.attach(host as unknown as HostClient, selection(host as unknown as HostClient))
     const dispose = mountRemotePresetOperations(f.context)
     await f.execute('broken')
-    expect(f.notice.set).toHaveBeenCalledWith('The preset cannot compose a session: missing dependency')
+    expect(f.notice.set).toHaveBeenCalledWith('missing dependency', 'error')
     expect(host.remote.agentPresets.select).not.toHaveBeenCalled()
     expect(host.remote.settings.mutate).not.toHaveBeenCalled()
     dispose()
@@ -168,7 +185,7 @@ describe('mountRemotePresetOperations', () => {
     const dispose = mountRemotePresetOperations(f.context)
     await f.execute('alpha')
     expect(host.remote.agentPresets.select).toHaveBeenCalledExactlyOnceWith(SessionId('session-9'), 'alpha')
-    expect(f.notice.set).toHaveBeenCalledWith('Preset switched to Alpha')
+    expect(f.notice.set).toHaveBeenCalledWith('preset alpha', 'success')
     expect(host.remote.settings.mutate).not.toHaveBeenCalled()
     dispose()
   })
@@ -185,7 +202,7 @@ describe('mountRemotePresetOperations', () => {
       [{ op: 'set', path: ['selectedDefault'], value: 'alpha' }],
       7,
     )
-    expect(f.notice.set).toHaveBeenCalledWith('Default preset: Alpha')
+    expect(f.notice.set).toHaveBeenCalledWith('Default preset: alpha', 'success')
     expect(host.remote.agentPresets.select).not.toHaveBeenCalled()
     dispose()
   })
@@ -196,7 +213,7 @@ describe('mountRemotePresetOperations', () => {
     f.attach(host as unknown as HostClient, selection(host as unknown as HostClient))
     mountRemotePresetOperations(f.context)
     await f.execute('blank')
-    expect(f.notice.set).toHaveBeenLastCalledWith('The preset cannot compose a session')
+    expect(f.notice.set).toHaveBeenLastCalledWith('', 'error')
   })
 
   it('reports no attached Host without crashing', async () => {
@@ -278,7 +295,7 @@ describe('mountRemotePresetOperations', () => {
     const dispose = mountRemotePresetOperations(f.context)
     host.remote.agentPresets.select.mockRejectedValueOnce(new Error('native turn guard failed'))
     await f.execute('alpha')
-    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('native turn guard failed')
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('native turn guard failed', 'error')
     const late = Promise.withResolvers<Awaited<ReturnType<typeof host.remote.agentPresets.select>>>()
     host.remote.agentPresets.select.mockReturnValueOnce(late.promise)
     const selecting = f.execute('alpha')
@@ -315,7 +332,7 @@ describe('mountRemotePresetOperations', () => {
     f.attach(host as unknown as HostClient)
     const dispose = mountRemotePresetOperations(f.context)
     await f.execute('alpha')
-    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('Default preset: alpha')
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('Default preset: alpha', 'success')
     const pending = Promise.withResolvers<Awaited<ReturnType<typeof host.remote.settings.describe>>>()
     host.remote.settings.describe.mockReturnValueOnce(pending.promise)
     const describing = f.execute('alpha')
