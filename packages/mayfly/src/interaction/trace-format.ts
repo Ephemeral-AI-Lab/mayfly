@@ -9,19 +9,7 @@
 import { extractSessionEventText } from '@deepseek-ai/dsh-session-query'
 import type { AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { SessionEventRecord, SessionEventTrace, SessionEventWindow } from '@deepseek-ai/dsh-session-query'
-
-/** One display-ready event in the trace timeline. */
-export interface TraceItem {
-  readonly seq: number
-  readonly lastSeq: number
-  readonly eventSeqs: readonly number[]
-  readonly time: number
-  readonly type: string
-  readonly surface: SessionEventRecord['surface']
-  readonly title: string
-  readonly summary: string
-}
+export { formatTraceAll, formatTraceItem, traceTime, type TraceItem } from './trace-model.ts'
 
 /** Convert an event type into a compact user-facing label. */
 export function traceTitle(type: string): string {
@@ -72,43 +60,5 @@ export function traceSummary(event: SessionEvent): string {
   } catch {
     return '[unserializable event payload]'
   }
-}
-
-/** Format a timestamp consistently across the panel and clipboard output. */
-export function traceTime(time: number): string {
-  const date = new Date(time)
-  return Number.isFinite(date.getTime()) ? date.toISOString().slice(11, 19) : '??:??:??'
-}
-
-/** Serialize one event and its official relationship trace for clipboard use. */
-export function formatTraceItem(item: TraceItem, window: SessionEventWindow | undefined, relation: SessionEventTrace | undefined, rawEvents: readonly SessionEvent[] = []): string {
-  const sequence = item.lastSeq === item.seq ? `#${String(item.seq)}` : `#${String(item.seq)}-${String(item.lastSeq)}`
-  const lines = [`[${traceTime(item.time)}] ${sequence} ${item.title} (${item.type})`, `surface: ${item.surface}`]
-  if (item.summary.length > 0) lines.push('', item.summary)
-  if (relation !== undefined) {
-    if (relation.replacedBy !== undefined) lines.push('', `replaced by: #${String(relation.replacedBy)}`)
-    if (relation.replacementChain.length > 0) lines.push(`replacement chain: ${relation.replacementChain.map(seq => `#${String(seq)}`).join(' -> ')}`)
-    if (relation.replacedEventSeqs.length > 0) lines.push(`replaces: ${relation.replacedEventSeqs.map(seq => `#${String(seq)}`).join(', ')}`)
-    if (relation.sourceEventSeqs.length > 0) lines.push(`sources: ${relation.sourceEventSeqs.map(seq => `#${String(seq)}`).join(', ')}`)
-    if (relation.derivedEventSeqs.length > 0) lines.push(`derived: ${relation.derivedEventSeqs.map(seq => `#${String(seq)}`).join(', ')}`)
-  }
-  if (window !== undefined) {
-    lines.push('', 'raw event:', JSON.stringify(window.target, null, 2))
-  } else if (rawEvents.length > 0) {
-    lines.push('', 'raw events:', JSON.stringify(rawEvents, null, 2))
-  }
-  return lines.join('\n')
-}
-
-/** Serialize the complete timeline as stable Markdown for clipboard use. */
-export function formatTraceAll(items: readonly TraceItem[], sessionId: string): string {
-  const lines = [`# Trace`, '', `Session: ${sessionId}`, '']
-  for (const item of items) {
-    const sequence = item.lastSeq === item.seq ? `#${String(item.seq)}` : `#${String(item.seq)}-${String(item.lastSeq)}`
-    lines.push(`## [${traceTime(item.time)}] ${sequence} ${item.title}`, '', `Type: ${item.type}`, `Surface: ${item.surface}`)
-    if (item.summary.length > 0) lines.push('', item.summary)
-    lines.push('')
-  }
-  return lines.join('\n')
 }
 

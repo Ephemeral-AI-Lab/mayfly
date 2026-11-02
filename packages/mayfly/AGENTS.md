@@ -122,6 +122,12 @@ builder alongside help, version, context, rewind, and update presentation.
 The Remote router owns command admission; its app-scoped overlay owns locale
 subscriptions, scrolling, focus restoration, and disposal.
 
+`trace` exposes the rc.2 timeline, responsive detail nodes, and clipboard
+formatters over readonly native trace facts. Host owns complete Session queries,
+surface classification, stream grouping, and direct event relationships;
+Remote owns reads, selection, cancellation, and frontend-local clipboard writes.
+The shared trace model never queries or folds native Session state.
+
 A `mayflyPanes` pane with `placement: 'views'` is a view of the status row, kept
 by `core/views-lane.ts` (`SurfaceManager.views`), not by a pane lane: it has no
 rows of its own, its summary joins the status row through the footer, and an entered

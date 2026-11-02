@@ -56,6 +56,12 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   builds the shared reference turn picker, and forks only after explicit
   acceptance. Busy checks and exact binding/Host/generation fences cover the
   history read, acceptance, and late fork result; the original Session stays.
+- `/trace` consumes the Host's complete canonical trace timeline and exact raw
+  event identities through passive Session queries. Its shared rc.2 model owns
+  list/detail presentation and copy documents. Native Host queries own surface
+  classification, stream grouping and event relationships; Remote never folds
+  those facts. Panel close, caller cancellation and exact Host generation retire
+  pending detail/copy results; newer commands and selections fence older reads.
 - `/sessions` consumes the shared reference workspace/session browser and the
   native Client catalog, workspace membership, projection reads, search, and
   archive actions. Listing and detail reads never retain a Session. Child

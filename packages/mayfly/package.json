@@ -114,6 +114,10 @@
     "./files-browser": {
       "types": "./lib/types/files-browser.d.ts",
       "default": "./lib/files-browser.js"
+    },
+    "./trace": {
+      "types": "./lib/types/trace.d.ts",
+      "default": "./lib/trace.js"
     }
   },
   "files": [

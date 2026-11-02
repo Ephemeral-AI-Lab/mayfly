@@ -38,7 +38,7 @@ describe('aggregateTraceItems', () => {
       event(5, 'assistant/message', { turn: 1, step: 1, message: { content: [] }, stream: [] }),
       attempt(6, 'reasoning-chunks', 'ignored'),
     ]
-    expect(aggregateTraceItems(records, events)).toEqual(referenceAggregate(records, events))
+    expect(aggregateTraceItems(records, events)).toEqual(referenceAggregate(records as unknown as Parameters<typeof referenceAggregate>[0], events as unknown as Parameters<typeof referenceAggregate>[1]))
     expect(aggregateTraceItems(records, events)).toMatchObject([
       { seq: 1, lastSeq: 2, eventSeqs: [1, 2], title: 'Thinking', summary: 'No need' },
       { seq: 3, lastSeq: 4, eventSeqs: [3, 4], title: 'Assistant draft', summary: 'answer now' },

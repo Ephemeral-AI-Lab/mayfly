@@ -23,7 +23,7 @@ describe('native passive Session trace', () => {
   it('uses the whole native log and surface records with the exact reference grouping and frozen output', async () => {
     const f = fixture()
     const rows = await traceCatalog(f.ctx, { sessionId }, new AbortController().signal)
-    expect(rows).toEqual(referenceAggregate(buildSessionEventRecords(sessionId, f.events), f.events))
+    expect(rows).toEqual(referenceAggregate(buildSessionEventRecords(sessionId, f.events) as unknown as Parameters<typeof referenceAggregate>[0], f.events as unknown as Parameters<typeof referenceAggregate>[1]))
     expect(f.readSession).toHaveBeenCalledWith(sessionId); expect(f.activate).not.toHaveBeenCalled()
     expect(Object.isFrozen(rows)).toBe(true); expect(Object.isFrozen(rows[0])).toBe(true)
   })

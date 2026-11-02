@@ -24,6 +24,8 @@ import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/fronten
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
 import { rewindNode } from '../../src/interaction/rewind.ts'
 import { createUpdateProgressState, updatePanelModel } from '../../src/interaction/update-model.ts'
+import { tracePanelModel } from '../../src/interaction/trace-model.ts'
+import { createRealSurface, probeComponents } from '../design/probe.ts'
 import { jobDetailsNode, jobItems, jobOutputNode } from '../../src/interaction/jobs.ts'
 import { sessionWorkspaceItem } from '../../src/interaction/session-workspaces-model.ts'
 import { sessionDetailNode as sessionListDetailNode, sessionListItem } from '../../src/interaction/session-list-model.ts'
@@ -66,6 +68,14 @@ function planAsk(text: string) {
 
 describe('interaction width-scan', () => {
   for (const { name, text } of ADVERSARIAL) {
+    it(`Trace list and detail survive ${name}`, () => {
+      const item = { seq: 1, lastSeq: 2, eventSeqs: [1, 2], time: 1_000, type: 'assistant/attempt', surface: 'current' as const, title: text, summary: text }
+      for (const narrow of ['list', 'detail'] as const) for (const width of SCAN_WIDTHS) {
+        const surface = createRealSurface(tracePanelModel(text, [item], undefined, { selected: item, document: JSON.stringify({ native: text }), narrow, escapeLabel: 'back' }), width, { components: probeComponents() })
+        try { expectLinesFit(`trace-${narrow}/${name}`, surface.render(), width) } finally { surface.dispose() }
+      }
+    })
+
     for (const kind of ['form', 'multiselect'] as const) it(`shared ${kind} survives ${name}`, async () => {
       const bench = await requestFixture()
       try {

@@ -1,0 +1,817 @@
+{
+  "reference": "f148e7045cc22a66e62c0cd5203f8eeca1368081",
+  "sessionId": "reference-session",
+  "items": [
+    {
+      "seq": 0,
+      "lastSeq": 0,
+      "eventSeqs": [
+        0
+      ],
+      "time": 1000,
+      "type": "user/message",
+      "surface": "current",
+      "title": "User request",
+      "summary": "Read the native trace"
+    },
+    {
+      "seq": 1,
+      "lastSeq": 2,
+      "eventSeqs": [
+        1,
+        2
+      ],
+      "time": 2000,
+      "type": "assistant/attempt",
+      "surface": "log-only",
+      "title": "Assistant draft",
+      "summary": "One streamed answer"
+    }
+  ],
+  "document": "[\n  {\"seq\": 1, \"type\": \"assistant/attempt\"}\n]",
+  "models": {
+    "list": {
+      "title": "Trace · reference-session",
+      "chrome": "overlay",
+      "escapeLabel": "close",
+      "child": {
+        "gap": 3,
+        "rule": "column",
+        "kind": "stack",
+        "direction": "row",
+        "children": [
+          {
+            "basis": 58,
+            "grow": 0,
+            "shrink": 0,
+            "when": {
+              "minWidth": 100
+            },
+            "node": {
+              "id": "trace-events",
+              "role": "browse",
+              "selectedIds": [],
+              "filterable": true,
+              "filterMode": "slash",
+              "items": [
+                {
+                  "id": "0",
+                  "label": "User request",
+                  "cells": [
+                    {
+                      "spans": [
+                        {
+                          "text": "00:00:01",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "#0",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 6
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "current",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8,
+                      "shed": 1
+                    }
+                  ],
+                  "detail": "Read the native trace",
+                  "searchText": "00:00:01 #0 User request user/message current Read the native trace"
+                },
+                {
+                  "id": "1",
+                  "label": "Assistant draft",
+                  "cells": [
+                    {
+                      "spans": [
+                        {
+                          "text": "00:00:02",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "#1-2",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 6
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "log-only",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8,
+                      "shed": 1
+                    }
+                  ],
+                  "detail": "One streamed answer",
+                  "searchText": "00:00:02 #1-2 Assistant draft assistant/attempt log-only One streamed answer"
+                }
+              ],
+              "empty": {
+                "title": "no trace events yet",
+                "kind": "empty"
+              },
+              "kind": "list"
+            }
+          },
+          {
+            "basis": 0,
+            "grow": 1,
+            "when": {
+              "minWidth": 100
+            },
+            "node": {
+              "tone": "muted",
+              "kind": "text",
+              "content": "Trace detail"
+            }
+          },
+          {
+            "grow": 1,
+            "when": {
+              "maxWidth": 99
+            },
+            "node": {
+              "id": "trace-events",
+              "role": "browse",
+              "selectedIds": [],
+              "filterable": true,
+              "filterMode": "slash",
+              "items": [
+                {
+                  "id": "0",
+                  "label": "User request",
+                  "cells": [
+                    {
+                      "spans": [
+                        {
+                          "text": "00:00:01",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "#0",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 6
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "current",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8,
+                      "shed": 1
+                    }
+                  ],
+                  "detail": "Read the native trace",
+                  "searchText": "00:00:01 #0 User request user/message current Read the native trace"
+                },
+                {
+                  "id": "1",
+                  "label": "Assistant draft",
+                  "cells": [
+                    {
+                      "spans": [
+                        {
+                          "text": "00:00:02",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "#1-2",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 6
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "log-only",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8,
+                      "shed": 1
+                    }
+                  ],
+                  "detail": "One streamed answer",
+                  "searchText": "00:00:02 #1-2 Assistant draft assistant/attempt log-only One streamed answer"
+                }
+              ],
+              "empty": {
+                "title": "no trace events yet",
+                "kind": "empty"
+              },
+              "kind": "list"
+            }
+          }
+        ]
+      },
+      "kind": "surface"
+    },
+    "wideDetail": {
+      "title": "Trace · reference-session",
+      "chrome": "overlay",
+      "escapeLabel": "close",
+      "child": {
+        "gap": 3,
+        "rule": "column",
+        "kind": "stack",
+        "direction": "row",
+        "children": [
+          {
+            "basis": 58,
+            "grow": 0,
+            "shrink": 0,
+            "when": {
+              "minWidth": 100
+            },
+            "node": {
+              "id": "trace-events",
+              "role": "browse",
+              "selectedIds": [],
+              "filterable": true,
+              "filterMode": "slash",
+              "items": [
+                {
+                  "id": "0",
+                  "label": "User request",
+                  "cells": [
+                    {
+                      "spans": [
+                        {
+                          "text": "00:00:01",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "#0",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 6
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "current",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8,
+                      "shed": 1
+                    }
+                  ],
+                  "detail": "Read the native trace",
+                  "searchText": "00:00:01 #0 User request user/message current Read the native trace"
+                },
+                {
+                  "id": "1",
+                  "label": "Assistant draft",
+                  "cells": [
+                    {
+                      "spans": [
+                        {
+                          "text": "00:00:02",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "#1-2",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 6
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "log-only",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8,
+                      "shed": 1
+                    }
+                  ],
+                  "detail": "One streamed answer",
+                  "searchText": "00:00:02 #1-2 Assistant draft assistant/attempt log-only One streamed answer"
+                }
+              ],
+              "empty": {
+                "title": "no trace events yet",
+                "kind": "empty"
+              },
+              "kind": "list"
+            }
+          },
+          {
+            "basis": 0,
+            "grow": 1,
+            "when": {
+              "minWidth": 100
+            },
+            "node": {
+              "kind": "stack",
+              "direction": "column",
+              "children": [
+                {
+                  "node": {
+                    "kind": "fields",
+                    "rows": [
+                      {
+                        "label": "Type",
+                        "value": [
+                          {
+                            "text": "assistant/attempt"
+                          }
+                        ]
+                      },
+                      {
+                        "label": "Surface",
+                        "value": [
+                          {
+                            "text": "log-only"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "basis": 0,
+                  "grow": 1,
+                  "minSize": 1,
+                  "node": {
+                    "id": "trace-document",
+                    "scrollbar": true,
+                    "kind": "scroll",
+                    "child": {
+                      "language": "json",
+                      "kind": "code",
+                      "code": "[\n  {\"seq\": 1, \"type\": \"assistant/attempt\"}\n]"
+                    }
+                  }
+                },
+                {
+                  "node": {
+                    "id": "trace-detail-actions",
+                    "items": [
+                      {
+                        "id": "copy",
+                        "label": "Copy trace item",
+                        "hintLabel": "copy",
+                        "semantic": "copy",
+                        "hidden": true
+                      }
+                    ],
+                    "kind": "actions"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "grow": 1,
+            "when": {
+              "maxWidth": 99
+            },
+            "node": {
+              "id": "trace-events",
+              "role": "browse",
+              "selectedIds": [],
+              "filterable": true,
+              "filterMode": "slash",
+              "items": [
+                {
+                  "id": "0",
+                  "label": "User request",
+                  "cells": [
+                    {
+                      "spans": [
+                        {
+                          "text": "00:00:01",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "#0",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 6
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "current",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8,
+                      "shed": 1
+                    }
+                  ],
+                  "detail": "Read the native trace",
+                  "searchText": "00:00:01 #0 User request user/message current Read the native trace"
+                },
+                {
+                  "id": "1",
+                  "label": "Assistant draft",
+                  "cells": [
+                    {
+                      "spans": [
+                        {
+                          "text": "00:00:02",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "#1-2",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 6
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "log-only",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8,
+                      "shed": 1
+                    }
+                  ],
+                  "detail": "One streamed answer",
+                  "searchText": "00:00:02 #1-2 Assistant draft assistant/attempt log-only One streamed answer"
+                }
+              ],
+              "empty": {
+                "title": "no trace events yet",
+                "kind": "empty"
+              },
+              "kind": "list"
+            }
+          }
+        ]
+      },
+      "kind": "surface"
+    },
+    "narrowDetail": {
+      "title": "Trace · reference-session",
+      "chrome": "overlay",
+      "escapeLabel": "back",
+      "child": {
+        "gap": 3,
+        "rule": "column",
+        "kind": "stack",
+        "direction": "row",
+        "children": [
+          {
+            "basis": 58,
+            "grow": 0,
+            "shrink": 0,
+            "when": {
+              "minWidth": 100
+            },
+            "node": {
+              "id": "trace-events",
+              "role": "browse",
+              "selectedIds": [],
+              "filterable": true,
+              "filterMode": "slash",
+              "items": [
+                {
+                  "id": "0",
+                  "label": "User request",
+                  "cells": [
+                    {
+                      "spans": [
+                        {
+                          "text": "00:00:01",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "#0",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 6
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "current",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8,
+                      "shed": 1
+                    }
+                  ],
+                  "detail": "Read the native trace",
+                  "searchText": "00:00:01 #0 User request user/message current Read the native trace"
+                },
+                {
+                  "id": "1",
+                  "label": "Assistant draft",
+                  "cells": [
+                    {
+                      "spans": [
+                        {
+                          "text": "00:00:02",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "#1-2",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 6
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "log-only",
+                          "tone": "muted"
+                        }
+                      ],
+                      "min": 8,
+                      "shed": 1
+                    }
+                  ],
+                  "detail": "One streamed answer",
+                  "searchText": "00:00:02 #1-2 Assistant draft assistant/attempt log-only One streamed answer"
+                }
+              ],
+              "empty": {
+                "title": "no trace events yet",
+                "kind": "empty"
+              },
+              "kind": "list"
+            }
+          },
+          {
+            "basis": 0,
+            "grow": 1,
+            "when": {
+              "minWidth": 100
+            },
+            "node": {
+              "kind": "stack",
+              "direction": "column",
+              "children": [
+                {
+                  "node": {
+                    "kind": "fields",
+                    "rows": [
+                      {
+                        "label": "Type",
+                        "value": [
+                          {
+                            "text": "assistant/attempt"
+                          }
+                        ]
+                      },
+                      {
+                        "label": "Surface",
+                        "value": [
+                          {
+                            "text": "log-only"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "basis": 0,
+                  "grow": 1,
+                  "minSize": 1,
+                  "node": {
+                    "id": "trace-document",
+                    "scrollbar": true,
+                    "kind": "scroll",
+                    "child": {
+                      "language": "json",
+                      "kind": "code",
+                      "code": "[\n  {\"seq\": 1, \"type\": \"assistant/attempt\"}\n]"
+                    }
+                  }
+                },
+                {
+                  "node": {
+                    "id": "trace-detail-actions",
+                    "items": [
+                      {
+                        "id": "copy",
+                        "label": "Copy trace item",
+                        "hintLabel": "copy",
+                        "semantic": "copy",
+                        "hidden": true
+                      }
+                    ],
+                    "kind": "actions"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "grow": 1,
+            "when": {
+              "maxWidth": 99
+            },
+            "node": {
+              "kind": "stack",
+              "direction": "column",
+              "children": [
+                {
+                  "node": {
+                    "kind": "fields",
+                    "rows": [
+                      {
+                        "label": "Type",
+                        "value": [
+                          {
+                            "text": "assistant/attempt"
+                          }
+                        ]
+                      },
+                      {
+                        "label": "Surface",
+                        "value": [
+                          {
+                            "text": "log-only"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "basis": 0,
+                  "grow": 1,
+                  "minSize": 1,
+                  "node": {
+                    "id": "trace-document",
+                    "scrollbar": true,
+                    "kind": "scroll",
+                    "child": {
+                      "language": "json",
+                      "kind": "code",
+                      "code": "[\n  {\"seq\": 1, \"type\": \"assistant/attempt\"}\n]"
+                    }
+                  }
+                },
+                {
+                  "node": {
+                    "id": "trace-detail-actions",
+                    "items": [
+                      {
+                        "id": "copy",
+                        "label": "Copy trace item",
+                        "hintLabel": "copy",
+                        "semantic": "copy",
+                        "hidden": true
+                      }
+                    ],
+                    "kind": "actions"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "kind": "surface"
+    },
+    "empty": {
+      "title": "Trace · reference-session",
+      "chrome": "overlay",
+      "escapeLabel": "close",
+      "child": {
+        "gap": 3,
+        "rule": "column",
+        "kind": "stack",
+        "direction": "row",
+        "children": [
+          {
+            "basis": 58,
+            "grow": 0,
+            "shrink": 0,
+            "when": {
+              "minWidth": 100
+            },
+            "node": {
+              "id": "trace-events",
+              "role": "browse",
+              "selectedIds": [],
+              "filterable": true,
+              "filterMode": "slash",
+              "items": [],
+              "empty": {
+                "title": "no trace events yet",
+                "kind": "empty"
+              },
+              "kind": "list"
+            }
+          },
+          {
+            "basis": 0,
+            "grow": 1,
+            "when": {
+              "minWidth": 100
+            },
+            "node": {
+              "tone": "muted",
+              "kind": "text",
+              "content": "Trace detail"
+            }
+          },
+          {
+            "grow": 1,
+            "when": {
+              "maxWidth": 99
+            },
+            "node": {
+              "id": "trace-events",
+              "role": "browse",
+              "selectedIds": [],
+              "filterable": true,
+              "filterMode": "slash",
+              "items": [],
+              "empty": {
+                "title": "no trace events yet",
+                "kind": "empty"
+              },
+              "kind": "list"
+            }
+          }
+        ]
+      },
+      "kind": "surface"
+    }
+  }
+}
