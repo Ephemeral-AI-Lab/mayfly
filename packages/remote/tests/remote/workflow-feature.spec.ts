@@ -141,6 +141,7 @@ describe('Remote Workflow shared presentation and physical stream ownership', ()
   })
 
   it.each([1, 8, 20, 40, 80, 120])('uses the canonical workflow node without overflow at width %s', async width => {
+    vi.spyOn(Date, 'now').mockReturnValue(10_000)
     const f = await fixture()
     const runs = [run({ phases: [{ title: 'Inspect' }, { title: 'Check' }], phasesSeen: ['Inspect'], currentPhase: 'Inspect', agents: [{ seq: 1, label: 'Inspect code 你好 '.repeat(5), phase: 'Inspect', childId: SessionId('child') }] })]
     f.native.emit(frame(runs)); await flush()
