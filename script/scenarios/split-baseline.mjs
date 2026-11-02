@@ -3,7 +3,7 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { isDeepStrictEqual } from 'node:util'
 import { t as listTar } from 'tar'
@@ -143,6 +143,6 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
   writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n')
   // Keep capture/run linkage outside the immutable screen/provenance manifest.
   const evidence = persistedSplitEvidence(run)
-  writeFileSync(join(captureDir, `native-evidence-${run.slice(run.lastIndexOf('/') + 1)}.json`), JSON.stringify({ referenceManifestSha256: createHash('sha256').update(readFileSync(file)).digest('hex'), ...evidence }, null, 2) + '\n')
+  writeFileSync(join(captureDir, `native-evidence-${basename(run)}.json`), JSON.stringify({ referenceManifestSha256: createHash('sha256').update(readFileSync(file)).digest('hex'), ...evidence }, null, 2) + '\n')
   return captureDir
 }
