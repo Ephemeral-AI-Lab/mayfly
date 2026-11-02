@@ -945,6 +945,23 @@ describe('mayfly-editor-plus @ mentions', () => {
     expect(await provider.getSuggestions(['@zzz'], 0, 4, { signal: signal() })).toBeNull()
     expect(ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(before)
   })
+
+  it('discards a native file read that settles after its active completion was cancelled', async () => {
+    const gate = Promise.withResolvers<readonly FileReferenceCandidate[]>()
+    const refs = references([])
+    refs.list.mockReturnValueOnce(gate.promise)
+    const { ctx, editor } = await mount({ references: refs })
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const controller = new AbortController()
+    const before = ctx.mayflyUiInteraction.notificationSnapshot().length
+    const reading = provider.getSuggestions(['@late'], 0, 5, { signal: controller.signal })
+    await vi.waitFor(() => { expect(refs.list).toHaveBeenCalledOnce() })
+    controller.abort()
+    gate.resolve([file('late.txt')])
+    expect(await reading).toBeNull()
+    expect(refs.list.mock.calls[0]![2].aborted).toBe(true)
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(before)
+  })
 })
 
 describe('mayfly-editor-plus: the mention an @ completion leaves behind', () => {
