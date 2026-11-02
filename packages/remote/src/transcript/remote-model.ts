@@ -74,6 +74,7 @@ export class RemoteConversationModelSource {
   private durableValue: unknown
   private live: RemoteLiveConversation | undefined
   private defaultModel: RemoteModelSelection | undefined
+  private restoreEffectiveEffort = false
   private readonly modelCatalogs = new Map<HostKey, ModelCatalog>()
   private generation = 0
   private attachmentGeneration = 0
@@ -159,7 +160,7 @@ export class RemoteConversationModelSource {
     const catalog = ref === undefined ? undefined : this.modelCatalogs.get(ref.host)
     const effort = selectedModel === undefined
       ? this.defaultModel?.reasoningEffort
-      : selectedModel.reasoningEffort ?? recordedEffort(this.source?.getSnapshot().entries, selectedModel, recordedModel, catalog)
+      : selectedModel.reasoningEffort ?? (this.restoreEffectiveEffort ? recordedEffort(this.source?.getSnapshot().entries, selectedModel, recordedModel, catalog) : undefined)
     const context = readContextPressure(snapshot.values['contextPressure'])
     const active = snapshot.session?.running === true
       || this.durable.streaming
@@ -204,6 +205,10 @@ export class RemoteConversationModelSource {
     this.replacedWhileHidden = false
     this.attaching = true
     this.facts.attach(binding, selection)
+    // rc.2 displays a provider-default route without an effort during its
+    // initial mount. Reopening an already used Session restores the effective
+    // request level. This is greeting provenance, not another selection store.
+    this.restoreEffectiveEffort = readRecordedModelSelection(this.facts.snapshot().values['modelSelection']) !== undefined
     this.attaching = false
     if (this.visible) this.updateDurable()
     if (source === null) {
@@ -254,6 +259,7 @@ export class RemoteConversationModelSource {
     this.source = null
     this.binding = null
     this.selection = undefined
+    this.restoreEffectiveEffort = false
     this.modelCatalogs.clear()
     this.generation += 1
     this.attachmentGeneration += 1

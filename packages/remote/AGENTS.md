@@ -95,7 +95,11 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Reconnect replaces the baseline and historical commands never replay notices.
   Effective reasoning labels may read an admitted native request header or the
   exact Host/route's native model catalog when that header is outside the tail
-  page. A pending selection never inherits an older request's effort; metadata
+  page. The rc.2 greeting keeps a provider-default route unlabelled during its
+  first Session mount; reopening an already used Session restores the effective
+  level. Explicit native effort picks still update immediately. This mount-local
+  presentation provenance never changes native selections or freezes projections.
+  A pending selection never inherits an older request's effort; metadata
   refreshes are generation-fenced and never turn a provider default into an
   explicit model-selection write.
 - Slash-command images use native encoded attachments. The official command

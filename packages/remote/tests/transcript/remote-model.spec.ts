@@ -572,6 +572,33 @@ describe('RemoteConversationModelSource', () => {
     expect(changed).toHaveBeenCalledTimes(after)
   })
 
+  it('preserves the reference initial-mount default label, restores the identical request on reopen, and updates explicit picks immediately', () => {
+    const events = new TestEventSource()
+    const native = { provider: 'provider', model: 'model' }
+    const selected = projection<unknown>({ next: null, lastUsed: null })
+    const source = new RemoteConversationModelSource(tools, vi.fn())
+    const ref = { host: HostKey('host'), sessionId: SessionId('session') }
+    const binding = events.binding({ modelSelection: selected })
+    source.setModelCatalog(ref.host, nativeCatalog())
+    source.attach(binding, { ref, cwd: '' })
+    const header = requestHeader()
+    events.append(header)
+    selected.set({ next: native, lastUsed: native })
+    expect(source.presentation()).toMatchObject({ provider: 'provider', model: 'model' })
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    expect(events.getSnapshot().entries).toContain(header)
+    source.attach(null)
+    source.attach(binding, { ref, cwd: '' })
+    expect(events.getSnapshot().entries).toContain(header)
+    expect(source.presentation().reasoningEffort).toBe('high')
+    selected.set({ next: { ...native, reasoningEffort: 'max' }, lastUsed: native })
+    expect(source.presentation().reasoningEffort).toBe('max')
+    selected.set({ next: { provider: 'provider', model: 'other' }, lastUsed: native })
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    expect(source.presentation().model).toBe('other')
+    source.dispose()
+  })
+
   it('does not invent effective metadata for an unavailable provider, model, or non-reasoning route', () => {
     const events = new TestEventSource()
     events.replace([requestHeader('other-provider', 'other-model')], false)

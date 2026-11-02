@@ -47,7 +47,7 @@ the initial model request is the same semantic checkpoint on both sides.
 | --- | --- | --- | --- |
 | `request/context.contextWindow` | `1000000` | `1048576` | Official provider metadata changed upstream. Preserve the native value. A shared binary formatter consequently renders different text. |
 | `contextPressure.contextWindow` | `1000000` | `1048576` | Confirms the panel receives the actual native projection, rather than a guessed catalog capacity. |
-| `request/header.config.reasoningEffort` | `high` | `high` | Effective request behavior agrees. Missing `High` in the candidate footer is a frontend adaptation defect. |
+| `request/header.config.reasoningEffort` | `high` | `high` | Effective request behavior agrees. Restoring the reference footer on reopening is a frontend adaptation, while a first mount keeps the reference's default label. |
 | `request/header.adapterDefaults.reasoningEffort` | `true` | `true` | Both requests inherited the adapter's default. Displaying the effective level must not convert it into an explicit model selection. |
 | `modelSelection` state version | `2` | `3` | The new native fold deliberately omits an adapter-defaulted effort from `lastUsed`. An absent selection field no longer means the effective request lacks reasoning. |
 | `modelSelection.lastUsed` | Flash with `reasoningEffort: high` | Flash without an effort field | Resolve effective display through native model metadata, or use the admitted request header when showing historical request behavior. Preserve the default/explicit distinction in controls. |
@@ -84,6 +84,24 @@ the native selection as the authoritative write state. An already admitted
 request's level is also available in public `request/header` events; no private
 Agent access or second Session fold is needed to verify the claim.
 
+The reference has a further presentation distinction. Its first mount of a new
+Session shows the provider-default route without `High`; reopening that same
+Session shows `High`. Native events prove that both displays concern the same
+request header, and its persisted version-2 projection already contains
+`lastUsed.reasoningEffort: high`. The reference footer caches its projection per
+Session and refreshes that cache only through the projection change callback;
+reopening reads a fresh snapshot. The difference is therefore a reference
+mount-lifecycle display behavior, not a difference in admitted requests or a
+missing native API.
+
+The split frontend preserves that behavior with one mount-local provenance
+flag: a newly attached Session with no recorded request leaves the default
+effort suffix absent, while attaching an already used Session may recover the
+effective request level from its header or exact Host catalog. Explicit native
+effort selections update immediately, pending routes do not inherit another
+request's effort, and every other projection remains live. The flag never
+changes native selection state or turns a default into an explicit write.
+
 ## System prompt ownership
 
 Two additions are ordinary upstream guidance: the delegation paragraph now
@@ -107,6 +125,15 @@ catalog. `web-runtime.surfaceContext` alone does not control the separately
 registered plugin's sections. The corrected build needs a fresh native prompt
 capture to prove that the Web-specific paragraphs are absent; resuming an old
 Session is insufficient because admitted prompts are durable history.
+
+The fresh `wave20` candidate at
+`885c5fa4b2c7251bd978796d35c9a85e22002c50` verifies the correction. Its panels run
+`split-wave20/panels/runs/76cf93da-f2da-4aa0-8921-54659d74ff41` records a new
+sequence-7 system message with 4,404 characters, SHA-256
+`4731039c0af1f140ab8ff8e176e86408bde1cb01132fd4a6bf1bf8c92bb712df`.
+The actual admitted text contains neither the Web GUI instructions nor the
+Harness checkout development paragraph. Its native `systemTokens` is 1,105;
+the remaining delta from rc.2 is retained as upstream request data.
 
 ## Tool schema differences
 
