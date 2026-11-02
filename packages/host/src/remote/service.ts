@@ -13,6 +13,10 @@ import type {} from 'zod'
 import { mayflyHostCapabilities } from './capabilities.ts'
 import type { MayflyAuthorizationAnswer, MayflyAuthorizationFrame, MayflyAuthorizationRequest, MayflyDefaultModelRequest, MayflyGitStatus, MayflyHostCapabilities, MayflyHostSessionRequest, MayflyMcpCatalog, MayflyMcpResourceBody, MayflyMcpResourceListRequest, MayflyMcpResourcePage, MayflyMcpResourceReadRequest, MayflyModelCatalogDetails, MayflyModelCatalogRequest, MayflyModelSelection, MayflyPermissionCatalogDetails, MayflyPermissionCatalogRequest, MayflyPresentToolsRequest, MayflyPresentToolsResponse, MayflyProviderBalance, MayflyRetractTurnRequest, MayflySettingsDocument, MayflySettingsDocumentWrite, MayflySkillCatalog, MayflySubagentDrainRequest, MayflyToolCatalog, MayflyWorkspace, MayflyWorkspaceChangesRequest, MayflyWorkspaceChangesSummaryResult, MayflyWorkspaceDiffRequest, MayflyWorkspaceFileDiffResult, MayflyWorkspacePathRequest, MayflyWorkflowFrame } from '../types.ts'
 import { authorize, cancelAuthorization } from './authorization.ts'
+import { traceCatalog, traceDetail } from './trace-catalog.ts'
+import type { MayflyTraceCatalogRequest, MayflyTraceDetailRequest, MayflyTraceItem, MayflyTraceDetail } from './trace-contract.ts'
+import { StatsHistory, statsSession } from './stats.ts'
+import type { MayflyStatsHistory, MayflyStatsHistoryRequest, MayflyStatsSession } from './stats-contract.ts'
 import { providerBalance } from './balance.ts'
 import { mcpCatalog, toolCatalog } from './catalog.ts'
 import { defaultModel, modelCatalogDetails, permissionCatalogDetails, skillCatalog } from './catalog-details.ts'
@@ -37,13 +41,14 @@ declare module '@deepseek-ai/cordis' {
 export class MayflyHostService extends TypertRemoteService {
   static inject = [
     'agentDefaultModel', 'agents', 'authorization', 'credentials', 'llm', 'permissionPresets',
-    'sessionController', 'sessionProjections', 'sessions', 'settings', 'skills', 'subagents',
+    'sessionController', 'sessionQuery', 'sessionProjections', 'sessions', 'settings', 'skills', 'subagents',
     'tools', 'workspaceChanges', 'workspaceRegistry',
   ]
 
   private readonly lifetime: AbortController
   private readonly workflows: WorkflowLiveCatalog
   private readonly retractions: RetractionCoordinator
+  private readonly statistics: StatsHistory
   private readonly settingsDocuments = new SettingsDocumentCoordinator()
   private readonly gitCaches = new WeakMap<Agent, { readonly cwd: string, readonly cache: GitBadgeCache }>()
 
@@ -54,6 +59,7 @@ export class MayflyHostService extends TypertRemoteService {
     ctx.effect(() => () => { this.lifetime.abort() })
     this.workflows = new WorkflowLiveCatalog(ctx)
     this.retractions = new RetractionCoordinator(ctx)
+    this.statistics = new StatsHistory(ctx)
   }
 
   private signal(signal: AbortSignal): AbortSignal {
@@ -153,6 +159,30 @@ export class MayflyHostService extends TypertRemoteService {
   @Remote('permissionCatalogDetails')
   permissionCatalogDetails(request: MayflyPermissionCatalogRequest, signal: AbortSignal): MayflyPermissionCatalogDetails {
     return permissionCatalogDetails(this.ctx, request, this.signal(signal))
+  }
+
+  /** Read the canonical native trace timeline without activating an Agent. */
+  @Remote({ resources: { session: request => request.sessionId } })
+  traceCatalog(request: MayflyTraceCatalogRequest, signal: AbortSignal): Promise<readonly MayflyTraceItem[]> {
+    return traceCatalog(this.ctx, request, this.signal(signal))
+  }
+
+  /** Read exact raw trace events and native relationship metadata. */
+  @Remote({ resources: { session: request => request.sessionId } })
+  traceDetail(request: MayflyTraceDetailRequest, signal: AbortSignal): Promise<MayflyTraceDetail> {
+    return traceDetail(this.ctx, request, this.signal(signal))
+  }
+
+  /** Read one passive Session statistics digest and creation metadata. */
+  @Remote({ resources: { session: request => request.sessionId } })
+  statsSession(request: MayflyHostSessionRequest, signal: AbortSignal): Promise<MayflyStatsSession> {
+    return statsSession(this.ctx, request, this.signal(signal))
+  }
+
+  /** Scan native history into complete progress snapshots without activating Agents. */
+  @Remote({ mode: 'stream', resources: { session: request => request.sessionId } })
+  statsHistory(request: MayflyStatsHistoryRequest, signal: AbortSignal): RemoteStream<MayflyStatsHistory> {
+    return this.statistics.read(request, this.signal(signal))
   }
 
   /** Read the official API-key balance entirely on Host. */

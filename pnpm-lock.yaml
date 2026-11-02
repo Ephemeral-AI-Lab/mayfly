@@ -332,6 +332,9 @@ importers:
       '@deepseek-ai/dsh-session-projection':
         specifier: 0.2.2-alpha.2
         version: 0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-session@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-scope@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)))
+      '@deepseek-ai/dsh-session-query':
+        specifier: 0.2.2-alpha.2
+        version: 0.2.2-alpha.2(44d9f99561bbf0a226dc7ca00df1118f)
       '@deepseek-ai/dsh-settings':
         specifier: 0.2.2-alpha.2
         version: 0.2.2-alpha.2(3606308f4d5d446cfee7edfbd0127bb1)

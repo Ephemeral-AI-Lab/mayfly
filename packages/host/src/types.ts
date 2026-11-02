@@ -16,6 +16,8 @@ import type { WorkflowAgentOutcome, WorkflowPhase, WorkflowStopReason } from '@d
 import type { ConversationJson } from './conversation/types.ts'
 
 export type * from './conversation/types.ts'
+export type * from './remote/stats-contract.ts'
+export type * from './remote/trace-contract.ts'
 
 /** Settled native Job rows; current resident rows still come from job.list. */
 export interface MayflyJobHistoryEntry {
@@ -62,6 +64,8 @@ export type MayflyHostFeature =
   | 'workspacePath'
   | 'mcpResources'
   | 'mcpTransportHealth'
+  | 'stats'
+  | 'trace'
 
 /** Version and feature facts a Client validates before entering its UI. */
 export interface MayflyHostCapabilities {
