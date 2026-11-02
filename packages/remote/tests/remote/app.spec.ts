@@ -3,7 +3,7 @@ import type { SessionBinding, SessionReference } from '@deepseek-ai/dsh-api-sess
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/types'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
-import { RemoteApp } from '../../src/remote/app.ts'
+import { RemoteApp, type RemoteAppView } from '../../src/remote/app.ts'
 import type { RemoteNotice } from '../../src/remote/notice.ts'
 import type { RemoteAppPanels } from '../../src/remote/interactions/plain-panels.ts'
 import type { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
@@ -785,6 +785,143 @@ describe('RemoteApp', () => {
     off()
     expect(fixture.sessionListeners.size).toBe(0)
   })
+
+  it('routes rename and fork writes to the exact selected Session, validates boundaries, and retains the source on fork failure', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    const rename = vi.fn(async (title: string) => ({ ok: true as const, value: { title } }))
+    Object.assign(fixture.session, { rename })
+    const fork = vi.fn(async () => SessionId('forked'))
+    Object.assign(fixture.client.sessions, { fork })
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    await app.selectOrCreate('shared-session')
+    await expect(app.execute('/rename')).rejects.toThrow('Usage: /rename <title>')
+    await app.execute('/rename Revised title')
+    expect(rename).toHaveBeenCalledWith('Revised title')
+    expect(status.set).toHaveBeenLastCalledWith('Renamed to Revised title')
+    rename.mockResolvedValueOnce({ ok: false, error: { message: 'rename denied' } } as never)
+    await app.execute('/rename Denied')
+    expect(status.set).toHaveBeenLastCalledWith('rename denied')
+    for (const argument of ['-1', 'bad', '1.5', '9007199254740992']) {
+      await expect(app.execute(`/fork ${argument}`)).rejects.toThrow('Usage: /fork [atSeq]')
+    }
+    fork.mockRejectedValueOnce(new Error('fork-unavailable'))
+    await app.execute('/fork')
+    expect(status.set).toHaveBeenLastCalledWith(expect.stringContaining('Nothing to fork yet'))
+    expect(app.registry.current?.sessionId).toBe('shared-session')
+    fork.mockRejectedValueOnce('native fork denied')
+    await app.execute('/fork 0')
+    expect(status.set).toHaveBeenLastCalledWith('native fork denied')
+    await app.execute('/fork 12')
+    expect(fork).toHaveBeenLastCalledWith({ sessionId: 'shared-session', atSeq: 12 })
+    expect(app.registry.current?.sessionId).toBe('forked')
+    expect(status.set).toHaveBeenCalledWith('Forked into forked')
+    await app.execute('/fork')
+    expect(fork).toHaveBeenLastCalledWith({ sessionId: 'forked' })
+  })
+
+  it('submits the shared init instruction only after Session admission and reports native admission failures', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    await app.execute('/init')
+    expect(fixture.client.sessions.create).toHaveBeenCalledOnce()
+    expect(fixture.session.prompt).toHaveBeenLastCalledWith([expect.objectContaining({ type: 'text', text: expect.stringContaining('AGENTS.md') })], 'queue', undefined, 'request-1')
+    expect(status.set).toHaveBeenLastCalledWith('Analyzing the codebase to write AGENTS.md')
+    fixture.session.prompt.mockResolvedValueOnce({ ok: false, error: { message: 'init refused' } } as never)
+    await app.execute('/init')
+    expect(status.set).toHaveBeenLastCalledWith('init refused')
+  })
+
+  it('uses displayed writable bindings and refuses readonly views before prompt, command, and cancellation admission', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    let view: RemoteAppView = {
+      ref: { host: fixture.client.key, sessionId: fixture.sessionId }, binding: fixture.reference.binding,
+      access: 'interactive', presentation: conversation.presentation(),
+    }
+    const offDisplayed = vi.fn()
+    const subscribe = vi.fn(() => offDisplayed)
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client, '/workspace', undefined, () => view, undefined, subscribe)
+    await app.attach('http://host/')
+    expect(await app.ensureSession()).toBe(view.ref)
+    await app.preparePrompt(view.ref)
+    fixture.projectionValues.set('contextPressure', { projectedTokens: 17, contextWindow: 100 })
+    await app.execute('/context')
+    const source = vi.mocked(panels.showContext).mock.calls[0]![0]
+    expect(source.read()).toMatchObject({ usage: { context: { used: 17, window: 100 } } })
+    const off = source.subscribe(vi.fn())
+    off()
+    expect(offDisplayed).toHaveBeenCalledOnce()
+    await app.execute('/host-status')
+    expect(panels.showStatus).toHaveBeenLastCalledWith(view.presentation)
+    view = { ref: view.ref, access: view.access, presentation: view.presentation }
+    expect(source.read()).toBeUndefined()
+    await expect(app.execute('/context')).rejects.toThrow('no native Client binding')
+    view = { ...view, access: 'readonly' }
+    await expect(app.ensureSession()).rejects.toThrow('read-only')
+    await expect(app.preparePrompt(view.ref)).rejects.toThrow('read-only')
+    await expect(app.execute('/compact')).rejects.toThrow('read-only')
+    await app.cancel()
+    expect(fixture.session.cancel).not.toHaveBeenCalled()
+    expect(fixture.client.sessions.create).not.toHaveBeenCalled()
+  })
+
+  it('propagates an active help failure while suppressing a failed catalog selection after it was retired', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels, browser } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client, '/workspace', browser)
+    await app.attach('http://host/')
+    await app.selectOrCreate()
+    fixture.client.remote.commands.list = vi.fn(async () => { throw new Error('live help failure') }) as never
+    await expect(app.execute('/help')).rejects.toThrow('live help failure')
+    const pending = Promise.withResolvers<SessionBinding>()
+    fixture.client.sessions.retain = vi.fn(() => ({ ...fixture.reference, ready: pending.promise })) as never
+    await app.execute('/sessions')
+    const choose = browser.open.mock.lastCall![2] as (id: string) => void
+    choose('missing')
+    await vi.waitFor(() => { expect(fixture.client.sessions.retain).toHaveBeenCalledOnce() })
+    app.clearSession()
+    pending.reject(new Error('retired selection failure'))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(status.set).not.toHaveBeenCalledWith('retired selection failure')
+  })
+
+  it('rejects a plan preparation retired between native confirmation and prompt admission', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    app.startupPlan.set(true)
+    const ref = await app.ensureSession()
+    const native = Promise.withResolvers<Awaited<ReturnType<typeof fixture.session.command>>>()
+    fixture.session.command.mockReturnValueOnce(native.promise)
+    const pending = app.preparePrompt(ref)
+    native.resolve({ ok: true, value: { matched: true } })
+    queueMicrotask(() => { app.clearSession() })
+    await expect(pending).rejects.toThrow('superseded')
+    expect(fixture.session.prompt).not.toHaveBeenCalled()
+  })
+
+  it('fences a Session selection cleared immediately after its native binding commits', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    const pending = app.selectOrCreate('other-session')
+    queueMicrotask(() => { queueMicrotask(() => { app.clearSession() }) })
+    await expect(pending).rejects.toThrow('superseded')
+    expect(app.registry.current).toBeUndefined()
+    expect(conversation.attach).not.toHaveBeenCalledWith(fixture.reference.binding, expect.anything())
+  })
+
+  it('refuses Session commands from an empty start view', async () => {
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels)
+    await expect(app.execute('/compact')).rejects.toThrow('Select or create a Session before prompting')
+  })
 })
 
 
@@ -880,5 +1017,34 @@ describe('RemoteApp rewind', () => {
     fork.resolve(SessionId('late-child'))
     await branching
     expect(test.app.registry.current).toBeUndefined()
+  })
+
+  it('suppresses a fork rejection received after the rewind owner retired', async () => {
+    const test = rewindFixture()
+    await test.app.attach('http://one.test/')
+    await test.app.selectOrCreate('shared-session')
+    const native = Promise.withResolvers<SessionId>()
+    test.fork.mockReturnValueOnce(native.promise)
+    const pending = test.app.execute('/rewind 1')
+    test.app.clearSession()
+    native.reject(new Error('retired fork rejection'))
+    await pending
+    expect(test.status.set).not.toHaveBeenCalledWith('retired fork rejection')
+    expect(test.app.registry.current).toBeUndefined()
+  })
+
+  it('keeps a pending native history read alive across unrelated topology presentation updates', async () => {
+    const test = rewindFixture()
+    await test.app.attach('http://one.test/')
+    await test.app.selectOrCreate('shared-session')
+    const native = Promise.withResolvers<Awaited<ReturnType<typeof test.events>>>()
+    test.events.mockReturnValueOnce(native.promise)
+    const pending = test.app.execute('/rewind')
+    const signal = (test.events.mock.lastCall as unknown as readonly [unknown, AbortSignal])[1]
+    test.app.startupPlan.set(true)
+    expect(signal.aborted).toBe(false)
+    native.resolve({ ok: true, value: { records: [], hasMore: false } })
+    await pending
+    expect(test.status.set).toHaveBeenCalledWith('no user turns to rewind')
   })
 })

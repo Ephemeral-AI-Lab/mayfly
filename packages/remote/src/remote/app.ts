@@ -25,13 +25,6 @@ export interface RemoteAppView {
   readonly binding?: SessionBinding
 }
 
-/** A displayed native side selection supplied by the presentation owner. */
-export interface RemoteAppView {
-  readonly ref: SessionRef
-  readonly access: 'interactive' | 'resumable' | 'readonly'
-  readonly presentation: RemotePresentationFacts
-}
-
 /**
  * The one prompt `/init` sends. It asks for the same four findings and the same
  * single-file output the in-process TUI asks for, so both frontends produce a
