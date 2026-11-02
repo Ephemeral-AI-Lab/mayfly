@@ -184,6 +184,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Client identity and connection generation own every read and bounded retry.
   Whole child facts take precedence over a delayed catalog running flag; a
   switch, detach or unload aborts reads before retiring the displayed sources.
+  Row-copy feedback uses the shared translated success/error messages and keeps
+  full failure details. Its captured Client, displayed binding, connection
+  generation and mount must still own the result before publishing a notice.
 - Slash commands submit ordered native encoded images and uploaded file
   receipts through `commands.execute`; markers stay in the reversible draft
   and are removed from the command line. File receipts retain their exact

@@ -87,13 +87,13 @@ export class RemoteNotifications {
     this.t = memoizedLocaleTranslator(ctx, 'transcript.activity').translate
     this.scopeKey = JSON.stringify([presentation().hostKey, presentation().sessionId])
     this.owner = ctx.mayflyUiInteraction.createNotificationOwner('mayfly.remote.prompt')
-    this.notice = { set: (text, severity = 'info') => {
+    this.notice = { set: (text, severity = 'info', detail) => {
       if (this.disposed) return
       if (text === '') { this.owner.clear('command'); return }
       const sessionId = presentation().sessionId
       const message = text.replace(/\s*[\r\n]+\s*/gu, ' · ').trim()
       this.owner.report('command', sessionId === undefined ? { kind: 'app', targetId: 'prompt' } : { kind: 'session', sessionId }, {
-        severity, message, ...message === text ? {} : { detail: text },
+        severity, message, ...detail === undefined ? message === text ? {} : { detail: text } : { detail },
       }, `command/${++this.serial}`)
     } }
     this.pane = ctx.mayflyPanes.register({ id: 'mayfly.pane.notification', placement: 'bottom', priority: 9, narrow: 'bottom' }, NotificationLine(this.current()))

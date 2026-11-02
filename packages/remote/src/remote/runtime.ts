@@ -190,9 +190,17 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       imageRefs,
       rows: {
         copy: (text, mode) => {
+          if (lifetime.signal.aborted) return
+          const selection = displayedSelection()
+          const generation = selection?.client.state.getSnapshot().generation
+          const current = (): boolean => {
+            const next = displayedSelection()
+            return !lifetime.signal.aborted && next?.client === selection?.client && next?.binding === selection?.binding
+              && (selection === undefined || selection.client.state.getSnapshot().generation === generation)
+          }
           void editorComposition?.controller.copyText(text).then(method => {
-            editor?.notice.set(`${method === 'native' ? 'Copied' : 'Copied (unverified)'} ${String(text.length)} characters${mode === 'raw' ? ' of JSON' : ''}`)
-          }).catch((error: unknown) => { editor?.notice.set(error instanceof Error ? error.message : String(error)) })
+            if (current()) editor?.notice.set(t(mode === 'raw' ? (method === 'native' ? 'Copied {count} characters of JSON' : 'Copied {count} characters of JSON (unverified)') : (method === 'native' ? 'Copied {count} characters' : 'Copied {count} characters (unverified)'), { count: text.length }), 'success')
+          }).catch((error: unknown) => { if (current()) editor?.notice.set(t('Could not copy'), 'error', error instanceof Error ? error.message : String(error)) })
         },
         open: (text) => {
           void editorComposition?.controller.openText(text).catch((error: unknown) => {
@@ -416,6 +424,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       inject: ['mayflyTheme', 'mayflyComponents'],
       apply(owner: Context) {
         editor!.retheme(owner.mayflyComponents, owner.mayflyTheme.colors)
+        editorComposition!.controller.retheme(owner.mayflyComponents, owner.mayflyTheme.colors)
         completionDrawer?.dispose()
         completionDrawer = mountRemoteCompletionDrawer(owner, screen, editor!.editor, owner.mayflyTheme.colors, owner.mayflyComponents)
         screen.requestRender()

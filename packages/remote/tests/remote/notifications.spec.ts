@@ -62,6 +62,10 @@ describe('Remote notification row', () => {
       scope: { kind: 'app', targetId: 'prompt' }, severity: 'error',
       message: 'First line · second line · third line', detail: 'First line\n  second line\nthird line',
     }))
+    test.notifications.notice.set('Could not copy', 'error', 'complete native clipboard failure')
+    expect(test.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([expect.objectContaining({
+      severity: 'error', message: 'Could not copy', detail: 'complete native clipboard failure',
+    })])
   })
 
   it('shows the newest equal-severity notice even when an older record was inserted later', async () => {

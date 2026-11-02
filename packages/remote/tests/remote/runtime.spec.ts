@@ -189,6 +189,7 @@ vi.mock('../../src/remote/editor-composition.ts', () => ({
       updateQueue: vi.fn(async () => false),
       requeue: vi.fn(),
       restoreQueued: vi.fn(),
+      retheme: vi.fn(),
     },
     dispose: mocks.panelDispose,
   })),

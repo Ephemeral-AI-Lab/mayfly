@@ -69,9 +69,10 @@ const wiring = vi.hoisted(() => ({
     updateQueue: vi.fn(async (_id: unknown, _action: unknown) => false),
     restoreQueued: vi.fn(), requeue: vi.fn(),
     slashHint: vi.fn((): string | undefined => undefined),
+    retheme: vi.fn(),
   },
   commandList: vi.fn(() => []),
-  notice: vi.fn(), requestRender: vi.fn(), refreshEditor: vi.fn(), refreshStatus: vi.fn(), republish: vi.fn(),
+  notice: vi.fn(), requestRender: vi.fn(), refreshEditor: vi.fn(), rethemeEditor: vi.fn(), refreshStatus: vi.fn(), republish: vi.fn(),
   getModelCatalog: vi.fn(), setVisible: vi.fn(), present: vi.fn(), close: vi.fn(), closeChild: vi.fn(), retainOnly: vi.fn(), showPrimary: vi.fn(),
   openChild: vi.fn(async () => {}), openBtw: vi.fn(async () => {}), subagentAddress: vi.fn(),
   selectOrCreate: vi.fn(async () => {}), sessionsOpen: vi.fn(),
@@ -117,7 +118,7 @@ vi.mock('../../src/transcript/context-source.ts', () => ({ RemoteTranscriptConte
 vi.mock('../../src/remote/editor.ts', () => ({ mountRemoteEditor: vi.fn((_ctx, _screen, _components, _colors, actions, state) => {
   wiring.actions = actions; wiring.editorState = state
   wiring.onEditorMount?.(_ctx)
-  return { notice: { set: wiring.notice }, editor: { isShowingAutocomplete: wiring.autocomplete }, extensions: {}, focus: wiring.focus, refresh: wiring.refreshEditor, retheme: vi.fn(), dispose: vi.fn() }
+  return { notice: { set: wiring.notice }, editor: { isShowingAutocomplete: wiring.autocomplete }, extensions: {}, focus: wiring.focus, refresh: wiring.refreshEditor, retheme: wiring.rethemeEditor, dispose: vi.fn() }
 }) }))
 vi.mock('../../src/remote/side-views.ts', () => ({ RemoteSideViews: class {
   constructor(_transcript: unknown, _tools: unknown, _screen: unknown, _notice: unknown, options: RemoteSideViewOptions) { wiring.sideOptions = options }
@@ -180,7 +181,7 @@ vi.mock('../../src/remote/host-composition.ts', () => ({ resolveMayflyToolPresen
 vi.mock('@ephemeral-ai/mayfly/transcript', () => ({
   ACTION_TOGGLE_COLLAPSE: 'mayfly.transcript.toggle-collapse',
   TRANSCRIPT_LOCALE: {}, mountTranscriptLocale: vi.fn(),
-  transcriptTranslator: () => (text: string) => `${wiring.locale}:${text}`,
+  transcriptTranslator: () => (text: string, values?: Readonly<Record<string, string | number>>) => `${wiring.locale}:${text.replace(/\{([^}]+)\}/gu, (_token, key: string) => String(values?.[key] ?? key))}`,
   observeTranscriptLocale: (_ctx: unknown, changed: () => void) => { wiring.localeChanged = changed; return wiring.offLocale },
   TranscriptPresentationPolicy: class {},
   followPresentationSettings: (_ctx: unknown, _policy: unknown, changed: () => void) => { wiring.policyChanged = changed; changed() },
@@ -260,6 +261,13 @@ async function start(cwd: string | null = '/local/workspace', sessionId?: string
 const selected = () => wiring.features!.hosts.current!()
 
 describe('standalone Remote runtime wiring', () => {
+  it('rethemes the retained editor before its exact composition owner', async () => {
+    await start()
+    expect(wiring.rethemeEditor).toHaveBeenCalledWith(wiring.ctx!.mayflyComponents, wiring.ctx!.mayflyTheme.colors)
+    expect(wiring.controller.retheme).toHaveBeenCalledWith(wiring.ctx!.mayflyComponents, wiring.ctx!.mayflyTheme.colors)
+    expect(wiring.rethemeEditor.mock.invocationCallOrder[0]).toBeLessThan(wiring.controller.retheme.mock.invocationCallOrder[0]!)
+  })
+
   it('borrows exact displayed facts and Host for transcript context and retires before its sources', async () => {
     let beforeApp: ReturnType<ContextOptions['read']> | undefined
     wiring.early = () => { beforeApp = wiring.contextOptions!.read() }
@@ -460,9 +468,12 @@ describe('standalone Remote runtime wiring', () => {
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(1000)
     await start()
     const rows = wiring.transcript!.rows!
-    rows.copy!('hello', 'text'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('Copied 5 characters')
-    wiring.controller.copyText.mockResolvedValueOnce('osc52'); rows.copy!('{}', 'raw'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('Copied (unverified) 2 characters of JSON')
-    for (const error of [new Error('clipboard failed'), 'clipboard refused']) { wiring.controller.copyText.mockRejectedValueOnce(error); rows.copy!('a', 'text'); await flush(); expect(wiring.notice).toHaveBeenCalledWith(error instanceof Error ? error.message : error) }
+    rows.copy!('hello', 'text'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('en:Copied 5 characters', 'success')
+    wiring.controller.copyText.mockResolvedValueOnce('osc52'); rows.copy!('{}', 'raw'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('en:Copied 2 characters of JSON (unverified)', 'success')
+    rows.copy!('{}', 'raw'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('en:Copied 2 characters of JSON', 'success')
+    wiring.locale = 'zh'
+    wiring.controller.copyText.mockResolvedValueOnce('osc52'); rows.copy!('hello', 'text'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('zh:Copied 5 characters (unverified)', 'success')
+    for (const error of [new Error('clipboard failed'), 'clipboard refused']) { wiring.controller.copyText.mockRejectedValueOnce(error); rows.copy!('a', 'text'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('zh:Could not copy', 'error', error instanceof Error ? error.message : error) }
     rows.open!('native detail'); await flush(); expect(wiring.controller.openText).toHaveBeenCalledWith('native detail')
     for (const error of [new Error('open failed'), 'open refused']) { wiring.controller.openText.mockRejectedValueOnce(error); rows.open!('x'); await flush(); expect(wiring.notice).toHaveBeenCalledWith(error instanceof Error ? error.message : error) }
     const facts = wiring.defaultFacts as unknown as { ref: SessionRef | undefined, queue: Array<{ id: string, text: string, lane: 'turn' | 'step' }> }
@@ -484,6 +495,37 @@ describe('standalone Remote runtime wiring', () => {
     wiring.ctx!.emit('mayfly/decision-requests-changed', 'approval', [{ type: 'approval', toolName: 'bash' }])
     wiring.ctx!.emit('mayfly/decision-requests-changed', 'plan', [{ type: 'plan', toolName: 'plan' }])
     expect(wiring.transcript!.requests!()).toEqual([{ type: 'approval', toolName: 'bash' }, { type: 'plan', toolName: 'plan' }]); expect(wiring.republish).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['binding', 'host', 'generation', 'shutdown'] as const)('fences pending row-copy feedback after exact %s retirement', async retirement => {
+    await start()
+    const rows = wiring.transcript!.rows!
+    const copied = Promise.withResolvers<'native' | 'osc52'>()
+    const failed = Promise.withResolvers<'native' | 'osc52'>()
+    wiring.controller.copyText.mockReturnValueOnce(copied.promise).mockReturnValueOnce(failed.promise)
+    rows.copy!('old success', 'text')
+    rows.copy!('old failure', 'raw')
+    if (retirement === 'binding') wiring.binding = { ...binding }
+    if (retirement === 'host') wiring.client = undefined
+    if (retirement === 'generation') wiring.generation += 1
+    if (retirement === 'shutdown') { wiring.actions!.exit(); await running }
+    wiring.notice.mockClear()
+    copied.resolve('native')
+    failed.reject(new Error('old clipboard failed'))
+    await flush()
+    expect(wiring.notice).not.toHaveBeenCalled()
+    if (retirement === 'shutdown') {
+      rows.copy!('captured after unload', 'text')
+      expect(wiring.controller.copyText).toHaveBeenCalledTimes(2)
+    }
+  })
+
+  it('keeps row-copy feedback app-scoped without a selected Session', async () => {
+    wiring.ref = undefined; wiring.binding = undefined
+    await start()
+    wiring.transcript!.rows!.copy!('sessionless', 'text')
+    await flush()
+    expect(wiring.notice).toHaveBeenCalledWith('en:Copied 11 characters', 'success')
   })
 
   it('fences reopened child and startup failures by active Host, native generation and shutdown', async () => {
@@ -521,7 +563,10 @@ describe('standalone Remote runtime wiring', () => {
 
   it('covers sessionless process defaults and early callbacks before controller assignment', async () => {
     wiring.client = undefined; wiring.ref = undefined; wiring.binding = undefined
-    wiring.early = () => { wiring.transcript!.rows!.queued!('cancel', 'not-mounted') }
+    wiring.early = () => {
+      wiring.transcript!.rows!.queued!('cancel', 'not-mounted')
+      wiring.transcript!.rows!.copy!('not-mounted', 'text')
+    }
     await start(null)
     expect(wiring.banner!.identity!()).toBeUndefined(); expect(wiring.banner!.home!()).toBe(''); expect(wiring.banner!.directory!()).toBe(process.cwd())
     expect(wiring.sessions!.home!({ remote: { $host: {} } } as never)).toBe('')
