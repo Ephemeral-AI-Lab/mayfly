@@ -156,13 +156,13 @@ export class RemoteFeatureOperation {
 }
 
 /** Shared owner for all per-Host and per-Session operations of one feature mount. */
-export abstract class RemoteFeatureController {
+export abstract class RemoteFeatureController<T extends Pick<RemoteFeatureContext, 'hosts'> = RemoteFeatureContext> {
   private readonly operations = new Set<RemoteFeatureOperation>()
   private readonly offTopology: () => void
   private readonly connections = new Map<HostClient, () => void>()
   private disposed = false
 
-  protected constructor(protected readonly context: RemoteFeatureContext) {
+  protected constructor(protected readonly context: T) {
     this.offTopology = context.hosts.subscribe(() => { this.reconcileConnections(); this.invalidateStale() })
     this.reconcileConnections()
   }

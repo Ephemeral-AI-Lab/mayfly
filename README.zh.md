@@ -74,14 +74,14 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 
 ## 部分实现与上游限制
 
-前三项是官方 API 限制；`/update` 属于尚待完成的实现工作，必须在一致性验收前补齐：
+以下是尚存的官方 API 限制：
 
 | 范围 | 已实现行为与剩余边界 |
 | --- | --- |
 | 带文件的斜杠命令 | 官方 alpha.2 `commands.execute` 接受编码后的图片附件，没有 file-upload receipt 输入。图片附件命令可用；带暂存文件的命令会明确提示、恢复草稿，且不发送命令。普通 prompt 使用原生文件上传路径。 |
 | `/mcp` 连接信息 | 官方 alpha.2 没有已配置服务器或传输健康状态的公共目录。面板只能列出通过工具 schema 发现的服务器，连接状态显示未知，transport/endpoint 缺省。资源、模板和明确的资源读取走原生工具；提供可选脱敏目录的组合可补充连接信息。 |
 | 冷子会话工具卡片与控制 | 原生历史和投影可被动读取。没有活跃子 Agent 时，自定义 presenter 降级为通用持久工具卡片，依赖 Agent 的控制报告不可用。浏览不会激活子 Agent 或借用父 Agent；明确的 continuable 子会话回复走原生寻址路径。 |
-| `/update` | 当前只查询已发布 Remote 的 `latest` 版本，尚未实现 Host/TUI 联合升级的应用与回滚，需要分别显式升级。这是实现范围，不是缺少 settings 或 plugin API。 |
+| `/update` Host 启动检查 | `/update [<version>]` 先准备并检查前端精确发布依赖图，经确认后升级两端、验证版本，并在失败时补偿恢复。`/update recover` 在原 Host 上恢复中断的事务。官方 Host API 没有独立 Host 启动检查；确认页和结果页会明确要求重启两进程并验证 Host 启动。链接、只读或非 npm 前端安装使用原安装方式升级。 |
 
 `/plugin` 已通过原生 plugin manager 安装、更新、移除和启停 Host bundle；`/settings` 已支持绑定 revision 的表单写入，以及用本地外部编辑器修改实际 Host settings 文档。这些功能具有原生 API，已实现。插件修改会说明重启边界；取消或过期写入不会静默重试。`/schedule` 等可选功能会说明所需 Host 服务是否缺失。
 

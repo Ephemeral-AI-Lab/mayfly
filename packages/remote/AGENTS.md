@@ -37,6 +37,16 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Its catalog, installed rows, notifications, and restart chip belong to one
   feature generation. A Host/selection/reconnection change retires that owner;
   late writes are never retried or presented under another Host.
+- `/update` owns one explicit coordinated Host/frontend transaction. The shared
+  reference confirmation and progress models remain renderer-neutral. Frontend
+  npm staging verifies actual CLI/Remote/shared versions, imports the candidate,
+  and starts its real CLI before mutation. Native Host bundle writes retain the
+  captured Host even after UI retirement; failures compensate exact versions.
+  An exclusive local marker retains logs and graphs across interruption;
+  `/update recover` requires the original Host and explicit confirmation.
+  Linked/read-only or foreign-prefix installs refuse mutation. The official
+  API lacks an isolated Host boot check: confirmation and completion must say
+  Host startup remains unverified until restart, never claim a full boot pass.
 - `/rewind` reads the primary Session through passive native journal pages,
   builds the shared reference turn picker, and forks only after explicit
   acceptance. Busy checks and exact binding/Host/generation fences cover the

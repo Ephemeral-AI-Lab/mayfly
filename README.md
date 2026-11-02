@@ -74,14 +74,14 @@ Enter queues a prompt and Ctrl+Enter steers it through the official Client. Read
 
 ## Partial behavior and upstream limits
 
-The first three rows describe official API limits. `/update` remains implementation work to complete before parity acceptance:
+These rows describe the remaining official API limits:
 
 | Area | Implemented behavior and remaining boundary |
 | --- | --- |
 | Slash commands with files | Official alpha.2 `commands.execute` accepts encoded image attachments, without a file-upload receipt input. Image-bearing commands work. A command containing a staged file is refused with an explicit notice and its draft is restored; no command is sent. Ordinary prompts use the native file-upload path. |
 | `/mcp` connection details | Official alpha.2 exposes no public configured-server/transport-health catalog. The panel lists servers discoverable from tool schemas and shows unknown connection state and absent transport/endpoint values. Resources/templates and explicit resource reads use native tools. A composition providing the optional sanitized catalog can add connection details. |
 | Cold child tool cards and controls | Passive native history and projections work. Without a live child Agent, custom presenters use generic durable tool cards and Agent-scoped controls report unavailable. Browsing never activates a child or borrows its parent's Agent. An explicit continuable-child reply uses the native addressed path. |
-| `/update` | Currently checks the published Remote `latest` version only. Applying and rolling back a coordinated Host/TUI upgrade is not implemented; upgrade the two installations explicitly. This is an implementation boundary, not a missing settings or plugin API. |
+| `/update` Host startup check | `/update [<version>]` stages and checks the exact frontend release graph, confirms, upgrades both installations, verifies versions, and compensates failed changes. `/update recover` restores an interrupted transaction on its original Host. The official Host API provides no isolated Host boot check; the confirmation and result explicitly require restarting both processes and checking Host startup. Linked/read-only and non-npm frontend installations use their original installer. |
 
 `/plugin` installs, updates, removes, and enables Host bundles through the native plugin manager. `/settings` supports revision-bound form changes and a local external editor for the actual Host settings document. These features have native APIs and are implemented. Plugin changes report their restart boundary; a cancelled or stale write is never silently retried. `/schedule` and other optional features state when their Host service is absent.
 
