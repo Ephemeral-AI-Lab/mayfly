@@ -47,6 +47,11 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Linked/read-only or foreign-prefix installs refuse mutation. The official
   API lacks an isolated Host boot check: confirmation and completion must say
   Host startup remains unverified until restart, never claim a full boot pass.
+- `/jobs` reads durable settled history from the Host `mayflyJobs` native
+  Session projection and overlays the native `job.list` whole resident roster.
+  Remote never folds Job events or invents live jobs from unfinished history.
+  Output readers retain exact Host/Session and byte cursors; human stops
+  recheck native liveness and fence late results after connection replacement.
 - `/rewind` reads the primary Session through passive native journal pages,
   builds the shared reference turn picker, and forks only after explicit
   acceptance. Busy checks and exact binding/Host/generation fences cover the

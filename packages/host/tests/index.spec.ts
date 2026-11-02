@@ -45,6 +45,7 @@ describe('mayfly-host plugin', () => {
       'mayflyConversation',
       'mayflyConversationFacts',
       'mayflyDeliverables',
+      'mayflyJobs',
       'mayflyWorkflow',
       'mayflyRetraction',
     ])

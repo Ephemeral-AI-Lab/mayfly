@@ -3,8 +3,6 @@
  * @module @ephemeral-ai/mayfly/remote/features/jobs
  */
 
-import type { SessionEventLikeEntry } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { panel, ui, type MayflyPaneRegistration, type MayflyTranslate, type MayflyUiActionEvent, type MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import { RemoteJobSource } from '../../frontend/jobs.ts'
@@ -27,50 +25,6 @@ import type { JobView } from './official.ts'
 
 const DONE_LINGER_MS = 5_000
 
-interface DurableJobRegistration {
-  readonly jobId: JobView['id']
-  readonly owner: SessionId
-  readonly kind: string
-  readonly label: string
-  readonly startedAt: number
-}
-
-interface DurableJobSettlement extends DurableJobRegistration {
-  readonly finishedAt: number
-  readonly status: 'completed' | 'killed' | 'failed'
-  readonly detail?: string
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function readRegistration(value: unknown): DurableJobRegistration | undefined {
-  if (!isRecord(value) || typeof value['jobId'] !== 'string' || typeof value['owner'] !== 'string'
-    || typeof value['kind'] !== 'string' || typeof value['label'] !== 'string' || typeof value['startedAt'] !== 'number') return undefined
-  return {
-    jobId: value['jobId'] as JobView['id'],
-    owner: value['owner'] as SessionId,
-    kind: value['kind'],
-    label: value['label'],
-    startedAt: value['startedAt'],
-  }
-}
-
-function readSettlement(value: unknown): DurableJobSettlement | undefined {
-  const registration = readRegistration(value)
-  if (registration === undefined || !isRecord(value) || typeof value['finishedAt'] !== 'number') return undefined
-  const status = value['status']
-  if (status !== 'completed' && status !== 'killed' && status !== 'failed') return undefined
-  const detail = value['detail']
-  return {
-    ...registration,
-    finishedAt: value['finishedAt'],
-    status,
-    ...typeof detail === 'string' ? { detail } : {},
-  }
-}
-
 class RemoteJobsController {
   private readonly options: RemoteFeatureContext
   private readonly t: MayflyTranslate
@@ -78,7 +32,7 @@ class RemoteJobsController {
   private readonly source: RemoteJobSource
   private readonly offSource: () => void
   private readonly pane: MayflyPaneRegistration
-  private readonly history = new Map<string, JobView>()
+  private history: readonly JobView[] = []
   private readonly stoppedByUser = new Set<string>()
   private readonly batch = new Set<string>()
   private batchLive = false
@@ -90,7 +44,7 @@ class RemoteJobsController {
   private reader: RemoteJobFollowReader | undefined
   private readerPanel: RemoteBrowserPanel | undefined
   private operationLifetime = new AbortController()
-  private timer: ReturnType<typeof setInterval> | undefined
+  private readonly timer: ReturnType<typeof setInterval>
   private disposed = false
 
   constructor(options: RemoteFeatureContext) {
@@ -120,11 +74,8 @@ class RemoteJobsController {
     this.stopEvents = undefined
     this.browser?.close()
     this.detail?.close()
-    this.readerPanel?.close()
-    if (this.reader !== undefined) void this.reader.dispose()
-    this.reader = undefined
-    if (this.timer !== undefined) clearInterval(this.timer)
-    this.timer = undefined
+    this.closeReader()
+    clearInterval(this.timer)
     this.pane.dispose()
     void this.source.dispose().catch((error: unknown) => {
       this.options.notice.set(error instanceof Error ? error.message : String(error))
@@ -132,12 +83,11 @@ class RemoteJobsController {
   }
 
   private readonly attach = (generation: number): void => {
-    if (this.disposed) return
     this.operationLifetime.abort()
     this.operationLifetime = new AbortController()
     this.stopEvents?.()
     this.stopEvents = undefined
-    this.history.clear()
+    this.history = []
     this.stoppedByUser.clear()
     this.batch.clear()
     this.batchLive = false
@@ -151,10 +101,15 @@ class RemoteJobsController {
       this.detail?.close()
       void this.source.attach(null)
     } else {
-      this.stopEvents = current.binding.eventSource.subscribe(() => {
-        if (this.lifecycle.owns(generation)) this.readEvents(current)
-      })
-      this.readEvents(current)
+      const history = current.binding.session.projections.faceOf('mayflyJobs')
+      const update = (): void => {
+        if (!this.lifecycle.owns(generation)) return
+        // Native identity brands serialize as strings in the readonly Host DTO.
+        this.history = (history.getSnapshot() ?? []) as readonly JobView[]
+        this.publish()
+      }
+      this.stopEvents = history.subscribe(update)
+      update()
       void this.source.attach(current.client, current.ref).catch((error: unknown) => {
         if (this.lifecycle.owns(generation)) this.options.notice.set(error instanceof Error ? error.message : String(error))
       })
@@ -166,50 +121,8 @@ class RemoteJobsController {
     return reader.matches(current.client, current.ref)
   }
 
-  private readEvents(current: RemoteFeatureSelection): void {
-    const snapshot = current.binding.eventSource.getSnapshot()
-    if (snapshot.change.kind === 'replace') this.history.clear()
-    const entries = snapshot.change.kind === 'settle-assistant' ? [] : snapshot.change.entries
-    this.fold(entries)
-    this.publish()
-  }
-
-  private fold(entries: readonly SessionEventLikeEntry[]): void {
-    for (const entry of entries) {
-      if (entry.type !== 'event') continue
-      const type: string = entry.event.type
-      if (type === 'job/registered') {
-        const data = readRegistration(entry.event.data)
-        if (data === undefined) continue
-        this.history.set(String(data.jobId), {
-          id: data.jobId,
-          kind: data.kind,
-          label: data.label,
-          owner: data.owner,
-          status: 'running',
-          startedAt: data.startedAt,
-          output: { total: 0, earliest: 0 },
-        })
-      } else if (type === 'job/settled') {
-        const data = readSettlement(entry.event.data)
-        if (data === undefined) continue
-        this.history.set(String(data.jobId), {
-          id: data.jobId,
-          kind: data.kind,
-          label: data.label,
-          owner: data.owner,
-          status: data.status,
-          startedAt: data.startedAt,
-          finishedAt: data.finishedAt,
-          ...data.detail === undefined ? {} : { detail: data.detail },
-          output: { total: 0, earliest: 0 },
-        })
-      }
-    }
-  }
-
   private jobs(): readonly JobView[] {
-    const merged = new Map(this.history)
+    const merged = new Map(this.history.map(job => [String(job.id), job]))
     for (const job of this.source.snapshot().jobs) merged.set(String(job.id), job)
     return [...merged.values()]
   }
@@ -299,6 +212,7 @@ class RemoteJobsController {
     if (latest === undefined) return this.t('The job is no longer available')
     if (latest.status !== 'running') return latest.status === 'stopping' ? this.t('Already stopping') : this.t('Already finished')
     const result = await this.source.kill(current.ref, latest.id)
+    if (signal.aborted || !isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) return this.t('The agent changed; open it again')
     if (!result.ok) return result.error.message
     if (result.value.outcome === 'already-finished') return this.t('Already finished')
     this.stoppedByUser.add(String(latest.id))
@@ -355,7 +269,7 @@ class RemoteJobsController {
     if (current === undefined) return
     this.closeReader()
     const reader = new RemoteJobFollowReader(current.client, current.ref, job, () => {
-      if (this.reader === reader) this.readerPanel?.refresh()
+      this.readerPanel?.refresh()
     })
     this.reader = reader
     this.readerPanel = openRemoteBrowser(this.options, {
@@ -376,10 +290,10 @@ class RemoteJobsController {
   }
 
   private closeReader(): void {
-    this.readerPanel?.close()
-    this.readerPanel = undefined
     const reader = this.reader
     this.reader = undefined
+    this.readerPanel?.close()
+    this.readerPanel = undefined
     if (reader !== undefined) void reader.dispose()
   }
 
@@ -389,7 +303,7 @@ class RemoteJobsController {
   }
 }
 
-/** Mount one Domain roster, official event history, follow readers, and Job controls. */
+/** Mount native roster/history projections, output readers, and explicit Job controls. */
 export function mountJobsFeature(options: RemoteFeatureContext): () => void {
   const controller = new RemoteJobsController(options)
   const unregister = options.commands.register({

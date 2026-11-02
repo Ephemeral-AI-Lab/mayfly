@@ -8,6 +8,7 @@ import type { ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm/types'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials/types'
 import type { AuthorizationNotice } from '@deepseek-ai/dsh-authorization/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionProjectionSummaryExcluded } from '@deepseek-ai/dsh-session-projection/types'
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools/presentation'
 import type { TypertResource } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceChangesSummary, WorkspaceFileDiff } from '@deepseek-ai/dsh-workspace-changes/types'
@@ -15,6 +16,29 @@ import type { WorkflowAgentOutcome, WorkflowPhase, WorkflowStopReason } from '@d
 import type { ConversationJson } from './conversation/types.ts'
 
 export type * from './conversation/types.ts'
+
+/** Settled native Job rows; current resident rows still come from job.list. */
+export interface MayflyJobHistoryEntry {
+  readonly id: string
+  readonly owner: string
+  readonly kind: string
+  readonly label: string
+  readonly startedAt: number
+  readonly finishedAt: number
+  readonly status: 'completed' | 'killed' | 'failed'
+  readonly detail?: string | undefined
+  readonly output: { readonly total: 0, readonly earliest: 0 }
+}
+
+/** Whole immutable history snapshot; wire identities are serialized native brands. */
+export type MayflyJobHistory = readonly MayflyJobHistoryEntry[]
+
+declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionMap {
+    /** Durable history only: unfinished registrations never become invented live jobs. */
+    mayflyJobs: SessionProjectionSummaryExcluded<MayflyJobHistory>
+  }
+}
 
 /** Mayfly Host features advertised by the capabilities handshake. */
 export type MayflyHostFeature =

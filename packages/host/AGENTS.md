@@ -11,7 +11,10 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
   `src/index.ts` on the caller's Fiber: `mayflyConversation` (the append-origin
   transcript), `mayflyConversationFacts` (presentation facts: phase, output
   progress, in-flight calls, retries, approvals, compactions), and
-  `mayflyDeliverables` (recorded file deliveries). The facts projection keeps
+  `mayflyDeliverables` (recorded file deliveries), and `mayflyJobs` (durable
+  settled Job rows in registration order). Job history is a whole readonly
+  snapshot; unfinished registrations stay absent and resident `job.list` rows
+  take precedence in the frontend. The facts projection keeps
   `stateVersion` 13 and must stay a pure immutable fold: renderers never fold a
   second session log, and a semantics change increments the version with the
   fold change that caused it.
