@@ -115,6 +115,14 @@ additional checkpoints in separate reference directories; they do not replace
 the initial eighteen. The panel checkpoints prove their initial presentation,
 not every write or secondary page available from each command.
 
+`theme-catalog` switches all 32 palettes and `auto` from the immutable rc.2
+catalog through the actual `/theme` command. Each switch keeps a Unicode draft
+and captures 80×24, 40×16 and 120×40 frames, for 99 checkpoints. `questions`,
+`stats` and `files` also belong to `--scenario all`: they exercise real native
+question answers, usage panels, delivered previews and workspace diffs. A
+reference failure remains a failed case; it does not silently remove that
+workflow from the full gate.
+
 Each additional case uses its own published-reference profile home. Native
 model/default-setting writes can persist outside the per-run Session storage,
 so sharing a profile would let one command change the next case's baseline.

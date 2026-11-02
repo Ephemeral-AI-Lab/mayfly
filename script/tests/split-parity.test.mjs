@@ -15,8 +15,22 @@ import { serializeGrid } from '../scenarios/grid.mjs'
 import { compareSplitReference, normalizeSplitGrid, redactSplitOutput, SPLIT_REFERENCE, verifyReferenceTarball } from '../scenarios/split-reference.mjs'
 import { splitProfileEnvironment } from '../scenarios/split-profile.mjs'
 import { seedSplitNativeWorkspace, splitNativeInstruction } from '../scenarios/split-native-fixture.mjs'
+import { SPLIT_SCENARIOS } from '../scenarios/split-suite.mjs'
 
 const grid = serializeGrid({ cols: 20, lines: ['hello', ''], styles: [[{ from: 0, to: 4, style: 'fg:#112233 b' }], []], cursor: [0, 5] })
+
+test('the full gate includes native user questions, usage statistics, files and every published palette', () => {
+  assert.ok(SPLIT_SCENARIOS.questions.steps.some(step => step.text === 'native:question:wizard'))
+  assert.ok(SPLIT_SCENARIOS.stats.steps.some(step => step.text === '/stats'))
+  assert.equal(SPLIT_SCENARIOS.files.fixture, 'native-files')
+  assert.ok(SPLIT_SCENARIOS.files.steps.some(step => step.text === 'Exact preview'))
+  const checkpoints = SPLIT_SCENARIOS['theme-catalog'].steps.filter(step => step.step === 'checkpoint')
+  assert.equal(checkpoints.length, 99)
+  assert.equal(new Set(checkpoints.map(step => step.name)).size, 99)
+  for (const name of ['theme-dark-draft', 'theme-light-narrow', 'theme-tokyo-night-day-wide', 'theme-auto-wide']) {
+    assert.ok(checkpoints.some(step => step.name === name))
+  }
+})
 
 function fixture(t) {
   const dir = join(tmpdir(), `mayfly-reference-test-${randomUUID()}`)
