@@ -88,7 +88,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   or settling them. Exact Host, Session binding, and connection generation
   fence acknowledgement and late results; reconnect retires every old card
   until a new native projection update. Native foreground claims release once,
-  including abort, detach, and replacement races.
+  including abort, detach, and replacement races. Waiting activity and plan
+  request presentation derive directly from current owned waterfalls before
+  opening their editor slot; completion and retirement withdraw those facts.
 - Theme/language pickers, settings rail, and permission decision lane use the
   shared reference wire builders. The settings rail submits both native
   descriptor and field-projection revisions; a conflict never refreshes and

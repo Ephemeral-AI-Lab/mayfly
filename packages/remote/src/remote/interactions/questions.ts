@@ -166,6 +166,9 @@ class RemoteQuestionController {
     card.answering = false
     const waterfall: Waterfall = { next, lifetime: new AbortController(), settled: false }
     card.waterfall = waterfall
+    // Publish the native wait before the editor slot opens, preserving the
+    // reference activity row and its current tip throughout the transition.
+    this.publishWaiting()
     card.overlay?.cancel()
     card.overlay = undefined
     return this.answerWaterfall(card, waterfall, request)
@@ -240,6 +243,7 @@ class RemoteQuestionController {
         card.waterfall = undefined
         if (card.callId === undefined || !this.projectionRows(card).has(card.key)) this.removeCard(card)
         else card.hidden = true
+        this.publishWaiting()
       }
     }
   }
@@ -387,21 +391,38 @@ class RemoteQuestionController {
   }
 
   private removeCard(card: QuestionCard): void {
-    if (card.removed) return
     card.removed = true
     card.hidden = true
     if (card.timer !== undefined) clearInterval(card.timer)
     card.timer = undefined
     const waterfall = card.waterfall
+    card.waterfall = undefined
     if (waterfall !== undefined && !waterfall.settled) {
       waterfall.settled = true
       waterfall.lifetime.abort()
     }
     card.overlay?.cancel()
     card.overlay = undefined
-    const cards = this.cards.get(card.client)
-    if (cards?.get(card.key) === card) cards.delete(card.key)
-    if (cards?.size === 0) this.cards.delete(card.client)
+    // Removal clears the owned waterfall before cancelling its overlay, so a
+    // retired continuation cannot re-enter this registered-card path.
+    const cards = this.cards.get(card.client)!
+    cards.delete(card.key)
+    if (cards.size === 0) this.cards.delete(card.client)
+    if (waterfall !== undefined) this.publishWaiting()
+  }
+
+  /** Derive pending presentation from owned native waterfalls without another wait store. */
+  private publishWaiting(): void {
+    const card = [...this.cards.values()].flatMap(cards => [...cards.values()])
+      .findLast(card => card.waterfall !== undefined && !card.waterfall.settled && this.isCurrent(card))
+    const single = card?.questions.length === 1 ? card.questions[0] : undefined
+    const review = single !== undefined && planReviewChoices(single) !== undefined
+    const callId = single?.intent?.kind === 'plan-review' ? single.intent.callId : undefined
+    this.options.ctx.emit('mayfly/decision-requests-changed', 'plan', review ? [{
+      type: 'plan', toolName: single.header ?? 'plan',
+      ...callId === undefined ? {} : { callId: String(callId) },
+    }] : [])
+    this.options.ctx.emit('mayfly/decision-wait-changed', card === undefined ? undefined : { kind: review ? 'approval' : 'answer' })
   }
 
   private retireClient(client: HostClient): void {
@@ -419,8 +440,7 @@ class RemoteQuestionController {
   }
 
   private projectionRows(card: QuestionCard): Map<string, RemotePendingQuestion> {
-    if (this.projected?.client !== card.client || this.projected.binding !== card.binding) return new Map()
-    const snapshot = this.projected.binding.session.projections.faceOf('userQuestions').getSnapshot() as RemoteQuestionProjection | undefined
+    const snapshot = card.binding.session.projections.faceOf('userQuestions').getSnapshot() as RemoteQuestionProjection | undefined
     return new Map((snapshot?.active ?? []).map(row => [this.cardKey(card.ref.sessionId, row.callId), row]))
   }
 

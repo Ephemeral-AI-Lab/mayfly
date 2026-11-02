@@ -5,6 +5,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import { apply as uiProvider } from '@ephemeral-ai/mayfly-ui/provider'
 import * as frontend from '@ephemeral-ai/mayfly/frontend'
+import type { MayflyDecisionRequest, MayflyDecisionWait } from '@ephemeral-ai/mayfly/editor-presentation'
 import { vi } from 'vitest'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
@@ -65,6 +66,10 @@ export async function questionFixture() {
     t: (key: string, values?: Readonly<Record<string, string | number>>) => key.replace(/\{(\w+)\}/gu, (_match, name: string) => String(values?.[name] ?? `{${name}}`)),
     notice: { set: vi.fn() }, subscribeLocale: (callback: () => void) => { locales.add(callback); return () => { locales.delete(callback) } },
   } as unknown as RemoteFeatureContext
+  const decisionWaits: Array<MayflyDecisionWait | undefined> = []
+  const plans: Array<readonly MayflyDecisionRequest[]> = []
+  ctx.on('mayfly/decision-wait-changed', wait => { decisionWaits.push(wait) })
+  ctx.on('mayfly/decision-requests-changed', (source, requests) => { if (source === 'plan') plans.push(requests) })
   const dispose = mountQuestionInteractions(options)
   const next = vi.fn(async (): Promise<QuestionAnswer> => ({ answers: [] }))
   const request = (extra: Partial<QuestionRequest> = {}, fallback = next) => listener.call(ctx, { questions: [sampleQuestion], ...extra }, fallback)
@@ -79,7 +84,7 @@ export async function questionFixture() {
   }
   const notify = () => { for (const callback of [...topology]) callback() }
   return {
-    ctx, options, client, binding, questions, inbox, session, topology, states, locales, offRequest, waits, attachWait, answer, next, request, model, submit, dispose, notify,
+    ctx, options, client, binding, questions, inbox, session, topology, states, locales, offRequest, waits, decisionWaits, plans, attachWait, answer, next, request, model, submit, dispose, notify,
     scope: (next: SessionId | undefined) => { scope = next },
     setSelection: (value: RemoteFeatureSelection | undefined) => { selection = value; notify() },
     deselect: () => { selection = undefined; notify() },
