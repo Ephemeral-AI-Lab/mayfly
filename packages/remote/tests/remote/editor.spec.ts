@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import * as Frontend from '@ephemeral-ai/mayfly/frontend'
 import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
-import * as Core from '@ephemeral-ai/mayfly/core'
 import { mountRemoteEditor } from '../../src/remote/editor.ts'
 import type {
   MayflyComponents, MayflyEditor, MayflyFocusable, MayflyScreenService, MayflySemanticColors,
@@ -67,11 +66,8 @@ async function fixture() {
 describe('mountRemoteEditor', () => {
   it('propagates a shared compiler failure before acquiring a terminal slot', async () => {
     const { ctx, screen, components } = await fixture()
-    vi.spyOn(Core, 'compileMayflyEditorShellNode').mockReturnValueOnce({
-      ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'renderer unavailable',
-      errorComponent: { render: () => ['renderer unavailable'], invalidate: vi.fn() },
-    })
-    expect(() => mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })).toThrow('renderer unavailable')
+    const unavailable = { ...colors, get border(): MayflySemanticColors['border'] { throw new Error('palette unavailable') } }
+    expect(() => mountRemoteEditor(ctx, screen, components, unavailable, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })).toThrow('Mayfly editor shell compilation failed safely')
     expect(screen.mountDockSlot).not.toHaveBeenCalled()
   })
 
