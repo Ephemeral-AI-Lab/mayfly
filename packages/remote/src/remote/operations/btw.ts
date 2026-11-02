@@ -71,6 +71,8 @@ class RemoteBtwCommand {
         ...session.selection.historyFloorSeq === undefined ? {} : { historyFloorSeq: session.selection.historyFloorSeq },
       })
       base.notice.set(this.t('BTW question shown in the side view'))
+    } catch (error) {
+      if (operation.valid()) throw error
     } finally { operation.dispose() }
   }
 }

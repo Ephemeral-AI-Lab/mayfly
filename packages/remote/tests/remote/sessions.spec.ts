@@ -46,8 +46,11 @@ async function fixture(options: { sessionless?: boolean, noPaths?: boolean, noOp
   let workspaceRows: readonly WorkspaceView[] = [{ workspaceId: 'repo' as WorkspaceView['workspaceId'], path: '/host/repo', title: 'Repo', sessionIds: [currentId, SessionId('child')], createdAt: '', updatedAt: '' }]
   let archived: readonly ReturnType<typeof SessionId>[] = []
   let projections: Readonly<Record<string, SessionProjectionSnapshot>> = {}
+  let missingId: ReturnType<typeof SessionId> | undefined
+  let workspaceState: 'idle' | 'loading' | 'error' = 'idle'
+  let workspaceError: unknown = null
   let generation = 1
-  const snapshot = (): SessionListState => ({ ids: rows.map(row => row.id), byId: Object.fromEntries(rows.map(row => [row.id, row])), phase: 'ready', projectionsBySession: projections })
+  const snapshot = (): SessionListState => ({ ids: [...rows.map(row => row.id), ...missingId === undefined ? [] : [missingId]], byId: Object.fromEntries(rows.map(row => [row.id, row])), phase: 'ready', projectionsBySession: projections })
   const sessions = {
     list: { getSnapshot: snapshot, subscribe: subscribe(sessionListeners) },
     refresh: vi.fn(async () => {}),
@@ -57,7 +60,7 @@ async function fixture(options: { sessionless?: boolean, noPaths?: boolean, noOp
     subagentAddress: vi.fn((id: ReturnType<typeof SessionId>) => id === 'child' ? { parentSessionId: currentId, childSessionId: id, mode: 'continuable' as const } : undefined),
   }
   const workspaces = {
-    list: { getSnapshot: () => ({ items: workspaceRows, archivedSessionIds: archived, pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null }), subscribe: subscribe(workspaceListeners) },
+    list: { getSnapshot: () => ({ items: workspaceRows, archivedSessionIds: archived, pinnedSessionIds: [], state: workspaceState, phase: 'ready', error: workspaceError }), subscribe: subscribe(workspaceListeners) },
     archiveSession: vi.fn(async (id: ReturnType<typeof SessionId>, _options?: { stopActivity?: boolean }) => { archived = [...archived, id] }),
     unarchiveSession: vi.fn(async (id: ReturnType<typeof SessionId>) => { archived = archived.filter(item => item !== id) }),
   }
@@ -94,6 +97,8 @@ async function fixture(options: { sessionless?: boolean, noPaths?: boolean, noOp
     setProjections(next: typeof projections) { projections = next; emit(sessionListeners) },
     setWorkspaces(next: readonly WorkspaceView[]) { workspaceRows = next; emit(workspaceListeners) },
     setArchived(next: typeof archived) { archived = next; emit(workspaceListeners) },
+    missingRow(id: string) { missingId = SessionId(id); emit(sessionListeners) },
+    workspaceFailure(error: unknown) { workspaceState = 'error'; workspaceError = error; emit(workspaceListeners) },
     reconnect() { generation += 1; emit(connectionListeners) },
     changeSelection(next: RemoteFeatureSelection | undefined) { current = next; emit(topologyListeners) },
     detach() { attached = []; active = undefined; current = undefined; emit(topologyListeners) },
@@ -238,6 +243,133 @@ describe('RemoteSessionsBrowserController', () => {
     f.detach()
     expect(f.overlays.list()).toEqual([])
     f.open()
+    expect(f.overlays.list()).toEqual([])
+  })
+
+  it('uses authoritative workspace membership before cwd fallback and ignores incomplete native rows', async () => {
+    const f = await fixture({ noPaths: true })
+    f.setRows([summary('current', { cwd: '/host/unregistered' }), summary('child'), summary('orphan', { cwd: undefined })])
+    f.missingRow('loading-row')
+    f.open(); await f.flush()
+    expect(f.text()).toContain('current')
+    expect(f.text()).not.toContain('orphan')
+    f.setWorkspaces([{ workspaceId: 'canonical' as WorkspaceView['workspaceId'], path: '/host/repo', title: 'Canonical', sessionIds: [], createdAt: '', updatedAt: '' }])
+    await f.event(tab('workspace:unregistered'))
+    expect(f.text()).toContain('orphan')
+    await f.event(tab('workspace:canonical'))
+    expect(f.text()).toContain('child')
+    f.workspaceFailure(new Error('workspace offline'))
+    await f.event(action('reload'))
+    expect(f.text()).toContain('workspace offline')
+    f.controller.open({ ...f.client }, undefined, f.onSelect)
+    expect(f.overlays.list()).toEqual([])
+  })
+
+  it('reports native detail failures and retires a deleted or superseded detail read', async () => {
+    const f = await fixture()
+    f.open(); await f.flush()
+    expect(await f.event({ kind: 'selection-accept', pagePath: [], controlId: 'other', selectedIds: [] })).toMatchObject({ kind: 'completed' })
+    f.sessions.refreshProjections.mockRejectedValueOnce(new Error('projection unavailable'))
+    expect(await f.event(select('current'))).toMatchObject({ kind: 'failed', message: 'Could not read session details: projection unavailable' })
+    f.setProjections({ current: { state: 'error', values: {}, error: 'invalid journal' } as never })
+    expect(await f.event(select('current'))).toMatchObject({ kind: 'failed', message: 'Could not read session details: invalid journal' })
+    const reading = deferred<void>()
+    f.sessions.refreshProjections.mockReturnValueOnce(reading.promise)
+    const missing = f.event(select('current'))
+    await f.flush()
+    f.setRows([summary('child')]); reading.resolve()
+    expect(await missing).toMatchObject({ kind: 'failed', message: 'Session is no longer available; refresh the catalog.' })
+    const rejected = deferred<void>()
+    f.sessions.refreshProjections.mockReturnValueOnce(rejected.promise)
+    const stale = f.event(select('child'))
+    await f.flush()
+    await f.event(action('search-all'))
+    rejected.reject(new Error('old detail'))
+    expect(await stale).toMatchObject({ kind: 'cancelled' })
+    f.controller.dispose()
+  })
+
+  it('cancels old searches, propagates current search failures, and ignores reminder results after unload', async () => {
+    const f = await fixture()
+    const reminders = deferred<Awaited<ReturnType<typeof f.reminderCatalog>>>()
+    f.reminderCatalog.mockReturnValueOnce(reminders.promise)
+    f.open(); await f.flush()
+    const old = deferred<Awaited<ReturnType<typeof f.sessions.search>>>()
+    f.sessions.search.mockReturnValueOnce(old.promise)
+    const pending = f.event(search('old'))
+    await f.flush()
+    await f.event(search('new'))
+    old.reject(new Error('old search failed'))
+    expect(await pending).toMatchObject({ kind: 'cancelled' })
+    f.sessions.search.mockRejectedValueOnce(new Error('search offline'))
+    await expect(f.event(search('failure'))).rejects.toThrow('search offline')
+    await f.owner.dispose()
+    reminders.resolve({ ok: true, value: [{ sessionId: SessionId('current'), status: 'active' }] })
+    await f.flush()
+    expect(f.overlays.list()).toEqual([])
+  })
+
+  it('keeps the lead selection when child access is unavailable or the lead is not open', async () => {
+    const f = await fixture({ sessionless: true })
+    f.open(); await f.flush(); await f.event(select('child'))
+    expect(await f.event(action('open'))).toMatchObject({ kind: 'failed', message: 'Open the lead session first' })
+    f.controller.dispose()
+    const unavailable = await fixture({ noOpenChild: true })
+    unavailable.open(); await unavailable.flush(); await unavailable.event(select('child'))
+    expect(await unavailable.event(action('open'))).toMatchObject({ kind: 'failed', message: 'Opening child conversations is unavailable in this composition' })
+    unavailable.sessions.subagentAddress.mockReturnValueOnce(undefined)
+    expect(await unavailable.event(action('open'))).toMatchObject({ kind: 'failed', message: 'Open this child’s lead session first' })
+    expect(unavailable.onSelect).not.toHaveBeenCalled()
+    unavailable.controller.dispose()
+  })
+
+  it('fences an opening child and archive changes after the active detail or Host generation changes', async () => {
+    const f = await fixture()
+    f.open(); await f.flush(); await f.event(select('child'))
+    const opening = deferred<void>()
+    f.openChild.mockReturnValueOnce(opening.promise)
+    const pendingChild = f.event(action('open'))
+    await f.flush()
+    await f.event(select('current'))
+    opening.resolve()
+    expect(await pendingChild).toMatchObject({ kind: 'cancelled' })
+    const archiving = deferred<void>()
+    f.workspaces.archiveSession.mockReturnValueOnce(archiving.promise)
+    const pendingArchive = f.event(action('archive'))
+    await f.flush()
+    await f.event(tab('workspace:unregistered'))
+    archiving.resolve()
+    expect(await pendingArchive).toMatchObject({ kind: 'cancelled' })
+    await f.event(select('other'))
+    const failed = deferred<void>()
+    f.workspaces.archiveSession.mockReturnValueOnce(failed.promise)
+    const pendingFailure = f.event(action('archive'))
+    await f.flush()
+    f.reconnect(); failed.reject(new Error('stale archive'))
+    expect(await pendingFailure).toBeUndefined()
+    expect(f.overlays.list()).toEqual([])
+  })
+
+  it('rejects a current archive failure and retires catalog refreshes after cancellation', async () => {
+    const f = await fixture()
+    f.open(); await f.flush(); await f.event(select('current'))
+    f.workspaces.archiveSession.mockRejectedValueOnce(new Error('archive offline'))
+    await expect(f.event(action('archive'))).rejects.toThrow('archive offline')
+    expect(await f.event(action('unrecognized'))).toMatchObject({ kind: 'completed' })
+    const refreshing = deferred<void>()
+    f.sessions.refresh.mockReturnValueOnce(refreshing.promise)
+    const pending = f.event(action('reload'))
+    await f.flush()
+    f.reconnect(); refreshing.resolve()
+    expect(await pending).toBeUndefined()
+    expect(f.overlays.list()).toEqual([])
+    f.open(); await f.flush()
+    const rejected = deferred<void>()
+    f.sessions.refresh.mockReturnValueOnce(rejected.promise)
+    const old = f.event(action('reload'))
+    await f.flush()
+    f.reconnect(); rejected.reject(new Error('old refresh'))
+    expect(await old).toBeUndefined()
     expect(f.overlays.list()).toEqual([])
   })
 })
