@@ -1,17 +1,13 @@
 /**
- * Markdown export shapes replicated from the legacy in-process session export
- * over Remote wire events: front-matter, overview, per-turn sections, and the
- * full audit stream.
+ * Frozen rc.2 Markdown shapes over the Host's visible conversation projection
+ * and the native audit wire stream: front-matter, overview, per-turn sections,
+ * and readable attempt prefixes in the full audit.
  * @module @ephemeral-ai/mayfly/remote/operations/export-markdown
  */
 
 import type { SessionWireEvent } from '@deepseek-ai/dsh-api-session-controller/types'
-
-/** The key-arg whitelist for the tool-call hint, in priority order. */
-const KEY_ARG_KEYS = ['file_path', 'command', 'pattern'] as const
-
-/** Maximum length of the tool-call hint on an export line. */
-const KEY_ARG_MAX_CHARS = 60
+import { expandAssistantStream, type AssistantStreamRecord } from '@deepseek-ai/dsh-llm/assistant-stream'
+import type { ConversationEntry, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 
 /** First user message topic length in the overview. */
 const TOPIC_MAX_CHARS = 80
@@ -19,13 +15,7 @@ const TOPIC_MAX_CHARS = 80
 /** The shortest id prefix kept in default filenames. */
 const ID_PREFIX_LENGTH = 8
 
-type ExportItem =
-  | { readonly kind: 'user', readonly turn: number, readonly text: string, readonly images: readonly string[] }
-  | { readonly kind: 'assistant', readonly turn: number, readonly text: string }
-  | { readonly kind: 'thinking', readonly turn: number, readonly text: string }
-  | { readonly kind: 'tool', readonly turn: number, readonly name: string, readonly arguments: string, readonly result?: { readonly text: string, readonly error?: string } }
-  | { readonly kind: 'error', readonly turn: number, readonly message: string, readonly code?: string }
-  | { readonly kind: 'interrupted', readonly turn: number }
+type ExportItem = Exclude<ConversationEntry, { readonly kind: 'compaction' | 'goal-change' | 'goal-round' }>
 
 /** Facts both export shapes render. */
 export interface RemoteExportInput {
@@ -70,46 +60,12 @@ function reasoningText(content: unknown): string {
     .join('\n\n')
 }
 
-/** Image placeholder markers for one user content, in block order. */
-function imageMarkers(content: unknown): readonly string[] {
-  if (!Array.isArray(content)) return []
-  return content
-    .filter(isRecord)
-    .filter(block => block['type'] === 'image')
-    .map(() => '[image]')
-}
-
-/** The tool-call hint: the first non-empty whitelist argument, then the first short string. */
-function extractToolHint(_name: string, args: string): string | undefined {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(args) as unknown
-  } catch {
-    return undefined
-  }
-  if (!isRecord(parsed)) return undefined
-  for (const key of KEY_ARG_KEYS) {
-    const value = parsed[key]
-    if (typeof value === 'string' && value !== '') return shorten(value, KEY_ARG_MAX_CHARS)
-  }
-  for (const value of Object.values(parsed)) {
-    if (typeof value === 'string' && value !== '' && value.length <= KEY_ARG_MAX_CHARS) {
-      return shorten(value, KEY_ARG_MAX_CHARS)
-    }
-  }
-  return undefined
-}
-
 function formatToolItem(item: Extract<ExportItem, { kind: 'tool' }>): string {
-  const hint = extractToolHint(item.name, item.arguments)
-  const title = hint === undefined ? `#### Tool Call: ${item.name}` : `#### Tool Call: ${item.name} (\`${hint}\`)`
-  const lines = [title, '', '```json', item.arguments, '']
-  const result = item.result
-  if (result !== undefined) {
-    const resultTitle = hint === undefined ? `Tool Result: ${item.name}` : `Tool Result: ${item.name} (\`${hint}\`)`
-    lines.push(`<details><summary>${resultTitle}</summary>`, '', result.text, '', '</details>')
+  const lines = [`#### Tool Call: ${item.name}`, '', '```json', item.arguments, '```', '']
+  if (item.result !== undefined) {
+    lines.push(`<details><summary>Tool Result: ${item.name}</summary>`, '', item.result.text, '', '</details>', '')
   }
-  return `${lines.join('\n')}\n`
+  return lines.join('\n')
 }
 
 function formatTurn(items: readonly ExportItem[], turn: number): string {
@@ -122,14 +78,14 @@ function formatTurn(items: readonly ExportItem[], turn: number): string {
         userHeaderWritten = true
       }
       if (item.text.trim().length > 0) lines.push(item.text, '')
-      for (const image of item.images) lines.push(image, '')
+      for (const image of item.images) lines.push(`[image${image.name === undefined ? '' : ` ${image.name}`}]`, '')
     } else if (item.kind === 'thinking') {
       if (item.text.trim().length === 0) continue
       lines.push('<details><summary>Thinking</summary>', '', item.text, '', '</details>', '')
     } else if (item.kind === 'assistant') {
       if (item.text.trim().length > 0) lines.push('### Assistant', '', item.text, '')
     } else if (item.kind === 'tool') {
-      lines.push(formatToolItem(item), '')
+      lines.push(formatToolItem(item))
     } else if (item.kind === 'error') {
       lines.push(`> ✗ request failed: ${item.message}${item.code === undefined ? '' : ` (${item.code})`}`, '')
     } else {
@@ -159,80 +115,19 @@ function buildOverview(items: readonly ExportItem[]): string {
   ].join('\n')
 }
 
-/** Fold wire events into export items, pairing tool calls with their results. */
-function foldItems(events: readonly SessionWireEvent[]): readonly ExportItem[] {
-  const items: ExportItem[] = []
-  let turn = 0
-  for (const event of events) {
-    const data = event.data
-    switch (event.type) {
-      case 'turn/start': {
-        const next = isRecord(data) ? data['turn'] : undefined
-        if (typeof next === 'number' && Number.isFinite(next)) turn = next
-        break
-      }
-      case 'user/message': {
-        const text = contentText(isRecord(data) ? data['content'] : undefined)
-        items.push({ kind: 'user', turn, text, images: imageMarkers(isRecord(data) ? data['content'] : undefined) })
-        break
-      }
-      case 'assistant/message': {
-        const message = isRecord(data) ? data['message'] : undefined
-        const content = isRecord(message) ? message['content'] : undefined
-        const reasoning = reasoningText(content)
-        if (reasoning.trim().length > 0) items.push({ kind: 'thinking', turn, text: reasoning })
-        const text = contentText(content)
-        if (text.trim().length > 0) items.push({ kind: 'assistant', turn, text })
-        break
-      }
-      case 'tool/call': {
-        items.push({
-          kind: 'tool',
-          turn,
-          name: stringAt(data, 'name') ?? '',
-          arguments: stringAt(data, 'arguments') ?? '',
-        })
-        break
-      }
-      case 'tool/result': {
-        const meta = stringAt(data, 'meta')
-        const message = isRecord(data) ? data['message'] : undefined
-        const text = meta !== undefined && meta.trim() !== '' ? meta : contentText(isRecord(message) ? message['content'] : undefined)
-        const error = isRecord(data) ? data['error'] : undefined
-        const code = stringAt(error, 'code')
-        for (let index = items.length - 1; index >= 0; index -= 1) {
-          const candidate = items[index]
-          if (candidate === undefined || candidate.kind !== 'tool' || candidate.result !== undefined) continue
-          items[index] = {
-            ...candidate,
-            result: { text, ...error === undefined ? {} : { error: `${stringAt(error, 'message') ?? ''}${code === undefined ? '' : ` (${code})`}` } },
-          }
-          break
-        }
-        break
-      }
-      case 'turn/end': {
-        const reason = isRecord(data) ? data['reason'] : undefined
-        const kind = stringAt(reason, 'kind')
-        if (kind === 'error') {
-          const failure = isRecord(reason) ? reason['error'] : undefined
-          const code = stringAt(failure, 'code')
-          items.push({ kind: 'error', turn, message: stringAt(failure, 'message') ?? '', ...code === undefined ? {} : { code } })
-        } else if (kind === 'interrupted') {
-          items.push({ kind: 'interrupted', turn })
-        }
-        break
-      }
-      default:
-        break
-    }
-  }
-  return items
+/** Read the visible Host projection, excluding only transcript chrome, as rc.2 does. */
+export function remoteExportItems(projection: ConversationProjection): readonly ExportItem[] {
+  return projection.entries.filter((entry): entry is ExportItem => entry.kind !== 'compaction' && entry.kind !== 'goal-change' && entry.kind !== 'goal-round')
+}
+
+/** Readable export facts come exclusively from the Host's complete conversation projection. */
+export interface RemoteReadableExportInput extends Omit<RemoteExportInput, 'events'> {
+  readonly items: readonly ExportItem[]
 }
 
 /** Build the readable folded export: front-matter, overview, one section per turn. */
-export function buildRemoteExportMarkdown(input: RemoteExportInput): string {
-  const items = foldItems(input.events)
+export function buildRemoteExportMarkdown(input: RemoteReadableExportInput): string {
+  const items = input.items
   const lines = [
     '---',
     `session_id: ${input.sessionId}`,
@@ -343,6 +238,20 @@ function formatFullEvent(event: SessionWireEvent): string {
     case 'step/end':
       lines.push('#### step/end', '')
       break
+    case 'assistant/attempt': {
+      const stream = isRecord(data) && Array.isArray(data['stream']) ? data['stream'] as AssistantStreamRecord[] : []
+      let reasoning = ''
+      let text = ''
+      for (const { chunk } of expandAssistantStream(stream)) {
+        if (chunk.type === 'reasoning-delta') reasoning += chunk.text
+        else if (chunk.type === 'text-delta') text += chunk.text
+      }
+      if (reasoning.trim() === '' && text.trim() === '') return ''
+      lines.push('#### assistant attempt', '')
+      if (reasoning.trim() !== '') lines.push('<details><summary>Thinking</summary>', '', reasoning, '', '</details>', '')
+      if (text.trim() !== '') lines.push(text, '')
+      break
+    }
     case 'turn/end': {
       const reason = isRecord(data) ? data['reason'] : undefined
       const kind = stringAt(reason, 'kind') ?? ''
@@ -382,7 +291,7 @@ export function buildRemoteFullExportMarkdown(input: RemoteExportInput): string 
 
 /** The default export filename: `mayfly-export-{id8}-{YYYYMMDD-HHMMSS}.md`. */
 export function remoteExportFileName(sessionId: string, now: Date): string {
-  const shortId = sessionId.slice(0, ID_PREFIX_LENGTH)
+  const shortId = sessionId.slice(0, ID_PREFIX_LENGTH).replaceAll(/[\\/\u0000-\u001F\u007F]/gu, '')
   const timestamp = now.toISOString().replaceAll(/[-:]/g, '').replace('T', '-').slice(0, 15)
   return `mayfly-export-${shortId}-${timestamp}.md`
 }
@@ -392,5 +301,5 @@ export function sanitizeRemoteExportName(requested: string): string | undefined 
   const bare = requested.replaceAll(/[\\/\u0000-\u001F\u007F]/gu, '').trim()
   if (bare === '' || bare === '.' || bare === '..') return undefined
   const capped = [...bare].slice(0, 100).join('')
-  return /\.md$/u.test(capped) ? capped : `${capped}.md`
+  return capped.endsWith('.md') ? capped : `${capped}.md`
 }

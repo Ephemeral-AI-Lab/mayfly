@@ -1,0 +1,22 @@
+{
+  "commit": "f148e7045cc22a66e62c0cd5203f8eeca1368081",
+  "source": "packages/mayfly/src/interaction/session-export.ts",
+  "blob": "98a1527d45478a3e9aa7347c086d7bc3e2b03d3d",
+  "facts": "../export-fixture.ts",
+  "sourceFunctions": [
+    "shorten",
+    "extractToolHint",
+    "formatToolItemMd",
+    "formatTurnMd",
+    "buildOverview",
+    "buildExportMarkdown",
+    "contentText",
+    "reasoningText",
+    "formatContentBlocksFull",
+    "formatFullEvent",
+    "formatUsage",
+    "format1024",
+    "buildFullExportMarkdown",
+    "attemptStreamText"
+  ]
+}

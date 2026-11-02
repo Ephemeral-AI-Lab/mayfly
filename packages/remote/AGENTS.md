@@ -88,6 +88,12 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
 - Raw settings editing uses `createRemoteSettingsEditor` with core-owned
   `screen.suspend`. Editing happens locally; writes use the original Host
   document revision and reject results after cancellation or selection change.
+- Readable `/save` and `/export` consume the Host's whole `mayflyConversation`
+  projection, preserving retractions and hidden-message visibility. Only `full`
+  pages the native audit journal; attempt prefixes use native stream expansion.
+  Exports write exclusively to bare filenames under local `mayfly-exports/`,
+  fence the exact Host/Session/binding/connection generation and command owner,
+  and remove a newly written file if its owner retires before write settlement.
 - Durable conversation and facts come from whole Host projections.
   `src/conversation/` and `src/transcript/` map their latest snapshots plus a
   bounded current-attempt stream overlay; they never fold a second durable
