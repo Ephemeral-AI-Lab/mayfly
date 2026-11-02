@@ -24,6 +24,8 @@ test('the full gate includes native user questions, usage statistics, files and 
   assert.ok(SPLIT_SCENARIOS.stats.steps.some(step => step.text === '/stats'))
   assert.equal(SPLIT_SCENARIOS.files.fixture, 'native-files')
   assert.ok(SPLIT_SCENARIOS.files.steps.some(step => step.text === 'Exact preview'))
+  const previewAt = SPLIT_SCENARIOS.files.steps.findIndex(step => step.name === 'files-delivered-preview')
+  assert.ok(SPLIT_SCENARIOS.files.steps.slice(0, previewAt).some(step => step.step === 'until-gone' && step.text === 'Description:'))
   const checkpoints = SPLIT_SCENARIOS['theme-catalog'].steps.filter(step => step.step === 'checkpoint')
   assert.equal(checkpoints.length, 99)
   assert.equal(new Set(checkpoints.map(step => step.name)).size, 99)

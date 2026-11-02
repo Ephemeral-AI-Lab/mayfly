@@ -40,8 +40,10 @@ export const SPLIT_FILES_STEPS = Object.freeze([
   { step: 'until', text: 'Ask anything' }, ...send('native:files:delivered'),
   { step: 'until', text: 'Native files finished: delivered' }, ...send('/files'),
   { step: 'until', text: 'Files' }, { step: 'key', name: 'enter' },
-  { step: 'until', text: 'Deterministic native delivery' }, { step: 'wait', ms: 500 }, checkpoint('files-delivered-detail'),
-  { step: 'key', name: 'p' }, { step: 'until', text: 'Exact preview' }, checkpoint('files-delivered-preview'),
+  { step: 'until', text: 'Description:' }, { step: 'until', text: 'Deterministic native delivery' }, { step: 'wait', ms: 500 }, checkpoint('files-delivered-detail'),
+  // The Write card behind this browser already contains the preview text. Its
+  // presence alone cannot prove that the delivered-file preview actually opened.
+  { step: 'key', name: 'p' }, { step: 'until-gone', text: 'Description:' }, { step: 'until', text: 'Exact preview' }, checkpoint('files-delivered-preview'),
   { step: 'key', name: 'p' }, { step: 'key', name: 'esc' }, { step: 'key', name: 'down' }, { step: 'key', name: 'enter' }, { step: 'wait', ms: 500 }, checkpoint('files-native-diff'),
   { step: 'resize', cols: 40, rows: 16 }, { step: 'key', name: 'esc' }, checkpoint('files-narrow-list'),
   { step: 'key', name: 'enter' }, checkpoint('files-narrow-detail'),
