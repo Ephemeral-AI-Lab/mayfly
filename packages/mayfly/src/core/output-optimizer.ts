@@ -185,7 +185,7 @@ export function createOutputOptimizer(
     const height = next.length
     let prefix = 0
     while (prefix < height && next[prefix] === previous[prefix]) prefix += 1
-    if (prefix === height) return undefined
+    // The caller already handled an identical frame before looking for a shift.
     let suffix = 0
     while (suffix < height - prefix && next[height - 1 - suffix] === previous[height - 1 - suffix]) suffix += 1
     const top = prefix

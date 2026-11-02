@@ -119,6 +119,27 @@ describe('probeTerminalBackground', () => {
     await expect(probe).resolves.toBeUndefined()
   })
 
+  it('ignores a reply whose data callback was queued before the listener was removed', async () => {
+    const fake = fakeProc()
+    const on = fake.proc.stdin.on
+    let queued: ((data: Buffer) => void) | undefined
+    fake.proc.stdin.on = (event, listener) => { queued = listener; on(event, listener) }
+    const probe = probeTerminalBackground(fake.proc, 1000)
+    fake.reply('\x1b]11;#102030\x07')
+    queued!(Buffer.from('\x1b]11;#ffffff\x07'))
+    await expect(probe).resolves.toEqual({ r: 16, g: 32, b: 48 })
+    expect(fake.rawModes).toEqual([true, false])
+    expect(fake.listenerCount()).toBe(0)
+  })
+
+  it('settles without registering a listener when entering raw mode fails', async () => {
+    const fake = fakeProc()
+    fake.proc.stdin.setRawMode = () => { throw new Error('stdin detached') }
+    await expect(probeTerminalBackground(fake.proc, 1000)).resolves.toBeUndefined()
+    expect(fake.listenerCount()).toBe(0)
+    expect(fake.written).toEqual([])
+  })
+
   it('works without raw-mode support (non-TTY stdin)', async () => {
     const fake = fakeProc({ rawMode: false })
     const probe = probeTerminalBackground(fake.proc, 1000)

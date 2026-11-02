@@ -120,6 +120,7 @@ export function mountRemoteEditor(
   let frameShape = ''
   let dock: RemoteEditorDock | undefined
   let disposed = false
+  const repaint = (): void => { screen.requestRender() }
   const compile = (): MayflyEditorShellComponent | undefined => {
     const facts = presentation()
     const title = (facts.title || (facts.view?.kind === 'primary' ? undefined : facts.view?.label))?.replace(/\s+/gu, ' ').trim() || undefined
@@ -131,7 +132,7 @@ export function mountRemoteEditor(
     if (frameShape === shape) return undefined
     const compiled = compileMayflyEditorShellNode(node, {
       editor, components, colors, getViewport: () => screen.editorViewport,
-      screenMode: 'main', keymap: ctx.mayflyKeymap, emit: screen.requestRender.bind(screen),
+      screenMode: 'main', keymap: ctx.mayflyKeymap, emit: repaint,
     })
     if (!compiled.ok) throw new Error(compiled.message)
     frameShape = shape
@@ -152,7 +153,7 @@ export function mountRemoteEditor(
     originalShellMode?.call(editor, next)
     shellMode = next
     sync()
-    screen.requestRender()
+    repaint()
   }
   const slot = screen.mountDockSlot('editor.prompt', dock)
   slot.focus()
@@ -166,9 +167,9 @@ export function mountRemoteEditor(
       editor.updateColors(nextColors)
       frameShape = ''
       sync()
-      screen.requestRender()
+      repaint()
     },
-    refresh() { sync(); if (!disposed) screen.requestRender() },
+    refresh() { sync(); if (!disposed) repaint() },
     focus() { slot.focus() },
     dispose() {
       if (disposed) return

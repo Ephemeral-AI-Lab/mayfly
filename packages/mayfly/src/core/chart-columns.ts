@@ -88,9 +88,10 @@ export function renderColumns(node: BarNode, width: number, components: MayflyCo
   const cell = (amounts: readonly number[], row: number): { glyph: string, tone: MayflyTone } | undefined => {
     const low = (height - 1 - row) * unit
     const total = amounts.reduce((sum, amount) => sum + amount, 0)
-    const scaled = normalized ? (index: number): number => total === 0 ? 0 : amounts[index]! / total * 100 : (index: number): number => amounts[index]!
     const sum = normalized ? (total === 0 ? 0 : 100) : total
     if (sum <= low) return undefined
+    // Zero-total piles already returned without a painted cell.
+    const scaled = normalized ? (index: number): number => amounts[index]! / total * 100 : (index: number): number => amounts[index]!
     // The topmost series of the pile gives the partial cell on top its colour.
     let topSeries = 0
     for (let index = 0; index < amounts.length; index += 1) if (amounts[index]! > 0) topSeries = index

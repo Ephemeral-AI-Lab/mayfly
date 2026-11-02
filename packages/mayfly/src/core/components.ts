@@ -824,8 +824,7 @@ class MarkdownAdapter implements MayflyMarkdown {
         if (diagram !== undefined) return diagram
         return expandMarkdownRules(new Markdown(segment.fallback, 0, 0, this.theme).render(contentWidth), contentWidth, this.hr)
       }
-      /* splitRichDocument omits zero-length Markdown segments. */
-      if (segment.source.length === 0) return []
+      // splitRichDocument omits zero-length Markdown segments.
       return expandMarkdownRules(new Markdown(segment.source, 0, 0, this.theme).render(contentWidth), contentWidth, this.hr)
     })
     const horizontal = padX === 0 ? body : body.map(line => `${' '.repeat(padX)}${line}`)

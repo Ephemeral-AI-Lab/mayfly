@@ -224,6 +224,21 @@ describe('OverlayArm', () => {
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
 
+  it('ignores an elapsed callback already queued when its overlay was disposed', () => {
+    const elapsed = vi.fn()
+    const timeout = vi.spyOn(globalThis, 'setTimeout')
+    try {
+      const arm = new OverlayArm(300, elapsed)
+      arm.start()
+      const queued = timeout.mock.calls.at(-1)![0] as () => void
+      arm.dispose()
+      queued()
+      expect(elapsed).not.toHaveBeenCalled()
+      expect(arm.armed).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally { timeout.mockRestore() }
+  })
+
   it('opens once on the first focus, keeps the window after a later start, and stays armed once disposed', () => {
     const elapsed = vi.fn()
     const arm = new OverlayArm(300, elapsed)
