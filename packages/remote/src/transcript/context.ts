@@ -41,7 +41,6 @@ export function remoteTranscriptChildIds(facts: RemoteSessionFactsSnapshot, cata
 }
 
 function childState(facts: ConversationFacts | undefined, timing: Record<string, unknown> | undefined, running: boolean): Child | undefined {
-  if (running) return { state: 'running' }
   if (facts !== undefined) {
     if (facts.active || facts.runOutcome === undefined) return { state: 'running' }
     return {
@@ -51,7 +50,8 @@ function childState(facts: ConversationFacts | undefined, timing: Record<string,
     }
   }
   if (timing?.['active'] !== undefined) return { state: 'running' }
-  return typeof timing?.['lastTurnCompleted'] === 'boolean' ? { state: 'settled', failed: !timing['lastTurnCompleted'] } : undefined
+  if (typeof timing?.['lastTurnCompleted'] === 'boolean') return { state: 'settled', failed: !timing['lastTurnCompleted'] }
+  return running ? { state: 'running' } : undefined
 }
 
 /** No durable fold, parent fallback, or retained rendering state: each call reads one exact whole snapshot. */

@@ -123,6 +123,26 @@ describe('transcript child whole-snapshot owner', () => {
     f.source.dispose()
   })
 
+  it('lets fresh whole facts outrank a delayed running summary and never revives the previous run from native cached values', async () => {
+    const f = fixture()
+    f.list.set({
+      ...catalog([summary('child', { running: true })]),
+      projectionsBySession: { [SessionId('child')]: { state: 'ready', error: null, values: { subagentTiming: { settledMs: 1, lastTurnCompleted: false } } } },
+    })
+    expect(f.source.snapshot()!.children!.byId.get('child')).toEqual({ state: 'running' })
+    await f.settle(0, native({ mayflyConversationFacts: { active: false, runOutcome: 'completed', endedAt: 100 } }))
+    expect(f.source.snapshot()!.children!.byId.get('child')).toEqual({ state: 'settled', failed: false, endedAt: 100 })
+    f.list.set(catalog([summary('child', { running: true, updatedAt: 2 })]))
+    expect(f.source.snapshot()!.children!.byId.get('child')).toEqual({ state: 'running' })
+    await f.settle(1, native({ mayflyConversationFacts: { active: false, runOutcome: 'failed', runStopped: true, endedAt: 200 } }))
+    expect(f.source.snapshot()!.children!.byId.get('child')).toEqual({ state: 'settled', failed: true, stopped: true, endedAt: 200 })
+    f.list.set(catalog([summary('child', { running: false, updatedAt: 3 })]))
+    expect(f.source.snapshot()!.children!.byId.has('child')).toBe(false)
+    await f.settle(2, native({ mayflyConversationFacts: { active: true, phase: 'tool' } }))
+    expect(f.source.snapshot()!.children!.byId.get('child')).toEqual({ state: 'running' })
+    f.source.dispose()
+  })
+
   it('bounds native absence and transient failures to one retry per activity key, then resumes on fresh native activity', async () => {
     vi.useFakeTimers()
     const f = fixture()

@@ -100,6 +100,7 @@ export class RemoteTranscriptContextSource {
       if (read === undefined) {
         read = { key, requested: undefined, attempts: 0, controller: undefined, retry: undefined }
         scope.reads.set(id, read)
+        scope.children.set(id, {})
       } else if (read.key !== key) {
         read.key = key
         read.attempts = 0

@@ -35,8 +35,8 @@ describe('displayed transcript context', () => {
   })
 
   it('maps native outcomes, stopped timing and first prompt index without cross-child or parent borrowing', () => {
-    const ids = ['active', 'waiting', 'completed', 'failed', 'stopped', 'native-running', 'timing-active', 'timing-completed', 'timing-failed', 'unknown']
-    const snapshot = catalog(ids.map(id => summary(id, { running: id === 'native-running' })))
+    const ids = ['active', 'waiting', 'completed', 'failed', 'stopped', 'native-running', 'timing-active', 'timing-completed', 'timing-failed', 'summary-running', 'unknown']
+    const snapshot = catalog(ids.map(id => summary(id, { running: id === 'native-running' || id === 'summary-running' })))
     const values = new Map([
       ['active', { mayflyConversationFacts: { active: true, runOutcome: 'failed' } }],
       ['waiting', { mayflyConversationFacts: { active: false } }],
@@ -55,8 +55,9 @@ describe('displayed transcript context', () => {
       ['completed', { state: 'settled', failed: false, endedAt: 20 }],
       ['failed', { state: 'settled', failed: true }],
       ['stopped', { state: 'settled', failed: true, stopped: true, endedAt: 30 }],
-      ['native-running', { state: 'running' }], ['timing-active', { state: 'running' }],
+      ['native-running', { state: 'settled', failed: false }], ['timing-active', { state: 'running' }],
       ['timing-completed', { state: 'settled', failed: false }], ['timing-failed', { state: 'settled', failed: true }],
+      ['summary-running', { state: 'running' }],
     ])
     expect([...context.children!.byPrompt!]).toEqual([['identical', context.children!.byId.get('completed')]])
     expect(context.children!.byId.has('unknown')).toBe(false)
