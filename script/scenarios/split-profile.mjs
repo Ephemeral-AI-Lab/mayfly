@@ -43,7 +43,7 @@ export function prepareSplitProfile({ root, dshBin, artifacts }) {
 }
 
 /** Wait for the actual Host's authenticated readiness URL; keep credentials in memory only. */
-export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe = false }) {
+export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe = false, startup }) {
   const profile = prepareSplitProfile({ root, dshBin, artifacts })
   // Reuse installed dependencies, never reuse previous scenarios' sessions or settings.
   const runDir = join(artifacts, 'runs', randomUUID())
@@ -55,7 +55,7 @@ export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe 
     `- id: session-persistence-jsonl\n  config:\n    root: ${JSON.stringify(join(runDir, 'sessions'))}`,
     `- id: storage-json\n  config:\n    root: ${JSON.stringify(join(runDir, 'storages'))}`,
     '- id: session-title-llm\n  disabled: true',
-    '- id: mayfly\n  config:\n    reducedMotion: true\n    updateCheck: false',
+    `- id: mayfly\n  config:\n    reducedMotion: true\n    updateCheck: false${startup === undefined ? '' : `\n    startup: ${JSON.stringify(startup)}`}`,
     ...(probe ? [
       '- id: user-approval\n  config:\n    policy: ask',
       `- insert:\n    - id: mayfly-split-parity-probe\n      name: ${JSON.stringify(new URL('./split-probe.mjs', import.meta.url).href)}`,

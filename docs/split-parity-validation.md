@@ -78,6 +78,9 @@ node script/split-parity.mjs --scenario presentation
 node script/split-parity.mjs --scenario tools
 node script/split-parity.mjs --scenario approval
 node script/split-parity.mjs --scenario network --smoke-only
+node script/split-parity.mjs --scenario startup
+node script/split-parity.mjs --scenario model-shortcut
+node script/split-parity.mjs --scenario panels
 ```
 
 `smoke` covers startup, help, Unicode draft, an actual model turn and `/new`.
@@ -100,6 +103,23 @@ Host stays alive. This case has no in-process rc.2 equivalent and always reports
 `parityVerified: false`. All shared semantic cases capture the published reference
 and candidate independently. Passing a native audit alone does not pass a visual
 comparison.
+
+`startup` configures the native `startup: splash` preference on both products,
+captures the empty splash, creates a real Session, returns with `/new`, browses
+its recent row, and resumes it with the keyboard. `model-shortcut` captures
+Alt+M cycling the provider's models with an empty prompt and a Unicode draft,
+then clears the draft. `panels` creates one real Session and opens `/context`,
+`/version`, `/skills`, `/provider`, `/settings`, `/sessions`, `/preset`,
+`/permissions`, `/model`, and `/effort`. These three cases acquire eighteen
+additional checkpoints in separate reference directories; they do not replace
+the initial eighteen. The panel checkpoints prove their initial presentation,
+not every write or secondary page available from each command.
+
+Each additional case uses its own published-reference profile home. Native
+model/default-setting writes can persist outside the per-run Session storage,
+so sharing a profile would let one command change the next case's baseline.
+The native startup preference and profile identity are recorded in reference
+provenance. Comparing a different startup preference fails before reading grids.
 
 Use `--root /path/to/candidate` to run against another built worktree. Driver and
 fixture files come from the verifier's own tree; the Host/Remote runtime comes

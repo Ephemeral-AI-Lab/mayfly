@@ -78,9 +78,9 @@ export async function acquirePublishedReference({ root, dir }) {
 }
 
 /** Generate reference frames exclusively from the verified published runtime, never the candidate. */
-export async function capturePublishedReference({ root, dir, cols = 80, rows = 24, steps = SPLIT_SMOKE_STEPS, probe = false, caseName }) {
+export async function capturePublishedReference({ root, dir, cols = 80, rows = 24, steps = SPLIT_SMOKE_STEPS, probe = false, startup, profileTag, caseName }) {
   const acquired = await acquirePublishedReference({ root, dir })
-  const profileHome = join(dir, 'profile-home')
+  const profileHome = join(dir, profileTag === undefined ? 'profile-home' : `profile-home-${profileTag}`)
   const profile = join(profileHome, '.dsh/profiles/mayfly-rc2-test')
   const work = join(profileHome, 'workspace')
   mkdirSync(work, { recursive: true })
@@ -107,7 +107,7 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
   writeFileSync(patch, [
     `- id: session-persistence-jsonl\n  config:\n    root: ${JSON.stringify(join(run, 'sessions'))}`,
     `- id: storage-json\n  config:\n    root: ${JSON.stringify(join(run, 'storages'))}`,
-    '- id: mayfly\n  config:\n    reducedMotion: true\n    updateCheck: false',
+    `- id: mayfly\n  config:\n    reducedMotion: true\n    updateCheck: false${startup === undefined ? '' : `\n    startup: ${JSON.stringify(startup)}`}`,
     '- id: session-title-llm\n  disabled: true',
     ...(probe ? [
       '- id: user-approval\n  config:\n    policy: ask',
@@ -126,7 +126,7 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
   writeFileSync(join(captureDir, 'reference.ansi'), captured.output)
   if (captured.failures.length > 0) throw new Error(`Published reference capture failed:\n${captured.failures.join('\n')}`)
   const file = join(captureDir, 'reference.json')
-  const provenance = { ...SPLIT_REFERENCE, harness: HARNESS_REFERENCE_VERSION, dependencyLockSha256: acquired.lockHash, profileLockSha256: createHash('sha256').update(readFileSync(join(profile, 'pnpm-lock.yaml'))).digest('hex'), stepsSha256: createHash('sha256').update(JSON.stringify(steps)).digest('hex') }
+  const provenance = { ...SPLIT_REFERENCE, harness: HARNESS_REFERENCE_VERSION, dependencyLockSha256: acquired.lockHash, profileLockSha256: createHash('sha256').update(readFileSync(join(profile, 'pnpm-lock.yaml'))).digest('hex'), stepsSha256: createHash('sha256').update(JSON.stringify(steps)).digest('hex'), ...startup === undefined ? {} : { startup }, ...profileTag === undefined ? {} : { profileTag } }
   const manifest = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { ...provenance, checkpoints: {} }
   for (const [key, value] of Object.entries(provenance)) if (manifest[key] !== value) throw new Error(`Published reference provenance changed (${key}); use a separate artifacts directory and review the difference`)
   for (const checkpoint of captured.checkpoints) {

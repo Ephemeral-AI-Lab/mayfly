@@ -63,6 +63,14 @@ test('comparison refuses missing checkpoints and tampered provenance or referenc
   assert.throws(() => compareSplitReference(dir, [{ name: 'startup', grid }], { cols: 20, rows: 2, steps: [] }), /semantic steps/u)
 })
 
+test('comparison refuses a different native startup preference before inspecting frames', t => {
+  const { dir, manifest } = fixture(t)
+  assert.throws(() => compareSplitReference(dir, [{ name: 'startup', grid }], { cols: 20, rows: 2, startup: 'splash' }), /startup preference/u)
+  writeFileSync(join(dir, 'reference.json'), JSON.stringify({ ...manifest, startup: 'splash' }))
+  assert.deepEqual(compareSplitReference(dir, [{ name: 'startup', grid }], { cols: 20, rows: 2, startup: 'splash' }), [])
+  assert.throws(() => compareSplitReference(dir, [{ name: 'startup', grid }], { cols: 20, rows: 2 }), /startup preference/u)
+})
+
 test('only named volatile fields normalize, without removing spacing or style differences', () => {
   assert.equal(normalizeSplitGrid('cmd-0123abcd-1 12345678-1234-1234-1234-123456789abc'), 'cmd-xxxxxxxx-1 xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
   assert.equal(normalizeSplitGrid(grid), grid)

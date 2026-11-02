@@ -27,7 +27,7 @@ export const SPLIT_SMOKE_STEPS = Object.freeze([
 ])
 
 /** No mocks or injected Remote state: every UI operation runs through the built product and its real transport. */
-export async function runSplitScenario({ root, dshBin, artifacts, cols = 80, rows = 24, referenceDir, steps = SPLIT_SMOKE_STEPS, probe = false, network = false, scenario = 'smoke' }) {
+export async function runSplitScenario({ root, dshBin, artifacts, cols = 80, rows = 24, referenceDir, steps = SPLIT_SMOKE_STEPS, probe = false, network = false, startup, scenario = 'smoke' }) {
   mkdirSync(artifacts, { recursive: true })
   const stub = await startStubModel({ probe })
   let host
@@ -37,7 +37,7 @@ export async function runSplitScenario({ root, dshBin, artifacts, cols = 80, row
   const started = performance.now()
   const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
   try {
-    host = await launchSplitHost({ root, dshBin, artifacts, baseURL: stub.baseURL, probe })
+    host = await launchSplitHost({ root, dshBin, artifacts, baseURL: stub.baseURL, probe, startup })
     if (network) forwarding = await startSplitNetwork(host.startupUrl)
     const startupUrl = forwarding?.startupUrl ?? host.startupUrl
     const env = { ...host.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8', TZ: 'UTC', MAYFLY_DSH_STARTUP_URL: startupUrl, MAYFLY_CWD: host.cwd, MAYFLY_SPLIT_CLOCK_RELEASE: host.clockRelease, NODE_OPTIONS: `--import=${new URL('./split-clock.mjs', import.meta.url).href}` }
@@ -58,7 +58,7 @@ export async function runSplitScenario({ root, dshBin, artifacts, cols = 80, row
     failures.push(...captured.failures)
     writeFileSync(join(artifacts, 'remote.ansi'), captured.output)
     if (host.child.exitCode !== null || host.child.signalCode !== null) failures.push('Detaching Remote stopped the Host')
-    if (referenceDir !== undefined) failures.push(...compareSplitReference(referenceDir, checkpoints, { cols, rows, steps }))
+    if (referenceDir !== undefined) failures.push(...compareSplitReference(referenceDir, checkpoints, { cols, rows, steps, startup }))
   } catch (error) {
     failures.push(redactSplitOutput(error instanceof Error ? error.stack ?? error.message : String(error), host?.startupUrl))
   } finally {

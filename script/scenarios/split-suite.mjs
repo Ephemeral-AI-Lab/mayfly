@@ -4,9 +4,10 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { capturePublishedReference } from './split-baseline.mjs'
 import { SPLIT_CASES } from './split-cases.mjs'
+import { SPLIT_EXTENDED_CASES } from './split-extended.mjs'
 import { runSplitScenario, SPLIT_SMOKE_STEPS } from './split-runner.mjs'
 
-export const SPLIT_SCENARIOS = Object.freeze({ smoke: { steps: SPLIT_SMOKE_STEPS }, ...SPLIT_CASES })
+export const SPLIT_SCENARIOS = Object.freeze({ smoke: { steps: SPLIT_SMOKE_STEPS }, ...SPLIT_CASES, ...SPLIT_EXTENDED_CASES })
 
 /** Keep reference capture failures visible and continue unrelated cases to maximize useful acceptance evidence. */
 export async function runSplitSuite({ root, dshBin, artifacts, cols = 80, rows = 24, scenarios = ['smoke'], smokeOnly = false, captureReferenceOnly = false, referenceDir, resultsFile, log = console.log }) {
