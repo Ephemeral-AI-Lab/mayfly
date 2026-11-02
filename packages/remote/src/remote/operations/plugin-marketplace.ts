@@ -642,7 +642,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
   }
 
   const command = {
-    name: 'plugin',
+    name: 'plugin', scope: 'sessionless',
     description: 'Browse, install, and remove plugins',
     input: { hint: '[install <id> [--source npm|github>] | uninstall <id> | info <id> | list | updates | refresh]' },
     handler: async (rawInput: string): Promise<CommandOutcome> => {
@@ -732,7 +732,7 @@ export function mountRemoteMarketplace(context: RemoteOperationsContext): () => 
   })
   lifecycle.start()
   const unregister = context.base.commands.register({
-    name: 'plugin',
+    name: 'plugin', scope: 'sessionless',
     description: 'Browse, install, and remove plugins',
     input: { hint: '[install <id> [--source npm|github] | uninstall <id> | info <id> | list | updates | refresh]' },
     async execute(rawInput, signal) {

@@ -134,7 +134,7 @@ export function mountRemotePresetOperations(context: RemoteOperationsContext): (
   const controller = new RemotePresetOperationsController(context)
   const t = memoizedLocaleTranslator(context.base.ctx, 'remote-preset').translate
   const unregister = context.base.commands.register({
-    name: 'preset',
+    name: 'preset', scope: 'sessionless',
     description: t('List agent presets or switch (blank sessions; sets the default before one starts)'),
     input: { hint: '[name]' },
     execute: controller.execute,

@@ -241,7 +241,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     }, () => {
       const selected = sideViews?.selected()
       return selected === undefined ? undefined : { ref: selected.ref, access: selected.facts.access, presentation: displayedFacts() }
-    })
+    }, () => commandSource?.list() ?? [])
     apps.push(app)
     let primaryBinding = app.registry.currentReference?.binding
     ctx.effect(() => app!.subscribeTopology(() => {
@@ -271,6 +271,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       colors: ctx.mayflyTheme.colors,
       overlays: panels,
       notice: editor.notice,
+      startupPlan: app.startupPlan,
       hosts: {
         active: () => app!.activeClient,
         list: () => app!.registry.list(),

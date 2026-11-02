@@ -171,7 +171,7 @@ export function mountRemotePluginOperations(context: RemoteOperationsContext): (
   const disposeMarketplace = mountRemoteMarketplace(context)
   const controller = new RemotePluginsController(context)
   const unregister = controller.commands().map(command => context.base.commands.register({
-    name: command.name,
+    name: command.name, scope: 'sessionless',
     description: command.description,
     execute: (rawInput, signal) => {
       if (signal.aborted) return
