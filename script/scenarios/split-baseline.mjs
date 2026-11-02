@@ -12,6 +12,7 @@ import { SPLIT_REFERENCE, redactSplitOutput, verifyReferenceTarball } from './sp
 import { captureSplitTerminal } from './split-terminal.mjs'
 import { startStubModel } from './stub-model.mjs'
 import { awaitProbeAudit } from './split-audit.mjs'
+import { splitProfileEnvironment } from './split-profile.mjs'
 
 const HARNESS_REFERENCE_VERSION = '0.2.1-rc.2'
 
@@ -83,7 +84,7 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
   const profile = join(profileHome, '.dsh/profiles/mayfly-rc2-test')
   const work = join(profileHome, 'workspace')
   mkdirSync(work, { recursive: true })
-  const env = { ...process.env, HOME: profileHome, DSH_HOME: join(profileHome, '.dsh'), CI: 'true', DEEPSEEK_API_KEY: 'split-scenario-key' }
+  const env = splitProfileEnvironment(profileHome)
   for (const name of ['NODE_OPTIONS', 'MAYFLY_DSH_STARTUP_URL', 'MAYFLY_ENDPOINT', 'MAYFLY_SESSION_ID', 'MAYFLY_TASK']) delete env[name]
   const ready = join(profile, '.published-reference-ready')
   if (!existsSync(ready)) {

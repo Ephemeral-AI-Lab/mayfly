@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -13,6 +13,7 @@ import { awaitProbeAudit, readProbeAudit } from '../scenarios/split-audit.mjs'
 import { startSplitNetwork } from '../scenarios/split-network.mjs'
 import { serializeGrid } from '../scenarios/grid.mjs'
 import { compareSplitReference, normalizeSplitGrid, redactSplitOutput, SPLIT_REFERENCE, verifyReferenceTarball } from '../scenarios/split-reference.mjs'
+import { splitProfileEnvironment } from '../scenarios/split-profile.mjs'
 
 const grid = serializeGrid({ cols: 20, lines: ['hello', ''], styles: [[{ from: 0, to: 4, style: 'fg:#112233 b' }], []], cursor: [0, 5] })
 
@@ -26,6 +27,21 @@ function fixture(t) {
   writeFileSync(join(dir, 'reference.json'), JSON.stringify(manifest))
   return { dir, manifest }
 }
+
+test('both capture profiles stop real Git discovery at the isolated fixture home', t => {
+  const { dir } = fixture(t)
+  execFileSync('git', ['init', '--quiet', dir])
+  for (const homeDir of [join(dir, 'candidate-home'), join(dir, 'published-reference', 'profile-home')]) {
+    const workspace = join(homeDir, 'workspace')
+    mkdirSync(workspace, { recursive: true })
+    assert.equal(spawnSync('git', ['-C', workspace, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }).status, 0)
+    const env = splitProfileEnvironment(homeDir)
+    assert.equal(env.GIT_CEILING_DIRECTORIES, homeDir)
+    const isolated = spawnSync('git', ['-C', workspace, 'rev-parse', '--show-toplevel'], { env, encoding: 'utf8' })
+    assert.notEqual(isolated.status, 0)
+    assert.match(isolated.stderr, /not a git repository/u)
+  }
+})
 
 test('strict comparison preserves text, colors, styles, dimensions and visible cursor', t => {
   const { dir } = fixture(t)

@@ -7,6 +7,11 @@ import { join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { redactSplitOutput } from './split-reference.mjs'
 
+/** Keep each fixture's Git discovery inside its own home, even when artifacts live in a checkout. */
+export function splitProfileEnvironment(homeDir) {
+  return { ...process.env, HOME: homeDir, DSH_HOME: join(homeDir, '.dsh'), GIT_CEILING_DIRECTORIES: resolve(homeDir), CI: 'true', DEEPSEEK_API_KEY: 'split-scenario-key' }
+}
+
 /** Install only inside an artifacts home; never upgrade dsh or touch the user's profiles. */
 export function prepareSplitProfile({ root, dshBin, artifacts }) {
   const required = JSON.parse(readFileSync(join(root, 'packages/host/package.json'), 'utf8')).peerDependencies['@deepseek-ai/dsh-session']
@@ -18,7 +23,7 @@ export function prepareSplitProfile({ root, dshBin, artifacts }) {
   const profileDir = join(dshHome, 'profiles', 'mayfly-split-test')
   const cwd = join(homeDir, 'workspace')
   mkdirSync(cwd, { recursive: true })
-  const env = { ...process.env, HOME: homeDir, DSH_HOME: dshHome, CI: 'true', DEEPSEEK_API_KEY: 'split-scenario-key' }
+  const env = splitProfileEnvironment(homeDir)
   for (const name of ['MAYFLY_DSH_STARTUP_URL', 'MAYFLY_ENDPOINT', 'NODE_OPTIONS', 'DEEPSEEK_BASE_URL']) delete env[name]
   const run = (bin, args) => {
     const result = spawnSync(bin, args, { env, cwd, encoding: 'utf8', timeout: 600_000 })
