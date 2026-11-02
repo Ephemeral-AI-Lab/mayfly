@@ -6,9 +6,10 @@ import { capturePublishedReference } from './split-baseline.mjs'
 import { SPLIT_CASES } from './split-cases.mjs'
 import { SPLIT_EXTENDED_CASES } from './split-extended.mjs'
 import { SPLIT_NATIVE_CASES } from './split-native-cases.mjs'
+import { SPLIT_INPUT_CASES } from './split-input-cases.mjs'
 import { runSplitScenario, SPLIT_SMOKE_STEPS } from './split-runner.mjs'
 
-export const SPLIT_SCENARIOS = Object.freeze({ smoke: { steps: SPLIT_SMOKE_STEPS }, ...SPLIT_CASES, ...SPLIT_EXTENDED_CASES, ...SPLIT_NATIVE_CASES })
+export const SPLIT_SCENARIOS = Object.freeze({ smoke: { steps: SPLIT_SMOKE_STEPS }, ...SPLIT_CASES, ...SPLIT_EXTENDED_CASES, ...SPLIT_NATIVE_CASES, ...SPLIT_INPUT_CASES })
 
 /** Keep reference capture failures visible and continue unrelated cases to maximize useful acceptance evidence. */
 export async function runSplitSuite({ root, dshBin, artifacts, cols = 80, rows = 24, scenarios = ['smoke'], smokeOnly = false, captureReferenceOnly = false, referenceDir, resultsFile, log = console.log }) {

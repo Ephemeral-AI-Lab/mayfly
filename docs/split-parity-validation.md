@@ -81,6 +81,9 @@ node script/split-parity.mjs --scenario network --smoke-only
 node script/split-parity.mjs --scenario startup
 node script/split-parity.mjs --scenario model-shortcut
 node script/split-parity.mjs --scenario panels
+node script/split-parity.mjs --scenario transcript-search
+node script/split-parity.mjs --scenario focus-resize
+node script/split-parity.mjs --scenario editor-feedback
 ```
 
 `smoke` covers startup, help, Unicode draft, an actual model turn and `/new`.
@@ -122,6 +125,15 @@ and captures 80×24, 40×16 and 120×40 frames, for 99 checkpoints. `questions`,
 question answers, usage panels, delivered previews and workspace diffs. A
 reference failure remains a failed case; it does not silently remove that
 workflow from the full gate.
+
+The input cases also run in the default full gate. `transcript-search` enters
+the real conversation with Alt+Up, searches in both directions, walks matches
+with `n`/`N` and arrows, resizes, and returns through an overlay with its row
+cursor retained. `focus-resize` preserves a selected theme and the editor caret
+through 40×16, 80×24 and 120×40 layouts. `editor-feedback` checks recalled
+history, an unknown slash command with and without arguments, and the empty
+prompt's `?` help route. These use production input and shared components;
+calling a controller directly is not a substitute for their PTY evidence.
 
 Each additional case uses its own published-reference profile home. Native
 model/default-setting writes can persist outside the per-run Session storage,
