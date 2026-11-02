@@ -14,8 +14,8 @@ export function remoteFirstSentence(description: string): string {
   return end === null ? line : line.slice(0, end.index)
 }
 
-const MCP_STATUS_ORDER: readonly MayflyMcpStatus[] = ['no-tools', 'restricted', 'synced']
-const MCP_STATUS_TONE: Readonly<Record<MayflyMcpStatus, MayflyTone>> = { synced: 'success', restricted: 'warning', 'no-tools': 'warning' }
+const MCP_STATUS_ORDER: readonly MayflyMcpStatus[] = ['unknown', 'no-tools', 'restricted', 'synced']
+const MCP_STATUS_TONE: Readonly<Record<MayflyMcpStatus, MayflyTone>> = { unknown: 'muted', synced: 'success', restricted: 'warning', 'no-tools': 'warning' }
 const MCP_CONNECTION_TONE: Readonly<Record<'connecting' | 'connected' | 'reconnecting' | 'disconnected', MayflyTone>> = { connected: 'success', connecting: 'default', reconnecting: 'warning', disconnected: 'danger' }
 
 /** Build MCP server rows ordered by visibility status and name. */
@@ -48,6 +48,7 @@ export function remoteMcpConfigNode(server: MayflyMcpServer, t: MayflyTranslate,
     ...server.status === 'no-tools' && server.connection === undefined ? [ui.text(t('No tools registered; connection state is unavailable'), { tone: 'muted' })] : [],
     ...server.status === 'no-tools' && server.connection === 'disconnected' ? [ui.text(tr('Configured server is not connected; no tools are registered'), { tone: 'muted' })] : [],
     ...server.status === 'restricted' ? [ui.text(t('Tools are registered but restricted for this Agent'), { tone: 'muted' })] : [],
+    ...server.status === 'unknown' ? [ui.text(t('Live tool availability is unknown while the server is not connected'), { tone: 'muted' })] : [],
     ui.divider({ label: t('Connection') }),
     ui.fields([
       field(t('Connection'), server.connection === undefined ? tr('(connection unknown)') : tr(server.connection), server.connection === undefined ? 'muted' : MCP_CONNECTION_TONE[server.connection]),

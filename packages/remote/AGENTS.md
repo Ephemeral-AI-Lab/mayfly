@@ -21,6 +21,17 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   banner, footer, plain panels, and terminal lifecycle. Session facts stay in
   the footer; command results and operation failures use the editor's transient
   hint. Detach releases only Client resources and never cancels remote work.
+  Attaching stays Session-independent: the first submitted prompt creates a
+  Session, while `/new` and `/clear` release only the primary view. Concurrent
+  initial prompts share creation; clearing or detaching fences its late result.
+- `/plugin` consumes the shared rc.2 marketplace presentation and calls the
+  official selected Host plugin manager for every install, remove, and enable.
+  Its catalog, installed rows, notifications, and restart chip belong to one
+  feature generation. A Host/selection/reconnection change retires that owner;
+  late writes are never retried or presented under another Host.
+- Raw settings editing uses `createRemoteSettingsEditor` with core-owned
+  `screen.suspend`. Editing happens locally; writes use the original Host
+  document revision and reject results after cancellation or selection change.
 - `src/transcript/` adapts official SessionEventSource windows and Session
   projections to the published Mayfly presentation folds. One event pass feeds
   conversation and facts; only live command completion produces a notice.
@@ -30,11 +41,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   accepted, and a token in argv or a log is refused.
   Tokens never enter argv, logs, screenshots, or ordinary error text.
 
-The published `@ephemeral-ai/mayfly` and `@ephemeral-ai/mayfly-ui` packages are
-visual dependencies. The nested workspace lock resolves them from npm rather
-than linking the parent workspace's development graph; the root postinstall
-runs this nested install. After changing the remote manifest, run
-`pnpm --dir packages/remote install` to update its lock. Do not link this
+The candidate `@ephemeral-ai/mayfly` and `@ephemeral-ai/mayfly-ui` packages are
+visual dependencies built from the same release set. The published rc.2
+artifact is an isolated immutable verification reference. Do not link this
 package back into the legacy in-process TUI composition or restore the old
 `mayflyCurrentAgent` path.
 
@@ -51,9 +60,8 @@ and wide rendering plus focus restoration tests. Runtime changes require the
 built PTY smoke, proving the banner, footer, command surfaces, Session creation,
 and clean teardown.
 
-Follow the root Round workflow: development uses only the incremental build and
-owner review, then finalization adds the decision tests and runs the selected
-check tier. Before acceptance run `pnpm run check -- --tier pr`, `pnpm run
+Develop behavior and regression tests together under the root change-aware
+workflow. Before acceptance run the full architecture gate, `pnpm run
 check:lib`, and `pnpm run check:pack`, then perform a real dsh Host
 attach/detach and PTY acceptance. `pnpm run scenario remoteLifecycle` is the
 manual review; supply its Host through `MAYFLY_DSH_STARTUP_URL`, never argv. All

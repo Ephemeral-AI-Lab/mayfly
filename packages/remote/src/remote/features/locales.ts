@@ -68,6 +68,8 @@ const catalogs: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     'synced': '已同步',
     'restricted': '受限',
     'no-tools': '无工具',
+    'unknown': '未知',
+    'Live tool availability is unknown while the server is not connected': '服务器尚未连接，当前工具可用性未知',
     'Registered tools': '已注册工具',
     'Visible tools': '可见工具',
     'No tools registered; connection state is unavailable': '未注册工具；连接状态不可用',

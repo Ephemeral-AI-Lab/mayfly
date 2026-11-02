@@ -8,6 +8,8 @@
  */
 
 import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { CredentialKey } from '@deepseek-ai/dsh-credentials/types'
 import type {
   MayflyModelSelection,
   MayflyProviderBalance,
@@ -169,7 +171,7 @@ export class RemoteConfigurationHost implements
     try {
       if (!await hasMayflyHostFeature(client, 'authorization', operation.signal)) throw new Error(unavailableCapability('authorization'))
       const handle = mayflyHostRemote(client).authorize(
-        { key, ...method === undefined ? {} : { method } },
+        { key: brandString<CredentialKey>(key), ...method === undefined ? {} : { method } },
         operation.signal,
       )
       let settled: 'authorized' | 'cancelled' | undefined

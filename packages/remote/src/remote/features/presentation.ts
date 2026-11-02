@@ -74,6 +74,7 @@ export class CordisRemoteLocalPresentation implements RemoteLocalPresentation {
   private readonly listeners = new Set<() => void>()
   private readonly offLocale: () => void
   private applying = Promise.resolve()
+  private disposed = false
 
   constructor(private readonly context: Pick<RemoteFeatureContext, 'ctx' | 'subscribeLocale'>) {
     this.offLocale = context.subscribeLocale(() => { for (const listener of this.listeners) listener() })
@@ -87,12 +88,14 @@ export class CordisRemoteLocalPresentation implements RemoteLocalPresentation {
   }
 
   setLocale(locale: string): void {
+    if (this.disposed) return
     if (!REMOTE_LANGUAGES.some(language => language.id === locale)) throw new Error(`Unknown locale "${locale}"`)
     this.context.ctx.get('mayflyLocale')?.setPreference(locale as 'en' | 'zh')
   }
 
   /** Serialize provider swaps so a stale theme cannot replace a newer choice. */
   applyTheme(theme: string): Promise<void> {
+    if (this.disposed) return Promise.resolve()
     if (!REMOTE_THEMES.some(option => option.key === theme)) return Promise.reject(new Error(`Unknown theme "${theme}"`))
     this.applying = this.applying.catch(() => {}).then(() => this.swapTheme(theme))
     return this.applying
@@ -100,41 +103,59 @@ export class CordisRemoteLocalPresentation implements RemoteLocalPresentation {
 
   /** Restart only the local provider; Remote panel/form models retain their drafts. */
   async reloadTheme(): Promise<void> {
+    if (this.disposed) return
+    this.applying = this.applying.catch(() => {}).then(() => this.restartTheme())
+    await this.applying
+  }
+
+  private async restartTheme(): Promise<void> {
+    if (this.disposed) return
     const current = this.context.ctx.get('mayflyInteractionState')?.currentThemeKey ?? 'dark'
     const target = await themeTarget(current === 'custom' ? 'dark' : current)
+    if (this.disposed) return
     const runtime = this.context.ctx.registry.get(target.module)
     if (runtime === undefined) return
     await Promise.all([...runtime.fibers].map(fiber => fiber.restart()))
-    for (const listener of this.listeners) listener()
+    if (!this.disposed) for (const listener of this.listeners) listener()
   }
 
   subscribe(listener: () => void): () => void {
+    if (this.disposed) return () => {}
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }
   }
 
   dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
     this.offLocale()
     this.listeners.clear()
   }
 
   private async swapTheme(theme: string): Promise<void> {
+    if (this.disposed) return
     const state = this.context.ctx.get('mayflyInteractionState')
     if ((state?.currentThemeKey ?? 'dark') === theme) return
     const current = state?.currentThemeKey ?? 'dark'
     const previous = await themeTarget(current === 'custom' ? 'dark' : current)
     const next = await themeTarget(theme)
+    if (this.disposed) return
     const runtime = this.context.ctx.registry.delete(previous.module)
     if (runtime !== undefined) await Promise.all([...runtime.fibers].map(fiber => fiber.dispose()))
+    if (this.disposed) return
     try {
-      await (next.config === undefined ? this.context.ctx.plugin(next.module) : this.context.ctx.plugin(next.module, next.config))
+      const fiber = await (next.config === undefined ? this.context.ctx.plugin(next.module) : this.context.ctx.plugin(next.module, next.config))
+      if (this.disposed) { await fiber.dispose(); return }
       if (state !== undefined) {
         state.currentThemeKey = theme
         state.lastAppliedTheme = theme
       }
     } catch (error) {
+      if (this.disposed) return
       const fallback = await themeTarget('dark')
-      await this.context.ctx.plugin(fallback.module)
+      if (this.disposed) return
+      const fiber = await this.context.ctx.plugin(fallback.module)
+      if (this.disposed) { await fiber.dispose(); return }
       if (state !== undefined) state.currentThemeKey = 'dark'
       throw error
     }

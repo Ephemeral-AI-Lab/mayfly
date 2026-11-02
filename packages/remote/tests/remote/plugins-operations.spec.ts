@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   MayflyFieldsNode,
-  MayflyListNode,
   MayflyStackNode,
   MayflySurfaceNode,
   MayflyTextNode,
@@ -35,10 +34,6 @@ interface CapturedCommand {
   readonly name: string
   readonly description: string
   execute(rawInput: string, signal: AbortSignal): void
-}
-
-function pluginEntry(overrides: Readonly<Record<string, unknown>> = {}): Readonly<Record<string, unknown>> {
-  return { entryId: 'alpha', moduleName: '@scope/alpha', enabled: true, fiberPhase: 'active', ...overrides }
 }
 
 function fixture(options: {
@@ -101,10 +96,6 @@ function fixture(options: {
 
 const signal = { aborted: false } as AbortSignal
 
-function browserOf(): RemoteBrowserOptions {
-  return mocks.open.mock.calls[0]![1] as RemoteBrowserOptions
-}
-
 function panelChildren(node: MayflyUiNode): readonly MayflyUiNode[] {
   const surface = node as MayflySurfaceNode
   expect(surface.kind).toBe('surface')
@@ -114,11 +105,6 @@ function panelChildren(node: MayflyUiNode): readonly MayflyUiNode[] {
 /** The most recently opened browser, for a panel that was reopened by a refresh. */
 function latestBrowserOf(): RemoteBrowserOptions {
   return mocks.open.mock.calls.at(-1)![1] as RemoteBrowserOptions
-}
-
-/** The browser options of the n-th panel opened, for replacement paths. */
-function latestBrowserOfAt(index: number): RemoteBrowserOptions {
-  return mocks.open.mock.calls[index]![1] as RemoteBrowserOptions
 }
 
 /** The value column of one panel body's `fields` node. */
@@ -151,14 +137,45 @@ afterEach(() => {
 })
 
 describe('mountRemotePluginOperations', () => {
-  it('registers exactly /plugins and /update and unregisters both through the disposer', () => {
+  it('drops old Host release responses and older concurrent checks', async () => {
+    const test = fixture()
+    const responses: Array<(response: unknown) => void> = []
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { responses.push(resolve) })))
+    const dispose = mountRemotePluginOperations(test.context)
+    test.commands[1]!.execute('', signal)
+    await vi.waitFor(() => { expect(responses).toHaveLength(1) })
+    test.commands[1]!.execute('', signal)
+    await vi.waitFor(() => { expect(responses).toHaveLength(2) })
+    responses[1]!(registryResponse('0.3.0'))
+    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
+    responses[0]!(registryResponse('0.2.0'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(mocks.open).toHaveBeenCalledOnce()
+    expect(fieldValues(panelChildren(latestBrowserOf().view())[0]!)).toEqual([HOST_VERSION, '0.3.0'])
+
+    test.commands[1]!.execute('', signal)
+    await vi.waitFor(() => { expect(responses).toHaveLength(3) })
+    test.hosts.current.mockReturnValue({
+      ...test.selection,
+      ref: { host: HostKey('host-b'), sessionId: SessionId('session-b') },
+      client: { ...test.client, key: HostKey('host-b') },
+    })
+    responses[2]!(registryResponse('0.4.0'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(mocks.open).toHaveBeenCalledOnce()
+    dispose()
+  })
+
+  it('registers exactly /plugin and /update and unregisters both through the disposer', () => {
     const { context, register, commands, disposers, listPlugins } = fixture()
     const dispose = mountRemotePluginOperations(context)
 
     expect(register).toHaveBeenCalledTimes(2)
-    expect(commands.map(command => command.name)).toEqual(['plugins', 'update'])
+    expect(commands.map(command => command.name)).toEqual(['plugin', 'update'])
     expect(commands.map(command => command.description)).toEqual([
-      'List the Host plugins and bundles',
+      'Browse, install, and remove plugins',
       'Check for a newer Mayfly release',
     ])
 
@@ -173,202 +190,13 @@ describe('mountRemotePluginOperations', () => {
     const { context, commands, notice, listPlugins } = fixture({ current: false })
     const dispose = mountRemotePluginOperations(context)
 
-    commands[0]!.execute('', signal)
     commands[1]!.execute('', signal)
 
-    expect(notice.set).toHaveBeenCalledTimes(2)
-    expect(notice.set).toHaveBeenNthCalledWith(1, 'No current session')
-    expect(notice.set).toHaveBeenNthCalledWith(2, 'No current session')
+    expect(notice.set).toHaveBeenCalledOnce()
+    expect(notice.set).toHaveBeenCalledWith('No current session')
     expect(mocks.open).not.toHaveBeenCalled()
     expect(listPlugins).not.toHaveBeenCalled()
     dispose()
-  })
-
-  it('lists the Host plugins and opens a live browser panel whose rows name each entry', async () => {
-    const entries = [
-      pluginEntry(),
-      pluginEntry({ entryId: 'beta', moduleName: '@scope/beta', enabled: false, fiberPhase: null, meta: { title: 'Beta plugin' } }),
-      pluginEntry({ entryId: 'gamma', moduleName: '@scope/gamma', fiberPhase: 'failed', meta: { title: { en: 'Gamma plugin', zh: '伽马' } } }),
-    ]
-    const { context, commands, ref, hosts, listPlugins } = fixture({ entries })
-    const panel = { closed: false, refresh: vi.fn(), close: vi.fn() }
-    mocks.open.mockReturnValue(panel)
-    const dispose = mountRemotePluginOperations(context)
-
-    commands[0]!.execute('', signal)
-    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-    expect(listPlugins).toHaveBeenCalledOnce()
-
-    const browser = browserOf()
-    expect(mocks.open.mock.calls[0]![0]).toBe(context.base)
-    expect(browser.id).toBe('remote.operations.plugins')
-    expect(browser.scope).toEqual({ kind: 'session', sessionId: ref.sessionId })
-    expect(browser.isCurrent()).toBe(true)
-    hosts.current.mockReturnValue(undefined)
-    expect(browser.isCurrent()).toBe(false)
-
-    const children = panelChildren(browser.view())
-    const list = children[0] as MayflyListNode
-    expect(list.kind).toBe('list')
-    expect(list.items.map(item => item.label)).toEqual(['@scope/alpha', 'Beta plugin', 'Gamma plugin'])
-    expect(list.items.map(item => item.cells![0]!.spans[0]!.text)).toEqual([' active', '', ' failed'])
-    expect(list.items.map(item => item.cells![1]!.spans[0]!.text)).toEqual(['enabled', 'disabled', 'enabled'])
-    expect(list.items.map(item => item.cells![2]!.spans[0]!.text)).toEqual(['@scope/alpha', '@scope/beta', '@scope/gamma'])
-
-    listPlugins.mockClear()
-    const reply = await browser.action!(
-      { kind: 'activate', actionId: 'plugins-refresh' } as MayflyUiActionEvent,
-      { signal } as unknown as MayflyUiEventContext,
-    )
-    expect(reply).toEqual({ kind: 'completed' })
-    await vi.waitFor(() => { expect(listPlugins).toHaveBeenCalledOnce() })
-    dispose()
-    expect(panel.close).toHaveBeenCalledOnce()
-  })
-
-  it('renders a thrown listing failure in the panel instead of rejecting', async () => {
-    const { context, commands, listPlugins, notice } = fixture()
-    listPlugins.mockRejectedValueOnce(new Error('socket closed'))
-    const dispose = mountRemotePluginOperations(context)
-
-    commands[0]!.execute('', signal)
-    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-
-    const children = panelChildren(browserOf().view())
-    expect((children[0] as MayflyTextNode).content).toBe('socket closed')
-    expect((children[0] as MayflyTextNode).tone).toBe('danger')
-    expect((children[1] as MayflyListNode).items).toEqual([])
-    expect(notice.set).not.toHaveBeenCalled()
-    dispose()
-  })
-
-  it('renders a failed RemoteResult inside the panel instead of throwing', async () => {
-    const { context, commands, notice } = fixture({
-      result: { ok: false, error: { code: 'unavailable', message: 'host offline' } },
-    })
-    const dispose = mountRemotePluginOperations(context)
-
-    commands[0]!.execute('', signal)
-    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-
-    const children = panelChildren(browserOf().view())
-    const error = children[0] as MayflyTextNode
-    expect(error.kind).toBe('text')
-    expect(error.content).toBe('host offline')
-    expect(error.tone).toBe('danger')
-    expect((children[1] as MayflyListNode).items).toEqual([])
-    // The failure is painted in the open panel, not sent to the transient notice.
-    expect(notice.set).not.toHaveBeenCalled()
-    dispose()
-  })
-
-  it('drops a listing that settles after the operations are disposed', async () => {
-    const { context, commands, listPlugins } = fixture()
-    let release: ((result: unknown) => void) | undefined
-    listPlugins.mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
-    const dispose = mountRemotePluginOperations(context)
-
-    commands[0]!.execute('', signal)
-    expect(release).toBeDefined()
-    dispose()
-    release!({ ok: true, value: [] })
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(mocks.open).not.toHaveBeenCalled()
-  })
-
-  it('narrows the inventory with the filter text the command carries', async () => {
-    const entries = [
-      pluginEntry(),
-      pluginEntry({ entryId: 'beta', moduleName: '@scope/beta', meta: { title: 'Beta plugin' } }),
-      pluginEntry({ entryId: 'gamma', moduleName: '@scope/gamma', meta: { title: 'Gamma plugin' } }),
-    ]
-    const { context, commands } = fixture({ entries })
-    const dispose = mountRemotePluginOperations(context)
-
-    commands[0]!.execute(' GAMMA ', signal)
-    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-
-    const list = panelChildren(browserOf().view())[0] as MayflyListNode
-    expect(list.items.map(item => item.label)).toEqual(['Gamma plugin'])
-    dispose()
-  })
-
-  it('drops a listing failure that settles after the operations are disposed', async () => {
-    const { context, commands, listPlugins } = fixture()
-    let fail: ((error: unknown) => void) | undefined
-    listPlugins.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject }))
-    const dispose = mountRemotePluginOperations(context)
-
-    commands[0]!.execute('', signal)
-    expect(fail).toBeDefined()
-    dispose()
-    fail!(new Error('socket closed'))
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(mocks.open).not.toHaveBeenCalled()
-  })
-
-  it('closes its panel once and tolerates a second teardown', async () => {
-    const { context, commands } = fixture()
-    const panel = { closed: false, refresh: vi.fn(), close: vi.fn() }
-    mocks.open.mockReturnValue(panel)
-    const dispose = mountRemotePluginOperations(context)
-
-    commands[0]!.execute('', signal)
-    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-
-    dispose()
-    dispose()
-    expect(panel.close).toHaveBeenCalledOnce()
-  })
-
-  it('forgets a plugin panel the browser reports closed and ignores observations', async () => {
-    const { context, commands, listPlugins } = fixture()
-    const panel = { closed: false, refresh: vi.fn(), close: vi.fn() }
-    mocks.open.mockReturnValue(panel)
-    const dispose = mountRemotePluginOperations(context)
-
-    commands[0]!.execute('', signal)
-    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-    const browser = browserOf()
-
-    // A read-only inventory publishes nothing and never dismisses itself on an observation.
-    browser.observe!({ kind: 'focus-change', controlId: 'plugins-list' } as unknown as MayflyUiObservationEvent)
-    expect(panel.close).not.toHaveBeenCalled()
-    expect(listPlugins).toHaveBeenCalledOnce()
-
-    // Any other activation is still answered, and triggers no listing.
-    const reply = await browser.action!(
-      { kind: 'activate', actionId: 'plugins-other' } as MayflyUiActionEvent,
-      { signal } as unknown as MayflyUiEventContext,
-    )
-    expect(reply).toEqual({ kind: 'completed' })
-    expect(listPlugins).toHaveBeenCalledOnce()
-
-    browser.onClosed!()
-    dispose()
-    expect(panel.close).not.toHaveBeenCalled()
-  })
-
-  it('keeps the live panel when a replaced panel reports its close late', async () => {
-    // The close of a panel that was replaced must not clear the reference to
-    // the one now on screen, or teardown would leave the visible panel open.
-    const { context, commands } = fixture()
-    const first = { closed: false, refresh: vi.fn(), close: vi.fn() }
-    const second = { closed: false, refresh: vi.fn(), close: vi.fn() }
-    mocks.open.mockReturnValueOnce(first).mockReturnValueOnce(second)
-    const dispose = mountRemotePluginOperations(context)
-
-    commands[0]!.execute('', signal)
-    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-    commands[0]!.execute('', signal)
-    await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledTimes(2) })
-
-    // The replaced panel reports its close after its replacement opened.
-    latestBrowserOfAt(0).onClosed!()
-    dispose()
-    expect(second.close).toHaveBeenCalled()
   })
 
   it('opens the update panel offering a registry release ahead of the Host build', async () => {
@@ -582,7 +410,8 @@ describe('mountRemotePluginOperations', () => {
     const lateFailure = vi.fn(async () => { throw new Error('socket closed') })
     vi.stubGlobal('fetch', lateFailure)
     commands[1]!.execute('', signal)
-    await vi.waitFor(() => { expect(lateFailure).toHaveBeenCalledOnce() })
+    await Promise.resolve()
+    expect(lateFailure).not.toHaveBeenCalled()
     await Promise.resolve()
     await Promise.resolve()
     await Promise.resolve()
@@ -702,8 +531,7 @@ describe('mountRemotePluginOperations', () => {
     const { context, locale } = fixture()
     const dispose = mountRemotePluginOperations(context)
 
-    expect(locale.register).toHaveBeenCalledOnce()
-    const [namespace, catalog] = locale.register.mock.calls[0] as unknown as [
+    const [namespace, catalog] = locale.register.mock.calls.find(call => call[0] === 'remote-plugins')! as unknown as [
       string,
       { readonly en: Readonly<Record<string, string>>, readonly zh: Readonly<Record<string, string>> },
     ]

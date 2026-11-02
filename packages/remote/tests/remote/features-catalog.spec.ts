@@ -7,6 +7,22 @@ import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/rem
 import type { RemoteBrowserOptions } from '../../src/remote/panels/browser.ts'
 import { mountCatalogFeature } from '../../src/remote/features/catalog.ts'
 import { unavailableCapability } from '../../src/remote/features/capabilities.ts'
+import { remoteMcpConfigNode, remoteMcpServerItems } from '../../src/remote/panels/catalog.ts'
+import type { MayflyMcpCatalog, MayflyMcpServer } from '@ephemeral-ai/mayfly-host/types'
+
+describe('unknown MCP transport state', () => {
+  it('keeps unavailable live state distinct from an empty connected server', () => {
+    const unknown = mcpServer({ status: 'unknown', connection: 'disconnected', registeredCount: 1, toolsVisible: [toolSchema('cached-tool')] }) as unknown as MayflyMcpServer
+    const empty = mcpServer({ entryId: 'empty', serverName: 'empty', status: 'no-tools', connection: 'connected' }) as unknown as MayflyMcpServer
+    const t = (text: string) => text
+    const rows = remoteMcpServerItems({ servers: [empty, unknown], orphanCount: 0, sessionLive: true } as MayflyMcpCatalog, t, t)
+    expect(rows.map(row => row.id)).toEqual(['entry-alpha', 'empty'])
+    expect(rows[0]!.cells![0]!.spans[0]).toEqual({ text: 'unknown', tone: 'muted' })
+    const strings = nodesOf(remoteMcpConfigNode(unknown, t, t)).filter(node => node.kind === 'text').map(node => node.content)
+    expect(strings).toContain('Live tool availability is unknown while the server is not connected')
+    expect(strings).not.toContain('No tools registered; connection state is unavailable')
+  })
+})
 
 const mocks = vi.hoisted(() => ({
   open: vi.fn(),
