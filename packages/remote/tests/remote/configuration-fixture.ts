@@ -3,7 +3,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
-import { MayflyLocaleService } from '@ephemeral-ai/mayfly/frontend'
+import { interpolateLocaleMessage, MayflyLocaleService } from '@ephemeral-ai/mayfly/frontend'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SettingsDescribeValue, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflyUiActionEvent, MayflyUiEventContext, MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
@@ -48,7 +48,7 @@ export function configurationFixture(open: Mock, options: { readonly session?: b
   const state = { generation: 1, status: 'connected' }
   let settings: SettingsDescribeValue = { writable: true, hasDocument: true, namespaces: [...options.namespaces ?? [namespace()]] }
   const describe = vi.fn(async (): Promise<unknown> => ({ ok: true, value: settings }))
-  const mutate = vi.fn(async (ns: string): Promise<unknown> => ({ ok: true, value: { ...settings.namespaces.find(candidate => candidate.ns === ns), revision: 8 } }))
+  const mutate = vi.fn(async (ns: string, _ops?: readonly unknown[], _revision?: number): Promise<unknown> => ({ ok: true, value: { ...settings.namespaces.find(candidate => candidate.ns === ns), revision: 8 } }))
   const update = vi.fn(async (): Promise<unknown> => ({ ok: true, value: namespace() }))
   const replace = vi.fn(async (): Promise<unknown> => ({ ok: true, value: namespace() }))
   const catalog = vi.fn(async (): Promise<unknown> => ({ ok: true, value: permissionCatalog() }))
@@ -94,6 +94,7 @@ export function configurationFixture(open: Mock, options: { readonly session?: b
   const interactionState = { settingsSource: () => undefined as unknown, currentThemeKey: 'dark' }
   const keymap = { setPreferPlain: vi.fn(), applyOverrides: vi.fn() }
   const emitTab = vi.fn()
+  const registryListeners = new Set<(delta: unknown) => void>()
   const ctx = {
     inject: vi.fn((_names: readonly string[], callback: (ctx: unknown) => void) => { callback(ctx); return { dispose: async () => {} } }),
     effect: vi.fn((effect: () => (() => void)) => {
@@ -104,11 +105,11 @@ export function configurationFixture(open: Mock, options: { readonly session?: b
     }),
     get: vi.fn((name: string) => name === 'mayflyLocale' ? locale : name === 'mayflyInteractionState' ? interactionState : name === 'mayflyKeymap' ? keymap : name === 'mayflyUiInteraction' ? { get: () => ({ emit: emitTab }) } : undefined),
     mayflyLocale: locale,
-    mayflyOverlays: { focus: vi.fn(() => true) },
+    mayflyOverlays: { focus: vi.fn(() => false), subscribe: vi.fn((listener: (delta: unknown) => void) => { registryListeners.add(listener); return () => { registryListeners.delete(listener) } }) },
     emit: vi.fn(),
   }
   const context = {
-    ctx, hosts, presentation, t: (key: string) => key, notice: { set: vi.fn() },
+    ctx, hosts, presentation, t: interpolateLocaleMessage, notice: { set: vi.fn() },
     subscribeLocale: (listener: () => void) => locale.subscribe(listener),
   } as unknown as RemoteFeatureContext
   const opened: { readonly options: RemoteBrowserOptions, readonly panel: RemoteBrowserPanel, readonly refresh: Mock, readonly close: Mock }[] = []
@@ -122,13 +123,14 @@ export function configurationFixture(open: Mock, options: { readonly session?: b
     return panel
   })
   const browser = (index = opened.length - 1) => opened[index]!.options
-  const act = async (event: Record<string, unknown>, signal = new AbortController().signal, index = opened.length - 1) => await browser(index).action!(event as unknown as MayflyUiActionEvent, { signal, report: vi.fn() } as unknown as MayflyUiEventContext)
+  const act = async (event: Record<string, unknown>, signal = new AbortController().signal, index = opened.length - 1) => await browser(index).action!(event as unknown as MayflyUiActionEvent, { signal, source: browser(index).source?.() ?? [], operationId: 'test-action', report: vi.fn() } as unknown as MayflyUiEventContext)
   const observe = (event: Record<string, unknown>, index = opened.length - 1) => browser(index).observe?.(event as unknown as MayflyUiObservationEvent)
   const emit = (event: string, ...args: unknown[]) => { for (const listener of events.get(event) ?? []) listener(...args) }
   const dispose = () => { for (const item of opened) item.close(); for (const cleanup of cleanups) cleanup(); locale.dispose() }
   return {
     context, ctx, client, hosts, selection, current, describe, mutate, update, replace, catalog, presets, command, face, projectionListeners, events,
-    state, stateListeners, topology, locale, presentation, interactionState, keymap, emitTab, presentationListeners,
+    state, stateListeners, topology, locale, registryListeners,
+    ack: (id: string, operationId = 'test-action') => { for (const listener of registryListeners) listener({ kind: 'upsert', entry: { id, update: { reason: 'ack', operationId } } }) }, presentation, interactionState, keymap, emitTab, presentationListeners,
     notice: context.notice as { set: Mock }, opened, browser, act, observe, emit, dispose,
     render: (index = opened.length - 1) => JSON.stringify(browser(index).view()),
     setSettings: (next: SettingsDescribeValue) => { settings = next },

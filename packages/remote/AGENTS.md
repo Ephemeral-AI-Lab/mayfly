@@ -40,6 +40,14 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   readonly native access metadata and BTW history floors accompany bindings.
   Only displayed and F7 counterpart views retain native bindings. Listed child
   and BTW descriptors reacquire through this same owner when displayed again.
+- `/provider` uses the reference configured-provider roster, editor tabs,
+  connection/model setup, and model picker. Native namespace revisions and
+  credential observations fence every write. A successful settings write followed
+  by a failed credential write retains the confirmed revision so an explicit
+  retry can finish without recreating the provider. Credentials are write-only;
+  environment-owned keys remain intact when a profile is removed. Authorization
+  answers reach the Host only after the shared UI acknowledges the answer action;
+  dismissal, detach, and reconnect retire outstanding prompts and discovery.
 - Theme/language pickers, settings rail, and permission decision lane use the
   shared reference wire builders. The settings rail submits both native
   descriptor and field-projection revisions; a conflict never refreshes and
