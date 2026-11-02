@@ -64,13 +64,15 @@ script/mayfly-remote.sh --cwd /path/on/host '运行相关检查'
 | --- | --- |
 | Session 导航 | `/sessions`（`/resume`）打开 workspace/session 浏览器，带 id 时直接恢复。`/rename <title>` 重命名所选 Session；`/fork [atSeq]` 创建并切换到分支；`/rewind` 打开参照中的早期轮次选择器，显示 prompt/response 预览，创建并切换到分支，保留原 Session。 |
 | 模型与配置 | `/model [name]`、`/effort [level]`（`/thinking`）、`/provider`、`/preset [name]`、`/permissions` 与 `/settings` 使用 Host 原生目录与写入。Session 尚不存在时，模型和 preset 选择设置 Host 默认值。 |
-| 计划模式 | `/plan` 进入，`/plan off` 退出，`/mode` 或 Shift+Tab 切换。启动界面的选择会在第一条 prompt 前完成原生接纳；接纳失败不会发送 prompt。Alt+M 在当前 provider 内循环切换模型。 |
+| 计划模式 | `/plan` 进入，`/plan off` 退出，`/mode` 或 Shift+Tab 切换。`/plan <message>` 通过原生命令发送计划 prompt，也可创建首个 Session。启动界面的模式选择会在第一条普通 prompt 前完成原生接纳；接纳失败不会发送 prompt。Alt+M 在当前 provider 内循环切换模型。 |
 | 信息查看 | `/context`、`/stats`、`/skills`、`/tools`、`/mcp`、`/files`、`/changes [seq]`、`/trace [copy <seq>\|copy all]` 与 `/version` 查看原生状态或只读 Host 投影。 |
 | 工作与旁支会话 | `/jobs`、`/goal` 与 `/schedule [all]` 使用 Host 已启用的服务。`/btw <question>` 打开派生的旁支会话，`/agents` 浏览子 Agent。F7 返回上一个会话，F8 关闭当前视图；关闭视图不停止 Host 工作。 |
 | 本地输出与退出 | `/copy` 写入 TUI 所在机器的剪贴板；`/export [full] [name]`（`/save`）写入本地 `mayfly-exports/`。`/quit`（`/q`、`/exit`）解除连接并退出。 |
 | 附加 Remote 控制 | `/host`、`/attach`、`/detach`、`/host-status`、`/account`、`/language` 与 `/onboarding` 显示在帮助的 Remote 分组。 |
 
 Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读会话保留草稿并拒绝写入。冷的 continuable 子会话只有在用户通过原生地址明确回复后才恢复。`/agents stop <id>` 只 drain 活跃的 continuable 叶节点；有活跃后代的子节点会被拒绝。中断所选会话使用原生取消权限并保留排队输入。
+
+支持附件的原生命令会按原始顺序接收图片和已上传文件的 receipt。原生接纳拒绝时恢复草稿和附件。`/skills` 显示当前 Session 的原生来源、provider 元数据和目录完整性；Host 未提供可选的 Mayfly 目录能力时，会明确标注缺失的元数据。
 
 ## 部分实现与上游限制
 

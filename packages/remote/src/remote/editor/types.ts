@@ -71,8 +71,6 @@ export interface EditorCommandDescriptor {
     readonly hint: string
     /** Native command admission for ordered image/file attachments. */
     readonly attachments?: boolean
-    /** Legacy discovery metadata retained only while reading an older catalog. */
-    readonly images?: boolean
   }
 }
 

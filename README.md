@@ -64,13 +64,15 @@ The shared layout contains the conversation, activity and notification rows, edi
 | --- | --- |
 | Session navigation | `/sessions` (`/resume`) opens the workspace/session browser; an id resumes directly. `/rename <title>` renames the selected Session. `/fork [atSeq]` creates and selects a branch; `/rewind` opens the reference earlier-turn picker with prompt/response previews and creates a selected branch while preserving the original Session. |
 | Models and configuration | `/model [name]`, `/effort [level]` (`/thinking`), `/provider`, `/preset [name]`, `/permissions`, and `/settings` use native Host catalogs and writes. Before a Session exists, model and preset choices set Host defaults. |
-| Plan mode | `/plan` enters plan mode, `/plan off` leaves it, and `/mode` or Shift+Tab toggles it. A sessionless choice is admitted before the first prompt; a failed admission sends no prompt. Alt+M cycles models within the current provider. |
+| Plan mode | `/plan` enters plan mode, `/plan off` leaves it, and `/mode` or Shift+Tab toggles it. `/plan <message>` admits a native plan prompt and can create the first Session. A sessionless mode choice is admitted before the first ordinary prompt; a failed admission sends no prompt. Alt+M cycles models within the current provider. |
 | Information | `/context`, `/stats`, `/skills`, `/tools`, `/mcp`, `/files`, `/changes [seq]`, `/trace [copy <seq>\|copy all]`, and `/version` inspect native state or readonly Host projections. |
 | Work and side conversations | `/jobs`, `/goal`, and `/schedule [all]` use the enabled Host services. `/btw <question>` opens a forked side conversation; `/agents` browses subagents. F7 returns to the previous conversation and F8 closes its view. Closing a view keeps Host work running. |
 | Local output and exit | `/copy` writes to the TUI machine's clipboard; `/export [full] [name]` (`/save`) writes under local `mayfly-exports/`. `/quit` (`/q`, `/exit`) detaches and exits. |
 | Additional Remote controls | `/host`, `/attach`, `/detach`, `/host-status`, `/account`, `/language`, and `/onboarding` appear in the Remote help section. |
 
 Enter queues a prompt and Ctrl+Enter steers it through the official Client. Readonly conversations preserve drafts and refuse writes. A cold continuable child resumes only when the user explicitly replies through its native address. `/agents stop <id>` drains a live continuable leaf; a child with live descendants is refused. The selected conversation's interrupt uses native cancellation authority and keeps queued input.
+
+Attachment-capable native commands receive images and uploaded file receipts in their original order. A native refusal restores the draft and attachments. `/skills` shows the selected Session's native source/provider metadata and catalog completeness; a Host without the optional Mayfly catalog capability explicitly identifies the missing metadata.
 
 ## Partial behavior and upstream limits
 

@@ -173,6 +173,14 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   health is unknown unless the Host advertises the optional sanitized catalog.
   Passive cold-child history keeps generic tool cards; Agent controls must
   refuse unavailable scope rather than activate or borrow a parent Agent.
+- `/skills` consumes the exact Host `skillCatalog` native source/provider
+  metadata and completeness. Only an uncomposed capability falls back to the
+  official skill list with an explicit metadata notice; a failed read does not
+  imply that capability is absent. Selection, binding, connection and caller
+  cancellation fence discovery. Metadata is never inferred from paths.
+  The public Client entry must retain the official Remote assembly's type-only
+  export in emitted declarations so external consumers receive its namespace
+  augmentations without relying on workspace imports.
 - `src/remote-bin.ts` receives credentials only through the authenticated
   `MAYFLY_DSH_STARTUP_URL` environment variable; a non-secret `--host` URL is
   accepted, and a token in argv or a log is refused.
