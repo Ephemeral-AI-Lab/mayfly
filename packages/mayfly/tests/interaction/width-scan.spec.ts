@@ -16,6 +16,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { ui } from '../../../ui/src/index.ts'
 import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { FilesBrowser, type FilesBrowserFacts } from '../../src/interaction/files-browser-model.ts'
 import { scheduleNode } from '../../src/interaction/schedule-command.ts'
 import { accountPanelNode } from '../../src/interaction/provider-account.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
@@ -354,6 +355,36 @@ for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name
         renderer.runtime.dispose()
       }
       handle.close()
+    }
+  } finally { await bench.ctx.fiber.dispose() }
+})
+
+for (const { name, text } of ADVERSARIAL) it(`Files browser list, detail, preview and diff survive ${name}`, async () => {
+  const bench = await requestFixture()
+  const file = { id: 'delivered', path: text, description: text }
+  const latest = { seq: 3, summary: { turn: 2, cwd: '/host/work', files: [{ path: text, display: text, added: 10, deleted: 1 }], total: 1, added: 10, deleted: 1 } }
+  const base: FilesBrowserFacts = { files: [file], latest, focusedId: file.id, detailMode: false, canOpen: true }
+  const cases: readonly FilesBrowserFacts[] = [
+    base,
+    { ...base, detailMode: true, detail: { kind: 'delivered', path: text, displayPath: text, fileType: 'file', previewable: true, size: 1 } },
+    { ...base, detailMode: true, detail: { kind: 'delivered', path: text, fileType: 'file', previewable: true, preview: text } },
+    { ...base, focusedId: 'changes:3:0', detailMode: true, detail: { kind: 'changed', diff: { kind: 'text', path: text, display: text, before: true, after: true, coarse: true, hunks: [{ oldStart: 100, oldLines: 1, newStart: 100, newLines: 1, lines: [`-${text}`, `+${text}`] }] } } },
+  ]
+  try {
+    for (const [index, facts] of cases.entries()) {
+      const handle = bench.ctx.mayflyOverlays.open({ id: 'files-width', capturing: true }, FilesBrowser(facts, key => key))
+      const model = bench.ctx.mayflyUiInteraction.get('overlay', 'files-width')!
+      const viewport = { columns: 80, rows: 20 }
+      const renderer = renderRequest(model, viewport)
+      try {
+        for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+          viewport.columns = width
+          viewport.rows = height
+          const rows = renderer.component.render(width)
+          expectLinesFit(`files-${index}/${name}/${height}`, rows, width)
+          expect(rows.length).toBeLessThanOrEqual(height)
+        }
+      } finally { renderer.runtime.dispose(); handle.close() }
     }
   } finally { await bench.ctx.fiber.dispose() }
 })

@@ -1,152 +1,211 @@
-/**
- * `/files` browser over the Host `mayflyDeliverables` projection: the files the
- * agent delivered in this session, with no filesystem read of its own.
- * @module @ephemeral-ai/mayfly/remote/operations/files
- */
-
+/** Frozen Files browser over Host delivery metadata and native per-turn comparisons. @module */
+import { FilesBrowser, filesBrowserItems, filesBrowserRow, type FilesBrowserFacts, type FilesDeliveredFile, type FilesRow } from '@ephemeral-ai/mayfly/files-browser'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
-import type {
-  MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiObservationEvent,
-} from '@ephemeral-ai/mayfly-ui'
+import type { MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
+import { mayflyHostRemote } from '../../frontend/host-mount.ts'
 import type { RemoteFeatureSelection } from '../features.ts'
+import { RemoteFeatureController, RemoteFeatureOperation, remoteErrorMessage, remoteValue } from '../features/official.ts'
 import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
-import {
-  REMOTE_FILES_REFRESH_ID, remoteFilesNode, type RemoteFilesRow, type RemoteFilesState,
-} from '../panels/operations/files.ts'
-import { isRemoteFeatureSelection } from '../interactions/selection.ts'
-import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
-import { isRemoteRecord, registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
-
-/** The Host projection carrying recorded `deliverables/presented` files. */
-const DELIVERABLES_KEY = 'mayflyDeliverables'
+import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
 
 const zh: Readonly<Record<string, string>> = {
   'Browse files delivered by the agent': '浏览 Agent 交付的文件',
-  'Delivered files': '已交付文件',
-  'No files were delivered in this session yet': '本会话还没有交付任何文件',
-  'This session does not expose the deliverables projection': '本会话未提供 deliverables 投影',
-  'Only files the agent recorded as delivered are listed; no path is read from disk.':
-    '这里只列出 Agent 记录为已交付的文件；不会从磁盘读取任何路径。',
-  'Refresh': '刷新',
-  'refresh': '刷新',
   'No current session': '当前没有会话',
   'Usage: /files': '用法：/files',
+  'Loading file…': '正在加载文件…',
+  'Loading comparison…': '正在加载比较…',
+  'Name': '名称', 'Description': '描述', 'Path': '路径', 'Type': '类型', 'Size': '大小',
+  'Status': '状态', 'Turn': '回合', 'Change': '改动', 'unknown': '未知', 'bytes': '字节',
+  'File unavailable': '文件不可用', 'No files': '没有文件',
+  'Select a file to see its details': '选择文件以查看详情',
 }
 
-/** Read one projection row's string field, or undefined for an absent or non-string value. */
-function rowString(row: Record<string, unknown>, key: string): string | undefined {
-  const value = row[key]
-  return typeof value === 'string' && value !== '' ? value : undefined
-}
+/** One open browser retains only readonly wire facts and caller-owned read cancellation. */
+class RemoteFilesBrowser {
+  private facts: FilesBrowserFacts = { files: [], detailMode: false, canOpen: false }
+  private readonly browser: RemoteBrowserPanel
+  private loadAbort: AbortController | undefined
+  private loadGeneration = 0
+  private latestTicket = 0
+  private lastChangesSeq: number | undefined
 
-/** Read the projection's delivered files, skipping rows a Host cannot render. */
-function deliverableRows(value: unknown): readonly RemoteFilesRow[] {
-  if (!Array.isArray(value)) return []
-  const rows: RemoteFilesRow[] = []
-  for (const [index, candidate] of value.entries()) {
-    if (!isRemoteRecord(candidate)) continue
-    const path = rowString(candidate, 'path')
-    if (path === undefined || path.trim() === '') continue
-    rows.push({
-      id: rowString(candidate, 'id') ?? String(index),
-      path,
-      description: rowString(candidate, 'description'),
-    })
-  }
-  return rows
-}
-
-/** Read the projection snapshot into panel state; an unpublished key is not an empty session. */
-function readDeliverables(value: unknown): RemoteFilesState {
-  if (value === undefined) return { available: false, rows: [] }
-  return { available: true, rows: deliverableRows(value) }
-}
-
-class RemoteFilesController {
-  private readonly t: MayflyTranslate
-  private readonly lifecycle: RemoteFeatureLifecycle
-  private state: RemoteFilesState = { available: false, rows: [] }
-  private browser: RemoteBrowserPanel | undefined
-  private stopProjection: (() => void) | undefined
-  private disposed = false
-
-  constructor(private readonly context: RemoteOperationsContext) {
-    const { base } = context
-    this.t = memoizedLocaleTranslator(base.ctx, 'remote-operations-files').translate
-    registerRemoteOperationsLocale(base, 'remote-operations-files', zh)
-    this.lifecycle = new RemoteFeatureLifecycle(base, this.attach)
-    this.lifecycle.start()
-  }
-
-  readonly dispose = (): void => {
-    if (this.disposed) return
-    this.disposed = true
-    this.lifecycle.dispose()
-    this.stopProjection?.()
-    this.stopProjection = undefined
-    this.browser?.close()
-  }
-
-  private readonly attach = (generation: number): void => {
-    if (this.disposed) return
-    this.stopProjection?.()
-    this.stopProjection = undefined
-    this.browser?.close()
-    this.browser = undefined
-    this.state = { available: false, rows: [] }
-    const current = this.lifecycle.selection(generation)
-    if (current !== undefined) this.watch(current)
-  }
-
-  private watch(current: RemoteFeatureSelection): void {
-    const face = current.binding.session.projections.faceOf(DELIVERABLES_KEY)
+  constructor(
+    private readonly context: RemoteOperationsContext,
+    private readonly current: RemoteFeatureSelection,
+    private readonly operation: RemoteFeatureOperation,
+    t: MayflyTranslate,
+  ) {
+    const face = current.binding.session.projections.faceOf('mayflyDeliverables')
     const update = (): void => {
-      this.state = readDeliverables(face.getSnapshot())
-      this.browser?.refresh()
+      if (!operation.valid()) return
+      this.facts = { ...this.facts, files: face.getSnapshot() as readonly FilesDeliveredFile[] | undefined ?? [] }
+      this.refreshRows()
     }
-    this.stopProjection = face.subscribe(update)
-    update()
+    operation.onDispose(face.subscribe(update))
+    operation.onDispose(current.binding.eventSource.subscribe(() => {
+      if (!operation.valid()) return
+      const seq = current.binding.eventSource.getSnapshot().entries.findLast(entry => entry.type === 'event' && entry.event.type === 'workspace/changes')
+      const next = seq?.type === 'event' ? seq.event.seq : undefined
+      if (next === undefined || next === this.lastChangesSeq) return
+      this.lastChangesSeq = next
+      void this.refreshChanges()
+    }))
+    operation.onDispose(() => { this.loadAbort?.abort(); this.browser?.close() })
+    this.facts = { ...this.facts, files: face.getSnapshot() as readonly FilesDeliveredFile[] | undefined ?? [] }
+    this.browser = openRemoteBrowser(context.base, {
+      id: 'remote.operations.files',
+      scope: { kind: 'session', sessionId: current.ref.sessionId },
+      signal: operation.signal,
+      isCurrent: () => operation.valid(),
+      view: () => FilesBrowser(this.facts, t),
+      action: (event, owner) => this.action(event, owner),
+      back: () => {
+        if (!this.facts.detailMode) return false
+        this.facts = { ...this.facts, detailMode: false }
+        this.browser.refresh()
+        return true
+      },
+      onClosed: () => { operation.dispose() },
+    })
+    if (!operation.valid()) return
+    this.refreshRows()
+    void this.refreshChanges()
+    void this.readOpenCapability()
+  }
+
+  private refreshRows(): void {
+    if (filesBrowserRow(this.facts, this.facts.focusedId) === undefined) {
+      this.focus(filesBrowserItems(this.facts)[0]?.id)
+    }
+    this.browser.refresh()
+  }
+
+  private async readOpenCapability(): Promise<void> {
+    try {
+      const canOpen = await remoteValue(this.current.client.remote.session.canOpenWorkspacePath())
+      if (!this.operation.valid()) return
+      this.facts = { ...this.facts, canOpen }
+      this.browser.refresh()
+    } catch {
+      // Native capability discovery is advisory; metadata, preview, and copy stay usable.
+    }
+  }
+
+  private async refreshChanges(): Promise<void> {
+    const ticket = ++this.latestTicket
+    try {
+      const latest = await remoteValue(mayflyHostRemote(this.current.client).latestWorkspaceChanges({ sessionId: this.current.ref.sessionId }, this.operation.signal))
+      if (!this.operation.valid() || ticket !== this.latestTicket) return
+      this.facts = { ...this.facts, latest: latest ?? undefined }
+      this.refreshRows()
+    } catch (error) {
+      if (this.operation.valid() && ticket === this.latestTicket) this.context.base.notice.set(remoteErrorMessage(error))
+    }
+  }
+
+  private focus(id: string | undefined): void {
+    if (id === this.facts.focusedId && this.facts.detail !== undefined) return
+    this.loadAbort?.abort()
+    this.loadGeneration += 1
+    this.facts = { ...this.facts, focusedId: id, detail: undefined }
+    const row = filesBrowserRow(this.facts, id)
+    if (row === undefined) return
+    this.facts = { ...this.facts, detail: { kind: row.kind, loading: true } }
+    const controller = new AbortController()
+    this.loadAbort = controller
+    const signal = AbortSignal.any([this.operation.signal, controller.signal])
+    void this.load(row, this.loadGeneration, signal)
+  }
+
+  private async load(row: FilesRow, generation: number, signal: AbortSignal): Promise<void> {
+    try {
+      if (row.kind === 'delivered') {
+        const value = await remoteValue(mayflyHostRemote(this.current.client).deliveredFile({ sessionId: this.current.ref.sessionId, deliveryId: row.file.id }, signal))
+        if (!this.operation.valid() || signal.aborted || generation !== this.loadGeneration) return
+        this.facts = { ...this.facts, detail: { kind: 'delivered', ...value, previewable: value.fileType === 'file' } }
+      } else {
+        const diff = await remoteValue(mayflyHostRemote(this.current.client).workspaceChangesDiff({ sessionId: this.current.ref.sessionId, seq: row.latest.seq, index: row.index }, signal))
+        if (!this.operation.valid() || signal.aborted || generation !== this.loadGeneration) return
+        this.facts = { ...this.facts, detail: { kind: 'changed', ...diff === null ? {} : { diff } } }
+      }
+    } catch (error) {
+      if (!this.operation.valid() || signal.aborted || generation !== this.loadGeneration) return
+      this.facts = { ...this.facts, detail: { kind: row.kind, error: remoteErrorMessage(error) } }
+    }
+    this.browser.refresh()
+  }
+
+  private async action(event: MayflyUiActionEvent, owner: MayflyUiEventContext): Promise<MayflyUiActionReply> {
+    if (event.kind === 'selection-accept') {
+      if (event.controlId !== 'files' && event.controlId !== 'files-narrow') return { kind: 'completed' }
+      const id = event.selectedIds[0]
+      if (id === undefined) return { kind: 'cancelled' }
+      this.focus(id)
+      if (event.controlId === 'files-narrow') this.facts = { ...this.facts, detailMode: true }
+      this.browser.refresh()
+      return { kind: 'completed' }
+    }
+    if (event.kind !== 'activate') return { kind: 'completed' }
+    if (event.actionId !== 'copy' && event.actionId !== 'open' && event.actionId !== 'preview') return { kind: 'completed' }
+    const state = this.facts.detail?.kind === 'delivered' ? this.facts.detail : undefined
+    const row = filesBrowserRow(this.facts, this.facts.focusedId)
+    if (state?.path === undefined || row?.kind !== 'delivered') return { kind: 'failed', message: 'File unavailable' }
+    const generation = this.loadGeneration
+    const signal = AbortSignal.any([owner.signal, this.operation.signal])
+    const valid = (): boolean => !signal.aborted && this.operation.valid() && generation === this.loadGeneration
+    try {
+      if (event.actionId === 'copy') {
+        if (this.context.options.copy === undefined) return { kind: 'failed', message: 'Clipboard unavailable' }
+        await this.context.options.copy(state.path)
+        return valid() ? { kind: 'completed', feedback: { severity: 'success', message: 'Path copied' } } : { kind: 'cancelled' }
+      }
+      if (state.fileType !== 'file') return { kind: 'failed', message: 'File unavailable' }
+      if (event.actionId === 'open') {
+        if (!this.facts.canOpen) return { kind: 'failed', message: 'Open unavailable' }
+        await remoteValue(this.current.client.remote.session.openWorkspacePath({ path: state.path }, signal))
+        return valid() ? { kind: 'completed', feedback: { severity: 'info', message: 'Open request handed to the host application' } } : { kind: 'cancelled' }
+      }
+      if (state.preview !== undefined) {
+        const { preview: _preview, ...rest } = state
+        this.facts = { ...this.facts, detail: rest }
+      } else {
+        const value = await remoteValue(mayflyHostRemote(this.current.client).deliveredFile({ sessionId: this.current.ref.sessionId, deliveryId: row.file.id, preview: true }, signal))
+        if (!valid()) return { kind: 'cancelled' }
+        this.facts = { ...this.facts, detail: { kind: 'delivered', ...value, previewable: value.fileType === 'file' } }
+      }
+      this.browser.refresh()
+      return { kind: 'completed' }
+    } catch (error) {
+      return valid() ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' }
+    }
+  }
+}
+
+class RemoteFilesController extends RemoteFeatureController<RemoteOperationsContext['base']> {
+  private readonly t: MayflyTranslate
+  private operation: RemoteFeatureOperation | undefined
+
+  constructor(private readonly filesContext: RemoteOperationsContext) {
+    super(filesContext.base)
+    this.t = memoizedLocaleTranslator(filesContext.base.ctx, 'remote-operations-files').translate
+    registerRemoteOperationsLocale(filesContext.base, 'remote-operations-files', zh)
   }
 
   readonly execute = (rawInput: string): void => {
     if (rawInput.trim() !== '') throw new Error(this.t('Usage: /files'))
-    const current = this.context.base.hosts.current()
-    // A missing selection is an ordinary state, not a failed command: throwing
-    // here would surface as 'Submission was not confirmed; no retry was sent',
-    // which reads like a transport fault. Every other Remote command notices.
-    if (current === undefined) {
-      this.context.base.notice.set(this.t('No current session'))
-      return
-    }
-    this.browser?.close()
-    this.browser = openRemoteBrowser(this.context.base, {
-      id: 'remote.operations.files',
-      scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref),
-      view: () => remoteFilesNode(this.state, this.t),
-      observe: (_event: MayflyUiObservationEvent) => {},
-      action: (event: MayflyUiActionEvent): MayflyUiActionReply => {
-        if (event.kind === 'activate' && event.actionId === REMOTE_FILES_REFRESH_ID) {
-          this.state = readDeliverables(current.binding.session.projections.faceOf(DELIVERABLES_KEY).getSnapshot())
-          this.browser?.refresh()
-        }
-        return { kind: 'completed' }
-      },
-      onClosed: () => { this.browser = undefined },
-    })
+    const current = this.filesContext.base.hosts.current()
+    if (current === undefined) { this.filesContext.base.notice.set(this.t('No current session')); return }
+    this.operation?.dispose()
+    const operation = this.sessionOperation(current)
+    if (operation === undefined) return
+    this.operation = operation
+    new RemoteFilesBrowser(this.filesContext, current, operation, this.t)
   }
 }
 
-/** Mount the `/files` delivered-files browser. */
+/** Mount the Files browser, with native Host reads and Frontend clipboard ownership. */
 export function mountRemoteFilesOperations(context: RemoteOperationsContext): () => void {
   const controller = new RemoteFilesController(context)
-  const unregister = context.base.commands.register({
-    name: 'files',
-    description: 'Browse files delivered by the agent',
-    execute: controller.execute,
-  })
-  return () => {
-    unregister()
-    controller.dispose()
-  }
+  const unregister = context.base.commands.register({ name: 'files', description: 'Browse files delivered by the agent', execute: controller.execute })
+  return () => { unregister(); controller.dispose() }
 }

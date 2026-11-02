@@ -1,247 +1,395 @@
-import { describe, expect, it, vi } from 'vitest'
+/** Exact rc.2 Files workflows over native Remote reads, with unload and late-result fences. @module */
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Context } from '@deepseek-ai/cordis'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyListNode, MayflyStackNode, MayflySurfaceNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyUiActionEvent, MayflyUiEventContext, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
 import { RemoteFeatureCommandRegistry } from '../../src/remote/features/commands.ts'
-import type { RemoteOperationsContext, RemotePresentSlot } from '../../src/remote/operations/support.ts'
+import type { RemoteOperationsContext } from '../../src/remote/operations/support.ts'
 import { openRemoteBrowser, type RemoteBrowserOptions } from '../../src/remote/panels/browser.ts'
 import { mountRemoteFilesOperations } from '../../src/remote/operations/files.ts'
 
-vi.mock('../../src/remote/panels/browser.ts', () => ({
-  openRemoteBrowser: vi.fn(() => ({ closed: false, refresh: vi.fn(), close: vi.fn() })),
-}))
+vi.mock('../../src/remote/panels/browser.ts', () => ({ openRemoteBrowser: vi.fn() }))
+afterEach(() => { vi.clearAllMocks() })
+const ok = (value: unknown) => ({ ok: true as const, value })
+const failure = { ok: false, error: { code: 'native/refusal', message: 'native refusal' } }
+const delivered = [{ id: '4/0', path: 'report.md', description: 'Report' }, { id: '4/1', path: 'other.txt' }]
+const latest = { seq: 8, summary: { turn: 3, cwd: '/host/work', files: [{ path: 'a.ts', display: 'a.ts', added: 2, deleted: 1 }], total: 1, added: 2, deleted: 1 } }
+const tick = async () => { for (let index = 0; index < 12; index += 1) await Promise.resolve() }
+const deferred = <T,>() => Promise.withResolvers<T>()
 
-/**
- * Minimal Cordis context for the locale seam: `effect` owns the registration
- * disposer, `inject` resolves the locale service, and a registered namespace's
- * English catalog is the identity map the module ships.
- */
-function fakeContext(): Context {
-  const catalogs = new Map<string, Readonly<Record<string, string>>>()
-  const translate = (namespace: string, key: string, values?: Readonly<Record<string, string | number>>): string => {
-    const template = catalogs.get(namespace)?.[key] ?? key
-    return template.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/gu, (placeholder: string, name: string) => {
-      const value = values?.[name]
-      return value === undefined ? placeholder : String(value)
-    })
-  }
-  const locale = {
-    register: vi.fn((namespace: string, catalog: { readonly en: Readonly<Record<string, string>> }) => {
-      catalogs.set(namespace, catalog.en)
-      return () => { catalogs.delete(namespace) }
-    }),
-    subscribe: vi.fn(() => () => {}),
-    translate,
-  }
-  const ctx: Record<string, unknown> = {
-    mayflyLocale: locale,
-    effect: (callback: () => void | (() => void)) => {
-      const dispose = callback()
-      return typeof dispose === 'function' ? dispose : () => {}
-    },
-    inject: (_names: readonly string[], callback: (scoped: unknown) => void) => {
-      callback(ctx)
-      return () => {}
-    },
-    get: (name: string) => (name === 'mayflyLocale' ? locale : undefined),
-  }
-  return ctx as unknown as Context
-}
-
-/** One Host projection face: absence is an undefined snapshot, never a missing face. */
-interface ProjectionFace {
-  getSnapshot(): unknown
-  subscribe(listener: () => void): () => void
-}
-
-function fixture(snapshot: unknown = undefined) {
-  const ctx = fakeContext()
-  const notice = { set: vi.fn() }
+function fixture(options: { readonly files?: typeof delivered | null, readonly noCopy?: boolean, readonly closeOnOpen?: boolean } = {}) {
+  const listeners = { topology: new Set<() => void>(), state: new Set<() => void>(), projection: new Set<() => void>(), events: new Set<() => void>() }
+  const subscribe = (kind: keyof typeof listeners) => (listener: () => void) => { listeners[kind].add(listener); return () => { listeners[kind].delete(listener) } }
+  const fire = (kind: keyof typeof listeners) => { for (const listener of [...listeners[kind]]) listener() }
+  let files = options.files === null ? undefined : options.files ?? delivered
+  let entries: readonly unknown[] = []
+  let generation = 1
+  const deliveredFile = vi.fn(async (request: { deliveryId: string, preview?: boolean }, _signal?: AbortSignal): Promise<unknown> => ok({ path: `/native/${request.deliveryId}`, displayPath: '~/work/report.md', fileType: 'file', size: 12, ...request.preview === true ? { preview: 'preview line\n第二行' } : {} }))
+  const latestWorkspaceChanges = vi.fn(async (): Promise<unknown> => ok(null))
+  const workspaceChangesDiff = vi.fn(async (): Promise<unknown> => ok(null))
+  const canOpenWorkspacePath = vi.fn(async (): Promise<unknown> => ok(true))
+  const openWorkspacePath = vi.fn(async (_request: unknown, _signal?: AbortSignal): Promise<unknown> => ok({}))
+  const copy = vi.fn(async (_text: string): Promise<void> => {})
+  const binding = { session: { projections: { faceOf: () => ({ getSnapshot: () => files, subscribe: subscribe('projection') }) } }, eventSource: { getSnapshot: () => ({ entries }), subscribe: subscribe('events') } } as unknown as SessionBinding
+  const client = { key: HostKey('one'), state: { getSnapshot: () => ({ generation }), subscribe: subscribe('state') }, remote: { mayflyHost: { deliveredFile, latestWorkspaceChanges, workspaceChangesDiff }, session: { canOpenWorkspacePath, openWorkspacePath } } } as unknown as HostClient
+  let attached = true
+  let current: RemoteFeatureSelection | undefined = { client, binding, ref: { host: HostKey('one'), sessionId: SessionId('lead') } }
+  const locale = { register: vi.fn(), subscribe: vi.fn(() => () => {}), translate: vi.fn((_namespace: string, key: string) => key) }
+  const ctx = { effect: (fn: () => unknown) => { fn(); return () => {} }, get: (name: string) => name === 'mayflyLocale' ? locale : undefined, inject: (_keys: unknown, fn: (scope: unknown) => void) => { fn(ctx); return () => {} }, mayflyLocale: locale } as unknown as Context
   const commands = new RemoteFeatureCommandRegistry()
-  vi.mocked(openRemoteBrowser).mockClear()
-
-  let projected: unknown = snapshot
-  let projectionListener: (() => void) | undefined
-  const face: ProjectionFace = {
-    getSnapshot: () => projected,
-    subscribe: listener => {
-      projectionListener = listener
-      return () => { projectionListener = undefined }
-    },
-  }
-  const faceOf = vi.fn((_key: string) => face)
-  const binding = { session: { projections: { faceOf } } } as unknown as SessionBinding
-
-  let clientGeneration = 1
-  let stateListener: (() => void) | undefined
-  const client = {
-    key: 'host-client',
-    state: {
-      getSnapshot: () => ({ generation: clientGeneration }),
-      subscribe: (listener: () => void) => {
-        stateListener = listener
-        return () => { stateListener = undefined }
-      },
-    },
-  } as unknown as HostClient
-
-  const ref = (sessionId: string) => ({ host: HostKey('local'), sessionId: SessionId(sessionId) })
-  let current: RemoteFeatureSelection | undefined = { ref: ref('session-1'), client, binding }
-  let topologyListener: (() => void) | undefined
-  const hosts = {
-    list: () => (current === undefined ? [] : [current.client]),
-    current: () => current,
-    subscribe: (listener: () => void) => {
-      topologyListener = listener
-      return () => { topologyListener = undefined }
-    },
-  }
-
-  const base = {
-    ctx,
-    hosts,
-    notice,
-    commands,
-    subscribeLocale: () => () => {},
-  } as unknown as RemoteFeatureContext
-  const context = {
-    base,
-    options: { localCwd: '/work' },
-    presentSlot: {} as unknown as RemotePresentSlot,
-  } as unknown as RemoteOperationsContext
-
-  const run = (): Promise<boolean> => commands.execute('files', '', new AbortController().signal)
-  const openedOptions = (): RemoteBrowserOptions => {
-    const call = vi.mocked(openRemoteBrowser).mock.calls.at(-1)
-    if (call === undefined) throw new Error('no files browser was opened')
-    return call[1]
-  }
-  const openedPanel = () => vi.mocked(openRemoteBrowser).mock.results.at(-1)?.value as unknown as {
-    refresh: ReturnType<typeof vi.fn>
-    close: ReturnType<typeof vi.fn>
-  }
-  return {
-    context, notice, commands, run, faceOf, openedOptions, openedPanel,
-    setProjection: (value: unknown): void => { projected = value },
-    fireProjection: (): void => { projectionListener?.() },
-    setSelection: (sessionId: string | undefined): void => {
-      current = sessionId === undefined ? undefined : { ref: ref(sessionId), client, binding }
-    },
-    fireTopology: (): void => { topologyListener?.() },
-    bumpGeneration: (): void => { clientGeneration += 1 },
-    fireState: (): void => { stateListener?.() },
+  const notice = { set: vi.fn() }
+  const context = { base: { ctx, commands, notice, hosts: { list: () => attached ? [client] : [], current: () => current, subscribe: subscribe('topology') }, subscribeLocale: () => () => {} } as unknown as RemoteFeatureContext, options: { localCwd: '/local', ...options.noCopy ? {} : { copy } } } as unknown as RemoteOperationsContext
+  let browser: RemoteBrowserOptions | undefined
+  let closed = false
+  const refresh = vi.fn()
+  const close = vi.fn(() => { if (closed) return; closed = true; browser?.onClosed?.() })
+  vi.mocked(openRemoteBrowser).mockImplementation((_base, value) => {
+    browser = value
+    closed = false
+    if (options.closeOnOpen) value.onClosed?.()
+    return { get closed() { return closed }, refresh, close }
+  })
+  const unmount = mountRemoteFilesOperations(context)
+  const execute = (text = '') => commands.list().find(command => command.name === 'files')!.execute(text, new AbortController().signal)
+  const act = (event: object, signal = new AbortController().signal) => browser!.action!(event as MayflyUiActionEvent, { signal } as MayflyUiEventContext)
+  const select = (id?: string, controlId = 'files') => act({ kind: 'selection-accept', controlId, selectedIds: id === undefined ? [] : [id] })
+  const activate = (actionId: string, signal?: AbortSignal) => act({ kind: 'activate', actionId }, signal)
+  return { client, binding, commands, notice, unmount, execute, act, select, activate, deliveredFile, latestWorkspaceChanges, workspaceChangesDiff, canOpenWorkspacePath, openWorkspacePath, copy, refresh, close, listeners,
+    browser: () => browser!, view: () => browser!.view(),
+    project: (value: typeof files) => { files = value; fire('projection') },
+    events: (value: readonly unknown[]) => { entries = value; fire('events') },
+    selection: (value: RemoteFeatureSelection | undefined) => { current = value },
+    current: () => current!, topology: () => { fire('topology') },
+    reconnect: () => { generation += 1; fire('state') }, detach: () => { attached = false; current = undefined; fire('topology') },
   }
 }
 
-/** The one list the panel body carries, whatever else the stack holds. */
-function listOf(node: MayflyUiNode): MayflyListNode {
-  const surface = node as MayflySurfaceNode
-  const column = surface.child as MayflyStackNode
-  const list = column.children.map(child => child.node).find((child): child is MayflyListNode => child.kind === 'list')
-  if (list === undefined) throw new Error('the files panel carries no list')
-  return list
+function nodes(node: MayflyUiNode): readonly Record<string, unknown>[] {
+  const output: Record<string, unknown>[] = []
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) { for (const child of value) walk(child); return }
+    if (typeof value !== 'object' || value === null) return
+    const record = value as Record<string, unknown>
+    if (typeof record.kind === 'string') output.push(record)
+    for (const child of Object.values(record)) walk(child)
+  }
+  walk(node)
+  return output
 }
+const contains = (node: MayflyUiNode, text: string) => JSON.stringify(node).includes(text)
+const items = (node: MayflyUiNode) => nodes(node).find(row => row.kind === 'list' && row.id === 'files')!.items as readonly { id: string, label: string, group?: string }[]
 
-/** The list's empty-state title, or '' while rows hide it. */
-function emptyTitleOf(node: MayflyUiNode): string {
-  const empty = listOf(node).empty
-  return empty !== undefined && empty.kind === 'empty' ? empty.title : ''
-}
-
-describe('mountRemoteFilesOperations', () => {
-  it('registers exactly the files command, and its disposer unregisters and closes the panel', async () => {
+describe('native Files command composition', () => {
+  it('registers the command, shows rc.2 Files chrome and details, and releases reads and registration on unload', async () => {
     const f = fixture()
-    const dispose = mountRemoteFilesOperations(f.context)
     expect(f.commands.list().map(command => command.name)).toEqual(['files'])
-    expect(f.commands.list()[0]?.description).toBe('Browse files delivered by the agent')
-
-    await f.run()
-    const panel = f.openedPanel()
-    dispose()
+    await f.execute()
+    await tick()
+    expect(f.browser().id).toBe('remote.operations.files')
+    expect(f.browser().scope).toEqual({ kind: 'session', sessionId: 'lead' })
+    expect(f.browser().isCurrent()).toBe(true)
+    expect(items(f.view())).toEqual([{ id: '4/0', label: 'report.md', group: 'Delivered', detail: 'Report' }, { id: '4/1', label: 'other.txt', group: 'Delivered' }])
+    expect(contains(f.view(), '12 bytes')).toBe(true)
+    expect(contains(f.view(), 'Preview text')).toBe(true)
+    expect(contains(f.view(), 'Open')).toBe(true)
+    f.unmount()
     expect(f.commands.list()).toEqual([])
-    expect(panel.close).toHaveBeenCalledOnce()
+    expect(f.close).toHaveBeenCalledOnce()
+    for (const listener of Object.values(f.listeners)) expect(listener.size).toBe(0)
+    f.unmount()
   })
 
-  it('reports the localized no-session notice without opening a panel', async () => {
+  it('rejects invalid input and reports a missing Session before opening anything', async () => {
     const f = fixture()
-    mountRemoteFilesOperations(f.context)
-    f.setSelection(undefined)
-    await expect(f.run()).resolves.toBe(true)
+    expect(() => f.execute('extra')).toThrow('Usage: /files')
+    f.selection(undefined)
+    f.execute()
     expect(f.notice.set).toHaveBeenCalledWith('No current session')
-    expect(vi.mocked(openRemoteBrowser)).not.toHaveBeenCalled()
+    expect(f.deliveredFile).not.toHaveBeenCalled()
+    f.unmount()
   })
 
-  it('opens the projection-unavailable empty state when the deliverables key has no snapshot', async () => {
+  it('uses the frozen empty state for an unavailable projection and selects new delivery rows automatically', async () => {
+    const f = fixture({ files: null })
+    f.execute()
+    await tick()
+    expect(items(f.view())).toEqual([])
+    expect(contains(f.view(), 'No files')).toBe(true)
+    f.project(delivered)
+    await tick()
+    expect(f.deliveredFile).toHaveBeenCalledWith({ sessionId: 'lead', deliveryId: '4/0' }, expect.any(AbortSignal))
+    f.project([delivered[1]!])
+    await tick()
+    expect(f.deliveredFile).toHaveBeenLastCalledWith({ sessionId: 'lead', deliveryId: '4/1' }, expect.any(AbortSignal))
+    f.unmount()
+  })
+
+  it('discards queued projection and event callbacks after retirement and handles an unpublished replacement snapshot', async () => {
     const f = fixture()
-    mountRemoteFilesOperations(f.context)
-    await f.run()
-    expect(f.faceOf).toHaveBeenCalledWith('mayflyDeliverables')
-    const view = f.openedOptions().view()
-    expect(listOf(view).items).toHaveLength(0)
-    expect(emptyTitleOf(view)).toBe('This session does not expose the deliverables projection')
+    f.execute()
+    await tick()
+    f.project(undefined)
+    expect(items(f.view())).toEqual([])
+    const projection = [...f.listeners.projection][0]!
+    const events = [...f.listeners.events][0]!
+    f.unmount()
+    const paints = f.refresh.mock.calls.length
+    projection()
+    events()
+    expect(f.refresh).toHaveBeenCalledTimes(paints)
   })
 
-  it('shows one row per well-formed deliverable and skips malformed rows', async () => {
-    const f = fixture([
-      { id: 'row-1', path: '/work/a.txt', description: 'Alpha' },
-      { path: '/work/b.txt' },
-      { id: 'missing-path' },
-      { id: 'blank-path', path: '   ' },
-      { id: 'row-2', path: '/work/c.txt', description: '' },
-      'not-a-row',
-    ])
-    mountRemoteFilesOperations(f.context)
-    await f.run()
-    const items = listOf(f.openedOptions().view()).items
-    expect(items.map(item => item.label)).toEqual(['/work/a.txt', '/work/b.txt', '/work/c.txt'])
-    expect(items.map(item => item.id)).toEqual(['row-1', '1', 'row-2'])
-  })
-
-  it('refreshes the open panel view when the projection face publishes an update', async () => {
+  it('keeps details on delivery updates, opens narrow details and consumes exactly one back layer', async () => {
     const f = fixture()
-    mountRemoteFilesOperations(f.context)
-    await f.run()
-    const options = f.openedOptions()
-    expect(listOf(options.view()).items).toHaveLength(0)
-
-    f.setProjection([{ id: 'row-1', path: '/work/new.txt' }])
-    f.fireProjection()
-    expect(f.openedPanel().refresh).toHaveBeenCalledOnce()
-    expect(listOf(options.view()).items.map(item => item.label)).toEqual(['/work/new.txt'])
+    f.execute()
+    await tick()
+    expect(await f.select(undefined)).toEqual({ kind: 'cancelled' })
+    expect(await f.select('4/1', 'foreign')).toEqual({ kind: 'completed' })
+    await f.select('4/0')
+    expect(f.deliveredFile).toHaveBeenCalledTimes(1)
+    f.project([...delivered])
+    expect(f.deliveredFile).toHaveBeenCalledTimes(1)
+    await f.select('4/1', 'files-narrow')
+    expect(contains(f.view(), 'Loading file…')).toBe(true)
+    expect((f.view() as { title?: string }).title).toBe('other.txt')
+    await tick()
+    expect(f.browser().back?.()).toBe(true)
+    expect((f.view() as { title?: string }).title).toBe('Files')
+    expect(f.browser().back?.()).toBe(false)
+    expect(await f.act({ kind: 'dismiss' })).toEqual({ kind: 'completed' })
+    expect(await f.activate('foreign')).toEqual({ kind: 'completed' })
+    await f.select('absent')
+    expect(contains(f.view(), 'Select a file')).toBe(true)
+    f.unmount()
   })
 
-  it('closes the panel when the selected Session stops being current', async () => {
+  it('copies the native process path, asks the native Host application to open it, and toggles bounded previews', async () => {
     const f = fixture()
-    mountRemoteFilesOperations(f.context)
-    await f.run()
-    const panel = f.openedPanel()
-    f.setSelection(undefined)
-    f.fireTopology()
-    expect(panel.close).toHaveBeenCalledOnce()
+    f.execute()
+    await tick()
+    expect(await f.activate('copy')).toEqual({ kind: 'completed', feedback: { severity: 'success', message: 'Path copied' } })
+    expect(f.copy).toHaveBeenCalledWith('/native/4/0')
+    expect(await f.activate('open')).toEqual({ kind: 'completed', feedback: { severity: 'info', message: 'Open request handed to the host application' } })
+    expect(f.openWorkspacePath).toHaveBeenCalledWith({ path: '/native/4/0' }, expect.any(AbortSignal))
+    expect(await f.activate('preview')).toEqual({ kind: 'completed' })
+    expect(f.deliveredFile).toHaveBeenLastCalledWith({ sessionId: 'lead', deliveryId: '4/0', preview: true }, expect.any(AbortSignal))
+    expect(contains(f.view(), 'preview line')).toBe(true)
+    await f.activate('preview')
+    expect(contains(f.view(), 'preview line')).toBe(false)
+    f.unmount()
   })
 
-  it('closes the panel when the Host connection generation changes', async () => {
-    const f = fixture()
-    mountRemoteFilesOperations(f.context)
-    await f.run()
-    const panel = f.openedPanel()
-    f.bumpGeneration()
-    f.fireState()
-    expect(panel.close).toHaveBeenCalledOnce()
+  it('keeps unavailable metadata, missing clipboard and absent native Open capability explicit', async () => {
+    const f = fixture({ noCopy: true })
+    f.canOpenWorkspacePath.mockResolvedValueOnce(ok(false))
+    f.execute()
+    expect(await f.activate('copy')).toEqual({ kind: 'failed', message: 'File unavailable' })
+    await tick()
+    expect(await f.activate('copy')).toEqual({ kind: 'failed', message: 'Clipboard unavailable' })
+    expect(await f.activate('open')).toEqual({ kind: 'failed', message: 'Open unavailable' })
+    expect(contains(f.view(), '"id":"open"')).toBe(false)
+    f.deliveredFile.mockResolvedValueOnce(ok({ path: '/dir', displayPath: '/dir', fileType: 'directory' }))
+    await f.select('4/1')
+    await tick()
+    expect(await f.activate('preview')).toEqual({ kind: 'failed', message: 'File unavailable' })
+    f.unmount()
   })
 
-  it('opens one session-scoped browser whose isCurrent predicate follows the exact selection', async () => {
+  it('adds native latest changed files, selects initial changed rows, and reads the exact announced comparison', async () => {
+    const f = fixture({ files: [] })
+    f.latestWorkspaceChanges.mockResolvedValueOnce(ok(latest))
+    f.workspaceChangesDiff.mockResolvedValueOnce(ok({ kind: 'binary', path: 'a.ts', display: 'a.ts' }))
+    f.execute()
+    await tick()
+    expect(items(f.view()).map(row => row.id)).toEqual(['changes:8:0'])
+    expect(f.workspaceChangesDiff).toHaveBeenCalledWith({ sessionId: 'lead', seq: 8, index: 0 }, expect.any(AbortSignal))
+    expect(contains(f.view(), 'Binary file; no text comparison.')).toBe(true)
+    expect(await f.activate('copy')).toEqual({ kind: 'failed', message: 'File unavailable' })
+    await f.select('changes:8:0')
+    expect(f.workspaceChangesDiff).toHaveBeenCalledTimes(1)
+    f.unmount()
+  })
+
+  it('observes only new workspace/changes facts and ignores repeats and ordinary stream entries', async () => {
     const f = fixture()
-    mountRemoteFilesOperations(f.context)
-    await f.run()
-    const options = f.openedOptions()
-    expect(options.id).toBe('remote.operations.files')
-    expect(options.scope).toEqual({ kind: 'session', sessionId: SessionId('session-1') })
-    expect(options.isCurrent()).toBe(true)
-    f.setSelection('session-2')
-    expect(options.isCurrent()).toBe(false)
+    f.execute()
+    await tick()
+    const event = { type: 'event', event: { type: 'workspace/changes', seq: 8 } }
+    f.events([{ type: 'transient', data: {} }, { type: 'event', event: { type: 'turn/end', seq: 9 } }])
+    expect(f.latestWorkspaceChanges).toHaveBeenCalledTimes(1)
+    f.latestWorkspaceChanges.mockResolvedValueOnce(ok(latest))
+    f.events([event])
+    await tick()
+    expect(items(f.view())).toHaveLength(3)
+    f.events([event, { type: 'transient', data: {} }])
+    expect(f.latestWorkspaceChanges).toHaveBeenCalledTimes(2)
+    await f.select('changes:8:0')
+    await tick()
+    expect(contains(f.view(), 'No comparison is available for this turn.')).toBe(true)
+    f.unmount()
+  })
+
+  it('shows native metadata/comparison failures, keeps capability discovery advisory, and reports latest-summary failures', async () => {
+    const f = fixture()
+    f.canOpenWorkspacePath.mockRejectedValueOnce(new Error('cannot discover'))
+    f.latestWorkspaceChanges.mockResolvedValueOnce(failure)
+    f.deliveredFile.mockRejectedValueOnce(new Error('file denied'))
+    f.execute()
+    await tick()
+    expect(contains(f.view(), 'file denied')).toBe(true)
+    expect(f.notice.set).toHaveBeenCalledWith('native refusal')
+    f.latestWorkspaceChanges.mockResolvedValueOnce(ok(latest))
+    f.events([{ type: 'event', event: { type: 'workspace/changes', seq: 8 } }])
+    await tick()
+    f.workspaceChangesDiff.mockRejectedValueOnce(new Error('comparison denied'))
+    await f.select('changes:8:0')
+    await tick()
+    expect(contains(f.view(), 'comparison denied')).toBe(true)
+    f.unmount()
+  })
+
+  it.each(['copy', 'open', 'preview'])('returns a structured native %s failure', async action => {
+    const f = fixture()
+    f.execute()
+    await tick()
+    const error = new Error('action denied')
+    if (action === 'copy') f.copy.mockRejectedValueOnce(error)
+    else if (action === 'open') f.openWorkspacePath.mockRejectedValueOnce(error)
+    else f.deliveredFile.mockRejectedValueOnce(error)
+    expect(await f.activate(action)).toEqual({ kind: 'failed', message: 'action denied' })
+    f.unmount()
+  })
+})
+
+describe('Files browser operation retirement', () => {
+  it.each(['reconnect', 'detach', 'binding', 'unmount', 'close', 'reopen'] as const)('retires listeners and ignores an old metadata success on %s', async retirement => {
+    const f = fixture()
+    const pending = deferred<unknown>()
+    f.deliveredFile.mockReturnValueOnce(pending.promise)
+    f.execute()
+    await tick()
+    const old = f.browser()
+    if (retirement === 'reconnect') f.reconnect()
+    else if (retirement === 'detach') f.detach()
+    else if (retirement === 'binding') { f.selection({ ...f.current(), binding: { ...f.binding } }); f.topology() }
+    else if (retirement === 'unmount') f.unmount()
+    else if (retirement === 'close') old.onClosed?.()
+    else f.execute()
+    await tick()
+    expect(old.isCurrent()).toBe(false)
+    const paints = f.refresh.mock.calls.length
+    pending.resolve(ok({ path: '/late', displayPath: '/late', fileType: 'file' }))
+    await tick()
+    expect(f.refresh).toHaveBeenCalledTimes(paints)
+    f.unmount()
+  })
+
+  it('fences old selection reads and failures when another file is focused', async () => {
+    const f = fixture()
+    const old = deferred<unknown>()
+    f.deliveredFile.mockReturnValueOnce(old.promise)
+    f.execute()
+    await f.select('4/1')
+    await tick()
+    old.reject(new Error('old failure'))
+    await tick()
+    expect(contains(f.view(), 'old failure')).toBe(false)
+    await f.activate('copy')
+    expect(f.copy).toHaveBeenCalledWith('/native/4/1')
+    f.unmount()
+  })
+
+  it('fences late changed comparisons when focus leaves their row', async () => {
+    const f = fixture()
+    const old = deferred<unknown>()
+    f.latestWorkspaceChanges.mockResolvedValueOnce(ok(latest))
+    f.execute()
+    await tick()
+    f.workspaceChangesDiff.mockReturnValueOnce(old.promise)
+    await f.select('changes:8:0')
+    await f.select('4/1')
+    await tick()
+    old.resolve(ok({ kind: 'binary', path: 'late', display: 'late' }))
+    await tick()
+    expect(contains(f.view(), 'Binary file;')).toBe(false)
+    f.unmount()
+  })
+
+  it.each(['resolve', 'reject'] as const)('ignores an older latest-summary %s after a newer event', async settlement => {
+    const f = fixture()
+    const old = deferred<unknown>()
+    f.latestWorkspaceChanges.mockReturnValueOnce(old.promise)
+    f.execute()
+    f.latestWorkspaceChanges.mockResolvedValueOnce(ok(latest))
+    f.events([{ type: 'event', event: { type: 'workspace/changes', seq: 8 } }])
+    await tick()
+    if (settlement === 'resolve') old.resolve(ok(null))
+    else old.reject(new Error('old latest'))
+    await tick()
+    expect(items(f.view())).toHaveLength(3)
+    expect(f.notice.set).not.toHaveBeenCalled()
+    f.unmount()
+  })
+
+  it('ignores late capability and summary reads after closure, including late failures', async () => {
+    const f = fixture()
+    const capability = deferred<unknown>()
+    const changes = deferred<unknown>()
+    f.canOpenWorkspacePath.mockReturnValueOnce(capability.promise)
+    f.latestWorkspaceChanges.mockReturnValueOnce(changes.promise)
+    f.execute()
+    f.unmount()
+    capability.resolve(ok(true))
+    changes.reject(new Error('old changes'))
+    await tick()
+    expect(f.notice.set).not.toHaveBeenCalled()
+  })
+
+  it.each(['copy', 'open', 'preview'] as const)('does not acknowledge a late %s result after selection replacement', async action => {
+    const f = fixture()
+    f.execute()
+    await tick()
+    const pending = deferred<unknown>()
+    if (action === 'copy') f.copy.mockReturnValueOnce(pending.promise as Promise<void>)
+    else if (action === 'open') f.openWorkspacePath.mockReturnValueOnce(pending.promise)
+    else f.deliveredFile.mockReturnValueOnce(pending.promise)
+    const result = f.activate(action)
+    await f.select('4/1')
+    pending.resolve(ok({ path: '/late', displayPath: '/late', fileType: 'file', preview: 'late preview' }))
+    expect(await result).toEqual({ kind: 'cancelled' })
+    await tick()
+    expect(contains(f.view(), 'late preview')).toBe(false)
+    f.unmount()
+  })
+
+  it('returns cancellation when a failing clipboard continuation belongs to an aborted action', async () => {
+    const f = fixture()
+    f.execute()
+    await tick()
+    const pending = deferred<void>()
+    f.copy.mockReturnValueOnce(pending.promise)
+    const caller = new AbortController()
+    const result = f.activate('copy', caller.signal)
+    caller.abort()
+    pending.reject(new Error('retired'))
+    expect(await result).toEqual({ kind: 'cancelled' })
+    f.unmount()
+  })
+
+  it('survives an already closed overlay and refuses capture after concurrent Host detach', async () => {
+    const f = fixture({ closeOnOpen: true })
+    f.execute()
+    await tick()
+    f.unmount()
+    const detached = fixture()
+    const selected = detached.current()
+    detached.detach()
+    detached.selection(selected)
+    detached.execute()
+    expect(detached.deliveredFile).not.toHaveBeenCalled()
+    detached.unmount()
   })
 })

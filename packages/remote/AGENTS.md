@@ -156,3 +156,10 @@ attach/detach and PTY acceptance. `pnpm run scenario remoteLifecycle` is the
 manual review; supply its Host through `MAYFLY_DSH_STARTUP_URL`, never argv. All
 executable source in this package is subject to the repository's per-file 100%
 coverage gate.
+
+`/files` consumes the shared rc.2 responsive Files browser and authoritative Host
+deliveries plus the latest retained native workspace comparison. Metadata and
+256 KiB previews use recorded delivery ids through `mayflyHost`; Open uses the
+native Session controller and Copy uses the Frontend clipboard. Exact Client,
+Session binding, connection generation, focus and caller cancellation fence
+reads and acknowledgements. Closing releases observers and never stops Host work.

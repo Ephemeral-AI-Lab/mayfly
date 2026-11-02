@@ -322,3 +322,8 @@ The npm 0.1.4-rc.2 reference is immutable; candidate rendering comes from this
 checkout's built package. Develop behavior and meaningful tests together, then validate the combined
 split runtime under the root gate. Shared renderer evidence alone does not
 establish complete reference parity.
+
+`files-browser` exports the readonly rc.2 Files list/detail/diff builder used by
+both native and Remote controllers. Facts expose only metadata and preview/open
+availability; filesystem targets stay in their controller. Preserve the frozen
+source fixtures and interaction width scan when changing its output.

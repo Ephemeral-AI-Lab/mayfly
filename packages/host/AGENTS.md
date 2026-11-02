@@ -87,3 +87,10 @@ A spec that needs the hub or the plugin entry imports the
 built `lib/` (see service.spec.ts); `src/remote/service.ts` decorators do not
 survive vitest's oxc transform, and the `experimentalDecorators` tsconfig flag
 does not change that.
+
+Recorded file reads in `src/remote/deliverables.ts` accept only an authoritative
+delivery id, use that exact Agent's filesystem and effective Host directory, and
+fence every await against Agent, Session, cwd and delivery replacement. Preview
+bytes are capped at 256 KiB; opaque filesystem targets never cross Remote.
+Latest workspace changes use the native announcing event and retained summary
+without activating a cold Session.
