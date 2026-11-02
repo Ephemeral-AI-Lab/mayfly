@@ -1,23 +1,17 @@
 /**
- * `/copy` last assistant reply text, folded from the backwards session journal
- * and handed to the integrator's clipboard seam.
+ * `/copy` reads the last visible assistant reply from the whole Host
+ * conversation projection and hands it to the integrator's clipboard seam.
  * @module @ephemeral-ai/mayfly/remote/operations/copy
  */
 
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
-import type { SessionWireEvent } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { ConversationEntry, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { RemoteFeatureController, remoteErrorMessage } from '../features/official.ts'
 import {
-  collectRemoteSessionEvents, isRemoteRecord, registerRemoteOperationsLocale,
+  registerRemoteOperationsLocale,
   type RemoteOperationsContext,
 } from './support.ts'
-
-/** Page size of one backwards journal read. */
-const COPY_PAGE_MESSAGES = 500
-
-/** Pages one read walks before it reports that no assistant reply was found. */
-const COPY_MAX_PAGES = 4
 
 const zh: Readonly<Record<string, string>> = {
   'Copied {count} characters': '已复制 {count} 个字符',
@@ -26,33 +20,14 @@ const zh: Readonly<Record<string, string>> = {
   'Could not copy: {message}': '复制失败：{message}',
   'No current session': '当前没有会话',
   'Usage: /copy': '用法：/copy',
+  'Conversation projection is unavailable': '会话投影不可用',
 }
 
-/**
- * Join the text blocks of one assistant message, ignoring reasoning blocks,
- * images, and blocks that carry only whitespace.
- */
-function assistantText(event: SessionWireEvent): string | undefined {
-  if (event.type !== 'assistant/message') return undefined
-  const message = isRemoteRecord(event.data) ? event.data['message'] : undefined
-  const content = isRemoteRecord(message) ? message['content'] : undefined
-  if (!Array.isArray(content)) return undefined
-  const text = content
-    .flatMap((block: unknown) => {
-      if (!isRemoteRecord(block) || block['type'] !== 'text') return []
-      const candidate = block['text']
-      return typeof candidate === 'string' && candidate.trim() !== '' ? [candidate] : []
-    })
-    .join('\n\n')
-  return text === '' ? undefined : text
-}
-
-/** The newest assistant reply with text in seq order, or undefined when the window holds none. */
-function latestAssistantText(events: readonly SessionWireEvent[]): string | undefined {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]!
-    const text = assistantText(event)
-    if (text !== undefined) return text
+/** The newest non-empty visible assistant item, matching the reference transcript. */
+function latestAssistantText(entries: readonly ConversationEntry[]): string | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!
+    if (entry.kind === 'assistant' && entry.text.trim() !== '') return entry.text
   }
   return undefined
 }
@@ -86,14 +61,10 @@ class RemoteCopyCommand extends RemoteFeatureController<RemoteOperationsContext[
     const operation = this.sessionOperation(current, signal)
     if (operation === undefined) return
     try {
-      const events = await collectRemoteSessionEvents(current.client, {
-        address: { kind: 'session', sessionId: current.ref.sessionId },
-        maxMessages: COPY_PAGE_MESSAGES,
-        maxPages: COPY_MAX_PAGES,
-        signal: operation.signal,
-      })
+      const projection = current.binding.session.projections.faceOf('mayflyConversation').getSnapshot() as ConversationProjection | undefined
       if (!operation.valid()) return
-      const text = latestAssistantText(events)
+      if (projection === undefined) throw new Error(this.t('Conversation projection is unavailable'))
+      const text = latestAssistantText(projection.entries)
       if (text === undefined) {
         this.copyContext.base.notice.set(this.t('No assistant reply to copy yet'))
         return

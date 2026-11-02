@@ -163,6 +163,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
 - Readable `/save` and `/export` consume the Host's whole `mayflyConversation`
   projection, preserving retractions and hidden-message visibility. Only `full`
   pages the native audit journal; attempt prefixes use native stream expansion.
+  `/copy` reads the newest non-empty visible assistant item from that same whole
+  projection, never a bounded raw journal window, and fences clipboard results
+  against caller, exact binding, Client, connection generation, and unload.
   Exports write exclusively to bare filenames under local `mayfly-exports/`,
   fence the exact Host/Session/binding/connection generation and command owner,
   and remove a newly written file if its owner retires before write settlement.
