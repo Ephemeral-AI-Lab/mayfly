@@ -45,11 +45,12 @@ export class RemoteAgentPresetsController extends RemoteFeatureController {
   }
 
   /** Open the exact filterable preset roster, including the Session-independent default. */
-  async open(): Promise<void> {
+  async open(parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted || this.context.ctx.mayflyOverlays.focus('mayfly.presets')) return
     const selection = this.context.hosts.current()
     const client = selection?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]
     if (client === undefined) return
-    const operation = selection === undefined ? this.hostOperation(client) : this.sessionOperation(selection)
+    const operation = selection === undefined ? this.hostOperation(client, parent) : this.sessionOperation(selection, parent)
     if (operation === undefined) return
     const t = this.translate
     try {

@@ -75,11 +75,12 @@ export class RemotePreferencesController extends RemoteFeatureController {
   }
 
   /** Open the reference live theme picker independently of Host settings persistence. */
-  openTheme(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): void {
-    if (this.lifetime.signal.aborted) return
-    const operation = client === undefined ? undefined : this.hostOperation(client, this.lifetime.signal)
+  openTheme(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0], parent?: AbortSignal): void {
+    if (this.lifetime.signal.aborted || parent?.aborted || this.context.ctx.mayflyOverlays.focus('mayfly.theme')) return
+    const lifetime = parent === undefined ? this.lifetime.signal : AbortSignal.any([parent, this.lifetime.signal])
+    const operation = client === undefined ? undefined : this.hostOperation(client, lifetime)
     if (client !== undefined && operation === undefined) return
-    const signal = operation?.signal ?? this.lifetime.signal
+    const signal = operation?.signal ?? lifetime
     const current = () => !signal.aborted && (operation === undefined || operation.valid())
     const t = this.referenceTranslate
     let offPresentation: (() => void) | undefined
@@ -109,11 +110,12 @@ export class RemotePreferencesController extends RemoteFeatureController {
   }
 
   /** Open the local language picker and persist through official settings when present. */
-  openLocale(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): void {
-    if (this.lifetime.signal.aborted) return
-    const operation = client === undefined ? undefined : this.hostOperation(client, this.lifetime.signal)
+  openLocale(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0], parent?: AbortSignal): void {
+    if (this.lifetime.signal.aborted || parent?.aborted || this.context.ctx.mayflyOverlays.focus('mayfly.language')) return
+    const lifetime = parent === undefined ? this.lifetime.signal : AbortSignal.any([parent, this.lifetime.signal])
+    const operation = client === undefined ? undefined : this.hostOperation(client, lifetime)
     if (client !== undefined && operation === undefined) return
-    const signal = operation?.signal ?? this.lifetime.signal
+    const signal = operation?.signal ?? lifetime
     const current = () => !signal.aborted && (operation === undefined || operation.valid())
     const mounted = openRemoteBrowser(this.context, {
       id: 'mayfly.language', scope: { kind: 'app', targetId: 'language' }, signal, isCurrent: current,

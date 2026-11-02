@@ -47,6 +47,21 @@ describe('Remote permission reference UI', () => {
     expect(test.command).not.toHaveBeenCalled()
   })
 
+  it('retains a wizard caller through nested Session permission discovery', async () => {
+    const test = fixture()
+    const cancelled = new AbortController(); cancelled.abort()
+    await test.controller.select(test.selection.ref, 'review', cancelled.signal)
+    expect(test.catalog).not.toHaveBeenCalled()
+    const gate = deferred<unknown>()
+    test.catalog.mockReturnValueOnce(gate.promise)
+    const caller = new AbortController()
+    const selecting = test.controller.select(test.selection.ref, 'review', caller.signal)
+    caller.abort(); gate.resolve({ ok: true, value: permissionCatalog() })
+    await selecting
+    expect(test.command).not.toHaveBeenCalled()
+    expect(test.notice.set).not.toHaveBeenCalled()
+  })
+
   it('reads only native string selection and catalogs an attached Host without a Session', async () => {
     expect(remotePermissionSelection({ currentValue: 'safe' })).toBe('safe')
     for (const value of [undefined, null, {}, { currentValue: 42 }, 'safe']) expect(remotePermissionSelection(value)).toBeUndefined()

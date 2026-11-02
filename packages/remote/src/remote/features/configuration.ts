@@ -75,7 +75,7 @@ export function createRemoteConfigurationFeatures(
   const settings = new RemoteSettingsController(context, adapters.host, adapters.settingsEdit)
   const models = new RemoteModelsController(context, adapters.host, adapters.host, adapters.catalogObserved)
   const account = new RemoteAccountController(context, adapters.accountIO, adapters.clientVersion)
-  const providers = new RemoteProvidersController(context, client => account.open(client), adapters.host, adapters.host, adapters.accountIO, route => models.open('', route))
+  const providers = new RemoteProvidersController(context, (client, parent) => account.open(client, parent), adapters.host, adapters.host, adapters.accountIO, (route, parent) => models.open('', route, parent))
   const permissions = new RemotePermissionsController(context, settings, adapters.host)
   const preferences = new RemotePreferencesController(context, settings)
   const presets = new RemoteAgentPresetsController(context, settings)

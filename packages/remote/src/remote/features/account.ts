@@ -275,8 +275,9 @@ export class RemoteAccountController extends RemoteFeatureController {
   }
 
   /** Create a flow for account or onboarding; the caller owns its local disposal. */
-  async createSignInFlow(client: HostClient, changed: () => void): Promise<RemoteAccountSignInFlow | undefined> {
-    const operation = this.hostOperation(client)
+  async createSignInFlow(client: HostClient, changed: () => void, parent?: AbortSignal): Promise<RemoteAccountSignInFlow | undefined> {
+    if (parent?.aborted) return undefined
+    const operation = this.hostOperation(client, parent)
     if (operation === undefined) return undefined
     try {
       const view = await remoteValue(client.remote.account.getState())
@@ -290,14 +291,14 @@ export class RemoteAccountController extends RemoteFeatureController {
   }
 
   /** Open the exact shared account panel over one native watch and local browser handoff. */
-  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): Promise<void> {
-    if (client === undefined) return
+  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0], parent?: AbortSignal): Promise<void> {
+    const id = 'mayfly.provider-account.deepseek-account'
+    if (parent?.aborted || client === undefined || this.context.ctx.mayflyOverlays.focus(id)) return
     let panel: RemoteBrowserPanel | undefined
     let expiryAttempt: string | undefined
     let expiryTotalMs: number | undefined
-    const flow = await this.createSignInFlow(client, () => { panel?.refresh() })
+    const flow = await this.createSignInFlow(client, () => { panel?.refresh() }, parent)
     if (flow === undefined) return
-    const id = 'mayfly.provider-account.deepseek-account'
     const source = [{ resourceId: id, revision: 1 }]
     const view = () => {
       const snapshot = flow.snapshot
@@ -317,7 +318,7 @@ export class RemoteAccountController extends RemoteFeatureController {
       id, scope: { kind: 'app', targetId: 'account/deepseek-account' },
       isCurrent: () => flow.valid(), view,
       action: async (event, context): Promise<MayflyUiActionReply> => {
-        if (context.signal.aborted) return { kind: 'cancelled' }
+        if (context.signal.aborted || !flow.valid()) return { kind: 'cancelled' }
         try {
           if (event.kind === 'activate') {
             if (event.actionId === 'copy-link') {

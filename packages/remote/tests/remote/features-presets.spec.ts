@@ -20,6 +20,35 @@ function fixture(options: Parameters<typeof configurationFixture>[1] = {}) {
 }
 
 describe('Remote reference Agent preset surface', () => {
+  it('refuses pre-cancelled opens, retires late reads and keeps a refocused picker under its original caller', async () => {
+    for (const session of [true, false]) {
+      const test = fixture({ session, namespaces: [namespace('agent-preset-registry')] })
+      const cancelled = new AbortController(); cancelled.abort()
+      await test.controller.open(cancelled.signal)
+      expect(test.presets).not.toHaveBeenCalled()
+      expect(test.ctx.mayflyOverlays.focus).not.toHaveBeenCalled()
+      const reading = new AbortController()
+      const gate = deferred<unknown>()
+      test.presets.mockReturnValueOnce(gate.promise)
+      const pending = test.controller.open(reading.signal)
+      reading.abort(); gate.resolve({ ok: true, value: test.roster })
+      await pending
+      expect(test.opened).toHaveLength(0)
+      const owner = new AbortController()
+      await test.controller.open(owner.signal)
+      test.ctx.mayflyOverlays.focus.mockReturnValueOnce(true)
+      const second = new AbortController()
+      await test.controller.open(second.signal)
+      second.abort()
+      expect(test.opened[0]!.panel.closed).toBe(false)
+      owner.abort()
+      expect(test.opened[0]!.panel.closed).toBe(true)
+      expect(await test.act({ kind: 'selection-accept', controlId: 'presets', selectedIds: ['first'] })).toMatchObject({ kind: 'cancelled' })
+      expect(test.selectPreset).not.toHaveBeenCalled()
+      expect(test.settings.mutate).not.toHaveBeenCalled()
+    }
+  })
+
   it('parses only native projection values and uses the exact shared filterable roster', async () => {
     expect(remoteAgentPresetSelection(null)).toBeNull()
     expect(remoteAgentPresetSelection('first')).toBe('first')

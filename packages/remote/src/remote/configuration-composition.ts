@@ -84,20 +84,21 @@ export function mountRemoteConfigurationComposition(
         const client = currentClient()
         if (client === undefined) return
         const input = rawInput.trim()
-        if (input === 'add') { await features.providers.openAdd(client); return }
-        if (input.startsWith('edit ')) { await features.providers.openEditor(client, input.slice(5).trim()); return }
+        if (input === 'add') { await features.providers.openAdd(client, signal); return }
+        if (input.startsWith('edit ')) { await features.providers.openEditor(client, input.slice(5).trim(), signal); return }
         if (input.startsWith('switch ')) { await features.providers.openModels(client, input.slice(7).trim(), signal); return }
         if (input !== '') throw usage('provider')
-        await features.providers.open(client)
+        await features.providers.open(client, signal)
       },
     }),
     base.commands.register({
       name: 'account', scope: 'sessionless', group: 'remote',
       description: 'Open the DeepSeek account panel',
-      execute: async rawInput => {
+      execute: async (rawInput, signal) => {
+        if (signal.aborted) return
         if (rawInput.trim() !== '') throw usage('account')
         const client = currentClient()
-        if (client !== undefined) await features.account.open(client)
+        if (client !== undefined) await features.account.open(client, signal)
       },
     }),
     base.commands.register({
@@ -120,9 +121,10 @@ export function mountRemoteConfigurationComposition(
       name: 'presets', scope: 'sessionless',
       hidden: true,
       description: 'Switch the agent preset for the session or by default',
-      execute: async rawInput => {
+      execute: async (rawInput, signal) => {
+        if (signal.aborted) return
         if (rawInput.trim() !== '') throw usage('presets')
-        await features.presets.open()
+        await features.presets.open(signal)
       },
     }),
     base.commands.register({
@@ -133,7 +135,7 @@ export function mountRemoteConfigurationComposition(
         if (signal.aborted) return
         const args = rawInput.trim().split(/\s+/u).filter(Boolean)
         const theme = args.shift()
-        if (theme === undefined) { features.preferences.openTheme(); return }
+        if (theme === undefined) { features.preferences.openTheme(undefined, signal); return }
         if (theme === 'custom') {
           const path = args.shift()
           const base = args.shift() ?? 'dark'
@@ -149,19 +151,21 @@ export function mountRemoteConfigurationComposition(
       name: 'language', scope: 'sessionless', group: 'remote',
       description: 'Choose the interface language',
       input: { hint: '[en|zh]' },
-      execute: async rawInput => {
+      execute: async (rawInput, signal) => {
+        if (signal.aborted) return
         const locale = rawInput.trim()
-        if (locale === '') { features.preferences.openLocale(); return }
-        await features.preferences.applyLocale(currentClient(), locale)
+        if (locale === '') { features.preferences.openLocale(undefined, signal); return }
+        await features.preferences.applyLocale(currentClient(), locale, signal)
       },
     }),
     base.commands.register({
       name: 'onboarding', scope: 'sessionless', group: 'remote',
       description: 'Run the first-run setup guide',
-      execute: rawInput => {
+      execute: (rawInput, signal) => {
+        if (signal.aborted) return
         if (rawInput.trim() !== '') throw usage('onboarding')
         const client = currentClient()
-        if (client !== undefined) features.onboarding.open(client)
+        if (client !== undefined) features.onboarding.open(client, undefined, signal)
       },
     }),
   ]

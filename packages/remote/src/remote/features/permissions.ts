@@ -92,10 +92,11 @@ export class RemotePermissionsController extends RemoteFeatureController {
   }
 
   /** Switch one exact Session through the native /permission command. */
-  async select(ref: SessionRef, value: string): Promise<void> {
+  async select(ref: SessionRef, value: string, parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted) return
     const selection = this.context.hosts.current()
     if (selection === undefined || selection.ref.host !== ref.host || selection.ref.sessionId !== ref.sessionId) return
-    const operation = this.sessionOperation(selection)
+    const operation = this.sessionOperation(selection, parent)
     if (operation === undefined) return
     try { await this.selectInOperation(operation, selection, value) }
     finally { operation.dispose() }

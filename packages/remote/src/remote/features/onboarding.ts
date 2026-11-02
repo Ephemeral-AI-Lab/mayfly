@@ -49,7 +49,7 @@ export class RemoteOnboardingController extends RemoteFeatureController {
     context: RemoteFeatureContext,
     private readonly providers: RemoteProvidersController,
     private readonly accounts: {
-      createSignInFlow(client: HostClient, changed: () => void): Promise<RemoteAccountSignInFlow | undefined>
+      createSignInFlow(client: HostClient, changed: () => void, parent?: AbortSignal): Promise<RemoteAccountSignInFlow | undefined>
     },
     private readonly settings: RemoteSettingsController,
     private readonly permissions: RemotePermissionsController,
@@ -95,8 +95,10 @@ export class RemoteOnboardingController extends RemoteFeatureController {
   open(
     client: HostClient,
     readiness?: RemoteOnboardingReadiness,
+    parent?: AbortSignal,
   ): void {
-    const operation = this.hostOperation(client)
+    if (parent?.aborted || this.context.ctx.mayflyOverlays.focus('mayfly.provider.onboarding')) return
+    const operation = this.hostOperation(client, parent)
     if (operation === undefined) return
     void this.mount(operation, client, readiness).catch((error: unknown) => {
       if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
@@ -203,7 +205,7 @@ export class RemoteOnboardingController extends RemoteFeatureController {
       const off = overlays.subscribe(delta => { if (delta.kind === 'remove' && delta.id === 'mayfly.models') finish() })
       operation.onDispose(finish)
       try {
-        await this.models.open('', provider)
+        await this.models.open('', provider, operation.signal)
         if (operation.valid() && overlays.list().some(entry => entry.id === 'mayfly.models')) await closed
       } finally { off() }
     }
@@ -220,7 +222,7 @@ export class RemoteOnboardingController extends RemoteFeatureController {
     }
     const startAccount = async (): Promise<MayflyUiActionReply> => {
       if (!resolved.canSignIn) return { kind: 'cancelled' }
-      const current = await this.accounts.createSignInFlow(client, () => { panel?.refresh() })
+      const current = await this.accounts.createSignInFlow(client, () => { panel?.refresh() }, operation.signal)
       if (current === undefined || !operation.valid()) { current?.dispose(); return { kind: 'cancelled' } }
       flow = current
       panel?.refresh()
@@ -259,7 +261,7 @@ export class RemoteOnboardingController extends RemoteFeatureController {
       }
       if (!operation.valid()) return { kind: 'cancelled' }
       const current = this.context.hosts.current()
-      if (current?.client === client) await this.permissions.select(current.ref, permission)
+      if (current?.client === client) await this.permissions.select(current.ref, permission, operation.signal)
       if (!operation.valid()) return { kind: 'cancelled' }
       Object.assign(baseline, choice)
       languageChosen = startupChosen = permissionChosen = true
@@ -276,7 +278,7 @@ export class RemoteOnboardingController extends RemoteFeatureController {
           configuredElsewhere = true
           return { kind: 'conflict', node: view(), source, message: t('A credential was configured elsewhere; review before replacing it') }
         }
-        await this.providers.setCredential(client, 'DEEPSEEK_API_KEY', key, configuredElsewhere)
+        await this.providers.setCredential(client, 'DEEPSEEK_API_KEY', key, configuredElsewhere, operation.signal)
         if (!operation.valid()) return { kind: 'cancelled' }
         connection = 'key'
         await pickModel('deepseek-official')

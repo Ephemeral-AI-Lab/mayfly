@@ -99,11 +99,11 @@ export function remoteProviderCredentialRefs(directory: RemoteProviderDirectory)
 export class RemoteProvidersController extends RemoteFeatureController {
   constructor(
     context: RemoteFeatureContext,
-    private readonly openAccount?: (client: HostClient) => Promise<void>,
+    private readonly openAccount?: (client: HostClient, parent?: AbortSignal) => Promise<void>,
     private readonly authorization?: RemoteProviderAuthorization,
     private readonly balanceSource?: RemoteProviderBalanceSource,
     private readonly localIO?: Pick<RemoteAccountLocalIO, 'copy'>,
-    private readonly onCreated?: (route: string) => Promise<void>,
+    private readonly onCreated?: (route: string, parent?: AbortSignal) => Promise<void>,
   ) {
     super(context)
   }
@@ -132,8 +132,9 @@ export class RemoteProvidersController extends RemoteFeatureController {
   }
 
   /** Store a write-only credential after checking its current writable/configured state. */
-  async setCredential(client: HostClient, ref: string, value: string, replace = false): Promise<void> {
-    const operation = this.hostOperation(client)
+  async setCredential(client: HostClient, ref: string, value: string, replace = false, parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted) return
+    const operation = this.hostOperation(client, parent)
     if (operation === undefined) return
     try {
       const info = await remoteValue(client.remote.credentials.describe([ref]))
@@ -211,6 +212,7 @@ export class RemoteProvidersController extends RemoteFeatureController {
 
   /** Resolve a provider by native route/name and open the shared model picker. */
   async openModels(client: HostClient, name: string, parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted) return
     const operation = this.hostOperation(client, parent)
     if (operation === undefined) return
     try {
@@ -220,14 +222,15 @@ export class RemoteProvidersController extends RemoteFeatureController {
       const query = name.toLowerCase()
       const match = entries.find(entry => entry.id.toLowerCase() === query) ?? entries.find(entry => entry.name.toLowerCase() === query)
       if (match === undefined) { this.context.notice.set(this.context.t('Unknown provider')); return }
-      await this.onCreated?.(match.id)
+      // The model picker keeps the invocation after this resolver disposes.
+      await this.onCreated?.(match.id, parent)
     } finally { operation.dispose() }
   }
 
   /** Open the reference configured-provider roster. Dormant routes are offered by Add provider. */
-  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): Promise<void> {
-    if (client === undefined || this.context.ctx.mayflyOverlays.focus('mayfly.providers')) return
-    const operation = this.hostOperation(client)
+  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0], parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted || client === undefined || this.context.ctx.mayflyOverlays.focus('mayfly.providers')) return
+    const operation = this.hostOperation(client, parent)
     if (operation === undefined) return
     try {
       let directory = await this.directory(client)
@@ -265,12 +268,12 @@ export class RemoteProvidersController extends RemoteFeatureController {
         id: 'mayfly.providers', scope: { kind: 'app', targetId: 'provider-configuration' }, signal: operation.signal, isCurrent: () => operation.valid(), view,
         action: async (event, context) => {
           if (!operation.valid() || context.signal.aborted) return { kind: 'cancelled' }
-          if (event.kind === 'activate' && event.actionId === 'add') { await this.openAdd(client); return { kind: 'completed' } }
+          if (event.kind === 'activate' && event.actionId === 'add') { await this.openAdd(client, parent); return { kind: 'completed' } }
           if (event.kind !== 'selection-accept' || event.controlId !== 'providers') return { kind: 'completed' }
           const route = event.selectedIds[0]
           if (route === undefined || !items.some(item => item.id === route)) return { kind: 'completed' }
-          if (route === ACCOUNT_PROVIDER && this.openAccount !== undefined) { await this.openAccount(client); return { kind: 'completed' } }
-          return await this.openEditor(client, route) ? { kind: 'completed' } : { kind: 'failed', message: this.context.t('The provider has no editable configuration') }
+          if (route === ACCOUNT_PROVIDER && this.openAccount !== undefined) { await this.openAccount(client, parent); return { kind: 'completed' } }
+          return await this.openEditor(client, route, parent) ? { kind: 'completed' } : { kind: 'failed', message: this.context.t('The provider has no editable configuration') }
         },
         onClosed: () => operation.dispose(),
       })
@@ -280,9 +283,10 @@ export class RemoteProvidersController extends RemoteFeatureController {
   }
 
   /** Open one adapter-addressed profile with reference tabs and revision-checked forms. */
-  async openEditor(client: HostClient, route: string): Promise<boolean> {
+  async openEditor(client: HostClient, route: string, parent?: AbortSignal): Promise<boolean> {
+    if (parent?.aborted) return false
     if (this.context.ctx.mayflyOverlays.focus(`mayfly.provider.${Buffer.from(route).toString('hex')}`)) return true
-    const operation = this.hostOperation(client)
+    const operation = this.hostOperation(client, parent)
     if (operation === undefined) return false
     try {
       const [configurable, settings] = await Promise.all([remoteValue(client.remote.llm.listConfigurableProviders()), remoteValue(client.remote.settings.describe())])
@@ -302,9 +306,9 @@ export class RemoteProvidersController extends RemoteFeatureController {
   }
 
   /** Open the exact Known provider / Custom endpoint / OAuth source chooser. */
-  async openAdd(client: HostClient): Promise<void> {
-    if (this.context.ctx.mayflyOverlays.focus('mayfly.provider.add')) return
-    const operation = this.hostOperation(client)
+  async openAdd(client: HostClient, parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted || this.context.ctx.mayflyOverlays.focus('mayfly.provider.add')) return
+    const operation = this.hostOperation(client, parent)
     if (operation === undefined) return
     try {
       const directory = await this.directory(client)
@@ -315,9 +319,9 @@ export class RemoteProvidersController extends RemoteFeatureController {
       const ownedBy = (entry: LlmConfigurableProvider) => entry.settingsNs === container.ns && JSON.stringify(entry.settingsPath.slice(0, -1)) === JSON.stringify(container.path)
       const openPicker = (kind: 'known' | 'oauth') => {
         const rows = directory.configurable.filter(entry => ownedBy(entry) && !active.has(entry.provider) && (kind === 'known' || entry.nativeAuth?.oauth === true))
-        // Only the admitted chooser action calls this, without yielding after
-        // its exact-Host check. The new child keeps its own panel lifetime.
-        const childOperation = this.hostOperation(client, operation.signal)!
+        // The invocation owns navigation children after their source chooser
+        // closes; each child captures its own exact Host generation.
+        const childOperation = this.hostOperation(client, parent)!
         const child = openRemoteBrowser(this.context, {
           id: `mayfly.provider.add.${kind}`, scope: { kind: 'app', targetId: 'provider-creation' }, signal: childOperation.signal, isCurrent: () => childOperation.valid(),
           view: () => panel({ title: this.context.t(kind === 'oauth' ? 'OAuth provider' : 'Known provider'), escapeLabel: 'close', body: ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: rows.map(entry => ({ id: entry.provider, label: entry.displayName })), filterable: true, empty: ui.empty({ title: this.context.t('No providers available') }) }) }),
@@ -326,8 +330,8 @@ export class RemoteProvidersController extends RemoteFeatureController {
             if (event.kind !== 'selection-accept') return { kind: 'completed' }
             const route = event.selectedIds[0]
             if (route === undefined || !rows.some(entry => entry.provider === route)) return { kind: 'completed' }
-            if (kind === 'oauth') await this.openAuthorize(client, route)
-            else await this.openEndpoint(client, route)
+            if (kind === 'oauth') await this.openAuthorize(client, route, parent)
+            else await this.openEndpoint(client, route, parent)
             return { kind: 'completed' }
           }, onClosed: () => childOperation.dispose(),
         })
@@ -340,7 +344,7 @@ export class RemoteProvidersController extends RemoteFeatureController {
           if (!operation.valid() || context.signal.aborted) return { kind: 'cancelled' }
           if (event.kind !== 'selection-accept') return { kind: 'completed' }
           const kind = event.selectedIds[0]
-          if (kind === 'custom') await this.openEndpoint(client)
+          if (kind === 'custom') await this.openEndpoint(client, undefined, parent)
           else if (kind === 'known' || kind === 'oauth') openPicker(kind)
           return { kind: 'completed' }
         }, onClosed: () => operation.dispose(),
@@ -349,9 +353,9 @@ export class RemoteProvidersController extends RemoteFeatureController {
     } catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error)); operation.dispose() }
   }
 
-  private async openEndpoint(client: HostClient, known?: string): Promise<void> {
+  private async openEndpoint(client: HostClient, known?: string, parent?: AbortSignal): Promise<void> {
     // Both callers are admitted chooser actions with no intervening await.
-    const operation = this.hostOperation(client)!
+    const operation = this.hostOperation(client, parent)!
     try {
       const [configurable, settings] = await Promise.all([remoteValue(client.remote.llm.listConfigurableProviders()), remoteValue(client.remote.settings.describe())])
       if (!operation.valid()) { operation.dispose(); return }
@@ -359,18 +363,19 @@ export class RemoteProvidersController extends RemoteFeatureController {
       const container = known === undefined ? remoteProviderContainer(configurable) : declared?.container === undefined ? undefined : { ns: declared.ns, path: declared.container }
       const descriptor = settings.namespaces.find(candidate => candidate.ns === container?.ns)
       if (container === undefined || descriptor === undefined) throw new Error(this.context.t('The provider has no editable configuration'))
-      mountRemoteProviderSetup(this.context, { operation, descriptor, container: container.path, writable: settings.writable, ...known === undefined ? {} : { known, knownPath: declared!.path }, ...this.onCreated === undefined ? {} : { onCreated: this.onCreated } })
+      mountRemoteProviderSetup(this.context, { operation, descriptor, container: container.path, writable: settings.writable, ...known === undefined ? {} : { known, knownPath: declared!.path }, ...this.onCreated === undefined ? {} : { onCreated: (route: string) => this.onCreated!(route, parent) } })
     } catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error)); operation.dispose() }
   }
 
   /** Run OAuth through native Host authorization, acknowledging UI prompts before answering. */
-  async openAuthorize(client: HostClient, route: string): Promise<void> {
+  async openAuthorize(client: HostClient, route: string, parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted) return
     if (this.authorization === undefined) { this.context.notice.set(unavailableCapability('authorization')); return }
-    const operation = this.hostOperation(client)
+    const operation = this.hostOperation(client, parent)
     if (operation === undefined) return
     mountRemoteProviderAuthorization(this.context, operation, route, this.authorization, async () => {
       await this.ensureAuthorizedProfile(operation, route)
-      if (operation.valid()) await this.onCreated?.(route)
+      if (operation.valid()) await this.onCreated?.(route, parent)
     }, this.localIO)
   }
 

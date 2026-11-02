@@ -27,6 +27,43 @@ const callback = (forms: readonly unknown[]) => ({ kind: 'submit', submission: {
 const forms = [{ formId: 'callback-paste', fields: [{ id: 'callback-url', value: 'http://127.0.0.1:6789/oauth/callback?code=fixture' }] }]
 
 describe('RemoteAccountController native action retirement', () => {
+  it('does not focus, read or watch for pre-cancelled account opens and retires pending state reads', async () => {
+    const f = await fixture()
+    const focus = vi.spyOn(f.ctx.mayflyOverlays, 'focus')
+    const cancelled = new AbortController(); cancelled.abort()
+    await f.accounts.open(f.client, cancelled.signal)
+    expect(await f.accounts.createSignInFlow(f.client, vi.fn(), cancelled.signal)).toBeUndefined()
+    expect(focus).not.toHaveBeenCalled()
+    expect(f.account.getState).not.toHaveBeenCalled()
+    const caller = new AbortController()
+    const gate = Promise.withResolvers<Awaited<ReturnType<typeof f.account.getState>>>()
+    f.account.getState.mockReturnValueOnce(gate.promise)
+    const pending = f.accounts.open(f.client, caller.signal)
+    caller.abort(); gate.resolve({ ok: true, value: accountView() })
+    await pending
+    expect(f.opened).toHaveLength(0)
+    expect(f.account.watch).not.toHaveBeenCalled()
+    expect(f.notice.set).not.toHaveBeenCalled()
+  })
+
+  it('keeps a focused account under its original caller and aborts its local watch on caller cancellation', async () => {
+    const f = await fixture()
+    const caller = new AbortController()
+    await f.accounts.open(f.client, caller.signal)
+    const first = f.opened[0]!
+    vi.spyOn(f.ctx.mayflyOverlays, 'focus').mockReturnValueOnce(true)
+    const second = new AbortController()
+    await f.accounts.open(f.client, second.signal)
+    second.abort()
+    expect(first.close).not.toHaveBeenCalled()
+    expect(f.account.getState).toHaveBeenCalledOnce()
+    caller.abort()
+    expect(first.close).toHaveBeenCalledOnce()
+    expect(f.browser().isCurrent()).toBe(false)
+    expect(await f.act({ kind: 'activate', actionId: 'sign-out' })).toEqual({ kind: 'cancelled' })
+    expect(f.account.signOut).not.toHaveBeenCalled()
+  })
+
   it('opens no panel or native watch for absent, disposed, or failed Host reads', async () => {
     const absent = await fixture()
     absent.detach(); await absent.accounts.open()

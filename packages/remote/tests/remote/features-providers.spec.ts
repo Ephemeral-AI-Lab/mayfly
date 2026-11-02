@@ -3,6 +3,7 @@ import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView }
 import type { RemoteAuthorizationInteraction } from '../../src/remote/features/providers.ts'
 import { RemoteProvidersController, remoteProviderCredentialRefs } from '../../src/remote/features/providers.ts'
 import { mountRemoteProviderSetup } from '../../src/remote/features/provider-add.ts'
+import { RemoteModelsController } from '../../src/remote/features/models.ts'
 import { RemoteFeatureOperation } from '../../src/remote/features/official.ts'
 import { REMOTE_CONFIGURATION_LOCALE } from '../../src/remote/features/locale.ts'
 import { configurationFixture, deferred, namespace } from './configuration-fixture.ts'
@@ -45,7 +46,7 @@ function fixture(options: { readonly custom?: boolean, readonly writable?: boole
   const authorize = vi.fn(async (_client: unknown, _key: unknown, _method: unknown, _interaction: RemoteAuthorizationInteraction, _signal?: AbortSignal): Promise<'authorized' | 'cancelled'> => 'authorized')
   const account = vi.fn(async () => {})
   const copy = vi.fn(async (_text: string) => {})
-  const created = vi.fn(async (_route: string) => {})
+  const created = vi.fn(async (_route: string, _parent?: AbortSignal) => {})
   const balance = vi.fn(async () => ({ status: 'unavailable' as const, reason: 'no-key' as const }))
   const controller = new RemoteProvidersController(test.context, options.bare ? undefined : account, options.missingAuthorization ? undefined : { authorize }, options.balance ? { balance } : undefined, options.bare ? undefined : { copy }, options.bare ? undefined : created)
   cleanups.push(() => { controller.dispose(); test.dispose() })
@@ -65,6 +66,108 @@ function fixture(options: { readonly custom?: boolean, readonly writable?: boole
 }
 
 describe('reference provider roster and editors', () => {
+  it('refuses cancelled provider entrypoints before focusing or issuing native reads', async () => {
+    const test = fixture()
+    const caller = new AbortController(); caller.abort()
+    await test.controller.open(test.client, caller.signal)
+    await test.controller.openAdd(test.client, caller.signal)
+    expect(await test.controller.openEditor(test.client, 'deepseek', caller.signal)).toBe(false)
+    await test.controller.openModels(test.client, 'deepseek', caller.signal)
+    await test.controller.openAuthorize(test.client, 'oauth', caller.signal)
+    await test.controller.setCredential(test.client, 'KEY', 'secret', false, caller.signal)
+    expect(test.ctx.mayflyOverlays.focus).not.toHaveBeenCalled()
+    expect(test.listProviders).not.toHaveBeenCalled()
+    expect(test.configurable).not.toHaveBeenCalled()
+    expect(test.credentialDescribe).not.toHaveBeenCalled()
+    expect(test.opened).toHaveLength(0)
+  })
+
+  it('fences cancelled provider discovery and preserves the original owner when refocusing', async () => {
+    for (const target of ['roster', 'add', 'editor'] as const) {
+      const test = fixture()
+      const caller = new AbortController()
+      const gate = deferred<unknown>()
+      const read = target === 'editor' ? test.configurable : test.listProviders
+      const original = read.getMockImplementation()!
+      read.mockReturnValueOnce(gate.promise)
+      const open = (signal: AbortSignal) => target === 'roster' ? test.controller.open(test.client, signal) : target === 'add' ? test.controller.openAdd(test.client, signal) : test.controller.openEditor(test.client, 'deepseek', signal)
+      const pending = open(caller.signal)
+      caller.abort(); gate.resolve(await original())
+      await pending
+      expect(test.opened).toHaveLength(0)
+      expect(test.notice.set).not.toHaveBeenCalled()
+      const owner = new AbortController()
+      await open(owner.signal)
+      const first = test.opened[0]!
+      test.ctx.mayflyOverlays.focus.mockReturnValueOnce(true)
+      const second = new AbortController()
+      await open(second.signal)
+      second.abort()
+      expect(first.panel.closed).toBe(false)
+      owner.abort()
+      expect(first.panel.closed).toBe(true)
+    }
+  })
+
+  it('keeps provider navigation children on the original invocation across parent-panel dismissal', async () => {
+    const test = fixture()
+    const caller = new AbortController()
+    await test.controller.open(test.client, caller.signal)
+    await test.act({ kind: 'activate', actionId: 'add' })
+    expect(test.browser().id).toBe('mayfly.provider.add')
+    test.opened[0]!.close()
+    expect(test.opened[1]!.panel.closed).toBe(false)
+    await test.act({ kind: 'selection-accept', controlId: 'provider-source', selectedIds: ['known'] })
+    const chooser = test.opened.length - 1
+    await test.act({ kind: 'selection-accept', controlId: 'providers', selectedIds: ['known'] })
+    const setup = test.opened.length - 1
+    test.opened[chooser]!.close()
+    expect(test.opened[setup]!.panel.closed).toBe(false)
+    caller.abort()
+    expect(test.opened.every(row => row.panel.closed)).toBe(true)
+    const account = fixture()
+    account.listProviders.mockResolvedValueOnce({ ok: true, value: [{ id: 'deepseek-account', name: 'Account' }] })
+    const accountCaller = new AbortController()
+    await account.controller.open(account.client, accountCaller.signal)
+    await account.act({ kind: 'selection-accept', controlId: 'providers', selectedIds: ['deepseek-account'] })
+    expect(account.account).toHaveBeenCalledWith(account.client, accountCaller.signal)
+  })
+
+  it('transfers the invocation to a real model picker that survives resolver and setup disposal', async () => {
+    for (const source of ['switch', 'setup', 'oauth'] as const) {
+      const test = fixture()
+      const caller = new AbortController()
+      Object.assign(test.client.remote, { session: { modelCatalog: vi.fn(async () => ({ ok: true, value: {
+        default: { provider: source === 'switch' ? 'deepseek' : source === 'setup' ? 'custom' : 'oauth', model: 'chat' },
+        groups: ['deepseek', 'custom', 'oauth'].map(id => ({ id, name: id, models: [{ id: 'chat', name: 'Chat' }] })), routableProviders: ['deepseek', 'custom', 'oauth'], failures: [],
+      } })) } })
+      const models = new RemoteModelsController(test.context)
+      cleanups.push(() => { models.dispose() })
+      test.created.mockImplementation(async (route, parent) => { await models.open('', route, parent) })
+      if (source === 'switch') await test.controller.openModels(test.client, 'deepseek', caller.signal)
+      else if (source === 'setup') {
+        await test.controller.openAdd(test.client, caller.signal)
+        await test.act({ kind: 'selection-accept', controlId: 'provider-source', selectedIds: ['custom'] })
+        const setup = test.opened.at(-1)!
+        expect(await test.act({ kind: 'submit', submission: test.endpointSubmission() })).toMatchObject({ kind: 'accepted', dismiss: true })
+        setup.close()
+      } else {
+        await test.controller.openAuthorize(test.client, 'oauth', caller.signal)
+        const auth = test.opened.at(-1)!
+        expect(await test.act({ kind: 'activate', actionId: 'start' })).toMatchObject({ kind: 'accepted' })
+        auth.close()
+      }
+      const picker = test.opened.at(-1)!
+      expect(picker.options.id).toBe('mayfly.models')
+      expect(picker.options.isCurrent()).toBe(true)
+      expect(picker.panel.closed).toBe(false)
+      expect(test.created).toHaveBeenCalledWith(source === 'switch' ? 'deepseek' : source === 'setup' ? 'custom' : 'oauth', caller.signal)
+      caller.abort()
+      expect(picker.panel.closed).toBe(true)
+      expect(picker.options.isCurrent()).toBe(false)
+    }
+  })
+
   it('opens the exact configured-provider roster and routes its native selections', async () => {
     const test = fixture()
     await test.controller.open()
@@ -109,7 +212,7 @@ describe('reference provider roster and editors', () => {
     const test = fixture()
     await test.controller.openModels(test.client, 'DEEPSEEK')
     await test.controller.openModels(test.client, 'OAuth')
-    expect(test.created.mock.calls).toEqual([['deepseek'], ['oauth']])
+    expect(test.created.mock.calls).toEqual([['deepseek', undefined], ['oauth', undefined]])
     await test.controller.openModels(test.client, 'missing')
     expect(test.notice.set).toHaveBeenCalledWith('Unknown provider')
     const late = deferred<unknown>()
@@ -254,7 +357,7 @@ describe('reference provider setup', () => {
     expect(reply).toMatchObject({ kind: 'accepted', dismiss: true })
     expect(test.mutate).toHaveBeenCalledWith('llm-pi-ai', [{ op: 'set', path: ['providers', 'custom'], value: { api: 'openai-completions', baseURL: 'https://endpoint.example', apiKeyEnv: 'CUSTOM_API_KEY', models: [{ id: 'manual', contextWindow: 64000, reasoningEfforts: { low: 'low', high: 'high' } }] } }], 7)
     expect(test.setCredential).toHaveBeenCalledExactlyOnceWith('CUSTOM_API_KEY', 'fresh-key')
-    expect(test.created).toHaveBeenCalledWith('custom')
+    expect(test.created).toHaveBeenCalledWith('custom', undefined)
     expect(test.render()).not.toContain('fresh-key')
   })
 
@@ -302,7 +405,7 @@ describe('reference OAuth authorization lifecycle', () => {
     expect(await running).toMatchObject({ kind: 'accepted', feedback: { message: 'Authorization completed' } })
     expect(replied).toHaveBeenCalledExactlyOnceWith({ type: 'answer', value: 'response' })
     expect(test.mutate).toHaveBeenCalledWith('llm-pi-ai', [{ op: 'set', path: ['providers', 'oauth'], value: {} }], 7)
-    expect(test.created).toHaveBeenCalledWith('oauth')
+    expect(test.created).toHaveBeenCalledWith('oauth', undefined)
     expect(test.registryListeners.size).toBe(0)
   })
 
@@ -448,7 +551,7 @@ describe('native provider controller boundaries', () => {
     test.credentialDescribe.mockImplementation(async refs => refs[0] === 'BARE_API_KEY' ? failed('credential unavailable') : good({ [refs[0]!]: { configured: false, writable: true } }))
     await test.controller.open()
     expect(test.render()).toContain('no models'); expect(test.render()).toContain('no key set'); expect(test.render()).toContain('"label":"bare"')
-    expect(await test.act({ kind: 'selection-accept', controlId: 'providers', selectedIds: ['deepseek-account'] })).toMatchObject({ kind: 'completed' }); expect(test.account).toHaveBeenCalledWith(test.client)
+    expect(await test.act({ kind: 'selection-accept', controlId: 'providers', selectedIds: ['deepseek-account'] })).toMatchObject({ kind: 'completed' }); expect(test.account).toHaveBeenCalledWith(test.client, undefined)
     expect(await test.act({ kind: 'selection-accept', controlId: 'providers', selectedIds: ['bare'] })).toMatchObject({ kind: 'failed' })
     for (const event of [{ kind: 'activate', actionId: 'other' }, { kind: 'selection-accept', controlId: 'other', selectedIds: [] }, { kind: 'selection-accept', controlId: 'providers', selectedIds: [] }, { kind: 'selection-accept', controlId: 'providers', selectedIds: ['foreign'] }]) expect(await test.act(event)).toMatchObject({ kind: 'completed' })
     const abort = new AbortController(); abort.abort(); expect(await test.act({ kind: 'activate', actionId: 'add' }, abort.signal)).toMatchObject({ kind: 'cancelled' })

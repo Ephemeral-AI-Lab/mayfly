@@ -73,6 +73,79 @@ async function fixture() {
 }
 
 describe('RemoteOnboardingController readiness ownership', () => {
+  it('refuses cancelled invocation discovery and keeps the original caller when focusing an open wizard', async () => {
+    const f = await fixture()
+    const focus = vi.spyOn(f.ctx.mayflyOverlays, 'focus')
+    const cancelled = new AbortController(); cancelled.abort()
+    f.controller.open(f.client, undefined, cancelled.signal)
+    expect(focus).not.toHaveBeenCalled()
+    expect(f.remote.settings.describe).not.toHaveBeenCalled()
+    const gate = Promise.withResolvers<Awaited<ReturnType<typeof f.remote.settings.describe>>>()
+    const original = f.remote.settings.describe.getMockImplementation()!
+    f.remote.settings.describe.mockReturnValueOnce(gate.promise)
+    const pending = new AbortController()
+    f.controller.open(f.client, undefined, pending.signal)
+    pending.abort(); gate.resolve(await original())
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    const caller = new AbortController()
+    f.controller.open(f.client, undefined, caller.signal)
+    await vi.waitFor(() => { expect(f.ctx.mayflyOverlays.list().some(row => row.id === ID)).toBe(true) })
+    const reads = f.remote.settings.describe.mock.calls.length
+    const second = new AbortController()
+    f.controller.open(f.client, undefined, second.signal)
+    second.abort()
+    expect(f.ctx.mayflyOverlays.list().some(row => row.id === ID)).toBe(true)
+    expect(f.remote.settings.describe).toHaveBeenCalledTimes(reads)
+    caller.abort()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('cancels nested account reads and credential writes under the wizard caller', async () => {
+    for (const nested of ['account', 'key'] as const) {
+      const f = await fixture()
+      const caller = new AbortController()
+      f.controller.open(f.client, undefined, caller.signal)
+      await vi.waitFor(() => { expect(f.ctx.mayflyOverlays.list().some(row => row.id === ID)).toBe(true) })
+      await f.dispatch(preferences({ language: 'en', theme: 'dark', permission: 'default' }))
+      if (nested === 'account') {
+        const gate = Promise.withResolvers<Awaited<ReturnType<typeof f.account.getState>>>()
+        f.account.getState.mockReturnValueOnce(gate.promise)
+        const starting = f.dispatch(submit(ONBOARDING_CONNECT, [], 'account'))
+        await vi.waitFor(() => { expect(f.account.getState).toHaveBeenCalledTimes(2) })
+        caller.abort(); gate.resolve({ ok: true, value: accountView() })
+        await starting
+        expect(f.account.watch).not.toHaveBeenCalled()
+        expect(f.account.startSignIn).not.toHaveBeenCalled()
+      } else {
+        await f.dispatch(submit(ONBOARDING_CONNECT, [], 'key'))
+        const gate = Promise.withResolvers<Awaited<ReturnType<typeof f.remote.credentials.describe>>>()
+        const original = f.remote.credentials.describe.getMockImplementation()!
+        f.remote.credentials.describe.mockImplementationOnce(original).mockReturnValueOnce(gate.promise)
+        const writing = f.dispatch(keySubmission('one-time-key'))
+        await vi.waitFor(() => { expect(f.remote.credentials.describe).toHaveBeenCalledTimes(2) })
+        caller.abort(); gate.resolve(await original(['DEEPSEEK_API_KEY']))
+        await writing
+        expect(f.remote.credentials.set).not.toHaveBeenCalled()
+      }
+      expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    }
+  })
+
+  it('closes the nested real model picker when the wizard caller cancels', async () => {
+    const f = await fixture()
+    const caller = new AbortController()
+    f.controller.open(f.client, undefined, caller.signal)
+    await vi.waitFor(() => { expect(f.ctx.mayflyOverlays.list().some(row => row.id === ID)).toBe(true) })
+    await f.dispatch(preferences({ language: 'en', theme: 'dark', permission: 'default' }))
+    await f.dispatch(submit(ONBOARDING_CONNECT, [], 'key'))
+    const settling = f.dispatch(keySubmission('one-time-key'))
+    await vi.waitFor(() => { expect(f.ctx.mayflyOverlays.list().some(row => row.id === 'mayfly.models')).toBe(true) })
+    caller.abort()
+    await settling
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
   it('does not consume a readiness attempt for a detached or disposed owner', async () => {
     const f = await fixture()
     f.detach()

@@ -92,7 +92,7 @@ describe('real provider UI/native lifecycle', () => {
     answer.publish()
     const completed = await running
     expect(completed.reply).toMatchObject({ kind: 'accepted', feedback: { message: 'Authorization completed' } }); completed.publish()
-    expect(replied).toHaveBeenCalledExactlyOnceWith({ type: 'answer', value: 'native-one-time-answer' }); expect(f.created).toHaveBeenCalledWith('oauth')
+    expect(replied).toHaveBeenCalledExactlyOnceWith({ type: 'answer', value: 'native-one-time-answer' }); expect(f.created).toHaveBeenCalledWith('oauth', undefined)
     expect(f.ctx.mayflyOverlays.list().some(row => row.id.includes('.prompt.'))).toBe(false)
     f.detach(); expect(f.ctx.mayflyOverlays.list()).toEqual([])
   })

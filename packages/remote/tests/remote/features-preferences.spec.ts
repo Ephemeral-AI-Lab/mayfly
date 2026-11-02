@@ -18,6 +18,47 @@ function fixture() {
 }
 
 describe('Remote reference theme and language pickers', () => {
+  it('binds both pickers to their caller with or without a Host and retains a focused picker owner', async () => {
+    for (const host of [true, false]) {
+      for (const name of ['theme', 'locale'] as const) {
+        const test = fixture()
+        if (!host) test.detach()
+        const open = (signal: AbortSignal) => name === 'theme' ? test.controller.openTheme(undefined, signal) : test.controller.openLocale(undefined, signal)
+        const cancelled = new AbortController(); cancelled.abort()
+        open(cancelled.signal)
+        expect(test.opened).toHaveLength(0)
+        expect(test.ctx.mayflyOverlays.focus).not.toHaveBeenCalled()
+        const owner = new AbortController()
+        open(owner.signal)
+        const first = test.opened[0]!
+        test.ctx.mayflyOverlays.focus.mockReturnValueOnce(true)
+        const second = new AbortController()
+        open(second.signal)
+        second.abort()
+        expect(first.panel.closed).toBe(false)
+        owner.abort()
+        expect(first.panel.closed).toBe(true)
+        expect(await test.act({ kind: 'selection-accept', controlId: name === 'theme' ? 'themes' : 'languages', selectedIds: [name === 'theme' ? 'tide' : 'zh'] })).toEqual({ kind: 'cancelled' })
+        expect(test.presentation.applyTheme).not.toHaveBeenCalled()
+        expect(test.presentation.setLocale).not.toHaveBeenCalled()
+        expect(test.presentationListeners.size).toBe(0)
+      }
+    }
+  })
+
+  it('does not persist a language choice after its caller cancels during settings discovery', async () => {
+    const test = fixture()
+    const caller = new AbortController()
+    const late = deferred<unknown>()
+    test.describe.mockReturnValueOnce(late.promise)
+    const pending = test.controller.applyLocale(test.client, 'zh', caller.signal)
+    caller.abort()
+    late.resolve({ ok: true, value: { writable: true, namespaces: [namespace(), namespace('locale')] } })
+    await pending
+    expect(test.settings.mutate).not.toHaveBeenCalled()
+    expect(test.notice.set).not.toHaveBeenCalled()
+  })
+
   it('keeps language and every onboarding default live when their independent Host writes fail', async () => {
     const test = fixture()
     test.settings.mutate.mockRejectedValue(new Error('Host store is readonly'))

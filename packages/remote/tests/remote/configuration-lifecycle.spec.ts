@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configurationFixture } from './configuration-fixture.ts'
 import { createRemoteConfigurationFeatures, mountRemoteConfigurationFeatures, type RemoteConfigurationMountContext, type RemoteConfigurationAdapters } from '../../src/remote/features/configuration.ts'
-const mocks = vi.hoisted(() => ({ preferences: vi.fn(async (_client: unknown) => {}), ready: vi.fn(async (_client: unknown) => {}), models: vi.fn(), account: vi.fn(), providerCallbacks: [] as Array<(value: never) => unknown>, disposed: vi.fn(), translator: undefined as undefined | ((key: string, values?: Readonly<Record<string, string | number>>) => string) }))
+const mocks = vi.hoisted(() => ({ preferences: vi.fn(async (_client: unknown) => {}), ready: vi.fn(async (_client: unknown) => {}), models: vi.fn(), account: vi.fn(), providerCallbacks: [] as Array<(value: never, parent?: AbortSignal) => unknown>, disposed: vi.fn(), translator: undefined as undefined | ((key: string, values?: Readonly<Record<string, string | number>>) => string) }))
 vi.mock('../../src/remote/features/models.ts', () => ({ RemoteModelsController: class { dispose = mocks.disposed; open = mocks.models } }))
 vi.mock('../../src/remote/features/account.ts', () => ({ RemoteAccountController: class { dispose = mocks.disposed; open = mocks.account } }))
-vi.mock('../../src/remote/features/providers.ts', () => ({ RemoteProvidersController: class { dispose = mocks.disposed; constructor(_ctx: unknown, account: (value: never) => unknown, _auth: unknown, _balance: unknown, _io: unknown, model: (value: never) => unknown) { mocks.providerCallbacks = [account, model] } } }))
+vi.mock('../../src/remote/features/providers.ts', () => ({ RemoteProvidersController: class { dispose = mocks.disposed; constructor(_ctx: unknown, account: (value: never, parent?: AbortSignal) => unknown, _auth: unknown, _balance: unknown, _io: unknown, model: (value: never, parent?: AbortSignal) => unknown) { mocks.providerCallbacks = [account, model] } } }))
 vi.mock('../../src/remote/features/permissions.ts', () => ({ RemotePermissionsController: class { dispose = mocks.disposed } }))
 vi.mock('../../src/remote/features/presets.ts', () => ({ RemoteAgentPresetsController: class { dispose = mocks.disposed } }))
 vi.mock('../../src/remote/features/onboarding.ts', () => ({ RemoteOnboardingController: class { dispose = mocks.disposed; onReady = mocks.ready } }))
@@ -22,10 +22,11 @@ function fixture() {
 describe('Remote configuration Host preference subscriptions', () => {
   it('wires provider account/model navigation into its sibling controllers', () => {
     const { first } = fixture()
-    mocks.providerCallbacks[0]!(first.client as never)
-    mocks.providerCallbacks[1]!('deepseek-official' as never)
-    expect(mocks.account).toHaveBeenCalledWith(first.client)
-    expect(mocks.models).toHaveBeenCalledWith('', 'deepseek-official')
+    const parent = new AbortController().signal
+    mocks.providerCallbacks[0]!(first.client as never, parent)
+    mocks.providerCallbacks[1]!('deepseek-official' as never, parent)
+    expect(mocks.account).toHaveBeenCalledWith(first.client, parent)
+    expect(mocks.models).toHaveBeenCalledWith('', 'deepseek-official', parent)
   })
 
   it('mounts the default local presentation and releases it through the public mount disposer', () => {
