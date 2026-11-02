@@ -1,10 +1,20 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { HostClient } from '../../src/client/types.ts'
 import { createRemoteSettingsEditor } from '../../src/remote/features/settings-editor.ts'
 
 const client = {} as HostClient
+afterEach(() => vi.unstubAllEnvs())
 
 describe('settings document editor handoff', () => {
+  it('uses the native local editor path from the environment and handles an absent command', async () => {
+    vi.stubEnv('VISUAL', undefined)
+    vi.stubEnv('EDITOR', undefined)
+    const editor = createRemoteSettingsEditor({ suspend: run => run() })
+    await expect(editor(client, 'unchanged native file\n', new AbortController().signal)).rejects.toThrow('Set $VISUAL or $EDITOR')
+    vi.stubEnv('VISUAL', 'true')
+    await expect(editor(client, 'unchanged native file\n', new AbortController().signal)).resolves.toBe('unchanged native file\n')
+  })
+
   it('suspends the terminal around a local editor and returns the unchanged document verbatim', async () => {
     const order: string[] = []
     const signal = new AbortController().signal

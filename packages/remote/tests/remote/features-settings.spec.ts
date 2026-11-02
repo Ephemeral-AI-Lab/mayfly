@@ -39,6 +39,8 @@ describe('Remote exact reference settings rail', () => {
       { resourceId: 'settings/mayfly', revision: 7 }, { resourceId: 'settings/mayfly/fields', revision: expect.any(String) },
       { resourceId: 'settings/shell', revision: 7 }, { resourceId: 'settings/shell/fields', revision: expect.any(String) },
     ])
+    await test.submit()
+    expect(test.browser().source!()).toContainEqual({ resourceId: 'settings/shell', revision: 7 })
     test.locale.setPreference('zh')
     expect(test.render()).toContain('设置')
     expect(test.render()).toContain('Shell 超时（毫秒）')
@@ -239,6 +241,55 @@ describe('Remote raw settings editor', () => {
 })
 
 describe('programmatic native settings writes', () => {
+  it('returns only current describe results and ignores a late read after reconnect', async () => {
+    const test = fixture()
+    expect(await test.controller.describe(test.client)).toMatchObject({ writable: true, namespaces: [{ ns: 'mayfly' }] })
+    const pending = deferred<unknown>()
+    test.describe.mockReturnValueOnce(pending.promise)
+    const reading = test.controller.describe(test.client)
+    test.reconnect()
+    pending.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } })
+    await expect(reading).resolves.toBeUndefined()
+  })
+
+  it.each(['update', 'replace', 'mutate'] as const)('fences %s before admission, after revision read, and after native write', async method => {
+    const invoke = (test: ReturnType<typeof fixture>) => method === 'mutate'
+      ? test.controller.mutate(test.client, 'mayfly', [], test.controller.revision(namespace(), true))
+      : test.controller[method](test.client, 'mayfly', { theme: 'tide' }, test.controller.revision(namespace(), true))
+    const detached = fixture()
+    detached.detach()
+    await expect(invoke(detached)).rejects.toThrow('Host is no longer attached')
+    expect(detached.describe).not.toHaveBeenCalled()
+
+    const reading = fixture()
+    const read = deferred<unknown>()
+    reading.describe.mockReturnValueOnce(read.promise)
+    const waitingForRevision = invoke(reading)
+    reading.reconnect()
+    read.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } })
+    await expect(waitingForRevision).rejects.toThrow('Host is no longer attached')
+    expect(reading[method]).not.toHaveBeenCalled()
+
+    const writing = fixture()
+    const write = deferred<unknown>()
+    writing[method].mockReturnValueOnce(write.promise)
+    const saving = invoke(writing)
+    await vi.waitFor(() => { expect(writing[method]).toHaveBeenCalledOnce() })
+    writing.reconnect()
+    write.resolve({ ok: true, value: namespace('mayfly', { revision: 8 }) })
+    await expect(saving).rejects.toThrow('Host is no longer attached')
+    expect(writing[method]).toHaveBeenCalledOnce()
+  })
+
+  it('rejects the absent Host-owned Mayfly schema and permits unset of a secret path', async () => {
+    const test = fixture({ namespaces: [] })
+    await expect(test.controller.update(test.client, 'mayfly', {}, { descriptor: 0, fields: '' })).rejects.toThrow('mayfly-host must register')
+    const credentials = namespace('credentials', { secrets: [{ path: ['apiKey'], set: true }] })
+    test.setSettings({ writable: true, hasDocument: true, namespaces: [credentials] })
+    await test.controller.mutate(test.client, 'credentials', [{ op: 'unset', path: ['apiKey'] }], test.controller.revision(credentials, true))
+    expect(test.mutate).toHaveBeenCalledWith('credentials', [{ op: 'unset', path: ['apiKey'] }], 7)
+  })
+
   it('checks native descriptor/schema revisions and fences late reads before every write', async () => {
     const test = fixture()
     const revision = test.controller.revision(namespace(), true)
@@ -274,5 +325,176 @@ describe('programmatic native settings writes', () => {
   it('reports Host schema availability from real namespaces only', () => {
     expect(remoteMayflySettingsPersistence({ writable: true, hasDocument: true, namespaces: [namespace()] })).toBe('available')
     expect(remoteMayflySettingsPersistence({ writable: true, hasDocument: true, namespaces: [] })).toBe('host-schema-required')
+  })
+
+  it('strips secrets through unions, intersections, transforms, and dictionary objects', () => {
+    const secret = { type: 'string', meta: { role: 'secret' } }
+    const schema = { type: 'object', dict: {
+      union: { type: 'union', list: [{ type: 'object', dict: { secret, visible: { type: 'string' } } }, { type: 'any' }] },
+      intersection: { type: 'intersect', list: [{ type: 'any' }, { type: 'object', dict: { secret } }] },
+      transformed: { type: 'transform', inner: secret },
+      dict: { type: 'dict', inner: { type: 'object', dict: { secret } } },
+      unknownUnion: { type: 'union' },
+      unknownObject: { type: 'object' },
+    } }
+    expect(remoteSettingsWithoutSecrets(schema, {
+      union: { secret: 'hidden', visible: 'kept' }, intersection: { secret: 'hidden', retained: 1 }, transformed: 'hidden',
+      dict: { first: { secret: 'hidden', visible: true } }, unknownUnion: 'forward compatible', unknownObject: { retained: 2 }, extra: null,
+    })).toEqual({ union: { visible: 'kept' }, intersection: { retained: 1 }, dict: { first: { visible: true } }, unknownUnion: 'forward compatible', unknownObject: { retained: 2 }, extra: null })
+    expect(remoteSettingsWithoutSecrets({ type: 'array', inner: secret }, { first: 'hidden' })).toEqual({})
+    expect(remoteSettingsWithoutSecrets({ type: 'object' }, ['left untouched'])).toEqual(['left untouched'])
+    expect(remoteSettingsWithoutSecrets({ type: 'array', inner: secret }, null)).toBeNull()
+  })
+})
+
+describe('settings rail read and write retirement', () => {
+  it('acquires no subscriptions after the browser closes during mounting', async () => {
+    const test = fixture()
+    mocks.open.mockImplementationOnce((_context, options) => {
+      options.onClosed?.()
+      return { closed: true, close: vi.fn(), refresh: vi.fn() }
+    })
+    await test.controller.open()
+    expect(test.client.remote.$on).not.toHaveBeenCalled()
+    await test.controller.open()
+    expect(test.opened).toHaveLength(1)
+    expect(test.browser().isCurrent()).toBe(true)
+    test.detach()
+    expect(test.browser().isCurrent()).toBe(false)
+    await test.controller.openNamespace(test.client, 'mayfly')
+    expect(test.opened).toHaveLength(1)
+  })
+
+  it('keeps usable dynamic choices when one native catalog fails and filters broken presets', async () => {
+    const test = fixture()
+    test.presets.mockResolvedValueOnce({ ok: true, value: { presets: [{ id: 'ready' }, { id: 'broken', broken: 'missing provider' }] } })
+    await test.controller.open()
+    test.catalog.mockRejectedValueOnce(new Error('permission catalog unavailable'))
+    test.presets.mockRejectedValueOnce(new Error('agent catalog unavailable'))
+    await test.act({ kind: 'activate', actionId: 'refresh' })
+    expect(test.render()).toContain('Settings')
+    expect(test.notice.set).not.toHaveBeenCalled()
+  })
+
+  it('refreshes explicitly, tolerates removed namespaces, and contains background read failures', async () => {
+    const test = fixture()
+    await test.controller.open()
+    test.observe({ kind: 'focus-change', pagePath: [], controlId: 'namespaces' })
+    test.observe({ kind: 'tab-change', pagePath: [{ controlId: 'nested', itemId: 'tab' }], controlId: 'namespaces', tabId: 'ignored' })
+    test.observe({ kind: 'tab-change', pagePath: [], controlId: 'other', tabId: 'ignored' })
+    expect(await test.act({ kind: 'activate', actionId: 'refresh' })).toEqual({ kind: 'completed' })
+    test.setSettings({ writable: true, hasDocument: true, namespaces: [] })
+    test.emit('permission-presets/catalog-changed')
+    await vi.waitFor(() => { expect(test.render()).toContain('No settings namespaces') })
+    test.describe.mockRejectedValueOnce(new Error('background offline'))
+    test.emit('settings/document-updated', 'mayfly', 9)
+    await vi.waitFor(() => { expect(test.notice.set).toHaveBeenCalledWith('background offline') })
+    test.opened[0]!.close()
+    await test.controller.open()
+    expect(test.opened).toHaveLength(2)
+    await test.controller.open()
+    expect(test.opened).toHaveLength(2)
+    test.detach()
+    await test.controller.openDocument(test.client)
+  })
+
+  it('rejects missing namespace identity and already-aborted actions before native work', async () => {
+    const test = fixture()
+    await test.controller.open()
+    expect(await test.act({ kind: 'submit', submission: { source: [], forms: [{ formId: 'settings-form', pagePath: [], fields: [] }] } })).toMatchObject({ kind: 'failed' })
+    const abort = new AbortController()
+    abort.abort()
+    expect(await test.act({ kind: 'activate', actionId: 'refresh' }, abort.signal)).toEqual({ kind: 'cancelled' })
+  })
+
+  it.each(['resolve', 'reject'] as const)('retires a native settings mutation that settles with %s after caller cancellation', async settlement => {
+    const test = fixture()
+    await test.controller.open()
+    const pending = Promise.withResolvers<unknown>()
+    test.mutate.mockReturnValueOnce(pending.promise)
+    const abort = new AbortController()
+    const saving = test.act({ kind: 'submit', submission: { source: test.browser().source!(), forms: [{ formId: 'settings-form', pagePath: [{ controlId: 'namespaces', itemId: 'mayfly' }], fields: [{ id: '["theme"]', change: 'set', value: 'tide' }] }] } }, abort.signal)
+    await vi.waitFor(() => { expect(test.mutate).toHaveBeenCalledOnce() })
+    abort.abort()
+    if (settlement === 'resolve') pending.resolve({ ok: true, value: namespace('mayfly', { revision: 8 }) })
+    else pending.reject(new Error('late private error'))
+    expect(await saving).toEqual({ kind: 'cancelled' })
+    expect(test.browser().source!()[0]?.revision).toBe(7)
+    expect(test.notice.set).not.toHaveBeenCalled()
+  })
+
+  it('preserves a native conflict when its follow-up refresh fails or is retired', async () => {
+    const test = fixture()
+    await test.controller.open()
+    test.mutate.mockResolvedValueOnce({ ok: false, error: { code: 'settings/conflict', message: 'changed' } })
+    test.describe.mockResolvedValueOnce({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } }).mockRejectedValueOnce(new Error('refresh offline'))
+    expect(await test.submit()).toMatchObject({ kind: 'conflict' })
+
+    const read = Promise.withResolvers<unknown>()
+    test.mutate.mockResolvedValueOnce({ ok: false, error: { code: 'settings/conflict', message: 'changed' } })
+    test.describe.mockResolvedValueOnce({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } }).mockReturnValueOnce(read.promise)
+    const saving = test.submit()
+    await vi.waitFor(() => { expect(test.describe).toHaveBeenCalledTimes(5) })
+    test.detach()
+    read.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } })
+    expect(await saving).toEqual({ kind: 'cancelled' })
+  })
+
+  it('drops stale background failures and competing delayed opens', async () => {
+    const test = fixture()
+    const delayed = Promise.withResolvers<unknown>()
+    test.describe.mockReturnValueOnce(delayed.promise)
+    const opening = test.controller.open()
+    await test.controller.open()
+    delayed.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } })
+    await opening
+    expect(test.opened).toHaveLength(1)
+    const refresh = Promise.withResolvers<unknown>()
+    test.describe.mockReturnValueOnce(refresh.promise)
+    test.emit('permission-presets/catalog-changed')
+    test.detach()
+    refresh.reject(new Error('obsolete background error'))
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    expect(test.notice.set).not.toHaveBeenCalled()
+
+    const failed = fixture()
+    const failure = Promise.withResolvers<unknown>()
+    failed.describe.mockReturnValueOnce(failure.promise)
+    const lateOpen = failed.controller.open()
+    failed.detach()
+    failure.reject(new Error('obsolete opening error'))
+    await lateOpen
+    expect(failed.notice.set).not.toHaveBeenCalled()
+  })
+
+  it('does not edit or acknowledge a retired document read or write', async () => {
+    const reading = fixture()
+    const read = Promise.withResolvers<MayflySettingsDocument>()
+    reading.readDocument.mockReturnValueOnce(read.promise)
+    const opening = reading.controller.openDocument(reading.client)
+    reading.reconnect()
+    read.resolve(document())
+    await opening
+    expect(reading.edit).not.toHaveBeenCalled()
+    expect(reading.notice.set).not.toHaveBeenCalled()
+
+    const writing = fixture()
+    const write = Promise.withResolvers<MayflySettingsDocument>()
+    writing.writeDocument.mockReturnValueOnce(write.promise)
+    const saving = writing.controller.openDocument(writing.client)
+    await vi.waitFor(() => { expect(writing.writeDocument).toHaveBeenCalledOnce() })
+    writing.detach()
+    write.resolve(document({ revision: 'saved' }))
+    await saving
+    expect(writing.notice.set).not.toHaveBeenCalled()
+
+    const failing = fixture()
+    const failure = Promise.withResolvers<MayflySettingsDocument>()
+    failing.readDocument.mockReturnValueOnce(failure.promise)
+    const load = failing.controller.openDocument(failing.client)
+    failing.detach()
+    failure.reject(new Error('obsolete private error'))
+    await load
+    expect(failing.notice.set).not.toHaveBeenCalled()
   })
 })

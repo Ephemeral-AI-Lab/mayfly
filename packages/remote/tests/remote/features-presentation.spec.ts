@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { RemoteFeatureContext } from '../../src/remote/features/contracts.ts'
-import { CordisRemoteLocalPresentation } from '../../src/remote/features/presentation.ts'
+import { CordisRemoteLocalPresentation, remoteThemeName } from '../../src/remote/features/presentation.ts'
 
 vi.mock('@ephemeral-ai/mayfly/theme-dark', () => ({ name: 'dark', apply: () => {} }))
 vi.mock('@ephemeral-ai/mayfly/theme-builtin', () => ({ name: 'builtin', apply: () => {} }))
@@ -13,20 +13,55 @@ function fixture(theme = 'dark') {
   const old = { restart: vi.fn(async () => {}), dispose: vi.fn(async () => {}) }
   const mounted = { dispose: vi.fn(async () => {}) }
   const plugin = vi.fn(async (_module: unknown, _config?: unknown) => mounted)
-  const registry = { get: vi.fn(() => ({ fibers: [old] })), delete: vi.fn(() => ({ fibers: [old] })) }
+  const runtime = (): { readonly fibers: readonly (typeof old)[] } | undefined => ({ fibers: [old] })
+  const registry = { get: vi.fn(runtime), delete: vi.fn(runtime) }
   const offLocale = vi.fn()
+  const services = new Map<string, unknown>([['mayflyInteractionState', state], ['mayflyLocale', locale]])
+  let onLocale = () => {}
   const context = {
     ctx: {
-      get: (name: string) => name === 'mayflyInteractionState' ? state : name === 'mayflyLocale' ? locale : undefined,
+      get: (name: string) => services.get(name),
       plugin, registry,
     },
-    subscribeLocale: vi.fn(() => offLocale),
+    subscribeLocale: vi.fn((listener: () => void) => { onLocale = listener; return offLocale }),
   } as unknown as Pick<RemoteFeatureContext, 'ctx' | 'subscribeLocale'>
   const presentation = new CordisRemoteLocalPresentation(context)
-  return { state, locale, old, mounted, plugin, registry, offLocale, context, presentation }
+  return { state, locale, old, mounted, plugin, registry, offLocale, context, presentation, services, notifyLocale: () => onLocale() }
 }
 
 describe('Remote local presentation lifecycle', () => {
+  it('names known themes and keeps unknown names readable', () => {
+    expect(remoteThemeName('dark')).toBe('Mayfly Dark')
+    expect(remoteThemeName('external-palette')).toBe('external-palette')
+  })
+
+  it('reports locale changes, removes observers, and keeps absent services optional', async () => {
+    const test = fixture()
+    expect(test.presentation.snapshot).toEqual({ locale: 'en', theme: 'dark' })
+    const listener = vi.fn()
+    const off = test.presentation.subscribe(listener)
+    test.notifyLocale()
+    expect(listener).toHaveBeenCalledOnce()
+    off()
+    test.notifyLocale()
+    expect(listener).toHaveBeenCalledOnce()
+    test.services.clear()
+    expect(test.presentation.snapshot).toEqual({ locale: 'en', theme: 'dark' })
+    test.presentation.setLocale('en')
+    expect(test.locale.setPreference).not.toHaveBeenCalled()
+    await test.presentation.applyTheme('dark')
+    expect(test.plugin).not.toHaveBeenCalled()
+    test.registry.get.mockReturnValueOnce(undefined)
+    await test.presentation.reloadTheme()
+    test.registry.delete.mockReturnValueOnce(undefined)
+    await test.presentation.applyTheme('light')
+    expect(test.plugin).toHaveBeenCalledOnce()
+    test.presentation.dispose()
+    test.presentation.subscribe(listener)()
+    test.notifyLocale()
+    expect(listener).toHaveBeenCalledOnce()
+  })
+
   it('serializes swaps and reloads, reports complete changes, and preserves the selected theme', async () => {
     const test = fixture()
     const listener = vi.fn()
@@ -96,9 +131,10 @@ describe('Remote local presentation lifecycle', () => {
     test.presentation.subscribe(listener)
     const pending = test.presentation.applyTheme('light')
     await vi.waitFor(() => { expect(finish).toBeDefined() })
+    const reloading = test.presentation.reloadTheme()
     test.presentation.dispose()
     finish(test.mounted)
-    await pending
+    await Promise.all([pending, reloading])
     expect(test.mounted.dispose).toHaveBeenCalledOnce()
     expect(test.state.currentThemeKey).toBe('dark')
     expect(listener).not.toHaveBeenCalled()
@@ -115,5 +151,95 @@ describe('Remote local presentation lifecycle', () => {
     await expect(test.presentation.applyTheme('missing')).rejects.toThrow('Unknown theme')
     expect(() => test.presentation.setLocale('missing')).toThrow('Unknown locale')
     test.presentation.dispose()
+  })
+
+  it('restarts a custom provider whose configuration was installed outside this owner', async () => {
+    const test = fixture('custom')
+    await test.presentation.reloadTheme()
+    expect(test.registry.get).toHaveBeenCalledWith(expect.objectContaining({ name: 'custom' }))
+    expect(test.old.restart).toHaveBeenCalledOnce()
+    test.presentation.dispose()
+  })
+
+  it.each(['custom', 'reload'] as const)('permits %s after an earlier provider failure', async kind => {
+    const test = fixture()
+    test.plugin.mockRejectedValueOnce(new Error('failed palette'))
+    await expect(test.presentation.applyTheme('light')).rejects.toThrow('failed palette')
+    if (kind === 'custom') await test.presentation.applyCustomTheme('/local/recovered.json')
+    else await test.presentation.reloadTheme()
+    test.presentation.dispose()
+  })
+
+  it.each(['reload', 'swap'] as const)('retires %s while a provider module is loading', async kind => {
+    const test = fixture()
+    const pending = kind === 'reload' ? test.presentation.reloadTheme() : test.presentation.applyTheme('light')
+    await Promise.resolve(); await Promise.resolve()
+    test.presentation.dispose()
+    await pending
+    expect(test.plugin).not.toHaveBeenCalled()
+    expect(test.registry.get).not.toHaveBeenCalled()
+    expect(test.registry.delete).not.toHaveBeenCalled()
+  })
+
+  it.each(['restart', 'dispose'] as const)('does not continue after an in-flight provider %s is retired', async kind => {
+    const test = fixture()
+    const gate = Promise.withResolvers<void>()
+    test.old[kind].mockReturnValueOnce(gate.promise)
+    const listener = vi.fn()
+    test.presentation.subscribe(listener)
+    const pending = kind === 'restart' ? test.presentation.reloadTheme() : test.presentation.applyTheme('light')
+    await vi.waitFor(() => { expect(test.old[kind]).toHaveBeenCalledOnce() })
+    test.presentation.dispose()
+    gate.resolve()
+    await pending
+    expect(listener).not.toHaveBeenCalled()
+    expect(test.plugin).not.toHaveBeenCalled()
+  })
+
+  it('does not restore a provider after its failed mount already retired the owner', async () => {
+    const test = fixture()
+    test.plugin.mockImplementationOnce(async () => { test.presentation.dispose(); throw new Error('late mount failure') })
+    await test.presentation.applyTheme('light')
+    expect(test.plugin).toHaveBeenCalledOnce()
+    expect(test.state.currentThemeKey).toBe('dark')
+  })
+
+  it('releases a fallback provider that settles after unload', async () => {
+    const test = fixture('tide')
+    test.plugin.mockRejectedValueOnce(new Error('palette failed')).mockImplementationOnce(async () => { test.presentation.dispose(); return test.mounted })
+    await test.presentation.applyTheme('light')
+    expect(test.mounted.dispose).toHaveBeenCalledOnce()
+    expect(test.state.currentThemeKey).toBe('tide')
+  })
+
+  it('can restore the dark provider when the interaction service is absent', async () => {
+    const test = fixture()
+    test.services.delete('mayflyInteractionState')
+    test.plugin.mockRejectedValueOnce(new Error('palette failed'))
+    await expect(test.presentation.applyTheme('light')).rejects.toThrow('palette failed')
+    expect(test.plugin).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'dark' }))
+    test.presentation.dispose()
+  })
+
+  it('does not mount a fallback whose module finishes loading after unload', async () => {
+    const loading = Promise.withResolvers<void>()
+    const factory = vi.fn(async () => { await loading.promise; return { name: 'dark', apply: () => {} } })
+    vi.doMock('@ephemeral-ai/mayfly/theme-dark', factory)
+    vi.resetModules()
+    const test = fixture('light')
+    test.plugin.mockRejectedValueOnce(new Error('palette failed'))
+    const pending = test.presentation.applyTheme('tide')
+    try {
+      await vi.waitFor(() => { expect(factory).toHaveBeenCalledOnce() })
+      test.presentation.dispose()
+      loading.resolve()
+      await pending
+      expect(test.plugin).toHaveBeenCalledOnce()
+    } finally {
+      loading.resolve()
+      test.presentation.dispose()
+      vi.doMock('@ephemeral-ai/mayfly/theme-dark', () => ({ name: 'dark', apply: () => {} }))
+      vi.resetModules()
+    }
   })
 })

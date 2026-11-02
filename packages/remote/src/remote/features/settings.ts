@@ -78,7 +78,9 @@ export class RemoteSettingsController extends RemoteFeatureController {
     try {
       const descriptor = await this.assertRevision(client, ns, expected)
       if (!operation.valid()) throw new Error('Host is no longer attached')
-      return await remoteValue(client.remote.settings.update(ns, remoteSettingsWithoutSecrets(descriptor.schema, patch) as SettingsPatch, expected.descriptor))
+      const saved = await remoteValue(client.remote.settings.update(ns, remoteSettingsWithoutSecrets(descriptor.schema, patch) as SettingsPatch, expected.descriptor))
+      if (!operation.valid()) throw new Error('Host is no longer attached')
+      return saved
     } finally { operation.dispose() }
   }
 
@@ -89,7 +91,9 @@ export class RemoteSettingsController extends RemoteFeatureController {
     try {
       const descriptor = await this.assertRevision(client, ns, expected)
       if (!operation.valid()) throw new Error('Host is no longer attached')
-      return await remoteValue(client.remote.settings.replace(ns, remoteSettingsWithoutSecrets(descriptor.schema, section) as SettingsSection, expected.descriptor))
+      const saved = await remoteValue(client.remote.settings.replace(ns, remoteSettingsWithoutSecrets(descriptor.schema, section) as SettingsSection, expected.descriptor))
+      if (!operation.valid()) throw new Error('Host is no longer attached')
+      return saved
     } finally { operation.dispose() }
   }
 
@@ -101,7 +105,9 @@ export class RemoteSettingsController extends RemoteFeatureController {
       const descriptor = await this.assertRevision(client, ns, expected)
       for (const op of ops) if (op.op === 'set' && remoteSettingsSecretPath(descriptor, op.path)) throw new Error('Use the provider credential controls for secret values')
       if (!operation.valid()) throw new Error('Host is no longer attached')
-      return await remoteValue(client.remote.settings.mutate(ns, [...ops], expected.descriptor))
+      const saved = await remoteValue(client.remote.settings.mutate(ns, [...ops], expected.descriptor))
+      if (!operation.valid()) throw new Error('Host is no longer attached')
+      return saved
     } finally { operation.dispose() }
   }
 
@@ -207,7 +213,6 @@ export class RemoteSettingsController extends RemoteFeatureController {
             if (expected !== entry.descriptor.revision || expectedFields !== entry.projection.revision) return { kind: 'conflict', node: current.node, source: current.source, message: t('Settings changed elsewhere; review before saving') }
             const operations = settingsOperations(entry.projection, form)
             if (operations.length > 0) {
-              if (!operation.valid() || context.signal.aborted) return { kind: 'cancelled' }
               const saved = await remoteValue(client.remote.settings.mutate(ns, operations.map(op => op.op === 'set' ? { ...op, path: [...op.path], value: op.value as Extract<SettingsPathOpView, { op: 'set' }>['value'] } : { ...op, path: [...op.path] }), entry.descriptor.revision))
               if (!operation.valid() || context.signal.aborted) return { kind: 'cancelled' }
               settings = { ...settings, namespaces: settings.namespaces.map(descriptor => descriptor.ns === ns ? saved : descriptor) }
@@ -226,8 +231,9 @@ export class RemoteSettingsController extends RemoteFeatureController {
         },
         onClosed: () => { if (this.rail?.operation === operation) this.rail = undefined; operation.dispose() },
       })
+      if (mounted.closed) { operation.dispose(); return }
       this.rail = { client, operation, panel: mounted }
-      operation.onDispose(() => { mounted?.close(); if (this.rail?.operation === operation) this.rail = undefined })
+      operation.onDispose(() => { mounted?.close() })
       operation.onDispose(this.context.subscribeLocale(() => { current = snapshot(); mounted?.refresh() }))
       operation.onDispose(onRemoteSettingsDocumentUpdated(client, () => { void refresh() }))
       operation.onDispose(client.remote.$on('permission-presets/catalog-changed', () => { void refresh() }))
