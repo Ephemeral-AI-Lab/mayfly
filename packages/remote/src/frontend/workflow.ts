@@ -52,6 +52,7 @@ export class RemoteWorkflowSource<Baseline, Frame> {
 
   /** Subscribe to Host baseline, replacement, and failure publications. */
   subscribe(listener: () => void): () => void {
+    if (this.disposed) return () => {}
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }
   }
@@ -62,6 +63,7 @@ export class RemoteWorkflowSource<Baseline, Frame> {
     ref: SessionRef | undefined,
     options: RemoteWorkflowStreamOptions<Baseline, Frame> | undefined,
   ): Promise<void> {
+    if (this.disposed) return this.tail
     const complete = client !== null && ref !== undefined && options !== undefined
     const empty = client === null && ref === undefined && options === undefined
     if (!complete && !empty) {
@@ -130,8 +132,11 @@ export class RemoteWorkflowSource<Baseline, Frame> {
     this.active = undefined
     const operation = this.tail.then(async () => { await previous?.snapshots.dispose() })
     this.tail = operation.then(() => undefined, () => undefined)
-    await operation
-    this.listeners.clear()
+    try {
+      await operation
+    } finally {
+      this.listeners.clear()
+    }
   }
 
   private owns(active: ActiveWorkflow<Baseline, Frame>, generation: number): boolean {

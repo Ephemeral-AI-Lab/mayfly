@@ -24,6 +24,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Presenter batches retain native result metadata and retire on generation
   replacement, so builtin Read windows, Edit diffs and Write previews survive
   the process boundary without borrowing another call's result.
+  Workflow frames use the official `RemoteSnapshotStream` baseline protocol.
+  Replacement waits for the previous consumer to drain; retired callbacks and
+  attach/subscribe calls after disposal cannot publish or retain listeners.
 - `src/remote/` owns the standalone application, editor, local commands,
   banner, footer, plain panels, and terminal lifecycle. Session facts stay in
   the footer; command results and operation failures use the reference
