@@ -79,6 +79,7 @@ test('unreviewed checkpoints, unknown rules, missing sources and incorrect nativ
   for (const mutate of [
     sample => { sample.plan.decisions = [] },
     sample => { sample.plan.decisions[0].items[0].rule = 'ignore-all-numbers' },
+    sample => { sample.plan.decisions[0].items[0].rule = 'skills-source-metadata' },
     sample => { sample.plan.decisions[0].items[0].evidence = ['native-context'] },
     sample => { sample.plan.evidence[0].assertions[0].equals = 1000000 },
     sample => { sample.plan.evidence[0].assertions[0].pointer = '/record/absent' },

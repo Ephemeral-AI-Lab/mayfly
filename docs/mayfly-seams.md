@@ -29,9 +29,10 @@ stream content. Reconnect replaces the baseline; old history must not replay
 command notices. Every Session reference includes Host identity. Detach,
 reconnect, selection change, cancellation, and unload fence late results.
 
-Official alpha.2 lacks a public configured-MCP-server/transport-health catalog,
-file-upload receipts in slash-command execution, and cold-child Agent controls
-without resumption. The root README describes each partial behavior and its
+Official alpha.2 lacks a public configured-MCP-server/transport-health catalog
+and cold-child Agent controls without resumption. Frontend extension hot mounting
+and an isolated Host boot check also lack an official Remote API.
+The root README describes each partial behavior and its
 visible feedback. These API boundaries do not excuse missing workflows when
 native operations already exist.
 

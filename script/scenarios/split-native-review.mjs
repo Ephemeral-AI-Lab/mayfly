@@ -17,7 +17,6 @@ const RULES = Object.freeze({
   'stats-context-window': { category: 'native-fact', markers: ['  Context:'], evidence: ['native-data', 'implementation-source'] },
   'stats-harness-version': { category: 'native-fact', markers: ['  Version:'], evidence: ['native-data'] },
   'frontend-local-command-journal': { category: 'native-fact', evidence: ['native-data', 'implementation-source', 'same-facts-visual'] },
-  'skills-source-metadata': { category: 'partial-api', warning: 'Source and provider metadata are not exposed by the native skills API.', evidence: ['native-api', 'implementation-source'] },
   'remote-ui-hot-load': { category: 'partial-api', warning: 'TUI 热挂载 API 暂缺', markers: ['Mayfly Cordis'], evidence: ['native-api', 'implementation-source'] },
 })
 
@@ -115,11 +114,6 @@ function checkRuleScope(name, changes) {
   else if (name === 'model-effort-provenance') allowed = pairs.length === 2
     && pairs.some(([a, b]) => /^    ● Thinking: [a-z]+$/u.test(a) && b === a.replace('●', '○') + ' (default)')
     && pairs.some(([a, b]) => a === '  Enter choose · Delete use default · Esc close' && b === '  ←/→ thinking · Enter choose · Esc close')
-  else if (name === 'skills-source-metadata') allowed = pairs.length === 4
-    && pairs.some(([a, b]) => a === '' && /^━+$/u.test(b))
-    && pairs.some(([a, b]) => /^━+$/u.test(a) && b === '  Skills')
-    && pairs.some(([a, b]) => a === '  Skills' && b === '')
-    && pairs.some(([a, b]) => a === '' && b === '  Source and provider metadata are not exposed by the native skills API.')
   else if (name === 'remote-ui-hot-load') allowed = single((a, b) => /^ +Mayfly Cordis +Mayfly 终端 UI 的创造模式：/u.test(a) && /^ +Mayfly Cordis +TUI 热挂载 API 暂缺/u.test(b))
   else if (name === 'stats-context-window') allowed = single((a, b) => replaceValue(a, b, /^(  Context: +\d+% · [\d.kM]+ \/ )([\d.kM]+)()$/u))
   else if (name === 'stats-harness-version') allowed = single((a, b) => replaceValue(a, b, /^(  Version: +Mayfly 0\.1\.4-rc\.2 · Harness )([\d.a-z-]+)()$/u))

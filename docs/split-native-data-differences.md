@@ -158,9 +158,11 @@ default-composition results as evidence of actual product behavior.
 
 Known official API limitations must remain explicitly labelled in their
 command surfaces. The default-effort adaptation above is implementable with
-existing native APIs and does not qualify for such a limitation. The observed
-`/skills` metadata annotation is a separate limitation and must not be deleted
-to make a screenshot compare pass.
+existing native APIs and does not qualify for such a limitation. The earlier
+`/skills` annotation exposed a missing frontend connection: the focused Host
+`skillCatalog` method already supplies native source/provider metadata. That
+annotation must not be accepted as an API waiver for the combined Mayfly Host;
+only an actual Host without that capability may display the fallback explanation.
 
 The independent `wave33` model run also exercises real `/effort high`,
 `/effort default`, a second admitted prompt, and model panels at 40, 80 and 120
