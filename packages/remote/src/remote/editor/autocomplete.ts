@@ -28,6 +28,7 @@ interface AutocompleteOptions {
   readonly notice: RemoteNotice
   readonly t: MayflyTranslate
   readonly bash: () => boolean
+  readonly beginWait: (message: string, signal: AbortSignal) => () => void
 }
 
 function replaceLine(lines: string[], index: number, line: string): string[] {
@@ -118,6 +119,7 @@ export class EditorAutocomplete {
     if (mention !== undefined) {
       const selected = this.options.session()
       if (selected === undefined) return null
+      const endWait = this.options.beginWait(this.options.t('Searching files…'), signal)
       try {
         const result = await selected.client.remote.fileReferences.list(selected.ref.sessionId, mention.query, signal)
         if (this.disposed || ticket !== this.revision || signal.aborted || !result.ok) return null
@@ -137,6 +139,8 @@ export class EditorAutocomplete {
         return { items, prefix: mention.prefix }
       } catch {
         return null
+      } finally {
+        endWait()
       }
     }
     const skillQuery = extractSkillPrefix(line.slice(0, cursorCol))

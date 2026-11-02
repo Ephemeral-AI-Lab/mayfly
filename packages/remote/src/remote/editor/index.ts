@@ -12,6 +12,8 @@ import type {
   MayflyComponent,
   MayflyFocusable,
 } from '@ephemeral-ai/mayfly/core'
+import { mountInteractionLocale } from '@ephemeral-ai/mayfly/editor-presentation'
+import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import { EditorAttachments } from './attachments.ts'
 import { EditorAutocomplete } from './autocomplete.ts'
 import { EditorCommands } from './commands.ts'
@@ -27,6 +29,7 @@ import { editLocalText, resolveExternalEditorCommand } from '../local/external-e
 import { clipboardFailureNotice, LocalImagePaste } from '../local/image-paste.ts'
 import { LocalProcessOwner } from '../local/process.ts'
 import { remotePanelOverlayOptions } from '../panels.ts'
+import { RemoteEditorFeedback } from '../editor-feedback.ts'
 import type {
   EditorFeatureController,
   EditorFeatureOptions,
@@ -65,10 +68,6 @@ const EMPTY_PROVIDER: MayflyAutocompleteProvider = {
   applyCompletion: (lines, cursorLine, cursorCol) => ({ lines: [...lines], cursorLine, cursorCol }),
 }
 
-function fallbackTranslate(key: string, values?: Readonly<Record<string, string | number>>): string {
-  return key.replace(/\{([^}]+)\}/gu, (_, name: string) => String(values?.[name] ?? `{${name}}`))
-}
-
 function selectionKey(selected: EditorFeatureSession | undefined): string {
   return selected === undefined ? '' : `${selected.ref.host}\0${selected.ref.sessionId}\0${String(selected.generation)}`
 }
@@ -89,7 +88,9 @@ class ImagePreview implements MayflyFocusable {
  * from its exact Session and lifecycle observations.
  */
 export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatureController {
-  const t = options.t ?? fallbackTranslate
+  mountInteractionLocale(options.ctx)
+  const t = options.t ?? memoizedLocaleTranslator(options.ctx, 'interaction').translate
+  const feedback = new RemoteEditorFeedback(options.ctx, t)
   const editor = options.editor
   const draft = options.draft ?? new EditorDraftStore()
   let mode: 'prompt' | 'bash' = draft.currentMode()
@@ -114,6 +115,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     notice: options.notice,
     t,
     bash: () => mode === 'bash',
+    beginWait: (message, signal) => feedback.beginWait(message, signal),
   })
   const focusEditor = (): void => {
     if (options.focusEditor !== undefined) options.focusEditor()
@@ -304,6 +306,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     }
     pasteRunning = true
     const operation = processes.operation(routeLifetime.signal)
+    const endWait = feedback.beginWait(t('Reading the clipboard…'), operation.signal)
     try {
       const result = await imagePaste.read(limits, operation.signal)
       if (disposed || operation.signal.aborted) return
@@ -329,6 +332,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     } catch (error) {
       if (!disposed && !operation.signal.aborted) options.notice.set(t('image rejected: {error}', { error: errorMessage(error) }))
     } finally {
+      endWait()
       operation.done()
       pasteRunning = false
     }
@@ -465,6 +469,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     dispose() {
       if (disposed) return
       disposed = true
+      feedback.dispose()
       offCommands?.()
       offPreset?.()
       offCommands = undefined
@@ -472,6 +477,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
       routeLifetime.abort()
       processes.dispose()
       panel.close()
+      skills.dispose()
       preview?.hide()
       preview = undefined
       autocomplete.dispose()
@@ -501,10 +507,16 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
   editor.setAutocompleteProvider(autocomplete.source())
   editor.setTokenSource(line => [...attachments.tokenSpans(line), ...autocomplete.tokenSpans(line)]
     .toSorted((left, right) => left.start - right.start))
-  editor.onTokenChange = token => { previousTokenChange?.(token) }
-  editor.onChange = text => {
-    previousChange?.(text)
+  editor.onTokenChange = token => {
     if (disposed) return
+    previousTokenChange?.(token)
+    feedback.token(token)
+    if (token !== undefined) options.notice.set('')
+  }
+  editor.onChange = text => {
+    if (disposed) return
+    previousChange?.(text)
+    feedback.recall(editor)
     options.notice.set('')
     detectSelection()
     autocomplete.invalidate()
@@ -614,5 +626,6 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
   bindHost()
   void commands.refresh()
   void skills.refresh()
+  options.ctx.effect(() => () => { controller.dispose() })
   return controller
 }

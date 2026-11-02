@@ -18,11 +18,12 @@ async function fixture() {
   f.local.list = () => [{ name: 'rename', aliases: ['title'], description: 'Rename a session', input: { hint: '<title>' } }, { name: 'new', description: 'New session' }, { name: 'plain', description: 'No arguments', input: { hint: '' } }]
   await f.commands.refresh()
   const notice = { set: vi.fn() }
-  const autocomplete = new EditorAutocomplete({ session: () => selected, commands: f.commands, skills: f.skills, components: f.components, notice, t: (key, values) => key.replace('{command}', String(values?.command)), bash: () => bash })
+  const beginWait = vi.fn(() => vi.fn())
+  const autocomplete = new EditorAutocomplete({ session: () => selected, commands: f.commands, skills: f.skills, components: f.components, notice, t: (key, values) => key.replace('{command}', String(values?.command)), bash: () => bash, beginWait })
   owners.push(autocomplete)
   const provider = autocomplete.source()
   const suggest = (line: string, signal = new AbortController().signal) => provider.getSuggestions([line], 0, line.length, { signal })
-  return { ...f, host, listFiles, autocomplete, provider, notice, suggest,
+  return { ...f, host, listFiles, autocomplete, provider, notice, suggest, beginWait,
     select(next: EditorFeatureSession | undefined) { selected = next; f.select(next) },
     shell(value: boolean) { bash = value },
   }
@@ -50,6 +51,8 @@ describe('editor autocomplete', () => {
     const request = new AbortController()
     expect(await f.suggest('read @src', request.signal)).toMatchObject({ prefix: '@src', items: [{ value: '@src/index.ts', label: 'src/index.ts' }, { value: '@"my files/"', label: 'my files/' }] })
     expect(f.listFiles).toHaveBeenCalledWith(f.host.selected.ref.sessionId, 'src', expect.any(AbortSignal))
+    expect(f.beginWait).toHaveBeenCalledWith('Searching files…', expect.any(AbortSignal))
+    expect(f.beginWait.mock.results[0]!.value).toHaveBeenCalledOnce()
     const childSignal = f.listFiles.mock.calls[0]![2] as AbortSignal
     request.abort()
     expect(childSignal.aborted).toBe(true)
@@ -71,6 +74,7 @@ describe('editor autocomplete', () => {
     expect(await f.suggest('@offline')).toBeNull()
     expect(await f.suggest('@cancelled', AbortSignal.abort())).toBeNull()
     expect(f.notice.set).toHaveBeenCalledOnce()
+    expect(f.beginWait.mock.results.every(result => result.value.mock.calls.length === 1)).toBe(true)
   })
 
   it.each(['new query', 'edit', 'dispose', 'Host', 'Session', 'generation'] as const)('drops a late file catalog after %s', async transition => {

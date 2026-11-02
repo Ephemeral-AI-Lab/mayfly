@@ -95,6 +95,127 @@ async function fixture(extra: Partial<EditorFeatureOptions> = {}, withSession = 
 }
 
 describe('mounted editor routes and ownership', () => {
+  it('publishes actual recalled history and active token teaching facts through the mounted hooks', async () => {
+    const f = await fixture()
+    const recall = vi.fn()
+    const hint = vi.fn()
+    f.ctx.on('mayfly/prompt-recall-changed', recall)
+    f.ctx.on('mayfly/prompt-hint-changed', hint)
+    f.editor.addToHistory('first recalled')
+    f.editor.addToHistory('second recalled')
+    f.editor.handleInput?.('\x1b[A')
+    expect(f.editor.getText()).toBe('second recalled')
+    expect(recall).toHaveBeenLastCalledWith({ index: 1, total: 2 })
+    f.editor.handleInput?.('\x1b[B')
+    expect(recall).toHaveBeenLastCalledWith(undefined)
+    f.ctx.mayflyLocale.setPreference('zh')
+    f.editor.onTokenChange?.({ kind: 'image', text: '[image #1]' } as EditorToken)
+    expect(hint).toHaveBeenLastCalledWith('Ctrl+G 查看 · Backspace 删除')
+    expect(f.notice.set).toHaveBeenLastCalledWith('')
+    f.editor.onTokenChange?.({ kind: 'paste', text: '[paste #1]' } as EditorToken)
+    expect(hint).toHaveBeenLastCalledWith('Ctrl+G 打开 · Backspace 删除')
+    const late = f.editor.onTokenChange!
+    await f.dispose()
+    const count = hint.mock.calls.length
+    late({ kind: 'image' } as EditorToken)
+    expect(hint).toHaveBeenCalledTimes(count)
+  })
+
+  it.each(['settle', 'selection', 'dispose'] as const)('retires a slow clipboard teaching wait after %s', async transition => {
+    const f = await fixture()
+    vi.useFakeTimers()
+    const wait = vi.fn()
+    f.ctx.on('mayfly/prompt-wait-changed', wait)
+    const pending = deferred<unknown>()
+    native.paste.mockReturnValueOnce(pending.promise)
+    f.key('mayfly.image.paste')
+    vi.advanceTimersByTime(149)
+    expect(wait).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(wait).toHaveBeenLastCalledWith('Reading the clipboard…')
+    if (transition === 'selection') f.select(undefined)
+    if (transition === 'dispose') f.controller.dispose()
+    pending.resolve({ kind: 'no-image' })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(wait).toHaveBeenLastCalledWith(undefined)
+    expect(wait).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+    if (transition !== 'settle') expect(f.notice.set).not.toHaveBeenCalled()
+  })
+
+  it.each(['settle', 'edit', 'request abort', 'selection', 'reconnect', 'dispose'] as const)('owns the actual native file-search wait through %s', async transition => {
+    const f = await fixture()
+    vi.useFakeTimers()
+    const wait = vi.fn()
+    f.ctx.on('mayfly/prompt-wait-changed', wait)
+    const pending = deferred<unknown>()
+    const listFiles = vi.fn((_session: unknown, _query: unknown, _signal: AbortSignal) => pending.promise)
+    Object.assign(f.host.selected.client.remote, { fileReferences: { list: listFiles } })
+    const provider = f.providers.mock.calls[0]![0]!
+    const request = new AbortController()
+    const reading = provider.getSuggestions(['@source'], 0, 7, { signal: request.signal })
+    vi.advanceTimersByTime(150)
+    expect(wait).toHaveBeenLastCalledWith('Searching files…')
+    if (transition === 'edit') f.editor.onChange?.('new text')
+    if (transition === 'request abort') request.abort()
+    if (transition === 'selection') f.select(undefined)
+    if (transition === 'reconnect') f.controller.hostReconnected()
+    if (transition === 'dispose') f.controller.dispose()
+    if (transition !== 'settle') expect(wait).toHaveBeenLastCalledWith(undefined)
+    pending.resolve({ ok: true, value: [{ kind: 'file', path: 'source.ts' }] })
+    const result = await reading
+    expect(wait).toHaveBeenLastCalledWith(undefined)
+    expect(wait).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+    if (transition === 'settle') expect(result).toMatchObject({ items: [{ value: '@source.ts' }] })
+    else expect(result).toBeNull()
+  })
+
+  it('unloads the complete feature owner through its Fiber before late clipboard and editor callbacks', async () => {
+    const f = await fixture()
+    vi.useFakeTimers()
+    const wait = vi.fn()
+    const emitted = vi.spyOn(f.ctx, 'emit')
+    f.ctx.on('mayfly/prompt-wait-changed', wait)
+    const pending = deferred<unknown>()
+    native.paste.mockReturnValueOnce(pending.promise)
+    f.key('mayfly.image.paste')
+    vi.advanceTimersByTime(150)
+    expect(wait).toHaveBeenLastCalledWith('Reading the clipboard…')
+    const skillRead = deferred<Awaited<ReturnType<typeof f.host.listSkills>>>()
+    f.host.listSkills.mockReturnValueOnce(skillRead.promise)
+    const refreshingSkills = f.controller.refreshSkills()
+    const skillSignal = (f.host.listSkills.mock.calls.at(-1) as unknown as [unknown, AbortSignal])[1]
+    const change = f.editor.onChange!
+    const token = f.editor.onTokenChange!
+    const key = f.editor.onKey!
+    const submit = f.editor.onSubmit!
+    await f.ctx.fiber.dispose()
+    expect(skillSignal.aborted).toBe(true)
+    expect(f.listenerCount()).toBe(0)
+    expect(f.offKeys).toHaveBeenCalledOnce()
+    expect(f.editor.onChange).toBe(f.previous.change)
+    expect(f.editor.onTokenChange).toBe(f.previous.token)
+    expect(emitted).toHaveBeenCalledWith('mayfly/prompt-wait-changed', undefined)
+    const previousChanges = f.previous.change.mock.calls.length
+    const previousTokens = f.previous.token.mock.calls.length
+    change('retired change')
+    token({ kind: 'image' } as EditorToken)
+    expect(key('mayfly.image.paste')).toBe(false)
+    submit('retired submit')
+    pending.reject(new Error('retired clipboard failure'))
+    skillRead.resolve({ ok: true, value: { skills: [{ name: 'late', description: 'retired' }] } })
+    await refreshingSkills
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(f.previous.change).toHaveBeenCalledTimes(previousChanges)
+    expect(f.previous.token).toHaveBeenCalledTimes(previousTokens)
+    expect(f.notice.set).not.toHaveBeenCalled()
+    expect(f.host.prompt).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('refreshes exact native catalogs and drops all prior callbacks and key registrations on teardown', async () => {
     const f = await fixture()
     expect(f.listenerCount()).toBe(2)
