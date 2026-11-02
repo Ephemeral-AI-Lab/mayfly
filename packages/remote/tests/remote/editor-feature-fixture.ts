@@ -48,6 +48,7 @@ export function wire(host = 'one', generation = 1) {
   })
   const client = Object.assign({} as HostClient, {
     key: HostKey(host),
+    state: { getSnapshot: () => ({ status: 'connected', generation: 1 }) },
     remote: { commands: { list: listCommands, execute: executeCommand }, skills: { list: listSkills } },
   })
   const selected: EditorFeatureSession = { ref: { host: HostKey(host), sessionId: 'same-session' as SessionId }, client, session, generation }

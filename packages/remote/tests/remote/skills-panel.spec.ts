@@ -6,6 +6,7 @@ import { compileMayflyUiNode, MayflyComponentsService, visibleWidth, type Mayfly
 import type { MayflyUiActionEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EditorSkills } from '../../src/remote/editor/skills.ts'
+import type { MayflyHostRemote, MayflySkillCatalog } from '../../src/frontend/host-contract.ts'
 import { EditorSkillsPanel, REMOTE_SKILLS_METADATA_LIMITATION } from '../../src/remote/editor/skills-panel.ts'
 import { deferred, denied, flush, wire } from './editor-feature-fixture.ts'
 
@@ -16,27 +17,34 @@ const skills = [
   { name: 'publish', description: 'Publish a release', modelInvocable: false },
 ]
 
-async function fixture() {
+async function fixture(metadata = false) {
   const ctx = new Context()
   await ctx.plugin(Provider)
   await ctx.plugin(Frontend)
   const host = wire('one')
   host.listSkills.mockResolvedValue({ ok: true, value: { skills } } as never)
+  const native: MayflySkillCatalog = { complete: true, skills: skills.map((skill, index) => ({
+    ...skill, source: index === 0 ? 'project-agents' : 'user-dsh', provider: 'filesystem',
+  })) }
+  const catalog = vi.fn<MayflyHostRemote['skillCatalog']>(async () => ({ ok: true, value: native }))
+  if (metadata) Object.assign(host.selected.client.remote, { mayflyHost: {
+    capabilities: async () => ({ ok: true, value: { features: ['skillCatalog'] } }), skillCatalog: catalog,
+  } })
   let selected: typeof host.selected | undefined = host.selected
   const source = new EditorSkills(() => selected)
   const restoreFocus = vi.fn()
   const panel = new EditorSkillsPanel({ ctx, skills: source, session: () => selected, restoreFocus })
   cleanups.push(async () => { panel.close(); source.dispose(); await ctx.fiber.dispose() })
   const text = () => JSON.stringify(ctx.mayflyOverlays.list()[0]?.node)
-  const action = (event: MayflyUiActionEvent) => {
+  const action = (event: MayflyUiActionEvent, signal = new AbortController().signal) => {
     const current = ctx.mayflyOverlays.list()[0]!
-    return current.events.prepare(event, { surfaceId: current.id, source: [], signal: new AbortController().signal, revision: current.revision, operationId: 'skills-action', report: vi.fn() })
+    return current.events.prepare(event, { surfaceId: current.id, source: [], signal, revision: current.revision, operationId: 'skills-action', report: vi.fn() })
   }
-  return { ctx, host, source, panel, text, action, restoreFocus, select: (next: typeof selected) => { selected = next } }
+  return { ctx, host, source, panel, text, action, restoreFocus, catalog, native, select: (next: typeof selected) => { selected = next } }
 }
 
 describe('shared native skills browser', () => {
-  it('opens a real editor wire surface with reference list/detail controls and an explicit API metadata gap', async () => {
+  it('opens a real editor wire surface and names the missing metadata capability only on a plain official Host', async () => {
     const f = await fixture()
     await f.panel.show()
     const overlay = f.ctx.mayflyOverlays.list()[0]!
@@ -50,6 +58,73 @@ describe('shared native skills browser', () => {
     expect(f.text()).toContain(REMOTE_SKILLS_METADATA_LIMITATION)
     expect(f.text()).not.toContain('/private/project')
     expect(f.host.listSkills).toHaveBeenCalledWith({ sessionId: f.host.selected.ref.sessionId }, expect.any(AbortSignal))
+  })
+
+  it('renders exact native source/provider groups without an API warning or exposing skill paths', async () => {
+    const f = await fixture(true)
+    await f.panel.show()
+    expect(f.host.listSkills).not.toHaveBeenCalled()
+    expect(f.catalog).toHaveBeenCalledWith({ sessionId: f.host.selected.ref.sessionId }, expect.any(AbortSignal))
+    expect(f.text()).toContain('"group":"Project"')
+    expect(f.text()).toContain('"group":"User"')
+    expect(f.text()).toContain('project-agents')
+    expect(f.text()).toContain('filesystem')
+    expect(f.text()).not.toContain(REMOTE_SKILLS_METADATA_LIMITATION)
+    expect(f.text()).not.toContain('/private/project')
+    await f.action({ kind: 'selection-accept', controlId: 'skills-narrow', selectedIds: ['review'], pagePath: [] })
+    expect(f.text()).toContain('project-agents')
+    expect(f.text()).toContain('filesystem')
+  })
+
+  it('aborts an initial metadata read on close and fences connection replacement before a panel can mount', async () => {
+    for (const retirement of ['close', 'connection'] as const) {
+      const f = await fixture(true)
+      let generation = 1
+      Object.assign(f.host.selected.client.state, { getSnapshot: () => ({ generation }) })
+      const pending = deferred<Awaited<ReturnType<MayflyHostRemote['skillCatalog']>>>()
+      f.catalog.mockReturnValueOnce(pending.promise)
+      const opening = f.panel.show()
+      await vi.waitFor(() => { expect(f.catalog).toHaveBeenCalledOnce() })
+      if (retirement === 'close') f.panel.close()
+      else generation += 1
+      pending.resolve({ ok: true, value: f.native })
+      await opening
+      expect(f.catalog.mock.calls[0]![1]!.aborted).toBe(true)
+      expect(f.source.list()).toEqual([])
+      expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    }
+  })
+
+  it('keeps native metadata after a caller cancels an in-flight refresh', async () => {
+    const f = await fixture(true)
+    await f.panel.show()
+    const pending = deferred<Awaited<ReturnType<MayflyHostRemote['skillCatalog']>>>()
+    f.catalog.mockReturnValueOnce(pending.promise)
+    const caller = new AbortController()
+    const refreshing = f.action({ kind: 'activate', controlId: 'skills-actions', actionId: 'refresh', pagePath: [] }, caller.signal)
+    await vi.waitFor(() => { expect(f.catalog).toHaveBeenCalledTimes(2) })
+    caller.abort()
+    pending.resolve({ ok: true, value: { complete: true, skills: [] } })
+    await refreshing
+    expect(f.catalog.mock.calls[1]![1]!.aborted).toBe(true)
+    expect(f.source.snapshot()).toMatchObject({ skills: f.native.skills, complete: true, metadataUnavailable: false })
+  })
+
+  it('reopens while an old Host read is pending and never lets the old opening restore a closed panel', async () => {
+    const f = await fixture(true)
+    const pending = deferred<Awaited<ReturnType<MayflyHostRemote['skillCatalog']>>>()
+    f.catalog.mockReturnValueOnce(pending.promise)
+    const oldOpening = f.panel.show()
+    await vi.waitFor(() => { expect(f.catalog).toHaveBeenCalledOnce() })
+    await f.panel.show()
+    expect(f.catalog).toHaveBeenCalledTimes(2)
+    expect(f.catalog.mock.calls[0]![1]!.aborted).toBe(true)
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+    f.panel.close()
+    pending.resolve({ ok: true, value: { complete: true, skills: [] } })
+    await oldOpening
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    expect(f.source.snapshot()).toMatchObject({ skills: f.native.skills, complete: true, metadataUnavailable: false })
   })
 
   it('uses native narrow detail/back behavior, focuses an already-open browser, and restores the shell on close', async () => {
@@ -195,8 +270,8 @@ describe('shared native skills browser', () => {
     }
   })
 
-  it('renders the actual reference browser within narrow and wide native widths', async () => {
-    const f = await fixture()
+  it.each([false, true])('renders the actual reference browser within narrow and wide native widths, metadata=%s', async metadata => {
+    const f = await fixture(metadata)
     await f.panel.show()
     const colors = new Proxy({}, { get: () => (text: string) => text }) as MayflySemanticColors
     const components = new MayflyComponentsService(f.ctx, { theme: { colors }, tui: { requestRender: () => {} } } as unknown as MayflyComponentsDeps)

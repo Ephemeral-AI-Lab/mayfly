@@ -12,14 +12,15 @@ interface SkillsPanelOptions {
   readonly restoreFocus: () => void
 }
 
-/** Metadata not carried by this alpha's SkillEntry is identified beside the affected browser. */
-export const REMOTE_SKILLS_METADATA_LIMITATION = 'Source and provider metadata are not exposed by the native skills API.'
+/** A plain official Host can list skills without composing Mayfly's native metadata capability. */
+export const REMOTE_SKILLS_METADATA_LIMITATION = 'This Host does not provide the Mayfly skillCatalog capability; source and provider metadata are unavailable.'
 
 /** An ordinary editor overlay; native selection and catalog owners supply every fact. */
 export class EditorSkillsPanel {
   private handle: MayflyOverlayHandle | undefined
   private cleanup: (() => void) | undefined
   private generation = 0
+  private lifetime: AbortController | undefined
   private readonly t
 
   constructor(private readonly options: SkillsPanelOptions) {
@@ -34,13 +35,18 @@ export class EditorSkillsPanel {
     const selected = this.options.session()
     if (selected === undefined) return
     const generation = ++this.generation
+    const connectionGeneration = selected.client.state.getSnapshot().generation
+    this.lifetime?.abort()
+    const lifetime = new AbortController()
+    this.lifetime = lifetime
     const isCurrent = (): boolean => {
       const current = this.options.session()
-      return generation === this.generation && current?.client === selected.client
+      return !lifetime.signal.aborted && generation === this.generation && current?.client === selected.client
         && current.session === selected.session && current.generation === selected.generation
         && current.ref.host === selected.ref.host && current.ref.sessionId === selected.ref.sessionId
+        && selected.client.state.getSnapshot().generation === connectionGeneration
     }
-    await this.options.skills.refresh()
+    await this.options.skills.refresh(lifetime.signal)
     if (!isCurrent()) return
     let focused: string | undefined
     let detailMode = false
@@ -49,8 +55,10 @@ export class EditorSkillsPanel {
       return skillsNode(snapshot.skills.map(skill => ({
         name: skill.name, description: skill.description,
         ...skill.whenToUse === undefined ? {} : { whenToUse: skill.whenToUse },
+        ...skill.source === undefined ? {} : { source: skill.source },
+        ...skill.provider === undefined ? {} : { provider: skill.provider },
         invocation: { modelInvocable: skill.modelInvocable },
-      })), snapshot.complete, this.t, { focused, detailMode, metadataNote: REMOTE_SKILLS_METADATA_LIMITATION })
+      })), snapshot.complete, this.t, { focused, detailMode, ...snapshot.metadataUnavailable ? { metadataNote: REMOTE_SKILLS_METADATA_LIMITATION } : {} })
     }
     const refresh = (): void => {
       if (!isCurrent()) { this.close(); return }
@@ -79,8 +87,8 @@ export class EditorSkillsPanel {
           return { kind: 'completed' }
         }
         if (event.kind === 'activate' && event.actionId === 'refresh') {
-          await this.options.skills.refresh()
-          if (!isCurrent()) return { kind: 'cancelled', dismiss: true }
+          await this.options.skills.refresh(AbortSignal.any([lifetime.signal, context.signal]))
+          if (context.signal.aborted || !isCurrent()) return { kind: 'cancelled', dismiss: true }
           refresh()
         }
         return { kind: 'completed' }
@@ -99,6 +107,8 @@ export class EditorSkillsPanel {
 
   close(): void {
     this.generation += 1
+    this.lifetime?.abort()
+    this.lifetime = undefined
     const handle = this.handle
     if (handle !== undefined) { handle.close(); this.finish(handle) }
   }
@@ -106,6 +116,8 @@ export class EditorSkillsPanel {
   private finish(handle: MayflyOverlayHandle): void {
     if (this.handle !== handle) return
     this.generation += 1
+    this.lifetime?.abort()
+    this.lifetime = undefined
     this.handle = undefined
     const cleanup = this.cleanup
     this.cleanup = undefined
