@@ -39,6 +39,8 @@ import * as conversationViewStatus from '../../src/interaction/conversation-view
 import { footerRows } from '../transcript/footer-fakes.ts'
 import { renderRequest, requestFixture } from './request-fixture.ts'
 import { settingsFixture, settingsField } from './settings-fixture.ts'
+import { helpCatalogSections } from './help-catalog-fixture.ts'
+import { plain } from '../helpers.ts'
 
 /** One questionnaire ask whose option label and description are the fixture. */
 function ask(text: string) {
@@ -67,6 +69,32 @@ function planAsk(text: string) {
 }
 
 describe('interaction width-scan', () => {
+  for (const [width, height] of [[120, 40], [40, 16]] as const) {
+    it(`complete Help catalog admits, pages to its last command, and restores the top at ${width}x${height}`, () => {
+      const surface = createRealSurface(helpNode(helpCatalogSections()), width, {
+        components: probeComponents(),
+        overrides: { getViewport: () => ({ columns: width, rows: height }) },
+      })
+      const assertFrame = (rows: string[]): string => {
+        expectLinesFit(`complete-help/${width}x${height}`, rows, width)
+        expect(rows.length).toBeLessThanOrEqual(height)
+        return plain(rows).join('\n')
+      }
+      try {
+        expect(assertFrame(surface.render())).toContain('Commands')
+        expect(assertFrame(surface.render())).toContain('/agents')
+        let bottom = ''
+        for (let page = 0; page < 100 && !bottom.includes('/onboarding'); page += 1) {
+          bottom = assertFrame(surface.press('\x1b[6~'))
+        }
+        expect(bottom).toContain('/onboarding')
+        expect(assertFrame(surface.press('\x1b[H'))).toContain('Commands')
+        expect(assertFrame(surface.press('\x1b[F'))).toContain('/onboarding')
+        expect(assertFrame(surface.press('\x1b[H'))).toContain('/agents')
+      } finally { surface.dispose() }
+    })
+  }
+
   for (const { name, text } of ADVERSARIAL) {
     it(`Trace list and detail survive ${name}`, () => {
       const item = { seq: 1, lastSeq: 2, eventSeqs: [1, 2], time: 1_000, type: 'assistant/attempt', surface: 'current' as const, title: text, summary: text }
