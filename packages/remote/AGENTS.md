@@ -42,6 +42,12 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   selection and connection generation fence admission and late feedback.
   App disposal retires pending selection and initial creation before asynchronous
   runtime teardown, without cancelling work already admitted by the Host.
+  `/new [preset]` validates the exact Host's usable roster before releasing the
+  current view and retains that preset until native creation consumes it.
+  `/fork` and `/init` refuse a running Agent. Caller cancellation and exact
+  selection owners fence native reference admission and late feedback; a
+  retired fork cannot replace a newer selection. Session browser callers own
+  its reads, actions and panel lifetime through the same cancellation signal.
   App owns startup plan intent through `startupPlan`; the plan feature only
   reads/writes that intent. Prompt preparation awaits native plan admission
   before admitting the first prompt. Selection listeners never apply it in the

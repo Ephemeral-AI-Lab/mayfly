@@ -99,6 +99,417 @@ function appFixture() {
   return { conversation, status, panels, browser: { open: vi.fn() } }
 }
 
+
+describe('RemoteApp native command admission', () => {
+  it('preserves an existing attachment on immediate abort and a newer Host selection during cancelled discovery', async () => {
+    const one = clientFixture(HostKey('http://one.test/'))
+    const two = clientFixture(HostKey('http://two.test/'))
+    const test = appFixture()
+    let view: RemoteAppView | undefined
+    const app = new RemoteApp(test.conversation, test.status, test.panels, key => key === one.client.key ? one.client : two.client, '/workspace', undefined, () => view)
+    await app.attach('http://two.test/')
+    const immediate = new AbortController()
+    const reused = app.execute('/attach http://two.test/', immediate.signal)
+    immediate.abort()
+    await reused
+    expect(two.client.detach).not.toHaveBeenCalled()
+    const gate = Promise.withResolvers<unknown>()
+    vi.mocked(one.client.remote.session.modelCatalog).mockReturnValueOnce(gate.promise as never)
+    const caller = new AbortController()
+    const pending = app.execute('/attach http://one.test/', caller.signal)
+    await vi.waitFor(() => { expect(one.client.remote.session.modelCatalog).toHaveBeenCalled() })
+    view = { ref: { host: two.client.key, sessionId: two.sessionId }, binding: two.reference.binding, access: 'interactive', presentation: test.conversation.presentation() }
+    await app.selectOrCreate('shared-session')
+    caller.abort()
+    gate.resolve({ ok: true, value: { default: { provider: 'late', model: 'late' } } })
+    await pending
+    expect(one.client.detach).toHaveBeenCalledOnce()
+    expect(two.client.detach).not.toHaveBeenCalled()
+    expect(app.registry.current?.host).toBe(two.client.key)
+    app.dispose()
+  })
+
+  it('keeps current native failures visible across creation, prompt, command and attach', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    vi.mocked(f.client.sessions.create).mockRejectedValueOnce(new Error('create refused'))
+    await expect(app.selectOrCreate()).rejects.toThrow('create refused')
+    await app.selectOrCreate('shared-session')
+    f.session.prompt.mockRejectedValueOnce(new Error('prompt refused'))
+    await expect(app.execute('hello')).rejects.toThrow('prompt refused')
+    f.session.command.mockRejectedValueOnce(new Error('command refused'))
+    await expect(app.execute('/native')).rejects.toThrow('command refused')
+    vi.mocked(f.client.remote.session.modelCatalog).mockRejectedValueOnce(new Error('attach refused'))
+    await expect(app.execute('/attach http://one.test/')).rejects.toThrow('attach refused')
+    app.dispose()
+  })
+
+  it('contains superseded fork selection but reports actual native opening failures', async () => {
+    for (const error of [new Error('native open refused'), 'plain open refused', Object.assign(new Error('retired selection'), { name: 'HostOperationSupersededError' }), new Error('Session selection was superseded')]) {
+      const f = clientFixture(HostKey('http://one.test/'))
+      const test = appFixture()
+      Object.assign(f.client.sessions, { fork: vi.fn(async () => SessionId('child')) })
+      const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+      await app.attach('http://one.test/')
+      await app.selectOrCreate('shared-session')
+      vi.spyOn(app.actions, 'select').mockRejectedValueOnce(error)
+      const pending = app.execute('/fork')
+      if (error instanceof Error && (error.name === 'HostOperationSupersededError' || error.message.includes('superseded'))) await expect(pending).resolves.toEqual({ exit: false })
+      else await expect(pending).rejects.toBe(error)
+      expect(app.registry.current?.sessionId).toBe('shared-session')
+      app.dispose()
+    }
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    Object.assign(f.client.sessions, { fork: vi.fn(async () => SessionId('child')) })
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    await app.selectOrCreate('shared-session')
+    const ready = Promise.withResolvers<SessionBinding>()
+    const retained = { ...f.reference, ready: ready.promise, release: vi.fn() }
+    vi.mocked(f.client.sessions.retain).mockReturnValueOnce(retained)
+    const caller = new AbortController()
+    const pending = app.execute('/fork', caller.signal)
+    await vi.waitFor(() => { expect(f.client.sessions.retain).toHaveBeenCalledTimes(2) })
+    caller.abort()
+    ready.resolve(retained.binding)
+    await pending
+    expect(retained.release).toHaveBeenCalledOnce()
+    expect(app.registry.current?.sessionId).toBe('shared-session')
+    app.dispose()
+  })
+
+  it('fences both detached-Client outcomes and never reports them after caller retirement', async () => {
+    for (const retired of ['current', 'abort', 'dispose', 'reattach'] as const) for (const fails of [false, true]) {
+      const f = clientFixture(HostKey('http://one.test/'))
+      const test = appFixture()
+      const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+      await app.attach('http://one.test/')
+      const gate = Promise.withResolvers<void>()
+      vi.mocked(f.client.detach).mockReturnValueOnce(gate.promise)
+      const caller = new AbortController()
+      const pending = app.execute('/detach', caller.signal)
+      const settlement = retired === 'current' && fails ? expect(pending).rejects.toThrow('detach refused') : expect(pending).resolves.toEqual({ exit: false })
+      if (retired === 'abort') caller.abort()
+      if (retired === 'dispose') app.dispose()
+      if (retired === 'reattach') await app.registry.attach(f.client.key)
+      if (fails) gate.reject(new Error('detach refused'))
+      else gate.resolve()
+      await settlement
+      if (retired !== 'current') expect(test.status.set).not.toHaveBeenCalledWith(`Detached ${f.client.key}`)
+      app.dispose()
+    }
+  })
+
+  it('fences cancelled discovery panels and closes Context through its exact source subscription', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    await app.selectOrCreate('shared-session')
+    for (const fails of [false, true]) {
+      const commands = Promise.withResolvers<unknown>()
+      vi.mocked(f.client.remote.commands.list).mockReturnValueOnce(commands.promise as never)
+      const caller = new AbortController()
+      const pending = app.execute('/help', caller.signal)
+      await vi.waitFor(() => { expect(f.client.remote.commands.list).toHaveBeenCalled() })
+      caller.abort()
+      if (fails) commands.reject(new Error('retired discovery'))
+      else commands.resolve({ ok: true, value: [] })
+      await pending
+      expect(test.panels.showHelp).not.toHaveBeenCalled()
+    }
+    await app.execute('/version')
+    vi.mocked(test.panels.showVersion).mockClear()
+    for (const fails of [false, true]) {
+      const inventory = Promise.withResolvers<unknown>()
+      vi.mocked(f.client.remote.pluginManager.listBundles).mockReturnValueOnce(inventory.promise as never)
+      const caller = new AbortController()
+      const pending = app.execute('/version', caller.signal)
+      caller.abort()
+      if (fails) inventory.reject(new Error('retired inventory'))
+      else inventory.resolve({ ok: true, value: [] })
+      await pending
+      expect(test.panels.showVersion).not.toHaveBeenCalled()
+    }
+    const caller = new AbortController()
+    await app.execute('/context', caller.signal)
+    const source = vi.mocked(test.panels.showContext).mock.calls[0]![0]
+    const listener = vi.fn()
+    const off = source.subscribe(listener)
+    caller.abort()
+    expect(listener).toHaveBeenCalledOnce()
+    expect(source.read()).toBeUndefined()
+    off()
+    await expect(app.ensureSession('/workspace', caller.signal)).rejects.toThrow()
+    await expect(app.selectOrCreate('shared-session', '/workspace', caller.signal)).rejects.toThrow()
+    app.dispose()
+  })
+
+  it('retires a cancelled Session browser callback before selection', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const browser = { open: vi.fn() }
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client, '/workspace', browser)
+    await app.attach('http://one.test/')
+    await app.selectOrCreate('shared-session')
+    const abort = new AbortController()
+    await app.execute('/sessions', abort.signal)
+    expect(browser.open).toHaveBeenCalledWith(f.client, app.registry.current, expect.any(Function), abort.signal)
+    const choose = browser.open.mock.calls[0]![2] as (id: string) => void
+    abort.abort()
+    choose('never selected')
+    expect(f.client.sessions.retain).toHaveBeenCalledOnce()
+    app.dispose()
+  })
+
+  it('releases only a newly attached cancelled Client and fences late default-model discovery', async () => {
+    for (const existing of [false, true]) {
+      const f = clientFixture(HostKey('http://one.test/'))
+      const test = appFixture()
+      const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+      if (existing) await app.attach('http://one.test/')
+      vi.mocked(test.conversation.setDefaultModel).mockClear()
+      const gate = Promise.withResolvers<unknown>()
+      vi.mocked(f.client.remote.session.modelCatalog).mockReturnValueOnce(gate.promise as never)
+      const abort = new AbortController()
+      const pending = app.execute('/attach http://one.test/', abort.signal)
+      await vi.waitFor(() => { expect(f.client.remote.session.modelCatalog).toHaveBeenCalledTimes(existing ? 2 : 1) })
+      abort.abort()
+      gate.resolve({ ok: true, value: { default: { provider: 'late', model: 'late' } } })
+      await pending
+      expect(test.conversation.setDefaultModel).not.toHaveBeenCalled()
+      if (existing) expect(f.client.detach).not.toHaveBeenCalled()
+      else expect(f.client.detach).toHaveBeenCalledOnce()
+      app.dispose()
+    }
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const attached = Promise.withResolvers<HostClient>()
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => attached.promise)
+    const abort = new AbortController()
+    const pending = app.execute('/attach http://one.test/', abort.signal)
+    abort.abort()
+    attached.resolve(f.client)
+    await pending
+    expect(f.client.detach).toHaveBeenCalledOnce()
+    await expect(app.attach('http://one.test/', undefined, abort.signal)).rejects.toThrow()
+    app.dispose()
+  })
+
+  it('validates presets before clearing and consumes a valid preset only on the next creation', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const list = vi.fn(async () => ({ ok: true, value: { presets: [{ id: 'builder' }, { id: 'broken', broken: 'invalid' }] } }))
+    Object.assign(f.client.remote, { agentPresets: { list } })
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    await app.selectOrCreate('shared-session')
+    for (const preset of ['absent', 'broken']) {
+      await expect(app.execute(`/new ${preset}`)).rejects.toThrow(`unknown agent preset ${preset}`)
+      expect(app.registry.current?.sessionId).toBe(f.sessionId)
+    }
+    list.mockResolvedValueOnce({ ok: false, error: { message: 'roster denied' } } as never)
+    await expect(app.execute('/new builder')).rejects.toThrow('roster denied')
+    list.mockRejectedValueOnce(new Error('roster failed'))
+    await expect(app.execute('/new builder')).rejects.toThrow('roster failed')
+    await app.execute('/clear builder')
+    expect(app.registry.current).toBeUndefined()
+    expect(f.client.sessions.create).not.toHaveBeenCalled()
+    await expect(app.execute('/new absent')).rejects.toThrow('unknown agent preset')
+    await app.ensureSession()
+    expect(f.client.sessions.create).toHaveBeenLastCalledWith({ cwd: process.cwd(), agentPreset: 'builder' })
+    await app.execute('/new')
+    await app.ensureSession()
+    expect(f.client.sessions.create).toHaveBeenLastCalledWith({ cwd: process.cwd() })
+    app.dispose()
+    const unattached = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await expect(unattached.execute('/new builder')).rejects.toThrow('Attach a Host')
+    unattached.dispose()
+  })
+
+  it.each(['abort', 'selection', 'connection', 'binding', 'view', 'access', 'newer', 'dispose'] as const)('retires both preset read outcomes after %s without clearing the source', async reason => {
+    for (const fails of [false, true]) {
+      const f = clientFixture(HostKey('http://one.test/'))
+      const test = appFixture()
+      let generation = 1
+      Object.assign(f.client.state, { getSnapshot: () => ({ status: 'connected', generation }) })
+      let view: RemoteAppView | undefined
+      const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client, '/workspace', undefined, () => view)
+      await app.attach('http://one.test/')
+      await app.selectOrCreate('shared-session')
+      view = { ref: app.registry.current!, binding: f.reference.binding, access: 'interactive', presentation: test.conversation.presentation() }
+      const gate = Promise.withResolvers<unknown>()
+      Object.assign(f.client.remote, { agentPresets: { list: vi.fn(() => gate.promise) } })
+      const abort = new AbortController()
+      const pending = app.execute('/new builder', abort.signal)
+      if (reason === 'abort') abort.abort()
+      if (reason === 'selection') app.clearSession()
+      if (reason === 'connection') generation += 1
+      if (reason === 'binding') view = { ...view, binding: { ...f.reference.binding } }
+      if (reason === 'view') view = { ...view, ref: { ...view.ref, sessionId: SessionId('other') } }
+      if (reason === 'access') view = { ...view, access: 'readonly' }
+      if (reason === 'newer') await app.execute('/new')
+      if (reason === 'dispose') app.dispose()
+      const clearCount = vi.mocked(test.conversation.attach).mock.calls.length
+      if (fails) gate.reject(new Error('retired roster failure'))
+      else gate.resolve({ ok: true, value: { presets: [{ id: 'builder' }] } })
+      await pending
+      expect(vi.mocked(test.conversation.attach).mock.calls.length).toBe(clearCount)
+      expect(test.status.set).not.toHaveBeenCalledWith('retired roster failure')
+      expect(f.client.sessions.create).not.toHaveBeenCalled()
+      app.dispose()
+    }
+  })
+
+  it.each(['abort', 'connection', 'binding', 'dispose'] as const)('releases a pending native selection after %s before committing it', async reason => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    let generation = 1
+    Object.assign(f.client.state, { getSnapshot: () => ({ status: 'connected', generation }) })
+    let view: RemoteAppView | undefined
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client, '/workspace', undefined, () => view)
+    await app.attach('http://one.test/')
+    await app.selectOrCreate('shared-session')
+    view = { ref: app.registry.current!, binding: f.reference.binding, access: 'interactive', presentation: test.conversation.presentation() }
+    const ready = Promise.withResolvers<SessionBinding>()
+    const reference = { ...f.reference, ready: ready.promise, release: vi.fn() }
+    vi.mocked(f.client.sessions.retain).mockReturnValueOnce(reference)
+    const abort = new AbortController()
+    const pending = app.selectOrCreate('new-selection', '/workspace', abort.signal)
+    const rejected = expect(pending).rejects.toThrow('superseded')
+    await vi.waitFor(() => { expect(f.client.sessions.retain).toHaveBeenCalledTimes(2) })
+    if (reason === 'abort') abort.abort()
+    if (reason === 'connection') generation += 1
+    if (reason === 'binding') view = { ...view, binding: { ...f.reference.binding } }
+    if (reason === 'dispose') app.dispose()
+    ready.resolve(reference.binding)
+    await rejected
+    expect(reference.release).toHaveBeenCalledOnce()
+    if (reason !== 'dispose') expect(app.registry.current?.sessionId).toBe('shared-session')
+    expect(f.session.cancel).not.toHaveBeenCalled()
+    app.dispose()
+  })
+
+  it.each(['abort', 'connection'] as const)('keeps a sent creation Host-owned after %s and fences both outcomes', async reason => {
+    for (const fails of [false, true]) {
+      const f = clientFixture(HostKey('http://one.test/'))
+      const test = appFixture()
+      let generation = 1
+      Object.assign(f.client.state, { getSnapshot: () => ({ status: 'connected', generation }) })
+      const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+      await app.attach('http://one.test/')
+      const gate = Promise.withResolvers<SessionId>()
+      vi.mocked(f.client.sessions.create).mockReturnValueOnce(gate.promise)
+      const abort = new AbortController()
+      const pending = app.selectOrCreate(undefined, '/workspace', abort.signal)
+      const rejected = expect(pending).rejects.toThrow('superseded')
+      if (reason === 'abort') abort.abort()
+      else generation += 1
+      if (fails) gate.reject(new Error('late create rejection'))
+      else gate.resolve(SessionId('created'))
+      await rejected
+      expect(app.registry.current).toBeUndefined()
+      expect(f.client.sessions.retain).not.toHaveBeenCalled()
+      expect(f.session.cancel).not.toHaveBeenCalled()
+      app.dispose()
+    }
+  })
+
+  it('refuses busy fork/init before any Host mutation and guards init again after preparation and reference acquisition', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const fork = vi.fn(async () => SessionId('child'))
+    Object.assign(f.client.sessions, { fork })
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    await app.selectOrCreate('shared-session')
+    f.session.getSnapshot.mockReturnValueOnce({ running: true })
+    await app.execute('/fork')
+    expect(fork).not.toHaveBeenCalled()
+    expect(test.status.set).toHaveBeenLastCalledWith('cannot fork while the agent is running')
+    f.session.getSnapshot.mockReturnValueOnce({ running: true })
+    await app.execute('/init')
+    expect(test.status.set).toHaveBeenLastCalledWith('cannot run /init while the agent is running')
+    vi.spyOn(app, 'preparePrompt').mockImplementationOnce(async () => { f.session.getSnapshot.mockReturnValueOnce({ running: true }) })
+    await app.execute('/init')
+    expect(f.session.prompt).not.toHaveBeenCalled()
+    vi.mocked(f.client.sessions.using).mockImplementationOnce(async (_id, _options, run) => {
+      f.session.getSnapshot.mockReturnValueOnce({ running: true })
+      return run(f.reference)
+    })
+    await expect(app.execute('/init')).rejects.toThrow('cannot run /init while the agent is running')
+    expect(f.session.prompt).not.toHaveBeenCalled()
+    app.dispose()
+  })
+
+  it.each(['abort', 'selection', 'connection', 'binding', 'dispose'] as const)('keeps late fork success/failure at its original Host after %s', async reason => {
+    for (const fails of [false, true]) {
+      const f = clientFixture(HostKey('http://one.test/'))
+      const test = appFixture()
+      let generation = 1
+      Object.assign(f.client.state, { getSnapshot: () => ({ status: 'connected', generation }) })
+      let view: RemoteAppView | undefined
+      const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client, '/workspace', undefined, () => view)
+      await app.attach('http://one.test/')
+      await app.selectOrCreate('shared-session')
+      view = { ref: app.registry.current!, binding: f.reference.binding, access: 'interactive', presentation: test.conversation.presentation() }
+      const gate = Promise.withResolvers<SessionId>()
+      const fork = vi.fn(() => gate.promise)
+      Object.assign(f.client.sessions, { fork })
+      const abort = new AbortController()
+      const pending = app.execute('/fork', abort.signal)
+      if (reason === 'abort') abort.abort()
+      if (reason === 'selection') app.clearSession()
+      if (reason === 'connection') generation += 1
+      if (reason === 'binding') view = { ...view, binding: { ...f.reference.binding } }
+      if (reason === 'dispose') app.dispose()
+      if (fails) gate.reject(new Error('retired fork refusal'))
+      else gate.resolve(SessionId('retired-child'))
+      await pending
+      expect(f.client.sessions.retain).toHaveBeenCalledOnce()
+      expect(test.status.set).not.toHaveBeenCalledWith('retired fork refusal')
+      expect(fork).toHaveBeenCalledOnce()
+      expect(f.session.cancel).not.toHaveBeenCalled()
+      app.dispose()
+    }
+  })
+
+  it.each(['init', 'prompt', 'command'] as const)('fences cancelled %s at native reference acquisition and after its sent result', async kind => {
+    for (const stage of ['prepare', 'acquire', 'result'] as const) for (const fails of [false, true]) {
+      if (kind === 'command' && stage === 'prepare') continue
+      const f = clientFixture(HostKey('http://one.test/'))
+      const test = appFixture()
+      const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+      await app.attach('http://one.test/')
+      await app.selectOrCreate('shared-session')
+      const abort = new AbortController()
+      const gate = Promise.withResolvers<unknown>()
+      if (stage === 'prepare') vi.spyOn(app, 'preparePrompt').mockImplementationOnce(() => gate.promise as Promise<void>)
+      if (stage === 'acquire') vi.mocked(f.client.sessions.using).mockImplementationOnce(async (_id, _options, run) => { await gate.promise; return run(f.reference) })
+      if (stage === 'result') (kind === 'command' ? f.session.command : f.session.prompt).mockReturnValueOnce(gate.promise as never)
+      const pending = app.execute(kind === 'init' ? '/init' : kind === 'command' ? '/native' : 'hello', abort.signal)
+      if (stage === 'prepare') await vi.waitFor(() => { expect(app.preparePrompt).toHaveBeenCalled() })
+      else if (stage === 'acquire') await vi.waitFor(() => { expect(f.client.sessions.using).toHaveBeenCalled() })
+      else await vi.waitFor(() => { expect(kind === 'command' ? f.session.command : f.session.prompt).toHaveBeenCalled() })
+      abort.abort()
+      if (fails) gate.reject(new Error('retired native rejection'))
+      else gate.resolve(stage === 'result' ? { ok: false, error: { message: 'retired native refusal' } } : undefined)
+      await pending
+      if (stage !== 'result') {
+        expect(f.session.prompt).not.toHaveBeenCalled()
+        expect(f.session.command).not.toHaveBeenCalled()
+      }
+      expect(test.status.set).not.toHaveBeenCalledWith('retired native rejection')
+      expect(test.status.set).not.toHaveBeenCalledWith('retired native refusal')
+      expect(f.session.cancel).not.toHaveBeenCalled()
+      app.dispose()
+    }
+  })
+})
+
 describe('RemoteApp title editor and lifetime', () => {
   it('fences a cancelled title owner before writes and removes its abort subscription', async () => {
     const f = clientFixture(HostKey('http://one.test/'))
@@ -543,7 +954,7 @@ describe('RemoteApp', () => {
     expect(panels.showChangelog).toHaveBeenCalledOnce()
     expect(fixture.session.command).not.toHaveBeenCalled()
     await app.execute('/sessions')
-    expect(browser.open).toHaveBeenCalledWith(fixture.client, expect.objectContaining({ sessionId: fixture.sessionId }), expect.any(Function))
+    expect(browser.open).toHaveBeenCalledWith(fixture.client, expect.objectContaining({ sessionId: fixture.sessionId }), expect.any(Function), undefined)
 
     const select = vi.mocked(browser.open).mock.calls[0]![2]
     select('shared-session')
@@ -629,7 +1040,7 @@ describe('RemoteApp', () => {
     await app.selectOrCreate('other-session')
     expect(conversation.attach).toHaveBeenCalledWith(fixture.reference.binding, expect.objectContaining({ cwd: '' }))
     await app.execute('/sessions')
-    expect(browser.open).toHaveBeenCalledWith(fixture.client, expect.objectContaining({ sessionId: SessionId('other-session') }), expect.any(Function))
+    expect(browser.open).toHaveBeenCalledWith(fixture.client, expect.objectContaining({ sessionId: SessionId('other-session') }), expect.any(Function), undefined)
   })
 
   it('ignores stale default-model responses and clears the fallback on detach', async () => {
@@ -868,7 +1279,7 @@ describe('RemoteApp', () => {
     await vi.waitFor(() => { expect(settle).toBeTypeOf('function') })
     app.clearSession()
     settle({ ok: true, value: { matched: true } })
-    await expect(pending).rejects.toThrow('superseded')
+    await expect(pending).resolves.toEqual({ exit: false })
     expect(fixture.session.prompt).not.toHaveBeenCalled()
   })
 
@@ -1040,7 +1451,7 @@ describe('RemoteApp', () => {
     await app.execute('/fork 12')
     expect(fork).toHaveBeenLastCalledWith({ sessionId: 'shared-session', atSeq: 12 })
     expect(app.registry.current?.sessionId).toBe('forked')
-    expect(status.set).toHaveBeenCalledWith('Forked into forked')
+    expect(status.set).toHaveBeenCalledWith('forking the current session')
     await app.execute('/fork')
     expect(fork).toHaveBeenLastCalledWith({ sessionId: 'forked' })
   })
@@ -1053,7 +1464,7 @@ describe('RemoteApp', () => {
     await app.execute('/init')
     expect(fixture.client.sessions.create).toHaveBeenCalledOnce()
     expect(fixture.session.prompt).toHaveBeenLastCalledWith([expect.objectContaining({ type: 'text', text: expect.stringContaining('AGENTS.md') })], 'queue', undefined, 'request-1')
-    expect(status.set).toHaveBeenLastCalledWith('Analyzing the codebase to write AGENTS.md')
+    expect(status.set).not.toHaveBeenCalledWith('Analyzing the codebase to write AGENTS.md')
     fixture.session.prompt.mockResolvedValueOnce({ ok: false, error: { message: 'init refused' } } as never)
     await app.execute('/init')
     expect(status.set).toHaveBeenLastCalledWith('init refused')
@@ -1165,6 +1576,37 @@ describe('RemoteApp rewind', () => {
     const app = new RemoteApp(fixture.conversation, fixture.status, fixture.panels, () => host.client, '/workspace', undefined, undefined, undefined, undefined, showPrimary)
     return { ...fixture, ...host, app, events, fork, showPrimary }
   }
+
+
+  it('retires passive history and picker acceptance with the original caller', async () => {
+    for (const fails of [false, true]) {
+      const test = rewindFixture()
+      await test.app.attach('http://one.test/')
+      await test.app.selectOrCreate('shared-session')
+      const gate = Promise.withResolvers<unknown>()
+      test.events.mockReturnValueOnce(gate.promise as never)
+      const caller = new AbortController()
+      const pending = test.app.execute('/rewind', caller.signal)
+      caller.abort()
+      expect(vi.mocked(test.client.remote.session.events).mock.calls[0]![1]?.aborted).toBe(true)
+      if (fails) gate.reject(new Error('retired history'))
+      else gate.resolve({ ok: true, value: { records: [], hasMore: false } })
+      await pending
+      expect(test.panels.showRewind).not.toHaveBeenCalled()
+      const live = new AbortController()
+      await test.app.execute('/rewind', live.signal)
+      const [, choose, current, subscribe] = vi.mocked(test.panels.showRewind!).mock.calls[0]!
+      const listener = vi.fn()
+      const off = subscribe(listener)
+      live.abort()
+      expect(current()).toBe(false)
+      expect(listener).toHaveBeenCalledOnce()
+      await choose(1)
+      expect(test.fork).not.toHaveBeenCalled()
+      off()
+      test.app.dispose()
+    }
+  })
 
   it('reads passive native history and opens the reference picker; acceptance forks exact primary and keeps source', async () => {
     const test = rewindFixture()

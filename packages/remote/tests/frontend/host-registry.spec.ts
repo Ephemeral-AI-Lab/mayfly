@@ -68,6 +68,50 @@ function makeHost(
 }
 
 describe('HostRegistry', () => {
+  it('does not supersede an admitted pending view with an already retired selection request', async () => {
+    const host = HostKey('pending-owner')
+    const gate = deferred<SessionBinding>()
+    const target = makeReference(sessionId('target'), gate.promise)
+    const registry = new HostRegistry(() => makeHost(host, () => target).client)
+    await registry.attach(host)
+    const pending = registry.select(sessionRef(host, 'target'))
+    await Promise.resolve()
+    await expect(registry.select(sessionRef(host, 'retired'), undefined, () => false)).rejects.toBeInstanceOf(HostOperationSupersededError)
+    const caller = new AbortController(); caller.abort()
+    await expect(registry.select(sessionRef(host, 'aborted'), caller.signal)).rejects.toBeInstanceOf(HostOperationSupersededError)
+    gate.resolve(target.binding)
+    await expect(pending).resolves.toEqual(sessionRef(host, 'target'))
+    expect(target.release).not.toHaveBeenCalled()
+    await registry.detach(host)
+  })
+  it.each(['before', 'queued', 'ready'] as const)('checks caller and signal ownership at %s admission without clearing the retained source', async boundary => {
+    for (const cancelled of [false, true]) {
+      const host = HostKey('caller')
+      const source = makeReference(sessionId('source'))
+      const gate = deferred<SessionBinding>()
+      const target = makeReference(sessionId('target'), gate.promise)
+      const retain = vi.fn((id: unknown) => id === 'source' ? source : target)
+      const registry = new HostRegistry(() => makeHost(host, retain).client)
+      await registry.attach(host)
+      await registry.select(sessionRef(host, 'source'))
+      let current = boundary !== 'before'
+      const abort = new AbortController()
+      if (boundary === 'before' && cancelled) { current = true; abort.abort() }
+      const pending = registry.select(sessionRef(host, 'target'), abort.signal, () => current)
+      const rejected = expect(pending).rejects.toBeInstanceOf(HostOperationSupersededError)
+      if (boundary === 'ready') await vi.waitFor(() => { expect(retain).toHaveBeenCalledTimes(2) })
+      if (cancelled) abort.abort()
+      else current = false
+      gate.resolve(target.binding)
+      await rejected
+      expect(registry.current?.sessionId).toBe('source')
+      expect(source.release).not.toHaveBeenCalled()
+      if (boundary === 'ready') expect(target.release).toHaveBeenCalledOnce()
+      else expect(target.release).not.toHaveBeenCalled()
+      await registry.detach(host)
+    }
+  })
+
   it('shares same-key attaches and lists only committed Host generations', async () => {
     const key = HostKey('one')
     const produced = deferred<HostClient>()

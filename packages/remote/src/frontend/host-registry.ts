@@ -187,17 +187,18 @@ export class HostRegistry {
   }
 
   /** Select the primary Host/Session pair in serialized, stale-fenced call order. */
-  select(ref: SessionRef, signal?: AbortSignal): Promise<SessionRef> {
-    const generation = ++this.selectionGeneration
+  select(ref: SessionRef, signal?: AbortSignal, isCurrent?: () => boolean): Promise<SessionRef> {
     const client = this.clients.get(ref.host)
     if (client === undefined) return Promise.reject(new HostNotAttachedError(ref.host))
     const revision = this.revisionOf(ref.host)
+    if (signal?.aborted === true || isCurrent?.() === false) return Promise.reject(new HostOperationSupersededError('select', ref.host))
+    const generation = ++this.selectionGeneration
     if (this.selection?.ref.host === ref.host
       && this.selection.ref.sessionId === ref.sessionId
       && this.selection.client === client
       && this.selection.revision === revision) return Promise.resolve(this.selection.ref)
 
-    const operation = this.selectionTail.then(() => this.acquireSelection(ref, client, revision, generation, signal))
+    const operation = this.selectionTail.then(() => this.acquireSelection(ref, client, revision, generation, signal, isCurrent))
     this.selectionTail = operation.then(() => undefined, () => undefined)
     return operation
   }
@@ -208,8 +209,9 @@ export class HostRegistry {
     revision: number,
     generation: number,
     signal: AbortSignal | undefined,
+    isCurrent: (() => boolean) | undefined,
   ): Promise<SessionRef> {
-    if (generation !== this.selectionGeneration
+    if (signal?.aborted === true || isCurrent?.() === false || generation !== this.selectionGeneration
       || revision !== this.revisionOf(ref.host)
       || this.clients.get(ref.host) !== client) {
       throw new HostOperationSupersededError('select', ref.host)
@@ -225,7 +227,7 @@ export class HostRegistry {
     }
     references.add(reference)
     try {
-      return await this.commitSelection(ref, client, reference, revision, generation)
+      return await this.commitSelection(ref, client, reference, revision, generation, signal, isCurrent)
     } finally {
       references.delete(reference)
       if (references.size === 0 && this.pendingSelections.get(ref.host) === references) {
@@ -342,17 +344,19 @@ export class HostRegistry {
     reference: SessionReference,
     revision: number,
     generation: number,
+    signal: AbortSignal | undefined,
+    isCurrent: (() => boolean) | undefined,
   ): Promise<SessionRef> {
     try {
       await reference.ready
     } catch (error) {
-      reference.release()
+      if (this.pendingSelections.get(ref.host)?.delete(reference) === true) reference.release()
       throw error
     }
-    if (generation !== this.selectionGeneration
+    if (signal?.aborted === true || isCurrent?.() === false || generation !== this.selectionGeneration
       || revision !== this.revisionOf(ref.host)
       || this.clients.get(ref.host) !== client) {
-      reference.release()
+      if (this.pendingSelections.get(ref.host)?.delete(reference) === true) reference.release()
       throw new HostOperationSupersededError('select', ref.host)
     }
     const selected = Object.freeze({ host: ref.host, sessionId: ref.sessionId })

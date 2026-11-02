@@ -76,6 +76,8 @@ export class RemoteApp {
   private creating: Promise<SessionRef> | undefined
   private pendingPlan = false
   private pendingPlanExplicit = false
+  private pendingPreset: string | undefined
+  private newGeneration = 0
   private planPreparation: {
     readonly ref: SessionRef
     readonly client: HostClient
@@ -145,8 +147,9 @@ export class RemoteApp {
     return key === undefined ? undefined : this.registry.get(key)
   }
 
-  async attach(startupUrl: string, hostId?: string): Promise<HostClient> {
+  async attach(startupUrl: string, hostId?: string, signal?: AbortSignal): Promise<HostClient> {
     this.assertActive()
+    signal?.throwIfAborted()
     const url = new URL(startupUrl)
     // Credentials and query parameters identify authentication, not the Host.
     // Scheme and mount path do identify distinct backends behind one authority.
@@ -154,11 +157,16 @@ export class RemoteApp {
       ? HostKey(`${url.origin}${url.pathname.replace(/\/+$/u, '')}/`)
       : HostKey(hostId)
     const generation = ++this.defaultModelGeneration
+    const previous = this.registry.get(key)
     this.endpoints.set(key, startupUrl)
     const client = await this.registry.attach(key)
     if (this.disposed) {
       await this.registry.detach(key)
       throw new Error('Mayfly frontend is disposed')
+    }
+    if (signal?.aborted === true) {
+      if (generation === this.defaultModelGeneration && previous !== client && this.registry.get(key) === client) await this.registry.detach(key)
+      signal.throwIfAborted()
     }
     // The native inventory includes full management metadata. Warm this read
     // during startup so the local version panel does not wait for it on Enter.
@@ -166,7 +174,7 @@ export class RemoteApp {
     if (generation === this.defaultModelGeneration) this.activeHost = key
     this.publishTopology()
     const connection = client.state.getSnapshot().generation
-    const current = (): boolean => generation === this.defaultModelGeneration
+    const current = (): boolean => !this.disposed && signal?.aborted !== true && generation === this.defaultModelGeneration
       && this.registry.get(key) === client && client.state.getSnapshot().generation === connection
     const result = await Promise.all([client.sessions.refresh(), this.actions.modelCatalog(key)]).catch(error => {
       if (current()) throw error
@@ -178,19 +186,43 @@ export class RemoteApp {
       this.conversation.setModelCatalog(key, catalog.value)
       this.conversation.setDefaultModel(catalog.value.default)
     }
+    if (signal?.aborted === true && generation === this.defaultModelGeneration && previous !== client && this.registry.get(key) === client) {
+      await this.registry.detach(key)
+      if (this.activeHost === key) this.activeHost = undefined
+      this.publishTopology()
+    }
     return client
   }
 
-  async selectOrCreate(sessionId?: string, cwd = this.cwd): Promise<SessionRef> {
+  async selectOrCreate(sessionId?: string, cwd = this.cwd, signal?: AbortSignal): Promise<SessionRef> {
     this.assertActive()
+    signal?.throwIfAborted()
     const generation = ++this.selectionGeneration
     const host = this.requireHost()
+    const client = this.registry.get(host)!
+    const connection = client.state.getSnapshot().generation
+    const view = this.displayedView?.()
+    const previousBinding = this.registry.currentReference?.binding
+    const current = (): boolean => !this.disposed && signal?.aborted !== true && generation === this.selectionGeneration
+      && this.registry.get(host) === client && client.state.getSnapshot().generation === connection
     const ref = sessionId === undefined
-      ? await this.actions.create(host, { cwd })
+      ? await this.actions.create(host, { cwd, ...this.pendingPreset === undefined ? {} : { agentPreset: this.pendingPreset } }).catch(error => {
+        if (!current()) throw new Error('Session selection was superseded')
+        throw error
+      })
       : { host, sessionId: SessionId(sessionId) }
-    if (generation !== this.selectionGeneration) throw new Error('Session selection was superseded')
-    await this.actions.select(ref)
-    if (generation !== this.selectionGeneration) throw new Error('Session selection was superseded')
+    if (!current()) throw new Error('Session selection was superseded')
+    const admit = (): boolean => {
+      const nextView = this.displayedView?.()
+      return current() && this.registry.currentReference?.binding === previousBinding
+        && view?.binding === nextView?.binding && view?.ref.host === nextView?.ref.host
+        && view?.ref.sessionId === nextView?.ref.sessionId && view?.access === nextView?.access
+    }
+    await this.actions.select(ref, signal, admit).catch(error => {
+      if (!admit()) throw new Error('Session selection was superseded')
+      throw error
+    })
+    if (!current()) throw new Error('Session selection was superseded')
     this.activeHost = ref.host
     const binding = this.registry.currentReference?.binding
     if (binding === undefined) throw new Error('Selected Session has no Client binding')
@@ -203,13 +235,15 @@ export class RemoteApp {
     } : undefined
     this.pendingPlan = false
     this.pendingPlanExplicit = false
+    this.pendingPreset = undefined
     this.publishTopology()
     return ref
   }
 
   /** Admit the first prompt into one shared creation, leaving startup sessionless. */
-  ensureSession(cwd = this.cwd): Promise<SessionRef> {
+  ensureSession(cwd = this.cwd, signal?: AbortSignal): Promise<SessionRef> {
     if (this.disposed) return Promise.reject(new Error('Mayfly frontend is disposed'))
+    if (signal?.aborted === true) return Promise.reject(signal.reason)
     if (this.creating !== undefined) return this.creating
     const displayed = this.displayedView?.()
     if (displayed !== undefined) {
@@ -218,7 +252,7 @@ export class RemoteApp {
     }
     const current = this.registry.current
     if (current !== undefined) return Promise.resolve(current)
-    const creating = this.selectOrCreate(undefined, cwd)
+    const creating = this.selectOrCreate(undefined, cwd, signal)
     this.creating = creating
     void creating.finally(() => {
       if (this.creating === creating) this.creating = undefined
@@ -266,6 +300,7 @@ export class RemoteApp {
     this.planPreparation = undefined
     this.pendingPlan = false
     this.pendingPlanExplicit = false
+    this.pendingPreset = undefined
     this.registry.clearSelection()
     this.conversation.attach(null)
     this.publishTopology()
@@ -279,15 +314,19 @@ export class RemoteApp {
     this.assertActive()
     signal?.throwIfAborted()
     if (!text.startsWith('/')) {
-      const ref = await this.ensureSession()
-      await this.preparePrompt(ref)
+      const ref = await this.ensureSession(this.cwd, signal)
+      const { current } = this.captureSelection(signal)
+      await this.preparePrompt(ref, signal).catch(error => { if (current()) throw error })
+      if (!current()) return { exit: false }
       const result = await this.actions.prompt(ref, {
         mode: 'queue',
         text,
         attachments: [],
         content: [{ type: 'text', text }],
-      })
-      if (!result.ok) this.notice.set(result.error.message)
+        ...signal === undefined ? {} : { signal },
+        isCurrent: current,
+      }).catch(error => { if (current()) throw error; return undefined })
+      if (current() && result !== undefined && !result.ok) this.notice.set(result.error.message)
       return { exit: false }
     }
 
@@ -296,14 +335,34 @@ export class RemoteApp {
     const input = separator === -1 ? '' : text.slice(separator).trim()
     if (name === 'quit' || name === 'q' || name === 'exit') return { exit: true }
     if (name === 'new' || name === 'clear') {
+      const request = ++this.newGeneration
+      if (input !== '') {
+        const client = this.activeClient
+        if (client === undefined) throw new Error('Attach a Host before selecting a Session')
+        const connection = client.state.getSnapshot().generation
+        const generation = this.selectionGeneration
+        const view = this.displayedView?.()
+        const current = (): boolean => {
+          const nextView = this.displayedView?.()
+          return !this.disposed && signal?.aborted !== true && request === this.newGeneration
+            && generation === this.selectionGeneration && this.activeClient === client
+            && client.state.getSnapshot().generation === connection && nextView?.binding === view?.binding
+            && nextView?.ref.host === view?.ref.host && nextView?.ref.sessionId === view?.ref.sessionId && nextView?.access === view?.access
+        }
+        const roster = await client.remote.agentPresets.list().catch(error => { if (current()) throw error; return undefined })
+        if (!current() || roster === undefined) return { exit: false }
+        if (!roster.ok) throw new Error(roster.error.message)
+        if (!roster.value.presets.some(preset => preset.id === input && preset.broken === undefined)) throw new Error(`unknown agent preset ${input}`)
+      }
       this.clearSession()
+      this.pendingPreset = input === '' ? undefined : input
       this.notice.set('starting a new session')
       return { exit: false }
     }
     if (name === 'sessions' || name === 'resume') {
       if (input !== '') {
-        this.notice.set(`Resuming Session ${input}`)
-        await this.selectOrCreate(input)
+        this.notice.set(`resuming session ${input}`)
+        await this.selectOrCreate(input, this.cwd, signal)
       } else {
         if (this.sessionsBrowser === undefined) {
           this.notice.set('Session browsing is unavailable in this composition')
@@ -315,15 +374,15 @@ export class RemoteApp {
         const selected = this.registry.current
         const isCurrent = (): boolean => {
           const current = this.registry.current
-          return this.activeClient === client && client.state.getSnapshot().generation === connection
+          return !this.disposed && signal?.aborted !== true && this.activeClient === client && client.state.getSnapshot().generation === connection
             && selected?.host === current?.host && selected?.sessionId === current?.sessionId
         }
         this.sessionsBrowser.open(client, this.registry.current, (sessionId) => {
           if (!isCurrent()) return
-          void this.selectOrCreate(sessionId).catch((error: unknown) => {
+          void this.selectOrCreate(sessionId, this.cwd, signal).catch((error: unknown) => {
             if (isCurrent()) this.notice.set(error instanceof Error ? error.message : String(error))
           })
-        })
+        }, signal)
       }
       return { exit: false }
     }
@@ -332,39 +391,50 @@ export class RemoteApp {
       return { exit: false }
     }
     if (name === 'fork') {
-      const ref = this.requireSelection()
+      const { ref, binding, current } = this.captureSelection(signal)
       const atSeq = input === '' ? undefined : Number(input)
       if (atSeq !== undefined && (!Number.isSafeInteger(atSeq) || atSeq < 0)) {
         throw new Error('Usage: /fork [atSeq]')
       }
+      if (binding.session.getSnapshot().running) { this.notice.set('cannot fork while the agent is running'); return { exit: false } }
+      this.notice.set('forking the current session')
       // A fork needs a completed turn to cut at, which an empty or entirely
       // failed Session never has; report that instead of failing the submit.
       const child = await this.actions.fork(ref, atSeq === undefined ? {} : { atSeq })
         .catch((error: unknown) => {
-          this.notice.set(describeSessionSplitFailure(error))
+          if (current()) this.notice.set(describeSessionSplitFailure(error))
           return undefined
         })
-      if (child === undefined) return { exit: false }
-      this.notice.set(`Forked into ${child.sessionId}`)
-      await this.selectOrCreate(child.sessionId)
+      if (child === undefined || !current()) return { exit: false }
+      await this.selectOrCreate(child.sessionId, this.cwd, signal).catch(error => {
+        if (!(error instanceof Error) || (!error.message.includes('superseded') && error.name !== 'HostOperationSupersededError')) throw error
+      })
       return { exit: false }
     }
     if (name === 'rewind') {
-      await this.rewind(input)
+      await this.rewind(input, signal)
       return { exit: false }
     }
     if (name === 'init') {
-      const ref = await this.ensureSession()
-      await this.preparePrompt(ref)
+      const ref = await this.ensureSession(this.cwd, signal)
+      signal?.throwIfAborted()
+      const { binding, current } = this.captureSelection(signal)
+      if (binding.session.getSnapshot().running) { this.notice.set('cannot run /init while the agent is running'); return { exit: false } }
+      await this.preparePrompt(ref, signal).catch(error => { if (current()) throw error })
+      if (!current()) return { exit: false }
+      if (binding.session.getSnapshot().running) { this.notice.set('cannot run /init while the agent is running'); return { exit: false } }
       const result = await this.actions.prompt(ref, {
         mode: 'queue',
         text: INIT_PROMPT,
         attachments: [],
         content: [{ type: 'text', text: INIT_PROMPT }],
-      })
-      this.notice.set(result.ok
-        ? 'Analyzing the codebase to write AGENTS.md'
-        : result.error.message)
+        ...signal === undefined ? {} : { signal },
+        isCurrent: () => {
+          if (current() && binding.session.getSnapshot().running) throw new Error('cannot run /init while the agent is running')
+          return current()
+        },
+      }).catch(error => { if (current()) throw error; return undefined })
+      if (current() && result !== undefined && !result.ok) this.notice.set(result.error.message)
       return { exit: false }
     }
     if (name === 'host') {
@@ -386,14 +456,16 @@ export class RemoteApp {
         const detaching = this.registry.detach(host)
         if (this.activeHost === host) this.activeHost = undefined
         this.publishTopology()
-        await detaching
-        this.notice.set(`Detached ${host}`)
+        const generation = this.selectionGeneration
+        const current = (): boolean => !this.disposed && signal?.aborted !== true && generation === this.selectionGeneration && this.registry.get(host) === undefined
+        await detaching.catch(error => { if (current()) throw error })
+        if (current()) this.notice.set(`Detached ${host}`)
       }
       return { exit: false }
     }
     if (name === 'attach') {
       if (input === '') throw new Error('Usage: /attach <host-url>')
-      await this.attach(input)
+      await this.attach(input, undefined, signal).catch(error => { if (!this.disposed && signal?.aborted !== true) throw error })
       return { exit: false }
     }
     if (name === 'help') {
@@ -407,7 +479,7 @@ export class RemoteApp {
       const isCurrent = (): boolean => {
         const nextView = this.displayedView?.()
         const next = nextView?.ref ?? this.registry.current
-        return client === this.activeClient && connection === client?.state.getSnapshot().generation
+        return !this.disposed && signal?.aborted !== true && client === this.activeClient && connection === client?.state.getSnapshot().generation
           && generation === this.selectionGeneration && selectedBinding === this.registry.currentReference?.binding
           && current?.host === next?.host && current?.sessionId === next?.sessionId
           && view?.access === nextView?.access
@@ -435,7 +507,7 @@ export class RemoteApp {
         const currentView = this.displayedView?.()
         const current = currentView?.ref ?? this.registry.current
         const currentBinding = currentView === undefined ? this.registry.currentReference?.binding : currentView.binding
-        return this.selectionGeneration === generation && this.registry.get(ref.host) === client
+        return !this.disposed && signal?.aborted !== true && this.selectionGeneration === generation && this.registry.get(ref.host) === client
           && client.state.getSnapshot().generation === connection && binding === currentBinding
           && current?.host === ref.host && current.sessionId === ref.sessionId
       }
@@ -446,7 +518,8 @@ export class RemoteApp {
             ...REMOTE_SESSION_INFO_KEYS.map(key => binding.session.projections.faceOf(key).subscribe(listener))]
           const offDisplayed = this.subscribeDisplayedView?.(listener)
           if (offDisplayed !== undefined) disposers.push(offDisplayed)
-          return () => { for (const dispose of disposers) dispose() }
+          signal?.addEventListener('abort', listener, { once: true })
+          return () => { signal?.removeEventListener('abort', listener); for (const dispose of disposers) dispose() }
         },
       })
       return { exit: false }
@@ -458,7 +531,7 @@ export class RemoteApp {
     if (name === 'version') {
       const client = this.activeClient
       const generation = client?.state.getSnapshot().generation
-      const isCurrent = (): boolean => this.activeClient === client && generation === client?.state.getSnapshot().generation
+      const isCurrent = (): boolean => !this.disposed && signal?.aborted !== true && this.activeClient === client && generation === client?.state.getSnapshot().generation
       const pending = client === undefined ? undefined : this.harnessVersion(client)
       // Consume the startup read once; another /version refreshes the native
       // inventory instead of retaining a stale package version indefinitely.
@@ -472,9 +545,12 @@ export class RemoteApp {
       return { exit: false }
     }
 
-    const result = await this.actions.command(this.requireSelection(), text)
-    if (!result.ok) this.notice.set(result.error.message)
-    else if (!result.value.matched) this.notice.set(`Unknown command: ${text}`)
+    const { ref, current } = this.captureSelection(signal)
+    const result = await this.actions.command(ref, text, current, signal).catch(error => { if (current()) throw error; return undefined })
+    if (current() && result !== undefined) {
+      if (!result.ok) this.notice.set(result.error.message)
+      else if (!result.value.matched) this.notice.set(`Unknown command: ${text}`)
+    }
     return { exit: false }
   }
 
@@ -504,27 +580,13 @@ export class RemoteApp {
   }
 
   private requireHost(): HostKey {
-    const current = this.activeHost ?? this.registry.current?.host ?? this.registry.list()[0]?.key
+    const current = this.displayedView?.()?.ref.host ?? this.activeHost ?? this.registry.current?.host ?? this.registry.list()[0]?.key
     if (current === undefined) throw new Error('Attach a Host before selecting a Session')
     return current
   }
 
   private async rename(input: string, signal?: AbortSignal): Promise<void> {
-    const ref = this.requireSelection()
-    const view = this.displayedView?.()
-    const binding = view === undefined ? this.registry.currentReference?.binding : view.binding
-    if (binding === undefined) throw new Error('The selected conversation has no native Client binding')
-    const client = this.registry.get(ref.host)!
-    const generation = this.selectionGeneration
-    const connection = client.state.getSnapshot().generation
-    const current = (): boolean => {
-      const nextView = this.displayedView?.()
-      const next = nextView?.ref ?? this.registry.current
-      const nextBinding = nextView === undefined ? this.registry.currentReference?.binding : nextView.binding
-      return signal?.aborted !== true && !this.disposed && generation === this.selectionGeneration && this.registry.get(ref.host) === client
-        && client.state.getSnapshot().generation === connection && nextBinding === binding
-        && next?.host === ref.host && next.sessionId === ref.sessionId && nextView?.access === view?.access
-    }
+    const { ref, binding, client, current } = this.captureSelection(signal)
     const save = async (title: string): Promise<string | undefined> => {
       if (!current()) return undefined
       try {
@@ -551,7 +613,26 @@ export class RemoteApp {
     })
   }
 
-  private async rewind(input: string): Promise<void> {
+  private captureSelection(signal?: AbortSignal) {
+    const ref = this.requireSelection()
+    const view = this.displayedView?.()
+    const binding = view === undefined ? this.registry.currentReference?.binding : view.binding
+    if (binding === undefined) throw new Error('The selected conversation has no native Client binding')
+    const client = this.registry.get(ref.host)!
+    const generation = this.selectionGeneration
+    const connection = client.state.getSnapshot().generation
+    const current = (): boolean => {
+      const nextView = this.displayedView?.()
+      const next = nextView?.ref ?? this.registry.current
+      const nextBinding = nextView === undefined ? this.registry.currentReference?.binding : nextView.binding
+      return signal?.aborted !== true && !this.disposed && generation === this.selectionGeneration && this.registry.get(ref.host) === client
+        && client.state.getSnapshot().generation === connection && nextBinding === binding
+        && next?.host === ref.host && next.sessionId === ref.sessionId && nextView?.access === view?.access
+    }
+    return { ref, binding, client, current }
+  }
+
+  private async rewind(input: string, signal?: AbortSignal): Promise<void> {
     const ref = this.registry.current
     const binding = this.registry.currentReference?.binding
     if (ref === undefined || binding === undefined) throw new Error('no active session')
@@ -559,7 +640,7 @@ export class RemoteApp {
     const client = this.registry.get(ref.host)!
     const connection = client.state.getSnapshot().generation
     const generation = this.selectionGeneration
-    const current = (): boolean => generation === this.selectionGeneration
+    const current = (): boolean => !this.disposed && signal?.aborted !== true && generation === this.selectionGeneration
       && this.registry.currentReference?.binding === binding
       && this.registry.get(ref.host) === client && client.state.getSnapshot().generation === connection
     const choose = async (atSeq: number): Promise<void> => {
@@ -571,7 +652,7 @@ export class RemoteApp {
       })
       if (child === undefined || !current()) return
       this.notice.set(`Rewound into ${child.sessionId} at ${String(atSeq)}`)
-      await this.selectOrCreate(child.sessionId)
+      await this.selectOrCreate(child.sessionId, this.cwd, signal)
     }
     if (binding.session.getSnapshot().running) { this.notice.set('cannot rewind while the agent is running'); return }
     if (input !== '') {
@@ -584,6 +665,7 @@ export class RemoteApp {
     const invalidate = (): void => { if (!current()) lifetime.abort() }
     const offApp = this.subscribeTopology(invalidate)
     const offConnection = client.state.subscribe(invalidate)
+    signal?.addEventListener('abort', invalidate, { once: true })
     try {
       const events = await collectRemoteSessionEvents(client, { address: { kind: 'session', sessionId: ref.sessionId }, signal: lifetime.signal })
       if (!current()) return
@@ -592,11 +674,12 @@ export class RemoteApp {
       this.panels.showRewind?.(candidates, choose, current, invalidatePanel => {
         const off = this.subscribeTopology(invalidatePanel)
         const offState = client.state.subscribe(invalidatePanel)
-        return () => { off(); offState() }
+        signal?.addEventListener('abort', invalidatePanel, { once: true })
+        return () => { signal?.removeEventListener('abort', invalidatePanel); off(); offState() }
       })
     } catch (error) {
       if (current()) throw error
-    } finally { offApp(); offConnection() }
+    } finally { signal?.removeEventListener('abort', invalidate); offApp(); offConnection() }
   }
 
   private requireSelection(): SessionRef {

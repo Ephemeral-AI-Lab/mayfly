@@ -25,6 +25,8 @@ export interface HostPromptInput extends BeginSubmissionInput {
   readonly content: PromptContentPart[]
   /** Cancels only acquisition/admission transport; it never cancels the remote Agent turn. */
   readonly signal?: AbortSignal
+  /** Exact local owner admission fence, checked after official reference acquisition. */
+  readonly isCurrent?: () => boolean
 }
 
 /** Options for forking an exact source Session through ClientSessions. */
@@ -69,10 +71,11 @@ export class HostActions {
    * Select and retain one Host/Session pair through the registry.
    * @param ref - Host-namespaced Session identity.
    * @param signal - optional acquisition cancellation, not Agent cancellation.
+   * @param isCurrent - optional exact owner checked before committing the acquired selection.
    * @returns the committed selection.
    */
-  select(ref: SessionRef, signal?: AbortSignal): Promise<SessionRef> {
-    return this.registry.select(ref, signal)
+  select(ref: SessionRef, signal?: AbortSignal, isCurrent?: () => boolean): Promise<SessionRef> {
+    return this.registry.select(ref, signal, isCurrent)
   }
 
   /**
@@ -152,6 +155,7 @@ export class HostActions {
    */
   prompt(ref: SessionRef, input: HostPromptInput): ReturnType<SessionFace['prompt']> {
     return this.using(ref, input.signal, async session => {
+      if (input.isCurrent?.() === false) throw new Error('Session prompt was superseded')
       const submission = session.beginSubmission({
         mode: input.mode,
         text: input.text,
@@ -228,8 +232,11 @@ export class HostActions {
    * @param line - complete command line, including its leading slash.
    * @returns the official command admission result.
    */
-  command(ref: SessionRef, line: string): ReturnType<SessionFace['command']> {
-    return this.using(ref, undefined, session => session.command(line))
+  command(ref: SessionRef, line: string, isCurrent?: () => boolean, signal?: AbortSignal): ReturnType<SessionFace['command']> {
+    return this.using(ref, signal, session => {
+      if (isCurrent?.() === false) throw new Error('Session command was superseded')
+      return session.command(line)
+    })
   }
 
   /** Read the official command catalog with its structured failure branch intact. */

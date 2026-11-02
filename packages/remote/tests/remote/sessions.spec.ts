@@ -106,6 +106,36 @@ async function fixture(options: { sessionless?: boolean, noPaths?: boolean, noOp
 }
 
 describe('RemoteSessionsBrowserController', () => {
+  it('keeps a live panel on pre-aborted invocation and retires reads/actions on caller abort', async () => {
+    for (const fails of [false, true]) {
+      const f = await fixture()
+      f.open(); await f.flush()
+      const original = f.latest()
+      const preAborted = new AbortController(); preAborted.abort()
+      f.controller.open(f.client, f.hosts.current()?.ref, f.onSelect, preAborted.signal)
+      expect(f.latest()).toBe(original)
+      const caller = new AbortController()
+      f.controller.open(f.client, f.hosts.current()?.ref, f.onSelect, caller.signal)
+      await f.flush()
+      const gate = deferred<Awaited<ReturnType<HostClient['sessions']['search']>>>()
+      f.sessions.search.mockReturnValueOnce(gate.promise as never)
+      const pending = f.event(search('retired query'))
+      await vi.waitFor(() => { expect(f.sessions.search).toHaveBeenCalled() })
+      const queued = f.latest()
+      caller.abort()
+      expect(f.overlays.list()).toEqual([])
+      expect(f.sessionListeners.size).toBe(0)
+      expect(f.workspaceListeners.size).toBe(0)
+      expect(f.connectionListeners.size).toBe(0)
+      if (fails) gate.reject(new Error('late search failure'))
+      else gate.resolve({ ok: true, value: { items: [], hasMore: false } })
+      expect(await pending).toBeUndefined()
+      expect(f.overlays.list()).toEqual([])
+      expect(f.onSelect).not.toHaveBeenCalled()
+      const context = { surfaceId: queued.id, source: [], signal: new AbortController().signal, revision: queued.revision, operationId: 'late-select', report: vi.fn() }
+      expect(await queued.definition.onEvent!.action!(select('other') as never, context)).toMatchObject({ kind: 'cancelled' })
+    }
+  })
   it('keeps incomplete Host locations readable during sessionless search', async () => {
     const f = await fixture({ sessionless: true, noPaths: true })
     const { cwd: _cwd, ...orphan } = summary('orphan')

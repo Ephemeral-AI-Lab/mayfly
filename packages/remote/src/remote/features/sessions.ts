@@ -13,7 +13,7 @@ import { RemoteFeatureOperation, remoteErrorMessage, remoteProperty, remoteValue
 
 /** Final application dependency: the router owns selection, the browser owns only presentation. */
 export interface RemoteSessionsBrowser {
-  open(client: HostClient, current: SessionRef | undefined, select: (sessionId: string) => void): void
+  open(client: HostClient, current: SessionRef | undefined, select: (sessionId: string) => void, signal?: AbortSignal): void
 }
 
 /** Host paths and the integrator's independent child-conversation presentation. */
@@ -80,12 +80,13 @@ export class RemoteSessionsBrowserController implements RemoteSessionsBrowser {
   }
 
   /** Open one exact Host catalog; a later open replaces its local observation. */
-  open(client: HostClient, current: SessionRef | undefined, select: (sessionId: string) => void): void {
+  open(client: HostClient, current: SessionRef | undefined, select: (sessionId: string) => void, signal?: AbortSignal): void {
+    if (signal?.aborted === true) return
     this.operation?.dispose()
     if (this.disposed || !this.context.hosts.list().includes(client)) return
     const selected = this.context.hosts.current()
     // Native snapshot getters are synchronous; this exact attached Client is still admitted here.
-    const operation = new RemoteFeatureOperation(this.context, client, selected?.client === client ? selected : undefined)
+    const operation = new RemoteFeatureOperation(this.context, client, selected?.client === client ? selected : undefined, signal)
     this.operation = operation
     const t = this.t
     const home = this.options.home?.(client) ?? ''

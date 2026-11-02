@@ -13,7 +13,7 @@ export interface RemoteCommandDescriptor {
 /** Built-in commands implemented by this Remote composition. */
 export const FRONTEND_COMMANDS: readonly (RemoteCommandDescriptor & Pick<RemoteFeatureCommandDefinition, 'scope' | 'hidden'>)[] = [
   { name: 'quit', description: 'Exit Mayfly', aliases: ['q', 'exit'], scope: 'sessionless' },
-  { name: 'new', description: 'Start a new session', aliases: ['clear'], scope: 'sessionless' },
+  { name: 'new', description: 'Start a new session', aliases: ['clear'], input: { hint: '[preset]' }, scope: 'sessionless' },
   { name: 'sessions', description: 'List persisted sessions and switch to one (an id resumes directly)', aliases: ['resume'], input: { hint: '[<session-id>]' }, scope: 'sessionless' },
   { name: 'rename', description: 'Rename the current session (no name opens an editor)', input: { hint: '[<name>]' } },
   { name: 'fork', description: 'Fork the current session into a new one', input: { hint: '[atSeq]' } },
