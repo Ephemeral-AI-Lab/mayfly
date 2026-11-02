@@ -21,6 +21,7 @@ import {
 import { isRemoteFeatureSelection } from '../interactions/selection.ts'
 import { unavailableCapability } from './capabilities.ts'
 import { RemoteFeatureLifecycle } from './lifecycle.ts'
+import { remoteErrorMessage } from './official.ts'
 import { loadRemoteMcpResources, readRemoteMcpResource, type RemoteMcpResourceItem } from './mcp-resources.ts'
 
 type McpPage = 'list' | 'server' | 'tool'
@@ -120,7 +121,6 @@ class RemoteCatalogController {
   }
 
   private readonly attach = (generation: number): void => {
-    if (this.disposed) return
     this.ticket += 1
     this.operationLifetime.abort()
     this.operationLifetime = new AbortController()
@@ -190,7 +190,7 @@ class RemoteCatalogController {
       }
     } catch (error) {
       if (!this.lifecycle.owns(generation) || ticket !== this.ticket || signal.aborted) return
-      const message = error instanceof Error ? error.message : String(error)
+      const message = remoteErrorMessage(error)
       this.mcpError = message
       this.toolsError = message
     }
@@ -244,7 +244,8 @@ class RemoteCatalogController {
 
   /** Load one page through the Host adapter with the controller's operation fence. */
   private async loadResources(): Promise<void> {
-    const current = this.lifecycle.selection(this.lifecycle.currentGeneration())
+    const generation = this.lifecycle.currentGeneration()
+    const current = this.lifecycle.selection(generation)
     const server = this.selectedServer()
     if (current === undefined || server === undefined || !this.resourcesEnabled()) return
     if (this.resourceLoaded && this.resourceCursor === undefined) return
@@ -260,13 +261,13 @@ class RemoteCatalogController {
         templates: this.resourceKind === 'templates',
         ...cursor === undefined ? {} : { cursor },
       }, signal)
-      if (signal.aborted || !this.lifecycle.owns(this.lifecycle.currentGeneration()) || ticket !== this.ticket) return
+      if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
       this.resourceItems = this.resourceLoaded ? [...this.resourceItems, ...page.items] : page.items
       this.resourceCursor = page.nextCursor
       this.resourceLoaded = true
     } catch (error) {
-      if (signal.aborted || !this.lifecycle.owns(this.lifecycle.currentGeneration()) || ticket !== this.ticket) return
-      this.resourceError = error instanceof Error ? error.message : String(error)
+      if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
+      this.resourceError = remoteErrorMessage(error)
     } finally {
       if (ticket === this.ticket) this.resourceLoading = false
       this.mcpPanel?.refresh()
@@ -275,7 +276,8 @@ class RemoteCatalogController {
 
   /** Read one listed resource body into the Resources tab's detail view. */
   private async readResource(uri: string): Promise<void> {
-    const current = this.lifecycle.selection(this.lifecycle.currentGeneration())
+    const generation = this.lifecycle.currentGeneration()
+    const current = this.lifecycle.selection(generation)
     const server = this.selectedServer()
     if (current === undefined || server === undefined || !this.resourcesEnabled()) return
     const ticket = ++this.ticket
@@ -285,11 +287,11 @@ class RemoteCatalogController {
     this.mcpPanel?.refresh()
     try {
       const body = await readRemoteMcpResource(current.client, current.ref.sessionId, server.serverName, uri, signal)
-      if (signal.aborted || !this.lifecycle.owns(this.lifecycle.currentGeneration()) || ticket !== this.ticket) return
+      if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
       this.resourceDetail = { uri, text: body.text }
     } catch (error) {
-      if (signal.aborted || !this.lifecycle.owns(this.lifecycle.currentGeneration()) || ticket !== this.ticket) return
-      this.resourceError = error instanceof Error ? error.message : String(error)
+      if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
+      this.resourceError = remoteErrorMessage(error)
       this.resourceDetail = undefined
     } finally {
       if (ticket === this.ticket) this.resourceReading = false

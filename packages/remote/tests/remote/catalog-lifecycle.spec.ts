@@ -1,0 +1,204 @@
+/** Host catalogs and MCP resources through actual native adapters and exact browser lifetimes. @module */
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { visibleWidth } from '@ephemeral-ai/mayfly/core'
+import type { MayflyUiActionEvent, MayflyUiEventContext, MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyMcpCatalog, MayflyMcpServer, MayflyToolCatalog } from '@ephemeral-ai/mayfly-host/types'
+import { mountCatalogFeature } from '../../src/remote/features/catalog.ts'
+import { remoteMcpResourceItem } from '../../src/remote/features/mcp-resources.ts'
+import type { RemoteBrowserOptions } from '../../src/remote/panels/browser.ts'
+import { remoteFirstSentence, remoteMcpListNode, remoteMcpServerNode, remoteMcpToolNode, remoteToolsNode, type RemoteMcpResourcesState } from '../../src/remote/panels/catalog.ts'
+import { taskFixture, tick, translate, activated, good, bad } from './task-feature-fixture.ts'
+
+const browser = vi.hoisted(() => vi.fn())
+vi.mock('../../src/remote/panels/browser.ts', () => ({ openRemoteBrowser: browser }))
+const cleanups: Array<() => Promise<void>> = []
+afterEach(async () => { for (const stop of cleanups.splice(0).reverse()) await stop(); vi.restoreAllMocks(); browser.mockReset() })
+const schema = (name = 'mcp__alpha__read', description = 'Read native data. More details.') => ({ name, description, parameters: { type: 'object', properties: { path: { type: 'string' } } } })
+const server = (extra: Partial<MayflyMcpServer> = {}): MayflyMcpServer => ({ entryId: 'alpha-entry', serverName: 'alpha', status: 'synced', connection: 'connected', registeredCount: 1, toolsVisible: [schema()], config: { transport: 'stdio', endpoint: null }, ...extra })
+const choose = (controlId: string, id?: string): MayflyUiActionEvent => ({ kind: 'selection-accept', controlId, selectedIds: id === undefined ? [] : [id], pagePath: [] })
+const tab = (controlId: string, tabId: string): MayflyUiObservationEvent => ({ kind: 'tab-change', controlId, tabId, pagePath: [] })
+const eventContext = (): MayflyUiEventContext => ({ surfaceId: 'catalog', source: [], signal: new AbortController().signal, revision: 1, operationId: 'read', report: vi.fn() })
+
+async function fixture(selected = true, enabled = ['mcpCatalog', 'toolCatalog', 'mcpResources']) {
+  const f = await taskFixture(selected)
+  const features = [...enabled]
+  const catalogs: { mcp: MayflyMcpCatalog, tools: MayflyToolCatalog } = { mcp: { servers: [server()], orphanCount: 0, sessionLive: true }, tools: { tools: [schema('shell'), schema('read', '')] } }
+  const capabilities = vi.fn(async (): Promise<unknown> => good({ protocolVersion: 1, hostVersion: '0.1.4', requiredDshVersion: '0.1.0', features }))
+  const mcp = vi.fn(async (..._args: unknown[]): Promise<unknown> => good(catalogs.mcp))
+  const tools = vi.fn(async (..._args: unknown[]): Promise<unknown> => good(catalogs.tools))
+  const list = vi.fn(async (..._args: unknown[]): Promise<unknown> => good({ items: [{ uri: 'file://resource', name: 'Native resource', description: 'Resource description', mimeType: 'text/plain' }], cursor: undefined }))
+  const read = vi.fn(async (..._args: unknown[]): Promise<unknown> => good({ uri: 'file://resource', text: 'Native body' }))
+  Object.assign(f.client.remote, { mayflyHost: { capabilities, mcpCatalog: mcp, toolCatalog: tools, listMcpResources: list, readMcpResource: read } })
+  const panels: Array<{ options: RemoteBrowserOptions, refresh: ReturnType<typeof vi.fn<() => void>>, close: ReturnType<typeof vi.fn<() => void>> }> = []
+  browser.mockImplementation((_base, options: RemoteBrowserOptions) => { let closed = false; const result = { options, refresh: vi.fn(), close: vi.fn(() => { if (closed) return; closed = true; options.onClosed?.() }), get closed() { return closed } }; panels.push(result); return result })
+  const stop = mountCatalogFeature(f.options)
+  cleanups.push(async () => { stop(); await f.dispose() })
+  await tick()
+  const act = async (event: MayflyUiActionEvent) => await panels.at(-1)!.options.action!(event, eventContext())
+  const observe = async (event: MayflyUiObservationEvent) => { panels.at(-1)!.options.observe!(event); await tick() }
+  const open = async (name = 'mcp') => { await f.run(name); await tick(); return panels.at(-1)! }
+  const text = () => JSON.stringify(panels.at(-1)!.options.view())
+  const resourceTab = async () => { await open(); await act(choose('servers', 'alpha-entry')); await observe(tab('server-pages', 'resources')) }
+  return { ...f, features, catalogs, capabilities, mcp, tools, list, read, panels, stop, act, observe, open, text, resourceTab }
+}
+
+describe('current Host catalogs', () => {
+  it('handles absent selections, native events, latest tickets, unavailable capabilities and detach cleanup', async () => {
+    const f = await fixture(false)
+    await f.open(); await f.open('tools'); expect(f.panels).toEqual([])
+    f.select(true); await f.open()
+    const panel = f.panels.at(-1)!; expect(panel.options.isCurrent()).toBe(true)
+    const calls = f.capabilities.mock.calls.length
+    f.event('agent-preset/selected', 'unrelated'); expect(f.capabilities).toHaveBeenCalledTimes(calls)
+    f.event('agent-preset/selected', 'session'); await tick(); expect(f.capabilities).toHaveBeenCalledTimes(calls + 1)
+    for (const failure of [new Error('catalog failed'), 'catalog failed']) {
+      f.capabilities.mockRejectedValueOnce(failure); await f.act(activated('refresh')); expect(f.text()).toContain('catalog failed')
+    }
+    f.capabilities.mockResolvedValueOnce(bad('capabilities refused')); await f.act(activated('refresh')); expect(f.text()).toContain('capabilities refused')
+    f.features.splice(0); await f.act(activated('refresh')); expect(f.text()).toContain('mcpCatalog is unavailable')
+    await f.open('tools'); expect(f.text()).toContain('toolCatalog is unavailable')
+    f.features.push('mcpCatalog', 'toolCatalog')
+    f.tools.mockResolvedValueOnce(bad('tools refused')); await f.act(activated('refresh')); expect(f.text()).toContain('tools refused')
+    f.mcp.mockResolvedValueOnce(bad('mcp refused')); await f.open(); expect(f.text()).toContain('mcp refused')
+    const queued = [...f.topology]
+    f.detach(); expect(panel.options.isCurrent()).toBe(false)
+    f.stop(); f.stop(); for (const callback of queued) callback()
+    expect(f.events.get('agent-preset/selected')?.size).toBe(0)
+  })
+
+  it('retires capability and catalog success/failure after newer reads, reconnect, or unload', async () => {
+    const f = await fixture(); await f.open()
+    for (const kind of ['capabilities', 'mcp'] as const) for (const reject of [false, true]) {
+      const pending = Promise.withResolvers<unknown>(); f[kind].mockReturnValueOnce(pending.promise)
+      const stale = f.act(activated('refresh')); await tick()
+      await f.act(activated('refresh'))
+      if (reject) pending.reject('old catalog failure'); else pending.resolve(good(kind === 'capabilities' ? { features: [] } : { servers: [], orphanCount: 0, sessionLive: true }))
+      await stale
+      expect(f.text()).not.toContain('old catalog failure'); expect(f.text()).toContain('alpha')
+    }
+    const pending = Promise.withResolvers<unknown>(); f.capabilities.mockReturnValueOnce(pending.promise)
+    const stale = f.act(activated('refresh')); f.reconnect(); pending.resolve(good({ features: [] })); await stale
+    await f.open(); expect(f.text()).toContain('alpha')
+    const read = Promise.withResolvers<unknown>(); f.mcp.mockReturnValueOnce(read.promise)
+    const retired = f.act(activated('refresh')); await tick(); f.stop(); read.reject('unloaded failure'); await retired
+    expect(f.panels.at(-1)!.close).toHaveBeenCalled()
+  })
+
+  it('navigates list/server/tool and responsive tool details without admitting missing rows', async () => {
+    const f = await fixture(); const panel = await f.open()
+    expect(panel.options.back!()).toBe(false)
+    await f.observe(tab('server-pages', 'config'))
+    expect(await f.act(choose('servers', 'missing'))).toMatchObject({ kind: 'failed' })
+    await f.act(choose('servers', 'alpha-entry'))
+    await f.observe({ kind: 'draft-change', pagePath: [], controlId: 'ignored' } as unknown as MayflyUiObservationEvent)
+    await f.observe(tab('server-pages', 'unknown')); await f.observe(tab('other', 'config')); await f.observe(tab('server-pages', 'config'))
+    expect(f.text()).toContain('stdio')
+    expect(await f.act(choose('tools', 'missing'))).toMatchObject({ kind: 'failed' })
+    await f.act(choose('tools', 'mcp__alpha__read')); expect(f.text()).toContain('Parameters')
+    f.catalogs.mcp = { ...f.catalogs.mcp, servers: [server({ toolsVisible: [] })] }
+    await f.act(activated('refresh')); expect(f.text()).toContain('No tools visible to this session')
+    expect(panel.options.back!()).toBe(true); expect(panel.options.back!()).toBe(true); expect(panel.options.back!()).toBe(false)
+    await f.act(choose('servers', 'alpha-entry')); f.catalogs.mcp = { ...f.catalogs.mcp, servers: [] }
+    await f.act(activated('refresh')); expect(f.text()).toContain('MCP servers')
+    await f.act(activated('unrelated')); await f.act({ kind: 'dismiss', pagePath: [] })
+    const toolsPanel = await f.open('tools')
+    expect(toolsPanel.options.isCurrent()).toBe(true)
+    expect(toolsPanel.options.back!()).toBe(false)
+    expect(await f.act(choose('tools', 'missing'))).toMatchObject({ kind: 'failed' })
+    await f.act(choose('other', 'shell')); await f.act(activated('unrelated'))
+    await f.act(choose('tools', 'shell')); await f.act(choose('tools-narrow', 'read'))
+    expect(f.text()).toContain('Parameters'); expect(toolsPanel.options.back!()).toBe(true)
+    toolsPanel.options.onClosed!(); panel.options.onClosed!()
+  })
+
+  it('rechecks queued reads and exposes loading while capability reconciliation is pending', async () => {
+    const f = await fixture(); await f.resourceTab()
+    f.silentlyDeselect()
+    const calls = f.capabilities.mock.calls.length
+    await f.act(activated('refresh')); expect(f.capabilities).toHaveBeenCalledTimes(calls)
+    f.select(true); await f.resourceTab()
+    const pending = Promise.withResolvers<unknown>(); f.capabilities.mockReturnValueOnce(pending.promise)
+    const refresh = f.act(activated('refresh'))
+    pending.resolve(bad('capability discovery refused')); await Promise.resolve()
+    expect(f.text()).toContain('Loading…')
+    await refresh
+    await f.act(activated('refresh'))
+    f.features.splice(f.features.indexOf('mcpResources'), 1)
+    await f.act(activated('refresh'))
+    const reads = f.read.mock.calls.length
+    await f.act(choose('resource-items', 'file://resource'))
+    expect(f.read).toHaveBeenCalledTimes(reads)
+  })
+})
+
+describe('native paged MCP resources', () => {
+  it('loads pages, templates, exact resource bodies and back navigation with the actual adapter', async () => {
+    const f = await fixture()
+    f.list.mockResolvedValueOnce(good({ items: [{ uri: 'file://first', name: 'First', mimeType: 'text/plain' }, { uri: '', name: 'invalid' }], cursor: 'next-page' }))
+    await f.resourceTab()
+    expect(f.list).toHaveBeenCalledWith({ sessionId: 'session', server: 'alpha', kind: 'resources' }, expect.any(AbortSignal))
+    expect(f.text()).toContain('First'); expect(f.text()).not.toContain('invalid')
+    f.list.mockResolvedValueOnce(good({ items: [{ uri: 'file://second' }] }))
+    await f.act(activated('more'))
+    expect(f.list).toHaveBeenLastCalledWith({ sessionId: 'session', server: 'alpha', kind: 'resources', cursor: 'next-page' }, expect.any(AbortSignal))
+    expect(f.text()).toContain('First'); expect(f.text()).toContain('file://second')
+    const calls = f.list.mock.calls.length; await f.act(activated('more')); expect(f.list).toHaveBeenCalledTimes(calls)
+    expect(await f.act(choose('resource-items', 'missing'))).toMatchObject({ kind: 'failed' })
+    const pending = Promise.withResolvers<unknown>(); f.read.mockReturnValueOnce(pending.promise)
+    const reading = f.act(choose('resource-items', 'file://first')); expect(f.text()).toContain('Reading…')
+    pending.resolve(good({ uri: 'file://first', text: 'Exact resource document' })); await reading
+    expect(f.read).toHaveBeenLastCalledWith({ sessionId: 'session', server: 'alpha', uri: 'file://first' }, expect.any(AbortSignal))
+    expect(f.text()).toContain('Exact resource document')
+    expect(f.panels.at(-1)!.options.back!()).toBe(true); expect(f.text()).toContain('First')
+    await f.observe(tab('resource-kind', 'unknown')); await f.observe(tab('resource-kind', 'resources'))
+    f.list.mockResolvedValueOnce(good({ items: [{ uri: 'template://example', description: 'Template description' }] }))
+    await f.observe(tab('resource-kind', 'templates'))
+    expect(f.list).toHaveBeenLastCalledWith({ sessionId: 'session', server: 'alpha', kind: 'templates' }, expect.any(AbortSignal))
+    expect(f.text()).toContain('Template description'); await f.observe(tab('resource-kind', 'resources'))
+    await f.act(activated('refresh')); expect(f.list).toHaveBeenCalled()
+    expect(f.panels.at(-1)!.options.back!()).toBe(true); expect(f.panels.at(-1)!.options.back!()).toBe(false)
+  })
+
+  it('shows only real capability/read failures and fences overlapping or retired resource work', async () => {
+    const f = await fixture(true, ['mcpCatalog', 'toolCatalog'])
+    await f.resourceTab(); expect(f.text()).toContain('mcpResources is unavailable'); expect(f.list).not.toHaveBeenCalled()
+    f.features.push('mcpResources'); await f.act(activated('refresh'))
+    for (const failure of [new Error('resource page failed'), 'resource page failed', bad('page refused')]) {
+      if (typeof failure === 'object' && 'ok' in failure) f.list.mockResolvedValueOnce(failure)
+      else f.list.mockRejectedValueOnce(failure)
+      await f.act(activated('refresh')); expect(f.text()).toContain(typeof failure === 'object' && 'ok' in failure ? 'page refused' : 'resource page failed')
+    }
+    await f.act(activated('refresh'))
+    for (const failure of [new Error('resource read failed'), 'resource read failed', bad('read refused')]) {
+      if (typeof failure === 'object' && 'ok' in failure) f.read.mockResolvedValueOnce(failure)
+      else f.read.mockRejectedValueOnce(failure)
+      await f.act(choose('resource-items', 'file://resource')); expect(f.text()).toContain(typeof failure === 'object' && 'ok' in failure ? 'read refused' : 'resource read failed')
+    }
+    for (const kind of ['list', 'read'] as const) for (const reject of [false, true]) {
+      const pending = Promise.withResolvers<unknown>(); f[kind].mockReturnValueOnce(pending.promise)
+      const retired = kind === 'list' ? f.act(activated('refresh')) : f.act(choose('resource-items', 'file://resource'))
+      await tick(); await f.act(activated('refresh'))
+      if (reject) pending.reject('old resource failure'); else pending.resolve(good(kind === 'list' ? { items: [{ uri: 'file://old' }] } : { uri: 'file://old', text: 'OLD BODY' }))
+      await retired; expect(f.text()).not.toContain('old resource failure'); expect(f.text()).not.toContain('file://old')
+    }
+    for (const kind of ['list', 'read'] as const) {
+      await f.resourceTab()
+      const pending = Promise.withResolvers<unknown>(); f[kind].mockReturnValueOnce(pending.promise)
+      const retired = kind === 'list' ? f.act(activated('refresh')) : f.act(choose('resource-items', 'file://resource'))
+      await tick(); f.reconnect(); pending.resolve(good(kind === 'list' ? { items: [] } : { text: 'retired' })); await retired
+    }
+  })
+})
+
+describe('catalog safe presentation and native row narrowing', () => {
+  it('renders every native MCP state, resource state and narrow tool page within width', async () => {
+    const f = await fixture()
+    const base: RemoteMcpResourcesState = { enabled: true, unavailable: 'unavailable', kind: 'resources', items: [], cursor: undefined, loading: false, error: undefined, reading: false }
+    const states = [base, { ...base, enabled: false }, { ...base, kind: 'templates' as const, loading: true, error: 'native error' }, { ...base, loading: true, cursor: 'next', items: [{ uri: 'file://a', name: 'Resource', description: 'Description' }, { uri: 'file://b', mimeType: 'text/plain' }, { uri: 'file://c' }] }, { ...base, detail: { uri: 'file://a', text: '' }, reading: true }, { ...base, detail: { uri: 'file://a', text: 'Resource 你好 '.repeat(20) } }]
+    const servers = [server(), server({ status: 'no-tools', connection: undefined, toolsVisible: [], registeredCount: 0, config: { transport: null, endpoint: 'native endpoint' } }), server({ status: 'no-tools', connection: 'disconnected' }), server({ status: 'restricted', connection: 'reconnecting' }), server({ status: 'unknown', connection: 'connecting' })].map((value, index) => ({ ...value, entryId: `server-${String(index)}` }))
+    const nodes = [remoteMcpListNode(undefined, undefined, translate, translate), remoteMcpListNode({ servers, orphanCount: 2, sessionLive: true }, 'native error', translate, translate), ...servers.flatMap(value => states.map(state => remoteMcpServerNode(value, 'resources', state, translate, translate))), remoteMcpToolNode(server(), schema(), translate), remoteMcpToolNode(server(), schema('empty', ''), translate), remoteToolsNode(undefined, undefined, true, undefined, translate), remoteToolsNode({ tools: [schema(), schema('empty', '')] }, 'empty', true, 'native error', translate)]
+    for (const node of nodes) for (const width of [1, 8, 20, 40, 80, 120]) expect(f.render(node, width).every(row => visibleWidth(row) <= width)).toBe(true)
+    expect(remoteFirstSentence('')).toBe(''); expect(remoteFirstSentence('Single sentence')).toBe('Single sentence'); expect(remoteFirstSentence('\n  中文句子。下一句')).toBe('中文句子。')
+    expect(remoteMcpResourceItem({ uri: '' })).toEqual({ uri: '' }); expect(remoteMcpResourceItem({ name: 1, description: '', mimeType: true })).toEqual({ uri: '' })
+  })
+})
