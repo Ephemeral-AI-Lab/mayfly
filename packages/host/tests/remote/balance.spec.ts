@@ -47,6 +47,24 @@ function fetchAnswer(body: unknown, status = 200): { seen: () => RequestInit | u
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('providerBalance', () => {
+  it('does not publish a credential result that arrives after cancellation', async () => {
+    const controller = new AbortController()
+    const context = { credentials: { resolve: async () => { controller.abort(new Error('cancelled balance')); return undefined } } } as unknown as Context
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    await expect(providerBalance(context, controller.signal)).rejects.toThrow('cancelled balance')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('discards a response body completed after cancellation', async () => {
+    const controller = new AbortController()
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => {
+      controller.abort(new Error('cancelled body'))
+      return { balance_infos: [] }
+    } })))
+    await expect(providerBalance(ctx('sk'), controller.signal)).rejects.toThrow('cancelled body')
+  })
+
   it('answers unavailable without ever fetching when no credential resolves', async () => {
     const { seen } = fetchAnswer({})
     const balance = await providerBalance(ctx(undefined), new AbortController().signal)

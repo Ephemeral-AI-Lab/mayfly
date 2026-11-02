@@ -51,6 +51,34 @@ function request(childSessionId: string): MayflySubagentDrainRequest {
 }
 
 describe('subagentDrain', () => {
+  it('finds live grandchildren through inactive intermediate catalog entries', async () => {
+    const { ctx, drain } = harness({ children: [
+      { kind: 'child', id: 'child', parentId: 'parent-1', mode: 'continuable' },
+      { kind: 'child', id: 'middle', parentId: 'child', mode: 'continuable' },
+      { kind: 'child', id: 'leaf', parentId: 'middle', mode: 'continuable' },
+    ], liveIds: ['child', 'leaf'] })
+    await expect(subagentDrain(ctx, request('child'), new AbortController().signal)).rejects.toMatchObject({ details: { reason: 'stop its live descendants first' } })
+    expect(drain).not.toHaveBeenCalled()
+  })
+
+  it('does not confuse unrelated live children or broken ancestry with descendants', async () => {
+    const { ctx, drain } = harness({ children: [
+      { kind: 'child', id: 'child', parentId: 'parent-1', mode: 'continuable' },
+      { kind: 'child', id: 'unrelated', parentId: 'absent', mode: 'continuable' },
+      { kind: 'child', id: 'cycle-a', parentId: 'cycle-b', mode: 'continuable' },
+      { kind: 'child', id: 'cycle-b', parentId: 'cycle-a', mode: 'continuable' },
+    ], liveIds: ['child', 'unrelated', 'cycle-a', 'cycle-b'] })
+    await subagentDrain(ctx, request('child'), new AbortController().signal)
+    expect(drain).toHaveBeenCalledOnce()
+  })
+
+  it('does not report a completed drain after cancellation', async () => {
+    const { ctx, drain } = harness({ children: [{ kind: 'child', id: 'child', parentId: 'parent-1', mode: 'continuable' }], liveIds: ['child'] })
+    const controller = new AbortController()
+    drain.mockImplementation(async () => { controller.abort(new Error('cancelled drain')) })
+    await expect(subagentDrain(ctx, request('child'), controller.signal)).rejects.toThrow('cancelled drain')
+  })
+
   it('drains a live continuable child through its exact parent', async () => {
     const { ctx, drain } = harness({
       children: [{ kind: 'child', id: 'child-1', parentId: 'parent-1', mode: 'continuable' }],

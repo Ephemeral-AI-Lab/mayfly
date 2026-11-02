@@ -44,7 +44,9 @@ function parseBalance(body: unknown): Extract<MayflyProviderBalance, { readonly 
 
 /** Query the official balance endpoint without exposing the credential or making it a client argument. */
 export async function providerBalance(ctx: Context, signal: AbortSignal): Promise<MayflyProviderBalance> {
+  signal.throwIfAborted()
   const credential = await ctx.credentials.resolve(credentialRef('DEEPSEEK_API_KEY')).catch(() => undefined)
+  signal.throwIfAborted()
   if (credential === undefined) return { status: 'unavailable', reason: 'no-key' }
   try {
     const response = await fetch(new URL('/user/balance', officialEndpoint(ctx)), {
@@ -52,8 +54,10 @@ export async function providerBalance(ctx: Context, signal: AbortSignal): Promis
       headers: { accept: 'application/json', authorization: `Bearer ${credential.value}` },
       redirect: 'error',
     })
+    signal.throwIfAborted()
     if (response.status === 401 || response.status === 403) return { status: 'unavailable', reason: 'rejected' }
     const body: unknown = response.ok ? await response.json() : undefined
+    signal.throwIfAborted()
     const parsed = response.status === 200 ? parseBalance(body) : undefined
     return parsed === undefined ? { status: 'unavailable', reason: 'network' } : frozen(parsed)
   } catch (error) {

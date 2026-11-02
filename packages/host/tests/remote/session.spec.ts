@@ -40,6 +40,15 @@ function fixture(id = 'session-1', overrides: Partial<{
 }
 
 describe('requireExactAgent', () => {
+  it.each([
+    { agent: { id: 'different-agent' } },
+    { session: { id: 'different-session' } },
+  ])('refuses a registered object whose identity fields disagree with its lookup key', overrides => {
+    const { ctx } = fixture('session-1', overrides)
+    const live = ctx.agents.get(SessionId('session-1'))!
+    expect(() => requireExactAgent(ctx, SessionId('session-1'), live)).toThrow(expect.objectContaining({ code: 'mayflyHost/session-stale' }))
+  })
+
   it('accepts the exact registered Agent and Session objects', () => {
     const { ctx } = fixture()
     const agent = (ctx.agents as { get(key: string): unknown }).get('session-1')
@@ -117,6 +126,12 @@ describe('resolveExactAgent', () => {
     })
     await expect(resolveExactAgent(ctx, SessionId('busy'), new AbortController().signal))
       .rejects.toMatchObject({ code: 'session/agent-busy' })
+  })
+
+  it.each([undefined, null, 'opaque', {}])('does not reinterpret an opaque native failure detail %#', details => {
+    const failure = Object.assign(new Error('native busy'), { code: 'session/agent-busy', details })
+    const { ctx } = fixture('busy', { live: false, resolveAgent: async () => ({ error: failure }) })
+    return expect(resolveExactAgent(ctx, SessionId('busy'), new AbortController().signal)).rejects.toBe(failure)
   })
 
   it('discards a resolution completed after caller cancellation', async () => {

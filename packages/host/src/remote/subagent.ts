@@ -49,6 +49,8 @@ export async function subagentDrain(ctx: Context, request: MayflySubagentDrainRe
   if (ctx.agents.get(request.childSessionId) === undefined) throw unavailable(childId, 'child is not live')
   try {
     await ctx.subagents.drainChildren(parent, [request.childSessionId])
+    signal.throwIfAborted()
+    requireExactAgent(ctx, request.parentSessionId, parent)
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'UNAUTHORIZED') {
       throw new RemoteError('mayflyHost/subagent-drain-unauthorized', `subagent "${childId}" no longer belongs to the exact direct parent`, { childId })

@@ -44,6 +44,14 @@ describe('workspaceChangesSummary', () => {
 })
 
 describe('workspaceChangesDiff', () => {
+  it('does not start a native comparison after caller cancellation', async () => {
+    const diff = vi.fn()
+    const context = { workspaceChanges: { diff } } as unknown as Context
+    await expect(workspaceChangesDiff(context, { sessionId: 's' as never, seq: 1, index: 0 }, AbortSignal.abort()))
+      .rejects.toThrow()
+    expect(diff).not.toHaveBeenCalled()
+  })
+
   it('returns the detached diff and re-checks the signal after the await', async () => {
     const diff = { hunks: [{ header: '@@ -1 +1 @@' }] }
     const value = await workspaceChangesDiff(ctx({ diff }), { sessionId: 'session-1' as never, seq: 4, index: 0 }, new AbortController().signal)

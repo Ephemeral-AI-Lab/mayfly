@@ -7,6 +7,15 @@ import { describe, expect, it } from 'vitest'
 import { ChangeQueue } from '../../src/remote/queue.ts'
 
 describe('ChangeQueue', () => {
+  it('releases a blocked reader when a stream ends and ignores later failure', async () => {
+    const queue = new ChangeQueue<number>(new AbortController().signal)
+    const waiting = queue.next()
+    queue.finish()
+    queue.fail(new Error('late failure'))
+    await expect(waiting).resolves.toEqual({ value: undefined, done: true })
+    await expect(queue.next()).resolves.toEqual({ value: undefined, done: true })
+  })
+
   it('buffers pushed values and delivers them in order to a later reader', async () => {
     const queue = new ChangeQueue<number>(new AbortController().signal)
     queue.push(1)

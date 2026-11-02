@@ -17,8 +17,7 @@ function parseMcpToolName(name: string): { readonly serverName: string } | undef
   return match === null ? undefined : { serverName: match[1]! }
 }
 
-function statusOf(registeredCount: number, visibleCount: number): MayflyMcpStatus {
-  if (registeredCount === 0) return 'no-tools'
+function statusOf(visibleCount: number): MayflyMcpStatus {
   return visibleCount === 0 ? 'restricted' : 'synced'
 }
 
@@ -59,7 +58,7 @@ function serverDto(serverName: string, registeredCount: number, toolsVisible: re
     serverName,
     status: health !== undefined && health.connection !== 'connected'
       ? 'unknown'
-      : configuredWithoutTools || registeredCount === 0 ? 'no-tools' : statusOf(registeredCount, toolsVisible.length),
+      : configuredWithoutTools || registeredCount === 0 ? 'no-tools' : statusOf(toolsVisible.length),
     registeredCount,
     toolsVisible,
     config: health === undefined

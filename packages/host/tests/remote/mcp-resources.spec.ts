@@ -35,6 +35,15 @@ function bridge(outcome: ToolOutcome | Error): { ctx: Context, executed: () => {
 }
 
 describe('listMcpResources', () => {
+  it('rejects a missing tool result and non-JSON metadata rows', async () => {
+    const missing = bridge({})
+    await expect(listMcpResources(missing.ctx, { sessionId: 'session-1' as never, server: 'docs', kind: 'resources' }, new AbortController().signal))
+      .rejects.toMatchObject({ details: { message: 'no result' } })
+    const lossy = bridge({ result: { value: { resources: [{ name: 'unsafe', callback: () => undefined }] } } })
+    await expect(listMcpResources(lossy.ctx, { sessionId: 'session-1' as never, server: 'docs', kind: 'resources' }, new AbortController().signal))
+      .rejects.toMatchObject({ details: { message: 'invalid resource row' } })
+  })
+
   it('lists through the fixed native tool name with server and cursor as args', async () => {
     const { ctx, executed } = bridge({ result: { value: { resources: [{ uri: 'docs://a', name: 'A' }], nextCursor: 'page-2' } } })
     const page = await listMcpResources(ctx, { sessionId: 'session-1' as never, server: 'docs', kind: 'resources', cursor: 'page-1' }, new AbortController().signal)

@@ -35,6 +35,19 @@ function ctx(overrides: Partial<{
 }
 
 describe('collectMcpCatalog', () => {
+  it('ignores ordinary tools and malformed visible MCP names', () => {
+    const { ctx: context, agent } = ctx({ global: [schema('bash'), schema('mcp__broken!')], visible: [schema('bash'), schema('mcp__broken!')] })
+    expect(collectMcpCatalog(context, agent)).toEqual({ servers: [], orphanCount: 1, sessionLive: true })
+  })
+
+  it('keeps the first sanitized catalog observation for a duplicate server identity', () => {
+    const { ctx: context, agent } = ctx({ health: [
+      { serverName: 'docs', transport: 'stdio', endpoint: null, connection: 'connected', toolsVisible: false },
+      { serverName: 'docs', transport: 'streamable-http', endpoint: 'https://later.example', connection: 'disconnected', toolsVisible: false },
+    ] })
+    expect(collectMcpCatalog(context, agent).servers).toMatchObject([{ serverName: 'docs', config: { transport: 'stdio', endpoint: null }, connection: 'connected' }])
+  })
+
   it('marks a server with no registered tools as no-tools, even when configured', () => {
     const { ctx: context, agent } = ctx({
       health: [{ serverName: 'docs', transport: 'stdio', endpoint: null, connection: 'connected', toolsVisible: false }],

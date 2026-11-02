@@ -13,6 +13,7 @@ export function workspaceChangesSummary(ctx: Context, request: MayflyWorkspaceCh
 
 /** Read a native comparison with caller cancellation, without activating a Session. */
 export async function workspaceChangesDiff(ctx: Context, request: MayflyWorkspaceDiffRequest, signal: AbortSignal): Promise<MayflyWorkspaceFileDiffResult> {
+  signal.throwIfAborted()
   const diff = await ctx.workspaceChanges.diff(request.sessionId, request.seq, request.index, signal)
   signal.throwIfAborted()
   return jsonSnapshot(diff) ?? null

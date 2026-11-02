@@ -93,6 +93,11 @@ describe('modelCatalogDetails', () => {
     expect(details.items[0]).not.toHaveProperty('contextWindow')
   })
 
+  it('omits an empty effort catalog instead of exposing an empty selector', async () => {
+    const details = await modelCatalogDetails(ctx([{ id: 'p', models: [{ id: 'm' }], info: () => ({ reasoning: { efforts: [] } }) }]), undefined, new AbortController().signal)
+    expect(details.items[0]).not.toHaveProperty('efforts')
+  })
+
   it('refuses to start on an aborted signal', async () => {
     const controller = new AbortController()
     controller.abort()
@@ -134,6 +139,17 @@ describe('skillCatalog lifetime', () => {
     const pending = skillCatalog(ctx, SessionId('one'), new AbortController().signal)
     finish()
     await expect(pending).resolves.toEqual({ complete: true, skills: [{ name: 'skill', description: 'useful', source: 'workspace', provider: 'local', modelInvocable: false }] })
+  })
+
+  it('preserves optional discovery paths and usage metadata without loading a skill body', async () => {
+    const { ctx } = fixture()
+    ctx.skills.snapshot = (async () => ({ complete: false, skills: [{
+      path: '/host/skills/review/SKILL.md', name: 'review', description: 'Review', whenToUse: 'Before merge',
+      invocation: { userInvocable: true, modelInvocable: true }, source: 'workspace', provider: 'local',
+    }] })) as typeof ctx.skills.snapshot
+    await expect(skillCatalog(ctx, SessionId('one'), new AbortController().signal)).resolves.toEqual({ complete: false, skills: [{
+      path: '/host/skills/review/SKILL.md', name: 'review', description: 'Review', whenToUse: 'Before merge', source: 'workspace', provider: 'local', modelInvocable: true,
+    }] })
   })
 
   it('rejects a late snapshot after exact-Agent replacement', async () => {
