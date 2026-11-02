@@ -242,6 +242,6 @@ export function apply(ctx: Context): void {
   ctx.effect(() => () => {
     unloaded = true
   })
-  /* the defensive catch; runUpdateCheck never rejects */
+  /* Loader startup can reject before the best-effort registry check begins. */
   void runUpdateCheck(ctx, () => currentMayflySettings(ctx), () => unloaded).catch(() => {})
 }

@@ -6,7 +6,7 @@
  * the apply wiring with a live settings service.
  */
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -90,6 +90,18 @@ function makeCheck(options: { json?: string; fail?: boolean } = {}) {
 }
 
 describe('updater/check runUpdateCheck', () => {
+  it('contains a loader startup rejection in the background boot check', async () => {
+    const world = makeCheck()
+    const startup = vi.fn(async () => { throw new Error('native loader startup failed') })
+    world.ctx.provide('loader', { await: startup } as never)
+    apply(world.ctx)
+    await new Promise<void>(resolve => { setImmediate(resolve) })
+    expect(startup).toHaveBeenCalledOnce()
+    expect(world.spawns()).toBe(0)
+    expect(world.notifications()).toEqual([])
+    await world.ctx.fiber.dispose()
+  })
+
   it.each(['object', 'array'])('offers a newer release from an %s and records the state', async format => {
     const document: unknown = JSON.parse(OFFER_JSON)
     const world = makeCheck({ json: JSON.stringify(format === 'array' ? [document] : document) })

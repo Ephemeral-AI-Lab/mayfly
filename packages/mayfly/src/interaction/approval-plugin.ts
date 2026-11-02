@@ -122,7 +122,7 @@ export function apply(ctx: Context): void {
         const t = interactionTranslator(ctx)
         ctx.emit('mayfly/decision-wait-changed', { kind: 'approval' })
         const prompt = requestOverlay(ctx, {
-          id: `mayfly.approval.${++sequence}`, title: () => t('Approve {tool}?', { tool: request.toolName }), agent: request.agent, dismissal: 'discard',
+          id: `mayfly.approval.${++sequence}`, title: t('Approve {tool}?', { tool: request.toolName }), agent: request.agent, dismissal: 'discard',
           bare: true, contentScroll: true, armMs: decisionArmMs,
           ...request.signal === undefined ? {} : { signal: request.signal },
           view: () => card(request, roster.length > 1 ? t('{index} of {total} waiting', { index: 1, total: roster.length }) : undefined, t), answer,

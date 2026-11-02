@@ -164,6 +164,26 @@ function fakeAccount(view: AccountView) {
 }
 
 describe('account sign-in start', () => {
+  it('suppresses a native start result delivered after the owner aborted', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    const account = scripted(view({ attempt: null }))
+    let finish!: (next: AccountView) => void
+    account.service.startSignIn.mockReturnValue(new Promise<AccountView>(resolve => { finish = resolve }))
+    ctx.provide('deepseekAccount', account.service as never)
+    ctx.provide('webServer', { port: PORT } as never)
+    const lifetime = new AbortController()
+    const onChange = vi.fn()
+    const pending = startSignIn(ctx, { signal: lifetime.signal, onChange })
+    lifetime.abort()
+    finish(view({ attempt: attempt({ authorizeUrl: undefined }) }))
+    const flow = await pending
+    expect('connected' in flow).toBe(true)
+    if (!('connected' in flow)) throw new Error('expected the started native flow')
+    await expect(flow.connected).resolves.toBe(false)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it('reports unavailable without the native account service', async () => {
     const ctx = new Context()
     contexts.push(ctx)
@@ -370,6 +390,16 @@ describe('account sign-in restart', () => {
 })
 
 describe('account sign-in copy, delivery, and cancel', () => {
+  it.each([null, attempt({ phase: 'expired' })])('does not cancel an absent or terminal attempt: %s', async current => {
+    const rig = await mountFlow(view({ attempt: null }), account => {
+      account.service.getState.mockResolvedValue(view({ attempt: current }))
+    })
+    rig.flow.cancel()
+    await flush(2)
+    expect(rig.account.service.cancelSignIn).not.toHaveBeenCalled()
+    await expect(rig.flow.connected).resolves.toBe(false)
+  })
+
   it('copies the live link and reports a missing or failing copy', async () => {
     vi.spyOn(accountInternals, 'spawnOpener').mockResolvedValue(false)
     const rig = await mountFlow(view({ attempt: attempt() }))

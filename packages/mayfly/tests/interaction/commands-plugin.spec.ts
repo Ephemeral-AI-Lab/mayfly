@@ -167,6 +167,13 @@ function overlay(ctx: Context, id?: string): SurfaceDriver {
 }
 
 describe('mayfly-commands plugin', () => {
+  it('opens help from the empty-prompt help request', async () => {
+    const { ctx } = await mount()
+    ctx.emit('mayfly/request-help')
+    expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain('mayfly.help')
+    expect(overlay(ctx, 'mayfly.help').render(80).join('\n')).toContain('Commands')
+  })
+
   it('/quit requests exit through the launcher appExit hook', async () => {
     const exit = vi.fn()
     const { ctx, agent } = await mount({ appExit: exit })

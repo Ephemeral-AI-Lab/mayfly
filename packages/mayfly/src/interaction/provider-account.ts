@@ -140,8 +140,8 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
   const lifetime = new AbortController()
   const cancellation = signal === undefined ? lifetime.signal : AbortSignal.any([lifetime.signal, signal])
   const releaseLifetime = ctx.effect(() => () => lifetime.abort())
-  /* reassigned to the watch-disposal effect before the overlay can close */
-  let cleanup = (): void => {}
+  /* A registry observer can close the initial upsert before the watch exists. */
+  let cleanup = releaseLifetime
   /** The browser could not be opened for the current link, so the paste-back field is the way on and takes the focus. */
   let browserFailed = false
   /** A sign-in just started and the browser launch has no result yet: the watch holds its repaint so the paste-back field first appears with the right focus. */
@@ -273,7 +273,7 @@ export async function openAccountPanel(ctx: Context, route: string, signal?: Abo
       return { kind: 'completed' }
     } },
   }, paint(await service.getState()), { signal: cancellation, reopen: 'focus', onClosed: () => { cleanup() } })
-  if (handle === undefined) { releaseLifetime(); return true }
+  if (handle === undefined || handle.closed) { releaseLifetime(); return true }
   /* the countdown bar moves each second while a link waits */
   let lastView: AccountView | undefined
   let ticker: ReturnType<typeof setInterval> | undefined
