@@ -252,15 +252,12 @@ export function observeTranscriptLocale(
   const current = ctx.get('mayflyLocale')
   if (current !== undefined) offCurrent = current.subscribe(listener)
   const fiber = ctx.inject(['mayflyLocale'], (localeCtx) => {
-    /* disposing the injected Fiber prevents late activation; this is a defensive fence. */
-    if (disposed) return
     offCurrent()
     const off = localeCtx.mayflyLocale.subscribe(listener)
     offCurrent = off
     localeCtx.effect(() => () => {
       off()
       /* Cordis forbids overlapping providers and serializes unload before replacement activation. */
-      if (offCurrent !== off) return
       offCurrent = () => {}
       if (!disposed) listener(undefined)
     })

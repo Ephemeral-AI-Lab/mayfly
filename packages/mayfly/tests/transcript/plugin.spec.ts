@@ -612,6 +612,40 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
   const inboxOf = (agent: FakeAgent): { nextStep: UserMessage[], nextTurn: UserMessage[] } =>
     (agent as unknown as { inbox: { nextStep: UserMessage[], nextTurn: UserMessage[] } }).inbox
 
+  it('routes queued-row keys, cursor teaching and the new-message jump through the mounted slot', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('work')])
+    const { ctx, screen } = await bootTranscript(agent)
+    const steering = queuedMessage('after this step')
+    const next = queuedMessage('after the turn')
+    inboxOf(agent).nextStep.push(steering)
+    inboxOf(agent).nextTurn.push(next)
+    ctx.emit('agent/inbox/inserted', { agent: agent as unknown as Agent, message: next })
+    await vi.waitFor(() => { expect(contentLines(screen).join('\n')).toContain('after the turn') })
+
+    const rows: Array<string | undefined> = []
+    const actions: Array<readonly [string, string | undefined]> = []
+    ctx.on('mayfly/focus-row-changed', row => { rows.push(row) })
+    ctx.on('mayfly/queued-action', (action, id) => { actions.push([action, id]) })
+    const slot = screen.slotOptions.get('transcript.conversation') as unknown as {
+      readonly keys: Readonly<Record<string, string>>
+      readonly onFocusChange: (focused: boolean) => void
+      readonly cursor: { readonly onMove: (id: string) => void }
+      readonly onEvent: (event: unknown) => void
+    }
+    slot.onFocusChange(true)
+    slot.cursor.onMove(`queued.${String(steering.id)}`)
+    screen.cursorRow = `queued.${String(next.id)}`
+    slot.cursor.onMove(screen.cursorRow)
+    for (const key of ['s', 'd', 'e', 'u']) slot.onEvent({ kind: 'activate', pagePath: [], controlId: 'keys', actionId: slot.keys[key] })
+    expect(actions).toEqual([['steer', String(next.id)], ['cancel', String(next.id)], ['edit', String(next.id)], ['undo', undefined]])
+    slot.onFocusChange(false)
+    expect(rows).toEqual(['steering', 'queued', undefined])
+    const followed = screen.follows
+    ctx.emit('mayfly/request-new-messages')
+    expect(screen.follows).toBe(followed + 1)
+  })
+
   it('shows the selected Agent\'s queued messages, and follows only that Agent\'s inbox events', async () => {
     resetSeq()
     const agent = fakeParent([userEvent('work')])

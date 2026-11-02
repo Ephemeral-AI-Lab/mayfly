@@ -126,6 +126,15 @@ async function bootTodo(options: TodoBootOptions = {}) {
 }
 
 describe('mayfly-pane-todo', () => {
+  it('has no todo item before a current Agent has been selected', async () => {
+    const projections = new TodoProjectionFake()
+    const harness = await bootPanePlugin(todo, null, { sessionProjections: projections, mayflyTick: new HandTick() })
+    const entry = harness.ctx.mayflyPanes.list().find(candidate => candidate.id === todo.TODO_VIEW_ID)!
+    expect(entry.summary).toBeNull()
+    expect(entry.node).toBeNull()
+    await harness.dispose()
+  })
+
   it('registers a views pane at priority 14 that has no item until the native projection has a list', async () => {
     resetSeq()
     const harness = await bootTodo()

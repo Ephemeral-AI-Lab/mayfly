@@ -149,8 +149,7 @@ export class OfficialConversationModelSource {
 
   /** Rebuild only the tool layer of the stashed projection, keeping every non-tool entry model. */
   private rebuildTools(): void {
-    const visible = this.lastVisible
-    if (visible === undefined) return
+    const visible = this.lastVisible!
     this.durableModel = conversationTranscriptModel(visible, this.tools, this.generation, `tools:${String(this.toolsRevision)}`, this.caches, this.counters)
     const draft = this.feed?.draft()
     this.lastDraft = draft
@@ -240,7 +239,7 @@ export class OfficialConversationModelSource {
  */
 function staleTurn(durable: TranscriptModel, turn: number): boolean {
   /* durable models all come from conversationTranscriptModel, which always emits turns */
-  const turns = durable.turns ?? []
+  const turns = durable.turns!
   if (turns.some(item => item.turn > turn || (item.turn === turn && item.endedAt !== undefined))) return true
   const last = durable.entries.findLast((entry): entry is TranscriptEntryModel => entry.kind.startsWith('transcript-'))
   return last !== undefined && last.turn > turn

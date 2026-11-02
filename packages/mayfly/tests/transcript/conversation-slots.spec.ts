@@ -79,6 +79,16 @@ function snapshot(views: readonly MayflyConversationView[]): MayflyConversations
 }
 
 describe('ConversationSlots', () => {
+  it('keeps retained tool models stale without repainting when no conversation is displayed', () => {
+    const test = bench()
+    test.setPrimary(agent('main'))
+    test.slots.sync(snapshot([primaryView('retained')]))
+    test.slots.invalidateTools()
+    expect(test.sources[0]!.markToolsStale).toHaveBeenCalledOnce()
+    expect(test.transcript.refresh).not.toHaveBeenCalled()
+    test.slots.dispose()
+  })
+
   it('holds sources for displayed and retained views only and wakes the renderer only for the displayed one', () => {
     const test = bench()
     const main = agent('main')

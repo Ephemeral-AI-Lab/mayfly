@@ -236,5 +236,5 @@ function turnWith(turn: StreamTurn, boundary: string, marker: MarkerRow): Stream
     while (at > 0 && rows[at - 1]!.kind === 'header') at -= 1
     return [...rows.slice(0, at), marker, ...rows.slice(at)]
   }
-  return turn.rows.some(row => row.id === boundary) ? { ...turn, rows: among(turn.rows) } : { ...turn, after: among(turn.after ?? []) }
+  return turn.rows.some(row => row.id === boundary) ? { ...turn, rows: among(turn.rows) } : { ...turn, after: among(turn.after!) }
 }

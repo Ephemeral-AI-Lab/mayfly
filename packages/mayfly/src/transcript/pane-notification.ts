@@ -148,7 +148,7 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   }
   /** A panel in the editor slot takes the status rows' place: the row stands aside until it closes. */
   let panelOpen = false
-  let shape = JSON.stringify(current() ?? null)
+  let shape = JSON.stringify(current())
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.notification',
     placement: 'bottom',
@@ -157,7 +157,7 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   }, NotificationLine(current()))
   const refresh = (): void => {
     const next = current()
-    const key = `${panelOpen ? 'panel' : ''}${JSON.stringify(next ?? null)}`
+    const key = `${panelOpen ? 'panel' : ''}${JSON.stringify(next)}`
     if (key === shape) return
     shape = key
     pane.set(panelOpen ? null : NotificationLine(next))
@@ -171,14 +171,14 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
     running = next
     group = 0
     ticks = 0
-    if (running && offTick === undefined) {
+    if (running) {
       offTick = tick?.subscribe(() => {
         ticks += 1
         if (ticks % HINT_TICKS !== 0) return
         group = (group + 1) % RUNNING_HINTS.length
         refresh()
       })
-    } else if (!running) {
+    } else {
       offTick?.()
       offTick = undefined
     }

@@ -269,7 +269,7 @@ export function apply(ctx: Context): void {
   }
 
   /** How long the reasoning phase has lasted: from the session's own timestamp, so a reload keeps the ladder where it was. */
-  const thinkingElapsed = (now: number): number => Math.max(0, now - (facts.outputProgress?.startedAt ?? state.phaseSeenAt ?? now))
+  const thinkingElapsed = (now: number): number => Math.max(0, now - (facts.outputProgress?.startedAt ?? state.phaseSeenAt!))
 
   const currentNode = (): MayflyUiNode | null => {
     if (state.mode === 'hidden') return null
