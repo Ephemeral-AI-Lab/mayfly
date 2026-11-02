@@ -339,6 +339,15 @@ The resumed-session notice text is also shared; each frontend owns its own
 selection identity and notification lifetime.
 Independent frontends derive those facts from native requests/projections and
 consume these shared builders instead of maintaining another renderer model.
+The same subpath exports `EditorExtensionRuntime`, the sole editor shell,
+decoration/action consumer, completion multiplexer and pre-clear transform
+barrier. Its input owner binds exact autocomplete sources, delayed-wait
+ownership and readonly attachment metadata with deferred result preparation.
+It never accesses native PromptEditor or image state. Rebinding retires old
+callbacks and submissions; retained source callbacks and old disposers cannot
+affect a successor. Palette refresh recompiles around the same editor and
+focus identity. The private interaction entry supplies only native bindings
+and reversible image admission for the legacy reference and perf fixtures.
 The npm 0.1.4-rc.2 reference is immutable; candidate rendering comes from this
 checkout's built package. Develop behavior and meaningful tests together, then validate the combined
 split runtime under the root gate. Shared renderer evidence alone does not
