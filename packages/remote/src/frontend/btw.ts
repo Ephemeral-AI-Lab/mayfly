@@ -34,7 +34,7 @@ export class RemoteBtwSupersededError extends Error {
   override readonly name = 'RemoteBtwSupersededError'
 }
 
-/** A required parent fact is unavailable through official Client projections. */
+/** Neither the source projection nor the native Host default supplies a model route. */
 export class RemoteBtwPreconditionError extends Error {
   override readonly name = 'RemoteBtwPreconditionError'
 
@@ -200,10 +200,16 @@ export class RemoteBtwService {
         }
       }
       assertCurrent()
-      const model = readModelSelection(binding.session.projections.faceOf('modelSelection').getSnapshot())
+      let model = readModelSelection(binding.session.projections.faceOf('modelSelection').getSnapshot())
       const cwd = readWorkingDirectory(binding.session.projections.faceOf('workingDirectory').getSnapshot())
         ?? client.sessions.list.getSnapshot().byId[parent.sessionId]?.cwd
         ?? ''
+      if (model === undefined) {
+        const fallback = await mayflyHostRemote(client).defaultModel({ operation: 'read' }, signal)
+        assertCurrent()
+        if (!fallback.ok) return fallback
+        model = readModelRoute(fallback.value)
+      }
       if (model === undefined) throw new RemoteBtwPreconditionError(parent)
       const forked = await mayflyHostRemote(client).btwFork({
         sessionId: parent.sessionId,

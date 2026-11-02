@@ -120,6 +120,8 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
 - `/btw` inherits the source's complete current tail through the authorized
   `mayflyHost.btwFork` native command. Its returned history floor is authoritative;
   bounded Client event pages never choose the cut. An empty source has no floor.
+  Before a recorded model route exists, read the native Host default without
+  recording a parent selection or turning its default effort into an explicit pin.
   Exact Client, parent binding, connection generation and caller lifetime fence
   every continuation before model restoration, inherited-Inbox cleanup and the
   child prompt. A pre-aborted invocation preserves an existing or pending view.

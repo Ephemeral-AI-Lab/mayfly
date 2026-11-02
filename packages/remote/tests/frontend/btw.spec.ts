@@ -37,6 +37,7 @@ async function fixture() {
   const cancel = vi.fn<SessionFace['cancel']>(async () => accepted)
   const queue = vi.fn<SessionFace['updateQueue']>(async id => { operations.push(`remove:${id}`); return accepted })
   const fork = vi.fn(async (request: { readonly sessionId: SessionId, readonly atSeq?: number, readonly allowMigration?: boolean }, _signal?: AbortSignal) => { operations.push('fork'); return { ok: true as const, value: { sessionId: childId, historyFloorSeq: request.atSeq ?? 37 } } })
+  const defaultModel = vi.fn(async (..._args: unknown[]) => ({ ok: true as const, value: { provider: 'default-provider', model: 'default-model' } }))
   let generation = 1
   const selectModel = vi.fn(async (..._args: unknown[]) => { operations.push('model'); return { ok: true as const, value: {} } })
   const subagentPrompt = vi.fn(async (..._args: unknown[]) => accepted)
@@ -64,7 +65,7 @@ async function fixture() {
       retain, using, fork, subagentAddress: address,
       list: { getSnapshot: () => ({ ids: [parentId], byId: catalogCwd === undefined ? {} : { [parentId]: { cwd: catalogCwd } } }) },
     },
-    remote: { session: { selectModel }, subagents: { prompt: subagentPrompt }, mayflyHost: { btwFork: fork } },
+    remote: { session: { selectModel }, subagents: { prompt: subagentPrompt }, mayflyHost: { btwFork: fork, defaultModel } },
     state: { getSnapshot: () => ({ status: 'connected', generation }) },
     detach: vi.fn(async () => {}),
   })
@@ -74,7 +75,7 @@ async function fixture() {
   await actions.select(ref())
   const btw = new RemoteBtwService(actions, registry)
   return {
-    btw, actions, registry, client, references, operations, prompt, cancel, queue, fork, selectModel, address, subagentPrompt,
+    btw, actions, registry, client, references, operations, prompt, cancel, queue, fork, defaultModel, selectModel, address, subagentPrompt,
     setGeneration: (value: number) => { generation = value },
     setModel: (value: unknown) => { model = value },
     setCwd: (value: unknown) => { cwd = value },
@@ -95,6 +96,7 @@ describe('RemoteBtwService', () => {
     expect(f.operations).toEqual(['fork', 'model', 'remove:old-turn', 'remove:old-step', 'prompt'])
     expect(f.fork).toHaveBeenCalledWith({ sessionId: parentId, atSeq: 12, allowMigration: true }, expect.any(AbortSignal))
     expect(f.selectModel).toHaveBeenCalledWith(expect.objectContaining({ sessionId: childId, provider: 'provider', model: 'model', reasoningEffort: 'high' }))
+    expect(f.defaultModel).not.toHaveBeenCalled()
     expect(f.prompt).toHaveBeenCalledWith([{ type: 'text', text: 'side question' }], 'queue', expect.any(AbortSignal), expect.stringMatching(/^request-/u))
     expect(f.actions.current).toEqual(ref())
     expect(f.btw.current()).toEqual({ parent: ref(), child: ref('one', childId) })
@@ -122,11 +124,63 @@ describe('RemoteBtwService', () => {
     await f.registry.detach(HostKey('one'))
   })
 
-  it('refuses missing official model data before mutating the Host', async () => {
+  it('refuses missing projection and native default model data before mutating the Host', async () => {
     const f = await fixture()
     f.setModel([])
+    f.defaultModel.mockResolvedValueOnce({ ok: true, value: {} } as never)
     await expect(f.btw.ask(ref(), 'side')).rejects.toMatchObject({ name: 'RemoteBtwPreconditionError', reason: 'model-unavailable' })
     expect(f.fork).not.toHaveBeenCalled()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('uses the native default for a blank three-event Session without inventing a recorded selection or effort pin', async () => {
+    const f = await fixture()
+    f.setModel({ next: null, lastUsed: null })
+    f.setHistory(['permission/preset', 'sandbox/mode', 'approval/policy'].map((type, seq) => ({ type: 'event', event: { type, seq } })))
+    f.fork.mockResolvedValueOnce({ ok: true, value: { sessionId: childId, historyFloorSeq: 2 } })
+    const result = await f.btw.ask(ref(), 'blank side question')
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.selection.historyFloorSeq).toBe(2)
+    expect(f.defaultModel).toHaveBeenCalledWith({ operation: 'read' }, expect.any(AbortSignal))
+    expect(f.selectModel).toHaveBeenCalledOnce()
+    expect(f.selectModel).toHaveBeenCalledWith({ sessionId: childId, provider: 'default-provider', model: 'default-model' })
+    expect(f.prompt).toHaveBeenCalledOnce()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('keeps a failed native default read structured and does not start a fork', async () => {
+    const f = await fixture()
+    f.setModel(undefined)
+    f.defaultModel.mockResolvedValueOnce(failure as never)
+    expect(await f.btw.ask(ref(), 'side')).toEqual(failure)
+    expect(f.fork).not.toHaveBeenCalled()
+    expect(f.selectModel).not.toHaveBeenCalled()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it.each(['generation', 'binding', 'detach', 'abort'])('retires a default-route read after %s without admitting a fork', async replacement => {
+    const f = await fixture()
+    f.setModel(undefined)
+    const fallback = deferred<Awaited<ReturnType<typeof f.defaultModel>>>()
+    f.defaultModel.mockImplementationOnce(() => fallback.promise)
+    const owner = new AbortController()
+    const asked = f.btw.ask(ref(), 'side', { signal: owner.signal })
+    const retired = expect(asked).rejects.toBeInstanceOf(replacement === 'abort' ? DOMException : RemoteBtwSupersededError)
+    await flush()
+    if (replacement === 'generation') f.setGeneration(2)
+    else if (replacement === 'binding') {
+      const parent = f.references.at(-1)!
+      Reflect.set(parent, 'binding', { ...parent.binding })
+    } else if (replacement === 'detach') await f.registry.detach(HostKey('one'))
+    else owner.abort()
+    // Even a structured late refusal belongs to the retired owner.
+    fallback.resolve(failure as never)
+    await retired
+    expect(f.fork).not.toHaveBeenCalled()
+    expect(f.prompt).not.toHaveBeenCalled()
     await f.btw.dispose()
     await f.registry.detach(HostKey('one'))
   })

@@ -75,6 +75,8 @@ open turn. The returned inherited boundary controls the side view's transcript
 floor. A genuinely empty source uses native creation with the effective Host
 directory and source preset, so it has no inherited floor. Remote restores the
 source model and clears inherited pending Inbox rows before the child prompt.
+Before the source records a model route, Remote reads the native Host default;
+this read does not record a parent selection or pin a default reasoning effort.
 
 Registrations, listeners, timers, requests, and pending acknowledgements belong
 to their Cordis Fiber or explicit frontend owner. Theme/core reload preserves
