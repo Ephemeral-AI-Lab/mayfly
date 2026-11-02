@@ -72,11 +72,11 @@ interface ViewState {
   toolName: string | undefined
   resource: ResourceState | undefined
   resourceIndex: number | undefined
-  bodyText: string | undefined
-  bodyLabel: string | undefined
+  bodyText: string
+  bodyLabel: string
 }
 
-const emptyState = (): ViewState => ({ page: 'list', serverId: '', tab: 'tools', toolName: undefined, resource: undefined, resourceIndex: undefined, bodyText: undefined, bodyLabel: undefined })
+const emptyState = (): ViewState => ({ page: 'list', serverId: '', tab: 'tools', toolName: undefined, resource: undefined, resourceIndex: undefined, bodyText: '', bodyLabel: '' })
 
 function listPanel(catalog: McpCatalog, available: boolean, t: MayflyTranslate): MayflyUiNode {
   return panel({ title: t('MCP servers'), escapeLabel: 'close', body: ui.stack.column([
@@ -129,7 +129,7 @@ function toolPanel(server: McpServerView, schema: ToolSchema, t: MayflyTranslate
       ui.divider({ label: t('Description') }),
       schema.description.length === 0 ? ui.text(t('(no description)'), { tone: 'muted' }) : ui.markdown(schema.description),
       ui.divider({ label: t('Parameters') }),
-      schema.parameters === undefined ? ui.text(t('(no parameters)'), { tone: 'muted' }) : ui.code(JSON.stringify(schema.parameters, null, 2), { language: 'json' }),
+      ui.code(JSON.stringify(schema.parameters, null, 2), { language: 'json' }),
     ]), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
     ui.actions({ id: 'tool-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
   ]) })
@@ -146,8 +146,8 @@ function resourcePanel(server: McpServerView, resource: ResourceState, index: nu
 }
 
 function resourceBodyPanel(server: McpServerView, state: ViewState, t: MayflyTranslate): MayflyUiNode {
-  const text = state.bodyText ?? ''
-  return panel({ title: state.bodyLabel ?? t('Resources'), subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([ui.child(ui.scroll(ui.text(text === '' ? t('(no output)') : text, { overflow: 'wrap' }), { id: 'resource-body', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]) })
+  const text = state.bodyText
+  return panel({ title: state.bodyLabel, subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([ui.child(ui.scroll(ui.text(text === '' ? t('(no output)') : text, { overflow: 'wrap' }), { id: 'resource-body', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]) })
 }
 
 /** The server page with its Tools, Configuration, and Resources tabs, as its own panel. */
@@ -178,16 +178,15 @@ export function apply(ctx: Context): void {
       const selectedServer = () => catalog.servers.find(item => item.entryId === state.serverId)
       const render = (): MayflyUiNode => {
         if (state.page === 'list') return listPanel(catalog, available, t)
-        const server = selectedServer()
-        if (server === undefined) return listPanel(catalog, available, t)
+        // Accepted transitions select real rows; refresh resets vanished rows
+        // before publishing, and resource reads fence their original page.
+        const server = selectedServer()!
         if (state.page === 'tool') {
-          const schema = server.toolsVisible.find(item => item.name === state.toolName)
-          return schema === undefined ? serverPage(server, 'tools', state.resource, t) : toolPanel(server, schema, t)
+          const schema = server.toolsVisible.find(item => item.name === state.toolName)!
+          return toolPanel(server, schema, t)
         }
         if (state.page === 'resource') {
-          return state.resource === undefined || state.resourceIndex === undefined || state.resource.items[state.resourceIndex] === undefined
-            ? serverPage(server, 'resources', state.resource, t)
-            : resourcePanel(server, state.resource, state.resourceIndex, t)
+          return resourcePanel(server, state.resource!, state.resourceIndex!, t)
         }
         if (state.page === 'body') return resourceBodyPanel(server, state, t)
         return serverPage(server, state.tab, state.resource, t)
@@ -207,7 +206,6 @@ export function apply(ctx: Context): void {
           const server = selectedServer()
           if (server === undefined) { state.page = 'list'; state.resource = undefined; state.resourceIndex = undefined; state.toolName = undefined }
           else if (state.page === 'tool' && !server.toolsVisible.some(item => item.name === state.toolName)) { state.page = 'server'; state.tab = 'tools'; state.toolName = undefined }
-          else if (state.page === 'body' && state.resource === undefined) state.page = 'server'
         }
         publish()
       }
@@ -244,24 +242,25 @@ export function apply(ctx: Context): void {
         publish()
         void loadResources(false)
       }
-      const readResource = async (submission: MayflySubmission | undefined): Promise<MayflyUiActionReply> => {
+      const readResource = async (submission: MayflySubmission | undefined, taskSignal: AbortSignal): Promise<MayflyUiActionReply> => {
         const resource = state.resource
         const server = selectedServer()
         const index = state.resourceIndex
         const item = resource === undefined || index === undefined ? undefined : resource.items[index]
         if (resource === undefined || server === undefined || item === undefined) return { kind: 'failed', message: t('The MCP server is no longer available') }
+        const active = () => current() && !taskSignal.aborted && handle?.closed === false && state.resource === resource && state.resourceIndex === index && state.page === 'resource'
         const submitted = submission?.forms[0]?.fields.find(field => field.id === 'uri')?.value
         const uri = typeof submitted === 'string' && submitted.trim() !== '' ? submitted : String(item.uri ?? item.uriTemplate ?? '')
         if (uri.trim() === '') return { kind: 'failed', message: 'Enter a resource URI' }
         try {
-          const text = await readMcpResource(ctx, agent, server.serverName, uri, signal)
-          if (!current() || handle?.closed !== false) return { kind: 'cancelled' }
+          const text = await readMcpResource(ctx, agent, server.serverName, uri, AbortSignal.any([signal, taskSignal]))
+          if (!active()) return { kind: 'cancelled' }
           state.bodyText = text
           state.bodyLabel = String(item.name ?? uri)
           state.page = 'body'
           publish()
           return { kind: 'completed' }
-        } catch (error) { return { kind: 'failed', message: describe(error) } }
+        } catch (error) { return active() ? { kind: 'failed', message: describe(error) } : { kind: 'cancelled' } }
       }
       const back = (): MayflyUiActionReply => {
         if (state.page === 'body') { state.page = 'resource'; publish(); return { kind: 'completed', dismiss: false } }
@@ -288,7 +287,7 @@ export function apply(ctx: Context): void {
           if (event.actionId === 'resources') { openResources(false); return { kind: 'completed' } }
           if (event.actionId === 'templates') { openResources(true); return { kind: 'completed' } }
           if (event.actionId === 'more') { await loadResources(true); return { kind: 'completed' } }
-          if (event.actionId === 'read') return readResource(event.inputs)
+          if (event.actionId === 'read') return readResource(event.inputs, context.signal)
           return { kind: 'completed' }
         }
         if (event.kind === 'selection-accept' && event.controlId === 'servers') {
@@ -329,8 +328,8 @@ export function apply(ctx: Context): void {
         id: 'mayfly.mcp', presentation: 'editor', capturing: true, dismissal: 'discard',
         scope: { kind: 'session', sessionId: agent.id },
         onEvent: { observe, action },
-      }, render(), { reopen: 'focus', signal, onClosed: () => cleanup() })
-      if (handle === undefined) return { kind: 'success' }
+      }, render(), { reopen: 'focus', signal, onClosed: () => cleanup() })!
+      if (handle.closed) return { kind: 'success' }
       let scheduled = false
       const schedule = (): void => {
         if (scheduled) return
