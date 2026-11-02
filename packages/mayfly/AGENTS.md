@@ -1,11 +1,19 @@
 # `@ephemeral-ai/mayfly`
 
-Owns runtime areas, public subpaths, the flat `cordis.patch.yml` composition,
-and the `mayfly-cordis` preset. `src/index.ts` mounts nothing: the patch inserts
-ordinary siblings over `dsh-base`. Use manifest exports for the public entry
-list; do not duplicate row counts. Dependencies come from `inject`, not YAML
-position. Feature code contributes snapshots or leases named internal screen
-slots, never arbitrary root components.
+Owns the shared terminal renderer and presentation used by the independent
+Remote TUI. Public subpaths expose readonly data-to-node builders, renderer
+services, themes, and transcript/editor controllers. There is no root plugin
+entry, dsh bundle declaration, composition patch, or preset payload in the
+published package. Native Host composition belongs to `packages/host`; Client
+transport, feature state, and structured writes belong to `packages/remote`.
+
+Historical in-process source and patch/preset fixtures remain private tests and
+UI reference inputs. Their `apply`/`inject` entry points must not leak through
+shared exports. Split mixed modules into pure shared models and private native
+owners, and update every shared caller to import the pure model. The packed
+runtime imports only Cordis, Schemastery, and the official browser-safe
+`dsh-llm`/`dsh-session/surface` stream helpers from Harness; `check:pack` refuses
+Host service runtime imports and legacy composition payload.
 
 ## State and lifetime ownership
 
@@ -377,12 +385,12 @@ Patch, preset, skill, dependency, or composition edits require bundle/preset
 tests, `pnpm run check:agent-docs`, `pnpm run check -- --tier full`,
 `pnpm run check:pack`, dedicated-profile install, PTY smoke, and human acceptance.
 Keep `HARNESS_LINE` in `interaction/session-commands.ts`, where drift/build
-scripts read it. The public side-question entry is `./btw-command`; do not restore
-retired `./pane-btw` or `./attach-view` aliases.
+scripts read it. Native side-question, startup, app, and interaction entries are
+private source fixtures, never public compatibility exports.
 
-The three shipped skills teach process-local Cordis prototyping, durable external
-plugins, and user-owned composition. They use native dsh services and the four
-Mayfly UI services, without special manifests, author CLIs, or private hosts.
+The legacy preset skills remain repository fixtures for process-local Cordis
+prototyping, durable external plugins, and user-owned composition. They are not
+published by this shared renderer package.
 
 ## Split frontend consumers
 

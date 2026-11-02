@@ -93,10 +93,11 @@ worktree and branch. Never link a checkout into production `mayfly`; use
    address, for human visual/content acceptance.
 3. Runtime behavior, public seams, composition, preset payload, and shipped
    skills require `PROFILE=mayfly-<tag> script/install-dev.sh` and relevant
-   headless/PTY smoke. Give `dsh --profile mayfly-<tag>` with the primary
-   workflow, expected result, fallback/narrow-width/lifecycle case, and nearby
-   regression checks. Rebuild after source edits; reinstall when dependencies
-   change. A mixed Website/runtime change takes the runtime path now and the
+   headless/PTY smoke. Give both launch commands: `dsh --profile mayfly-<tag>`
+   for the Host, then `MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh`
+   for the TUI. Include the primary workflow, expected result, fallback or
+   narrow-width/lifecycle case, and nearby regression checks. Rebuild after source
+   edits; reinstall when dependencies change. A mixed Website/runtime change takes the runtime path now and the
    Website path at the release.
 4. Wait for all applicable human acceptance before merging, stopping previews,
    or removing profiles. Never redirect acceptance to production `mayfly`.

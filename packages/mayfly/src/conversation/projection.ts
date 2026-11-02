@@ -7,7 +7,8 @@
  */
 
 import type { ContentBlock, ImageBlock } from '@deepseek-ai/dsh-llm'
-import { isAppendSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
+import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
+import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
 // Empty type imports activate the command- and compaction-lifecycle event
 // declaration merges the fold below consumes.
 import type {} from '@deepseek-ai/dsh-commands/types'

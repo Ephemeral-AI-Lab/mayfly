@@ -23,7 +23,7 @@ import type { SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import type { MayflyKeyAction, MayflyKeymap } from '../core/types.ts'
 import type {} from '../app/conversation-views.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
-import { currentMayflySettings } from './settings.ts'
+import { currentMayflySettings } from '../frontend/settings.ts'
 import {
   ACTION_BACKSPACE, ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_CLOSE_AGENT_VIEW, ACTION_COPY, ACTION_CYCLE_MODE, ACTION_CYCLE_MODEL,
   ACTION_DELETE, ACTION_END, ACTION_EXPAND, ACTION_EXTERNAL_EDITOR, ACTION_FILTER, ACTION_FOCUS_NEXT, ACTION_FOCUS_PREV, ACTION_FOLLOW_TAIL, ACTION_HOME,

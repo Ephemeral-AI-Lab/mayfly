@@ -23,14 +23,14 @@
  * @module @ephemeral-ai/mayfly/transcript/status-git
  */
 
+import { formatGitBadge, buildGitStatusNode, type GitBadgeStatus, type GitUnknownBadgeStatus } from './status-git-model.ts'
 import { execFile } from 'node:child_process'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import type { SessionFactsService } from './session-facts.ts'
-import { SHED, shedNode } from './status-shed.ts'
 import { sessionDirectory } from '../internal/session-directory.ts'
 
 /** Stable Cordis plugin name. */
@@ -57,34 +57,6 @@ const SPAWN_TIMEOUT_MS = 500
 
 /** The `## ahead N, behind M` header of `git status --porcelain -b`. */
 const AHEAD_BEHIND_RE = /\[(?:ahead (\d+))?(?:, )?(?:behind (\d+))?\]/
-
-/** The git facts behind the badge. */
-export interface GitBadgeStatus {
-  /** Checked-out branch name. */
-  readonly branch: string
-  /** Whether the working tree or index carries any change. */
-  readonly dirty: boolean
-  /** Commits on the branch not on its upstream. */
-  readonly ahead: number
-  /** Commits on the upstream not on the branch. */
-  readonly behind: number
-  /** Added lines under `HEAD` (dirty tree only). */
-  readonly diffAdded: number
-  /** Deleted lines under `HEAD` (dirty tree only). */
-  readonly diffDeleted: number
-}
-
-/**
- * The degraded badge facts: the branch probe resolved, but the working-tree
- * probe failed or timed out, so dirty/ahead/behind are unknown — rendered
- * as `branch [?]`, never as a clean tree.
- */
-interface GitUnknownBadgeStatus {
-  /** Checked-out branch name. */
-  readonly branch: string
-  /** Discriminant: always true, marks the tree state as unknown. */
-  readonly unknown: true
-}
 
 /** The probed working-tree facts without the branch name. */
 type GitTreeFacts = Pick<GitBadgeStatus, 'dirty' | 'ahead' | 'behind' | 'diffAdded' | 'diffDeleted'>
@@ -262,30 +234,6 @@ export function createGitBadgeCache(cwd: string): GitBadgeCache {
 }
 
 /**
- * Render the badge text: `branch [+N -M ↑a ↓b]`, or `branch [?]` when the
- * working-tree probe failed and the tree state is unknown.
- * @param status - the git facts (known or unknown-status).
- * @returns the badge (one style-free line; the entry paints it).
- */
-export function formatGitBadge(status: GitBadgeStatus | GitUnknownBadgeStatus): string {
-  if ('unknown' in status) return `${status.branch} [?]`
-  const parts: string[] = []
-  if (status.diffAdded > 0) parts.push(`+${String(status.diffAdded)}`)
-  if (status.diffDeleted > 0) parts.push(`-${String(status.diffDeleted)}`)
-  if (parts.length === 0 && status.dirty) parts.push('±')
-  let sync = ''
-  if (status.ahead > 0) sync += `↑${String(status.ahead)}`
-  if (status.behind > 0) sync += `↓${String(status.behind)}`
-  if (sync !== '') parts.push(sync)
-  return parts.length === 0 ? status.branch : `${status.branch} [${parts.join(' ')}]`
-}
-
-/** Build the reference Git badge with the same status-row shedding priority. */
-export function buildGitStatusNode(text: string): MayflyStatusNode | null {
-  return text === '' ? null : shedNode({ kind: 'text', content: text, tone: 'muted' }, [{ rank: SHED.git, node: null }])
-}
-
-/**
  * Register the git entry. Builds the cache for the current session's
  * directory on load and rebuilds it on Agent and native `workingDirectory`
  * changes. A generation fence drops probes that settle after the selected
@@ -344,3 +292,5 @@ export function apply(ctx: Context): void {
   timer.unref()
   ctx.effect(() => () => gitStatusTimers.clearInterval(timer))
 }
+
+export { formatGitBadge, buildGitStatusNode, type GitBadgeStatus, type GitUnknownBadgeStatus } from './status-git-model.ts'

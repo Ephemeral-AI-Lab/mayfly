@@ -8,7 +8,7 @@ import { MayflyUiImagesService } from '../core/ui-images.ts'
 import { mountUiRegistryObservers, UiInteractionService } from '../core/ui-interaction-state.ts'
 import { MayflyTickService } from '../transcript/tick.ts'
 import { InteractionStateService } from '../interaction/runtime-state.ts'
-import { DEFAULT_SETTINGS } from '../interaction/settings.ts'
+import { DEFAULT_SETTINGS } from '../frontend/settings.ts'
 
 export * from './models.ts'
 export * from './theme.ts'

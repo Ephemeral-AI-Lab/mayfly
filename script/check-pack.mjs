@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { x as extractTar } from 'tar'
+import { sharedRendererProblems } from './split-publication.mjs'
 import {
   BUGS_URL,
   HOMEPAGE_URL,
@@ -203,6 +204,10 @@ for (const relativeDir of PACKAGE_DIRS) {
   validateManifest(sourceManifest.name, manifest, packageRoot, relativeDir)
 
   const files = walk(packageRoot)
+  if (sourceManifest.name === '@ephemeral-ai/mayfly') {
+    const artifacts = files.map(file => ({ ...file, ...file.path.endsWith('.js') ? { content: readFileSync(join(packageRoot, file.path), 'utf8') } : {} }))
+    for (const problem of sharedRendererProblems(manifest, artifacts)) fail(`${sourceManifest.name}: ${problem}`)
+  }
   for (const file of files) {
     // A declaration map is the only source map a package may ship: it points
     // a published .d.ts at the .ts it was emitted from for editor navigation.

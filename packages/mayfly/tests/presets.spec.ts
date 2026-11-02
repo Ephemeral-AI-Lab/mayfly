@@ -38,7 +38,7 @@ function preset(source: string): unknown {
   return parse(source, { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }] })
 }
 
-describe('Mayfly preset roster', () => {
+describe('legacy Mayfly preset source fixtures', () => {
   it('declares the upstream roster plus one bundle-local preset named mayfly-cordis', () => {
     const mayflyRoot = new URL('../presets/', import.meta.url)
     const files = readdirSync(mayflyRoot, { withFileTypes: true })
@@ -53,18 +53,16 @@ describe('Mayfly preset roster', () => {
     expect(declaration).toContain('order: 5')
   })
 
-  it('lists every preset patch in the bundle manifest after the host patch', () => {
+  it('keeps legacy preset source fixtures outside the shared renderer publication', () => {
     const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
-      readonly dsh?: { readonly bundle?: { readonly patch?: unknown } }
+      readonly dsh?: unknown
+      readonly files?: readonly string[]
+      readonly exports?: Readonly<Record<string, unknown>>
     }
-    expect(manifest.dsh?.bundle?.patch).toEqual([
-      './cordis.patch.yml',
-      './presets/standard.patch.yml',
-      './presets/ptc.patch.yml',
-      './presets/minimal.patch.yml',
-      './presets/cordis.patch.yml',
-      './presets/mayfly-cordis.patch.yml',
-    ])
+    expect(manifest.dsh).toBeUndefined()
+    expect(manifest.files).not.toContain('presets/')
+    expect(manifest.files).not.toContain('cordis.patch.yml')
+    expect(manifest.exports?.['./cordis.patch.yml']).toBeUndefined()
   })
 
   it('vendors the shipped presets with only Mayfly additive rows and adds mayfly-cordis without aliases', () => {

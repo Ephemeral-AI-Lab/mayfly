@@ -1,6 +1,6 @@
 {
   "name": "@ephemeral-ai/mayfly",
-  "description": "The Mayfly terminal UI bundle for DeepSeek Harness",
+  "description": "Shared Mayfly terminal renderer and presentation for the independent DeepSeek Harness frontend",
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -17,13 +17,7 @@
     "access": "public"
   },
   "type": "module",
-  "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./lib/types/index.d.ts",
-      "default": "./lib/index.js"
-    },
     "./frontend": {
       "types": "./lib/types/frontend.d.ts",
       "default": "./lib/frontend.js"
@@ -36,21 +30,9 @@
       "types": "./lib/types/core.d.ts",
       "default": "./lib/core.js"
     },
-    "./startup": {
-      "types": "./lib/types/startup.d.ts",
-      "default": "./lib/startup.js"
-    },
-    "./app": {
-      "types": "./lib/types/app.d.ts",
-      "default": "./lib/app.js"
-    },
     "./transcript": {
       "types": "./lib/types/transcript.d.ts",
       "default": "./lib/transcript.js"
-    },
-    "./interaction": {
-      "types": "./lib/types/interaction.d.ts",
-      "default": "./lib/interaction.js"
     },
     "./theme-dark": {
       "types": "./lib/types/theme-dark.d.ts",
@@ -84,26 +66,6 @@
       "types": "./lib/types/status-context.d.ts",
       "default": "./lib/status-context.js"
     },
-    "./status-jobs": {
-      "types": "./lib/types/status-jobs.d.ts",
-      "default": "./lib/status-jobs.js"
-    },
-    "./status-goal": {
-      "types": "./lib/types/status-goal.d.ts",
-      "default": "./lib/status-goal.js"
-    },
-    "./pane-activity": {
-      "types": "./lib/types/pane-activity.d.ts",
-      "default": "./lib/pane-activity.js"
-    },
-    "./pane-todo": {
-      "types": "./lib/types/pane-todo.d.ts",
-      "default": "./lib/pane-todo.js"
-    },
-    "./btw-command": {
-      "types": "./lib/types/btw-command.d.ts",
-      "default": "./lib/btw-command.js"
-    },
     "./banner": {
       "types": "./lib/types/banner.d.ts",
       "default": "./lib/banner.js"
@@ -112,35 +74,10 @@
       "types": "./lib/types/banner-content.d.ts",
       "default": "./lib/banner-content.js"
     },
-    "./status-agents": {
-      "types": "./lib/types/status-agents.d.ts",
-      "default": "./lib/status-agents.js"
-    },
     "./pane-workflow": {
       "types": "./lib/types/pane-workflow.d.ts",
       "default": "./lib/pane-workflow.js"
     },
-    "./jobs": {
-      "types": "./lib/types/jobs.d.ts",
-      "default": "./lib/jobs.js"
-    },
-    "./agents-command": {
-      "types": "./lib/types/agents-command.d.ts",
-      "default": "./lib/agents-command.js"
-    },
-    "./mode-status": {
-      "types": "./lib/types/mode-status.d.ts",
-      "default": "./lib/mode-status.js"
-    },
-    "./attachments": {
-      "types": "./lib/types/attachments.d.ts",
-      "default": "./lib/attachments.js"
-    },
-    "./paste-image": {
-      "types": "./lib/types/paste-image.d.ts",
-      "default": "./lib/paste-image.js"
-    },
-    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json",
     "./settings": {
       "types": "./lib/types/settings.d.ts",
@@ -174,8 +111,6 @@
   "files": [
     "lib/*.js",
     "lib/types/**/*.d.ts",
-    "cordis.patch.yml",
-    "presets/",
     "THIRD-PARTY-NOTICES.md"
   ],
   "license": "MIT",
@@ -190,18 +125,6 @@
   },
   "engines": {
     "node": ">=24.9.0"
-  },
-  "dsh": {
-    "bundle": {
-      "patch": [
-        "./cordis.patch.yml",
-        "./presets/standard.patch.yml",
-        "./presets/ptc.patch.yml",
-        "./presets/minimal.patch.yml",
-        "./presets/cordis.patch.yml",
-        "./presets/mayfly-cordis.patch.yml"
-      ]
-    }
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "3.18.6-alpha.1",

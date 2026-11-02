@@ -100,7 +100,7 @@ export function apply(ctx: Context): void {
 
 ```sh
 pnpm install --frozen-lockfile
-DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-host-dev.sh
+DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
 ```
 
 在一个终端启动 Host，在另一个终端通过环境变量把认证 URL 交给 TUI：
@@ -130,11 +130,12 @@ MAYFLY_DSH_STARTUP_URL='<Host 输出的 URL>' script/mayfly-remote.sh
 - `@ephemeral-ai/mayfly-host`：原生 Host projections、生成的 Remote 服务和 Host composition。
 - `@ephemeral-ai/mayfly-remote`：独立 TUI、官方 Client transport 与前端 composition。
 - `@ephemeral-ai/mayfly-ui`：renderer-neutral contract、builder 与四个 UI service/provider。
-- `@ephemeral-ai/mayfly`：全部运行时区域、公开 subpath、composition 与 presets。
+- `@ephemeral-ai/mayfly`：TUI 使用的共享 renderer、theme 与只读展示 subpath。
 - `@ephemeral-ai/mayfly-cli`：无运行时依赖的全局启动器。
 
-frontend、conversation、app、core、transcript 与 interaction 继续作为
-`@ephemeral-ai/mayfly` 内部的源码所有权区域和 Cordis row，不再独立发布。
+frontend、core、transcript 与展示模块继续作为共享 renderer 内部的源码所有权区域。
+原生 composition 与 preset 属于 Host；共享包不发布根插件、composition patch 或
+preset 载荷。
 
 <!-- BEGIN diagram:mayfly-layers -->
 <!-- single source: docs/diagrams/mayfly-layers.zh.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->

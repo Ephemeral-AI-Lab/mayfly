@@ -19,7 +19,7 @@ import type { ConversationFacts } from '../conversation/types.ts'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import { createInteractionNotificationOwner } from '../interaction/notifications.ts'
 import type { SessionFactsService } from './session-facts.ts'
-import { contextPercent } from './status-context.ts'
+import { contextPercent } from './status-context-model.ts'
 import type { TickSource } from './tick.ts'
 
 /** The occupancy from which the context notice shows (the Harness has no threshold of its own to follow). */

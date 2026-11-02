@@ -23,7 +23,7 @@ export const CHECKS = {
   checkLib: { entry: 'script/check-lib-exports.mjs', inputs: [/^(?:packages|examples)\/[^/]+\/(?:package\.json|tsconfig\.json)$/u, /^packages\/ui\/src\//u, /^script\/(?:clean-lib|prune-types)\.mjs$/u] },
   examples: { entry: 'script/check-examples.mjs', inputs: [/^examples\//u, /^packages\/ui\/src\//u] },
   pack: { entry: 'script/check-pack.mjs', inputs: [/^packages\/[^/]+\/package\.json$/u, /^packages\/ui\/src\//u, /^script\/(?:release-packages|release-preflight|registry-release)\.mjs$/u] },
-  smoke: { entry: 'script/split-parity.mjs', inputs: [/^script\/(?:install-dev|install-host-dev)\.sh$/u] },
+  smoke: { entry: 'script/split-parity.mjs', inputs: [/^script\/install-dev\.sh$/u] },
 }
 
 /** Reads the scanner cannot see (a path joined at run time), as `[reader, read]`: a change to `read` reaches `reader`. */

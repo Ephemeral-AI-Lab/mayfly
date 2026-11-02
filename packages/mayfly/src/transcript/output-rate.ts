@@ -6,7 +6,7 @@
  */
 
 import type { OutputProgress } from '../conversation/types.ts'
-import { formatTokens } from './status-context.ts'
+import { formatTokens } from './status-context-model.ts'
 
 /** The `↓` estimated-output counter for streamed characters; '' below one token. */
 export function outputCounter(chars: number): string {

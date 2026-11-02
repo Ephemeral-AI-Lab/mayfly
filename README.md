@@ -114,7 +114,7 @@ This branch needs Node `>=24.9.0` and pinned pnpm 11.7.0. Build and install a de
 
 ```sh
 pnpm install --frozen-lockfile
-DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-host-dev.sh
+DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
 ```
 
 Start the Host in one terminal, then hand its authenticated URL to the TUI through the environment in another:
@@ -147,12 +147,12 @@ The split release contains five packages:
 - `@ephemeral-ai/mayfly-host`: native Host projections, generated Remote services, and Host composition.
 - `@ephemeral-ai/mayfly-remote`: independent TUI, official Client transport, and frontend composition.
 - `@ephemeral-ai/mayfly-ui`: renderer-neutral contracts, builders, and the four UI services/provider.
-- `@ephemeral-ai/mayfly`: all runtime areas, public runtime subpaths, composition, and presets.
+- `@ephemeral-ai/mayfly`: shared renderer, themes, and readonly presentation subpaths for the TUI.
 - `@ephemeral-ai/mayfly-cli`: the dependency-free global launcher.
 
-Frontend, conversation, app, core, transcript, and interaction remain internal
-ownership areas and Cordis rows inside `@ephemeral-ai/mayfly`; they are not
-independently published packages.
+Frontend, core, transcript, and presentation modules remain internal ownership
+areas of the shared renderer. Native composition and presets belong to the Host;
+the shared package publishes no root plugin, composition patch, or preset payload.
 
 <!-- BEGIN diagram:mayfly-layers -->
 <!-- single source: docs/diagrams/mayfly-layers.en.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->

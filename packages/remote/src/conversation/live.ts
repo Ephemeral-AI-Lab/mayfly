@@ -4,7 +4,7 @@
  */
 import type { SessionEventLikeEntry } from '@deepseek-ai/dsh-api-session-controller/client'
 import {
-  foldConversationProjection, initialConversationState,
+  transientAssistantConversation,
   type ConversationProjection,
 } from '@ephemeral-ai/mayfly/conversation'
 
@@ -28,22 +28,10 @@ export function projectLiveConversation(entries: readonly SessionEventLikeEntry[
   // at the durable boundary, and a record without `type` is dropped silently.
   const stream = chunks.map(entry => ({ type: 'chunk' as const, time: entry.event.time, chunk: entry.event.data.chunk }))
   const { turn, step } = latest.event.data
-  const event = {
-    type: 'assistant/attempt',
-    seq: latest.event.seq,
-    time: latest.event.time,
-    data: { turn, step, stream },
-  } as never
-  const state = foldConversationProjection(initialConversationState(), event)
   return {
     attemptId,
     turn,
     step,
-    projection: {
-      entries: state.entries,
-      streaming: state.active,
-      settledSteps: state.finalizedSteps,
-      turns: state.turns,
-    },
+    projection: transientAssistantConversation(stream, { seq: latest.event.seq, time: latest.event.time, turn, step }),
   }
 }

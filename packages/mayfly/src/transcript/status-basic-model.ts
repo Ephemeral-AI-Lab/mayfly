@@ -14,28 +14,21 @@
  * @module @ephemeral-ai/mayfly/transcript/status-basic-model
  */
 
+import { buildModelStatusNode, capitalizeEffort, type StatusModelSelection } from './model-status.ts'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { Context } from '@deepseek-ai/cordis'
 // Empty type imports carry the `sessionProjections` Context merge this
 // module's inject resolves.
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ModelSelectionProjection } from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '../app/index.ts'
-import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { SessionFactsService } from './session-facts.ts'
-import { SHED, shedNode } from './status-shed.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-basic-model'
 /** Services required before the baseline model can register. */
 export const inject = ['mayflyStatus', 'mayflySessionFacts', 'sessionProjections']
-
-/** The displayed triple: the provider, the model, and the source-paired effort id. */
-export interface StatusModelSelection {
-  readonly provider?: string
-  readonly model: string
-  readonly effort?: string
-}
 
 /**
  * Read one projected model selection in force: the pending pick, else the
@@ -59,27 +52,6 @@ function selectionFromValue(value: unknown): StatusModelSelection | undefined {
 function projectedSelection(ctx: Context, session: Session | undefined): StatusModelSelection | undefined {
   if (session === undefined) return undefined
   return selectionFromValue(ctx.sessionProjections.snapshot(session, ['modelSelection']).values.modelSelection)
-}
-
-/** Capitalize the effort id's head: `max` → `Max`, `x-high` → `X-high`. */
-function capitalizeEffort(id: string): string {
-  return id.charAt(0).toUpperCase() + id.slice(1)
-}
-
-/** Build the published model row and its narrower forms from one paired selection. */
-export function buildModelStatusNode(selection: StatusModelSelection | undefined): MayflyStatusNode | null {
-  const model = selection?.model ?? ''
-  if (model === '') return null
-  const provider = selection?.provider ?? ''
-  const effort = selection?.effort === undefined ? '' : capitalizeEffort(selection.effort)
-  const text = `${provider === '' ? model : `${provider}/${model}`}${effort === '' ? '' : ` ${effort}`}`
-  const plain = (content: string): MayflyStatusNode => ({ kind: 'text', content, tone: 'default' })
-  const withEffort = effort === '' ? model : `${model} ${effort}`
-  return shedNode(plain(text), [
-    ...provider === '' ? [] : [{ rank: SHED.provider, node: plain(withEffort) }],
-    ...effort === '' ? [] : [{ rank: SHED.effort, node: plain(model) }],
-    { rank: SHED.model, node: null },
-  ])
 }
 
 /** Register the baseline model row. */
@@ -148,3 +120,5 @@ export function apply(ctx: Context): void {
   ctx.effect(() => () => offProjection())
   ctx.effect(() => ctx.on('mayfly/default-model-changed', refresh))
 }
+
+export { buildModelStatusNode, type StatusModelSelection } from './model-status.ts'

@@ -49,7 +49,7 @@ package consumes, so rebuild before judging any client behavior.
 
 ## Local split profile
 
-`script/install-host-dev.sh` builds the workspace and installs or refreshes
+`script/install-dev.sh` builds the workspace and installs or refreshes
 the `mayfly-host` profile in one shot: it matches the global dsh line to the
 Host manifest, seeds the profile from the web template, denies the optional
 native build scripts before the first install, links this package as a bundle,

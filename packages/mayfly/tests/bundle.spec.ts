@@ -55,7 +55,7 @@ function disabledIds(text: string): string[] {
   return ids
 }
 
-describe('mayfly bundle', () => {
+describe('legacy in-process composition source fixtures', () => {
 
   it('mounts and disposes cleanly, registering nothing of its own', async () => {
     const ctx = new Context()
@@ -184,13 +184,6 @@ describe('mayfly bundle', () => {
     expect(patch.indexOf('- id: agent-preset-registry')).toBeLessThan(patch.indexOf('- id: mayfly-core'))
     expect(patch.indexOf('- id: agent-preset-registry')).toBeLessThan(patch.indexOf('- id: mayfly-app'))
 
-    const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
-      dependencies?: Record<string, string>
-    }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-tool-subagent']).toBe('0.2.1-rc.2')
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset']).toBe('0.2.1-rc.2')
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-preset-registry']).toBe('0.2.1-rc.2')
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-agent-presets']).toBeUndefined()
   })
 
   it('keeps the host fallback persona valid for agents without preset model variables', () => {
@@ -209,12 +202,6 @@ describe('mayfly bundle', () => {
     expect(patch).toContain("name: '@deepseek-ai/dsh-cordis-host-runner'")
     expect(patch).not.toContain('isolate:')
     expect(patch.indexOf('- id: cordis-host-runner')).toBeLessThan(patch.indexOf('- id: mayfly-core'))
-    // The package must install with the bundle (dsh plugin add), exactly as
-    // the agent-presets roster's own runtime dependency rides it.
-    const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
-      dependencies?: Record<string, string>
-    }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-cordis-host-runner']).toBeDefined()
   })
 
   it('mounts the native workspace dependency before the session controller', () => {
@@ -224,10 +211,6 @@ describe('mayfly bundle', () => {
     expect(patch).toContain("name: '@deepseek-ai/dsh-api-session-controller'")
     expect(patch.indexOf('- id: workspace')).toBeLessThan(patch.indexOf('- id: session-controller'))
 
-    const manifest = JSON.parse(readFileSync(join(patchDir, '..', 'package.json'), 'utf8')) as {
-      dependencies?: Record<string, string>
-    }
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-workspace']).toBe('0.2.1-rc.2')
   })
 
   it('keeps the host fallback persona valid for agents without preset model variables', () => {
