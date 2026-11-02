@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { JobFollowFrame, JobListFrame, JobView } from '@deepseek-ai/dsh-api-job-controller/client'
 import { apply as uiProvider } from '@ephemeral-ai/mayfly-ui/provider'
 import * as frontend from '@ephemeral-ai/mayfly/frontend'
-import type { MayflyUiActionEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyUiActionEvent, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { compileMayflyUiNode, visibleWidth } from '@ephemeral-ai/mayfly/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { HostClient } from '../../src/client/types.ts'
@@ -12,7 +12,8 @@ import { RemoteFeatureCommandRegistry } from '../../src/remote/features/commands
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
 import { mountJobsFeature } from '../../src/remote/features/jobs.ts'
 import type { RemoteBrowserOptions } from '../../src/remote/panels/browser.ts'
-import { remoteJobDetailsNode, remoteJobOutputNode, remoteJobsPanel, remoteJobsSummary, formatRemoteJobDuration } from '../../src/remote/panels/jobs.ts'
+import { remoteJobsPanel, remoteJobsSummary, formatRemoteJobDuration } from '../../src/remote/panels/jobs.ts'
+import { jobListPanel, jobDetailsNode as remoteJobDetailsNode, jobOutputNode as remoteJobOutputNode } from '@ephemeral-ai/mayfly/command-panels'
 import { projection } from './approval-feature-fixture.ts'
 import { channel, flush, job, ref } from './jobs-fixture.ts'
 import { fakeMayflyComponents, plain, plainColors } from './render-fixture.ts'
@@ -24,6 +25,7 @@ afterEach(async () => { for (const off of cleanup.splice(0).reverse()) await off
 const t = (key: string, values?: Readonly<Record<string, string | number>>) => key.replace(/\{(\w+)\}/gu, (_match, name: string) => String(values?.[name] ?? `{${name}}`))
 const action = (actionId: string): Extract<MayflyUiActionEvent, { readonly kind: 'activate' }> => ({ kind: 'activate', actionId, controlId: 'jobs-actions', pagePath: [] })
 const stop = (): MayflyUiActionEvent => ({ ...action('jobs-stop'), inputs: { actionId: 'jobs-stop', draftRevision: 0, source: [], forms: [], selections: [{ controlId: 'jobs-list', pagePath: [], selectedIds: ['job'] }] } })
+const browserSelect = (id = 'job'): MayflyUiActionEvent => ({ kind: 'selection-accept', controlId: 'jobs', selectedIds: [id], pagePath: [] })
 const select = (id = 'job'): MayflyUiActionEvent => ({ kind: 'selection-accept', controlId: 'jobs-list', selectedIds: [id], pagePath: [] })
 
 async function fixture(selected = true) {
@@ -78,6 +80,7 @@ async function fixture(selected = true) {
   return { ctx, options, client, history, panels, streams, follow, list, kill, dispatch, dispose, node, render, run, emit, registration, entry, invoke: (signal: AbortSignal) => registered.mock.calls[0]![0].execute('', signal),
     selected: (value: boolean) => { current = value ? original : undefined; notify() },
     clearSelection: () => { current = undefined },
+    replaceSelection: () => { current = { ...original, ref: { ...original.ref, sessionId: 'other' as typeof ref.sessionId } }; notify() },
     check: (rows: readonly JobView[] | undefined) => { check = rows },
     reconnect: () => { generation.generation += 1; for (const fn of states) fn() },
   }
@@ -96,17 +99,14 @@ describe('Job whole-snapshot feature ownership', () => {
     const caller = new AbortController()
     await f.run('', caller.signal)
     const browser = f.panels.at(-1)!
-    await browser.options.action!(select(), { signal: new AbortController().signal } as never)
-    const detail = f.panels.at(-1)!
-    browser.close()
-    expect(detail.options.isCurrent()).toBe(true)
-    await detail.options.action!(action('jobs-read'), { signal: new AbortController().signal } as never)
-    const reader = f.panels.at(-1)!
-    detail.close()
-    expect(reader.options.isCurrent()).toBe(true)
+    await browser.options.action!(browserSelect(), { signal: new AbortController().signal } as never)
+    expect(f.panels).toHaveLength(1)
+    await browser.options.action!(action('read'), { signal: new AbortController().signal } as never)
+    expect(f.panels).toHaveLength(1)
+    expect(panelText(f)).toContain('Status at read')
     caller.abort()
-    expect(reader.close).toHaveBeenCalledOnce()
-    expect(reader.options.isCurrent()).toBe(false)
+    expect(browser.close).toHaveBeenCalledOnce()
+    expect(browser.options.isCurrent()).toBe(false)
     expect(await browser.options.action!(stop(), { signal: new AbortController().signal } as never)).toEqual({ kind: 'cancelled' })
     expect((vi.mocked(f.client.remote.job.follow).mock.calls.at(-1)![1] as AbortSignal).aborted).toBe(true)
     f.follow.at(-1)!.push({ type: 'output', next: 4, chunks: [{ at: 0, text: 'late' }] }); f.follow.at(-1)!.end()
@@ -116,6 +116,75 @@ describe('Job whole-snapshot feature ownership', () => {
     f.dispose()
     await f.invoke(new AbortController().signal)
     expect(f.panels).toHaveLength(panels)
+  })
+
+  it('uses the exact native browser list and one back stack, retaining the first invocation on refocus', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(2_000)
+    const f = await fixture(); await f.emit([job()])
+    const owner = new AbortController(); await f.run('ignored arguments', owner.signal)
+    const panel = f.panels.at(-1)!
+    expect(panel.options.view()).toEqual(jobListPanel([job()], true, t))
+    expect(await panel.options.action!(browserSelect('missing'), { signal: new AbortController().signal } as never)).toMatchObject({ kind: 'failed' })
+    expect(await panel.options.action!(select(), { signal: new AbortController().signal } as never)).toEqual({ kind: 'completed' })
+    const other = new AbortController(); await f.run('', other.signal)
+    expect(f.panels).toHaveLength(1); other.abort(); expect(panel.close).not.toHaveBeenCalled()
+    await panel.options.action!(browserSelect(), { signal: new AbortController().signal } as never)
+    expect(panel.options.view()).toEqual(remoteJobDetailsNode(job(), t))
+    expect(await panel.options.action!(action('unknown'), { signal: new AbortController().signal } as never)).toEqual({ kind: 'completed' })
+    await panel.options.action!(action('read'), { signal: new AbortController().signal } as never)
+    expect(panelText(f)).toContain('Status at read')
+    expect(panel.options.back!()).toBe(true); expect(panelText(f)).toContain('Read output')
+    expect(panel.options.back!()).toBe(true); expect(panel.options.view()).toEqual(jobListPanel([job()], true, t))
+    expect(panel.options.back!()).toBe(false)
+    owner.abort(); expect(panel.close).toHaveBeenCalledOnce()
+  })
+
+  it('keeps full-browser stops quiet and fences cancelled refresh, missing rows and retired exact owners', async () => {
+    const f = await fixture(); await f.emit([job()]); await f.run()
+    const panel = f.panels.at(-1)!
+    const act = (event: MayflyUiActionEvent, signal = new AbortController().signal) => panel.options.action!(event, { signal } as never)
+    await act(browserSelect())
+    for (const status of ['stopping', 'completed', 'running'] as const) {
+      f.check([job({ status })])
+      expect(await act(action('stop'))).toEqual({ kind: 'completed' })
+    }
+    f.kill.mockResolvedValueOnce({ ok: false, error: { message: 'native stop refused' } } as never)
+    expect(await act(action('stop'))).toMatchObject({ kind: 'failed', message: 'native stop refused' })
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof f.kill>>>()
+    f.kill.mockReturnValueOnce(pending.promise)
+    const caller = new AbortController()
+    const stop = act(action('stop'), caller.signal)
+    await flush(); caller.abort(); pending.resolve({ ok: true, value: { outcome: 'stopping' } })
+    expect(await stop).toEqual({ kind: 'cancelled' })
+    const refreshGate = Promise.withResolvers<void>()
+    const original = RemoteJobSource.prototype.attach
+    vi.spyOn(RemoteJobSource.prototype, 'attach').mockImplementationOnce(async function (this: RemoteJobSource, ...args) { await original.apply(this, args); await refreshGate.promise })
+    const refreshCaller = new AbortController()
+    const refresh = act(action('refresh'), refreshCaller.signal)
+    refreshCaller.abort(); refreshGate.resolve(); expect(await refresh).toEqual({ kind: 'cancelled' })
+    await f.emit([job()]); await act(browserSelect())
+    f.clearSelection()
+    expect(await act(action('read'))).toEqual({ kind: 'cancelled' })
+    f.selected(true); await flush(); await f.emit([])
+    expect(await act(action('unknown'))).toMatchObject({ kind: 'failed', message: 'The job is no longer available' })
+    expect(panelText(f)).toContain('no background jobs')
+  })
+
+  it('renders independent status output with close chrome and retires a replaced reader identity', async () => {
+    const f = await fixture(); await f.emit([job()]); await f.dispatch(select())
+    const first = f.panels.at(-1)!
+    expect(first.options.isCurrent()).toBe(true)
+    expect(panelText(f)).toContain('(no output yet)')
+    expect(first.options.view()).toMatchObject({ escapeLabel: 'close' })
+    f.follow[0]!.push({ type: 'output', next: 4, chunks: [{ at: 0, text: 'kept' }] }); await flush()
+    expect(panelText(f)).toContain('kept')
+    f.reconnect(); await flush()
+    expect(f.follow).toHaveLength(2)
+    f.replaceSelection(); await flush()
+    expect(first.options.isCurrent()).toBe(false)
+    await f.emit([job()]); await f.dispatch(select())
+    const current = f.panels.at(-1)!
+    current.close(); expect(current.options.isCurrent()).toBe(false)
   })
 
   it('cancels asynchronous refresh, native stop recheck and late kill feedback under their action caller', async () => {
@@ -170,7 +239,7 @@ describe('Job whole-snapshot feature ownership', () => {
     await f.emit([job()]); f.history.set([]); await f.emit([])
     expect(f.entry().summary).toBeNull()
     expect(f.node()).toBeNull()
-    await expect(f.run('wrong')).rejects.toThrow('Usage: /jobs')
+    await f.run('wrong'); expect(panelText(f)).toContain('no background jobs')
   })
 
   it('opens reference browser/details/output and restarts only the matching reader on reconnect', async () => {
@@ -178,12 +247,11 @@ describe('Job whole-snapshot feature ownership', () => {
     const browser = f.panels.at(-1)!
     expect(browser.options.isCurrent!()).toBe(true)
     expect(panelText(f)).toContain('Actual build')
-    await browser.options.action!(select(), { signal: new AbortController().signal } as never)
-    const detail = f.panels.at(-1)!
-    expect(detail.options.isCurrent!()).toBe(true)
+    await browser.options.action!(browserSelect(), { signal: new AbortController().signal } as never)
+    expect(f.panels).toHaveLength(1)
     expect(panelText(f)).toContain('Read output')
-    await detail.options.action!(action('jobs-read'), { signal: new AbortController().signal } as never)
-    const reader = f.panels.at(-1)!
+    await browser.options.action!(action('read'), { signal: new AbortController().signal } as never)
+    const reader = browser
     expect(reader.options.isCurrent!()).toBe(true)
     f.follow[0]!.push({ type: 'opened', job: job(), from: 0 })
     f.follow[0]!.push({ type: 'output', next: 4, chunks: [{ at: 0, text: 'real' }] }); await flush()
@@ -221,7 +289,7 @@ describe('Job whole-snapshot feature ownership', () => {
       f.list.mockImplementationOnce(() => ({ dispose: vi.fn(async () => {}), async *[Symbol.asyncIterator]() { yield* []; throw error } }))
       expect(await f.dispatch(stopping)).toMatchObject({ message: 'roster failed' })
     }
-    await f.run(); await f.panels.at(-1)!.options.action!(select(), { signal: new AbortController().signal } as never)
+    await f.run(); await f.panels.at(-1)!.options.action!(browserSelect(), { signal: new AbortController().signal } as never)
     expect(await f.panels.at(-1)!.options.action!(action('jobs-stop'), { signal: new AbortController().signal } as never)).toMatchObject({ kind: 'completed' })
     const staleBrowser = f.panels.find(panel => panel.options.id === 'remote.jobs')!
     f.clearSelection()
@@ -262,13 +330,13 @@ describe('Job whole-snapshot feature ownership', () => {
     const f = await fixture(); await f.run()
     expect(panelText(f)).toContain('no background jobs')
     const browser = f.panels.at(-1)!
-    await browser.options.action!(action('jobs-refresh'), { signal: new AbortController().signal } as never); await flush()
+    await browser.options.action!(action('refresh'), { signal: new AbortController().signal } as never); await flush()
     f.streams.at(-1)!.fail(new Error('live unavailable')); await flush()
-    expect(panelText(f)).toContain('live unavailable')
+    expect(panelText(f)).toContain('Job registry unavailable')
     expect(JSON.stringify(f.entry().summary)).toContain('jobs unavailable')
-    await browser.options.action!(action('jobs-refresh'), { signal: new AbortController().signal } as never); await flush()
+    await browser.options.action!(action('refresh'), { signal: new AbortController().signal } as never); await flush()
     f.streams.at(-1)!.fail('plain roster failure'); await flush()
-    expect(panelText(f)).toContain('plain roster failure')
+    expect(panelText(f)).toContain('Job registry unavailable')
     f.streams.at(-1)!.end()
     vi.mocked(f.client.remote.$stream).mockImplementationOnce(() => { throw 'cannot attach' })
     f.reconnect(); await flush()
@@ -279,9 +347,9 @@ describe('Job whole-snapshot feature ownership', () => {
     f.selected(false)
     await f.dispatch(action('jobs-refresh'))
     f.selected(true); await flush()
-    await f.emit([job()]); await f.run(); await f.panels.at(-1)!.options.action!(select(), { signal: new AbortController().signal } as never)
+    await f.emit([job()]); await f.run(); await f.panels.at(-1)!.options.action!(browserSelect(), { signal: new AbortController().signal } as never)
     await f.emit([])
-    expect(panelText(f)).toContain('Actual build')
+    expect(panelText(f)).toContain('no background jobs')
     const publish = vi.fn()
     const subscribe = RemoteJobSource.prototype.subscribe
     vi.spyOn(RemoteJobSource.prototype, 'subscribe').mockImplementationOnce(function (this: RemoteJobSource, listener) { publish.mockImplementation(listener); return subscribe.call(this, listener) })
@@ -304,8 +372,8 @@ describe('Job shared renderer facts', () => {
     const rows = [job(), job({ id: 'older' as JobView['id'], startedAt: 0, status: 'stopping', progress: '' }), job({ id: 'done' as JobView['id'], status: 'completed', finishedAt: 5_000, detail: 'done' }), job({ id: 'killed' as JobView['id'], status: 'killed' }), job({ id: 'failed' as JobView['id'], status: 'failed', detail: '' }), job({ id: 'ended' as JobView['id'], status: 'completed' })]
     const state = { jobs: rows, now: 6_000 }
     const nodes = [remoteJobsPanel(state, t), ...rows.map(row => remoteJobDetailsNode(row, t)), ...rows.flatMap(row => [
-      remoteJobOutputNode(row, { text: '', dropped: false, streaming: true }, t),
-      remoteJobOutputNode(row, { text: 'actual 你好\n'.repeat(10), dropped: true, streaming: false, error: 'native unavailable' }, t),
+      remoteJobOutputNode(row, { chunks: [], dropped: false }, t),
+      remoteJobOutputNode(row, { chunks: [ui.chunk('actual 你好\n'.repeat(10))], dropped: true }, t),
     ])]
     for (const node of nodes) for (const width of [1, 8, 20, 40, 80, 120]) expect(f.render(node, width).every(line => visibleWidth(line) <= width)).toBe(true)
     expect(formatRemoteJobDuration(0, -1)).toBe('0s')

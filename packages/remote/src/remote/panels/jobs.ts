@@ -3,7 +3,7 @@
  * @module @ephemeral-ai/mayfly/remote/panels/jobs
  */
 
-import { panel, ui, type MayflyInlineSpan, type MayflyListItem, type MayflyPaneSummary, type MayflyTone, type MayflyTranslate, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyPaneSummary, type MayflyTranslate, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { JobView } from '../features/official.ts'
 import { remoteCountSummary, remoteItemSummary, remoteViewList } from './view-items.ts'
 
@@ -11,8 +11,6 @@ import { remoteCountSummary, remoteItemSummary, remoteViewList } from './view-it
 export const REMOTE_JOBS_LIST_ID = 'jobs-list'
 /** Job stop action id shared by the status view and detail browser. */
 export const REMOTE_JOB_STOP_ID = 'jobs-stop'
-/** Job output action id used by the detail browser. */
-export const REMOTE_JOB_READ_ID = 'jobs-read'
 
 /** Whether a Job still has a non-terminal lifecycle state. */
 export function isRemoteJobLive(job: JobView): boolean {
@@ -103,61 +101,4 @@ export function remoteJobsPanel(state: RemoteJobsState, t: MayflyTranslate): May
     }],
   })
   return remoteViewList(REMOTE_JOBS_LIST_ID, jobs.map(job => item(job, state, t)), actions)
-}
-
-const STATUS_TONE: Readonly<Record<JobView['status'], MayflyTone>> = {
-  running: 'primary', stopping: 'warning', completed: 'success', killed: 'muted', failed: 'danger',
-}
-
-/** Build one Job detail page with explicit output and stop actions. */
-export function remoteJobDetailsNode(job: JobView, t: MayflyTranslate): MayflyUiNode {
-  return panel({
-    title: t('Job {id}', { id: String(job.id) }),
-    escapeLabel: 'back',
-    body: ui.stack.column([
-      ui.fields([
-        { label: t('Name'), value: [{ text: job.label }] },
-        { label: t('Status'), value: [{ text: t(job.status), tone: STATUS_TONE[job.status]! }] },
-        ...job.detail === undefined ? [] : [{ label: t('Detail'), value: [{ text: job.detail }] }],
-      ]),
-      ui.actions({ id: 'job-actions', items: [
-        { id: REMOTE_JOB_READ_ID, label: t('Read output'), hintLabel: t('output'), key: 'o', hidden: true },
-        {
-          id: REMOTE_JOB_STOP_ID,
-          label: t('Stop job'),
-          hintLabel: t('stop'),
-          key: 'x',
-          hidden: true,
-          intent: 'danger',
-          disabled: job.status !== 'running',
-          ...job.status === 'running' ? {} : { disabledReason: t(job.status) },
-          confirm: t('Stop {job}?', { job: job.label }),
-        },
-      ] }),
-    ]),
-  })
-}
-
-/** Bounded output document and loss marker for one followed Job. */
-export interface RemoteJobOutputView {
-  readonly text: string
-  readonly dropped: boolean
-  readonly streaming: boolean
-  readonly error?: string | undefined
-}
-
-/** Build one output reader with offset-loss and terminal-observation states. */
-export function remoteJobOutputNode(job: JobView, feed: RemoteJobOutputView, t: MayflyTranslate): MayflyUiNode {
-  return panel({
-    title: t('Job {id}', { id: String(job.id) }),
-    escapeLabel: 'back',
-    body: ui.stack.column([
-      ui.fields([{ label: t('Status at read'), value: [{ text: t(job.status), tone: STATUS_TONE[job.status]! }] }]),
-      ...feed.dropped ? [ui.text(t('(earlier output was dropped by retention)'), { tone: 'muted' })] : [],
-      ...feed.error === undefined ? [] : [ui.text(feed.error, { tone: 'danger', overflow: 'wrap' })],
-      ui.child(ui.scroll(feed.text === ''
-        ? ui.text(t(isRemoteJobLive(job) && feed.streaming ? '(no output yet)' : '(no output)'), { tone: 'muted' })
-        : ui.code(feed.text), { id: 'job-output-document', scrollbar: true, follow: 'end' }), { basis: 0, grow: 1, minSize: 1 }),
-    ]),
-  })
 }

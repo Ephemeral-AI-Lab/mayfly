@@ -30,8 +30,6 @@ export interface RemoteJobReaderSnapshot {
   readonly error?: string | undefined
 }
 
-const RENDER_TAIL_LIMIT = 128 * 1024
-
 /** Follow one Job with absolute output offsets, loss markers, and terminal status. */
 export class RemoteJobFollowReader {
   private controller: AbortController | undefined
@@ -130,15 +128,8 @@ export class RemoteJobFollowReader {
       }
       case 'output': {
         const appended = frame.chunks.filter(chunk => chunk.at >= this.current.cursor).map(chunk => chunk.text).join('')
-        let text = this.current.text + appended
-        let dropped = this.current.dropped || frame.lossy === true || frame.chunks.some(chunk => chunk.gapBefore === true)
-        if (text.length > RENDER_TAIL_LIMIT) {
-          let cut = text.length - RENDER_TAIL_LIMIT
-          const unit = text.charCodeAt(cut)
-          if (unit >= 0xDC00 && unit <= 0xDFFF) cut += 1
-          text = text.slice(cut)
-          dropped = true
-        }
+        const text = (frame.lossy === true ? '' : this.current.text) + appended
+        const dropped = this.current.dropped || frame.lossy === true || frame.chunks.some(chunk => chunk.gapBefore === true)
         this.current = { ...this.current, text, dropped, cursor: frame.next }
         break
       }

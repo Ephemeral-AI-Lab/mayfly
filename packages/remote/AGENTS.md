@@ -128,6 +128,11 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   panel focuses its original invocation. `/mcp`, `/tools` and `/schedule` ignore
   command arguments as the reference handlers do; reminders read only the
   selected Session and never depend on a Host-wide catalog succeeding.
+  `/jobs` uses the distinct reference browser list, detail and output pages in
+  one overlay; its status view retains its own roster and independent output
+  overlay. Output observations retain the native ring's complete returned text.
+  Only native loss replaces an older retained window; the frontend never adds
+  a length cutoff or invents a retention-loss marker.
 - `/rewind` reads the primary Session through passive native journal pages,
   builds the shared reference turn picker, and forks only after explicit
   acceptance. Busy checks and exact binding/Host/generation fences cover the

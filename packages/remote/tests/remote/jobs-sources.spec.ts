@@ -159,7 +159,7 @@ describe('native Job output reader', () => {
     expect(f.open).toHaveBeenCalledTimes(2)
   })
 
-  it('marks retention gaps, lossy chunks, opening floors and bounded UTF-16-safe tails', async () => {
+  it('marks native retention gaps and preserves the complete retained output window', async () => {
     for (const head of [0, 5]) {
       const f = readerFixture()
       f.reader.start(); const queue = f.queues[0]!
@@ -169,14 +169,22 @@ describe('native Job output reader', () => {
     for (const frame of [
       { type: 'output', next: 1, chunks: [{ at: 0, text: 'gap', gapBefore: true }] },
       { type: 'output', next: 1, chunks: [{ at: 0, text: 'loss' }], lossy: true },
-      ...['x'.repeat(131_073), 'x😀' + 'x'.repeat(131_071), '😀' + 'x'.repeat(131_072)].map(text => ({ type: 'output', next: text.length, chunks: [{ at: 0, text }] })),
     ] as JobFollowFrame[]) {
       const f = readerFixture(); f.reader.start()
       f.queues[0]!.push(frame); await flush()
       const state = f.reader.snapshot()
-      expect(state.dropped).toBe(true); expect(state.text.length).toBeLessThanOrEqual(131_072)
+      expect(state.dropped).toBe(true)
       expect(state.text.charCodeAt(0) >= 0xDC00 && state.text.charCodeAt(0) <= 0xDFFF).toBe(false)
     }
+    for (const text of ['x'.repeat(131_073), 'x😀' + 'x'.repeat(131_071), '😀' + 'x'.repeat(131_072)]) {
+      const f = readerFixture(); f.reader.start()
+      f.queues[0]!.push({ type: 'output', next: text.length, chunks: [{ at: 0, text }] }); await flush()
+      expect(f.reader.snapshot()).toMatchObject({ text, dropped: false })
+    }
+    const f = readerFixture(); f.reader.start()
+    f.queues[0]!.push({ type: 'output', next: 9, chunks: [{ at: 0, text: 'discarded' }] }); await flush()
+    f.queues[0]!.push({ type: 'output', next: 17, lossy: true, chunks: [{ at: 13, text: 'kept' }] }); await flush()
+    expect(f.reader.snapshot()).toMatchObject({ text: 'kept', dropped: true, cursor: 17 })
   })
 
   it.each(['running', 'stopping'] as const)('reports premature %s termination and textual transport failures', async status => {
