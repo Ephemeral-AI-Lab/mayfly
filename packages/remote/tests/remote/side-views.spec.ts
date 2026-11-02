@@ -1,22 +1,32 @@
 /** Display recency and bounded native view residency over actual transcript sources. @module remote/tests/side-views */
 import { describe, expect, it, vi } from 'vitest'
-import { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
+import type { SessionBinding, SessionEventLikeEntry } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import { TranscriptController, createTranscriptModel } from '@ephemeral-ai/mayfly/transcript'
 import type { MayflyScreenService } from '@ephemeral-ai/mayfly/core'
 import { HostKey, type SessionRef } from '../../src/client/types.ts'
 import { RemoteSideViews, type RemoteSideViewOptions } from '../../src/remote/side-views.ts'
+import { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
 
-function binding(id: string) {
+function binding(id: string, values: Record<string, unknown> = {}) {
   const listeners = new Set<() => void>()
   let title = id
   const observable = { getSnapshot: () => undefined, subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } } }
-  const source = { ...observable, getSnapshot: () => ({ entries: [], revision: 0, hasMore: false, change: { kind: 'replace', entries: [] } }) }
+  let entries: readonly SessionEventLikeEntry[] = []
+  let revision = 0
+  let change = { kind: 'replace', entries } as { kind: 'replace' | 'append', entries: readonly SessionEventLikeEntry[] }
+  const source = { ...observable, getSnapshot: () => ({ entries, revision, hasMore: false, change }) }
   const face = {
     sessionId: SessionId(id), eventSource: source,
-    session: { ...observable, getSnapshot: () => ({ running: false }), projections: { faceOf: (key: string) => ({ ...observable, getSnapshot: () => key === 'title' ? title : undefined }) } },
+    session: { ...observable, getSnapshot: () => ({ running: false }), projections: { faceOf: (key: string) => ({ ...observable, getSnapshot: () => key === 'title' ? title : values[key] }) } },
   } as unknown as SessionBinding
-  return { face, listeners, title(next: string) { title = next; for (const listener of [...listeners]) listener() } }
+  return { face, listeners, title(next: string) { title = next; for (const listener of [...listeners]) listener() },
+    append(entry: SessionEventLikeEntry) {
+      entries = [...entries, entry]; revision += 1; change = { kind: 'append', entries: [entry] }
+      for (const listener of [...listeners]) listener()
+    },
+  }
 }
 const ref = (id: string, host = 'host-a'): SessionRef => ({ host: HostKey(host), sessionId: SessionId(id) })
 const facts = { kind: 'subagent', access: 'resumable', cwd: '/host/work', label: 'Child' } as const
@@ -34,6 +44,78 @@ function mount(options: RemoteSideViewOptions = {}) {
 }
 
 describe('RemoteSideViews', () => {
+  it('publishes the displayed source, routes only visible live command results, and keeps primary navigation stable', () => {
+    const { side, transcript, notice } = mount()
+    const setView = vi.spyOn(transcript, 'setView')
+    const a = binding('a'), b = binding('b')
+    side.showPrimary()
+    expect(side.closeTarget()).toBeUndefined()
+    side.present(a.face, { ref: ref('a'), cwd: '' })
+    const source = setView.mock.lastCall?.[1]
+    expect(typeof source).toBe('function')
+    if (typeof source === 'function') expect(source()).toMatchObject({ kind: 'transcript' })
+    expect(side.navigation()).toEqual({ counterpart: 'primary', close: 'subagent' })
+    const done = (seq: number, text?: string): SessionEventLikeEntry => ({ type: 'event', event: {
+      type: 'command/done', seq: SessionSeq(seq), time: seq, data: { commandId: 'command', kind: 'success', ...text === undefined ? {} : { text } },
+    } } as unknown as SessionEventLikeEntry)
+    a.append(done(1, 'visible command'))
+    expect(notice.set).toHaveBeenLastCalledWith('visible command')
+    notice.set.mockClear()
+    a.append(done(2))
+    expect(notice.set).not.toHaveBeenCalled()
+    side.present(b.face, { ref: ref('b'), cwd: '' }, facts)
+    a.append(done(3, 'hidden command'))
+    expect(notice.set).not.toHaveBeenCalled()
+    side.showPrimary()
+    expect(side.navigation()).toEqual({ counterpart: 'subagent', close: 'subagent' })
+    side.dispose(); transcript.dispose()
+  })
+
+  it('refuses a parked counterpart when no external reopen owner is installed', () => {
+    const { side, transcript } = mount()
+    for (const id of ['a', 'b', 'c']) side.present(binding(id).face, { ref: ref(id), cwd: '' }, facts)
+    side.close(ref('c'))
+    expect(side.back()).toBe(false)
+    expect(side.current()).toEqual(ref('b'))
+    side.dispose(); transcript.dispose()
+  })
+
+  it('borrows current exact Host metadata for cold children without copying it, and loses it on owner removal', () => {
+    const primary = new RemoteConversationModelSource({ get: () => undefined }, vi.fn())
+    const catalog = (effort: string): ModelCatalog => ({
+      default: { provider: 'provider', model: 'model' }, failures: [], routableProviders: ['provider'],
+      groups: [{ id: 'provider', name: 'Provider', models: [{ id: 'model', name: 'Model', reasoning: { efforts: [], defaultEffort: effort } }] }],
+    } as unknown as ModelCatalog)
+    const route = { provider: 'provider', model: 'model' }
+    const values: Record<string, unknown> = { modelSelection: { next: route, lastUsed: route } }
+    const { side, transcript } = mount({ modelCatalog: host => primary.getModelCatalog(host) })
+    primary.setModelCatalog(HostKey('host-a'), catalog('high'))
+    const child = binding('same', values)
+    side.present(child.face, { ref: ref('same'), cwd: '' }, facts)
+    expect(side.presentation()?.reasoningEffort).toBe('high')
+    primary.setModelCatalog(HostKey('host-a'), catalog('low'))
+    expect(side.presentation()?.reasoningEffort).toBe('low')
+    const other = binding('same', values)
+    side.present(other.face, { ref: ref('same', 'host-b'), cwd: '' }, facts)
+    expect(side.presentation()?.reasoningEffort).toBeUndefined()
+    side.back()
+    primary.setModelCatalog(HostKey('host-a'), undefined)
+    expect(side.presentation()?.reasoningEffort).toBeUndefined()
+    primary.setModelCatalog(HostKey('host-a'), catalog('max'))
+    values['modelSelection'] = { next: { ...route, model: 'pending' }, lastUsed: route }
+    child.title('pending selection')
+    expect(side.presentation()?.reasoningEffort).toBeUndefined()
+    values['modelSelection'] = { next: route, lastUsed: { ...route, reasoningEffort: 'high' } }
+    child.title('default selection')
+    expect(side.presentation()?.reasoningEffort).toBeUndefined()
+    primary.dispose()
+    expect(primary.getModelCatalog(HostKey('host-a'))).toBeUndefined()
+    side.dispose(); transcript.dispose()
+    expect(side.presentation()).toBeUndefined()
+    expect(child.listeners.size).toBe(0)
+    expect(other.listeners.size).toBe(0)
+  })
+
   it('borrows exact bindings and keeps same SessionId on separate Hosts distinct', () => {
     const { side, transcript } = mount()
     const a = binding('same'), b = binding('same')

@@ -599,6 +599,27 @@ describe('RemoteConversationModelSource', () => {
     source.dispose()
   })
 
+  it('prefers its own Host catalog over a borrowed resolver and observes the current readonly catalog on every presentation', () => {
+    const events = new TestEventSource()
+    const native = { provider: 'provider', model: 'model' }
+    const selected = projection<unknown>({ next: native, lastUsed: native })
+    let catalog: ModelCatalog | undefined = nativeCatalog('low')
+    const resolver = vi.fn(() => catalog)
+    const source = new RemoteConversationModelSource(tools, vi.fn(), { modelCatalog: resolver })
+    const host = HostKey('host')
+    source.attach(events.binding({ modelSelection: selected }), { ref: { host, sessionId: SessionId('session') }, cwd: '' })
+    expect(source.presentation().reasoningEffort).toBe('low')
+    expect(resolver).toHaveBeenLastCalledWith(host)
+    source.setModelCatalog(host, nativeCatalog('max'))
+    expect(source.presentation().reasoningEffort).toBe('max')
+    source.setModelCatalog(host, undefined)
+    catalog = nativeCatalog('high')
+    expect(source.presentation().reasoningEffort).toBe('high')
+    catalog = undefined
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    source.dispose()
+  })
+
   it('does not invent effective metadata for an unavailable provider, model, or non-reasoning route', () => {
     const events = new TestEventSource()
     events.replace([requestHeader('other-provider', 'other-model')], false)
@@ -637,7 +658,36 @@ describe('RemoteConversationModelSource', () => {
     expect(source.imageAttachment('native-image')).toEqual(image)
     expect(source.imageAttachment('missing')).toBeUndefined()
     source.dispose()
+    source.dispose()
     expect(source.imageAttachment('native-image')).toBeUndefined()
+  })
+
+  it('rejects stale live attempts after a later or completed native turn without requiring a settled step row', () => {
+    const events = new TestEventSource()
+    const source = new RemoteConversationModelSource(tools, vi.fn())
+    source.attach(events.binding())
+    events.append(turn(2, 1))
+    events.append(live('late previous turn', 1, 2, 0))
+    expect(source.snapshot().live).toBeUndefined()
+    events.append({ type: 'event', event: { type: 'turn/end', seq: SessionSeq(3), time: 30, data: { turn: 2, reason: { kind: 'completed' } } } })
+    events.append(live('late completed turn', 2, 4, 0))
+    expect(source.snapshot().live).toBeUndefined()
+    source.dispose()
+  })
+
+  it('does not duplicate an unsettled durable assistant attempt when its final live frame arrives late', () => {
+    const events = new TestEventSource()
+    const source = new RemoteConversationModelSource(tools, vi.fn())
+    source.attach(events.binding())
+    events.append(turn(1, 1))
+    events.append({ type: 'event', event: { type: 'assistant/attempt', seq: SessionSeq(2), time: 20, data: {
+      turn: 1, step: 0, stream: [{ type: 'chunk', time: 20, chunk: { type: 'text-delta', index: 0, text: 'durable failed attempt' } }],
+    } } } as unknown as SessionEventLikeEntry)
+    events.append(live('late transient frame', 1, 3, 0))
+    expect(source.snapshot().entries).toEqual([expect.objectContaining({ kind: 'transcript-assistant', text: 'durable failed attempt' })])
+    expect(source.snapshot().live).toBeUndefined()
+    expect(source.imageAttachment('missing')).toBeUndefined()
+    source.dispose()
   })
 
   it('ignores malformed durable projections and accepts pressure-only native context facts', () => {

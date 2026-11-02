@@ -44,6 +44,7 @@ export interface RemotePresentationFacts {
 /** Presentation callbacks owned by the standalone Frontend. */
 export interface RemoteConversationOptions {
   readonly defaultCwd?: string
+  readonly modelCatalog?: (host: HostKey) => ModelCatalog | undefined
   readonly onPresentation?: () => void
   readonly onCommandResult?: (result: { readonly kind: 'success' | 'error', readonly text?: string }) => void
 }
@@ -61,7 +62,6 @@ const EMPTY_CONVERSATION: ConversationProjection = {
   settledSteps: [],
   turns: [],
 }
-const EMPTY_TOOLS: ToolPresentationSource = { get: () => undefined }
 
 /** Build Mayfly's transcript from the authoritative Host projection and official live event window. */
 export class RemoteConversationModelSource {
@@ -151,13 +151,18 @@ export class RemoteConversationModelSource {
     this.options.onPresentation?.()
   }
 
+  /** Share this owner's exact Host metadata without copying or retaining a second catalog. */
+  getModelCatalog(host: HostKey): ModelCatalog | undefined {
+    return this.modelCatalogs.get(host)
+  }
+
   /** Return the current selected Session's immutable banner and footer facts. */
   presentation(): RemotePresentationFacts {
     const snapshot = this.facts.snapshot()
     const selectedModel = readModelSelection(snapshot.values['modelSelection'])
     const recordedModel = readRecordedModelSelection(snapshot.values['modelSelection'])
     const ref = this.selection?.ref ?? snapshot.ref
-    const catalog = ref === undefined ? undefined : this.modelCatalogs.get(ref.host)
+    const catalog = ref === undefined ? undefined : this.modelCatalogs.get(ref.host) ?? this.options.modelCatalog?.(ref.host)
     const effort = selectedModel === undefined
       ? this.defaultModel?.reasoningEffort
       : selectedModel.reasoningEffort ?? (this.restoreEffectiveEffort ? recordedEffort(this.source?.getSnapshot().entries, selectedModel, recordedModel, catalog) : undefined)
@@ -310,7 +315,7 @@ export class RemoteConversationModelSource {
       this.generation,
       this.toolsRevision === 0 ? undefined : `tools:${String(this.toolsRevision)}`,
     )
-    this.model = withLiveOverlay(durable, this.durable, this.live, this.generation, this.toolsRevision)
+    this.model = withLiveOverlay(durable, this.durable, this.live, scopedTools, this.generation, this.toolsRevision)
   }
 
   private publishModel(): void {
@@ -323,6 +328,7 @@ function withLiveOverlay(
   durableModel: TranscriptModel,
   durable: ConversationProjection,
   live: RemoteLiveConversation | undefined,
+  tools: ToolPresentationSource,
   generation: number,
   toolsRevision: number,
 ): TranscriptModel {
@@ -331,31 +337,29 @@ function withLiveOverlay(
   if (staleTurn) return durableModel
   const liveModel = conversationTranscriptModel(
     live.projection,
-    EMPTY_TOOLS,
+    tools,
     generation,
     `live:${live.attemptId}:${String(toolsRevision)}`,
   )
-  const durableIds = new Set(durableModel.entries.flatMap(entry => 'id' in entry ? [entry.id] : []))
-  const durableCalls = new Set(durable.entries.flatMap(entry => entry.kind === 'tool' ? [entry.callId] : []))
-  const entries = liveModel.entries.filter(entry => {
-    if ('id' in entry && durableIds.has(entry.id)) return false
-    return entry.kind !== 'transcript-tool' || !durableCalls.has(entry.callId)
-  }) as TranscriptEntryModel[]
-  if (entries.length === 0 && !live.projection.streaming) return durableModel
+  const durableIds = new Set(durable.entries.map(entry => entry.id))
+  // The shared converter produces identified transcript entries. A native
+  // transient assistant attempt contains only thinking/text, never tool rows;
+  // tool calls are durable Host facts and need no second live de-duplication.
+  const entries = (liveModel.entries as readonly TranscriptEntryModel[]).filter(entry => !durableIds.has(entry.id))
   return freezeModel({
     ...durableModel,
     ...(entries.length === 0 ? {} : { live: { turn: live.turn, step: live.step, entries } }),
-    streaming: durableModel.streaming === true || live.projection.streaming,
+    // transientAssistantConversation always opens one active assistant attempt.
+    streaming: true,
   }) as TranscriptModel
 }
 
 function livePhase(live: RemoteLiveConversation): ConversationFactsState['phase'] {
   const latest = live.projection.entries.findLast(entry => (
-    entry.kind === 'thinking' || entry.kind === 'assistant' || entry.kind === 'tool'
+    entry.kind === 'thinking' || entry.kind === 'assistant'
   ))
   if (latest?.kind === 'thinking') return 'thinking'
   if (latest?.kind === 'assistant') return 'composing'
-  if (latest?.kind === 'tool') return 'tool'
   return 'waiting'
 }
 

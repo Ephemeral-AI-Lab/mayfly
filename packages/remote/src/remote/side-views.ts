@@ -1,9 +1,10 @@
 /** Retained native side conversations, exact displayed bindings, and F7 recency. @module remote/side-views */
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflyScreenService } from '@ephemeral-ai/mayfly/core'
 import type { ToolPresentationSource } from '@ephemeral-ai/mayfly/transcript'
 import { TranscriptController } from '@ephemeral-ai/mayfly/transcript'
-import type { SessionRef } from '../client/types.ts'
+import type { HostKey, SessionRef } from '../client/types.ts'
 import type { RemoteNotice } from './notice.ts'
 import type { RemotePresentedViewFacts } from './operations/support.ts'
 import { RemoteConversationModelSource, type RemotePresentationFacts, type RemotePresentationSelection } from '../transcript/remote-model.ts'
@@ -31,6 +32,7 @@ interface SideRecord {
 
 /** Local view-selection hooks; lease retirement remains with the operations owner. */
 export interface RemoteSideViewOptions {
+  readonly modelCatalog?: (host: HostKey) => ModelCatalog | undefined
   readonly changed?: () => void
   readonly evicted?: (ref: SessionRef) => void
   readonly retainOnly?: (refs: readonly SessionRef[]) => void
@@ -83,8 +85,9 @@ export class RemoteSideViews {
     const counterpart = this.recent[1]
     if (counterpart === undefined) return undefined
     const other = this.views.get(counterpart)
-    const target = this.selected() ?? other
-    if (target === undefined) return undefined
+    // Recency always contains the primary plus retained side descriptors; if
+    // a counterpart exists, either the displayed or counterpart view is a side.
+    const target = (this.selected() ?? other)!
     return { counterpart: other?.facts.kind ?? 'primary', close: target.facts.kind }
   }
 
@@ -105,8 +108,9 @@ export class RemoteSideViews {
     const source = new RemoteConversationModelSource(this.tools, () => {
       if (this.displayed === key) this.transcript.refresh()
     }, {
+      ...this.options.modelCatalog === undefined ? {} : { modelCatalog: this.options.modelCatalog },
       onPresentation: () => { if (this.displayed === key) this.repaint() },
-      onCommandResult: result => { if (this.displayed === key && result.text !== undefined) this.notice.set(result.text) },
+      onCommandResult: result => { if (result.text !== undefined) this.notice.set(result.text) },
     })
     const record = { ref: selection.ref, binding, facts, source, key }
     this.views.set(key, record)
@@ -182,7 +186,8 @@ export class RemoteSideViews {
     this.transcript.dropView(key)
     this.recent = this.recent.filter(candidate => candidate !== key)
     if (this.displayed === key) {
-      this.displayed = this.recent.find(candidate => candidate === PRIMARY || this.views.get(candidate)?.binding !== undefined) ?? PRIMARY
+      // PRIMARY is never removed from recency.
+      this.displayed = this.recent.find(candidate => candidate === PRIMARY || this.views.get(candidate)?.binding !== undefined)!
       this.recent = [this.displayed, ...this.recent.filter(candidate => candidate !== this.displayed)]
     }
   }

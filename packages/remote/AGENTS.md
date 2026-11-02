@@ -101,7 +101,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   presentation provenance never changes native selections or freezes projections.
   A pending selection never inherits an older request's effort; metadata
   refreshes are generation-fenced and never turn a provider default into an
-  explicit model-selection write.
+  explicit model-selection write. Side views borrow the primary owner's current
+  exact Host catalog through a readonly resolver; they do not copy metadata into
+  another cache, and owner detach immediately removes that fallback.
 - Slash-command images use native encoded attachments. The official command
   DTO lacks file-upload receipts: refuse commands with staged files, restore
   their draft, and explicitly state that no command was sent. Ordinary prompts
