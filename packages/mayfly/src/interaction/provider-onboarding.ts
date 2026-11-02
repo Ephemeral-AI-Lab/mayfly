@@ -95,8 +95,6 @@ export function apply(ctx: Context): void {
       keyEntry: false,
       observedConfigured: false,
       connection: 'pending' as 'pending' | 'account' | 'key' | 'skipped',
-      /** The provider route to show the model list of once the guide closes. */
-      connectedRoute: undefined as string | undefined,
       preset: undefined as string | undefined,
       /** A sign-in under way: the Connect page is the sign-in's. */
       signIn: undefined as SignInFlow | undefined,
@@ -114,8 +112,7 @@ export function apply(ctx: Context): void {
     const baseline = { ...current }
     const currentAgent = () => ctx.get('mayflyCurrentAgent')?.current() ?? null
     /* the guide opens only on a first install (nothing connected), so it always offers the language and theme, preselected with what is set */
-    const order: readonly OnboardingStepId[] = [ONBOARDING_PREFERENCES, ONBOARDING_CONNECT, ONBOARDING_READY]
-    const after = (step: OnboardingStepId): OnboardingStepId => order[order.indexOf(step) + 1] ?? ONBOARDING_READY
+    const after = { [ONBOARDING_PREFERENCES]: ONBOARDING_CONNECT, [ONBOARDING_CONNECT]: ONBOARDING_READY } as const
 
     const labels = (): OnboardingLabels => onboardingLabels(t, state.signInSnap?.callbackPort)
 
@@ -150,7 +147,8 @@ export function apply(ctx: Context): void {
         ...snap.url === undefined ? {} : { url: snap.url },
         ...snap.expiresAt === undefined ? {} : { remainingMs: snap.expiresAt - Date.now() },
         ...snap.totalMs === undefined ? {} : { totalMs: snap.totalMs },
-        ...snap.callbackPort === undefined ? {} : { callbackPort: snap.callbackPort },
+        /* A native flow starts only after its web server supplies the callback port. */
+        callbackPort: snap.callbackPort!,
         ...snap.ended === undefined ? {} : { endedText: endedText(snap.ended) },
       }
     }
@@ -170,8 +168,8 @@ export function apply(ctx: Context): void {
       return onboardingWizard(facts, labels())
     }
     /** Move on from a step: the next page of a republished guide. */
-    const advance = (from: OnboardingStepId, feedback?: string): Extract<MayflyUiActionReply, { readonly kind: 'accepted' }> => ({
-      kind: 'accepted', node: view(), source: stamp, navigate: pathOf(after(from)),
+    const advance = (from: keyof typeof after, feedback?: string): Extract<MayflyUiActionReply, { readonly kind: 'accepted' }> => ({
+      kind: 'accepted', node: view(), source: stamp, navigate: pathOf(after[from]),
       ...feedback === undefined ? {} : { feedback: { severity: 'success' as const, message: feedback } },
     })
 
@@ -196,15 +194,15 @@ export function apply(ctx: Context): void {
      * Connecting ends on the model list of the provider just connected, so the session never starts on another route's default:
      * the list opens above the guide, and the guide goes on when it closes (a pick or a dismissal).
      */
-    const pickModel = async (): Promise<void> => {
-      if (state.connectedRoute === undefined || lifetime.signal.aborted) return
-      let release = (): void => {}
+    const pickModel = async (route: string): Promise<void> => {
+      if (lifetime.signal.aborted) return
+      let release!: () => void
       const closed = new Promise<void>(resolve => {
         const off = ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'remove' && delta.id === 'mayfly.models') { off(); resolve() } })
         release = () => { off(); resolve() }
         lifetime.signal.addEventListener('abort', release, { once: true })
       })
-      await openModelPicker(ctx, lifetime.signal, state.connectedRoute)
+      await openModelPicker(ctx, lifetime.signal, route)
       /* a picker that did not open (no session yet, the provider never listed) leaves nothing to wait for */
       if (ctx.mayflyOverlays.list().some(entry => entry.id === 'mayfly.models')) await closed
       else release()
@@ -215,10 +213,9 @@ export function apply(ctx: Context): void {
       const connected = await flow.connected
       if (state.signIn !== flow || !connected || lifetime.signal.aborted) return
       state.connection = 'account'
-      state.connectedRoute = signInRoute
       syncTicker()
       republish()
-      await pickModel()
+      await pickModel(signInRoute!)
       if (state.signIn !== flow || lifetime.signal.aborted) return
       state.signIn = undefined
       state.signInSnap = undefined
@@ -247,9 +244,8 @@ export function apply(ctx: Context): void {
         await credentials.set(credentialRef(DEEPSEEK_KEY), value)
         if (signal.aborted) return { kind: 'cancelled' }
         state.connection = 'key'
-        state.connectedRoute = DEEPSEEK_KEY_ROUTE
         /* the acknowledged form stays on its page, now showing the saved key; Esc there steps back to the choices */
-        await pickModel()
+        await pickModel(DEEPSEEK_KEY_ROUTE)
         if (signal.aborted) return { kind: 'cancelled' }
         return advance(ONBOARDING_CONNECT, t('DeepSeek API key saved'))
       } catch { return { kind: 'failed', message: t('The API key could not be saved') } }

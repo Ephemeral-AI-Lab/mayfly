@@ -92,6 +92,23 @@ async function customEntry(bench: Awaited<ReturnType<typeof setup>>) {
 }
 
 describe('provider creation', () => {
+  it('refuses custom setup after its native route dictionary disappears', async () => {
+    const bench = await setup()
+    vi.spyOn(bench.ctx.llm, 'listConfigurableProviders').mockReturnValue([])
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.add')!
+    expect(() => entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'provider-source', selectedIds: ['custom'] }, context(entry))).toThrow('no configurable provider route dict')
+    expect(bench.settings.writes).toBe(0)
+  })
+
+  it.each(['missing', 'root'] as const)('refuses a stale known route whose native address is now %s', async state => {
+    const bench = await setup()
+    await bench.choose('known')
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.provider.add.known')!
+    vi.spyOn(bench.ctx.llm, 'listConfigurableProviders').mockReturnValue(state === 'missing' ? [] : [{ provider: 'anthropic', displayName: 'Anthropic', settingsNs: 'llm-pi-ai', settingsPath: [] }])
+    expect(() => entry.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'providers', selectedIds: ['anthropic'] }, context(entry))).toThrow('no configurable provider route dict')
+    expect(bench.settings.writes).toBe(0)
+  })
+
   it('keeps the conventional credential reference and supported protocols', () => {
     expect(deriveKeyRef('my-gateway')).toBe('MY_GATEWAY_API_KEY')
     expect(deriveKeyRef('anthropic')).toBe('ANTHROPIC_API_KEY')

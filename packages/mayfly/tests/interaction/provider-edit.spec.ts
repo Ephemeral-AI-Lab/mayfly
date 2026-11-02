@@ -84,6 +84,16 @@ async function directSetup(options: {
 }
 
 describe('provider editor', () => {
+  it('runs discovery again through the declared refresh action', async () => {
+    const discover = vi.fn(async () => [{ id: 'one' }])
+    const bench = await directSetup({ llm: { discoverModels: discover } })
+    await flush()
+    const before = discover.mock.calls.length
+    bench.model!.invoke('discover', address('models').pagePath)
+    await flush()
+    expect(discover.mock.calls.length).toBeGreaterThan(before)
+  })
+
   it('refuses a route another settings namespace owns', async () => {
     const bench = await directSetup({
       route: 'deepseek-account',

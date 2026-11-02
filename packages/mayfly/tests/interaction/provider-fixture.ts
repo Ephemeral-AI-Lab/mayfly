@@ -70,7 +70,7 @@ export async function providerFixture(ctx: Context, profiles: Record<string, unk
     for (const listener of [...listeners]) listener()
     listeners.clear()
   }
-  ctx.provide('mayflySessionStart', {
+  const releaseStartup = ctx.provide('mayflySessionStart', {
     onBooted: (listener: () => void) => {
       if (booted) { listener(); return () => {} }
       listeners.add(listener)
@@ -86,5 +86,5 @@ export async function providerFixture(ctx: Context, profiles: Record<string, unk
       owner.plugin(nativeFrontend)
     },
   })
-  return { ctx, front, namespace, settings: ctx.settings as unknown as MemorySettings, credentials: ctx.credentials as MemoryCredentials, commands: ctx.commands as unknown as ProviderCommands, markBooted }
+  return { ctx, front, namespace, settings: ctx.settings as unknown as MemorySettings, credentials: ctx.credentials as MemoryCredentials, commands: ctx.commands as unknown as ProviderCommands, markBooted, releaseStartup }
 }
