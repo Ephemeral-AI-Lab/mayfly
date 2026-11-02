@@ -30,19 +30,81 @@ async function fixture(selected = true, enabled = ['mcpCatalog', 'toolCatalog', 
   const read = vi.fn(async (..._args: unknown[]): Promise<unknown> => good({ uri: 'file://resource', text: 'Native body' }))
   Object.assign(f.client.remote, { mayflyHost: { capabilities, mcpCatalog: mcp, toolCatalog: tools, listMcpResources: list, readMcpResource: read } })
   const panels: Array<{ options: RemoteBrowserOptions, refresh: ReturnType<typeof vi.fn<() => void>>, close: ReturnType<typeof vi.fn<() => void>> }> = []
-  browser.mockImplementation((_base, options: RemoteBrowserOptions) => { let closed = false; const result = { options, refresh: vi.fn(), close: vi.fn(() => { if (closed) return; closed = true; options.onClosed?.() }), get closed() { return closed } }; panels.push(result); return result })
+  browser.mockImplementation((_base, options: RemoteBrowserOptions) => { let closed = false; const result = { options, refresh: vi.fn(), close: vi.fn(() => { if (closed) return; closed = true; options.signal?.removeEventListener('abort', result.close); options.onClosed?.() }), get closed() { return closed } }; options.signal?.addEventListener('abort', result.close, { once: true }); panels.push(result); return result })
+  const registered = vi.spyOn(f.options.commands, 'register')
   const stop = mountCatalogFeature(f.options)
   cleanups.push(async () => { stop(); await f.dispose() })
   await tick()
-  const act = async (event: MayflyUiActionEvent) => await panels.at(-1)!.options.action!(event, eventContext())
+  const act = async (event: MayflyUiActionEvent, signal = new AbortController().signal) => await panels.at(-1)!.options.action!(event, { ...eventContext(), signal })
   const observe = async (event: MayflyUiObservationEvent) => { panels.at(-1)!.options.observe!(event); await tick() }
-  const open = async (name = 'mcp') => { await f.run(name); await tick(); return panels.at(-1)! }
+  const open = async (name = 'mcp', signal = new AbortController().signal) => { await f.run(name, '', signal); await tick(); return panels.at(-1)! }
   const text = () => JSON.stringify(panels.at(-1)!.options.view())
   const resourceTab = async () => { await open(); await act(choose('servers', 'alpha-entry')); await observe(tab('server-pages', 'resources')) }
-  return { ...f, features, catalogs, capabilities, mcp, tools, list, read, panels, stop, act, observe, open, text, resourceTab }
+  return { ...f, features, catalogs, capabilities, mcp, tools, list, read, panels, stop, act, observe, open, text, resourceTab, invoke: (name: string, signal: AbortSignal) => registered.mock.calls.find(([command]) => command.name === name)![0].execute('', signal) }
 }
 
 describe('current Host catalogs', () => {
+  it('refuses cancelled or retained unloaded commands, cancels open panels and ignores their retained callbacks', async () => {
+    const f = await fixture()
+    for (const name of ['mcp', 'tools']) {
+      const reads = f.capabilities.mock.calls.length
+      const cancelled = new AbortController(); cancelled.abort()
+      await f.invoke(name, cancelled.signal)
+      expect(f.panels).toHaveLength(name === 'mcp' ? 0 : 1)
+      expect(f.capabilities).toHaveBeenCalledTimes(reads)
+      const caller = new AbortController()
+      const panel = await f.open(name, caller.signal)
+      caller.abort()
+      expect(panel.close).toHaveBeenCalledOnce()
+      expect(panel.options.isCurrent()).toBe(false)
+      expect(await panel.options.action!(activated('refresh'), eventContext())).toEqual({ kind: 'cancelled' })
+      panel.options.observe?.(tab('server-pages', 'resources'))
+    }
+    const count = f.capabilities.mock.calls.length
+    f.stop()
+    await f.invoke('mcp', new AbortController().signal)
+    await f.invoke('tools', new AbortController().signal)
+    expect(f.capabilities).toHaveBeenCalledTimes(count)
+  })
+
+  it('does not read after synchronous renderer close and discards pending capability/catalog responses on caller cancellation', async () => {
+    const f = await fixture()
+    const original = browser.getMockImplementation()!
+    browser.mockImplementationOnce((...args) => { const mounted = original(...args); mounted.close(); return mounted })
+    const before = f.capabilities.mock.calls.length
+    await f.open()
+    expect(f.capabilities).toHaveBeenCalledTimes(before)
+    for (const name of ['mcp', 'tools']) for (const kind of ['capabilities', name] as const) for (const failed of [false, true]) {
+      const gate = Promise.withResolvers<unknown>()
+      f[kind as 'capabilities' | 'mcp' | 'tools'].mockReturnValueOnce(gate.promise)
+      const caller = new AbortController()
+      const panel = await f.open(name, caller.signal)
+      const refreshes = panel.refresh.mock.calls.length
+      caller.abort()
+      if (failed) gate.reject(new Error('cancelled native discovery'))
+      else gate.resolve(good(kind === 'capabilities' ? { features: [] } : kind === 'mcp' ? { servers: [] } : { tools: [] }))
+      await tick()
+      expect(panel.close).toHaveBeenCalledOnce()
+      expect(panel.refresh).toHaveBeenCalledTimes(refreshes)
+    }
+  })
+
+  it('fences action-specific cancellation before opening server details or refreshing a tool panel', async () => {
+    const f = await fixture()
+    for (const name of ['mcp', 'tools']) {
+      await f.open(name)
+      const cancelled = new AbortController(); cancelled.abort()
+      expect(await f.act(activated('refresh'), cancelled.signal)).toEqual({ kind: 'cancelled' })
+      const gate = Promise.withResolvers<unknown>()
+      f.capabilities.mockReturnValueOnce(gate.promise)
+      const caller = new AbortController()
+      const pending = f.act(name === 'mcp' ? choose('servers', 'alpha-entry') : activated('refresh'), caller.signal)
+      caller.abort(); gate.resolve(good({ features: ['mcpCatalog', 'toolCatalog'] }))
+      expect(await pending).toEqual({ kind: 'cancelled' })
+      expect(f.panels.at(-1)!.options.isCurrent()).toBe(true)
+    }
+  })
+
   it('handles absent selections, native events, latest tickets, unavailable capabilities and detach cleanup', async () => {
     const f = await fixture(false)
     await f.open(); await f.open('tools'); expect(f.panels).toEqual([])
@@ -132,6 +194,29 @@ describe('current Host catalogs', () => {
 })
 
 describe('native paged MCP resources', () => {
+  it('cancels paged, refreshed and selected resource reads without publishing their late content', async () => {
+    for (const kind of ['more', 'refresh', 'read'] as const) for (const failed of [false, true]) {
+      const f = await fixture()
+      f.list.mockResolvedValueOnce(good({ items: [{ uri: 'file://resource' }], cursor: 'next' }))
+      await f.resourceTab()
+      const gate = Promise.withResolvers<unknown>()
+      if (kind === 'read') f.read.mockReturnValueOnce(gate.promise)
+      else f.list.mockReturnValueOnce(gate.promise)
+      const controller = new AbortController()
+      const pending = f.act(kind === 'read' ? choose('resource-items', 'file://resource') : activated(kind), controller.signal)
+      await tick()
+      const signal = (kind === 'read' ? f.read : f.list).mock.calls.at(-1)![1] as AbortSignal
+      controller.abort()
+      expect(signal.aborted).toBe(true)
+      if (failed) gate.reject(new Error('cancelled resource failure'))
+      else gate.resolve(good(kind === 'read' ? { uri: 'file://resource', text: 'late native secret' } : { items: [{ uri: 'file://late-secret' }] }))
+      expect(await pending).toEqual({ kind: 'cancelled' })
+      expect(f.text()).not.toContain('late native secret')
+      expect(f.text()).not.toContain('late-secret')
+      expect(f.text()).not.toContain('cancelled resource failure')
+    }
+  })
+
   it('loads pages, templates, exact resource bodies and back navigation with the actual adapter', async () => {
     const f = await fixture()
     f.list.mockResolvedValueOnce(good({ items: [{ uri: 'file://first', name: 'First', mimeType: 'text/plain' }, { uri: '', name: 'invalid' }], cursor: 'next-page' }))

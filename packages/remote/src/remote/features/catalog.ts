@@ -143,11 +143,12 @@ class RemoteCatalogController {
     if (this.lifecycle.selection(generation) !== undefined) void this.refresh(generation)
   }
 
-  private async refresh(generation: number): Promise<void> {
+  private async refresh(generation: number, parent?: AbortSignal): Promise<void> {
     const current = this.lifecycle.selection(generation)
     if (current === undefined) return
     const ticket = ++this.ticket
-    const signal = this.operationLifetime.signal
+    const signal = parent === undefined ? this.operationLifetime.signal : AbortSignal.any([this.operationLifetime.signal, parent])
+    if (signal.aborted) return
     try {
       const capabilities = await current.client.remote.mayflyHost.capabilities()
       if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
@@ -160,7 +161,7 @@ class RemoteCatalogController {
           ? current.client.remote.mayflyHost.toolCatalog({ sessionId: current.ref.sessionId }, signal)
           : Promise.resolve(undefined),
       ])
-      if (!this.lifecycle.owns(generation) || ticket !== this.ticket) return
+      if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
       if (!capabilities.ok) {
         this.mcpError = capabilities.error.message
         this.toolsError = capabilities.error.message
@@ -233,24 +234,24 @@ class RemoteCatalogController {
   }
 
   /** Load the first page of the current kind, replacing whatever was listed. */
-  private async reloadResources(): Promise<void> {
+  private async reloadResources(parent: AbortSignal): Promise<void> {
     this.resourceItems = []
     this.resourceCursor = undefined
     this.resourceLoaded = false
     this.resourceError = undefined
     this.resourceDetail = undefined
-    await this.loadResources()
+    await this.loadResources(parent)
   }
 
   /** Load one page through the Host adapter with the controller's operation fence. */
-  private async loadResources(): Promise<void> {
+  private async loadResources(parent: AbortSignal): Promise<void> {
     const generation = this.lifecycle.currentGeneration()
     const current = this.lifecycle.selection(generation)
     const server = this.selectedServer()
     if (current === undefined || server === undefined || !this.resourcesEnabled()) return
     if (this.resourceLoaded && this.resourceCursor === undefined) return
     const ticket = ++this.ticket
-    const signal = this.operationLifetime.signal
+    const signal = AbortSignal.any([this.operationLifetime.signal, parent])
     this.resourceLoading = true
     this.resourceError = undefined
     this.mcpPanel?.refresh()
@@ -270,18 +271,18 @@ class RemoteCatalogController {
       this.resourceError = remoteErrorMessage(error)
     } finally {
       if (ticket === this.ticket) this.resourceLoading = false
-      this.mcpPanel?.refresh()
+      if (!signal.aborted) this.mcpPanel?.refresh()
     }
   }
 
   /** Read one listed resource body into the Resources tab's detail view. */
-  private async readResource(uri: string): Promise<void> {
+  private async readResource(uri: string, parent: AbortSignal): Promise<void> {
     const generation = this.lifecycle.currentGeneration()
     const current = this.lifecycle.selection(generation)
     const server = this.selectedServer()
     if (current === undefined || server === undefined || !this.resourcesEnabled()) return
     const ticket = ++this.ticket
-    const signal = this.operationLifetime.signal
+    const signal = AbortSignal.any([this.operationLifetime.signal, parent])
     this.resourceDetail = { uri, text: '' }
     this.resourceReading = true
     this.mcpPanel?.refresh()
@@ -295,7 +296,7 @@ class RemoteCatalogController {
       this.resourceDetail = undefined
     } finally {
       if (ticket === this.ticket) this.resourceReading = false
-      this.mcpPanel?.refresh()
+      if (!signal.aborted) this.mcpPanel?.refresh()
     }
   }
 
@@ -312,17 +313,19 @@ class RemoteCatalogController {
     return remoteMcpListNode(this.mcp, this.mcpError, this.t, this.tr)
   }
 
-  private openMcp(): void {
+  private openMcp(parent: AbortSignal): void {
     const current = this.options.hosts.current()
     if (current === undefined) return
     this.mcpPanel?.close()
+    const lifetime = new AbortController()
+    const signal = AbortSignal.any([this.operationLifetime.signal, lifetime.signal, parent])
     this.mcpPanel = openRemoteBrowser(this.options, {
       id: 'remote.mcp',
-      scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
+      scope: { kind: 'session', sessionId: current.ref.sessionId }, signal,
+      isCurrent: () => !signal.aborted && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
       view: () => this.mcpView(),
-      observe: event => this.observeMcp(event),
-      action: event => this.mcpAction(event),
+      observe: event => this.observeMcp(event, signal),
+      action: (event, context) => this.mcpAction(event, AbortSignal.any([signal, context.signal])),
       back: () => {
         if (this.mcpPage === 'tool') {
           this.mcpPage = 'server'
@@ -345,17 +348,18 @@ class RemoteCatalogController {
         this.mcpPanel?.refresh()
         return true
       },
-      onClosed: () => { this.mcpPanel = undefined },
+      onClosed: () => { lifetime.abort(); this.mcpPanel = undefined },
     })
-    void this.refresh(this.lifecycle.currentGeneration())
+    void this.refresh(this.lifecycle.currentGeneration(), signal)
   }
 
-  private observeMcp(event: MayflyUiObservationEvent): void {
+  private observeMcp(event: MayflyUiObservationEvent, signal: AbortSignal): void {
+    if (signal.aborted) return
     if (event.kind !== 'tab-change') return
     if (event.controlId === 'server-pages' && this.mcpPage === 'server') {
       if (event.tabId !== 'tools' && event.tabId !== 'config' && event.tabId !== 'resources') return
       this.serverTab = event.tabId
-      if (event.tabId === 'resources' && !this.resourceLoaded && !this.resourceLoading) void this.loadResources()
+      if (event.tabId === 'resources' && !this.resourceLoaded && !this.resourceLoading) void this.loadResources(signal)
       this.mcpPanel?.refresh()
       return
     }
@@ -363,22 +367,25 @@ class RemoteCatalogController {
       if (event.tabId !== 'resources' && event.tabId !== 'templates') return
       if (event.tabId === this.resourceKind) return
       this.resourceKind = event.tabId
-      void this.reloadResources()
+      void this.reloadResources(signal)
     }
   }
 
-  private async mcpAction(event: MayflyUiActionEvent): Promise<MayflyUiActionReply> {
+  private async mcpAction(event: MayflyUiActionEvent, parent: AbortSignal): Promise<MayflyUiActionReply> {
+    if (parent.aborted) return { kind: 'cancelled' }
     if (event.kind === 'activate' && event.actionId === 'refresh') {
-      await this.refresh(this.lifecycle.currentGeneration())
-      if (this.mcpPage === 'server' && this.serverTab === 'resources' && this.resourcesEnabled()) await this.reloadResources()
-      return { kind: 'completed' }
+      await this.refresh(this.lifecycle.currentGeneration(), parent)
+      if (parent.aborted) return { kind: 'cancelled' }
+      if (this.mcpPage === 'server' && this.serverTab === 'resources' && this.resourcesEnabled()) await this.reloadResources(parent)
+      return { kind: parent.aborted ? 'cancelled' : 'completed' }
     }
     if (event.kind === 'activate' && event.actionId === 'more' && this.mcpPage === 'server' && this.serverTab === 'resources') {
-      await this.loadResources()
-      return { kind: 'completed' }
+      await this.loadResources(parent)
+      return { kind: parent.aborted ? 'cancelled' : 'completed' }
     }
     if (event.kind === 'selection-accept' && event.controlId === 'servers') {
-      await this.refresh(this.lifecycle.currentGeneration())
+      await this.refresh(this.lifecycle.currentGeneration(), parent)
+      if (parent.aborted) return { kind: 'cancelled' }
       const id = event.selectedIds[0]
       const server = this.mcp?.servers.find(candidate => candidate.entryId === id)
       if (server === undefined) return { kind: 'failed', message: this.t('The MCP server is no longer available') }
@@ -403,36 +410,40 @@ class RemoteCatalogController {
       const uri = event.selectedIds[0]
       const listed = this.resourceItems.find(item => item.uri === uri)
       if (listed === undefined) return { kind: 'failed', message: this.tr('The resource is no longer available') }
-      await this.readResource(listed.uri)
-      return { kind: 'completed' }
+      await this.readResource(listed.uri, parent)
+      return { kind: parent.aborted ? 'cancelled' : 'completed' }
     }
     return { kind: 'completed' }
   }
 
-  private openTools(): void {
+  private openTools(parent: AbortSignal): void {
     const current = this.options.hosts.current()
     if (current === undefined) return
     this.toolsPanel?.close()
+    const lifetime = new AbortController()
+    const signal = AbortSignal.any([this.operationLifetime.signal, lifetime.signal, parent])
     this.toolsPanel = openRemoteBrowser(this.options, {
       id: 'remote.tools',
-      scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
+      scope: { kind: 'session', sessionId: current.ref.sessionId }, signal,
+      isCurrent: () => !signal.aborted && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
       view: () => remoteToolsNode(this.tools, this.focusedTool, this.toolDetailMode, this.toolsError, this.t),
-      action: event => this.toolsAction(event),
+      action: (event, context) => this.toolsAction(event, AbortSignal.any([signal, context.signal])),
       back: () => {
         if (!this.toolDetailMode) return false
         this.toolDetailMode = false
         this.toolsPanel?.refresh()
         return true
       },
-      onClosed: () => { this.toolsPanel = undefined },
+      onClosed: () => { lifetime.abort(); this.toolsPanel = undefined },
     })
-    void this.refresh(this.lifecycle.currentGeneration())
+    void this.refresh(this.lifecycle.currentGeneration(), signal)
   }
 
-  private async toolsAction(event: MayflyUiActionEvent): Promise<MayflyUiActionReply> {
+  private async toolsAction(event: MayflyUiActionEvent, parent: AbortSignal): Promise<MayflyUiActionReply> {
+    if (parent.aborted) return { kind: 'cancelled' }
     if (event.kind === 'activate' && event.actionId === 'refresh') {
-      await this.refresh(this.lifecycle.currentGeneration())
+      await this.refresh(this.lifecycle.currentGeneration(), parent)
+      if (parent.aborted) return { kind: 'cancelled' }
       return { kind: 'completed' }
     }
     if (event.kind !== 'selection-accept' || (event.controlId !== 'tools' && event.controlId !== 'tools-narrow')) return { kind: 'completed' }
@@ -444,14 +455,16 @@ class RemoteCatalogController {
     return { kind: 'completed' }
   }
 
-  readonly executeMcp = async (rawInput: string): Promise<void> => {
+  readonly executeMcp = async (rawInput: string, parent: AbortSignal): Promise<void> => {
+    if (this.disposed || parent.aborted) return
     if (rawInput.trim() !== '') throw new Error('Usage: /mcp')
-    this.openMcp()
+    this.openMcp(parent)
   }
 
-  readonly executeTools = async (rawInput: string): Promise<void> => {
+  readonly executeTools = async (rawInput: string, parent: AbortSignal): Promise<void> => {
+    if (this.disposed || parent.aborted) return
     if (rawInput.trim() !== '') throw new Error('Usage: /tools')
-    this.openTools()
+    this.openTools(parent)
   }
 }
 

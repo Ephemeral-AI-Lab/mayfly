@@ -106,6 +106,13 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Remote never folds Job events or invents live jobs from unfinished history.
   Output readers retain exact Host/Session and byte cursors; human stops
   recheck native liveness and fence late results after connection replacement.
+  Catalog, jobs and schedule commands retain their invocation's abort signal
+  through panels, readers and pending actions. Navigation children retain the
+  original invocation when their source panel closes. MCP resource reads and
+  job output follows retire with their exact panel or caller; independent job
+  observation and schedule reminders keep their feature-owned lifetimes.
+  A schedule panel owns its refresh timer before renderer registration, so a
+  synchronous close cannot leave a timer running.
 - `/rewind` reads the primary Session through passive native journal pages,
   builds the shared reference turn picker, and forks only after explicit
   acceptance. Busy checks and exact binding/Host/generation fences cover the

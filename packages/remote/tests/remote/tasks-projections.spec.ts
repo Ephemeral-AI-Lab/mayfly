@@ -19,11 +19,12 @@ const done = [{ content: 'Native task', status: 'completed' }]
 async function fixture(kind: 'todo' | 'schedule', selected = true) {
   const f = await taskFixture(selected)
   const panels: Array<{ options: RemoteBrowserOptions, refresh: ReturnType<typeof vi.fn<() => void>>, close: ReturnType<typeof vi.fn<() => void>> }> = []
-  opened.mockImplementation((_base, options: RemoteBrowserOptions) => { let closed = false; const panel = { options, refresh: vi.fn(), close: vi.fn(() => { if (closed) return; closed = true; options.onClosed?.() }), get closed() { return closed } }; panels.push(panel); return panel })
+  opened.mockImplementation((_base, options: RemoteBrowserOptions) => { let closed = false; const panel = { options, refresh: vi.fn(), close: vi.fn(() => { if (closed) return; closed = true; options.signal?.removeEventListener('abort', panel.close); options.onClosed?.() }), get closed() { return closed } }; options.signal?.addEventListener('abort', panel.close, { once: true }); panels.push(panel); return panel })
+  const registered = vi.spyOn(f.options.commands, 'register')
   const dispose = kind === 'todo' ? mountTodoFeature(f.options) : mountScheduleFeature(f.options)
   cleanups.push(async () => { dispose(); await f.dispose() })
   await tick()
-  return { ...f, panels, stop: dispose, node: (): MayflyUiNode | null => f.pane('mayfly.view.todo')?.node ?? null, summary: () => f.pane('mayfly.view.todo')?.summary ?? null, status: () => f.ctx.mayflyStatus.list().find(entry => entry.id === 'mayfly.schedule')?.node ?? null }
+  return { ...f, panels, stop: dispose, node: (): MayflyUiNode | null => f.pane('mayfly.view.todo')?.node ?? null, summary: () => f.pane('mayfly.view.todo')?.summary ?? null, invoke: (signal: AbortSignal) => registered.mock.calls[0]![0].execute('', signal), status: () => f.ctx.mayflyStatus.list().find(entry => entry.id === 'mayfly.schedule')?.node ?? null }
 }
 const panelText = (f: Awaited<ReturnType<typeof fixture>>) => JSON.stringify(f.panels.at(-1)?.options.view())
 const reminder = (extra: Record<string, unknown> = {}): RemoteScheduleRecord => ({ id: 'reminder', title: 'Native reminder', prompt: 'Native reminder prompt', kind: 'at', scheduledAt: new Date(2_000).toISOString(), ...extra }) as RemoteScheduleRecord
@@ -84,6 +85,59 @@ describe('native Todo projection owner', () => {
 })
 
 describe('native Schedule reads and observations', () => {
+  it('cancels invocation panels, timers and pending reads while preserving background reminder observations', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    for (const failed of [false, true]) {
+      const f = await fixture('schedule')
+      const cancelled = new AbortController(); cancelled.abort()
+      await f.invoke(cancelled.signal)
+      expect(f.panels).toHaveLength(0)
+      const gate = Promise.withResolvers<unknown>()
+      f.schedule.list.mockReturnValueOnce(gate.promise)
+      const caller = new AbortController()
+      await f.run('schedule', '', caller.signal)
+      const panel = f.panels.at(-1)!
+      expect(vi.getTimerCount()).toBe(1)
+      caller.abort()
+      expect(panel.close).toHaveBeenCalledOnce()
+      expect(panel.options.isCurrent()).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
+      if (failed) gate.reject(new Error('cancelled reminders'))
+      else gate.resolve(good([reminder()]))
+      await tick()
+      expect(f.status()).toBeNull()
+      expect(await panel.options.action!(activated('refresh'), { signal: new AbortController().signal } as never)).toEqual({ kind: 'cancelled' })
+      f.schedule.list.mockResolvedValue(good([reminder()]))
+      f.event('schedule/changed'); await tick()
+      expect(JSON.stringify(f.status())).toContain('Reminders 1')
+      f.stop()
+      await f.invoke(new AbortController().signal)
+      expect(f.panels).toHaveLength(1)
+    }
+  })
+
+  it('retires action refresh results and never starts a timer or read after synchronous renderer close', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const f = await fixture('schedule')
+    const original = opened.getMockImplementation()!
+    opened.mockImplementationOnce((...args) => { const panel = original(...args); panel.close(); return panel })
+    const count = f.schedule.list.mock.calls.length
+    await f.run('schedule')
+    expect(f.schedule.list).toHaveBeenCalledTimes(count)
+    expect(vi.getTimerCount()).toBe(0)
+    await f.run('schedule')
+    const panel = f.panels.at(-1)!
+    const cancelled = new AbortController(); cancelled.abort()
+    expect(await panel.options.action!(activated('refresh'), { signal: cancelled.signal } as never)).toEqual({ kind: 'cancelled' })
+    const caller = new AbortController()
+    const gate = Promise.withResolvers<unknown>()
+    f.schedule.list.mockReturnValueOnce(gate.promise)
+    const pending = panel.options.action!(activated('refresh'), { signal: caller.signal } as never)
+    caller.abort(); gate.resolve(good([reminder()]))
+    expect(await pending).toEqual({ kind: 'cancelled' })
+    expect(f.status()).toBeNull()
+  })
+
   it('opens selected and Host catalogs, ticks only an open panel and clears exact subscriptions', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] }); vi.setSystemTime(1_000)
     const f = await fixture('schedule', false)
@@ -99,9 +153,9 @@ describe('native Schedule reads and observations', () => {
     const refreshes = f.panels.at(-1)!.refresh.mock.calls.length
     await vi.advanceTimersByTimeAsync(1_000)
     expect(f.panels.at(-1)!.refresh.mock.calls.length).toBeGreaterThan(refreshes)
-    await f.panels.at(-1)!.options.action!(activated('unrelated'), {} as never)
-    await f.panels.at(-1)!.options.action!({ kind: 'dismiss', pagePath: [] }, {} as never)
-    await f.panels.at(-1)!.options.action!(activated('refresh'), {} as never); await tick()
+    await f.panels.at(-1)!.options.action!(activated('unrelated'), { signal: new AbortController().signal } as never)
+    await f.panels.at(-1)!.options.action!({ kind: 'dismiss', pagePath: [] }, { signal: new AbortController().signal } as never)
+    await f.panels.at(-1)!.options.action!(activated('refresh'), { signal: new AbortController().signal } as never); await tick()
     await f.run('schedule', 'all'); await tick()
     expect(panelText(f)).toContain('Host reminders'); expect(panelText(f)).toContain('Session: session')
     f.panels.at(-1)!.close()
@@ -131,7 +185,7 @@ describe('native Schedule reads and observations', () => {
       expect(panelText(f)).toContain('transport down')
     }
     const stale = f.panels.at(-1)!
-    f.select(false); f.event('schedule/changed'); await stale.options.action!(activated('refresh'), {} as never); await tick()
+    f.select(false); f.event('schedule/changed'); await stale.options.action!(activated('refresh'), { signal: new AbortController().signal } as never); await tick()
     expect(f.status()).toBeNull()
     f.select(true); await tick(); f.reconnect(); await tick()
     expect(f.status()).toBeNull()

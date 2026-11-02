@@ -57,7 +57,7 @@ class RemoteJobsController {
       id: 'mayfly.view.jobs',
       placement: 'views',
       priority: 12,
-      onEvent: { action: event => this.act(event, true) },
+      onEvent: { action: (event, context) => this.act(event, true, undefined, context.signal) },
     }, null)
     this.lifecycle.start()
     this.timer = setInterval(this.publish, 1_000)
@@ -160,13 +160,14 @@ class RemoteJobsController {
     this.readerPanel?.refresh()
   }
 
-  private async act(event: MayflyUiActionEvent, statusView = false): Promise<MayflyUiActionReply> {
+  private async act(event: MayflyUiActionEvent, statusView: boolean, parent: AbortSignal | undefined, signal: AbortSignal): Promise<MayflyUiActionReply> {
+    if (signal.aborted) return { kind: 'cancelled' }
     if (event.kind === 'activate' && event.actionId === 'jobs-refresh') {
       await this.refreshRoster()
-      return { kind: 'completed' }
+      return { kind: signal.aborted ? 'cancelled' : 'completed' }
     }
     if (event.kind === 'activate' && event.actionId === REMOTE_JOB_READ_ID && this.detailJob !== undefined) {
-      this.openReader(this.detailJob)
+      this.openReader(this.detailJob, parent)
       return { kind: 'completed' }
     }
     const stopping = event.kind === 'activate' && event.actionId === REMOTE_JOB_STOP_ID
@@ -177,11 +178,12 @@ class RemoteJobsController {
     const job = this.jobs().find(candidate => String(candidate.id) === String(chosen))
     if (job === undefined) return { kind: 'failed', message: this.t('Select a job first') }
     if (stopping) {
-      const error = await this.recheckAndKill(job)
+      const error = await this.recheckAndKill(job, signal)
+      if (signal.aborted) return { kind: 'cancelled' }
       return error === undefined ? { kind: 'completed', feedback: { severity: 'success', message: this.t('Stopping {job}', { job: job.label }) } } : { kind: 'failed', message: error }
     }
-    if (statusView) this.openReader(job)
-    else this.openDetail(job)
+    if (statusView) this.openReader(job, parent)
+    else this.openDetail(job, parent!)
     return { kind: 'completed' }
   }
 
@@ -191,10 +193,10 @@ class RemoteJobsController {
     await this.source.attach(current.client, current.ref)
   }
 
-  private async recheckAndKill(job: JobView): Promise<string | undefined> {
+  private async recheckAndKill(job: JobView, parent: AbortSignal): Promise<string | undefined> {
     const current = this.options.hosts.current()
     if (current === undefined) return this.t('The agent changed; open it again')
-    const signal = this.operationLifetime.signal
+    const signal = AbortSignal.any([this.operationLifetime.signal, parent])
     let roster: readonly JobView[] | undefined
     const stream = current.client.remote.job.list({ sessionId: current.ref.sessionId }, signal)
     try {
@@ -220,14 +222,16 @@ class RemoteJobsController {
     return undefined
   }
 
-  private open(): void {
+  private open(parent: AbortSignal): void {
     const current = this.options.hosts.current()
     if (current === undefined) return
     this.browser?.close()
+    const lifetime = new AbortController()
+    const signal = AbortSignal.any([lifetime.signal, parent])
     this.browser = openRemoteBrowser(this.options, {
       id: 'remote.jobs',
-      scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
+      scope: { kind: 'session', sessionId: current.ref.sessionId }, signal,
+      isCurrent: () => !signal.aborted && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
       view: () => panel({
         title: this.t('Jobs'),
         escapeLabel: 'close',
@@ -241,30 +245,33 @@ class RemoteJobsController {
           ui.actions({ id: 'jobs-browser-actions', items: [{ id: 'jobs-refresh', label: this.t('Refresh'), hintLabel: this.t('refresh'), semantic: 'refresh', hidden: true }] }),
         ]),
       }),
-      action: event => this.act(event),
-      onClosed: () => { this.browser = undefined },
+      action: (event, context) => this.act(event, false, parent, AbortSignal.any([signal, context.signal])),
+      onClosed: () => { lifetime.abort(); this.browser = undefined },
     })
   }
 
-  private openDetail(job: JobView): void {
+  private openDetail(job: JobView, parent: AbortSignal): void {
     const current = this.options.hosts.current()
     if (current === undefined) return
     this.detail?.close()
     this.detailJob = job
+    const lifetime = new AbortController()
+    const signal = AbortSignal.any([lifetime.signal, parent])
     this.detail = openRemoteBrowser(this.options, {
       id: 'remote.jobs.detail',
-      scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
+      scope: { kind: 'session', sessionId: current.ref.sessionId }, signal,
+      isCurrent: () => !signal.aborted && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
       view: () => remoteJobDetailsNode(this.jobs().find(candidate => candidate.id === job.id) ?? job, this.t),
-      action: event => this.act(event),
+      action: (event, context) => this.act(event, false, parent, AbortSignal.any([signal, context.signal])),
       onClosed: () => {
+        lifetime.abort()
         this.detail = undefined
         this.detailJob = undefined
       },
     })
   }
 
-  private openReader(job: JobView): void {
+  private openReader(job: JobView, parent?: AbortSignal): void {
     const current = this.options.hosts.current()
     if (current === undefined) return
     this.closeReader()
@@ -274,8 +281,8 @@ class RemoteJobsController {
     this.reader = reader
     this.readerPanel = openRemoteBrowser(this.options, {
       id: 'remote.jobs.output',
-      scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => this.reader === reader && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
+      scope: { kind: 'session', sessionId: current.ref.sessionId }, ...parent === undefined ? {} : { signal: parent },
+      isCurrent: () => parent?.aborted !== true && this.reader === reader && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
       view: () => {
         const snapshot = reader.snapshot()
         return remoteJobOutputNode(snapshot.job, snapshot, this.t)
@@ -297,9 +304,10 @@ class RemoteJobsController {
     if (reader !== undefined) void reader.dispose()
   }
 
-  readonly execute = async (rawInput: string): Promise<void> => {
+  readonly execute = async (rawInput: string, parent: AbortSignal): Promise<void> => {
+    if (this.disposed || parent.aborted) return
     if (rawInput.trim() !== '') throw new Error('Usage: /jobs')
-    this.open()
+    this.open(parent)
   }
 }
 

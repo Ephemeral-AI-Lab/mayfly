@@ -151,9 +151,9 @@ function fixture(options: {
     get: vi.fn((name: string) => (name === 'mayflyLocale' ? locale : undefined)),
     mayflyLocale: locale,
   }
-  const commands: Array<{ readonly name: string, readonly execute: (rawInput: string) => Promise<void> }> = []
+  const commands: Array<{ readonly name: string, readonly execute: (rawInput: string, signal: AbortSignal) => Promise<void> }> = []
   const disposers = [vi.fn(), vi.fn()]
-  const register = vi.fn((command: { readonly name: string, readonly execute: (rawInput: string) => Promise<void> }) => {
+  const register = vi.fn((command: { readonly name: string, readonly execute: (rawInput: string, signal: AbortSignal) => Promise<void> }) => {
     commands.push(command)
     return disposers[commands.length - 1]!
   })
@@ -189,7 +189,7 @@ function browserOf(index = 0): RemoteBrowserOptions {
   return mocks.open.mock.calls[index]![1] as RemoteBrowserOptions
 }
 
-const signal = { aborted: false } as AbortSignal
+const signal = new AbortController().signal
 
 /** Wait until one refresh finished: the feature repaints its open panel last. */
 async function settled(panel: { readonly refresh: () => void }): Promise<void> {
@@ -218,11 +218,11 @@ describe('mountCatalogFeature commands', () => {
 
     expect(register).toHaveBeenCalledTimes(2)
     expect(commands.map(command => command.name)).toEqual(['mcp', 'tools'])
-    await expect(commands[0]!.execute(' alpha')).rejects.toThrow('Usage: /mcp')
-    await expect(commands[1]!.execute(' now')).rejects.toThrow('Usage: /tools')
+    await expect(commands[0]!.execute(' alpha', signal)).rejects.toThrow('Usage: /mcp')
+    await expect(commands[1]!.execute(' now', signal)).rejects.toThrow('Usage: /tools')
     expect(mocks.open).not.toHaveBeenCalled()
 
-    await commands[0]!.execute('')
+    await commands[0]!.execute('', signal)
     const browser = browserOf()
     expect(browser.id).toBe('remote.mcp')
     expect(browser.scope).toEqual({ kind: 'session', sessionId: SessionId('session-1') })
@@ -243,7 +243,7 @@ describe('mountCatalogFeature MCP catalog', () => {
     const { context, commands } = fixture({ mcp: mcpCatalog(servers) })
     const dispose = mountCatalogFeature(context)
 
-    await commands[0]!.execute('')
+    await commands[0]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
     await vi.waitFor(() => { expect(labelsOf(browserOf().view())).toHaveLength(3) })
 
@@ -263,7 +263,7 @@ describe('mountCatalogFeature MCP catalog', () => {
     mocks.open.mockReturnValue(panel)
     const dispose = mountCatalogFeature(context)
 
-    await commands[0]!.execute('')
+    await commands[0]!.execute('', signal)
     await settled(panel)
     expect(mcpCatalogRead).toHaveBeenCalled()
 
@@ -278,7 +278,7 @@ describe('mountCatalogFeature MCP catalog', () => {
     const { context, commands } = fixture({ mcp: mcpCatalog([mcpServer()], 2) })
     const dispose = mountCatalogFeature(context)
 
-    await commands[0]!.execute('')
+    await commands[0]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
     await vi.waitFor(() => { expect(labelsOf(browserOf().view())).toHaveLength(1) })
 
@@ -291,7 +291,7 @@ describe('mountCatalogFeature MCP catalog', () => {
     vi.mocked(capabilities).mockResolvedValue({ ok: false, error: { code: 'mayflyHost/capability-unavailable', message: 'Host does not compose Mayfly' } } as never)
     const dispose = mountCatalogFeature(context)
 
-    await commands[0]!.execute('')
+    await commands[0]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
     await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual(['Host does not compose Mayfly']) })
 
@@ -309,13 +309,13 @@ describe('mountCatalogFeature MCP catalog', () => {
     const { context, commands, mcpCatalogRead, toolCatalogRead } = fixture({ features: ['toolCatalog'], tools: toolCatalog(['read_file']) })
     const dispose = mountCatalogFeature(context)
 
-    await commands[0]!.execute('')
+    await commands[0]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
     await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual([unavailableCapability('mcpCatalog')]) })
 
     expect(mcpCatalogRead).not.toHaveBeenCalled()
 
-    await commands[1]!.execute('')
+    await commands[1]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledTimes(2) })
     await vi.waitFor(() => { expect(errorTextsOf(browserOf(1).view())).toEqual([]) })
     expect(labelsOf(browserOf(1).view(), 'tools')).toEqual(['read_file'])
@@ -328,12 +328,12 @@ describe('mountCatalogFeature MCP catalog', () => {
     vi.mocked(mcpCatalogRead).mockResolvedValue({ ok: false, error: { code: 'unavailable', message: 'catalog exploded' } } as never)
     const dispose = mountCatalogFeature(context)
 
-    await commands[0]!.execute('')
+    await commands[0]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
     await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual(['catalog exploded']) })
     expect(labelsOf(browserOf().view())).toEqual([])
 
-    await commands[1]!.execute('')
+    await commands[1]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledTimes(2) })
     expect(toolCatalogRead.mock.calls.length).toBeGreaterThanOrEqual(1)
     expect(errorTextsOf(browserOf(1).view())).toEqual([])
@@ -345,7 +345,7 @@ describe('mountCatalogFeature MCP catalog', () => {
     const { context, commands, toolCatalogRead } = fixture({ tools: toolCatalog([]) })
     const dispose = mountCatalogFeature(context)
 
-    await commands[1]!.execute('')
+    await commands[1]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
     expect(toolCatalogRead.mock.calls.length).toBeGreaterThanOrEqual(1)
 
@@ -366,7 +366,7 @@ describe('mountCatalogFeature probe ownership', () => {
     // The mount follows the committed selection once; opening the panel is a
     // second explicit read of the same generation.
     expect(capabilities).toHaveBeenCalledOnce()
-    await commands[0]!.execute('')
+    await commands[0]!.execute('', signal)
     await vi.waitFor(() => { expect(capabilities).toHaveBeenCalledTimes(2) })
     await vi.waitFor(() => { expect(labelsOf(browserOf().view())).toHaveLength(1) })
 
@@ -384,7 +384,7 @@ describe('mountCatalogFeature probe ownership', () => {
     const { context, commands, capabilities, mcpCatalogRead, reselect } = fixture({ mcp: mcpCatalog([mcpServer({ entryId: 'old', serverName: 'old-server' })]) })
     const dispose = mountCatalogFeature(context)
 
-    await commands[0]!.execute('')
+    await commands[0]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
     await vi.waitFor(() => { expect(labelsOf(browserOf().view())).toEqual(['old-server']) })
     const browser = browserOf()

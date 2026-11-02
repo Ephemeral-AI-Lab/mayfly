@@ -128,16 +128,16 @@ class RemoteScheduleController {
     this.publish()
   }
 
-  private async refresh(generation: number): Promise<void> {
+  private async refresh(generation: number, signal?: AbortSignal): Promise<void> {
     const current = this.lifecycle.selection(generation)
-    if (current === undefined) return
+    if (signal?.aborted || current === undefined) return
     const ticket = ++this.ticket
     try {
       const [list, catalog] = await Promise.all([
         current.client.remote.schedule.list({ sessionId: current.ref.sessionId }),
         current.client.remote.schedule.catalog(),
       ])
-      if (!this.lifecycle.owns(generation) || ticket !== this.ticket) return
+      if (signal?.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
       if (list.ok) {
         this.records = list.value
         this.listError = undefined
@@ -153,7 +153,7 @@ class RemoteScheduleController {
         this.catalogError = catalog.error.message
       }
     } catch (error) {
-      if (!this.lifecycle.owns(generation) || ticket !== this.ticket) return
+      if (signal?.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
       const message = error instanceof Error ? error.message : String(error)
       this.records = undefined
       this.catalog = undefined
@@ -184,7 +184,7 @@ class RemoteScheduleController {
     this.timer = undefined
   }
 
-  private open(mode: 'session' | 'catalog'): void {
+  private open(mode: 'session' | 'catalog', parent: AbortSignal): void {
     const current = this.options.hosts.current()
     if (current === undefined) {
       this.options.notice.set(this.t('Schedule unavailable'))
@@ -192,30 +192,36 @@ class RemoteScheduleController {
     }
     this.mode = mode
     this.browser?.close()
+    const lifetime = new AbortController()
+    const signal = AbortSignal.any([lifetime.signal, parent])
+    this.stopTimer()
+    this.timer = setInterval(() => this.browser?.refresh(), 1_000)
+    this.timer.unref()
     this.browser = openRemoteBrowser(this.options, {
       id: 'remote.schedule',
-      scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
+      scope: { kind: 'session', sessionId: current.ref.sessionId }, signal,
+      isCurrent: () => !signal.aborted && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
       view: () => this.view(),
-      action: event => {
-        if (event.kind === 'activate' && event.actionId === 'refresh') void this.refresh(this.lifecycle.currentGeneration())
-        return { kind: 'completed' }
+      action: async (event, context) => {
+        const actionSignal = AbortSignal.any([signal, context.signal])
+        if (actionSignal.aborted) return { kind: 'cancelled' }
+        if (event.kind === 'activate' && event.actionId === 'refresh') await this.refresh(this.lifecycle.currentGeneration(), actionSignal)
+        return { kind: actionSignal.aborted ? 'cancelled' : 'completed' }
       },
       onClosed: () => {
+        lifetime.abort()
         this.browser = undefined
         this.stopTimer()
       },
     })
-    this.stopTimer()
-    this.timer = setInterval(() => this.browser?.refresh(), 1_000)
-    this.timer.unref()
-    void this.refresh(this.lifecycle.currentGeneration())
+    void this.refresh(this.lifecycle.currentGeneration(), signal)
   }
 
-  readonly execute = async (rawInput: string): Promise<void> => {
+  readonly execute = async (rawInput: string, parent: AbortSignal): Promise<void> => {
+    if (this.disposed || parent.aborted) return
     const input = rawInput.trim()
     if (input !== '' && input !== 'all') throw new Error('Usage: /schedule [all]')
-    this.open(input === 'all' ? 'catalog' : 'session')
+    this.open(input === 'all' ? 'catalog' : 'session', parent)
   }
 }
 
