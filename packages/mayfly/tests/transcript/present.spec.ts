@@ -104,3 +104,20 @@ describe('resolveResultView', () => {
     expect(resolveResultView(source, 'edit', {}, result)).toBe(view)
   })
 })
+
+describe('scoped native call identity', () => {
+  it('forwards the same exact call identity to both phases without changing native one-argument sources', () => {
+    const lookups: unknown[][] = []
+    const result = { content: [], isError: false }
+    const source: ToolPresentationSource = {
+      get(name, callId) {
+        lookups.push([name, callId])
+        return { presentCall: args => args, presentResult: (_args, value) => value }
+      },
+    }
+    expect(resolveCallView(source, 'read', { file_path: 'same.txt' }, 'exact-call')).toEqual({ file_path: 'same.txt' })
+    expect(resolveResultView(source, 'read', {}, result, 'exact-call')).toBe(result)
+    expect(lookups).toEqual([['read', 'exact-call'], ['read', 'exact-call']])
+    expect(resolveCallView(tools(name => ({ presentCall: () => name })), 'native', {})).toBe('native')
+  })
+})

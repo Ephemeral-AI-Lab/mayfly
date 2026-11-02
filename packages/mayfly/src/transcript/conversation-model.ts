@@ -108,8 +108,8 @@ function interruptionFacts(entry: ConversationToolEntry): { readonly interruptio
 function resolveTool(entry: ConversationToolEntry, tools: ToolPresentationSource): ResolvedTool {
   const args = parseToolArguments(entry.arguments)
   const outcome = toolResult(entry)
-  const call = resolveCallView(tools, entry.name, args)
-  const result = outcome === undefined ? undefined : resolveResultView(tools, entry.name, args, outcome)
+  const call = resolveCallView(tools, entry.name, args, entry.callId)
+  const result = outcome === undefined ? undefined : resolveResultView(tools, entry.name, args, outcome, entry.callId)
   return { entry, args, outcome, call, result }
 }
 

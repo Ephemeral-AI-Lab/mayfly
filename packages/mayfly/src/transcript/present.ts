@@ -18,8 +18,8 @@ import type {
 
 /** The presenter-bearing face of a tool registry the resolvers read (structural, scope-agnostic). */
 export interface ToolPresentationSource {
-  /** The presenter-bearing definition the source resolves, or `undefined` when none is visible. */
-  get(name: string): { readonly presentCall?: (args: unknown) => unknown; readonly presentResult?: (args: unknown, result: ToolResult) => unknown } | undefined
+  /** Resolve one call identity; native registries may ignore the optional per-Session id. */
+  get(name: string, callId?: string): { readonly presentCall?: (args: unknown) => unknown; readonly presentResult?: (args: unknown, result: ToolResult) => unknown } | undefined
 }
 
 /**
@@ -87,6 +87,7 @@ export function parseToolArguments(raw: string): unknown {
  * @param tools - the host tool registry.
  * @param name - the tool name exactly as the model requested it.
  * @param args - the parsed arguments (`undefined` when parsing failed).
+ * @param callId - the exact per-Session call identity for scoped remote presenters.
  * @returns the call view, or `undefined` when the tool is unknown, declares
  *   no presenter, or its presenter throws.
  */
@@ -94,9 +95,10 @@ export function resolveCallView(
   tools: ToolPresentationSource,
   name: string,
   args: unknown,
+  callId?: string,
 ): ToolCallView | undefined {
   try {
-    return tools.get(name)?.presentCall?.(args) as ToolCallView | undefined
+    return tools.get(name, callId)?.presentCall?.(args) as ToolCallView | undefined
   } catch {
     return undefined
   }
@@ -108,6 +110,7 @@ export function resolveCallView(
  * @param name - the tool name exactly as the model requested it.
  * @param args - the parsed arguments (`undefined` when parsing failed).
  * @param result - the reconstructed tool result (`content`, `isError`, `meta`).
+ * @param callId - the exact per-Session call identity for scoped remote presenters.
  * @returns the result view, or `undefined` when the tool is unknown, declares
  *   no presenter, or its presenter throws.
  */
@@ -116,9 +119,10 @@ export function resolveResultView(
   name: string,
   args: unknown,
   result: ToolResult,
+  callId?: string,
 ): ToolResultView | undefined {
   try {
-    return tools.get(name)?.presentResult?.(args, result) as ToolResultView | undefined
+    return tools.get(name, callId)?.presentResult?.(args, result) as ToolResultView | undefined
   } catch {
     return undefined
   }

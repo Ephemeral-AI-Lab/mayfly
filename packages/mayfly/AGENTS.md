@@ -43,6 +43,11 @@ Host service runtime imports and legacy composition payload.
   conversation and facts; reconnect replaces baselines. Explicit settled-step
   facts close live content, never a reasoning animation flag. Durable
   `updatedSeq` and transient `renderRevision` are separate clocks.
+- Tool presenter sources receive the exact per-Session `callId` for both call
+  and result resolution. Native registries may ignore that optional identity;
+  asynchronous Remote sources use it to preserve repeated calls independently
+  of lookup count or argument equality. Keep native Read windows, Edit diffs,
+  Write bodies, and absolute result paths intact across this seam.
 - Transcript controllers keep one view per displayed/retained conversation,
   stash hidden values without conversion, and lazily convert floor-eligible
   entries on display. BTW history floors hide seeds only in presentation.

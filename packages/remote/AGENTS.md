@@ -17,6 +17,12 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
 - `src/frontend/` owns multi-Host registration, generation-safe selection, and
   typed actions. Every Session identity includes `HostKey`; do not create a
   second Session, Connection, or projection state machine.
+  Its native tool-presentation cache keys exact Host, Session, `callId`, durable
+  update and presenter revision. Both mapper phases resolve the same call id;
+  repeated names and identical arguments never consume a positional cursor.
+  Presenter batches retain native result metadata and retire on generation
+  replacement, so builtin Read windows, Edit diffs and Write previews survive
+  the process boundary without borrowing another call's result.
 - `src/remote/` owns the standalone application, editor, local commands,
   banner, footer, plain panels, and terminal lifecycle. Session facts stay in
   the footer; command results and operation failures use the reference

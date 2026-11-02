@@ -35,7 +35,7 @@ export type RemoteToolPresentationResolver = (ref: SessionRef) => RemoteToolPres
 
 /** Optional scoped source implemented by the asynchronous Host presentation cache. */
 export interface ScopedRemoteToolPresentationSource extends ToolPresentationSource {
-  /** Synchronize changed entries and return a synchronous mapper source scoped to their order. */
+  /** Synchronize changed entries and return a synchronous mapper source scoped to their call identities. */
   source(ref: SessionRef, projection: ConversationProjection): ToolPresentationSource
   /** Subscribe to newly available Host presentation values. */
   subscribe(listener: () => void): () => void
@@ -94,13 +94,11 @@ export class RemoteToolPresentationCache implements ScopedRemoteToolPresentation
   /** Queue only entries absent from the current key generation, then scope one synchronous mapper pass. */
   source(ref: SessionRef, projection: ConversationProjection): ToolPresentationSource {
     this.sync(ref, projection)
-    const entries = projection.entries.filter((entry): entry is ConversationToolEntry => entry.kind === 'tool')
+    const entries = new Map(projection.entries.filter((entry): entry is ConversationToolEntry => entry.kind === 'tool').map(entry => [entry.callId, entry]))
     const revision = this.remote?.presentationRevision
-    let index = 0
     return {
-      get: (name: string) => {
-        const entry = entries[index]
-        index += 1
+      get: (name: string, callId?: string) => {
+        const entry = callId === undefined ? undefined : entries.get(callId)
         if (entry === undefined || entry.name !== name || revision === undefined) return undefined
         const presentation = this.values.get(remoteToolPresentationKey({
           ref,

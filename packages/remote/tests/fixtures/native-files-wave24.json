@@ -1,0 +1,223 @@
+{
+  "provenance": {
+    "harness": "0.2.2-alpha.2",
+    "scenario": "split-wave24/native-files",
+    "cwd": "/home/x/dev/mayfly-split-parity-validation/.artifacts/split-wave24/shared-native-files-workspace",
+    "note": "Unmodified native read/edit/write/present events from the real Host PTY case, including result metadata."
+  },
+  "events": [
+    {
+      "type": "turn/start",
+      "seq": 4,
+      "time": 1767258000000,
+      "data": {
+        "turn": 1
+      }
+    },
+    {
+      "type": "tool/call",
+      "seq": 16,
+      "time": 1767258000000,
+      "data": {
+        "turn": 1,
+        "step": 1,
+        "callId": "native_files_read",
+        "name": "read",
+        "arguments": "{\"file_path\":\"parity-change.txt\"}"
+      }
+    },
+    {
+      "type": "tool/result",
+      "seq": 17,
+      "time": 1767258000000,
+      "data": {
+        "turn": 1,
+        "step": 1,
+        "message": {
+          "role": "tool",
+          "source": {
+            "kind": "tool",
+            "callId": "native_files_read"
+          },
+          "toolCallId": "native_files_read",
+          "content": [
+            {
+              "type": "text",
+              "text": "<path>/home/x/dev/mayfly-split-parity-validation/.artifacts/split-wave24/shared-native-files-workspace/parity-change.txt</path>\n<type>file</type>\n<content>\n1: before parity change\n2: unchanged line\n\n(End of file - total 2 lines)\n</content>"
+            }
+          ],
+          "isError": false,
+          "id": "b9e7291b-0cbe-48ef-8589-f3589ccc2f05"
+        },
+        "meta": {
+          "path": "/home/x/dev/mayfly-split-parity-validation/.artifacts/split-wave24/shared-native-files-workspace/parity-change.txt",
+          "offset": 1,
+          "lines": [
+            {
+              "number": 1,
+              "text": "before parity change"
+            },
+            {
+              "number": 2,
+              "text": "unchanged line"
+            }
+          ],
+          "totalLines": 2
+        }
+      },
+      "sourceEventSeqs": [
+        16
+      ],
+      "surfaceOp": "append"
+    },
+    {
+      "type": "tool/call",
+      "seq": 22,
+      "time": 1767258000000,
+      "data": {
+        "turn": 1,
+        "step": 2,
+        "callId": "native_files_edit",
+        "name": "edit",
+        "arguments": "{\"file_path\":\"parity-change.txt\",\"old_string\":\"before parity change\",\"new_string\":\"after parity change\"}"
+      }
+    },
+    {
+      "type": "tool/result",
+      "seq": 23,
+      "time": 1767258000000,
+      "data": {
+        "turn": 1,
+        "step": 2,
+        "message": {
+          "role": "tool",
+          "source": {
+            "kind": "tool",
+            "callId": "native_files_edit"
+          },
+          "toolCallId": "native_files_edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "The file /home/x/dev/mayfly-split-parity-validation/.artifacts/split-wave24/shared-native-files-workspace/parity-change.txt has been updated successfully."
+            }
+          ],
+          "isError": false,
+          "id": "80c00c76-2d98-4a94-b174-37633f3f65fc"
+        },
+        "meta": {
+          "path": "/home/x/dev/mayfly-split-parity-validation/.artifacts/split-wave24/shared-native-files-workspace/parity-change.txt",
+          "diffs": [
+            {
+              "path": "/home/x/dev/mayfly-split-parity-validation/.artifacts/split-wave24/shared-native-files-workspace/parity-change.txt",
+              "oldText": "before parity change\nunchanged line",
+              "newText": "after parity change\nunchanged line"
+            }
+          ]
+        }
+      },
+      "sourceEventSeqs": [
+        22
+      ],
+      "surfaceOp": "append"
+    },
+    {
+      "type": "tool/call",
+      "seq": 28,
+      "time": 1767258000000,
+      "data": {
+        "turn": 1,
+        "step": 3,
+        "callId": "native_files_write",
+        "name": "write",
+        "arguments": "{\"file_path\":\"parity-deliverable.txt\",\"content\":\"Native delivered file\\nExact preview 你好 🪰\\n\"}"
+      }
+    },
+    {
+      "type": "tool/result",
+      "seq": 29,
+      "time": 1767258000000,
+      "data": {
+        "turn": 1,
+        "step": 3,
+        "message": {
+          "role": "tool",
+          "source": {
+            "kind": "tool",
+            "callId": "native_files_write"
+          },
+          "toolCallId": "native_files_write",
+          "content": [
+            {
+              "type": "text",
+              "text": "<path>/home/x/dev/mayfly-split-parity-validation/.artifacts/split-wave24/shared-native-files-workspace/parity-deliverable.txt</path>\n<type>file</type>\n<content>\nCreated file\n</content>"
+            }
+          ],
+          "isError": false,
+          "id": "b93a7ac3-3d06-4f1a-91d9-a07198a09b4a"
+        },
+        "meta": {
+          "operation": "create",
+          "path": "/home/x/dev/mayfly-split-parity-validation/.artifacts/split-wave24/shared-native-files-workspace/parity-deliverable.txt",
+          "diffs": []
+        }
+      },
+      "sourceEventSeqs": [
+        28
+      ],
+      "surfaceOp": "append"
+    },
+    {
+      "type": "tool/call",
+      "seq": 34,
+      "time": 1767258000000,
+      "data": {
+        "turn": 1,
+        "step": 4,
+        "callId": "native_files_present",
+        "name": "present",
+        "arguments": "{\"files\":[{\"path\":\"parity-deliverable.txt\",\"description\":\"Deterministic native delivery\"}]}"
+      }
+    },
+    {
+      "type": "tool/result",
+      "seq": 36,
+      "time": 1767258000000,
+      "data": {
+        "turn": 1,
+        "step": 4,
+        "message": {
+          "role": "tool",
+          "source": {
+            "kind": "tool",
+            "callId": "native_files_present"
+          },
+          "toolCallId": "native_files_present",
+          "content": [
+            {
+              "type": "text",
+              "text": "Presented /home/x/dev/mayfly-split-parity-validation/.artifacts/split-wave24/shared-native-files-workspace/parity-deliverable.txt"
+            }
+          ],
+          "isError": false,
+          "id": "4342639a-bc89-4ee1-9b98-1f1efe6ac292"
+        }
+      },
+      "sourceEventSeqs": [
+        34
+      ],
+      "surfaceOp": "append"
+    },
+    {
+      "type": "turn/end",
+      "seq": 43,
+      "time": 1767258000000,
+      "data": {
+        "turn": 1,
+        "reason": {
+          "kind": "completed"
+        }
+      }
+    }
+  ]
+}
