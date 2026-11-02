@@ -118,13 +118,16 @@ describe('/theme command', () => {
     // rejects, dark is restored, and the picker replies 'failed'.
     const pluginCtx = (fiber as unknown as { ctx: Context }).ctx
     const original = pluginCtx.plugin.bind(pluginCtx)
+    let refusal: unknown = new Error('simulated mount failure')
     vi.spyOn(pluginCtx, 'plugin').mockImplementation(((plugin: unknown, config?: unknown) => plugin === themeBuiltin
-      ? Promise.reject(new Error('simulated mount failure'))
+      ? Promise.reject(refusal)
       : original(plugin as never, config as never)) as never)
     const failed = await accept(['tide'])
     expect(failed.kind).toBe('failed')
     if (failed.kind === 'failed') expect(failed.message).toContain('failed to apply theme "tide"')
     expect(ctx.get('mayflyTheme')?.colors).toBe(themeDark.DARK_COLORS)
+    refusal = 'provider mount withdrawn'
+    expect(await accept(['tide'])).toMatchObject({ kind: 'failed', message: expect.stringContaining('provider mount withdrawn') })
   })
 
   it('swaps built-in palettes through the real registry', async () => {

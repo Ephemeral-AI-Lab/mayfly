@@ -304,6 +304,20 @@ describe('mayfly app driver', () => {
     await test.ctx.fiber.dispose()
   })
 
+  it.each(['missing', 'refused', 'rejected'] as const)('keeps the newly selected Agent after a %s plan command', async kind => {
+    const test = bench()
+    await booted(test)
+    if (kind === 'missing') test.ctx.set('commands', undefined)
+    else if (kind === 'refused') test.commands.execute.mockResolvedValueOnce({ commandId: 'plan', result: { kind: 'error', text: 'Preset refused plan mode' } })
+    else test.commands.execute.mockRejectedValueOnce(new Error('Plan command failed'))
+    test.ctx.mayflySessionStart.setPlanActive(true)
+    const agent = await ensureAgent(test)
+    expect(test.ctx.mayflyCurrentAgent.current()).toBe(agent)
+    expect(test.ctx.mayflySessionStart.planActive()).toBe(false)
+    expect(test.errors()).toContain(kind === 'missing' ? 'command service is not mounted' : kind === 'refused' ? 'Preset refused plan mode' : 'Plan command failed')
+    await test.ctx.fiber.dispose()
+  })
+
   it('clears a pending plan selection when leaving the start surface', async () => {
     const test = bench()
     await booted(test)

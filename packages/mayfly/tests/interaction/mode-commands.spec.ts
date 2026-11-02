@@ -11,6 +11,8 @@ import { setSharedEditor } from '../../src/interaction/editor-instance.ts'
 import type { PresetSpec } from '@deepseek-ai/dsh-permission-presets'
 import type { PermissionPresetsService } from '../../src/interaction/permission-panel.ts'
 import { fakeMayflyContext } from './fakes.ts'
+import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
+import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 
 let notices: string[] = []
 
@@ -105,6 +107,23 @@ async function mount(options: MountOptions = {}) {
 }
 
 describe('cycleMode', () => {
+  it('refuses mode changes while a readonly side conversation is displayed', async () => {
+    const world = await mount()
+    const ctx = new (await import('@deepseek-ai/cordis')).Context()
+    ctx.provide('agents', { get: (id: unknown) => id === world.agent.id ? world.agent : undefined } as never)
+    const conversations = new MayflyConversationsService(ctx)
+    new MayflyCurrentAgentService(ctx, conversations)
+    conversations.selectPrimary(world.agent)
+    conversations.open({ kind: 'subagent', sessionId: 'cold-child', parentSessionId: String(world.agent.id), mode: 'one-shot', label: 'Stored child' })
+    expect(ctx.mayflyCurrentAgent.current()).toBeNull()
+    expect(ctx.mayflyCurrentAgent.primary()).toBe(world.agent)
+    await cycleMode(ctx, (_id, feedback) => { notices.push(feedback.message) })
+    expect(notices).toEqual(['no session is live yet'])
+    expect(world.runs).toEqual([])
+    await ctx.fiber.dispose()
+    await world.ctx.fiber.dispose()
+  })
+
   it('toggles normal and plan without changing permissions', async () => {
     const world = await mount()
     expect(sessionModeSnapshot(world.ctx, world.agent)).toEqual({ plan: { active: false, pending: false }, yolo: false })
@@ -229,6 +248,8 @@ describe('cycleMode', () => {
     expect(world.startPlan()).toBe(false)
     expect(await command.handler({ rawInput: 'do it', signal: new AbortController().signal })).toEqual({ kind: 'error', text: 'Send a message first: /plan with a message needs a session' })
     expect(world.startPlan()).toBe(false)
+    world.ctx.set('mayflySessionStart', undefined)
+    expect(await command.handler({ rawInput: '', signal: new AbortController().signal })).toEqual({ kind: 'error', text: 'plan mode is unavailable' })
     off()
     expect(world.ctx.mayflyInteractionState.sessionless.find('plan')).toBeUndefined()
   })

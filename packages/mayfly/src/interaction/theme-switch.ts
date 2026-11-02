@@ -78,8 +78,7 @@ function openThemePicker(ctx: Context): CommandResult {
       if (target === undefined) return { kind: 'failed', message: t('unknown theme "{key}"', { key }) }
       const result = await switchTheme(ctx, target)
       if (result.kind === 'error') return { kind: 'failed', message: result.text }
-      /* switchTheme success always carries the "switched to" text */
-      return { kind: 'completed', dismiss: true, ...(result.text === undefined ? {} : { feedback: { severity: 'success' as const, message: result.text } }) }
+      return { kind: 'completed', dismiss: true, feedback: { severity: 'success', message: result.text } }
     } },
   }, panel({ title: t('Select a theme'), escapeLabel: 'close', body: ui.list({
     id: 'themes', role: 'choose', selectedIds: BUILTIN.has(current) ? [current] : [],
@@ -100,7 +99,7 @@ function openThemePicker(ctx: Context): CommandResult {
  * @param next - the theme to activate, with its config when it takes one.
  * @returns the command outcome.
  */
-async function switchTheme(ctx: Context, next: ThemeTarget): Promise<CommandResult> {
+async function switchTheme(ctx: Context, next: ThemeTarget): Promise<{ readonly kind: 'success' | 'error', readonly text: string }> {
   const t = interactionTranslator(ctx)
   const current = ctx.mayflyInteractionState.currentThemeKey === 'custom'
     ? CUSTOM
