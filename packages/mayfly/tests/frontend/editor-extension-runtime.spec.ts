@@ -40,7 +40,7 @@ function provider(label: string): MayflyAutocompleteProvider {
 const suggestions = (editor: FakeMayflyEditor) => editor.autocompleteProvider!.getSuggestions(['/'], 0, 1, { signal: new AbortController().signal })
 
 function attempt(text: string): MayflyEditorSubmitAttempt {
-  return { text, signal: new AbortController().signal, commit: vi.fn(() => true), cancel: vi.fn() }
+  return { text, revision: 0, signal: new AbortController().signal, commit: vi.fn(() => true), cancel: vi.fn() }
 }
 
 describe('shared editor extension owner', () => {
@@ -153,7 +153,7 @@ describe('shared editor extension owner', () => {
     expect(signal.aborted).toBe(true)
     gate.resolve({ items: [], prefix: '/' })
     expect(await reading).toBeNull()
-    const callback = vi.fn(() => ({ items: [], prefix: '/' }))
+    const callback = vi.fn(async () => ({ items: [], prefix: '/' }))
     f.runtime.bind(bindings({ ...provider('queued'), getSuggestions: callback }))
     const queued = suggestions(f.editor)
     f.runtime.dispose()
