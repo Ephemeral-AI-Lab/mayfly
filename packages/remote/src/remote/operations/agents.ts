@@ -1,352 +1,185 @@
-/**
- * `/agents` descendant tree over the session catalog and official subagent
- * addresses, with drain-to-stop, cold read-only views, and addressed prompts.
- * @module @ephemeral-ai/mayfly/remote/operations/agents
- */
-
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+/** Native descendant browsing and exact-parent stops using the shared rc.2 tree. @module */
+import { SessionId } from '@deepseek-ai/dsh-session/types'
+import { agentsPanelModel, type MayflySubagentTreeEntry } from '@ephemeral-ai/mayfly/command-panels'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
-import { ui, type MayflyTranslate, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
-import type { SessionRef } from '../../client/types.ts'
-import type { RemoteFeatureSelection } from '../features.ts'
-import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
-import {
-  REMOTE_AGENTS_LIST_ID, REMOTE_AGENTS_OPEN_ID, REMOTE_AGENTS_PROMPT_ID, REMOTE_AGENTS_REFRESH_ID,
-  REMOTE_AGENTS_STOP_ID, remoteAgentsPanel, type RemoteAgentMode, type RemoteAgentRow,
-} from '../panels/operations/agents.ts'
-import { requestOverlay, type RemoteRequestOverlay } from '../interactions/request-overlay.ts'
-import { isRemoteFeatureSelection } from '../interactions/selection.ts'
-import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
-import { RemoteFeatureOperation, remoteErrorMessage } from '../features/official.ts'
+import type { MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
+import type { MayflySubagentTreeEntry as HostTreeEntry } from '../../frontend/host-contract.ts'
 import { mayflyHostRemote } from '../../frontend/host-mount.ts'
+import type { RemoteFeatureSelection } from '../features.ts'
+import { RemoteFeatureController, type RemoteFeatureOperation, remoteErrorMessage, remoteValue } from '../features/official.ts'
+import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
 import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
 
 const COLD_ROLE = 'remote-agents-cold'
-
-interface PromptAnswer {
-  readonly text: string
-  readonly delivery: 'queue' | 'steer'
-}
-
+const BLOCKED = {
+  'not-continuable': 'Only continuable subagents can be stopped',
+  'not-live': 'Not live; there is nothing to stop',
+  'live-descendants': 'Stop its live descendants first',
+  'parent-not-live': 'Its direct parent is not live',
+} as const
 const zh: Readonly<Record<string, string>> = {
-  'Subagents': '子代理',
-  'No subagent descendants': '没有子代理后代',
-  'Select a subagent to see its actions': '选择一个子代理查看可用操作',
-  'Subagent': '子代理',
-  'Label': '标签',
-  'Mode': '模式',
-  'Running': '运行状态',
-  'Session': '会话',
-  'Parent': '父会话',
-  'live': '运行中',
-  'idle': '空闲',
-  'stopping': '停止中',
-  'stop': '停止',
-  'open': '打开',
-  'prompt': '追问',
-  'Refresh': '刷新',
-  'refresh': '刷新',
-  'Stop this subagent?': '停止这个子代理？',
-  'The child is drained through its exact parent and then counts as stopped.': '将通过其直接父会话排空子代理，随后视为已停止。',
-  'Stop': '停止',
-  'No current session': '当前没有会话',
-  'The subagent is no longer available': '该子代理已不可用',
-  'Drain requested; the child counts as stopped once it settles': '已请求排空；子代理结算后视为已停止',
-  'Only a continuable live direct child can be drained': '只有可延续且运行中的直接子代理才能排空',
-  'Cold view opened': '冷视图已打开',
-  'Message': '消息',
-  'Delivery': '投递方式',
-  'queue: next turn': 'queue：下一轮',
-  'steer: current step': 'steer：当前步骤',
-  'Send': '发送',
-  'Prompt the subagent': '向子代理发送消息',
-  'The subagent must be a continuable direct child': '该子代理必须是可延续的直接子代理',
-  'Message queued for the subagent': '消息已排队给子代理',
-  'Message steered into the subagent step': '消息已转向到子代理当前步骤',
-  'Message must not be empty': '消息不能为空',
-  'Usage: /agents [<filter>]|close': '用法：/agents [<过滤>]|close',
+  'Subagents': '子代理', 'Stop selected': '停止所选', 'stop': '停止',
+  'Stop selected subagent?': '停止所选子代理？',
+  'Its live Agent shuts down; the stored conversation stays browsable.': '其运行中的 Agent 将关闭；已存储的对话仍可浏览。',
+  'Stop': '停止', 'Only continuable subagents can be stopped': '只能停止可延续的子代理',
+  'Not live; there is nothing to stop': '未运行；没有需要停止的 Agent',
+  'Stop its live descendants first': '请先停止其运行中的后代',
+  'Its direct parent is not live': '其直接父代理未运行',
+  'no session is live yet': '尚无运行中的会话',
+  'no subagents in this session': '此会话没有子代理',
+  'External subagents have no local conversation': '外部子代理没有本地对话',
+  'Select a subagent first': '请先选择一个子代理',
 }
 
-class RemoteAgentsController {
+class RemoteAgentsController extends RemoteFeatureController<RemoteOperationsContext['base']> {
   private readonly t: MayflyTranslate
-  private readonly lifecycle: RemoteFeatureLifecycle
-  private rows: readonly RemoteAgentRow[] = []
-  private selectedId: SessionId | undefined
-  private error: string | undefined
-  private browser: RemoteBrowserPanel | undefined
-  private editor: RemoteRequestOverlay<PromptAnswer | undefined> | undefined
-  private lifetime = new AbortController()
-  private disposed = false
+  private browserOperation: RemoteFeatureOperation | undefined
+  private stopped = false
 
-  constructor(private readonly context: RemoteOperationsContext) {
-    const { base } = context
-    this.t = memoizedLocaleTranslator(base.ctx, 'remote-operations-agents').translate
-    registerRemoteOperationsLocale(base, 'remote-operations-agents', zh)
-    this.lifecycle = new RemoteFeatureLifecycle(base, this.attach)
-    this.lifecycle.start()
+  constructor(private readonly agentsContext: RemoteOperationsContext) {
+    super({ ...agentsContext.base, hosts: { ...agentsContext.base.hosts, current: agentsContext.options.primary ?? agentsContext.base.hosts.current } })
+    this.t = memoizedLocaleTranslator(agentsContext.base.ctx, 'remote-operations-agents').translate
+    registerRemoteOperationsLocale(agentsContext.base, 'remote-operations-agents', zh)
   }
 
-  readonly dispose = (): void => {
-    if (this.disposed) return
-    this.disposed = true
-    this.lifecycle.dispose()
-    this.lifetime.abort()
-    this.editor?.cancel()
-    this.browser?.close()
+  override dispose(): void { this.stopped = true; super.dispose() }
+
+  private async tree(current: RemoteFeatureSelection, operation: RemoteFeatureOperation): Promise<readonly HostTreeEntry[]> {
+    const entries = await remoteValue(mayflyHostRemote(current.client).subagentTree({ sessionId: current.ref.sessionId }, operation.signal))
+    return entries.filter(entry => entry.kind !== 'child' || entry.label !== 'btw')
   }
 
-  private readonly attach = (generation: number): void => {
-    this.lifetime.abort()
-    this.lifetime = new AbortController()
-    this.browser?.close()
-    this.editor?.cancel()
-    this.browser = undefined
-    this.editor = undefined
-    this.selectedId = undefined
-    this.rows = []
-    this.error = undefined
-    if (this.lifecycle.selection(generation) === undefined) this.publish()
-  }
-
-  private snapshot(selection: RemoteFeatureSelection): readonly RemoteAgentRow[] {
-    const catalog = selection.client.sessions.list.getSnapshot()
-    const rows: RemoteAgentRow[] = []
-    const seen = new Set<SessionId>([selection.ref.sessionId])
-    let frontier: readonly SessionId[] = [selection.ref.sessionId]
-    let depth = 0
-    while (frontier.length > 0) {
-      const next: SessionId[] = []
-      for (const parent of frontier) {
-        for (const id of catalog.ids) {
-          if (seen.has(id)) continue
-          const summary = catalog.byId[id]
-          const address = selection.client.sessions.subagentAddress(id)
-          const byList = summary?.parentId === parent
-          const byAddress = address !== undefined && address.parentSessionId === parent && id !== parent
-          if (!byList && !byAddress) continue
-          seen.add(id)
-          next.push(id)
-          rows.push({
-            id,
-            parent,
-            depth,
-            label: summary?.displayTitle ?? id,
-            mode: (address?.mode ?? 'unknown') as RemoteAgentMode,
-            running: summary?.running ?? false,
-            stopping: false,
-          })
-        }
-      }
-      frontier = next
-      depth += 1
+  private async open(current: RemoteFeatureSelection, caller: AbortSignal): Promise<void> {
+    this.browserOperation?.dispose()
+    const operation = this.sessionOperation(current, caller)
+    if (operation === undefined) return
+    this.browserOperation = operation
+    let browser: RemoteBrowserPanel | undefined
+    let timer: ReturnType<typeof setInterval> | undefined
+    let reading = false
+    let entries: readonly HostTreeEntry[] = []
+    const updateTimer = (): void => {
+      const live = entries.some(entry => entry.kind === 'child' && entry.activity === 'running')
+      if (live && timer === undefined) {
+        timer = setInterval(() => { void refresh() }, 1_000)
+        timer.unref()
+      } else if (!live && timer !== undefined) { clearInterval(timer); timer = undefined }
     }
-    return rows
-  }
-
-  private refresh(): void {
-    const current = this.context.base.hosts.current()
-    if (current === undefined) {
-      this.rows = []
-      this.error = this.t('No current session')
-    } else {
-      const stopping = new Set(this.rows.filter(row => row.stopping).map(row => row.id))
-      this.rows = this.snapshot(current).map(row => ({ ...row, stopping: stopping.has(row.id) || row.stopping }))
-      this.error = undefined
-      if (this.selectedId !== undefined && !this.rows.some(row => row.id === this.selectedId)) this.selectedId = undefined
-    }
-    this.publish()
-  }
-
-  private publish(): void {
-    this.browser?.refresh()
-  }
-
-  private open(filter: string): void {
-    const current = this.context.base.hosts.current()
-    if (current === undefined) {
-      this.context.base.notice.set(this.t('No current session'))
-      return
-    }
-    this.refresh()
-    if (filter !== '') {
-      const needle = filter.toLowerCase()
-      this.rows = this.rows.filter(row => row.label.toLowerCase().includes(needle) || row.id.toLowerCase().includes(needle))
-    }
-    this.browser?.close()
-    this.browser = openRemoteBrowser(this.context.base, {
-      id: 'remote.operations.agents',
-      scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref),
-      view: () => remoteAgentsPanel({ rows: this.rows, selectedId: this.selectedId, error: this.error }, this.t),
-      observe: event => this.observe(event),
-      action: event => this.act(event),
-      onClosed: () => { this.browser = undefined },
-    })
-  }
-
-  private observe(_event: MayflyUiObservationEvent): void {
-    // List selection arrives on the action face; observations only invalidate the paint.
-  }
-
-  private select(id: string | undefined): boolean {
-    this.selectedId = id === undefined ? undefined : this.rows.find(row => row.id === id)?.id
-    this.publish()
-    return true
-  }
-
-  private selected(): RemoteAgentRow | undefined {
-    return this.selectedId === undefined ? undefined : this.rows.find(row => row.id === this.selectedId)
-  }
-
-  private async act(event: MayflyUiActionEvent): Promise<MayflyUiActionReply> {
-    if (event.kind === 'selection-accept') {
-      if (event.controlId !== REMOTE_AGENTS_LIST_ID && event.controlId !== 'agents-list-narrow') return { kind: 'completed' }
-      this.select(event.selectedIds[0])
-      return { kind: 'completed' }
-    }
-    if (event.kind !== 'activate') return { kind: 'completed' }
-    if (event.actionId === REMOTE_AGENTS_REFRESH_ID) {
-      this.refresh()
-      return { kind: 'completed' }
-    }
-    const current = this.context.base.hosts.current()
-    const row = this.selected()
-    if (current === undefined || row === undefined) return { kind: 'failed', message: this.t('The subagent is no longer available') }
-    if (event.actionId === REMOTE_AGENTS_STOP_ID) return await this.stop(current, row)
-    if (event.actionId === REMOTE_AGENTS_OPEN_ID) return await this.openColdView(current, row)
-    if (event.actionId === REMOTE_AGENTS_PROMPT_ID) {
-      this.prompt(current, row)
-      return { kind: 'completed' }
-    }
-    return { kind: 'completed' }
-  }
-
-  private async stop(current: RemoteFeatureSelection, row: RemoteAgentRow): Promise<MayflyUiActionReply> {
-    const address = current.client.sessions.subagentAddress(row.id)
-    if (address === undefined || address.parentSessionId !== row.parent || address.mode !== 'continuable' || !row.running) {
-      return { kind: 'failed', message: this.t('Only a continuable live direct child can be drained') }
-    }
-    const operation = new RemoteFeatureOperation(this.context.base, current.client, current, this.lifetime.signal)
-    try {
-      const result = await mayflyHostRemote(current.client).subagentDrain({
-        parentSessionId: row.parent,
-        childSessionId: row.id,
-      }, operation.signal)
-      if (!operation.valid()) return { kind: 'cancelled' }
-      if (!result.ok) return { kind: 'failed', message: result.error.message }
-      this.rows = this.rows.map(candidate => candidate.id === row.id ? { ...candidate, stopping: true } : candidate)
-      this.publish()
-      this.context.base.notice.set(this.t('Drain requested; the child counts as stopped once it settles'))
-      return { kind: 'completed' }
-    } catch (error: unknown) {
-      return operation.valid() ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' }
-    } finally { operation.dispose() }
-  }
-
-  private async openColdView(current: RemoteFeatureSelection, row: RemoteAgentRow): Promise<MayflyUiActionReply> {
-    const operation = new RemoteFeatureOperation(this.context.base, current.client, current, this.lifetime.signal)
-    const parent: SessionRef = { host: current.ref.host, sessionId: row.parent }
-    const child: SessionRef = { host: current.ref.host, sessionId: row.id }
-    try {
-      const lease = this.context.options.btw.retainColdSubagentView(parent, child, COLD_ROLE)
-      await this.context.presentSlot.adopt(child, lease, () => {
-        const address = current.client.sessions.subagentAddress(row.id)
-        const cwd = current.client.sessions.list.getSnapshot().byId[row.id]?.cwd
-        return { kind: 'subagent', access: address?.mode === 'continuable' ? 'resumable' : 'readonly', label: row.label, ...address === undefined ? {} : { address }, ...cwd === undefined ? {} : { cwd } }
-      }, { signal: operation.signal, isCurrent: () => operation.valid() })
-      if (!operation.valid()) return { kind: 'cancelled' }
-      this.context.base.notice.set(this.t('Cold view opened'))
-      return { kind: 'completed' }
-    } catch (error: unknown) {
-      return operation.valid() ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' }
-    } finally { operation.dispose() }
-  }
-
-  private prompt(current: RemoteFeatureSelection, row: RemoteAgentRow): void {
-    const address = current.client.sessions.subagentAddress(row.id)
-    if (address === undefined || address.parentSessionId !== row.parent || address.mode !== 'continuable') {
-      this.context.base.notice.set(this.t('The subagent must be a continuable direct child'))
-      return
-    }
-    const generation = this.lifecycle.currentGeneration()
-    this.editor?.cancel()
-    const isCurrent = (): boolean => this.lifecycle.owns(generation)
-      && isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref)
-      && this.selected()?.id === row.id
-    const signal = this.lifetime.signal
-    this.editor = requestOverlay<PromptAnswer | undefined>(this.context.base.ctx, {
-      id: 'remote.operations.agents.prompt',
-      title: this.t('Prompt the subagent'),
-      scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent,
-      subscribeLocale: this.context.base.subscribeLocale,
-      dismissal: 'confirm-dirty',
-      view: () => ui.stack.column([
-        ui.form({
-          id: 'agents-prompt',
-          enterSubmits: 'send',
-          fields: [
-            { kind: 'textarea', id: 'message', label: this.t('Message'), value: '' },
-            {
-              kind: 'select', id: 'delivery', label: this.t('Delivery'), value: 'queue',
-              options: [
-                { id: 'queue', label: this.t('queue: next turn') },
-                { id: 'steer', label: this.t('steer: current step') },
-              ],
-            },
-          ],
-        }),
-        ui.actions({ id: 'agents-prompt-actions', items: [{ id: 'send', label: this.t('Send'), semantic: 'save', read: [{ pagePath: [], formId: 'agents-prompt' }] }] }),
-      ]),
-      answer: event => {
-        if (event.kind !== 'activate' || event.actionId !== 'send') return undefined
-        const fields = event.inputs?.forms[0]?.fields ?? []
-        const text = fields.find(field => field.id === 'message')?.value
-        const delivery = fields.find(field => field.id === 'delivery')?.value
-        if (typeof text !== 'string' || text.trim() === '') return undefined
-        return { text: text.trim(), delivery: delivery === 'steer' ? 'steer' : 'queue' }
-      },
-      cancelled: () => undefined,
-    })
-    void this.editor.result.then(async answer => {
-      if (answer === undefined || !isCurrent()) return
+    const refresh = async (): Promise<void> => {
+      if (reading || !operation.valid()) return
+      reading = true
       try {
-        await this.context.options.btw.promptSubagent(
-          { host: current.ref.host, sessionId: row.parent },
-          { host: current.ref.host, sessionId: row.id },
-          { content: [{ type: 'text', text: answer.text }], delivery: answer.delivery, signal },
-        )
-        if (!isCurrent()) return
-        this.context.base.notice.set(answer.delivery === 'steer'
-          ? this.t('Message steered into the subagent step')
-          : this.t('Message queued for the subagent'))
-      } catch (error: unknown) {
-        if (isCurrent()) this.context.base.notice.set(remoteErrorMessage(error))
+        const next = await this.tree(current, operation)
+        if (!operation.valid()) return
+        entries = next
+        browser?.refresh()
+        updateTimer()
+      } catch { /* The last readable native tree survives a failed background refresh. */ }
+      finally { reading = false }
+    }
+    operation.onDispose(() => { if (timer !== undefined) clearInterval(timer); if (browser?.closed === false) browser.close() })
+    try {
+      entries = await this.tree(current, operation)
+      if (!operation.valid()) return
+      if (entries.length === 0) { this.agentsContext.base.notice.set(this.t('no subagents in this session')); operation.dispose(); return }
+      const action = async (event: MayflyUiActionEvent, owner: MayflyUiEventContext): Promise<MayflyUiActionReply> => {
+        if (!operation.valid() || owner.signal.aborted) return { kind: 'cancelled' }
+        if (event.kind === 'selection-accept') {
+          if (event.controlId !== 'subagents') return { kind: 'completed' }
+          const entry = entries.find(entry => entry.id === event.selectedIds[0])
+          if (entry?.kind !== 'child') return { kind: 'completed' }
+          if (entry.mode === 'external') return { kind: 'failed', message: this.t('External subagents have no local conversation') }
+          // Closing the tree retires its reads. The selected conversation owns
+          // its own acquisition under the original command caller.
+          const opening = this.sessionOperation(current, caller)!
+          browser!.close()
+          return await this.openChild(current, entry, opening)
+        }
+        if (event.kind !== 'activate' || event.actionId !== 'stop') return { kind: 'completed' }
+        const id = event.inputs?.selections?.find(selection => selection.controlId === 'subagents')?.selectedIds[0]
+        if (id === undefined) return { kind: 'failed', message: this.t('Select a subagent first') }
+        const stopping = this.sessionOperation(current, AbortSignal.any([operation.signal, owner.signal]))!
+        try {
+          const result = await this.stop(current, id, stopping)
+          if (result.kind === 'completed') await refresh()
+          return result
+        } finally { stopping.dispose() }
       }
-    }).catch(() => undefined)
+      browser = openRemoteBrowser(this.agentsContext.base, {
+        id: 'mayfly.agents', scope: { kind: 'session', sessionId: current.ref.sessionId },
+        signal: operation.signal, isCurrent: () => operation.valid(),
+        view: () => agentsPanelModel(entries.map((entry): MayflySubagentTreeEntry => ({ ...entry,
+          stopBlocked: entry.stopBlocked === undefined ? undefined : this.t(BLOCKED[entry.stopBlocked]),
+        })), Date.now(), this.t), action,
+        onClosed: () => { operation.dispose() },
+      })
+      if (!operation.valid()) return
+      const changed = (): void => { void refresh() }
+      operation.onDispose(current.client.sessions.list.subscribe(changed))
+      updateTimer()
+    } catch (error) {
+      if (operation.valid()) this.agentsContext.base.notice.set(remoteErrorMessage(error), 'error')
+      operation.dispose()
+    }
   }
 
-  readonly execute = async (rawInput: string): Promise<void> => {
+  private async stop(current: RemoteFeatureSelection, id: string, operation: RemoteFeatureOperation): Promise<MayflyUiActionReply> {
+    try {
+      const result = await remoteValue(mayflyHostRemote(current.client).subagentStop({ sessionId: current.ref.sessionId, childSessionId: SessionId(id) }, operation.signal))
+      if (!operation.valid()) return { kind: 'cancelled' }
+      this.agentsContext.presentSlot.close({ host: current.ref.host, sessionId: SessionId(id) })
+      return { kind: 'completed', feedback: { severity: 'success', message: result.text } }
+    } catch (error) {
+      return operation.valid() ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' }
+    }
+  }
+
+  private async openChild(current: RemoteFeatureSelection, entry: Extract<HostTreeEntry, { readonly kind: 'child' }>, operation: RemoteFeatureOperation): Promise<MayflyUiActionReply> {
+    let presented = false
+    try {
+      const child = { host: current.ref.host, sessionId: entry.id }
+      const lease = this.agentsContext.options.btw.retainColdSubagentView({ host: current.ref.host, sessionId: entry.parentId }, child, COLD_ROLE)
+      await this.agentsContext.presentSlot.adopt(child, lease, () => {
+        presented = true
+        const address = current.client.sessions.subagentAddress(entry.id)
+        const cwd = current.client.sessions.list.getSnapshot().byId[entry.id]?.cwd
+        return { kind: 'subagent', access: entry.mode === 'continuable' ? 'resumable' : 'readonly', label: entry.label ?? entry.id,
+          ...address === undefined ? {} : { address }, ...cwd === undefined ? {} : { cwd } }
+      }, { signal: operation.signal, isCurrent: () => operation.valid() })
+      return presented ? { kind: 'completed' } : { kind: 'cancelled' }
+    } catch (error) {
+      return operation.valid() ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' }
+    } finally { operation.dispose() }
+  }
+
+  readonly execute = async (rawInput: string, caller: AbortSignal): Promise<void> => {
+    if (caller.aborted || this.stopped) return
     const input = rawInput.trim()
-    if (input === 'close') {
-      this.browser?.close()
+    const match = /^stop\s+(\S+)$/u.exec(input)
+    if (input !== '' && match === null) throw new Error('usage: /agents [stop <id>]')
+    const current = this.context.hosts.current()
+    if (current === undefined) { this.agentsContext.base.notice.set(this.t('no session is live yet'), 'error'); return }
+    if (match === null) {
+      this.agentsContext.options.showPrimary?.()
+      await this.open(current, caller)
       return
     }
-    this.open(input)
+    const operation = this.sessionOperation(current, caller)
+    if (operation === undefined) return
+    try {
+      const reply = await this.stop(current, match[1]!, operation)
+      if (reply.kind === 'failed') this.agentsContext.base.notice.set(reply.message, 'error')
+      else if (reply.kind === 'completed') this.agentsContext.base.notice.set(reply.feedback!.message, 'success')
+    } finally { operation.dispose() }
   }
 }
 
-/** Mount the `/agents` descendant tree command and its browser. */
+/** Mount the native descendant tree command; unload retires local work only. */
 export function mountRemoteAgentsOperations(context: RemoteOperationsContext): () => void {
   const controller = new RemoteAgentsController(context)
   const unregister = context.base.commands.register({
-    name: 'agents',
-    description: 'Browse this session\'s subagents, view one, or stop a continuable child',
-    input: { hint: '[<filter>]|close' },
-    execute: controller.execute,
+    name: 'agents', description: 'Browse this session\'s subagents, view one, or stop a continuable child',
+    input: { hint: '[stop <id>]' }, execute: controller.execute,
   })
-  return () => {
-    unregister()
-    controller.dispose()
-  }
+  return () => { unregister(); controller.dispose() }
 }

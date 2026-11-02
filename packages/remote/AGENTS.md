@@ -106,6 +106,14 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Remote never folds Job events or invents live jobs from unfinished history.
   Output readers retain exact Host/Session and byte cursors; human stops
   recheck native liveness and fence late results after connection replacement.
+- `/agents` browses the primary Session even while a side conversation is shown.
+  It consumes the Host's whole native descendant tree and live metrics through
+  `subagentTree`, and the shared reference tree owns filtering, disclosure and
+  selected-row stop confirmation. `subagentStop` rechecks native descendants and
+  the exact direct parent before draining; idle resident Agents may be stopped.
+  Opening a selected child retires the tree and owns its acquisition separately
+  under the original command caller. Browser close, cancellation, primary
+  replacement, connection replacement and unload release reads and timers.
   Catalog, jobs and schedule commands retain their invocation's abort signal
   through panels, readers and pending actions. Navigation children retain the
   original invocation when their source panel closes. MCP resource reads and

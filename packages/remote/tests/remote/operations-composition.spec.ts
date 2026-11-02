@@ -58,9 +58,11 @@ function fixture(options: { readonly empty?: boolean, readonly noCallbacks?: boo
   const closePresent = vi.fn()
   const copy = vi.fn(async () => {})
   const modelCatalog = vi.fn(() => undefined)
-  const handle = mountRemoteOperationsComposition(base, { localCwd: '/local', btw: { retainColdSubagentView: retain, retainBtwView: retainBtw, current: activeBtw, close: closeBtw } as never, ...options.noCallbacks ? {} : { present, closePresent, copy, modelCatalog } })
+  const primary = () => current
+  const showPrimary = vi.fn()
+  const handle = mountRemoteOperationsComposition(base, { localCwd: '/local', btw: { retainColdSubagentView: retain, retainBtwView: retainBtw, current: activeBtw, close: closeBtw } as never, ...options.noCallbacks ? {} : { present, closePresent, copy, modelCatalog, primary, showPrimary } })
   const contexts = mounts.mount.mock.calls.map(call => call[0] as RemoteOperationsContext)
-  return { base, ref, address, binding, client, subagentAddress, refreshProjections, retain, retainBtw, leases, activeBtw, closeBtw, present, closePresent, copy, modelCatalog, handle, contexts,
+  return { base, ref, address, binding, client, subagentAddress, refreshProjections, retain, retainBtw, leases, activeBtw, closeBtw, present, closePresent, copy, modelCatalog, primary, showPrimary, handle, contexts,
     topology, connection,
     reconnect() { generation += 1; for (const listener of connection) listener() },
     select(next: typeof current) { current = next; for (const listener of topology) listener() },
@@ -150,6 +152,9 @@ describe('retained child operation composition', () => {
     const f = fixture()
     expect(f.contexts).toHaveLength(12)
     expect(f.contexts.every(context => context === f.contexts[0])).toBe(true)
+    expect(f.contexts[0]!.options.primary?.()).toEqual(f.primary())
+    f.contexts[0]!.options.showPrimary?.()
+    expect(f.showPrimary).toHaveBeenCalledOnce()
     await f.handle.openChild(f.client, { ...f.address, mode: 'unknown' }, new AbortController().signal)
     expect(f.refreshProjections).toHaveBeenCalledWith('lead')
     expect(f.retain).toHaveBeenCalledWith(f.ref, { host: 'one', sessionId: 'child' }, 'remote-agents-cold')

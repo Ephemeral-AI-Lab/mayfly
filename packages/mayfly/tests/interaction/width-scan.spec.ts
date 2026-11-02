@@ -102,7 +102,7 @@ describe('interaction width-scan', () => {
       const entries = [
         { kind: 'child' as const, id: SessionId('branch'), parentId: SessionId('root'), depth: 1, hasChildren: true, mode: 'continuable' as const, activity: 'running' as const, label: text, tokens: 2048, toolCount: 3, activeSince: 0 },
         { kind: 'child' as const, id: SessionId('nested'), parentId: SessionId('branch'), depth: 2, hasChildren: false, mode: 'one-shot' as const, activity: 'inactive' as const, label: text, stopBlocked: text },
-        { kind: 'diagnostic' as const, id: SessionId('diagnostic'), parentId: SessionId('branch'), depth: 2, reason: text },
+        { kind: 'diagnostic' as const, id: SessionId('diagnostic'), parentId: SessionId('branch'), depth: 2, reason: 'corrupt' as const },
       ]
       for (const width of SCAN_WIDTHS) {
         const surface = createRealSurface(agentsPanelModel(entries, 65_000, interpolateLocaleMessage), width, { components: probeComponents() })

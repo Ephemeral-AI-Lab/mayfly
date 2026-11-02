@@ -384,6 +384,13 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     })
     operations = mountRemoteOperationsComposition(featureContext, {
       localCwd: options.cwd ?? process.cwd(),
+      primary: () => {
+        const ref = app!.registry.current
+        const binding = app!.registry.currentReference?.binding
+        const client = ref === undefined ? undefined : app!.registry.get(ref.host)
+        return ref === undefined || binding === undefined || client === undefined ? undefined : { ref, binding, client }
+      },
+      showPrimary: () => { sideViews!.showPrimary() },
       btw: app.btw,
       modelCatalog: host => conversation!.getModelCatalog(host),
       present: (ref, binding, facts) => { sideViews!.present(binding, { ref, cwd: facts.cwd ?? '' }, facts) },

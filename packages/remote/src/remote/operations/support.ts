@@ -15,7 +15,7 @@ import type { HostClient, HostKey, SessionRef } from '../../client/types.ts'
 import type { RemoteBtwService } from '../../frontend/btw.ts'
 import type { HostViewLease } from '../../frontend/host-registry.ts'
 import { remoteValue } from '../features/official.ts'
-import type { RemoteFeatureContext } from '../features.ts'
+import type { RemoteFeatureContext, RemoteFeatureSelection } from '../features.ts'
 
 /** Native child authority and display metadata for one independently presented conversation. */
 export interface RemotePresentedViewFacts {
@@ -31,6 +31,10 @@ export interface RemotePresentedViewFacts {
 export interface RemoteOperationsOptions {
   /** Local base directory for relative `/save` and `/export` paths. */
   readonly localCwd: string
+  /** The primary Session whose descendants `/agents` browses. */
+  readonly primary?: () => RemoteFeatureSelection | undefined
+  /** Display the primary while preserving retained side-conversation descriptors. */
+  readonly showPrimary?: () => void
   /** BTW orchestration over the integrator's HostActions/HostRegistry pair. */
   readonly btw: RemoteBtwService
   /** Show one independent side view for a forked or cold child binding. */

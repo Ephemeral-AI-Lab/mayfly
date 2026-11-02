@@ -33,8 +33,10 @@ import {
 
 /** Options owned by the integration layer mounting this composition. */
 export interface RemoteOperationsCompositionOptions {
-  /** Local directory owning `/export` output; only its `mayfly-exports/` child is written. */
+  /** Local working directory for relative export paths. */
   readonly localCwd: string
+  readonly primary?: RemoteOperationsOptions['primary']
+  readonly showPrimary?: RemoteOperationsOptions['showPrimary']
   /** BTW orchestration over the integrator's HostActions/HostRegistry pair. */
   readonly btw: RemoteOperationsOptions['btw']
   /** Show one independent side view for a forked or cold child binding. */
@@ -90,6 +92,8 @@ export function mountRemoteOperationsComposition(
     options: {
       localCwd: options.localCwd,
       btw: options.btw,
+      ...options.primary === undefined ? {} : { primary: options.primary },
+      ...options.showPrimary === undefined ? {} : { showPrimary: options.showPrimary },
       present: (ref, binding, facts) => { presentSlot.present(ref, binding, facts) },
       closePresent: ref => { presentSlot.close(ref) },
       ...options.copy === undefined ? {} : { copy: options.copy },

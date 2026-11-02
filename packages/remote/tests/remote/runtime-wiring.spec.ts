@@ -391,6 +391,9 @@ describe('standalone Remote runtime wiring', () => {
     wiring.closeTarget = child; key('close-agent-view'); expect(wiring.closeChild).toHaveBeenCalledWith(child)
     wiring.side = { ref: child, binding, facts: { kind: 'subagent', access: 'readonly' } }
     expect(selected()).toMatchObject({ ref: child, binding, access: 'readonly' })
+    expect(wiring.operations!.primary!()).toEqual({ ref, binding, client })
+    wiring.operations!.showPrimary!()
+    expect(wiring.showPrimary).toHaveBeenCalledOnce()
     const changed = vi.fn(), off = wiring.features!.hosts.subscribe(changed)
     for (const listener of wiring.topologies) listener()
     for (const listener of wiring.sideListeners) listener()
@@ -401,9 +404,9 @@ describe('standalone Remote runtime wiring', () => {
     wiring.sideOptions!.primaryVisible!(false); expect(wiring.setVisible).toHaveBeenCalledWith(false)
     wiring.sideOptions!.modelCatalog!(local); wiring.operations!.modelCatalog!(local)
     expect(wiring.getModelCatalog).toHaveBeenCalledWith(local)
-    wiring.ref = undefined; wiring.side = undefined; expect(selected()).toBeUndefined()
-    wiring.ref = ref; wiring.binding = undefined; expect(selected()).toBeUndefined()
-    wiring.binding = binding; wiring.client = undefined; expect(selected()).toBeUndefined()
+    wiring.ref = undefined; wiring.side = undefined; expect(selected()).toBeUndefined(); expect(wiring.operations!.primary!()).toBeUndefined()
+    wiring.ref = ref; wiring.binding = undefined; expect(selected()).toBeUndefined(); expect(wiring.operations!.primary!()).toBeUndefined()
+    wiring.binding = binding; wiring.client = undefined; expect(selected()).toBeUndefined(); expect(wiring.operations!.primary!()).toBeUndefined()
   })
 
   it('preserves primary replacement, session browser, startup and editor presentation callbacks', async () => {

@@ -26,7 +26,8 @@ export interface MayflyHostRemote {
   skillCatalog(request: Host.MayflyHostSessionRequest, signal?: AbortSignal): Promise<RemoteResult<Host.MayflySkillCatalog>>
   modelCatalogDetails(request: Host.MayflyModelCatalogRequest, signal?: AbortSignal): Promise<RemoteResult<Host.MayflyModelCatalogDetails>>
   defaultModel(request: Host.MayflyDefaultModelRequest, signal?: AbortSignal): Promise<RemoteResult<Host.MayflyModelSelection>>
-  subagentDrain(request: Host.MayflySubagentDrainRequest, signal?: AbortSignal): Promise<RemoteResult<void>>
+  subagentTree(request: Host.MayflyHostSessionRequest, signal?: AbortSignal): Promise<RemoteResult<readonly Host.MayflySubagentTreeEntry[]>>
+  subagentStop(request: Host.MayflySubagentStopRequest, signal?: AbortSignal): Promise<RemoteResult<Host.MayflySubagentStopValue>>
   workspaceChangesSummary(request: Host.MayflyWorkspaceChangesRequest, signal?: AbortSignal): Promise<RemoteResult<Host.MayflyWorkspaceChangesSummaryResult>>
   workspaceChangesDiff(request: Host.MayflyWorkspaceDiffRequest, signal?: AbortSignal): Promise<RemoteResult<Host.MayflyWorkspaceFileDiffResult>>
   workspacePath(request: Host.MayflyWorkspacePathRequest, signal?: AbortSignal): Promise<RemoteResult<Host.MayflyWorkspace | null>>
