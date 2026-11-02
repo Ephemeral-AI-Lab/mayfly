@@ -35,45 +35,38 @@ dsh `0.2.2-alpha.2` exposes no public configured-MCP-server or transport-health 
 
 ## Development profile
 
-Use Node `>=24.9.0` and the repository's pinned pnpm. From the repository root, install and build:
+Use Node `>=24.9.0`, pinned pnpm `11.7.0`, and an isolated official dsh
+`0.2.2-alpha.2` executable. From the repository root:
 
 ```sh
-pnpm install
-pnpm run build:changed
+pnpm install --frozen-lockfile
+DSH_BIN=/path/to/dsh PROFILE=mayfly-host-accept script/install-dev.sh
 ```
 
-Initialize a fresh, ignored development profile from the shipped Web template. This replacement command is only for first-time setup; running it again resets the named profile:
+The canonical installer builds the workspace, creates a dedicated profile from
+the native Web template if necessary, links the Host bundle, disables optional
+native build scripts, and checks the resulting `dsh-base` / `dsh-web-app` /
+Mayfly Host composition. It checks the selected dsh line and does not change
+the global installation. Existing dedicated profiles are reused, and shared
+`mayfly` / `default` profiles are refused.
+
+Start both processes in separate terminals:
 
 ```sh
-export DSH_HOME="$PWD/.artifacts/dsh-host"
-pnpm --dir packages/host exec dsh --profile mayfly-host-dev --from-default-profile web --dump-default-config >/dev/null
-pnpm --dir packages/host exec dsh plugin --profile mayfly-host-dev add "link:$PWD/packages/host"
+# Host
+/path/to/dsh --profile mayfly-host-accept
+
+# TUI; copy the URL from the Host's single readiness line
+MAYFLY_DSH_STARTUP_URL='<authenticated-url>' script/mayfly-remote.sh
 ```
 
-The resulting bundle order is `dsh-base`, `dsh-web-app`, then `@ephemeral-ai/mayfly-host`. The Host package's development dependency supplies the same `0.2.2-alpha.2` CLI for installation and launch, independently of the legacy in-process Mayfly package's dsh version.
+Never put that URL in argv or commit it. Host settings, credentials, workspace,
+and Sessions stay on Host; palettes, clipboard, exports, and external editors
+run on the TUI machine. A launch without task/resume stays sessionless until
+the first prompt. Closing the TUI leaves Host work running.
 
-Launch the external Host:
-
-```sh
-pnpm --dir packages/host exec dsh --profile mayfly-host-dev --no-open
-```
-
-Copy the authenticated URL from the single readiness line into the environment of a second terminal; never put it in argv or commit it:
-
-```sh
-MAYFLY_DSH_STARTUP_URL='<authenticated-url>' pnpm run scenario hostConversation
-```
-
-After source edits, run `pnpm run build:changed` and restart the Host. After manifest dependency edits, run `pnpm install`; the existing profile link remains in place.
-
-## Installed profile
-
-With `@deepseek-ai/dsh` `0.2.2-alpha.2` and a published `@ephemeral-ai/mayfly-host` available, the production route uses the same bundle mechanics without `link:` or the workspace-local CLI/home:
-
-```sh
-dsh --profile mayfly-host --from-default-profile web --dump-default-config >/dev/null
-dsh plugin --profile mayfly-host add @ephemeral-ai/mayfly-host
-dsh --profile mayfly-host --no-open
-```
-
-The initialization command replaces an existing custom profile, so use it only when creating or intentionally resetting that profile.
+After source edits, rebuild with `pnpm run build` and restart the affected
+process. Reinstall the dedicated profile when the dependency graph changes.
+The split packages in this branch are development artifacts; published-package
+installation requires a matching verified release set. The old in-process
+Mayfly composition is not an alternate supported installation.

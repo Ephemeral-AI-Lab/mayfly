@@ -3,9 +3,9 @@
 The current runtime is described by three architecture documents:
 
 - [mayfly-architecture.md](./mayfly-architecture.md): package boundaries, state
-  ownership, and the flat Cordis composition.
+  ownership, official Client transport, and the two-process composition.
 - [mayfly-seams.md](./mayfly-seams.md): usage boundaries for the native dsh
-  services, the Mayfly UI services, and `mayflyCurrentAgent`.
+  Host services, the TUI UI services, and serializable Remote boundaries.
 - [interaction-model.md](./interaction-model.md): input routing, the shared key
   grammar, the Escape ladder, focus and search rules, hints, and the
   confirmation and availability contract for panes, overlays, and editor
@@ -34,11 +34,18 @@ Components are developed part by part under
 [design/component-development-spec.md](./design/component-development-spec.md): each part has a scenario demo, a
 brief of what it implements and what to judge, and a question round with the owner in the terminal.
 
-A review round runs on the workbench: `pnpm run dev` rebuilds and restarts the
-profile on the same session, `pnpm run scenario` opens the product on a scripted
-timeline played into the live session (no model, no tools, no quota), `pnpm run frame` runs a scenario against the real product and writes each checkpoint as a cell grid, text, SVG, and (with `--png`) a screenshot from xterm.js in headless Chrome, and the
-prototype runs beside it as `node docs/design/prototypes/ui-preview.mjs <scene>`
-(see the root `AGENTS.md`).
+The current split acceptance is defined in
+[split-parity-validation.md](./split-parity-validation.md). It uses an immutable
+npm `0.1.4-rc.2` reference, independent reference/candidate captures, real
+Host/Remote transport, PTY lifecycle scenarios, and cell-grid comparison.
+Runtime claims come from implementation and validation, not the title or
+completion labels of an older plan.
+
+The historical workbench (`pnpm run dev`, `scenario`, and `frame`) and design
+prototypes remain useful source fixtures. Their old in-process profiles are
+not a second supported product deployment or proof of split visual parity.
+Use the root README's dedicated Host profile and independent TUI launch for
+current acceptance.
 
 See [native-harness-adaptation.md](./native-harness-adaptation.md) for native
 features and Team configuration.

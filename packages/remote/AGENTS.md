@@ -69,10 +69,18 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
 - Raw settings editing uses `createRemoteSettingsEditor` with core-owned
   `screen.suspend`. Editing happens locally; writes use the original Host
   document revision and reject results after cancellation or selection change.
-- `src/transcript/` adapts official SessionEventSource windows and Session
-  projections to the published Mayfly presentation folds. One event pass feeds
-  conversation and facts; only live command completion produces a notice.
-  It is a presentation adapter, not a Host projection.
+- Durable conversation and facts come from whole Host projections.
+  `src/conversation/` and `src/transcript/` map their latest snapshots plus a
+  bounded current-attempt stream overlay; they never fold a second durable
+  history or facts store. Only live command completion produces a notice.
+  Reconnect replaces the baseline and historical commands never replay notices.
+- Slash-command images use native encoded attachments. The official command
+  DTO lacks file-upload receipts: refuse commands with staged files, restore
+  their draft, and explicitly state that no command was sent. Ordinary prompts
+  keep native upload receipts. MCP transport health is unknown unless the
+  Host advertises the optional sanitized catalog. Passive cold-child history
+  keeps generic tool cards; Agent controls must refuse unavailable scope
+  rather than activate or borrow a parent Agent.
 - `src/remote-bin.ts` receives credentials only through the authenticated
   `MAYFLY_DSH_STARTUP_URL` environment variable; a non-secret `--host` URL is
   accepted, and a token in argv or a log is refused.

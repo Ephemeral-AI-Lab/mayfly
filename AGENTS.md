@@ -1,7 +1,7 @@
 # Repository guidance
 
-Mayfly is an out-of-tree, ESM-only TypeScript terminal UI bundle for DeepSeek
-Harness. Use the Node range and pinned pnpm in `package.json`. Runtime imports
+Mayfly is an out-of-tree, ESM-only TypeScript terminal frontend for DeepSeek
+Harness, deployed as a native Host and independent Remote TUI. Use the Node range and pinned pnpm in `package.json`. Runtime imports
 resolve built `lib/`; rebuild before testing installed profiles.
 
 Read the owning package's instructions before editing:
@@ -9,8 +9,10 @@ Read the owning package's instructions before editing:
 | Area | Ownership |
 | --- | --- |
 | [packages/ui](packages/ui/AGENTS.md) | Renderer-neutral contracts, builders, UI services |
-| [packages/mayfly](packages/mayfly/AGENTS.md) | Runtime, public subpaths, composition, preset |
-| [packages/cli](packages/cli/AGENTS.md) | Standalone global launcher and runtime payload |
+| [packages/mayfly](packages/mayfly/AGENTS.md) | Shared renderer and readonly presentation subpaths |
+| [packages/host](packages/host/AGENTS.md) | Native Host composition, projections, focused Remote methods |
+| [packages/remote](packages/remote/AGENTS.md) | Official Client transport, frontend state/writes, standalone TUI |
+| [packages/cli](packages/cli/AGENTS.md) | Small global launcher with exact Remote dependency |
 | [examples](examples/AGENTS.md) | Publish-shaped external consumers and composition |
 
 Current architecture: [docs/README.md](docs/README.md). Consult the
@@ -22,9 +24,15 @@ History and release notes do not define current behavior.
 
 - Consume native dsh services directly. Mayfly UI contributions use only
   `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and `mayflyEditorExtensions`.
-- Harness owns Agent/session/domain state. App owns current-Agent selection
-  and startup coordination. Agent-scoped calls use the exact Agent selected
-  by `mayflyCurrentAgent`, not merely a matching session ID.
+- Harness owns Agent/session/domain state in the Host. Remote owns HostKey +
+  SessionRef selection, startup coordination, and frontend state. Host
+  Agent-scoped calls resolve the exact selected Agent. No Agent or Session
+  object crosses processes; `mayflyCurrentAgent` is not a public split seam.
+- The Host and TUI have separate Cordis trees. Use official Client transport
+  and native Remote namespaces; focused Mayfly Host methods carry serializable
+  DTOs. Remote consumes whole durable projections and overlays only transient
+  current-attempt content, never a second durable history fold. The shared
+  Mayfly package publishes no root plugin, Host patch, or preset payload.
 - Events are facts, projections are readonly current state, actions are
   structured writes. Renderers must not fold session events into a second
   domain store. Wire models contain no Agent/Session, Promise, callback,
@@ -79,10 +87,9 @@ Develop user-visible behavior, public seams, and Website changes in a dedicated
 worktree and branch. Never link a checkout into production `mayfly`; use
 `mayfly-dev` for the main checkout and `mayfly-<tag>` for worktrees.
 
-1. Implement and verify before requesting acceptance, in the order of the
-   Round workflow: for a UI round the owner reviews the scenarios and profile
-   first and the tests run after, not before. README, `docs/**`, Website
-   pages/assets, and AGENTS-only changes need no runtime profile.
+1. Implement code and meaningful tests together, run the selected local gates,
+   and complete the required full gate before requesting acceptance. README,
+   `docs/**`, Website pages/assets, and AGENTS-only changes need no runtime profile.
    Executable config, manifests, scripts, preset payload, and shipped skills
    are not documentation-only.
 2. A `website/**` change is edited without a build, a preview, or acceptance
@@ -124,6 +131,7 @@ dependency build scripts without review.
 Keep README language variants in sync. AGENTS files contain durable boundaries
 and verification triggers, not change history or test-result snapshots. Update
 them when ownership, lifecycle, public surfaces, or required checks change.
-There is no maintainer `.agents/skills` layer; the three skills in
-`packages/mayfly/presets/mayfly-cordis/skills/` are for preset users, not ordinary
-repository development.
+There is no maintainer `.agents/skills` layer. The three historical skills in
+`packages/mayfly/presets/mayfly-cordis/skills/` remain private reference fixtures;
+the shared renderer does not publish presets or skills. They are not required
+for ordinary repository development.

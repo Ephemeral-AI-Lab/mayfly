@@ -2,14 +2,21 @@
 
 The `mayfly` command is an independent terminal UI launcher. It connects to a separately running dsh Host through `@ephemeral-ai/mayfly-remote`; it does not contain, extract, start, or stop a dsh Host, Agent Loop, model provider, tool runtime, or Session store.
 
-Install the launcher and start the Host in a separate terminal with the `mayfly-host` profile:
+For the current development branch, use the repository's canonical installer
+and launcher with an isolated official dsh `0.2.2-alpha.2`:
 
 ```sh
-npm -g install @ephemeral-ai/mayfly-cli
-dsh --profile mayfly-host --host 127.0.0.1 --port 3080
+pnpm install --frozen-lockfile
+DSH_BIN=/path/to/dsh PROFILE=mayfly-cli-accept script/install-dev.sh
+# Terminal 1
+/path/to/dsh --profile mayfly-cli-accept
+# Terminal 2: copy the authenticated URL printed by Host
+MAYFLY_DSH_STARTUP_URL='<authenticated-url>' script/mayfly-remote.sh
 ```
 
-Copy the authenticated startup URL printed by that Host into the canonical environment variable, then start Mayfly in another terminal:
+When a matching verified split release is published, `npm -g install
+@ephemeral-ai/mayfly-cli` installs this launcher and its exact Remote version.
+The `mayfly` command then uses the same authenticated startup environment:
 
 ```sh
 export MAYFLY_DSH_STARTUP_URL='<authenticated-url-printed-by-host>'
@@ -27,7 +34,7 @@ mayfly --version
 mayfly --help
 ```
 
-`--host` changes the HTTP(S) Host URL without accepting credentials, a query, or a fragment; the token is still read from `MAYFLY_DSH_STARTUP_URL`. `--resume` and `--session` select an existing Host Session. Without either, Mayfly creates a Session using `--cwd` or the current working directory. Positional words form one initial task; use `--` before a task that starts with a dash.
+`--host` changes the HTTP(S) Host URL without accepting credentials, a query, or a fragment; the token is still read from `MAYFLY_DSH_STARTUP_URL`. `--resume` and `--session` select an existing Host Session. Without either and without a task, Mayfly stays sessionless until the first prompt. Session creation uses `--cwd` or the launcher's current directory, interpreted as a path on Host. Positional words form one initial task; use `--` before a task that starts with a dash.
 
 `MAYFLY_SESSION_ID`, `MAYFLY_CWD`, and `MAYFLY_TASK` provide environment defaults when the corresponding arguments are absent. Command-line values take precedence. Use `/sessions` or `/resume` inside the TUI for interactive Session selection.
 

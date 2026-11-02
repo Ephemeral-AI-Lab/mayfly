@@ -17,112 +17,43 @@ Host service runtime imports and legacy composition payload.
 
 ## State and lifetime ownership
 
-- A resource acquired across an `await` registers its owner first and
-  re-checks it on resumption: the owning effect precedes the acquisition,
-  and queued async work fences starts and late failures behind the unload flag.
-- `app/` owns startup and the conversation registry (`mayflyConversations`):
-  the primary plus any number of side conversations (at most one BTW), one
-  displayed selection, and the most-recently-displayed order behind F7.
-  Access is derived, never declared. `mayflyCurrentAgent.current()` is the
-  exact Agent only while an interactive conversation is displayed; readonly
-  and resumable views yield null, never the primary. Cold continuable
-  children use addressed native history and explicit reply-to-resume.
-  Startup selects no Agent: the session behind the first message is created
-  on demand through `mayflySessionStart` (serialized on the app's chain,
-  `/new` and `/clear` deselect instead of creating), so an empty session
-  never reaches the store. `mayflyCurrentAgent.current()` is therefore null
-  until then; the post-boot signal is `mayflySessionStart.onBooted`, not
-  the first Agent. A command that runs with no Agent registers through
-  `registerOwnedCommand` (`interaction/sessionless-commands.ts`) and must
-  not read `invocation.agent`. The start surface's pending plan mode
-  (`plan…`) also lives on `mayflySessionStart`: the first created session
-  enters it through the native `/plan` before its first message, and a
-  selection or `/new` clears it.
-  Interrupt descendants through native ancestor authority without draining
-  retained Activations/inbox. A settled abort or failed turn can leave queued
-  input in an idle Agent (the loop only re-wakes on `wakeRequested`); the
-  app-owned `inbox-wake.ts` re-submits the oldest pending message through the
-  public inbox and Agent API, and retires when the Harness wakes that input
-  itself.
-- `/btw` owns a plain `AgentHandle` from `agents.create`, never a managed
-  `subagents.startActivation`: a local activation settles at its first idle and
-  disposes the child, which closes the side conversation as soon as the answer
-  ends. Clear the child's inherited inbox before posting the question; the fork
-  seed can fold the parent's unclaimed queued and steering messages into it.
-- `frontend/index.ts` owns `mayflyUiInteraction` and independent consumer Fibers.
-  Its models are implemented in `core/ui-interaction-*.ts` but survive core-only
-  reload. Renderer teardown releases editors/handles, not drafts or choice state.
-  It also owns `mayflyUiImages`, the byte source of `image` nodes: the host tree
-  provides a loader (Fiber-owned, newest first) and core never imports the
-  Harness; the wire carries only the attachment id and the alt fallback.
-  A `prompt` node's draft, selected token, recall walk, and completion cursor live in
-  the surface model (`core/ui-interaction-prompt.ts`) and survive a renderer reload;
-  the runtime only leases the terminal editor that mirrors the draft
-  (`core/ui-prompt.ts`), and the prompt's keys are one `keyGrammar` arm.
-  Registry observers dispose only models from registrations they own.
-  Locale namespaces are refcounted shared catalogs: any surface plugin may
-  register the same namespace when its catalog is equivalent, and the catalog
-  lives until the last owner unloads; a conflicting catalog is a programming
-  error. Namespace translators come from `memoizedLocaleTranslator`
-  (`frontend/locale.ts`): one observer Fiber per context and namespace, each string
-  resolved once per locale revision; never reach `ctx.get('mayflyLocale')` per string
-  on a hot path. Vocabulary shared across namespaces belongs to `common`. English
-  strings are the stable keys, so changing one means updating its emitting
-  call site; `tests/locale-catalog.spec.ts` enforces used-key completeness,
-  dead-key liveness, placeholder parity, and zh terminology in both directions.
-  It also owns exact-Agent assistant drafts and the session-facts bridge;
-  neither depends on theme/core. Recovery reads native assistant-stream
-  baselines, fences Agent replacement and late continuations, and never folds
-  a second durable session log. App selection must survive renderer gaps.
-- Provider setup and application information survive current-Agent/skills/core
-  gaps. Agent-specific model, tool, MCP, skills, approval, and question consumers
-  bind to exact Agent identity, including same-session-ID replacements. Detail
-  views follow their parent/Agent/provider lifetime, not a completed operation.
-- `interaction/` keeps editor/autocomplete state and prompt-submit transforms in
-  separate Fiber services. Editor presentations are ordinary overlays projected
-  into the fixed editor host; preserve and restore the prompt lease.
-- `/sessions` retains only the native Session Controller catalog rows one
-  listing returned and fences refreshes by controller instance and generation.
-  Cordis returns a fresh traceable proxy per `ctx.get`, so compare services
-  through `internal/service-identity.ts`, never by proxy reference.
-  Group the picker by native `workspaceRegistry` identity; a summary carries
-  its title, model, usage, and `formatStatus` hints without reading a log.
-  Opening a Session reads `sessionController.projections`: a `sequenced` result
-  is current, while `migration-required` shows the cached values and a notice
-  and never starts migration. Do not enumerate `sessionPersistence`, consult
-  `sessionProjectionCache`, call `readColdSessionLog`, or keep a second session
-  domain store. Browsing never activates Agents or retains logs.
-- `transcript/` has one conversation controller with one view per displayed
-  or retained conversation (listed ones hold nothing), generation-keyed
-  reuse, and lazy conversion of the latest unread value from a feed: a live
-  Session through the native registry, or a stored child through its native
-  address. Hidden views stash values without converting or waking the
-  renderer. Preserve complete floor-eligible history; a history floor (BTW's
-  seed) hides entries only in presentation. Do not rely on entry identity
-  across native parsing or render a conversation outside the transcript pane.
-  The controller publishes a changing model at most once per window
-  (`PUBLISH_INTERVAL_MS`, longer while a publish is costly): the first change of a
-  quiet period publishes at once, the rest of a burst become one trailing publish.
-  A live turn uses the fixed `LIVE_PUBLISH_MS` budget, keeps a
-  `STREAM_WATCHDOG_MS` floor for a lost notification, and publishes at once when
-  the projection settles the live step or closes its turn.
-  Durable sequence numbers and transient presentation revisions are separate.
-  Live overlays share stable history; completion comes from explicit settled
-  steps, never a reasoning block's animation flag. Verify through the actual
-  source-to-component path, including settlement and renderer reload.
-  The activity pane is the sole owner of live status (phase, elapsed time,
-  current action, throughput); transcript rows show content and settled
-  summaries only, and only surfaces without an activity row opt into the
-  running turn header.
-- A submitted reply acknowledges its form snapshot before dismissal. The
-  editor stays visible for every conversation: readonly ones keep the draft,
-  resumable ones take a send: `Enter` queues it for the child's next turn and
-  `Ctrl+Enter` steers it, and the send wakes the child.
-- Schedule reminders belong to the Host, not a session projection. `/schedule`
-  reads the exact selected Agent's Session through the optional native service,
-  observes `schedule/changed`, and fences late reads across selection and unload.
-- `conversation/` owns phase-local output measurements from session timestamps.
-  Renderer timers animate or expire labels; they do not measure domain progress.
+- A resource acquired across an `await` registers its owner first and checks
+  it again on resumption. Unload and stale-generation fences cover starts,
+  late success, late failure, publishers, and acknowledgement continuations.
+- Shared modules consume readonly facts and structured action replies. Native
+  Agent selection, Session creation, provider/settings/plugin writes, jobs,
+  side-session bindings, and command routing belong to Remote and Host. Old
+  `app/`, native interaction, startup, and native projection owners remain
+  private source fixtures; their services are not public frontend APIs.
+- `frontend/index.ts` owns `mayflyUiInteraction`, images, locale, and consumer
+  Fibers independently of core. Form/Choice/Tabs/Document/Prompt drafts,
+  caret/recall/completion state, locks, confirmations, semantic focus, and
+  feedback survive renderer gaps. Teardown releases terminal editors and
+  handles, not valid frontend drafts. Registry observers dispose only their
+  own registration instances.
+- Locale namespaces are refcounted shared catalogs. Equivalent registrations
+  share a catalog; conflicting content is an error. Use
+  `memoizedLocaleTranslator` (`frontend/locale.ts`), with one observer Fiber
+  per context/namespace and one resolution per locale revision. Shared words
+  belong to `common`. Used keys, liveness, placeholders, and zh terminology
+  stay covered by `tests/locale-catalog.spec.ts`.
+- Shared conversation presentation never folds durable Host history. The
+  public bounded `transientAssistantConversation` helper accepts only the
+  current assistant attempt. Official whole Host snapshots supply durable
+  conversation and facts; reconnect replaces baselines. Explicit settled-step
+  facts close live content, never a reasoning animation flag. Durable
+  `updatedSeq` and transient `renderRevision` are separate clocks.
+- Transcript controllers keep one view per displayed/retained conversation,
+  stash hidden values without conversion, and lazily convert floor-eligible
+  entries on display. BTW history floors hide seeds only in presentation.
+  Entry identity cannot be assumed across native decoding. Live publishes
+  coalesce bursts under their fixed budget and publish immediately when a
+  step settles or turn closes. Timers animate labels; domain progress comes
+  from native timestamps and projections.
+- The activity row owns live phase, elapsed time, action, and throughput.
+  Transcript rows show content and settled summaries. A surface without an
+  activity row may opt into its running-turn header. Decision components use
+  readonly queue facts supplied by the caller, never inspect an overlay.
 
 ## Node slots
 
@@ -156,10 +87,9 @@ from `transcript/stream-facts.ts`) is the first consumer.
 
 `src/components/` holds the Mayfly components as pure functions of facts that
 return `ui.*` nodes (`TranscriptView`, `ToolLine`, `ActivityRow`,
-`NotificationLine`, `CompactionRow`, and `DecisionCard`). The approval and
-questions plugins own the request queue and publish it as
-`mayfly/decision-requests-changed`; the stream turns the first request's call
-into its request block and never reads the overlay.
+`NotificationLine`, `CompactionRow`, and `DecisionCard`). Feature owners supply
+readonly decision queues; the stream maps the first request to its call block
+and never reads an overlay.
 
 It has no Cordis entry and no public subpath, and a component is imported from
 its own module. A file there imports
@@ -307,39 +237,20 @@ completion list is state only (`core/completion-list.ts`) and the palette that
 paints it is `core/completion-drawer.ts`. A component that replaces a surface deletes the old code in
 the same change; nothing is kept for a later cleanup.
 
-## Native writes and sensitive data
+## Shared action and sensitive-data contracts
 
-- `/plugin` keeps the marketplace browser over the read-only index. Installed
-  state comes from `ctx.pluginManager.listBundles()`, and install, update,
-  remove, and enable/disable go through `installBundle`, `removeBundle`, and
-  `setBundleEnabled`; render the manager's `ChangeResult` and restart boundary.
-  Do not spawn a package manager, write a profile file, or keep a CLI-backed
-  installer. Installation, update, and removal apply after restart; HMR stays
-  disabled in the default bundle.
-- Optional collaboration plugins own their preset, tools, and UI contributions.
-  The default bundle and shipped presets do not mount Agent Team. Keep upstream
-  ordinary delegation available. Generic child navigation and the shared
-  `mayfly/request-subagent-reply` event remain app/interaction-owned; replies
-  explicitly choose Queue or Steer and fence exact-Agent replacement.
+Remote/Host own native writes. Shared marketplace, settings, provider, jobs,
+and catalog models contain facts and structured actions only. They never
+import Host services, mutate profile files, spawn package managers, retain
+credentials, or refresh-and-retry conflicts. Keep descriptor/field revisions,
+explicit confirmations, restart boundaries, and operation feedback in the
+readonly models so feature owners can preserve the native semantics.
 
-- Settings use shared forms and explicit native path-op commits. Bind writes to
-  descriptor revision and exposed field projection; rehydrate with Schemastery.
-  Never refresh-and-retry writes, expose saved secrets/schema secret defaults,
-  or overwrite unsupported containers. Raw editing checks writability and the
-  original file, suspends the screen, and ignores cancelled continuations.
-- Provider discovery reads versioned drafts; only Save writes settings/credentials.
-  MCP projections omit environment/header values. Skills browsing never loads
-  skill bodies; incomplete catalogs retain only the same Agent's complete data.
-- Presets use native `agentPresets.select()` and its turn-boundary guard, not
-  recompose plus a manual event. UI withdrawal does not roll back native work.
-  Plan toggles and permission presets remain independent; `pending` means queued.
-- Jobs stays an ordinary preset sibling. Browsing uses `list/get`; only explicit
-  Read output consumes `read`. Keep reads outside snapshots and scroll without
-  losing long-line tails or splitting surrogate pairs. Recheck status for Stop;
-  native notifications own terminal job state.
-- Host commands use fixed-argument descriptors. `MAYFLY_DSH_BIN` wins over
-  `DSH_BIN`/PATH; selected JS entries run through Node with no silent host fallback.
-  Clipboard I/O shares the bounded subprocess runner. Profile parsing is internal.
+Secrets stay redacted and saved schema defaults never become form values.
+MCP facts omit environment/header values. Clipboard, exports, palettes, and
+external editors are frontend-local; shared nodes never encode arbitrary
+Host paths or commands as executable operations. No renderer timer, panel
+closure, or UI withdrawal silently rolls back or cancels Host work.
 
 ## Verification and composition
 
@@ -349,9 +260,8 @@ owner, and test that frontend state survives core reload. New public seams need
 real consumers, replay/abort/late-result tests, width and whole-tree composition
 coverage, and dedicated-profile acceptance.
 
-The scenario catalog (`script/scenarios/catalog.mjs`) is the registry of live
-states behind `pnpm run scenario` and `pnpm run frame`, kept small: a round adds
-one long scenario (root `AGENTS.md`, Round workflow), a replay of
+The historical scenario catalog (`script/scenarios/catalog.mjs`) records live
+states behind `pnpm run scenario` and `pnpm run frame`, including a replay of
 `script/scenarios/replays.mjs` with the marks its script plays to, played into the real product by
 `script/scenarios/driver.mjs`. A `manual` entry is owner-only, runs through
 `pnpm run scenario`, and has no frame or golden. The Website's app shots are
@@ -381,7 +291,7 @@ after review. Those grids are the visual record of Phase 1 until the foundation
 review replaces them. The prototype is a sketch and gates nothing. The owner's live
 acceptance decides a component's look, and its accepted frames become its goldens.
 
-Patch, preset, skill, dependency, or composition edits require bundle/preset
+Publication, dependency, or composition edits require package/bundle
 tests, `pnpm run check:agent-docs`, `pnpm run check -- --tier full`,
 `pnpm run check:pack`, dedicated-profile install, PTY smoke, and human acceptance.
 Keep `HARNESS_LINE` in `interaction/session-commands.ts`, where drift/build
@@ -402,5 +312,6 @@ activity models, native-decision presentation facts, and teaching-tip rotation.
 Independent frontends derive those facts from native requests/projections and
 consume these shared builders instead of maintaining another renderer model.
 The npm 0.1.4-rc.2 reference is immutable; candidate rendering comes from this
-checkout's built package. The approved split workflow develops and tests in
-parallel, overriding the historical tests-last round references above.
+checkout's built package. Develop behavior and meaningful tests together, then validate the combined
+split runtime under the root gate. Shared renderer evidence alone does not
+establish complete reference parity.

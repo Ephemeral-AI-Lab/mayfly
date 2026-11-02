@@ -11,184 +11,120 @@
 [![CI](https://github.com/Ephemeral-AI-Lab/mayfly/actions/workflows/ci.yml/badge.svg)](https://github.com/Ephemeral-AI-Lab/mayfly/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@ephemeral-ai/mayfly?label=npm)](https://www.npmjs.com/package/@ephemeral-ai/mayfly)
 [![downloads](https://img.shields.io/npm/dm/@ephemeral-ai/mayfly)](https://www.npmjs.com/package/@ephemeral-ai/mayfly)
-[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933)](#install)
-[![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#install)
+[![Node](https://img.shields.io/badge/node-%3E%3D24.9.0-339933)](#install-and-run)
+[![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#install-and-run)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 English | [中文](README.zh.md)
 
-Mayfly is a terminal frontend for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). This development branch separates the native dsh Host from an independent HTTP/WebSocket TUI process. The TUI uses candidate UI packages built from this checkout; the published `0.1.4-rc.2` is an immutable compatibility reference. The split runtime targets official Harness `0.2.2-alpha.2`.
+Mayfly is an independent terminal frontend for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The product runs as two processes: a native dsh **Host** and a **Remote TUI** connected through the official HTTP/WebSocket Client. The Host owns Agents, models, tools, and Sessions; the TUI owns input, themes, panels, and terminal rendering. Closing the TUI detaches it while Host work continues.
 
-- **Terminal-native rendering**: Markdown tables, closed Mermaid fences in
-  assistant messages, and renderer-neutral line, point, bar, sparkline, and
-  heatmap nodes — with width-safe source or text fallbacks.
-- **One activity block for live status**: the current step, turn elapsed
-  time, estimated token count, and output rate live above the editor, with a
-  notification row under them; the transcript records only what has happened.
-- **Side conversations**: `/btw` and the `/agents` subagent tree share the
-  transcript pane; `F7` returns to the previous conversation and `F8`
-  closes the displayed one.
-- **An ordinary plugin model**: consume `ctx.commands`,
-  `ctx.sessionProjections`, `ctx.tools`, and other documented dsh services
-  directly; UI contributions go through `mayflyPanes`, `mayflyStatus`,
-  `mayflyOverlays`, and `mayflyEditorExtensions`.
+This development branch targets official Harness `0.2.2-alpha.2`. The published Mayfly `0.1.4-rc.2` is the immutable reference for appearance, keys, and workflows. Shared presentation is being carried into the split runtime; complete visual parity still requires the acceptance described in [split validation](docs/split-parity-validation.md).
 
-The activity block above the editor is the one place for live status: a glyph
-that moves with the phase (blooming while the model thinks, filling while it
-writes, a still `●` beside a running tool, breathing while it waits for you),
-the current step (`Thinking`, `Running commands`), the turn's elapsed time, and
-the estimated token count and output rate. Its second line holds a tip, or the
-arguments of the calls in flight. The notification row under it shows the
-notice to read now, such as a rate-limit retry or a nearly full context. The
-transcript records only what has happened, so streaming reasoning shows as a
-captionless `✻` tail that settles to one `✻ Thinking · 6s` row, and file
-changes stay visible as diff cards next to the final answer.
-Rates use four characters per token, exclude first-chunk latency, and disappear
-after two seconds without output. Narrow terminals omit tips and rates first.
+## Install and run
 
-<p align="center">
-  <img src="website/public/shots/app-conversation.svg" width="720" alt="Mayfly terminal with a live transcript, tool card, editor, and status bar">
-</p>
-
-## Plugin model
-
-A plugin declares the services it needs with `inject`, then uses them from its
-Cordis context:
-
-- `ctx.commands`, `ctx.sessionProjections`, `ctx.tools`, and the rest of
-  the documented dsh services are used directly.
-- `ctx.mayflyPanes`, `ctx.mayflyStatus`, `ctx.mayflyOverlays`, and
-  `ctx.mayflyEditorExtensions` are the only Mayfly-specific UI contribution
-  services.
-- `ctx.mayflyCurrentAgent.current()` returns the exact Agent selected by this
-  Mayfly frontend when an Agent-scoped native service needs it.
-- Every registration belongs to the caller's Cordis Fiber. Unloading the
-  plugin removes its commands and UI contributions.
-
-There is no Mayfly plugin manifest, capability negotiation, adapter facade,
-private plugin realm, or separate plugin-author CLI. Mayfly's own features and
-external plugins register through the same services.
-
-Plugins always return ordinary renderer-neutral nodes. Mayfly automatically
-windows large `list` nodes and delays hidden responsive branches, so plugins
-do not manage viewport ranges, overscan, renderer caches, or scroll
-controllers. Plugins still own database and network fetching.
-
-Interactive panes and overlays declare `onEvent: { observe, action }`. Mayfly's
-frontend owner retains form drafts, selections, tabs, document anchors,
-confirmation, operation state, and feedback across renderer reloads. Plugins
-perform native reads and writes in `action`, then return a structured settlement
-such as `accepted`, `invalid`, `conflict`, or `failed`; external data refreshes
-use `set(node, { reason: 'data', source })`.
-
-```ts
-import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-commands'
-import type {} from '@ephemeral-ai/mayfly-ui'
-import { ui } from '@ephemeral-ai/mayfly-ui'
-
-export const name = '@acme/build-health'
-export const inject = ['commands', 'mayflyPanes']
-
-export function apply(ctx: Context): void {
-  ctx.commands.register({
-    name: 'health',
-    description: 'Show build health',
-    handler: () => ({ kind: 'success', text: 'healthy' }),
-  })
-  ctx.mayflyPanes.register({
-    id: 'acme.build-health',
-    placement: 'right',
-    narrow: 'bottom',
-  }, ui.text('healthy'))
-}
-```
-
-Publish-shaped plugin packages live in [examples/](examples); the
-[developer manual](website/en/plugins/index.md) covers the full contribution
-lifecycle.
-
-## Install
-
-This branch needs Node `>=24.9.0` and pinned pnpm 11.7.0. Build and install a dedicated development Host profile using an already installed official dsh `0.2.2-alpha.2`; the installer never changes global packages.
+Use Node `>=24.9.0`, pinned pnpm `11.7.0`, and an isolated official dsh `0.2.2-alpha.2` executable. These split packages are development artifacts; install from this checkout or verified release tarballs. The installer checks the dsh version and keeps the global installation unchanged.
 
 ```sh
 pnpm install --frozen-lockfile
 DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
 ```
 
-Start the Host in one terminal, then hand its authenticated URL to the TUI through the environment in another:
+The installer builds the workspace, creates a dedicated profile from the native Web template, and adds `@ephemeral-ai/mayfly-host`. It reuses an existing profile and rejects the shared `mayfly` and `default` profiles. Launch both processes:
 
 ```sh
+# Terminal 1: Host
 /path/to/dsh --profile mayfly-split-accept
+
+# Terminal 2: TUI; copy the authenticated URL printed by the Host
 MAYFLY_DSH_STARTUP_URL='<URL printed by Host>' script/mayfly-remote.sh
 ```
 
-Set model credentials on the Host. Exiting the TUI detaches its Client and leaves Host work running. Rebuild after source changes; rebuild also refreshes the isolated candidate UI dependencies. These unreleased Host/Remote packages must be installed from the checkout or verified release tarballs, not assumed available from npm.
+Model credentials, provider settings, permission presets, and session files belong to the Host. The Host emits one `mayfly host: <url>` readiness line. Supply that authenticated URL through `MAYFLY_DSH_STARTUP_URL`; the TUI rejects credentials in command-line arguments. `--host` accepts a non-secret HTTP(S) URL while obtaining its token from the environment.
 
-`pnpm run verify:changed -- --plan` shows selected checks; `pnpm run verify:full` runs the complete gate. [Split validation](docs/split-parity-validation.md) describes the immutable reference and real two-process tests. A smoke pass does not establish visual parity.
+The TUI supports an initial task, an existing Session, and a Host working directory:
 
-## Usage
+```sh
+# Set the authenticated URL once in this terminal
+export MAYFLY_DSH_STARTUP_URL='<URL printed by Host>'
+script/mayfly-remote.sh 'Explain this repository'
+script/mayfly-remote.sh --resume <session-id>
+script/mayfly-remote.sh --cwd /path/on/host 'Run the relevant checks'
+```
 
-`/help` lists the active commands and key bindings. `/agents` browses the current session's subagent tree; Enter opens a child and
-`/agents stop <id>` stops a live continuable leaf child; a parent with live
-descendants is refused so teardown cannot silently remove a whole subtree.
-`/btw <question>` opens a
-temporary side Agent. Side conversations (BTW and subagents, several at once)
-render in the same transcript pane with the complete Mayfly layout and editor:
-press `F7` to return to the previous conversation and `F8` to close the
-displayed one. Interrupting the selected conversation also
-interrupts every running continuable descendant without closing those Agents.
+`MAYFLY_SESSION_ID`, `MAYFLY_CWD`, and `MAYFLY_TASK` provide defaults when corresponding arguments are absent. A launch without a task or resume id stays sessionless until the first prompt. `/new` and `/clear` return to that start view without creating an empty Session or stopping existing work. Rebuild with `pnpm run build` after source edits; rerun the installer when the dependency graph changes. The exact-version global `@ephemeral-ai/mayfly-cli` package hands off to this same Remote entry; it does not start the Host.
 
-## Architecture
+## Use the TUI
 
-The split release contains five packages:
+The shared layout contains the conversation, activity and notification rows, editor, and status/views lane. It renders Markdown tables, closed Mermaid fences, tool cards, file diffs, approvals, and questions. Theme changes preserve the native editor's draft, cursor, undo, history, paste, and completion state. `/theme custom <path> [<base theme>]` reads a palette on the TUI machine; `/theme` changes live presentation without saving the Host's default. Use `/settings` or onboarding to change persisted preferences.
 
-- `@ephemeral-ai/mayfly-host`: native Host projections, generated Remote services, and Host composition.
-- `@ephemeral-ai/mayfly-remote`: independent TUI, official Client transport, and frontend composition.
-- `@ephemeral-ai/mayfly-ui`: renderer-neutral contracts, builders, and the four UI services/provider.
-- `@ephemeral-ai/mayfly`: shared renderer, themes, and readonly presentation subpaths for the TUI.
-- `@ephemeral-ai/mayfly-cli`: the dependency-free global launcher.
+`/help` and slash completion reflect the selected Host's actual command catalog and the mounted local features. A writable Session adds native Host commands; readonly views do not advertise writable commands. Canonical command names remain singular: `/model`, `/provider`, `/preset`, and `/plugin`.
 
-Frontend, core, transcript, and presentation modules remain internal ownership
-areas of the shared renderer. Native composition and presets belong to the Host;
-the shared package publishes no root plugin, composition patch, or preset payload.
+| Workflow | Commands and behavior |
+| --- | --- |
+| Session navigation | `/sessions` (`/resume`) opens the workspace/session browser; an id resumes directly. `/rename <title>` renames the selected Session. `/fork [atSeq]` creates and selects a branch. |
+| Models and configuration | `/model [name]`, `/effort [level]` (`/thinking`), `/provider`, `/preset [name]`, `/permissions`, and `/settings` use native Host catalogs and writes. Before a Session exists, model and preset choices set Host defaults. |
+| Plan mode | `/plan` enters plan mode, `/plan off` leaves it, and `/mode` or Shift+Tab toggles it. A sessionless choice is admitted before the first prompt; a failed admission sends no prompt. Alt+M cycles models within the current provider. |
+| Information | `/context`, `/stats`, `/skills`, `/tools`, `/mcp`, `/files`, `/changes [seq]`, `/trace [filter]`, and `/version` inspect native state or readonly Host projections. |
+| Work and side conversations | `/jobs`, `/goal`, and `/schedule [all]` use the enabled Host services. `/btw <question>` opens a forked side conversation; `/agents` browses subagents. F7 returns to the previous conversation and F8 closes its view. Closing a view keeps Host work running. |
+| Local output and exit | `/copy` writes to the TUI machine's clipboard; `/export [full] [name]` (`/save`) writes under local `mayfly-exports/`. `/quit` (`/q`, `/exit`) detaches and exits. |
+| Additional Remote controls | `/host`, `/attach`, `/detach`, `/host-status`, `/account`, `/language`, and `/onboarding` appear in the Remote help section. |
+
+Enter queues a prompt and Ctrl+Enter steers it through the official Client. Readonly conversations preserve drafts and refuse writes. A cold continuable child resumes only when the user explicitly replies through its native address. `/agents stop <id>` drains a live continuable leaf; a child with live descendants is refused. The selected conversation's interrupt uses native cancellation authority and keeps queued input.
+
+## Partial behavior and upstream limits
+
+The first three rows describe official API limits. `/update` and `/rewind` are unfinished implementation work that must be completed before parity acceptance:
+
+| Area | Implemented behavior and remaining boundary |
+| --- | --- |
+| Slash commands with files | Official alpha.2 `commands.execute` accepts encoded image attachments, without a file-upload receipt input. Image-bearing commands work. A command containing a staged file is refused with an explicit notice and its draft is restored; no command is sent. Ordinary prompts use the native file-upload path. |
+| `/mcp` connection details | Official alpha.2 exposes no public configured-server/transport-health catalog. The panel lists servers discoverable from tool schemas and shows unknown connection state and absent transport/endpoint values. Resources/templates and explicit resource reads use native tools. A composition providing the optional sanitized catalog can add connection details. |
+| Cold child tool cards and controls | Passive native history and projections work. Without a live child Agent, custom presenters use generic durable tool cards and Agent-scoped controls report unavailable. Browsing never activates a child or borrows its parent's Agent. An explicit continuable-child reply uses the native addressed path. |
+| `/update` | Currently checks the published Remote `latest` version only. Applying and rolling back a coordinated Host/TUI upgrade is not implemented; upgrade the two installations explicitly. This is an implementation boundary, not a missing settings or plugin API. |
+| `/rewind` | Currently requires `/rewind <seq>`, forks at that event through native Session APIs, and selects the branch. The reference's interactive rewind picker is not implemented. |
+
+`/plugin` installs, updates, removes, and enables Host bundles through the native plugin manager. `/settings` supports revision-bound form changes and a local external editor for the actual Host settings document. These features have native APIs and are implemented. Plugin changes report their restart boundary; a cancelled or stale write is never silently retried. `/schedule` and other optional features state when their Host service is absent.
+
+## Architecture and extensions
+
+The release set contains five packages:
+
+| Package | Responsibility |
+| --- | --- |
+| `@ephemeral-ai/mayfly-host` | Native Host composition, durable Mayfly projections, and generated `mayflyHost` Remote methods. |
+| `@ephemeral-ai/mayfly-remote` | Official Client transport, Host/Session selection, feature controllers, and standalone TUI composition. |
+| `@ephemeral-ai/mayfly` | Shared renderer, themes, editor/transcript controllers, and readonly presentation subpaths. No root plugin, dsh bundle, patch, or preset payload is published. |
+| `@ephemeral-ai/mayfly-ui` | Renderer-neutral node contracts, builders, and the four UI services/provider. |
+| `@ephemeral-ai/mayfly-cli` | Small global launcher with an exact-version dependency on Remote. |
 
 <!-- BEGIN diagram:mayfly-layers -->
 <!-- single source: docs/diagrams/mayfly-layers.en.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
-    ROOT["one dsh process · one Cordis service graph"]
-    DSH["native dsh services<br/>commands · sessionProjections · tools · agents"]
-    PLUGIN["ordinary Cordis plugins<br/>official Mayfly rows and external siblings"]
-    AGENT["mayflyConversations · mayflyCurrentAgent<br/>primary + side conversations<br/>exact displayed Agent"]
-    UI["direct Mayfly UI services<br/>mayflyPanes · mayflyStatus<br/>mayflyOverlays · mayflyEditorExtensions"]
-    CORE["@ephemeral-ai/mayfly core area<br/>only pi-tui and raw-terminal owner"]
+    HOST["native dsh Host process<br/>dsh-base · dsh-web-app · mayfly-host"]
+    STATE["native Agents · Sessions · models · tools<br/>durable Mayfly projections"]
+    WIRE["official Client HTTP/WebSocket<br/>serializable Remote DTOs · native file routes"]
+    REMOTE["independent Remote TUI process<br/>HostKey + SessionRef selection · local feature state"]
+    UI["four direct Mayfly UI services<br/>panes · status · overlays · editor extensions"]
+    CORE["shared Mayfly core<br/>only pi-tui · ANSI · terminal · width owner"]
     TERM["terminal"]
 
-    ROOT --> DSH
-    ROOT --> PLUGIN
-    DSH --> PLUGIN
-    AGENT --> PLUGIN
-    PLUGIN --> UI
+    HOST --> STATE
+    STATE <--> WIRE
+    WIRE <--> REMOTE
+    REMOTE --> UI
     UI --> CORE
     CORE --> TERM
 ```
 <!-- END diagram:mayfly-layers -->
 
-Only `packages/mayfly/src/core/` imports pi-tui or owns raw terminal behavior.
-`@ephemeral-ai/mayfly-ui` defines renderer-neutral nodes and direct registries.
-The app area selects the current Agent and coordinates startup, while the
-transcript and interaction areas consume native dsh services and publish UI
-contributions.
+Host plugins are ordinary Cordis plugins using documented native dsh services. TUI plugins contribute nodes through `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and `mayflyEditorExtensions` in the TUI's own Cordis tree. A plugin needing Host state uses the official Client/Remote protocol and serializable DTOs; Agent, Session, Tool Definition, callbacks, and renderer objects never cross processes. The removed in-process `mayflyCurrentAgent` and app/interaction entries are not public extension APIs. [Architecture](docs/mayfly-architecture.md) and [service seams](docs/mayfly-seams.md) describe the current boundaries.
 
-See [the architecture](docs/mayfly-architecture.md), [the service seams](docs/mayfly-seams.md),
-and the [developer manual](website/en/plugins/index.md).
+## Development and verification
 
-## Community
+Use a dedicated worktree and `mayfly-<tag>` profile. `pnpm run verify:changed -- --plan` shows selected checks, `pnpm run verify:changed` runs them, and `pnpm run verify:full` runs the full architecture gate. Package imports resolve built `lib/`; a fresh checkout needs a build before tests that import package names.
 
-Questions, feedback, or feature ideas? Join the official Mayfly group on Feishu (primarily Chinese). Invite links expire every 7 days — grab the current one from the latest comment of the pinned [group issue](https://github.com/Ephemeral-AI-Lab/mayfly/issues/106). Bug reports still belong in [issues](https://github.com/Ephemeral-AI-Lab/mayfly/issues).
+[Split validation](docs/split-parity-validation.md) defines immutable reference acquisition, real Host/Remote HTTP/WebSocket and PTY scenarios, and cell-grid comparison. Smoke success and a reused shared component do not establish visual parity. Reference output must be captured independently of the candidate, and acceptance must include the selected workflows, terminal widths, themes, cancellation, and lifecycle cases.
 
-## License
-
-[MIT](LICENSE).
+Maintainer boundaries live in [AGENTS.md](AGENTS.md) and package instruction files. The published `0.1.4-rc.2` reference and historical source fixtures are validation inputs; they do not provide a second supported product installation path.

@@ -34,8 +34,9 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
 - `src/settings.ts` is the `mayfly` settings namespace schema; presentation
   application stays in the TUI. `cordis.patch.yml` composes the Host profile
   over `dsh-base`/`dsh-web-app` and changes only the browser/URL handoff.
-- `src/startup.ts` prints the authenticated URL once. Tokens never enter logs,
-  argv, or ordinary error text.
+- `src/startup.ts` prints the authenticated URL once after Loader settlement.
+  That explicit readiness line is the credential handoff; tokens never enter
+  argv or ordinary diagnostics.
 
 ## Verification
 
@@ -50,8 +51,8 @@ package consumes, so rebuild before judging any client behavior.
 ## Local split profile
 
 `script/install-dev.sh` builds the workspace and installs or refreshes
-the `mayfly-host` profile in one shot: it matches the global dsh line to the
-Host manifest, seeds the profile from the web template, denies the optional
+a dedicated `mayfly-*` profile (default `mayfly-dev`) in one shot: it checks
+the selected `DSH_BIN` against the Host manifest, seeds the profile from the web template, denies the optional
 native build scripts before the first install, links this package as a bundle,
 and asserts the composed profile carries the Web runtime and the Mayfly rows.
 Pass the authenticated URL through `MAYFLY_DSH_STARTUP_URL` when launching the

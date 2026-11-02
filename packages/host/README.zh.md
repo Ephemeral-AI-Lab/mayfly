@@ -35,45 +35,33 @@ dsh `0.2.2-alpha.2` 没有公开已配置 MCP 服务器或传输健康状态的�
 
 ## 开发 profile
 
-使用 Node `>=24.9.0` 和仓库锁定的 pnpm。在仓库根目录安装并构建：
+使用 Node `>=24.9.0`、锁定的 pnpm `11.7.0`，以及独立安装的官方 dsh
+`0.2.2-alpha.2` 可执行文件。从仓库根目录运行：
 
 ```sh
-pnpm install
-pnpm run build:changed
+pnpm install --frozen-lockfile
+DSH_BIN=/path/to/dsh PROFILE=mayfly-host-accept script/install-dev.sh
 ```
 
-从随附的 Web 模板初始化一个全新的、已被 Git 忽略的开发 profile。此替换命令仅用于首次设置；再次运行会重置同名 profile：
+规范安装器构建工作区，必要时从原生 Web 模板创建专用 profile，再链接 Host
+bundle、禁用可选原生构建脚本，并检查最终的 `dsh-base` / `dsh-web-app` /
+Mayfly Host 组合。安装器校验所选 dsh 版本，不修改全局安装。已有专用 profile
+会复用，共享的 `mayfly` 和 `default` profile 会被拒绝。
+
+在不同终端分别启动两个进程：
 
 ```sh
-export DSH_HOME="$PWD/.artifacts/dsh-host"
-pnpm --dir packages/host exec dsh --profile mayfly-host-dev --from-default-profile web --dump-default-config >/dev/null
-pnpm --dir packages/host exec dsh plugin --profile mayfly-host-dev add "link:$PWD/packages/host"
+# Host
+/path/to/dsh --profile mayfly-host-accept
+
+# TUI；复制 Host 唯一就绪行中的 URL
+MAYFLY_DSH_STARTUP_URL='<authenticated-url>' script/mayfly-remote.sh
 ```
 
-生成的 bundle 顺序为 `dsh-base`、`dsh-web-app`，然后是 `@ephemeral-ai/mayfly-host`。Host 包的开发依赖为安装和启动提供同一个 `0.2.2-alpha.2` CLI，与旧版进程内 Mayfly 包使用的 dsh 版本互不影响。
+认证 URL 不得放入 argv 或提交到仓库。设置、凭据、workspace 和 Session
+保留在 Host；调色板、剪贴板、导出和外部编辑器位于 TUI 所在机器。没有任务和
+恢复 id 的启动在第一条 prompt 前不创建 Session；关闭 TUI 后 Host 工作继续。
 
-启动外部 Host：
-
-```sh
-pnpm --dir packages/host exec dsh --profile mayfly-host-dev --no-open
-```
-
-把唯一就绪行中的身份验证 URL 复制到第二个终端的环境变量中；切勿将其放入 argv 或提交到 Git：
-
-```sh
-MAYFLY_DSH_STARTUP_URL='<authenticated-url>' pnpm run scenario hostConversation
-```
-
-修改源代码后，运行 `pnpm run build:changed` 并重启 Host。修改 manifest 依赖后，运行 `pnpm install`；已有的 profile 链接会保持有效。
-
-## 已安装 profile
-
-当 `@deepseek-ai/dsh` `0.2.2-alpha.2` 和已发布的 `@ephemeral-ai/mayfly-host` 可用时，生产路径使用相同的 bundle 机制，但不使用 `link:`、工作区内的 CLI 或工作区内的 home：
-
-```sh
-dsh --profile mayfly-host --from-default-profile web --dump-default-config >/dev/null
-dsh plugin --profile mayfly-host add @ephemeral-ai/mayfly-host
-dsh --profile mayfly-host --no-open
-```
-
-初始化命令会替换已有的自定义 profile，因此仅应在创建或明确需要重置该 profile 时使用。
+修改源码后运行 `pnpm run build` 并重启受影响进程。依赖图变化后重新安装专用
+profile。当前分支的分体包是开发产物，发布包安装须使用匹配且经过验证的发布集。
+旧的进程内 Mayfly composition 不再是受支持的替代安装路径。
