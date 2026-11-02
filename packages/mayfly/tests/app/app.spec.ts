@@ -427,7 +427,7 @@ describe('mayfly app driver', () => {
     // A latched stop with no selected Agent stays latched.
     test.ctx.mayflyConversations.selectPrimary(null)
     test.ctx.mayflyRequests.requestStop()
-    test.ctx.emit('agent/status', { agent: null, status: 'idle' } as never)
+    test.ctx.emit('agent/status', { agent, status: 'idle' })
     expect(test.ctx.mayflyRequests.stopPending()).toBe(true)
     await test.ctx.fiber.dispose()
   })

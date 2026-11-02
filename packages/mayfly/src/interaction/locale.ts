@@ -279,7 +279,6 @@ const zh: Readonly<Record<string, string>> = {
   'Description': '说明',
   'Parameters': '参数',
   '(no description)': '（无说明）',
-  '(no parameters)': '（无参数）',
   'No tools visible to this session': '本会话没有可见工具',
   'The tool is no longer available': '工具已不可用',
   'Tool catalog unavailable': '工具目录不可用',
