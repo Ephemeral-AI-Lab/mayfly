@@ -17,7 +17,7 @@ const commandOf = (steps, prefix) => steps.find(step => step.name.startsWith(pre
 const scriptsOf = steps => steps.filter(step => step.command === 'pnpm' && step.args[0] === 'run').map(step => step.args[1])
 
 test('a leaf edit in the round tier lints, builds, and runs the specs and scenarios it reaches, without coverage or checks', () => {
-  const steps = stepsFor(classifyChanges(['packages/mayfly/src/transcript/status-context.ts', 'packages/mayfly/AGENTS.md']), 'round', { root: ROOT })
+  const steps = stepsFor(classifyChanges(['packages/mayfly/src/transcript/status-context-model.ts', 'packages/mayfly/AGENTS.md']), 'round', { root: ROOT })
   // An AGENTS.md edit also reaches the repository-workflow tests that own the
   // agent-doc contract, so the round tier runs them before its specs.
   assert.deepEqual(names(steps).map(name => name.replace(/ \(\d+\)$/u, '')), ['lint', 'build', 'typecheck', 'workflow tests', 'specs', 'split Host/Remote smoke'])

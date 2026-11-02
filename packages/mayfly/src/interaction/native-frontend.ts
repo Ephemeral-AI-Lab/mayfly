@@ -21,8 +21,11 @@ import * as assistantStreamRecovery from '../frontend/assistant-stream.ts'
 /** Native consumers are isolated from the independent renderer entry. */
 export const name = 'mayfly-native-frontend'
 
+/** Display-version override used only by the private native reference fixtures. */
+export interface Config { readonly displayVersion?: string }
+
 /** Mount native service adapters beneath their reference composition owner. */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, config: Config = {}): void {
   const liveStream = new LiveAssistantStreamService(ctx)
   ctx.effect(() => () => liveStream.dispose())
   ctx.plugin(assistantStreamRecovery)
@@ -42,7 +45,7 @@ export function apply(ctx: Context): void {
   ctx.plugin(presetCommand)
   ctx.plugin(toolsCommand)
   ctx.plugin(mcpCommand)
-  ctx.plugin(sessionInformation)
+  ctx.plugin(sessionInformation, config)
   ctx.plugin(statsCommand)
   ctx.plugin(skillsCatalog)
   ctx.plugin(skillsCommand)

@@ -28,6 +28,8 @@ export const CHECKS = {
 
 /** Reads the scanner cannot see (a path joined at run time), as `[reader, read]`: a change to `read` reaches `reader`. */
 export const DATA_READS = [
+  // The agent-doc scanner walks instruction files rather than importing them.
+  ...['AGENTS.md', 'packages/ui/AGENTS.md', 'packages/mayfly/AGENTS.md', 'packages/host/AGENTS.md', 'packages/remote/AGENTS.md', 'packages/cli/AGENTS.md', 'examples/AGENTS.md'].map(file => ['script/check-agent-docs.mjs', file]),
   ['packages/mayfly/tests/bundle.spec.ts', 'packages/mayfly/package.json'],
   // The type fixtures compile with tsc against the declarations every source file of the contract emits.
   ['packages/ui/tests/types.spec.ts', 'packages/ui/tests/tsconfig.json'],

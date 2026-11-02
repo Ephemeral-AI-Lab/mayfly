@@ -8,6 +8,7 @@ import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-app
 import { vi, type Mock } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as frontend from '../../src/frontend/index.ts'
+import * as nativeFrontend from '../../src/interaction/native-frontend.ts'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
@@ -16,8 +17,6 @@ import type { MayflyComponents, MayflyMarkdownOptions } from '../../src/core/typ
 import { visibleWidth, truncateToWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from '../core/fake-editor.ts'
 import { FakeMayflyComponents, FakeMayflyMarkdown, FakeScreen, FakeTheme } from './fakes.ts'
-import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
-import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { plainColors } from '../helpers.ts'
 
 const colors = plainColors()
@@ -43,10 +42,8 @@ export async function requestFixture(ctx = new Context()) {
   ctx.provide('mayflyScreen', screen as never)
   ctx.provide('mayflyTheme', theme as never)
   ctx.provide('mayflyComponents', fakeComponents as never)
-  // The frontend's command plugins register through the sessionless table, which
-  // the separate interaction tree owns in production; provide it here too.
-  if (ctx.get('mayflyInteractionState') === undefined) new InteractionStateService(ctx, DEFAULT_SETTINGS)
-  const front = await ctx.plugin(frontend)
+  await ctx.plugin(frontend)
+  const front = await ctx.plugin(nativeFrontend)
   await flushRequests()
   const model = (prefix = 'mayfly.questions.') => {
     const entry = ctx.mayflyOverlays.list().findLast(entry => entry.id.startsWith(prefix))

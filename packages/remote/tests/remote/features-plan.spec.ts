@@ -161,7 +161,7 @@ describe('mountPlanFeature', () => {
     const f = fixture()
     const dispose = mountPlanFeature(f.context)
     expect([...f.entries.keys()]).toEqual(['plan', 'mode'])
-    expect(f.command('plan')).toMatchObject({ description: 'Enter or leave plan mode', scope: 'sessionless', input: { hint: '[off]' } })
+    expect(f.command('plan')).toMatchObject({ description: 'Enter or leave plan mode for the next session', scope: 'sessionless', input: { hint: '[off]' } })
     expect(f.command('mode')).toMatchObject({ description: 'Toggle plan mode (same as Shift+Tab)', scope: 'sessionless' })
     expect(f.command('mode').input).toBeUndefined()
     expect(f.registerKeymap).toHaveBeenCalledOnce()

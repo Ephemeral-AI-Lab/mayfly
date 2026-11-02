@@ -247,7 +247,7 @@ export class EditorSubmit {
         this.fail(record, false)
         return
       }
-      await this.options.preparePrompt?.(selected, controller.signal)
+      if (this.options.preparePrompt !== undefined) await this.options.preparePrompt(selected, controller.signal)
       if (this.disposed || controller.signal.aborted || !this.isCurrent(selected)) { this.fail(record, false); return }
       const content = captured.content.map((part): PromptContentPart => part.type === 'text'
         ? { ...part, text: this.options.skills.rewrite(part.text) }

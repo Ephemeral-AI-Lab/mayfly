@@ -95,7 +95,7 @@ describe('composeSplashLines', () => {
   it('centers a one-column screen without ever measuring below zero', () => {
     const rows = composeSplashLines(deps(), content(), 1, 3)
     expect(rows).toHaveLength(2)
-    expect(rows[0]).toContain('mayfly')
+    expect(visibleWidth(rows[0]!)).toBeLessThanOrEqual(1)
     expect(rows[1]).toContain('.')
     expect(visibleWidth(rows[1]!)).toBeLessThanOrEqual(1)
   })

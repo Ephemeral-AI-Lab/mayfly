@@ -4,7 +4,7 @@ import { HostKey } from '../../src/client/types.ts'
 import { RemoteBannerComponent } from '../../src/remote/banner.ts'
 import type { MayflyComponents, MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
 import { composeBannerLines } from '@ephemeral-ai/mayfly/banner'
-import { MAYFLY_VERSION } from '@ephemeral-ai/mayfly/banner-content'
+import { MAYFLY_VERSION, type SplashContent } from '@ephemeral-ai/mayfly/banner-content'
 import { plain, plainColors, fakeMayflyComponents } from './render-fixture.ts'
 import type { RemotePresentationFacts } from '../../src/transcript/remote-model.ts'
 
@@ -99,5 +99,30 @@ describe('RemoteBannerComponent', () => {
       for (const row of banner.render(width)) expect(components.visibleWidth(row), `${width}: ${row}`).toBeLessThanOrEqual(width)
     }
     expect(banner.render(-1)).toEqual([])
+  })
+
+  it('reserves no pending splash rows and paints the shared recent-session launch screen at narrow and wide sizes', () => {
+    let splash: SplashContent | 'pending' = 'pending'
+    let rows = 24
+    const banner = new RemoteBannerComponent(colors, components, () => facts(undefined), {
+      splash: () => splash,
+      rows: () => rows,
+    })
+    expect(banner.render(80)).toEqual([])
+    splash = {
+      version: MAYFLY_VERSION,
+      labels: { slogan: 'ephemeral agents, enduring works', recent: 'Recent sessions', more: '↑ browse · /sessions for all', moreFocused: '↵ resume · esc back', empty: 'No sessions here yet', emptyHint: 'Describe a task below to start one.' },
+      recent: [{ id: 'one', title: '最近的会话很长 👩‍💻', project: '项目', age: 'now', live: true }],
+      focus: 0,
+    }
+    for (const width of [1, 8, 20, 40, 80, 120]) {
+      for (const row of banner.render(width)) expect(components.visibleWidth(row), `${width}: ${row}`).toBeLessThanOrEqual(width)
+    }
+    expect(plain(banner.render(100)).join('\n')).toContain('Recent sessions')
+    expect(plain(banner.render(100)).join('\n')).toContain('最近的会话很长')
+    rows = 12
+    expect(plain(banner.render(100)).join('\n')).toContain('↵ resume')
+    const noViewport = new RemoteBannerComponent(colors, components, () => facts(undefined), { splash: () => splash })
+    expect(noViewport.render(80).length).toBeGreaterThan(0)
   })
 })

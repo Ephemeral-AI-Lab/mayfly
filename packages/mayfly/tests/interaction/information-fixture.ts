@@ -7,13 +7,13 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import * as sessionStats from '@deepseek-ai/dsh-session-stats'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
-import * as frontend from '../../src/frontend/index.ts'
+import * as nativeFrontend from '../../src/interaction/native-frontend.ts'
 import { requestFixture } from './request-fixture.ts'
 
 export async function informationFixture(ctx: Context, displayVersion?: string) {
   const bench = await requestFixture(ctx)
   let front = bench.front
-  if (displayVersion !== undefined) { await front.dispose(); front = await ctx.plugin(frontend, { displayVersion }) }
+  if (displayVersion !== undefined) { await front.dispose(); front = await ctx.plugin(nativeFrontend, { displayVersion }) }
   await ctx.plugin(SessionStore)
   const session = ctx.sessions.create(SessionId('current'), { meta: { cwd: '/repo/current', createdAt: 0 } })
   const otherSession = ctx.sessions.create(SessionId('other'), { meta: { cwd: '/repo/other' } })

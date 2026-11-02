@@ -42,14 +42,16 @@ interface Manifest {
   readonly devDependencies?: Readonly<Record<string, string>>
 }
 
-/** The three release manifests plus website whose version must equal the release. */
+/** Every split release manifest plus the website. */
 const MANIFESTS: readonly string[] = [
   '../../package.json',
   '../../../ui/package.json',
   '../../../cli/package.json',
+  '../../../host/package.json',
+  '../../../remote/package.json',
   '../../../../website/package.json',
 ]
-/** Publishable manifests that carry harness dependencies. */
+/** Publishable manifests that carry official runtime Harness pins. */
 const HARNESS_MANIFESTS = MANIFESTS.filter(rel => !rel.endsWith('/website/package.json'))
 
 /** Read one manifest relative to this spec. */
@@ -64,7 +66,7 @@ function dshEntries(table: Readonly<Record<string, string>> | undefined): Readon
 
 describe('the Mayfly release line', () => {
   it('MAYFLY_VERSION is the version of all release manifests and website', () => {
-    expect(MANIFESTS).toHaveLength(4)
+    expect(MANIFESTS).toHaveLength(6)
     for (const rel of MANIFESTS) {
       const pkg = manifest(rel)
       expect(pkg.version, `${pkg.name} version`).toBe(RELEASE_VERSION)
@@ -94,7 +96,7 @@ describe('the Mayfly release line', () => {
       for (const table of ['dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies'] as const) {
         for (const [name, spec] of Object.entries(pkg[table] ?? {})) {
           if (!name.startsWith('@ephemeral-ai/') || name === pkg.name || !releaseNames.has(name)) continue
-          expect(spec, `${pkg.name} ${table} ${name}`).toBe('workspace:*')
+          expect(spec, `${pkg.name} ${table} ${name}`).toBe(pkg.name === '@ephemeral-ai/mayfly-remote' ? RELEASE_VERSION : 'workspace:*')
         }
       }
     }
@@ -103,9 +105,8 @@ describe('the Mayfly release line', () => {
 
 describe('the harness dependency line', () => {
   it('every dsh runtime dependency is exact-pinned to one line', () => {
-    // The bundle is the only manifest that ships runtime dsh dependencies
-    // (agent-presets from D33, mcp-client from S34): they install with Mayfly,
-    // so a range or a drifted line would ship a mixed tree.
+    // The deployed Host/Remote pair uses one exact official line. Historical
+    // in-process source fixtures keep their independent development pins.
     const specs = new Set<string>()
     for (const rel of HARNESS_MANIFESTS) {
       const pkg = manifest(rel)
@@ -115,26 +116,26 @@ describe('the harness dependency line', () => {
       }
     }
     expect(specs.size, 'runtime dsh pins exist').toBeGreaterThan(0)
-    expect([...specs]).toEqual([`${HARNESS_LINE}`])
+    expect([...specs]).toEqual([CLI_HARNESS_LINE])
   })
 
   it('every dsh dev dependency is exact-pinned to one line', () => {
-    const specs = new Set<string>()
     for (const rel of HARNESS_MANIFESTS) {
       const pkg = manifest(rel)
+      const specs = new Set<string>()
       for (const [name, spec] of dshEntries(pkg.devDependencies)) {
         expect(spec, `${pkg.name} devDependencies ${name}`).toMatch(/^0\.[0-9]+\.[0-9]+-(?:alpha|rc)\.[0-9]+$/)
         specs.add(spec)
       }
+      if (specs.size > 0) expect([...specs], pkg.name).toEqual([pkg.name === '@ephemeral-ai/mayfly' ? HARNESS_LINE : CLI_HARNESS_LINE])
     }
-    expect([...specs]).toEqual([`${HARNESS_LINE}`])
   })
 
   it('every dsh peer dependency ranges exactly one line up from the pins', () => {
     for (const rel of HARNESS_MANIFESTS) {
       const pkg = manifest(rel)
       for (const [name, spec] of dshEntries(pkg.peerDependencies)) {
-        expect(spec, `${pkg.name} peerDependencies ${name}`).toBe(`^${HARNESS_LINE}`)
+        expect(spec, `${pkg.name} peerDependencies ${name}`).toBe(CLI_HARNESS_LINE)
       }
     }
   })
