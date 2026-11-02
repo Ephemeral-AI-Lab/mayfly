@@ -156,15 +156,35 @@ describe('RemoteFeatureLifecycle', () => {
   it('ignores a topology callback and a Host generation change that land after dispose', () => {
     const f = fixture()
     f.lifecycle.start()
+    const queuedState = f.subscribeState.mock.calls[0]![0]
     f.lifecycle.dispose()
 
     f.fireTopology()
     f.state.generation = 9
     f.fireState()
+    queuedState()
 
     expect(f.changed).toHaveBeenCalledOnce()
     expect(f.subscribeState).toHaveBeenCalledOnce()
     expect(f.lifecycle.currentGeneration()).toBe(2)
+  })
+
+  it('releases the removed Host observer when topology detaches it', () => {
+    const f = fixture()
+    f.lifecycle.start()
+    const queued = f.subscribeState.mock.calls[0]![0]
+    f.hosts.list.mockReturnValueOnce([])
+    f.fireTopology()
+    expect(f.stateListeners.size).toBe(0)
+    expect(f.changed).toHaveBeenLastCalledWith(2)
+    f.fireTopology()
+    const current = f.lifecycle.currentGeneration()
+    f.state.generation = 2
+    queued()
+    expect(f.lifecycle.currentGeneration()).toBe(current)
+    f.fireState()
+    expect(f.lifecycle.currentGeneration()).toBe(current + 1)
+    f.lifecycle.dispose()
   })
 })
 

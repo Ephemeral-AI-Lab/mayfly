@@ -106,6 +106,99 @@ async function fixture(options: { sessionless?: boolean, noPaths?: boolean, noOp
 }
 
 describe('RemoteSessionsBrowserController', () => {
+  it('keeps incomplete Host locations readable during sessionless search', async () => {
+    const f = await fixture({ sessionless: true, noPaths: true })
+    const { cwd: _cwd, ...orphan } = summary('orphan')
+    f.setRows([orphan])
+    f.open(); await f.flush()
+    await f.event(tab('workspace:unregistered'))
+    f.sessions.search.mockResolvedValueOnce({ ok: true, value: { items: [{ sessionId: SessionId('orphan'), snippet: 'without a recorded cwd' }], hasMore: false } })
+    await f.event(search('cwd'))
+    expect(f.text()).toContain('without a recorded cwd')
+    expect(f.sessions.retain).not.toHaveBeenCalled()
+  })
+
+  it('ignores field observations, retired workspace tabs and actions left behind by a detail page', async () => {
+    const f = await fixture()
+    f.open(); await f.flush()
+    expect(await f.event({ kind: 'value-change', pagePath: [], controlId: 'query', formId: 'content-search', value: 'draft', draftRevision: 1 })).toBeUndefined()
+    await f.event({ kind: 'tab-change', pagePath: [], controlId: 'another-rail', tabId: 'workspace:repo' })
+    await f.event(tab('workspace:removed'))
+    expect(f.text()).toContain('Current')
+    await f.event(select('current'))
+    await f.event(tab('workspace:unregistered'))
+    expect(await f.event(action('open'))).toMatchObject({ kind: 'completed' })
+    expect(await f.event({ kind: 'completion-dismiss', pagePath: [], controlId: 'query' })).toMatchObject({ kind: 'completed' })
+    expect(f.onSelect).not.toHaveBeenCalled()
+  })
+
+  it('keeps live connection notifications and retires native callbacks already queued before close', async () => {
+    const f = await fixture()
+    f.open(); await f.flush()
+    const queued = [...f.sessionListeners, ...f.workspaceListeners]
+    for (const listener of f.connectionListeners) listener()
+    expect(f.overlays.list()).toHaveLength(1)
+    f.controller.dispose()
+    for (const listener of queued) listener()
+    expect(f.overlays.list()).toEqual([])
+  })
+
+  it('does not clear a replacement opened synchronously during old-panel retirement', async () => {
+    const f = await fixture()
+    let reopen = true
+    const off = f.overlays.subscribe(delta => {
+      if (delta.kind === 'remove' && reopen) { reopen = false; f.open() }
+    })
+    f.open(); await f.flush()
+    f.controller.open({ ...f.client }, undefined, f.onSelect)
+    expect(f.overlays.list()).toHaveLength(1)
+    off()
+    f.controller.dispose()
+    expect(f.overlays.list()).toEqual([])
+  })
+
+  it('drops a successful older search when a newer search has already published', async () => {
+    const f = await fixture()
+    f.open(); await f.flush()
+    const result = deferred<Awaited<ReturnType<typeof f.sessions.search>>>()
+    f.sessions.search.mockReturnValueOnce(result.promise)
+    const old = f.event(search('old'))
+    await f.flush()
+    await f.event(search('new'))
+    result.resolve({ ok: true, value: { items: [{ sessionId: SessionId('current'), snippet: 'obsolete result' }], hasMore: false } })
+    expect(await old).toMatchObject({ kind: 'cancelled' })
+    expect(f.text()).not.toContain('obsolete result')
+  })
+
+  it('retires search results whose missing catalog refresh outlives the caller', async () => {
+    const f = await fixture()
+    f.open(); await f.flush()
+    const refreshing = deferred<void>()
+    f.sessions.refresh.mockReturnValueOnce(refreshing.promise)
+    f.sessions.search.mockResolvedValueOnce({ ok: true, value: { items: [{ sessionId: SessionId('missing'), snippet: 'late catalog result' }], hasMore: false } })
+    const caller = new AbortController()
+    const pending = f.event(search('late'), caller.signal)
+    await f.flush()
+    caller.abort()
+    refreshing.resolve()
+    expect(await pending).toBeUndefined()
+    expect(f.text()).not.toContain('late catalog result')
+  })
+
+  it('cancels an archive acknowledgement when the follow-up refresh outlives the caller', async () => {
+    const f = await fixture()
+    f.open(); await f.flush(); await f.event(select('current'))
+    const refreshing = deferred<void>()
+    f.sessions.refresh.mockReturnValueOnce(refreshing.promise)
+    const caller = new AbortController()
+    const pending = f.event(action('archive'), caller.signal)
+    await f.flush()
+    caller.abort()
+    refreshing.resolve()
+    expect(await pending).toBeUndefined()
+    expect(f.workspaces.archiveSession).toHaveBeenCalledOnce()
+  })
+
   it('uses the rc.2 workspace rail, scoped catalog, native detail values, locale, and width renderer', async () => {
     const f = await fixture()
     f.open(); await f.flush()

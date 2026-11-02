@@ -6,14 +6,9 @@
 import type { HostClient } from '../../client/types.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../features.ts'
 
-interface HostStateListener {
-  dispose: () => void
-  generation: number
-}
-
 /** One feature-local selection generation, invalidated by topology and Host connection replacement. */
 export class RemoteFeatureLifecycle {
-  private readonly listeners = new Map<HostClient, HostStateListener>()
+  private readonly listeners = new Map<HostClient, () => void>()
   private readonly offTopology: () => void
   private generation = 0
   private disposed = false
@@ -54,7 +49,7 @@ export class RemoteFeatureLifecycle {
     this.disposed = true
     this.generation += 1
     this.offTopology()
-    for (const listener of this.listeners.values()) listener.dispose()
+    for (const off of this.listeners.values()) off()
     this.listeners.clear()
   }
 
@@ -63,28 +58,26 @@ export class RemoteFeatureLifecycle {
     const attached = new Set(this.options.hosts.list())
     for (const [client, listener] of this.listeners) {
       if (attached.has(client)) continue
-      listener.dispose()
+      listener()
       this.listeners.delete(client)
     }
     for (const client of attached) {
       if (this.listeners.has(client)) continue
-      const listener: HostStateListener = {
-        generation: client.state.getSnapshot().generation,
-        dispose: () => {},
-      }
-      listener.dispose = client.state.subscribe(() => {
+      let generation = client.state.getSnapshot().generation
+      let active = true
+      const off = client.state.subscribe(() => {
+        if (!active) return
         const next = client.state.getSnapshot().generation
-        if (listener.generation === next || this.disposed) return
-        listener.generation = next
+        if (generation === next) return
+        generation = next
         this.invalidate()
       })
-      this.listeners.set(client, listener)
+      this.listeners.set(client, () => { active = false; off() })
     }
     this.invalidate()
   }
 
   private invalidate(): void {
-    if (this.disposed) return
     const generation = ++this.generation
     this.changed(generation)
   }

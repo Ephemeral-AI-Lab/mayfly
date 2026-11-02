@@ -84,8 +84,8 @@ export class RemoteSessionsBrowserController implements RemoteSessionsBrowser {
     this.operation?.dispose()
     if (this.disposed || !this.context.hosts.list().includes(client)) return
     const selected = this.context.hosts.current()
+    // Native snapshot getters are synchronous; this exact attached Client is still admitted here.
     const operation = new RemoteFeatureOperation(this.context, client, selected?.client === client ? selected : undefined)
-    if (!operation.valid()) { operation.dispose(); return }
     this.operation = operation
     const t = this.t
     const home = this.options.home?.(client) ?? ''
@@ -170,7 +170,8 @@ export class RemoteSessionsBrowserController implements RemoteSessionsBrowser {
       })
       const summary = detailId === undefined ? undefined : byId.get(detailId)
       if (summary === undefined) detailId = undefined
-      const title = scope === SEARCH_ID ? t('All workspaces') : scope === OTHER_ID ? t('Other sessions') : allGroups.find(item => item.id === scope)?.title ?? t('Sessions')
+      // ensureScope admitted a current workspace, whose native WorkspaceView always carries its title.
+      const title = scope === SEARCH_ID ? t('All workspaces') : scope === OTHER_ID ? t('Other sessions') : allGroups.find(item => item.id === scope)!.title!
       const detailProjection = summary === undefined ? undefined : client.sessions.list.getSnapshot().projectionsBySession[summary.id]
       const state: SessionBrowserFacts = {
         title, tabs: [...allGroups.map(group => sessionWorkspaceTab(group, directory(), home, t)), { id: SEARCH_ID, label: t('All workspaces') }],
@@ -220,7 +221,7 @@ export class RemoteSessionsBrowserController implements RemoteSessionsBrowser {
       return { kind: 'completed' }
     }
     const act = async (event: MayflyUiActionEvent, eventContext: MayflyUiEventContext): Promise<MayflyUiActionReply> => {
-      if (!valid() || eventContext.signal.aborted) return { kind: 'cancelled', dismiss: true }
+      // openRemoteBrowser checks exact ownership and caller cancellation before entering this handler.
       if (event.kind === 'selection-accept') return await readDetails(event, eventContext)
       if (event.kind !== 'activate') return { kind: 'completed' }
       const signal = AbortSignal.any([operation.signal, eventContext.signal])

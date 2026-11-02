@@ -102,6 +102,10 @@ describe('remoteValue', () => {
 })
 
 describe('remoteErrorMessage', () => {
+  it('uses the caller fallback when a native diagnostic is empty', () => {
+    expect(remoteErrorMessage(new Error('   '), [], 'Host unavailable')).toBe('Host unavailable')
+  })
+
   it('returns the message of a real Error', () => {
     expect(remoteErrorMessage(new Error('Host offline'))).toBe('Host offline')
   })
@@ -279,6 +283,26 @@ describe('RemoteFeatureController', () => {
     expect(host.signal.aborted).toBe(true)
     expect(controller.host(client)).toBeUndefined()
     expect(controller.session(selection!)).toBeUndefined()
+  })
+
+  it('ignores a topology callback already queued when its feature was unloaded', () => {
+    const f = fixture()
+    const controller = new ProbeController(f.context)
+    const callback = f.hosts.subscribe.mock.calls[0]![0]
+    controller.dispose()
+    callback()
+    expect(f.connectionListeners.size).toBe(0)
+    expect(f.client.state.subscribe).toHaveBeenCalledOnce()
+  })
+
+  it('keeps an exact operation during an unrelated topology notification', () => {
+    const f = fixture()
+    const controller = new ProbeController(f.context)
+    const operation = controller.session(f.selection!)!
+    f.topology()
+    expect(operation.valid()).toBe(true)
+    expect(operation.signal.aborted).toBe(false)
+    controller.dispose()
   })
 
   it('disposes only the operations rooted at a detached client', () => {

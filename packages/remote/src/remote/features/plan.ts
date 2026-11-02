@@ -6,7 +6,6 @@
 import { memoizedLocaleTranslator, type MayflyTranslate } from '@ephemeral-ai/mayfly/frontend'
 import type { MayflyStatusRegistration } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../features.ts'
-import { isRemoteFeatureSelection } from '../interactions/selection.ts'
 import { RemoteFeatureLifecycle } from './lifecycle.ts'
 
 interface PlanProjection {
@@ -56,7 +55,6 @@ class RemotePlanController {
   }
 
   readonly dispose = (): void => {
-    if (this.disposed) return
     this.disposed = true
     this.lifecycle.dispose()
     this.commandLifetime.abort()
@@ -67,7 +65,6 @@ class RemotePlanController {
   }
 
   private readonly attach = (generation: number): void => {
-    if (this.disposed) return
     this.commandLifetime.abort()
     this.commandLifetime = new AbortController()
     this.stopProjection?.()
@@ -95,6 +92,7 @@ class RemotePlanController {
   }
 
   private async cycle(parent?: AbortSignal): Promise<void> {
+    if (this.disposed || parent?.aborted === true) return
     const current = this.options.hosts.current()
     if (current === undefined) {
       this.setNextPlan(!(this.options.startupPlan?.pending() ?? false))
@@ -117,7 +115,6 @@ class RemotePlanController {
 
   private async executeNative(current: RemoteFeatureSelection, line: string, generation: number, parent?: AbortSignal): Promise<void> {
     const signal = parent === undefined ? this.commandLifetime.signal : AbortSignal.any([this.commandLifetime.signal, parent])
-    if (signal.aborted) return
     try {
       const result = await current.binding.session.command(line)
       if (!this.lifecycle.owns(generation) || signal.aborted) return
@@ -140,12 +137,10 @@ class RemotePlanController {
       this.setNextPlan(input !== 'off')
       return
     }
-    if (!isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) return
     await this.executeNative(current, input === '' ? '/plan' : `/plan ${input}`, this.lifecycle.currentGeneration(), signal)
   }
 
   readonly executeMode = async (_rawInput: string, signal?: AbortSignal): Promise<void> => {
-    if (this.disposed || signal?.aborted === true) return
     await this.cycle(signal)
   }
 }

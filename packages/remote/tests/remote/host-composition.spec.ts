@@ -31,6 +31,19 @@ function host(version = '0.1.4-rc.2') {
 }
 
 describe('validated Host presenter lifetime', () => {
+  it.each([
+    ['capability refusal', { ok: false, error: { code: 'missing', message: 'not composed' } }, 'capabilities request failed: not composed'],
+    ['protocol mismatch', { ok: true, value: { protocolVersion: 2, hostVersion: '0.1.4-rc.2', requiredDshVersion: '0.2.2-alpha.2', features: ['mayflyConversation', 'presentTools'] } }, 'protocol 2 (required 1)'],
+    ['Harness mismatch', { ok: true, value: { protocolVersion: 1, hostVersion: '0.1.4-rc.2', requiredDshVersion: '0.2.1-rc.2', features: ['mayflyConversation', 'presentTools'] } }, 'dsh version 0.2.1-rc.2'],
+    ['missing presentation', { ok: true, value: { protocolVersion: 1, hostVersion: '0.1.4-rc.2', requiredDshVersion: '0.2.2-alpha.2', features: [] } }, 'missing features: mayflyConversation, presentTools'],
+  ])('releases the Client after %s', async (_label, result, message) => {
+    const { client, detach } = host()
+    vi.mocked(client.remote.mayflyHost.capabilities).mockResolvedValueOnce(result as never)
+    setup.create.mockResolvedValueOnce(client)
+    await expect(attachMayflyHostClient(client.key, 'http://127.0.0.1/')).rejects.toThrow(message)
+    expect(detach).toHaveBeenCalledOnce()
+  })
+
   it('fills an unchanged tool once even when cache publication rebuilds the conversation', async () => {
     const { client, presentTools } = host()
     setup.create.mockResolvedValueOnce(client)

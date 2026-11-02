@@ -15,7 +15,7 @@ import type {
   MayflySemanticColors,
 } from '@ephemeral-ai/mayfly/core'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
-import type { HostClient, HostKey, SessionRef } from '../../client/types.ts'
+import type { HostClient, SessionRef } from '../../client/types.ts'
 import type { RemoteNotice } from '../notice.ts'
 
 /** Exact selected Client generation and borrowed Session binding. */
@@ -108,11 +108,6 @@ export interface RemoteFeatureAdapters {
 
 /** A focused mount compatible with the foundation's registration manifest. */
 export type RemoteFeatureMount = (context: RemoteFeatureContext) => void | (() => void)
-
-/** Find one attached Client without retaining or replacing it. */
-export function remoteHostClient(context: Pick<RemoteFeatureContext, 'hosts'>, host: HostKey): HostClient | undefined {
-  return context.hosts.list().find(client => client.key === host)
-}
 
 /** Test the exact Client and Session identity captured by an operation. */
 export function isRemoteFeatureSelection(

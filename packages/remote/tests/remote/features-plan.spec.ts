@@ -157,6 +157,59 @@ beforeEach(() => {
 })
 
 describe('mountPlanFeature', () => {
+  it('enables plan intent when App has not supplied a previous choice', async () => {
+    const f = fixture({ session: false })
+    f.clearPending()
+    const dispose = mountPlanFeature(f.context)
+    await f.command('mode').execute('')
+    expect(f.startupPlan.pending()).toBe(true)
+    dispose()
+  })
+
+  it('retires projection callbacks and queued mode keys before reading or writing state', async () => {
+    const f = fixture({ plan: { active: false, pending: false } })
+    const dispose = mountPlanFeature(f.context)
+    const update = f.subscribeProjection.mock.calls[0]![0]
+    const mode = f.command('mode')
+    const plan = f.command('plan')
+    const key = f.keymapBinding()
+    f.detach()
+    f.status.set.mockClear()
+    update()
+    expect(f.status.set).not.toHaveBeenCalled()
+    await plan.execute('', AbortSignal.abort())
+    dispose()
+    await mode.execute('')
+    await plan.execute('', AbortSignal.abort())
+    key.handler()
+    expect(f.startupPlan.set).not.toHaveBeenCalled()
+    expect(f.executeNative).not.toHaveBeenCalled()
+  })
+
+  it.each(['retire', 'abort'] as const)('contains a rejected native command after %s', async reason => {
+    const f = fixture({ plan: { active: false, pending: false } })
+    let reject!: (error: unknown) => void
+    f.executeNative.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail }))
+    const dispose = mountPlanFeature(f.context)
+    const abort = new AbortController()
+    const pending = f.command('plan').execute('', abort.signal)
+    if (reason === 'retire') f.detach()
+    else abort.abort()
+    reject(new Error('retired native command'))
+    await pending
+    expect(f.notice.set).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('preserves a string transport rejection as command feedback', async () => {
+    const f = fixture({ plan: { active: false, pending: false } })
+    const dispose = mountPlanFeature(f.context)
+    f.executeNative.mockRejectedValueOnce('transport unavailable')
+    await f.command('plan').execute('')
+    expect(f.notice.set).toHaveBeenLastCalledWith('transport unavailable')
+    dispose()
+  })
+
   it('registers reference sessionless command metadata and one shared key/status owner', () => {
     const f = fixture()
     const dispose = mountPlanFeature(f.context)
