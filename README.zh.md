@@ -66,7 +66,7 @@ script/mayfly-remote.sh --cwd /path/on/host '运行相关检查'
 | 模型与配置 | `/model [name]`、`/effort [level]`（`/thinking`）、`/provider`、`/preset [name]`、`/permissions` 与 `/settings` 使用 Host 原生目录与写入。Session 尚不存在时，模型和 preset 选择设置 Host 默认值。 |
 | 计划模式 | `/plan` 进入，`/plan off` 退出，`/mode` 或 Shift+Tab 切换。`/plan <message>` 通过原生命令发送计划 prompt，也可创建首个 Session。启动界面的模式选择会在第一条普通 prompt 前完成原生接纳；接纳失败不会发送 prompt。Alt+M 在当前 provider 内循环切换模型。 |
 | 信息查看 | `/context`、`/stats`、`/skills`、`/tools`、`/mcp`、`/files`、`/changes [seq]`、`/trace [copy <seq>\|copy all]` 与 `/version` 查看原生状态或只读 Host 投影。 |
-| 工作与旁支会话 | `/jobs`、`/goal` 与 `/schedule [all]` 使用 Host 已启用的服务。`/btw <question>` 打开继承当前完整历史的旁支会话，包括尚未完成的首个 turn；`/agents` 浏览子 Agent。F7 返回上一个会话，F8 关闭当前视图；关闭视图不停止 Host 工作。 |
+| 工作与旁支会话 | `/jobs`、`/goal` 与 `/schedule [all]` 使用 Host 已启用的服务。`/goal` 保留原生解析、状态输出与目标附件；状态栏的编辑操作把目标放回输入框。`/btw <question>` 打开继承当前完整历史的旁支会话，包括尚未完成的首个 turn；`/agents` 浏览子 Agent。F7 返回上一个会话，F8 关闭当前视图；关闭视图不停止 Host 工作。 |
 | 本地输出与退出 | `/copy` 写入 TUI 所在机器的剪贴板；`/export [full] [<path>]`（`/save`）写入 TUI 所在机器：相对路径以其工作目录为基准，支持绝对路径，自动创建父目录并覆盖已有文件。`/quit`（`/q`、`/exit`）解除连接并退出。 |
 | 附加 Remote 控制 | `/host`、`/attach`、`/detach`、`/host-status`、`/account`、`/language` 与 `/onboarding` 显示在帮助的 Remote 分组。 |
 

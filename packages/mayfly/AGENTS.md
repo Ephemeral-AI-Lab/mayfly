@@ -133,6 +133,11 @@ and selected-row stop confirmation. Owners supply native descendant facts and
 localized availability reasons; the model never lists or stops an Agent.
 The Remote router owns command admission; its app-scoped overlay owns locale
 subscriptions, scrolling, focus restoration, and disposal.
+It also exposes the rc.2 Goal/Todo status summaries and panels. Native and
+Remote owners supply readonly goal revisions, activation, whole checklist,
+interruption and history facts; the shared models perform no domain reads or
+writes. Preserve the native resume/pause/edit/confirmed-clear keys, prompt-based
+goal editing, completed-row filtering and completion linger.
 It also exposes the rc.2 MCP/tool catalog, Job browser and reminder builders.
 The private native owners consume the same pure models. Preserve resource URI
 editing, template rows, resource body/back layers and the distinct Job browser

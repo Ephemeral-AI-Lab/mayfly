@@ -62,6 +62,8 @@ export interface RemoteFeatureMountContext {
   readonly colors: MayflySemanticColors
   readonly overlays: RemoteOverlayHost
   readonly hosts: RemoteFeatureHosts
+  /** Replace the local prompt only while the exact status action still owns it. */
+  readonly editPrompt?: (text: string, current: () => boolean) => boolean
   readonly startupPlan?: RemoteStartupPlan
   readonly notice: RemoteNotice
 }

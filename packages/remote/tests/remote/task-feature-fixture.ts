@@ -27,7 +27,7 @@ export async function taskFixture(selected = true) {
   const connections = new Set<() => void>()
   const events = new Map<string, Set<(event: unknown) => void>>()
   const generation = { generation: 1 }
-  const state = { goal: projection<unknown>(undefined), todos: projection<unknown>(undefined), mayflyConversation: projection<unknown>(undefined) }
+  const state = { goal: projection<unknown>(undefined), todos: projection<unknown>(undefined), mayflyConversation: projection<unknown>(undefined), mayflyConversationFacts: projection<unknown>(undefined) }
   const goals = { get: vi.fn(async (): Promise<unknown> => good(undefined)), create: vi.fn(async (..._args: unknown[]) => good(undefined)), edit: vi.fn(async (..._args: unknown[]) => good(undefined)), pause: vi.fn(async (..._args: unknown[]) => good(undefined)), resume: vi.fn(async (..._args: unknown[]) => good(undefined)), complete: vi.fn(async (..._args: unknown[]) => good(undefined)), clear: vi.fn(async (..._args: unknown[]) => good(undefined)) }
   const schedule = { list: vi.fn(async (..._args: unknown[]): Promise<unknown> => good([])), catalog: vi.fn(async (): Promise<unknown> => good([])) }
   const client = { key: HostKey('tasks'), state: { getSnapshot: () => generation, subscribe: (fn: () => void) => { connections.add(fn); return () => { connections.delete(fn) } } }, remote: { goals, schedule, $on: vi.fn((name: string, listener: (event: unknown) => void) => { const rows = events.get(name) ?? new Set(); rows.add(listener); events.set(name, rows); return () => { rows.delete(listener) } }) } } as unknown as HostClient
@@ -35,7 +35,8 @@ export async function taskFixture(selected = true) {
   let current: RemoteFeatureSelection | undefined = selected ? original : undefined
   let attached = [client]
   const commands = new RemoteFeatureCommandRegistry()
-  const options = { ctx, components: fakeMayflyComponents(), colors: plainColors(), commands, t: translate, subscribeLocale: (fn: () => void) => ctx.mayflyLocale.subscribe(fn), hosts: { list: () => attached, current: vi.fn(() => current), subscribe: (fn: () => void) => { topology.add(fn); return () => { topology.delete(fn) } } }, notice: { set: vi.fn() } } as unknown as RemoteFeatureContext
+  const editPrompt = vi.fn((_text: string, current: () => boolean) => current())
+  const options = { ctx, editPrompt, components: fakeMayflyComponents(), colors: plainColors(), commands, t: translate, subscribeLocale: (fn: () => void) => ctx.mayflyLocale.subscribe(fn), hosts: { list: () => attached, current: vi.fn(() => current), subscribe: (fn: () => void) => { topology.add(fn); return () => { topology.delete(fn) } } }, notice: { set: vi.fn() } } as unknown as RemoteFeatureContext
   const registration = vi.spyOn(ctx.mayflyPanes, 'register')
   const notify = () => { for (const fn of topology) fn() }
   const render = (node: MayflyUiNode | null, width = 80) => {
@@ -44,10 +45,11 @@ export async function taskFixture(selected = true) {
     if (!result.ok) throw new Error(result.message)
     return plain(result.value.component.render(width))
   }
-  return { ctx, options, state, client, goals, schedule, topology, connections, events, registration, render,
+  return { ctx, options, state, client, editPrompt, goals, schedule, topology, connections, events, registration, render,
     pane: (id: string) => ctx.mayflyPanes.list().find(entry => entry.id === id),
     run: async (name: string, input = '', signal = new AbortController().signal) => await commands.execute(name, input, signal),
-    dispatch: async (event: MayflyUiActionEvent) => await (registration.mock.calls.at(-1)![0].onEvent!.action as (event: MayflyUiActionEvent) => Promise<unknown>)(event),
+    dispatch: async (event: MayflyUiActionEvent, signal = new AbortController().signal) => await (registration.mock.calls.at(-1)![0].onEvent!.action as (event: MayflyUiActionEvent, context: { signal: AbortSignal }) => Promise<unknown>)(event, { signal }),
+    replaceBinding: (silent = false) => { current = current === undefined ? undefined : { ...current, binding: { ...current.binding, session: { ...current.binding.session } } as typeof current.binding }; if (!silent) notify() },
     event: (name: string, event: unknown = {}) => { for (const callback of events.get(name) ?? []) callback(event) },
     select: (value: boolean) => { current = value ? original : undefined; notify() },
     silentlyDeselect: () => { current = undefined },

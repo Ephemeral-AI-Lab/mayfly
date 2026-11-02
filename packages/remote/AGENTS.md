@@ -101,6 +101,16 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Linked/read-only or foreign-prefix installs refuse mutation. The official
   API lacks an isolated Host boot check: confirmation and completion must say
   Host startup remains unverified until restart, never claim a full boot pass.
+- `/goal` belongs entirely to the official native command catalog, including
+  its parser, bare-command output, ordered attachments and refusal messages.
+  The Goal status consumes the whole native goal projection and merges only
+  matching id/revision activation reads; an unavailable activation leaves the
+  durable goal disarmed. Its revision-bound resume/pause/clear writes use native
+  goals; edit puts `/goal edit <objective>` in the retained local prompt. Every
+  read, action and late result checks exact Client, binding, connection and
+  caller lifetime. Goal/Todo use the shared reference status models; Todo reads
+  native whole `todos`, `mayflyConversationFacts`, and the resolved frontend
+  `viewHistory` source. Repeated completion reads never extend the linger.
 - `/jobs` reads durable settled history from the Host `mayflyJobs` native
   Session projection and overlays the native `job.list` whole resident roster.
   Remote never folds Job events or invents live jobs from unfinished history.
