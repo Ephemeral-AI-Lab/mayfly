@@ -41,6 +41,8 @@ async function fixture(rows = 30) {
   ctx.mayflyKeymap.register([...INTERACTION_KEY_ACTIONS])
   const editor = {
     setPromptSymbol: vi.fn(),
+    setAutocompleteProvider: vi.fn(),
+    setSubmitBarrier: vi.fn(),
     setShellMode: vi.fn(),
     updateColors: vi.fn(),
     setPlaceholder: vi.fn(),
@@ -63,6 +65,7 @@ async function fixture(rows = 30) {
     enterViews: vi.fn(() => false), focusConversation: vi.fn(() => false),
     setContentScrollHandler: vi.fn(() => offScroll), scrollContent: vi.fn(() => false), followContent: vi.fn(),
   } as unknown as MayflyScreenService
+  ctx.provide('mayflyScreen', screen)
   const components = {
     createEditor: () => editor,
     wrapText: (text: string) => [text],
@@ -74,11 +77,17 @@ async function fixture(rows = 30) {
 }
 
 describe('mountRemoteEditor', () => {
-  it('propagates a shared compiler failure before acquiring a terminal slot', async () => {
-    const { ctx, screen, components } = await fixture()
-    const unavailable = { ...colors, get border(): MayflySemanticColors['border'] { throw new Error('palette unavailable') } }
-    expect(() => mountRemoteEditor(ctx, screen, components, unavailable, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })).toThrow('Mayfly editor shell compilation failed safely')
-    expect(screen.mountDockSlot).not.toHaveBeenCalled()
+  it('contains a shared compiler failure with an owned notification and editable fallback', async () => {
+    const { ctx, editor, screen, components } = await fixture()
+    const unavailable = { ...components, get presentation(): NonNullable<MayflyComponents['presentation']> { throw new Error('presentation unavailable') } }
+    const handle = mountRemoteEditor(ctx, screen, unavailable, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toContainEqual(expect.objectContaining({
+      severity: 'error', message: 'Mayfly editor shell compilation failed safely',
+    }))
+    const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]!
+    expect(dock.render(80)).toEqual(['editor'])
+    expect(editor.onKey?.('x')).toBe(false)
+    handle.dispose()
   })
 
   it('submits trimmed text and keeps the original entry in local history', async () => {
@@ -152,8 +161,9 @@ describe('mountRemoteEditor', () => {
     expect(editor.focused).toBe(true)
     dock.handleInput?.('x')
     expect(editor.handleInput).toHaveBeenCalledWith('x')
+    const invalidations = vi.mocked(editor.invalidate).mock.calls.length
     dock.invalidate()
-    expect(editor.invalidate).toHaveBeenCalledOnce()
+    expect(editor.invalidate).toHaveBeenCalledTimes(invalidations + 1)
     handle.notice.set('')
     expect(ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
     handle.dispose()
@@ -217,6 +227,37 @@ describe('mountRemoteEditor', () => {
     handle.dispose()
     handle.retheme(components, colors)
     expect(editor.updateColors).toHaveBeenCalledOnce()
+  })
+
+  it('refreshes readonly settings and locale without a keystroke and fences queued snapshots after unload', async () => {
+    const { ctx, editor, screen, components } = await fixture()
+    const observeLocale = vi.spyOn(ctx.mayflyLocale, 'subscribe')
+    const observeEvents = vi.spyOn(ctx, 'on')
+    let facts: import('../../src/remote/editor.ts').RemoteEditorPresentation = {}
+    const handle = mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }, () => facts)
+    const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]! as MayflyFocusable
+    const queuedLocale = observeLocale.mock.calls.at(-1)![0]
+    const queuedSettings = observeEvents.mock.calls.find(([event]) => event === 'mayfly/settings-source-ready')![1] as () => void
+    dock.render(80)
+    expect(editor.setPlaceholder).toHaveBeenLastCalledWith(expect.arrayContaining(['Ask anything']))
+    facts = { quietHints: 'off' }
+    ctx.emit('mayfly/settings-source-ready', {})
+    dock.render(80)
+    expect(editor.setPlaceholder).toHaveBeenLastCalledWith([])
+    facts = {}
+    ctx.emit('mayfly/settings-source-ready', {})
+    ctx.mayflyLocale.setPreference('zh')
+    await new Promise<void>(resolve => setImmediate(resolve))
+    dock.render(80)
+    expect(editor.setPlaceholder).toHaveBeenLastCalledWith(expect.arrayContaining(['随便问']))
+    handle.dispose()
+    const renders = vi.mocked(screen.requestRender).mock.calls.length
+    queuedLocale(ctx.mayflyLocale.snapshot)
+    queuedSettings()
+    ctx.emit('mayfly/settings-source-ready', {})
+    ctx.mayflyLocale.setPreference('en')
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(screen.requestRender).toHaveBeenCalledTimes(renders)
   })
 
   it.each(['\x1b[1;3A', '\x1bOS'])('routes previous focus through the registered action with a retained draft: %j', async key => {
@@ -353,12 +394,14 @@ describe('mountRemoteEditor', () => {
     const handle = mountRemoteEditor(ctx, screen, components, colors, actions)
     const key = editor.onKey!
     const submit = editor.onSubmit!
+    const change = editor.onChange!
     const shell = editor.setShellMode
     submit('before unload')
     handle.dispose()
     const renders = vi.mocked(screen.requestRender).mock.calls.length
     for (const data of ['\x1b[1;3A', '\x1b[1;3B', '\x03', '\x1b']) expect(key(data)).toBe(false)
     submit('queued after unload')
+    change('queued after unload')
     shell(true)
     handle.focus()
     reject(new Error('old submission failed'))

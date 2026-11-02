@@ -23,6 +23,36 @@ async function fixture() {
 }
 
 describe('Remote notification row', () => {
+  it('preserves extension feedback independently and clears it on exact Host/Session retirement', async () => {
+    const test = await fixture()
+    test.notifications.report('definition', { severity: 'error', message: 'Extension failed', detail: 'full diagnostic detail', tail: 'retry' })
+    test.notifications.notice.set('separate command')
+    expect(test.ctx.mayflyUiInteraction.notificationSnapshot()).toContainEqual(expect.objectContaining({
+      scope: { kind: 'session', sessionId: 'one' }, message: 'Extension failed', detail: 'full diagnostic detail', tail: 'retry',
+    }))
+    test.notifications.notice.set('')
+    expect(test.node()).toContain('Extension failed')
+    const activity = test.ctx.mayflyUiInteraction.createNotificationOwner('activity')
+    activity.report('native', { kind: 'session', sessionId: 'one' }, { severity: 'info', message: 'Native activity' })
+    test.notifications.clear()
+    expect(test.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([
+      expect.objectContaining({ message: 'Native activity' }),
+    ])
+    activity.dispose()
+    test.notifications.report('definition', { severity: 'error', message: 'Extension failed again' })
+    test.present({ hostKey: 'other', sessionId: 'one' })
+    expect(test.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
+    test.present({})
+    test.notifications.report('action', { severity: 'success', message: 'Action completed' })
+    expect(test.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([
+      expect.objectContaining({ scope: { kind: 'app', targetId: 'prompt' }, severity: 'success', message: 'Action completed' }),
+    ])
+    test.notifications.dispose()
+    test.notifications.report('late', { severity: 'error', message: 'Retired callback' })
+    test.notifications.clear()
+    expect(test.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
+  })
+
   it('keeps multiline command detail in an app notice before a Session is selected', async () => {
     const test = await fixture()
     test.present({})

@@ -19,6 +19,7 @@ type DecisionRequests = ReturnType<NonNullable<TranscriptControllerOptions['requ
 import type { SessionRef } from '../client/types.ts'
 import { RemoteToolPresentationCache } from '../frontend/tool-presentations.ts'
 import { RemoteConversationModelSource } from '../transcript/remote-model.ts'
+import { RemoteTranscriptContextSource } from '../transcript/context-source.ts'
 import { RemoteApp } from './app.ts'
 import { RemoteSessionsBrowserController } from './features/sessions.ts'
 import { createRemoteSettingsEditor } from './features/settings-editor.ts'
@@ -62,6 +63,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
   let toolPresentations: RemoteToolPresentationCache | undefined
   let conversation: RemoteConversationModelSource | undefined
   let transcript: TranscriptController | undefined
+  let transcriptContext: RemoteTranscriptContextSource | undefined
   let status: RemoteStatusHandle | undefined
   let sessionsBrowser: RemoteSessionsBrowserController | undefined
   let startup: RemoteStartupController | undefined
@@ -170,6 +172,13 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     const t = transcriptTranslator(ctx, 'transcript')
     const presentation = new TranscriptPresentationPolicy()
     followPresentationSettings(ctx, presentation, () => transcript?.refreshPresentationPolicy())
+    transcriptContext = new RemoteTranscriptContextSource({
+      read: () => {
+        const facts = sideViews?.sessionFacts() ?? conversation!.sessionFacts()
+        return { facts, client: facts.ref === undefined ? undefined : app?.registry.get(facts.ref.host) }
+      },
+      changed: () => { if (!lifetime.signal.aborted) transcript?.republish() },
+    })
     transcript = new TranscriptController({
       t, presentation,
       queued: () => displayedFacts().queue,
@@ -177,10 +186,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       tick: ctx.mayflyTick,
       focusMode: mode => { if (!lifetime.signal.aborted) ctx.emit('mayfly/focus-mode-changed', mode) },
       focusRow: row => { if (!lifetime.signal.aborted) ctx.emit('mayfly/focus-row-changed', row) },
-      context: () => ({
-        window: displayedFacts().contextWindow,
-        tokens: displayedFacts().contextTokens,
-      }),
+      context: () => transcriptContext!.snapshot(),
       imageRefs,
       rows: {
         copy: (text, mode) => {
@@ -253,6 +259,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         hostKey: facts.ref?.host,
         sessionId: facts.ref?.sessionId,
         toggle: navigation === undefined ? undefined : `${keyHint('mayfly.interaction.toggle-agent-view')} ${t(navigation.counterpart === 'primary' ? 'main' : navigation.counterpart)} · ${keyHint('mayfly.interaction.close-agent-view')} ${t(navigation.close === 'subagent' ? 'detach' : 'close')}`,
+        slashHint: editorComposition?.controller.slashHint(),
       }
     })
     ctx.effect(() => ctx.on('mayfly/request-new-messages', () => {
@@ -382,6 +389,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       ctx,
       app,
       editor: editor.editor,
+      extensionRuntime: editor.extensions,
       screen,
       components: ctx.mayflyComponents,
       colors: ctx.mayflyTheme.colors,
@@ -422,6 +430,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     lifetime.abort()
     process.removeListener('SIGINT', sigint)
     process.removeListener('SIGTERM', sigterm)
+    transcriptContext?.dispose()
     startup?.dispose()
     operations?.dispose()
     sessionsBrowser?.dispose()

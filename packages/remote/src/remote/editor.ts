@@ -5,18 +5,17 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import {
-  compileMayflyEditorShellNode,
   normalizeWheelInput,
   type MayflyComponents,
   type MayflyEditor,
-  type MayflyEditorShellComponent,
-  type MayflyFocusable,
   type MayflyScreenService,
   type MayflySemanticColors,
 } from '@ephemeral-ai/mayfly/core'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
-import { Editor, mountInteractionLocale, placeholderLadder, placeholderState, type PlaceholderView } from '@ephemeral-ai/mayfly/editor-presentation'
+import { Editor, EditorExtensionRuntime, mountInteractionLocale, placeholderLadder, placeholderState, type PlaceholderView } from '@ephemeral-ai/mayfly/editor-presentation'
+import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteNotice } from './notice.ts'
+import type { RemoteEditorPrepared } from './editor/types.ts'
 import { RemoteNotifications, type RemoteNotificationPresentation } from './notifications.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -38,6 +37,8 @@ export interface RemoteEditorActions {
 export interface RemoteEditorHandle {
   /** Actual shared editor engine used by the composition's feature attachment. */
   readonly editor: MayflyEditor
+  /** The one shared extension shell mounted around this retained editor. */
+  readonly extensions: EditorExtensionRuntime<RemoteEditorPrepared>
   readonly notice: RemoteNotice
   /** Repaint the retained native editor and frame without replacing its state. */
   retheme(components: MayflyComponents, colors: MayflySemanticColors): void
@@ -51,42 +52,7 @@ export interface RemoteEditorHandle {
 export interface RemoteEditorPresentation extends RemoteNotificationPresentation {
   readonly view?: PlaceholderView | undefined
   readonly title?: string | undefined
-}
-
-class RemoteEditorDock implements MayflyFocusable {
-  private ownFocused = false
-  constructor(
-    private shell: MayflyEditorShellComponent,
-    private readonly sync: () => void,
-  ) {}
-
-  get focused(): boolean { return this.ownFocused }
-  set focused(value: boolean) {
-    const changed = value !== this.ownFocused
-    this.ownFocused = value
-    this.shell.focused = value
-    if (changed) this.sync()
-  }
-
-  setShell(shell: MayflyEditorShellComponent): void {
-    this.shell.focused = false
-    this.shell = shell
-    shell.focused = this.ownFocused
-  }
-
-  handleInput(data: string): void {
-    this.shell.handleInput?.(data)
-  }
-
-  render(width: number): string[] {
-    this.sync()
-    const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
-    return this.shell.render(safeWidth)
-  }
-
-  invalidate(): void {
-    this.shell.invalidate()
-  }
+  readonly slashHint?: string | undefined
 }
 
 /** Mount the standalone editor without any Host Agent, command registry, or Session object. */
@@ -139,36 +105,33 @@ export function mountRemoteEditor(
     return false
   }
   let shellMode = false
-  let frameShape = ''
-  let dock: RemoteEditorDock | undefined
   const repaint = (): void => { screen.requestRender() }
-  const compile = (): MayflyEditorShellComponent | undefined => {
-    const facts = presentation()
-    const title = (facts.title || (facts.view?.kind === 'primary' ? undefined : facts.view?.label))?.replace(/\s+/gu, ' ').trim() || undefined
-    const node = Editor({
-      ...title === undefined ? {} : { title }, shell: shellMode, parked: dock !== undefined && !dock.focused,
-      placeholder: placeholderLadder(placeholderState(facts.view, shellMode, facts.running === true), facts.quietHints === 'off', t),
-    })
-    const shape = JSON.stringify(node)
-    if (frameShape === shape) return undefined
-    const compiled = compileMayflyEditorShellNode(node, {
-      editor, components, colors, getViewport: () => screen.editorViewport,
-      screenMode: 'main', keymap: ctx.mayflyKeymap, emit: repaint,
-    })
-    if (!compiled.ok) throw new Error(compiled.message)
-    frameShape = shape
-    compiled.value.component.focusEditor()
-    return compiled.value.component
-  }
+  const extensions = new EditorExtensionRuntime<RemoteEditorPrepared>({
+    ctx, editor, components: () => components, colors: () => colors,
+    report: (id, feedback) => { notifications.report(id, feedback) },
+    frame: ({ parked }) => {
+      const facts = presentation()
+      const title = (facts.title || (facts.view?.kind === 'primary' ? undefined : facts.view?.label))?.replace(/\s+/gu, ' ').trim() || undefined
+      return Editor({
+        ...title === undefined ? {} : { title }, shell: shellMode, parked,
+        placeholder: placeholderLadder(placeholderState(facts.view, shellMode, facts.running === true), facts.quietHints === 'off', t),
+      })
+    },
+    footer: () => {
+      const hint = presentation().slashHint
+      return hint === undefined ? undefined : ui.text(hint, { tone: 'muted' })
+    },
+  })
   const sync = (): void => {
     if (disposed) return
     notifications.refresh()
-    const next = compile()
-    if (next !== undefined) dock?.setShell(next)
+    extensions.refreshPresentation()
   }
-  const shell = compile()!
-  shell.focusEditor()
-  dock = new RemoteEditorDock(shell, sync)
+  editor.onChange = () => {
+    if (disposed) return
+    notifications.clear()
+    sync()
+  }
   const originalShellMode = editor.setShellMode
   editor.setShellMode = next => {
     if (disposed) return
@@ -177,10 +140,10 @@ export function mountRemoteEditor(
     sync()
     repaint()
   }
-  const slot = screen.mountDockSlot('editor.prompt', dock)
+  const slot = screen.mountDockSlot('editor.prompt', extensions)
   slot.focus()
   const offScroll = screen.setContentScrollHandler(data => {
-    if (disposed || !dock!.focused) return false
+    if (disposed || !extensions.focused) return false
     const wheel = normalizeWheelInput(data)
     if (wheel !== undefined) {
       const direction = ctx.mayflyKeymap.matches(wheel, 'ui.up')
@@ -203,27 +166,37 @@ export function mountRemoteEditor(
     }
     return false
   })
-  return {
+  const refresh = (): void => { sync(); if (!disposed) repaint() }
+  // All locale memo observers must see the revision before the frame reads them.
+  const offLocale = ctx.mayflyLocale.subscribe(() => { queueMicrotask(refresh) })
+  const offSettings = ctx.on('mayfly/settings-source-ready', refresh)
+  const handle: RemoteEditorHandle = {
     editor,
+    extensions,
     notice: notifications.notice,
     retheme(nextComponents, nextColors) {
       if (disposed) return
       components = nextComponents
       colors = nextColors
       editor.updateColors(nextColors)
-      frameShape = ''
-      sync()
+      notifications.refresh()
+      extensions.refreshPresentation(true)
       repaint()
     },
-    refresh() { sync(); if (!disposed) repaint() },
+    refresh,
     focus() { if (!disposed) slot.focus() },
     dispose() {
       if (disposed) return
       disposed = true
       editor.setShellMode = originalShellMode
+      offLocale()
+      offSettings()
       offScroll()
+      extensions.dispose()
       notifications.dispose()
       slot.dispose()
     },
   }
+  ctx.effect(() => () => { handle.dispose() })
+  return handle
 }

@@ -8,7 +8,7 @@ import type { Context, Events } from '@deepseek-ai/cordis'
 import { ACTIVITY_LOCALE, mountTranscriptLocale, NotificationLine, type NotificationFacts, type NotificationKeyPart, type NotificationRowFacts } from '@ephemeral-ai/mayfly/editor-presentation'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import type {} from '@ephemeral-ai/mayfly/core'
-import type { MayflyFeedbackRecord, MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyFeedback, MayflyFeedbackRecord, MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteNotice } from './notice.ts'
 
 /** Readonly facts of the currently displayed Remote conversation and prompt. */
@@ -110,6 +110,19 @@ export class RemoteNotifications {
     )
     this.refresh()
     ctx.effect(() => () => { this.dispose() })
+  }
+
+  /** Preserve independent editor-extension feedback identities and full details. */
+  report(id: string, feedback: MayflyFeedback): void {
+    if (this.disposed) return
+    this.refresh()
+    const sessionId = this.presentation().sessionId
+    this.owner.report(`editor-extension/${id}`, sessionId === undefined ? { kind: 'app', targetId: 'prompt' } : { kind: 'session', sessionId }, feedback, id)
+  }
+
+  /** An editor change retires this input owner's transient feedback. */
+  clear(): void {
+    if (!this.disposed) this.owner.clearAll()
   }
 
   refresh(): void {

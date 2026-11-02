@@ -127,6 +127,10 @@ vi.mock('../../src/transcript/remote-model.ts', () => ({
     }
   },
 }))
+vi.mock('../../src/transcript/context-source.ts', () => ({ RemoteTranscriptContextSource: class {
+  readonly snapshot = vi.fn()
+  readonly dispose = vi.fn()
+} }))
 
 vi.mock('../../src/remote/side-views.ts', () => ({
   RemoteSideViews: class {

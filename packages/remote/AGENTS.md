@@ -58,6 +58,17 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   runtime forwards the shared transcript controller's focus-mode/row facts,
   new-message requests, Ctrl+O expansion, presentation settings and locale
   invalidation; those registrations and queued callbacks retire with its mount.
+  Its dock is the shared `EditorExtensionRuntime`, which consumes direct editor
+  registrations around the retained native editor. Feature bindings supply
+  completion sources, attachment metadata and reversible prepared submissions;
+  they never replace its provider or submit barrier. The original frame/footer,
+  diagnostic/action rows and async extension work share this one shell. Input,
+  catalog, projection, locale and settings updates refresh its memoized shape;
+  only a palette change forces recompilation. Unbinding or route retirement
+  fences late work.
+  History/token facts and delayed prompt waits belong to the editor feature
+  Fiber. File, clipboard and extension waits share one 150 ms owner; settlement,
+  cancellation, selection replacement and unload release their exact scopes.
 - `/plugin` consumes the shared rc.2 marketplace presentation and calls the
   official selected Host plugin manager for every install, remove, and enable.
   Its catalog, installed rows, notifications, and restart chip belong to one
@@ -166,6 +177,13 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   explicit model-selection write. Side views borrow the primary owner's current
   exact Host catalog through a readonly resolver; they do not copy metadata into
   another cache, and owner detach immediately removes that fallback.
+  Transcript context reads exact displayed Session facts for pressure,
+  compaction marks and approval outcomes. Its private source observes that
+  same Host's child roster and passively reads whole native direct-child
+  projections without retaining or opening Sessions. Stable displayed ref,
+  Client identity and connection generation own every read and bounded retry.
+  Whole child facts take precedence over a delayed catalog running flag; a
+  switch, detach or unload aborts reads before retiring the displayed sources.
 - Slash commands submit ordered native encoded images and uploaded file
   receipts through `commands.execute`; markers stay in the reversible draft
   and are removed from the command line. File receipts retain their exact

@@ -9,6 +9,7 @@ import type { RemoteSideSelection, RemoteSideViewOptions } from '../../src/remot
 import type { RemotePresentationFacts } from '../../src/transcript/remote-model.ts'
 import type { RemoteOperationsCompositionOptions } from '../../src/remote/operations-composition.ts'
 import type { RemoteFeatureContext } from '../../src/remote/features.ts'
+import type { RemoteSessionFactsSnapshot } from '../../src/frontend/session-facts.ts'
 
 type StartupOptions = ConstructorParameters<typeof import('../../src/remote/startup.ts').RemoteStartupController>[2]
 type EditorOptions = Parameters<typeof import('../../src/remote/editor-composition.ts').mountEditorComposition>[0]
@@ -16,6 +17,7 @@ type FeatureOptions = Parameters<typeof import('../../src/remote/features.ts').m
 type BannerOptions = ConstructorParameters<typeof import('../../src/remote/banner.ts').RemoteBannerComponent>[3]
 type EditorState = NonNullable<Parameters<typeof import('../../src/remote/editor.ts').mountRemoteEditor>[5]>
 type SessionsOptions = ConstructorParameters<typeof import('../../src/remote/features/sessions.ts').RemoteSessionsBrowserController>[1]
+type ContextOptions = ConstructorParameters<typeof import('../../src/transcript/context-source.ts').RemoteTranscriptContextSource>[0]
 
 const wiring = vi.hoisted(() => ({
   ctx: undefined as Context | undefined,
@@ -37,6 +39,10 @@ const wiring = vi.hoisted(() => ({
   operations: undefined as RemoteOperationsCompositionOptions | undefined,
   editorOptions: undefined as EditorOptions | undefined,
   sessions: undefined as SessionsOptions | undefined,
+  contextOptions: undefined as ContextOptions | undefined,
+  contextSnapshot: undefined as ReturnType<NonNullable<TranscriptControllerOptions['context']>>,
+  contextDispose: vi.fn(), disposeSide: vi.fn(), disposeConversation: vi.fn(),
+  primaryFacts: { values: {} } as RemoteSessionFactsSnapshot,
   appArgs: [] as unknown[],
   initialCommands: undefined as unknown,
   topologies: new Set<() => void>(),
@@ -62,6 +68,7 @@ const wiring = vi.hoisted(() => ({
     readAttachment: vi.fn(async (_attachment: unknown): Promise<Uint8Array | undefined> => undefined),
     updateQueue: vi.fn(async (_id: unknown, _action: unknown) => false),
     restoreQueued: vi.fn(), requeue: vi.fn(),
+    slashHint: vi.fn((): string | undefined => undefined),
   },
   commandList: vi.fn(() => []),
   notice: vi.fn(), requestRender: vi.fn(), refreshEditor: vi.fn(), refreshStatus: vi.fn(), republish: vi.fn(),
@@ -94,18 +101,23 @@ vi.mock('../../src/remote/app.ts', () => ({ RemoteApp: class {
 vi.mock('../../src/transcript/remote-model.ts', () => ({ RemoteConversationModelSource: class {
   presentation() { return wiring.defaultFacts }
   snapshot() { return {} }
-  sessionFacts() { return { values: {} } }
+  sessionFacts() { return wiring.primaryFacts }
   imageAttachment() { return wiring.primaryImage }
   readonly getModelCatalog = wiring.getModelCatalog
   readonly setVisible = wiring.setVisible
   readonly setDefaultModel = vi.fn()
   readonly setModelCatalog = vi.fn()
-  readonly dispose = vi.fn()
+  readonly dispose = wiring.disposeConversation
+} }))
+vi.mock('../../src/transcript/context-source.ts', () => ({ RemoteTranscriptContextSource: class {
+  constructor(options: ContextOptions) { wiring.contextOptions = options; options.changed() }
+  snapshot() { return wiring.contextSnapshot }
+  readonly dispose = wiring.contextDispose
 } }))
 vi.mock('../../src/remote/editor.ts', () => ({ mountRemoteEditor: vi.fn((_ctx, _screen, _components, _colors, actions, state) => {
   wiring.actions = actions; wiring.editorState = state
   wiring.onEditorMount?.(_ctx)
-  return { notice: { set: wiring.notice }, editor: { isShowingAutocomplete: wiring.autocomplete }, focus: wiring.focus, refresh: wiring.refreshEditor, retheme: vi.fn(), dispose: vi.fn() }
+  return { notice: { set: wiring.notice }, editor: { isShowingAutocomplete: wiring.autocomplete }, extensions: {}, focus: wiring.focus, refresh: wiring.refreshEditor, retheme: vi.fn(), dispose: vi.fn() }
 }) }))
 vi.mock('../../src/remote/side-views.ts', () => ({ RemoteSideViews: class {
   constructor(_transcript: unknown, _tools: unknown, _screen: unknown, _notice: unknown, options: RemoteSideViewOptions) { wiring.sideOptions = options }
@@ -123,7 +135,7 @@ vi.mock('../../src/remote/side-views.ts', () => ({ RemoteSideViews: class {
   readonly present = wiring.present
   readonly close = wiring.close
   readonly showPrimary = wiring.showPrimary
-  readonly dispose = vi.fn()
+  readonly dispose = wiring.disposeSide
 } }))
 vi.mock('../../src/remote/startup.ts', () => ({ RemoteStartupController: class {
   constructor(_ctx: unknown, _screen: unknown, options: StartupOptions) { wiring.startupOptions = options }
@@ -226,6 +238,9 @@ beforeEach(() => {
   wiring.primaryImage = undefined; wiring.sideImage = undefined; wiring.generation = 1; wiring.early = undefined
   wiring.onEditorMount = undefined
   wiring.defaultFacts = { ref, queue: [], contextWindow: 100, contextTokens: 10 } as unknown as RemotePresentationFacts
+  wiring.primaryFacts = { ref, cwd: '/local', session: undefined, values: {}, queue: [] }
+  wiring.contextOptions = undefined; wiring.contextSnapshot = { window: 100, tokens: 10 }
+  wiring.controller.slashHint.mockReturnValue(undefined)
   wiring.actions = undefined; wiring.editorOptions = undefined; wiring.operations = undefined; wiring.topologies.clear(); wiring.sideListeners.clear()
   wiring.keyActions = []; wiring.locale = 'en'; wiring.localeChanged = undefined; wiring.policyChanged = undefined
   wiring.execute.mockResolvedValue({ exit: false })
@@ -245,6 +260,37 @@ async function start(cwd: string | null = '/local/workspace', sessionId?: string
 const selected = () => wiring.features!.hosts.current!()
 
 describe('standalone Remote runtime wiring', () => {
+  it('borrows exact displayed facts and Host for transcript context and retires before its sources', async () => {
+    let beforeApp: ReturnType<ContextOptions['read']> | undefined
+    wiring.early = () => { beforeApp = wiring.contextOptions!.read() }
+    await start()
+    expect(beforeApp).toEqual({ facts: wiring.primaryFacts, client: undefined })
+    const context = wiring.contextOptions!
+    expect(context.read()).toEqual({ facts: wiring.primaryFacts, client })
+    expect(context.read().facts.ref).toBe(ref)
+    expect(wiring.transcript!.context!()).toBe(wiring.contextSnapshot)
+    context.changed()
+    expect(wiring.republish).toHaveBeenCalledOnce()
+    const childFacts: RemoteSessionFactsSnapshot = { ref: child, cwd: '/child', session: undefined, values: { contextPressure: { pressureTokens: 40 } }, queue: [] }
+    wiring.sideStatus = childFacts
+    expect(context.read()).toEqual({ facts: childFacts, client })
+    expect(context.read().facts.ref).toBe(child)
+    wiring.sideStatus = undefined
+    wiring.primaryFacts = { ...wiring.primaryFacts, ref: undefined }
+    expect(context.read()).toEqual({ facts: wiring.primaryFacts, client: undefined })
+    wiring.primaryFacts = { ...wiring.primaryFacts, ref: { host: HostKey('foreign'), sessionId: ref.sessionId } }
+    expect(context.read()).toEqual({ facts: wiring.primaryFacts, client: undefined })
+    wiring.controller.slashHint.mockReturnValue('no matching command: /unknown')
+    expect(wiring.editorState!()).toMatchObject({ slashHint: 'no matching command: /unknown' })
+    wiring.actions!.exit()
+    await running
+    context.changed()
+    expect(wiring.republish).toHaveBeenCalledOnce()
+    expect(wiring.contextDispose).toHaveBeenCalledOnce()
+    expect(wiring.contextDispose.mock.invocationCallOrder[0]).toBeLessThan(wiring.disposeSide.mock.invocationCallOrder[0]!)
+    expect(wiring.contextDispose.mock.invocationCallOrder[0]).toBeLessThan(wiring.disposeConversation.mock.invocationCallOrder[0]!)
+  })
+
   it('forwards native transcript focus and queued-row facts only while the runtime owns them', async () => {
     await start()
     const mode = vi.fn(), row = vi.fn()

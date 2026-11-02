@@ -10,7 +10,7 @@ import * as Frontend from '@ephemeral-ai/mayfly/frontend'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mountRemoteEditor } from '../../src/remote/editor.ts'
+import { mountRemoteEditor, type RemoteEditorPresentation } from '../../src/remote/editor.ts'
 
 const identity = (text: string): string => text
 const colors = new Proxy({ logoInks: Array.from({ length: 5 }, () => identity) }, {
@@ -68,7 +68,8 @@ async function fixture(columns: number) {
     interaction: ctx.mayflyUiInteraction, components, colors, keymap: ctx.mayflyKeymap,
     mode: 'alternate', requestRender,
   })
-  const handle = mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+  let presentation: RemoteEditorPresentation = {}
+  const handle = mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }, () => presentation)
   const prompt = focused
   const modes: string[] = []
   const queued = [{ id: 'queued-one', text: 'queued message remains available', lane: 'turn' as const }]
@@ -87,10 +88,49 @@ async function fixture(columns: number) {
     await flush(); paint()
   }
   owners.push(async () => { transcript.dispose(); handle.dispose(); unbind(); await ctx.fiber.dispose() })
-  return { ctx, screen, components, editor: handle.editor, handle, prompt, transcript, modes, paint, send, focused: () => focused }
+  return {
+    ctx, screen, components, editor: handle.editor, handle, prompt, transcript, modes, paint, send, focused: () => focused,
+    present(next: RemoteEditorPresentation) { presentation = next; handle.refresh() },
+  }
 }
 
 describe('standalone editor and core transcript focus', () => {
+  it.each([1, 8, 20, 40, 80, 160])('consumes direct extension decorations and actions through the retained editor shell at width %i', async width => {
+    const f = await fixture(width)
+    f.editor.setText('keep draft')
+    for (let index = 0; index < 5; index++) await f.send('\x1b[D')
+    const before = f.editor.renderContent(80)
+    const action = vi.fn(() => ({ kind: 'completed' as const, feedback: { severity: 'success' as const, message: 'Extension applied', detail: 'full extension detail' } }))
+    const registration = f.ctx.mayflyEditorExtensions.register({ id: 'acme.editor', onEvent: { action } }, {
+      before: ui.text('before extension'), after: ui.text('after extension'), hint: 'extension hint',
+      diagnostics: [{ id: 'warning', message: 'extension diagnostic', tone: 'warning' }],
+      actions: [{ id: 'apply', label: 'Apply extension', key: 'ctrl+r' }],
+    })
+    f.present({ slashHint: 'no matching command: /unknown' })
+    for (const row of f.paint()) expect(f.components.visibleWidth(row)).toBeLessThanOrEqual(width)
+    if (width >= 40) {
+      const rows = f.paint().join('\n')
+      for (const text of ['before extension', 'after extension', 'extension hint', 'extension diagnostic', 'Apply extension', 'no matching command']) expect(rows).toContain(text)
+    }
+    await f.send('\x12')
+    expect(action).toHaveBeenCalledOnce()
+    expect(f.ctx.mayflyUiInteraction.notificationSnapshot()).toContainEqual(expect.objectContaining({
+      severity: 'success', message: 'Extension applied', detail: 'full extension detail',
+    }))
+    registration.set({ after: ui.text('updated extension') })
+    f.handle.retheme(f.components, colors)
+    const repainted = f.paint()
+    for (const row of repainted) expect(f.components.visibleWidth(row)).toBeLessThanOrEqual(width)
+    expect(f.focused()).toBe(f.prompt)
+    expect(f.editor.renderContent(80)).toEqual(before)
+    if (width >= 40) expect(repainted.join('\n')).toContain('updated extension')
+    registration.dispose()
+    expect(f.paint().join('\n')).not.toContain('updated extension')
+    await f.send('!')
+    expect(f.editor.getText()).toBe('keep !draft')
+    expect(f.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
+  })
+
   it.each([1, 8, 20, 40, 80, 160])('preserves the exact draft caret across repeated transcript visits at width %i', async width => {
     const f = await fixture(width)
     f.editor.addToHistory('old recalled history')
@@ -159,6 +199,7 @@ describe('standalone editor and core transcript focus', () => {
     const before = f.editor.renderContent(80)
     const compiled = compileMayflyUiNode(ui.form({ id: 'overlay', fields: [{ kind: 'input', id: 'value', label: 'Overlay', value: '' }] }), {
       components: f.components, colors, keymap: f.ctx.mayflyKeymap,
+      getViewport: () => ({ columns: 80, rows: 30 }), screenMode: 'alternate', emit: () => {},
       onUnhandledEscape: () => { f.screen.setEditorReplacement(null) },
     })
     expect(compiled.ok).toBe(true)
