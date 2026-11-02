@@ -67,6 +67,11 @@ native Typert metadata generation. Its output must match the native generator;
 only synthetic decorator calls without a source body stay unmapped. Keep
 decorator expressions and business method bodies mapped, and run
 `node --test script/tests/source-decorators.test.mjs` when changing this chain.
+Runtime source maps are local build artifacts for coverage and debugging. Keep
+them enabled in `tsdown.config.ts`, while the manifest's `files` whitelist
+publishes runtime JavaScript and declarations only; declaration maps remain
+allowed. The source-decorators regression builds and packs a fixture through
+those actual configuration boundaries.
 Preset or skill changes require upstream-row comparison, published payload
 closure, native registry registration/mount and skill-catalog evidence, unload
 and second-Session isolation, plus dedicated-profile acceptance. Keep the two
