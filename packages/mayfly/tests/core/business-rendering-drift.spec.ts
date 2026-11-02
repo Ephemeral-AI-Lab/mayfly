@@ -30,7 +30,7 @@ const widthOperators = new Set([
 
 const approvedWidthMath = new Set([
   // A digit count of a line number for the edit gutter (an ASCII numeral, not display width); the painter owns the gutter.
-  'packages/mayfly/src/interaction/deliverables-command.ts:const numberWidth = diff.hunks.reduce((width, hunk) => Math.max(width, String(hunk.oldStart + hunk.oldLines - 1).length, String(hunk.newStart + hunk.newLines - 1).length), 1)',
+  'packages/mayfly/src/interaction/files-browser-model.ts:const numberWidth = diff.hunks.reduce((width, hunk) => Math.max(width, String(hunk.oldStart + hunk.oldLines - 1).length, String(hunk.newStart + hunk.newLines - 1).length), 1)',
   'packages/mayfly/src/transcript/tool-calls.ts:const width = String(preview.at(-1)?.number ?? 0).length',
 ])
 

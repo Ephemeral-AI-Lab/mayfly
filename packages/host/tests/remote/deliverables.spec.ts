@@ -10,7 +10,7 @@ function fixture() {
   let cwd = '/host/work'
   let files: readonly { id: string, path: string }[] | undefined = [{ id: '4/0', path: 'report.txt' }]
   let stat: { type: string, size?: number } | undefined = { type: 'file', size: 12 }
-  let bytes = new TextEncoder().encode('preview 第二行')
+  let bytes: Uint8Array<ArrayBufferLike> = new TextEncoder().encode('preview 第二行')
   const target = { targetKey: 'opaque', displayPath: '~/work/report.txt' }
   const fs = { resolve: vi.fn(async () => target), stat: vi.fn(async () => stat), processPath: vi.fn(() => '/host/work/report.txt'), readBytes: vi.fn(async () => bytes) }
   let events: readonly { type: string, seq: number }[] = [{ type: 'workspace/changes', seq: 8 }, { type: 'turn/end', seq: 9 }]

@@ -17,11 +17,18 @@ afterEach(async () => { await Promise.all(contexts.splice(0).map(ctx => ctx.fibe
 async function host(): Promise<{ ctx: Context, service: HostService, unload(): Promise<void> }> {
   const ctx = new Context()
   contexts.push(ctx)
-  const session = { id: SessionId('parent'), header: { origin: 'user', cwd: '/host' } }
+  const session = { id: SessionId('parent'), header: { origin: 'user', cwd: '/host', createdAt: 10 }, snapshotEvents: () => [] }
   const agent = { id: session.id, session, status: 'idle', ctx }
   const settingsFile = join(mkdtempTracked('mayfly-host-service-'), 'settings.json')
   await writeFile(settingsFile, '{}', 'utf8')
   const services: Record<string, unknown> = {
+    fs: { resolve: async () => ({ targetKey: 'opaque', displayPath: '~/host/report.md' }), stat: async () => ({ type: 'file', size: 6 }), processPath: () => '/host/report.md', readBytes: async () => new TextEncoder().encode('report') },
+    sessionQuery: {
+      readSession: async () => ({ events: [{ type: 'custom/event', seq: 0, time: 1, data: { text: 'trace fact' } }] }),
+      traceEvent: async () => ({ replacementChain: [], replacedEventSeqs: [], sourceEventSeqs: [], derivedEventSeqs: [] }),
+      observeSession: async () => ({ header: session.header, events: [], revision: 'one', [Symbol.dispose]: () => {} }),
+      listSessions: async () => [],
+    },
     agents: { get: (id: string) => id === session.id ? agent : undefined },
     sessions: { get: (id: string) => id === session.id ? session : undefined },
     agentDefaultModel: { currentSelection: () => ({ provider: 'fixture', model: 'one' }) },
@@ -31,7 +38,7 @@ async function host(): Promise<{ ctx: Context, service: HostService, unload(): P
     permissionPresets: { catalog: () => ({ options: [], defaultOptions: [], defaultPreset: 'safe' }) },
     sessionController: { resolveAgent: async () => { throw new Error('unexpected activation') } },
     sessionProjections: {
-      snapshot: () => ({ values: { workingDirectory: '/host', mayflyWorkflow: { sessionId: session.id, runs: [] } } }),
+      snapshot: () => ({ values: { workingDirectory: '/host', mayflyWorkflow: { sessionId: session.id, runs: [] }, mayflyDeliverables: [{ id: 'delivery', path: 'report.md' }] } }),
       onChanged: () => () => {},
     },
     settings: { writable: true, prepareDocument: async () => settingsFile },
@@ -80,7 +87,7 @@ describe('Host Remote composition', () => {
     const { service } = await host()
     const methods = new Map(remoteMethods(service).map(method => [method.method, method]))
     const sessionId = SessionId('authorized-session')
-    for (const name of ['followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'listMcpResources', 'readMcpResource']) {
+    for (const name of ['followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'statsHistory', 'listMcpResources', 'readMcpResource']) {
       const reader = methods.get(name)?.resources?.['session']
       expect(reader, `${name} must declare Session authorization`).toBeTypeOf('function')
       expect(reader?.({ sessionId })).toBe(sessionId)
@@ -109,6 +116,14 @@ describe('Host Remote composition', () => {
     const document = await service.readSettingsDocument(signal)
     await expect(service.writeSettingsDocument({ content: '{"ok":true}', expectedRevision: document.revision }, signal)).resolves.toMatchObject({ content: '{"ok":true}' })
     await expect(service.subagentDrain({ parentSessionId: request.sessionId, childSessionId: SessionId('missing') }, signal)).rejects.toMatchObject({ code: 'mayflyHost/subagent-drain-unavailable' })
+    await expect(service.deliveredFile({ ...request, deliveryId: 'delivery', preview: true }, signal)).resolves.toEqual({ path: '/host/report.md', displayPath: '~/host/report.md', fileType: 'file', size: 6, preview: 'report' })
+    expect(service.latestWorkspaceChanges(request, signal)).toBeNull()
+    await expect(service.traceCatalog(request, signal)).resolves.toMatchObject([{ eventSeqs: [0] }])
+    await expect(service.traceDetail({ ...request, seq: 0, eventSeqs: [0] }, signal)).resolves.toMatchObject({ rawEvents: [{ seq: 0 }], relation: { replacementChain: [] } })
+    await expect(service.statsSession(request, signal)).resolves.toMatchObject({ createdAt: 10, cwd: '/host', status: 'idle' })
+    const frames = []
+    for await (const frame of service.statsHistory({ ...request, allWorkspaces: false }, signal)) frames.push(frame)
+    expect(frames.at(-1)).toMatchObject({ running: false, total: 0, done: 0 })
     expect(service.workspaceChangesSummary({ ...request, seq: 1 }, signal)).toBeNull()
     await expect(service.workspaceChangesDiff({ ...request, seq: 1, index: 0 }, signal)).resolves.toBeNull()
     await expect(service.workspacePath({ path: '/missing' }, signal)).resolves.toBeNull()
@@ -142,4 +157,25 @@ describe('Host Remote composition', () => {
     expect((ctx.get('mayflyHost') as HostService).capabilities().protocolVersion).toBe(1)
     await replacement.dispose()
   })
+})
+
+it('routes the native latest workspace event and aborts delivered-file reads on service Fiber unload', async () => {
+  const { ctx, service, unload } = await host()
+  const sessionId = SessionId('parent')
+  const session = ctx.sessions.get(sessionId)!
+  vi.spyOn(session, 'snapshotEvents').mockReturnValue([{ seq: 8, type: 'workspace/changes', time: 1, data: { turn: 3 } }, { seq: 9, type: 'turn/end', time: 2, data: { turn: 3, reason: { kind: 'completed' } } }] as never)
+  const summary = { turn: 3, cwd: '/host', files: [], total: 0, added: 0, deleted: 0 }
+  const nativeSummary = vi.spyOn(ctx.workspaceChanges, 'summary').mockReturnValue(summary)
+  expect(service.latestWorkspaceChanges({ sessionId }, new AbortController().signal)).toEqual({ seq: 8, summary })
+  expect(nativeSummary).toHaveBeenCalledWith(sessionId, 8)
+  const resolved = Promise.withResolvers<Awaited<ReturnType<Context['fs']['resolve']>>>()
+  let received: AbortSignal | undefined
+  vi.spyOn(ctx.fs, 'resolve').mockImplementation(async (_path, options) => { received = options.signal; return resolved.promise })
+  const pending = service.deliveredFile({ sessionId, deliveryId: 'delivery' }, new AbortController().signal)
+  await vi.waitFor(() => { expect(received).toBeDefined() })
+  await unload()
+  expect(received?.aborted).toBe(true)
+  resolved.resolve({ targetKey: 'opaque' as never, displayPath: '/late' })
+  await expect(pending).rejects.toThrow()
+  expect(() => service.latestWorkspaceChanges({ sessionId }, new AbortController().signal)).toThrow()
 })
