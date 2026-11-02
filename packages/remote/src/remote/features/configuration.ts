@@ -91,18 +91,25 @@ export function createRemoteConfigurationFeatures(
     const client = context.hosts.current()?.client ?? context.hosts.active?.() ?? clients[0]
     if (client !== preferencesClient) {
       preferencesClient = client
-      if (client !== undefined) void preferences.applyHostPreferences(client).catch(() => {})
+      if (client !== undefined) {
+        void preferences.applyHostPreferences(client).catch(() => {})
+        void onboarding.onReady(client)
+      }
     }
     if (client === undefined || attached.has(client)) return
     attached.add(client)
+    const isActive = (): boolean => (context.hosts.current()?.client ?? context.hosts.active?.() ?? context.hosts.list()[0]) === client
     const refreshPreferences = (): void => {
-      if ((context.hosts.current()?.client ?? context.hosts.active?.() ?? context.hosts.list()[0]) !== client) return
+      if (!isActive()) return
       void preferences.applyHostPreferences(client).catch(() => {})
     }
     const offSettings = onRemoteSettingsDocumentUpdated(client, ns => { if (ns === 'mayfly') refreshPreferences() })
-    const offState = client.state.subscribe(() => { if (client.state.getSnapshot().status === 'connected') refreshPreferences() })
+    const offState = client.state.subscribe(() => {
+      if (client.state.getSnapshot().status !== 'connected' || !isActive()) return
+      refreshPreferences()
+      void onboarding.onReady(client)
+    })
     preferenceListeners.set(client, () => { offSettings(); offState() })
-    void onboarding.onReady(client)
   }
   const offTopology = context.hosts.subscribe(reconcile)
   reconcile()

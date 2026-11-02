@@ -4,7 +4,7 @@
  * @module @ephemeral-ai/mayfly/remote/features/onboarding
  */
 
-import type { RemoteResult, SettingsDescribeValue, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SettingsDescribeValue, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { HostClient } from '../../client/types.ts'
 import type { RemoteAccountSignInFlow } from './account.ts'
 import type { RemoteFeatureContext } from './contracts.ts'
@@ -31,14 +31,12 @@ import { remoteProviderCredentialRefs, type RemoteProvidersController } from './
 import { REMOTE_LANGUAGES, REMOTE_STARTUPS } from './presentation.ts'
 import type { RemoteSettingsController } from './settings.ts'
 
-type AccountView = Awaited<ReturnType<HostClient['remote']['account']['getState']>> extends RemoteResult<infer Value> ? Value : never
-
 type Step = 'preferences' | 'connect' | 'ready'
 type Connection = 'pending' | 'account' | 'key' | 'skipped'
 
 interface RemoteOnboardingReadiness {
   readonly settings: SettingsDescribeValue
-  readonly account: AccountView
+  readonly canSignIn: boolean
   readonly permissionDefault: string
   readonly permissionOptions: readonly { readonly id: string, readonly label: string }[]
 }
@@ -65,15 +63,15 @@ export class RemoteOnboardingController extends RemoteFeatureController {
   async onReady(client: HostClient): Promise<void> {
     const generation = client.state.getSnapshot().generation
     if (this.attempted.get(client) === generation) return
-    this.attempted.set(client, generation)
     const operation = this.hostOperation(client)
     if (operation === undefined) return
+    this.attempted.set(client, generation)
     try {
       const [live, configurable, settings, account, permission] = await Promise.all([
         remoteValue(client.remote.llm.listProviders()),
         remoteValue(client.remote.llm.listConfigurableProviders()),
         remoteValue(client.remote.settings.describe()),
-        remoteValue(client.remote.account.getState()),
+        remoteValue(client.remote.account.getState()).catch(() => undefined),
         remoteValue(client.remote.permissionPresets.catalog()),
       ])
       if (!operation.valid()) return
@@ -81,10 +79,10 @@ export class RemoteOnboardingController extends RemoteFeatureController {
       if (!operation.valid()) return
       const refs = remoteProviderCredentialRefs({ live, configurable, settings })
       const configured = await this.anyCredentialConfigured(client, refs)
-      if (!operation.valid() || configured || account.status === 'credential-stored') return
+      if (!operation.valid() || configured || account?.status === 'credential-stored') return
       this.open(client, {
         settings,
-        account,
+        canSignIn: account !== undefined && configurable.some(provider => provider.provider === 'deepseek-account'),
         permissionDefault: permission.defaultPreset,
         permissionOptions: permission.defaultOptions.map((option: import('./permissions.ts').RemotePermissionCatalog['defaultOptions'][number]) => ({ id: option.value, label: option.name })),
       })
@@ -112,14 +110,15 @@ export class RemoteOnboardingController extends RemoteFeatureController {
     readiness?: RemoteOnboardingReadiness,
   ): Promise<void> {
     const resolved = readiness ?? await (async () => {
-      const [settings, account, permission] = await Promise.all([
+      const [settings, account, configurable, permission] = await Promise.all([
         remoteValue(client.remote.settings.describe()),
-        remoteValue(client.remote.account.getState()),
+        remoteValue(client.remote.account.getState()).catch(() => undefined),
+        remoteValue(client.remote.llm.listConfigurableProviders()),
         remoteValue(client.remote.permissionPresets.catalog()),
       ])
       return {
         settings,
-        account,
+        canSignIn: account !== undefined && configurable.some(provider => provider.provider === 'deepseek-account'),
         permissionDefault: permission.defaultPreset,
         permissionOptions: permission.defaultOptions.map((option: import('./permissions.ts').RemotePermissionCatalog['defaultOptions'][number]) => ({ id: option.value, label: option.name })),
       }
@@ -169,7 +168,7 @@ export class RemoteOnboardingController extends RemoteFeatureController {
           permissions: resolved.permissionOptions.map(option => ({ ...option, current: option.id === baseline.permission })),
         },
         connect: {
-          canSignIn: true, keyEntry,
+          canSignIn: resolved.canSignIn, keyEntry,
           ...connection === 'account' ? { connected: 'account' as const } : {},
           ...snapshot === undefined ? {} : { signIn: {
             stage: snapshot.stage === 'idle' ? 'starting' as const : snapshot.stage,
@@ -182,12 +181,12 @@ export class RemoteOnboardingController extends RemoteFeatureController {
           } },
         },
         summary: [
-          ...languageChosen ? [{ text: t('Language: {language} · Theme: {theme}', { language: REMOTE_LANGUAGES.find(item => item.id === choice.language)?.label ?? choice.language, theme: this.context.presentation.themes.find(theme => theme.key === choice.theme)?.name ?? choice.theme }), done: true }] : [],
+          ...languageChosen ? [{ text: t('Language: {language} · Theme: {theme}', { language: REMOTE_LANGUAGES.find(item => item.id === choice.language)!.label, theme: this.context.presentation.themes.find(theme => theme.key === choice.theme)?.name ?? choice.theme }), done: true }] : [],
           ...startupChosen ? [{ text: t('On start: {startup}', { startup: t(choice.startup === 'splash' ? 'Splash' : 'Conversation') }), done: true }] : [],
           connection === 'account' ? { text: t('Connected with a DeepSeek account'), done: true }
             : connection === 'key' ? { text: t('Connected with an API key'), done: true }
               : { text: t('DeepSeek not connected · /provider to connect'), done: false },
-          ...permissionChosen ? [{ text: t('Permission preset: {preset}', { preset: resolved.permissionOptions.find(option => option.id === choice.permission)?.label ?? choice.permission }), done: true }] : [],
+          ...permissionChosen ? [{ text: t('Permission preset: {preset}', { preset: resolved.permissionOptions.find(option => option.id === choice.permission)!.label }), done: true }] : [],
         ],
       }
       return onboardingWizard(facts, onboardingLabels(t, snapshot?.callbackPort))
@@ -200,8 +199,7 @@ export class RemoteOnboardingController extends RemoteFeatureController {
     const pickModel = async (provider: string): Promise<void> => {
       if (!operation.valid()) return
       const overlays = this.context.ctx.mayflyOverlays
-      let finish = (): void => {}
-      const closed = new Promise<void>(resolve => { finish = resolve })
+      const { promise: closed, resolve: finish } = Promise.withResolvers<void>()
       const off = overlays.subscribe(delta => { if (delta.kind === 'remove' && delta.id === 'mayfly.models') finish() })
       operation.onDispose(finish)
       try {
@@ -221,9 +219,11 @@ export class RemoteOnboardingController extends RemoteFeatureController {
       panel?.refresh()
     }
     const startAccount = async (): Promise<MayflyUiActionReply> => {
+      if (!resolved.canSignIn) return { kind: 'cancelled' }
       const current = await this.accounts.createSignInFlow(client, () => { panel?.refresh() })
       if (current === undefined || !operation.valid()) { current?.dispose(); return { kind: 'cancelled' } }
       flow = current
+      panel?.refresh()
       void finishAccount(current)
       void current.start().catch((error: unknown) => {
         if (operation.valid() && flow === current) this.context.notice.set(remoteErrorMessage(error))
@@ -252,9 +252,10 @@ export class RemoteOnboardingController extends RemoteFeatureController {
       await this.preferences.persistMayfly(client, [{ op: 'set', path: ['startup'], value: startup }], operation.signal)
       if (!operation.valid()) return { kind: 'cancelled' }
       const descriptor = resolved.settings.namespaces.find((candidate: SettingsNamespaceView) => candidate.ns === 'permission')
-      if (descriptor !== undefined && permission !== resolved.permissionDefault) {
+      if (resolved.settings.writable && descriptor !== undefined && permission !== resolved.permissionDefault) {
         const revision = this.settings.revision(descriptor, resolved.settings.writable)
-        await this.settings.mutate(client, 'permission', [{ op: 'set', path: ['defaultPreset'], value: permission }], revision)
+        try { await this.settings.mutate(client, 'permission', [{ op: 'set', path: ['defaultPreset'], value: permission }], revision, operation.signal) }
+        catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error)) }
       }
       if (!operation.valid()) return { kind: 'cancelled' }
       const current = this.context.hosts.current()

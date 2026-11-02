@@ -18,6 +18,87 @@ function fixture() {
 }
 
 describe('Remote reference theme and language pickers', () => {
+  it('keeps language and every onboarding default live when their independent Host writes fail', async () => {
+    const test = fixture()
+    test.settings.mutate.mockRejectedValue(new Error('Host store is readonly'))
+    test.controller.openLocale()
+    expect(await test.act({ kind: 'selection-accept', controlId: 'languages', selectedIds: ['zh'] })).toMatchObject({ kind: 'completed', dismiss: true })
+    expect(test.presentation.snapshot.locale).toBe('zh')
+    expect(test.settings.mutate.mock.calls.map(call => Reflect.get(call, 1))).toEqual(['mayfly', 'locale'])
+    await test.controller.persistMayfly(test.client, [{ op: 'set', path: ['startup'], value: 'splash' }])
+    expect(test.notice.set).toHaveBeenCalledWith('Host store is readonly')
+    expect(test.settings.mutate).toHaveBeenCalledTimes(3)
+  })
+
+  it('skips readonly stores and missing optional locale descriptors while identifying a missing Mayfly schema', async () => {
+    const test = fixture()
+    test.setSettings({ writable: false, hasDocument: true, namespaces: [namespace(), namespace('locale')] })
+    await test.controller.applyLocale(test.client, 'zh')
+    expect(test.settings.mutate).not.toHaveBeenCalled()
+    test.setSettings({ writable: true, hasDocument: true, namespaces: [] })
+    await test.controller.applyLocale(test.client, 'en')
+    expect(test.notice.set).toHaveBeenCalledOnce()
+    expect(test.notice.set).toHaveBeenCalledWith(expect.stringContaining('mayfly-host must register'))
+    expect(test.presentation.snapshot.locale).toBe('en')
+  })
+
+  it('handles wrong controls, missing rows, aborted scopes, presentation failures, and a disappearing selected palette', async () => {
+    const test = fixture()
+    test.presentation.snapshot.theme = 'custom'
+    test.controller.openTheme()
+    expect(test.render()).toContain('"selectedIds":[]')
+    expect(await test.act({ kind: 'activate', actionId: 'other' })).toEqual({ kind: 'completed' })
+    expect(await test.act({ kind: 'selection-accept', controlId: 'other', selectedIds: ['tide'] })).toEqual({ kind: 'completed' })
+    expect(await test.act({ kind: 'selection-accept', controlId: 'themes', selectedIds: [] })).toMatchObject({ kind: 'failed', message: 'unknown theme ""' })
+    const abort = new AbortController(); abort.abort()
+    expect(await test.act({ kind: 'selection-accept', controlId: 'themes', selectedIds: ['tide'] }, abort.signal)).toEqual({ kind: 'cancelled' })
+    test.presentation.applyTheme.mockRejectedValueOnce(new Error('palette unreadable'))
+    expect(await test.act({ kind: 'selection-accept', controlId: 'themes', selectedIds: ['tide'] })).toMatchObject({ kind: 'failed', message: 'palette unreadable' })
+    test.controller.openLocale()
+    expect(await test.act({ kind: 'selection-accept', controlId: 'other', selectedIds: ['en'] })).toEqual({ kind: 'completed' })
+    test.presentation.setLocale.mockImplementationOnce(() => { throw new Error('locale unavailable') })
+    expect(await test.act({ kind: 'selection-accept', controlId: 'languages', selectedIds: ['zh'] })).toMatchObject({ kind: 'failed', message: 'locale unavailable' })
+    test.select(undefined)
+    test.active({ ...test.client, key: 'other-host' } as HostClient)
+    expect(await test.act({ kind: 'selection-accept', controlId: 'themes', selectedIds: ['tide'] }, undefined, 0)).toEqual({ kind: 'cancelled' })
+  })
+
+  it('refuses detached explicit Hosts but supports custom themes and language without a Host', async () => {
+    const test = fixture()
+    test.detach()
+    const before = test.opened.length
+    test.controller.openTheme(test.client)
+    test.controller.openLocale(test.client)
+    await test.controller.applyTheme(test.client, 'tide')
+    await test.controller.applyCustomTheme(test.client, '/palette.json')
+    await test.controller.applyLocale(test.client, 'zh')
+    await test.controller.persistMayfly(test.client, [])
+    expect(test.opened).toHaveLength(before)
+    expect(test.presentation.applyTheme).not.toHaveBeenCalled()
+    const abort = new AbortController()
+    await test.controller.applyCustomTheme(undefined, '/palette.json', 'tide', abort.signal)
+    await test.controller.applyLocale(undefined, 'zh')
+    expect(test.presentation.applyCustomTheme).toHaveBeenCalledWith('/palette.json', 'tide')
+    expect(test.presentation.snapshot.locale).toBe('zh')
+    abort.abort()
+    await test.controller.applyCustomTheme(undefined, '/ignored.json', 'tide', abort.signal)
+    expect(test.presentation.applyCustomTheme).toHaveBeenCalledOnce()
+  })
+
+  it('cleans a reentrantly closed theme picker and never displays late persistence failures', async () => {
+    const test = fixture()
+    test.presentation.subscribe.mockImplementationOnce(() => { test.opened.at(-1)!.close(); return () => {} })
+    test.controller.openTheme()
+    expect(test.presentationListeners.size).toBe(0)
+    const pending = Promise.withResolvers<never>()
+    test.settings.mutate.mockReturnValueOnce(pending.promise)
+    const saving = test.controller.persistMayfly(test.client, [{ op: 'set', path: ['startup'], value: 'splash' }])
+    await vi.waitFor(() => { expect(test.settings.mutate).toHaveBeenCalledOnce() })
+    test.reconnect()
+    pending.reject(new Error('old Host failure'))
+    await saving
+    expect(test.notice.set).not.toHaveBeenCalled()
+  })
   it('uses exact shared wire names/groups and preserves the picker across presentation refresh', async () => {
     const test = fixture()
     test.controller.openTheme()
@@ -135,6 +216,22 @@ describe('Remote reference theme and language pickers', () => {
 })
 
 describe('Host settings to Frontend readonly presentation bridge', () => {
+  it('fences palette application that finishes after a newer read or active Host switch', async () => {
+    const test = fixture()
+    test.setSettings({ writable: true, hasDocument: true, namespaces: [namespace('mayfly', { value: { theme: 'tide' } })] })
+    const pending = deferred<void>()
+    test.presentation.applyTheme.mockReturnValueOnce(pending.promise)
+    const reading = test.controller.applyHostPreferences(test.client)
+    await vi.waitFor(() => { expect(test.presentation.applyTheme).toHaveBeenCalledOnce() })
+    test.reconnect()
+    pending.resolve()
+    await reading
+    expect(test.presentation.reloadTheme).not.toHaveBeenCalled()
+    test.select(undefined)
+    test.hosts.active = () => undefined
+    await test.controller.applyHostPreferences(test.client)
+    expect(test.describe).toHaveBeenCalledTimes(2)
+  })
   it('applies the selected Host source, key preferences, locale, and live theme without writes', async () => {
     const test = fixture()
     test.setSettings({ writable: true, hasDocument: true, namespaces: [namespace('mayfly', { schema: schemaJson(Schema.object({ theme: Schema.string() })), value: { language: 'zh', theme: 'tide', quietHints: 'off', glyphs: 'ascii', preferPlainKeys: true, keybindings: { 'ui.copy': { keys: ['ctrl+k'] } } } })] })

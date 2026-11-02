@@ -156,23 +156,23 @@ export class RemotePreferencesController extends RemoteFeatureController {
     } finally { operation?.dispose() }
   }
 
-  /** Apply one local locale immediately; persistence failure never rolls it back. */
+  /** Apply one local locale immediately; each namespace persists best effort. */
   async applyLocale(client: HostClient | undefined, locale: string, parent?: AbortSignal): Promise<void> {
     const signal = parent === undefined ? this.lifetime.signal : AbortSignal.any([parent, this.lifetime.signal])
     if (signal.aborted) return
     const operation = client === undefined ? undefined : this.hostOperation(client, signal)
     if (client !== undefined && operation === undefined) return
-    this.context.presentation.setLocale(locale)
-    if (client === undefined) return
     try {
-      await this.persist(client, 'mayfly', [{ op: 'set', path: ['language'], value: locale }], false, operation?.signal)
-      if (operation?.valid()) await this.persist(client, 'locale', [{ op: 'set', path: ['preference'], value: locale }], false, operation?.signal)
+      this.context.presentation.setLocale(locale)
+      if (client === undefined) return
+      await this.persist(client, 'mayfly', [{ op: 'set', path: ['language'], value: locale }], operation?.signal)
+      if (operation?.valid()) await this.persist(client, 'locale', [{ op: 'set', path: ['preference'], value: locale }], operation?.signal)
     } finally { operation?.dispose() }
   }
 
-  /** Persist a startup or other Mayfly preference through the official schema. */
+  /** Persist an onboarding default best effort, preserving live choices on failure. */
   async persistMayfly(client: HostClient, operations: readonly SettingsPathOpView[], parent?: AbortSignal): Promise<void> {
-    await this.persist(client, 'mayfly', operations, true, parent)
+    await this.persist(client, 'mayfly', operations, parent)
   }
 
   private isActive(client: HostClient): boolean {
@@ -183,21 +183,22 @@ export class RemotePreferencesController extends RemoteFeatureController {
     client: HostClient,
     ns: string,
     operations: readonly SettingsPathOpView[],
-    required = true,
     parent?: AbortSignal,
   ): Promise<void> {
     const operation = this.hostOperation(client, parent)
     if (operation === undefined) return
     try {
       const settings = await remoteValue(client.remote.settings.describe())
-      if (!operation.valid()) return
+      if (!operation.valid() || !settings.writable) return
       const descriptor = settings.namespaces.find((candidate: import('@deepseek-ai/dsh-api-remotes/client').SettingsNamespaceView) => candidate.ns === ns)
       if (descriptor === undefined) {
-        if (required || ns === 'mayfly') this.context.notice.set(ns === 'mayfly' ? REMOTE_MAYFLY_SETTINGS_REQUIREMENT : `Settings namespace "${ns}" is unavailable`)
+        if (ns === 'mayfly') this.context.notice.set(REMOTE_MAYFLY_SETTINGS_REQUIREMENT)
         return
       }
       const revision = this.settings.revision(descriptor, settings.writable)
       await this.settings.mutate(client, ns, operations, revision, operation.signal)
+    } catch (error) {
+      if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
     } finally { operation.dispose() }
   }
 }
