@@ -6,25 +6,19 @@ import { RemoteBtwService } from '../frontend/btw.ts'
 import { HostRegistry } from '../frontend/host-registry.ts'
 import type { RemoteConversationModelSource, RemotePresentationFacts } from '../transcript/remote-model.ts'
 import type { RemoteNotice } from './notice.ts'
-import type { RemoteAppPanels, RemoteCommandDescriptor } from './interactions/plain-panels.ts'
+import type { RemoteAppPanels } from './interactions/plain-panels.ts'
 import type { RemoteSessionsBrowser } from './features/sessions.ts'
+import type { RemoteFeatureCommandDefinition } from './features/commands.ts'
+import { remoteCommandCatalog } from './command-catalog.ts'
 
-export const FRONTEND_COMMANDS = [
-  { name: 'quit', description: 'Exit Mayfly (/q, /exit)' },
-  { name: 'new', description: 'Start a new Session (/clear)' },
-  { name: 'sessions', description: 'List Sessions, or resume by id (/resume)' },
-  { name: 'rename', description: 'Rename the current Session: /rename <title>' },
-  { name: 'fork', description: 'Fork the current Session and switch to the child: /fork [atSeq]' },
-  { name: 'rewind', description: 'Fork the Session at an event and switch to it: /rewind <seq>' },
-  { name: 'host', description: 'List attached Hosts' },
-  { name: 'attach', description: 'Attach a Host URL' },
-  { name: 'detach', description: 'Detach the current Host without stopping it' },
-  { name: 'skills', description: 'List available skills' },
-  { name: 'help', description: 'Show local and Host commands' },
-  { name: 'status', description: 'Show current Session facts' },
-  { name: 'version', description: 'Show the Mayfly version' },
-  { name: 'init', description: 'Analyze the codebase and write AGENTS.md' },
-] satisfies readonly RemoteCommandDescriptor[]
+export { FRONTEND_COMMANDS } from './command-catalog.ts'
+
+/** A displayed native side selection supplied by the presentation owner. */
+export interface RemoteAppView {
+  readonly ref: SessionRef
+  readonly access: 'interactive' | 'resumable' | 'readonly'
+  readonly presentation: RemotePresentationFacts
+}
 
 /** A displayed native side selection supplied by the presentation owner. */
 export interface RemoteAppView {
@@ -77,6 +71,28 @@ export class RemoteApp {
   private defaultModelGeneration = 0
   private selectionGeneration = 0
   private creating: Promise<SessionRef> | undefined
+  private pendingPlan = false
+  private pendingPlanExplicit = false
+  private planPreparation: {
+    readonly ref: SessionRef
+    readonly client: HostClient
+    readonly binding: NonNullable<HostRegistry['currentReference']>['binding']
+    readonly selectionGeneration: number
+    readonly connectionGeneration: number
+    readonly active: boolean
+    promise?: Promise<void>
+  } | undefined
+
+  /** Sessionless plan preference; the first created Session consumes it once. */
+  readonly startupPlan = {
+    pending: (): boolean => this.pendingPlan,
+    set: (active: boolean): void => {
+      const changed = active !== this.pendingPlan
+      this.pendingPlan = active
+      this.pendingPlanExplicit = true
+      if (changed) this.publishTopology()
+    },
+  }
 
   constructor(
     private readonly conversation: RemoteConversationModelSource,
@@ -86,6 +102,7 @@ export class RemoteApp {
     private readonly cwd = process.cwd(),
     private readonly sessionsBrowser?: RemoteSessionsBrowser,
     private readonly displayedView?: () => RemoteAppView | undefined,
+    private readonly featureCommands: () => readonly RemoteFeatureCommandDefinition[] = () => [],
   ) {
     this.registry = new HostRegistry(async (key) => {
       const startupUrl = this.endpoints.get(key)
@@ -137,16 +154,24 @@ export class RemoteApp {
     await this.actions.select(ref)
     if (generation !== this.selectionGeneration) throw new Error('Session selection was superseded')
     this.activeHost = ref.host
-    this.publishTopology()
     const binding = this.registry.currentReference?.binding
     if (binding === undefined) throw new Error('Selected Session has no Client binding')
     const summary = this.registry.get(ref.host)?.sessions.list.getSnapshot().byId[ref.sessionId]
     this.conversation.attach(binding, { ref, cwd: summary?.cwd ?? (sessionId === undefined ? cwd : '') })
+    this.planPreparation = sessionId === undefined && this.pendingPlanExplicit ? {
+      ref, binding, client: this.registry.get(ref.host)!, selectionGeneration: generation,
+      connectionGeneration: this.registry.get(ref.host)!.state.getSnapshot().generation,
+      active: this.pendingPlan,
+    } : undefined
+    this.pendingPlan = false
+    this.pendingPlanExplicit = false
+    this.publishTopology()
     return ref
   }
 
   /** Admit the first prompt into one shared creation, leaving startup sessionless. */
   ensureSession(cwd = this.cwd): Promise<SessionRef> {
+    if (this.creating !== undefined) return this.creating
     const displayed = this.displayedView?.()
     if (displayed !== undefined) {
       if (displayed.access === 'readonly') return Promise.reject(new Error('This conversation is read-only'))
@@ -154,7 +179,6 @@ export class RemoteApp {
     }
     const current = this.registry.current
     if (current !== undefined) return Promise.resolve(current)
-    if (this.creating !== undefined) return this.creating
     const creating = this.selectOrCreate(undefined, cwd)
     this.creating = creating
     void creating.finally(() => {
@@ -163,10 +187,41 @@ export class RemoteApp {
     return creating
   }
 
+  /** Finish one exact initial mode write before admitting a prompt; failed writes are never retried. */
+  async preparePrompt(ref: SessionRef, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
+    const displayed = this.displayedView?.()
+    const current = displayed?.ref ?? this.registry.current
+    if (displayed?.access === 'readonly') throw new Error('This conversation is read-only')
+    if (current?.host !== ref.host || current.sessionId !== ref.sessionId) {
+      throw new Error('Session selection was superseded')
+    }
+    const preparation = this.planPreparation
+    if (preparation === undefined || preparation.ref.host !== ref.host || preparation.ref.sessionId !== ref.sessionId) return
+    const isCurrent = (): boolean => this.planPreparation === preparation
+      && this.selectionGeneration === preparation.selectionGeneration
+      && this.registry.get(ref.host) === preparation.client
+      && this.registry.currentReference?.binding === preparation.binding
+      && preparation.client.state.getSnapshot().generation === preparation.connectionGeneration
+    if (!isCurrent()) throw new Error('Session selection was superseded')
+    preparation.promise ??= (async () => {
+      const result = await preparation.binding.session.command(preparation.active ? '/plan' : '/plan off')
+      if (!isCurrent()) throw new Error('Session selection was superseded')
+      if (!result.ok) throw new Error(result.error.message)
+      if (!result.value.matched) throw new Error('This Host does not provide the plan command; no prompt was sent')
+    })()
+    await preparation.promise
+    signal?.throwIfAborted()
+    if (!isCurrent()) throw new Error('Session selection was superseded')
+  }
+
   /** Return to the empty start view without creating or stopping a Host Session. */
   clearSession(): void {
     this.selectionGeneration += 1
     this.creating = undefined
+    this.planPreparation = undefined
+    this.pendingPlan = false
+    this.pendingPlanExplicit = false
     this.registry.clearSelection()
     this.conversation.attach(null)
     this.publishTopology()
@@ -179,6 +234,7 @@ export class RemoteApp {
   async execute(text: string): Promise<{ readonly exit: boolean }> {
     if (!text.startsWith('/')) {
       const ref = await this.ensureSession()
+      await this.preparePrompt(ref)
       const result = await this.actions.prompt(ref, {
         mode: 'queue',
         text,
@@ -270,6 +326,7 @@ export class RemoteApp {
     }
     if (name === 'init') {
       const ref = await this.ensureSession()
+      await this.preparePrompt(ref)
       const result = await this.actions.prompt(ref, {
         mode: 'queue',
         text: INIT_PROMPT,
@@ -292,6 +349,7 @@ export class RemoteApp {
       if (host !== undefined) {
         this.selectionGeneration += 1
         this.creating = undefined
+        this.planPreparation = undefined
         this.defaultModelGeneration += 1
         this.conversation.setDefaultModel(undefined)
         this.conversation.attach(null)
@@ -309,9 +367,26 @@ export class RemoteApp {
       return { exit: false }
     }
     if (name === 'help') {
-      const current = this.displayedView?.()?.ref ?? this.registry.current
-      const commands = current === undefined ? [] : await this.actions.listCommands(current)
-      this.panels.showHelp([...FRONTEND_COMMANDS, ...commands])
+      const view = this.displayedView?.()
+      const current = view?.ref ?? this.registry.current
+      const client = this.activeClient
+      const connection = client?.state.getSnapshot().generation
+      const selectedBinding = this.registry.currentReference?.binding
+      const generation = this.selectionGeneration
+      const writable = current !== undefined && view?.access !== 'readonly'
+      const isCurrent = (): boolean => {
+        const nextView = this.displayedView?.()
+        const next = nextView?.ref ?? this.registry.current
+        return client === this.activeClient && connection === client?.state.getSnapshot().generation
+          && generation === this.selectionGeneration && selectedBinding === this.registry.currentReference?.binding
+          && current?.host === next?.host && current?.sessionId === next?.sessionId
+          && view?.access === nextView?.access
+      }
+      const commands = writable ? await this.actions.listCommands(current).catch(error => {
+        if (isCurrent()) throw error
+        return []
+      }) : []
+      if (isCurrent()) this.panels.showHelp(remoteCommandCatalog(writable, this.featureCommands(), commands))
       return { exit: false }
     }
     if (name === 'status') {

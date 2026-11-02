@@ -8,6 +8,7 @@ import type { HostClient } from '../../src/client/types.ts'
 import type { RemoteApp } from '../../src/remote/app.ts'
 import { mountEditorComposition } from '../../src/remote/editor-composition.ts'
 import type { RemoteFeatureSelection } from '../../src/remote/features/contracts.ts'
+import { RemoteFeatureCommandRegistry } from '../../src/remote/features/commands.ts'
 import { accepted, deferred, denied, flush, wire } from './editor-feature-fixture.ts'
 
 type Displayed = RemoteFeatureSelection & { readonly access: 'interactive' | 'resumable' | 'readonly' }
@@ -39,7 +40,7 @@ function host(name: string) {
   }
 }
 
-function fixture(initialAccess: Displayed['access'] = 'resumable') {
+function fixture(initialAccess: Displayed['access'] = 'resumable', featureCommands = new RemoteFeatureCommandRegistry()) {
   const primary = host('primary')
   const child = host('one')
   const otherHost = host('two')
@@ -60,12 +61,13 @@ function fixture(initialAccess: Displayed['access'] = 'resumable') {
   const execute = vi.fn(async () => ({ exit: false }))
   const app = {
     registry: { current: primary.selected.ref, currentReference: primaryReference, list: () => clients, get: (key: string) => clients.find(client => client.key === key) },
-    ensureSession, execute,
+    ensureSession, execute, preparePrompt: vi.fn(async () => {}),
     subscribeTopology: (listener: () => void) => { topology.add(listener); return () => { topology.delete(listener) } },
   } as unknown as RemoteApp
   const notices: string[] = []
   const exit = vi.fn()
   const handle = mountEditorComposition({ app, editor, screen, components, colors, keymap, notice: { set: text => { notices.push(text) } }, localCwd: '/remote', exit,
+    featureCommands,
     selection: () => displayed,
     subscribeSelection: listener => { displayedListeners.add(listener); return () => { displayedListeners.delete(listener) } },
   })
@@ -193,5 +195,49 @@ describe('editor composition displayed native binding integration', () => {
     expect(await reading).toBeUndefined()
     expect(f.otherHost.readBytes).not.toHaveBeenCalled()
     expect(f.primary.readBytes).not.toHaveBeenCalled()
+  })
+
+  it('uses the same actual mounted scope-aware directory for startup and writable completion', async () => {
+    const commands = new RemoteFeatureCommandRegistry()
+    commands.register({ name: 'theme', description: 'Switch the color theme', scope: 'sessionless', aliases: ['color'], execute: vi.fn() })
+    commands.register({ name: 'save', description: 'Save session', execute: vi.fn() })
+    commands.register({ name: 'internal', description: 'Hidden', scope: 'sessionless', hidden: true, execute: vi.fn() })
+    const f = fixture('resumable', commands)
+    f.display(undefined)
+    f.editor.handleInput?.('/')
+    await flush()
+    const startup = f.editor.completion()?.items.map(item => item.value) ?? []
+    expect(startup).toContain('/theme')
+    expect(startup).toContain('/quit')
+    expect(startup).not.toContain('/save')
+    expect(startup).not.toContain('/skills')
+    expect(startup).not.toContain('/internal')
+    expect(f.ensureSession).not.toHaveBeenCalled()
+    f.display(f.child.displayed())
+    f.editor.setText('')
+    f.editor.handleInput?.('/')
+    await flush()
+    expect(f.editor.completion()?.items.map(item => item.value)).toContain('/save')
+    f.editor.setText('')
+    f.editor.handleInput?.('/color')
+    await flush()
+    expect(f.editor.completion()?.items.map(item => item.value)).toContain('/theme')
+  })
+
+  it('routes built-in ownership before a duplicate feature registration', async () => {
+    const commands = new RemoteFeatureCommandRegistry()
+    const duplicate = vi.fn()
+    const theme = vi.fn()
+    commands.register({ name: 'help', description: 'wrong help', scope: 'sessionless', execute: duplicate })
+    commands.register({ name: 'theme', description: 'Switch the color theme', scope: 'sessionless', execute: theme })
+    const f = fixture('resumable', commands)
+    f.enter('/help')
+    await flush()
+    expect(f.execute).toHaveBeenCalledWith('/help')
+    expect(duplicate).not.toHaveBeenCalled()
+    f.enter('/theme')
+    await flush()
+    expect(theme).toHaveBeenCalledOnce()
+    expect(f.child.executeCommand).not.toHaveBeenCalled()
   })
 })

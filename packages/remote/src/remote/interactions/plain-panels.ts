@@ -4,11 +4,10 @@ import { MAYFLY_VERSION } from '@ephemeral-ai/mayfly/banner-content'
 import { helpNode, displayKey, SHARED_KEY_REFERENCE, interactionTranslator, mountInteractionLocale, observeInteractionLocale } from '@ephemeral-ai/mayfly/command-panels'
 import { contextPercent, formatTokens } from '@ephemeral-ai/mayfly/status-context'
 import { panel, ui, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { HostActions } from '../../frontend/host-actions.ts'
 import type { RemotePresentationFacts } from '../../transcript/remote-model.ts'
+import type { RemoteCommandDescriptor } from '../command-catalog.ts'
 
-/** One Host command descriptor exposed by the official Remote catalog. */
-export type RemoteCommandDescriptor = Awaited<ReturnType<HostActions['listCommands']>>[number]
+export type { RemoteCommandDescriptor } from '../command-catalog.ts'
 
 /** Panel operations consumed by the command router. */
 export interface RemoteAppPanels {
@@ -16,8 +15,6 @@ export interface RemoteAppPanels {
   showStatus(facts: RemotePresentationFacts): void
   showVersion(): void
 }
-
-const ALIASES: Readonly<Record<string, readonly string[]>> = { quit: ['q', 'exit'], new: ['clear'], sessions: ['resume'] }
 
 /** Wire overlays retain focus and drafts in the shared frontend across renderer reload. */
 export class RemotePlainPanels implements RemoteAppPanels {
@@ -33,16 +30,24 @@ export class RemotePlainPanels implements RemoteAppPanels {
   }
 
   showHelp(commands: readonly RemoteCommandDescriptor[]): void {
-    const unique = [...new Map(commands.map(command => [command.name, command])).values()].sort((a, b) => a.name.localeCompare(b.name))
+    const seen = new Set<string>()
+    const unique = commands.filter(command => {
+      if (seen.has(command.name)) return false
+      seen.add(command.name)
+      return true
+    }).toSorted((a, b) => a.name.localeCompare(b.name))
+    const row = (command: RemoteCommandDescriptor) => ({
+      label: `/${command.name}${command.aliases === undefined ? '' : ` (${command.aliases.map(alias => `/${alias}`).join(', ')})`}`,
+      description: this.t(command.description),
+    })
+    const remote = unique.filter(command => command.group === 'remote')
     this.open('help', () => helpNode([
-      { heading: 'Commands', labelTone: 'accent', rows: unique.map(command => ({
-        label: `/${command.name}${ALIASES[command.name] === undefined ? '' : ` (${ALIASES[command.name]!.map(alias => `/${alias}`).join(', ')})`}`,
-        description: command.description,
-      })) },
+      { heading: 'Commands', labelTone: 'accent', rows: unique.filter(command => command.group !== 'remote').map(row) },
       { heading: 'Keys', labelTone: 'warning', rows: this.ctx.mayflyKeymap.list().map(action => ({
-        label: [action.keys].flat().map(displayKey).join('/'), description: action.description ?? action.label ?? action.id,
+        label: [action.keys].flat().map(displayKey).join('/'), description: this.t(action.description ?? action.label ?? action.id),
       })) },
       { heading: 'Panels and pickers', labelTone: 'warning', rows: SHARED_KEY_REFERENCE.map(row => ({ label: this.t(row.keys), description: this.t(row.action) })) },
+      ...remote.length === 0 ? [] : [{ heading: 'Remote', labelTone: 'accent' as const, rows: remote.map(row) }],
     ], this.t))
   }
 

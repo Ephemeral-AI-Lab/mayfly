@@ -7,6 +7,10 @@
 export interface RemoteFeatureCommandDefinition {
   readonly name: string
   readonly description: string
+  /** Commands without an explicit sessionless scope require a writable Session. */
+  readonly scope?: 'sessionless' | 'session'
+  /** Remote-only entry grouped after the reference command and key sections. */
+  readonly group?: 'remote'
   /** Internal composition route omitted from user-facing help and completion. */
   readonly hidden?: boolean
   readonly aliases?: readonly string[]

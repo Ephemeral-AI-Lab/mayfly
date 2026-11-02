@@ -28,7 +28,7 @@ describe('shared wire command panels', () => {
   it('shows reference Help with aliases and key sections, replaces panels and unloads registrations', async () => {
     const { ctx, panels, text } = await fixture()
     try {
-      panels.showHelp([{ name: 'quit', description: 'Exit Mayfly' }])
+      panels.showHelp([{ name: 'quit', description: 'Exit Mayfly', aliases: ['q', 'exit'] }])
       expect(text()).toContain('/quit (/q, /exit)')
       expect(text()).toContain('Panels and pickers')
       expect(text()).toContain('Test key')
@@ -85,6 +85,25 @@ describe('shared wire command panels', () => {
       panels.dispose()
       ctx.mayflyLocale.setPreference('en')
       expect(ctx.mayflyOverlays.list()).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('uses actual aliases, first ownership, translated descriptions and a final Remote section', async () => {
+    const { ctx, panels, text } = await fixture()
+    try {
+      panels.showHelp([
+        { name: 'theme', description: 'Switch the color theme', aliases: ['color'] },
+        { name: 'theme', description: 'duplicate Host description' },
+        { name: 'quit', description: 'Exit Mayfly' },
+        { name: 'attach', description: 'Attach a Host URL', group: 'remote' },
+      ])
+      expect(text()).toContain('/theme (/color)')
+      expect(text()).not.toContain('duplicate Host description')
+      expect(text().indexOf('Panels and pickers')).toBeLessThan(text().indexOf('Remote'))
+      expect(text().indexOf('Remote')).toBeLessThan(text().indexOf('/attach'))
+      ctx.mayflyLocale.setPreference('zh')
+      await vi.waitFor(() => { expect(text()).toContain('退出 Mayfly') })
+      panels.dispose()
     } finally { await ctx.fiber.dispose() }
   })
 })

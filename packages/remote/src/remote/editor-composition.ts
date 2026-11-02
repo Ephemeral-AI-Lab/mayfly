@@ -13,10 +13,9 @@ import type {
 } from '@ephemeral-ai/mayfly/core'
 import type { HostClient } from '../client/types.ts'
 import type { RemoteApp } from './app.ts'
-import { FRONTEND_COMMANDS } from './app.ts'
+import { FRONTEND_COMMANDS, remoteCommandCatalog } from './command-catalog.ts'
 import { attachEditorFeatures } from './editor/index.ts'
 import type {
-  EditorCommandDescriptor,
   EditorFeatureController,
   EditorFeatureOptions,
   EditorFeatureSession,
@@ -43,17 +42,13 @@ interface EditorCompositionOptions {
   readonly notice: RemoteNotice
   readonly localCwd: string
   readonly exit: () => void | Promise<void>
+  /** Restore focus through the owning dock so its frame and status remain visible. */
+  readonly focusEditor?: () => void
   /** Feature-owned slash-command contributions routed before Host command dispatch. */
   readonly featureCommands?: RemoteFeatureCommandSource | undefined
   /** Borrow the exact displayed binding; native SessionFace performs addressed child routing. */
   readonly selection?: () => (RemoteFeatureSelection & { readonly access: 'interactive' | 'resumable' | 'readonly' }) | undefined
   readonly subscribeSelection?: (listener: () => void) => () => void
-}
-
-const ALIASES: Readonly<Record<string, readonly string[]>> = {
-  quit: ['q', 'exit'],
-  new: ['clear'],
-  sessions: ['resume'],
 }
 
 /** Attach editor features once and fence their selection, reconnect, and local process lifetimes. */
@@ -85,19 +80,7 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
   }
   const local: EditorLocalAdapter = {
     cwd: () => options.localCwd,
-    list: () => [
-      ...FRONTEND_COMMANDS.map(command => ({
-        ...command,
-        ...ALIASES[command.name] === undefined ? {} : { aliases: ALIASES[command.name] },
-      })),
-      ...(options.featureCommands?.list() ?? []).map(command => ({
-        name: command.name,
-        description: command.description,
-        ...command.aliases === undefined ? {} : { aliases: command.aliases },
-        ...command.input === undefined ? {} : { input: command.input },
-      })),
-      { name: 'skills', description: 'List available skills' },
-    ] satisfies readonly EditorCommandDescriptor[],
+    list: () => remoteCommandCatalog(session() !== undefined && session()?.access !== 'readonly', options.featureCommands?.list() ?? []),
     async execute(invocation) {
       if (invocation.attachments.length > 0) {
         return { kind: 'error', text: 'Command attachments require the focused Host command DTO; no command was sent' }
@@ -106,7 +89,8 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
         await controller.openSkills()
         return { kind: 'success' }
       }
-      if (await options.featureCommands?.execute(invocation.name, invocation.rawInput, invocation.signal) === true) {
+      if (!FRONTEND_COMMANDS.some(command => command.name === invocation.name)
+        && await options.featureCommands?.execute(invocation.name, invocation.rawInput, invocation.signal) === true) {
         return { kind: 'success' }
       }
       const result = await options.app.execute(invocation.line)
@@ -120,11 +104,13 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     components: options.components,
     colors: options.colors,
     keymap: options.keymap,
+    ...options.focusEditor === undefined ? {} : { focusEditor: options.focusEditor },
     session,
     async ensureSession() {
       await options.app.ensureSession(options.localCwd)
       return requireSelection(session())
     },
+    preparePrompt: (selected, signal) => options.app.preparePrompt(selected.ref, signal),
     notice: options.notice,
     upload: (sessionId, data, name, signal) => fileClient(sessionId, signal).fileUpload.upload(sessionId, data, name, signal),
     files,
