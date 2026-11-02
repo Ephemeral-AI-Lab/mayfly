@@ -370,6 +370,8 @@ type ControlDescriptor =
   | (ControlBase & { readonly kind: 'scroll', readonly fixed?: true })
   | (ControlBase & { readonly kind: 'list', readonly node: MayflyListNode })
 
+type EditableControl = Extract<ControlDescriptor, { readonly kind: 'text' | 'select' }>
+
 interface ControlGroup {
   readonly id: string
   readonly kind: 'tabs' | 'content'
@@ -623,10 +625,10 @@ function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompile
  * settled window paint before the frame reads them and the reported `contentHeight` is exact where it is seen.
  */
 class WindowScrollView extends BarredScrollView {
-  private readonly held: { rows?: string[] | undefined }
+  private readonly held: { rows: string[] }
 
   constructor(component: Component, options: BarredScrollViewOptions) {
-    const held: { rows?: string[] } = {}
+    const held = { rows: [] as string[] }
     super({
       render: (width: number): string[] => {
         const painted = component.render(width)
@@ -639,7 +641,7 @@ class WindowScrollView extends BarredScrollView {
 
   /** Paint the segments under the settled window before the frame reads the rows. */
   protected prepareWindow(): void {
-    if (this.held.rows !== undefined) prepareRows(this.held.rows, this.scrollTop, this.scrollTop + this.viewportHeight)
+    prepareRows(this.held.rows, this.scrollTop, this.scrollTop + this.viewportHeight)
   }
 
   override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
@@ -1122,16 +1124,17 @@ function flowListSpec(choice: UiChoiceState | undefined, node: MayflyListNode, i
     return { item: row.item, depth: row.depth, last: row.last, expandable: row.expandable, open: row.open, position: index }
   }
   const item = admittedListItem(node.items, index)!
-  const always = item.bodyAlways === true && item.body !== undefined
+  const always = item.bodyAlways === true
   return { item, depth: 0, last: false, expandable: !always && item.body !== undefined, open: always || (item.body !== undefined && item.expanded === true), position: index }
 }
 
 /** The choice state a flow row paints from, besides the item: an open body, the cursor, and an input's text. */
 function flowListSignature(choice: UiChoiceState | undefined, node: MayflyListNode): string {
   if (choice === undefined) return ''
+  // A virtual flow list has no active search. Keep only facts its row painter can read.
   return [
-    choice.query, choice.searching ? 1 : 0, choice.expandedIds.join('\x01'), choice.focusedId ?? '',
-    JSON.stringify(choice.segments ?? {}), JSON.stringify(choice.inputs ?? {}), node.expandFocused === true ? 1 : 0,
+    choice.expandedIds.join('\x01'), choice.focusedId ?? '',
+    JSON.stringify([choice.segments, choice.inputs]), node.expandFocused === true ? 1 : 0,
   ].join('\x1e')
 }
 
@@ -1930,7 +1933,8 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
         const following = probe.controlId === node.id
         if (following) probe.line = undefined
         const locate = following && probe.itemId !== undefined
-          ? { id: probe.itemId, found: (line: number | undefined) => { probe.line = line === undefined ? undefined : line + queryRows.length + (counter === undefined ? 0 : 1) } }
+          // The painter reports locations only in flow mode, where the outer scroll owns the window and no counter is drawn.
+          ? { id: probe.itemId, found: (line: number | undefined) => { probe.line = line === undefined ? undefined : line + queryRows.length } }
           : undefined
         let body: string[]
         if (entries.length === 0) body = query.length > 0 ? [sliceByColumn(options.colors.textMuted(coreText(options, 'No matches')), 0, width, true)] : empty?.render(width) ?? []
@@ -1955,7 +1959,8 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
           })
           if (following && probe.itemId !== undefined) {
             const line = painter.locate(probe.itemId)
-            probe.line = line === undefined ? undefined : line + queryRows.length + (counter === undefined ? 0 : 1)
+            // A virtual flow list has neither a query row nor a viewport counter.
+            probe.line = line
           }
           body = painter.rows()
         } else {
@@ -2659,7 +2664,7 @@ export class MayflyUiSurfaceRuntime {
       if (state !== undefined) return { index, position: start + offset, ...choiceRow(state, index) }
       // Without a frontend model the list is a plain roving list: rows open only as they were declared.
       const item = admittedListItem(node.items, index)!
-      const always = item.bodyAlways === true && item.body !== undefined
+      const always = item.bodyAlways === true
       return { index, position: start + offset, item, depth: 0, last: false, expandable: !always && item.body !== undefined, open: always || (item.body !== undefined && item.expanded === true) }
     })
     countWork(this.options?.counters, 'itemsWalked', window.length)
@@ -3131,7 +3136,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
           countWork(this.runtimeOptions.counters, 'layoutPasses')
           const frame = renderLayoutFrame(expandedComponent, safeWidth, Math.max(1, viewport.rows - hint.length), () => {})
           const lines = [...frame.lines, ...hint]
-          return { rows: lines.map(row => visibleWidth(row) <= safeWidth ? row : /* layout frames and hint rows are already produced at the safe width */ sliceByColumn(row, 0, safeWidth, true)), overflowed: false }
+          return { rows: lines.map(row => sliceByColumn(row, 0, safeWidth, true)), overflowed: false }
         } finally { this.state.layoutPass = false; this.viewport = viewport }
       }
       let rows: string[]
@@ -3367,8 +3372,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     beginLayoutPass(this.state)
     countWork(this.runtimeOptions.counters, 'layoutPasses')
     try {
-      /* pi-tui does not request repaint during synchronous measurement. */
-      const frame = renderLayoutFrame(this.root, width, height, () => {})
+      const frame = renderLayoutFrame(this.root, width, height, this.surfaceRuntime.repaint)
       const boxes = layoutBoxes(frame.root)
       const byComponent = new Map<Component, ControlDescriptor[]>()
       for (const control of controls) {
@@ -3439,7 +3443,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const groups = controlGroups(controls)
     const current = groups.findIndex(group => group.id === active.group)
     const sibling = controls[this.state.lastIndex + delta]
-    if (sibling?.group === active.group && !(active.kind === 'event' && (active.role === 'tab' || active.role === 'list-single' || active.role === 'list-multiple'))) {
+    // Group traversal is emitted only while a text field or picker is being edited.
+    if (sibling?.group === active.group) {
       this.moveTo(this.state.lastIndex + delta, controls)
       return
     }
@@ -3472,11 +3477,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
   }
 
   /** Commit an in-progress text edit or picker before focus leaves the field. */
-  private commitEditing(active: ControlDescriptor): void {
-    if (active.kind === 'text' && this.state.editingKey === active.key) {
+  private commitEditing(active: EditableControl): void {
+    if (active.kind === 'text') {
       this.state.setValue(active.key, this.state.textEditor(active.field, active.key).getExpandedText())
       this.state.setEditing(undefined)
-    } else if (active.kind === 'select' && this.state.editingKey === active.key) this.applyPicker(active)
+    } else this.applyPicker(active)
   }
 
   private applyPicker(active: Extract<ControlDescriptor, { readonly kind: 'select' }>): void {
@@ -3519,7 +3524,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         this.state.finishSelectEditing(select.field, select.key, true)
         return
       }
-      case 'done': this.commitEditing(active!); return
+      case 'done': this.commitEditing(active as EditableControl); return
       case 'end-search': {
         const node = (active as Extract<ControlDescriptor, { readonly kind: 'event' }>).listEntry?.node ?? (active as Extract<ControlDescriptor, { readonly kind: 'list' }>).node
         this.surfaceRuntime.interaction!.updateChoice({ pagePath: this.surfaceRuntime.pagePath(node), controlId: node.id }, { kind: 'stop-search' })
@@ -3531,8 +3536,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
         this.moveTo(groupTarget(controls, homeGroup(controls)!, this.state.groupActiveKeys.get(homeGroup(controls)!)), controls)
         return
       }
-      /* an expanded view resolves Escape through its own collapse binding. */
-      case 'collapse': this.state.expandedKey = undefined; return
       case 'cancel-work': {
         // The grammar offers this step only while a loader's cancel is among the controls.
         const work = this.state.controls().find(candidate => candidate.kind === 'event' && candidate.work === true) as Extract<ControlDescriptor, { readonly kind: 'event' }>
@@ -3696,7 +3699,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const listNode = active.kind === 'list' ? active.node : active.kind === 'event' ? active.listEntry?.node : undefined
     const listAddress = listNode === undefined ? undefined : { pagePath: this.surfaceRuntime.pagePath(listNode), controlId: listNode.id }
     switch (intent.kind) {
-      case 'group': this.commitEditing(active); this.moveGroup(intent.delta, reconcile(this.state), active); return
+      case 'group': this.commitEditing(active as EditableControl); this.moveGroup(intent.delta, reconcile(this.state), active); return
       case 'focus-level': this.focusLevel(intent.delta, controls, active); return
       case 'text-newline': this.state.textEditor((active as Extract<ControlDescriptor, { readonly kind: 'text' }>).field, active.key).insertText('\n'); return
       case 'text-enter': {
@@ -3738,7 +3741,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
         // The grammar binds `ui.save` only where the form has a target to run.
         const form = (active as Extract<ControlDescriptor, { readonly kind: 'text' | 'select' | 'toggle' }>).form
         const pagePath = active.identity.pagePath!
-        if (this.state.editingKey === active.key) this.commitEditing(active)
+        if (this.state.editingKey === active.key) this.commitEditing(active as EditableControl)
         model?.invoke(formSaveTarget(form, pagePath, model)!, pagePath)
         return
       }

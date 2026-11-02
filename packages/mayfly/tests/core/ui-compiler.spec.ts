@@ -3,6 +3,7 @@ import { CURSOR_MARKER, HStack, ScrollView, stripTerminalSequences, type Compone
 import { renderLayoutFrame, type LayoutBox, type LayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { describe, expect, it, vi } from 'vitest'
+import { ui as wireUi } from '@ephemeral-ai/mayfly-ui'
 import { ui } from '../../../ui/src/index.ts'
 import {
   MayflyUiSurfaceRuntime,
@@ -2571,7 +2572,7 @@ describe('compiler scroll, diagram, and failure edges', () => {
   })
 
   it('compiles the same diagram node again to the same rows', () => {
-    const node = ui.diagram('graph TD\nA --> B')
+    const node = wireUi.diagram('graph TD\nA --> B')
     // One admission cache hands the same admitted node to both compiles, so the second reads the fence source from the memo.
     const admission = createAdmissionCache()
     const first = compiled(node, fixture({ admission }).options).component.render(40).join('\n')
@@ -2723,7 +2724,73 @@ describe('interactive prompt, slider, and list inputs', () => {
     expect(runtime.flowList(node, 30, flowModel, options)).toBe(first)
     expect(first.row(0)).toContain('A')
     for (let index = 0; index < 33; index += 1) runtime.pagePeaks(`peak-${String(index)}`)
-    expect(runtime.pagePeaks('peak-33')).toBeInstanceOf(Map)
+    const peaks = runtime.pagePeaks('peak-33')
+    expect(peaks).toBeInstanceOf(Map)
+    expect(runtime.pagePeaks('peak-33')).toBe(peaks)
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('keeps measured animation scopes from arming visible clocks', () => {
+    const runtime = new MayflyUiSurfaceRuntime()
+    expect(runtime.measure(() => {
+      expect(runtime.loaderFrame()).toBe(0)
+      runtime.showMoving(new Map())
+      return 'measured'
+    })).toBe('measured')
+    expect(runtime.animationFrame).toBe(0)
+    runtime.dispose()
+  })
+
+  it('keeps a compiled slider inert when its frontend projection is withdrawn before renderer replacement', () => {
+    const node = ui.slider({ id: 'withdrawn', levels: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], selectedId: 'a' })
+    const events = { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }
+    const { model, runtime, value } = interactive(node, events)
+    const focus = value.focusTarget!
+    focus.focused = true
+    focus.render(40)
+    model.receive({ id: 'interactive', revision: 1, source: [], scope: { kind: 'app', targetId: 'interactive' }, update: { reason: 'replace' }, node: null, definition: {}, events })
+    expect(() => focus.handleInput?.('\x1b[C')).not.toThrow()
+    expect(model.slider({ pagePath: [], controlId: 'withdrawn' })).toBeUndefined()
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('locates a tracked row below a query in a focused nonvirtual flow list', () => {
+    const node = ui.list({ id: 'tracked', role: 'browse', filterable: true, tree: true, selectedIds: [], items: Array.from({ length: 50 }, (_, index) => ({ id: `item-${String(index)}`, label: `Match ${String(index)}` })) })
+    const { model, runtime, value, f } = interactive(node)
+    runtime.flow = true
+    f.viewport.rows = 12
+    model.updateChoice({ pagePath: [], controlId: 'tracked' }, { kind: 'query', query: 'Match' })
+    const focus = value.focusTarget!
+    focus.focused = true
+    runtime.probe.controlId = 'tracked'
+    runtime.probe.itemId = 'item-1'
+    expect(focus.render(60).join('\n')).toContain('Match 1')
+    expect(runtime.probe.line).toBe(2)
+    runtime.probe.itemId = 'absent'
+    value.component.invalidate()
+    value.component.render(60)
+    expect(runtime.probe.line).toBeUndefined()
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('leaves an edited final field for the next group and stays at the outside edges', () => {
+    const node = ui.stack.column([
+      ui.form({ id: 'first', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'before' }] }),
+      ui.actions({ id: 'actions', items: [{ id: 'done', label: 'Done' }] }),
+    ])
+    const { model, runtime, value } = interactive(node)
+    const focus = value.focusTarget!
+    focus.focused = true
+    focus.render(60)
+    focus.handleInput?.('\r')
+    focus.handleInput?.('\x1b[Z')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'name' })
+    focus.handleInput?.('\r')
+    focus.handleInput?.('\t')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'done' })
     runtime.dispose()
     model.dispose()
   })
@@ -2742,6 +2809,14 @@ describe('interactive prompt, slider, and list inputs', () => {
 })
 
 describe('compiler flow lists and framed surfaces', () => {
+  it('paints a row rule in both glyph modes', () => {
+    for (const glyphs of ['unicode', 'ascii'] as const) {
+      const f = fixture({ components: { ...components, presentation: { glyphs } } as MayflyComponents })
+      const result = compiled(ui.stack.row([ui.text('left'), ui.text('right')], { rule: 'column', gap: 3 }), f.options)
+      expect(stripTerminalSequences(result.component.render(30).join('\n'))).toContain(glyphs === 'ascii' ? '|' : '│')
+    }
+  })
+
   it('lays out a vertical divider at the row height with its palette and glyph mode', () => {
     for (const glyphs of ['unicode', 'ascii'] as const) {
       for (const tone of [undefined, 'warning'] as const) {
@@ -2782,8 +2857,42 @@ describe('compiler flow lists and framed surfaces', () => {
 
   it('paints a slider read-only without an interaction model', () => {
     const node = ui.slider({ id: 'level', levels: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], selectedId: 'a' })
-    const result = compiled(node, fixture().options)
+    const result = compiled(node, fixture({ contextHints: { enabled: true } }).options)
     expect(result.component.render(40).join('\n')).toContain('A')
+    expect(result.focusTarget).toBeNull()
+  })
+
+  it('keeps a bodyless row closed and a declared expanded body open without drafts', () => {
+    const node = ui.list({ id: 'declarations', role: 'browse', selectedIds: [], items: [
+      { id: 'missing', label: 'Missing' },
+      { id: 'open', label: 'Open', body: 'visible body', expanded: true },
+    ] })
+    const runtime = new MayflyUiSurfaceRuntime()
+    runtime.flow = true
+    const result = compiledSurface(node, fixture().options, runtime)
+    const rows = result.component.render(40).map(stripTerminalSequences)
+    expect(rows.join('\n')).toContain('visible body')
+    expect(rows.filter(row => row.includes('Missing'))[0]).not.toContain('▾')
+    runtime.dispose()
+  })
+
+  it('keeps a flow list with only disabled rows passive even with expand-focused bodies', () => {
+    const node = ui.list({ id: 'disabled', role: 'browse', selectedIds: [], expandFocused: true, items: [{ id: 'a', label: 'Disabled', disabled: true, body: 'closed' }] })
+    const model = new UiSurfaceModel('disabled', { id: 'disabled', revision: 0, source: [], scope: { kind: 'app', targetId: 'disabled' }, update: { reason: 'replace' }, node, definition: {}, events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) } })
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    runtime.flow = true
+    const result = compiledSurface(node, fixture().options, runtime)
+    expect(result.component.render(40).join('\n')).toContain('Disabled')
+    expect(result.focusTarget).toBeNull()
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('contains an overwide hosted buffer even when its injected truncation helper is faulty', () => {
+    const editor = createTestEditor()
+    editor.render = () => ['x'.repeat(80)]
+    const { result } = compiledEditorShell({ kind: 'surface', chrome: 'surface', child: { kind: 'prompt', id: 'host' } }, editor, { components: { ...components, truncateToWidth: identity } as MayflyComponents })
+    expectLinesFit('framed hosted backstop', result.component.render(20), 20)
   })
 
   it('paints a flow list from its painter and reports the followed item\'s line', () => {
@@ -2848,7 +2957,7 @@ describe('compiler flow lists and framed surfaces', () => {
   })
 
   it('grows the framed surface body when an interaction model is present', () => {
-    const node = ui.surface({ title: 'Frame', chrome: 'surface', child: ui.text('body') })
+    const node = ui.surface({ title: 'Frame', chrome: 'surface', child: ui.text('body'), footer: ui.text('footer') })
     const model = new UiSurfaceModel('framed', {
       id: 'framed', revision: 0, source: [], scope: { kind: 'app', targetId: 'framed' }, update: { reason: 'replace' },
       node, definition: {}, events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) },
@@ -2858,6 +2967,7 @@ describe('compiler flow lists and framed surfaces', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error(result.message)
     expect(result.value.component.render(30).join('\n')).toContain('body')
+    expect(result.value.component.render(30).join('\n')).toContain('footer')
     runtime.dispose()
     model.dispose()
   })
