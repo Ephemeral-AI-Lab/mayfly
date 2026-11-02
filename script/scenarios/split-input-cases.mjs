@@ -68,9 +68,40 @@ export const SPLIT_LOCAL_SHELL_STEPS = Object.freeze([
   ...send('!node -e ""'), { step: 'until', text: '(no output)' }, checkpoint('shell-empty'),
 ])
 
+/** Rename through the actual title editor, including persistence and dirty cancellation. */
+export const SPLIT_RENAME_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' },
+  ...send('Say one line before the rename workflow.'), { step: 'until', text: 'the model is a stub' },
+  ...send('/rename Rename seed 你好 🪰'), { step: 'until', text: 'renamed session to Rename seed 你好 🪰' },
+  ...send('/rename'), { step: 'until', text: 'Rename session' }, { step: 'until', text: 'Rename seed 你好 🪰' },
+  checkpoint('rename-prefilled'),
+  key('esc'), { step: 'until-gone', text: 'Rename session' }, checkpoint('rename-clean-cancel'),
+  ...send('/rename'), { step: 'until', text: 'Rename session' },
+  { step: 'type', text: ' editing' }, key('ctrl+u'), { step: 'type', text: 'Renamed session 保存 🪰' },
+  checkpoint('rename-edited'), resize(40, 16), checkpoint('rename-edited-narrow'),
+  resize(120, 40), checkpoint('rename-edited-wide'), resize(80, 24),
+  key('enter'), { step: 'until-gone', text: 'Rename session' }, checkpoint('rename-saved'),
+  ...send('/rename'), { step: 'until', text: 'Rename session' }, { step: 'until', text: 'Renamed session 保存 🪰' },
+  checkpoint('rename-reopened'),
+  { step: 'type', text: ' UNSAVED' }, key('esc'), key('esc'),
+  { step: 'until', text: 'Discard unsaved changes?' }, checkpoint('rename-discard-confirm'),
+  key('n'), { step: 'until-gone', text: 'Discard unsaved changes?' }, checkpoint('rename-keep-draft'),
+  key('esc'), { step: 'until', text: 'Discard unsaved changes?' }, key('y'),
+  { step: 'until-gone', text: 'Rename session' }, checkpoint('rename-discarded'),
+  ...send('/rename'), { step: 'until', text: 'Rename session' }, { step: 'until', text: 'Renamed session 保存 🪰' },
+  { step: 'until-gone', text: 'UNSAVED' }, checkpoint('rename-after-cancel'),
+  { step: 'type', text: ' editing' }, key('ctrl+u'), key('enter'),
+  { step: 'until', text: 'Enter a session name' }, checkpoint('rename-empty-rejected'),
+  { step: 'type', text: 'Renamed session 保存 🪰' }, key('enter'), { step: 'until-gone', text: 'Rename session' },
+  ...send('/rename'), { step: 'until', text: 'Rename session' }, { step: 'until', text: 'Renamed session 保存 🪰' },
+  resize(40, 16), checkpoint('rename-persisted-narrow'), resize(120, 40), checkpoint('rename-persisted-wide'),
+  key('esc'), { step: 'until-gone', text: 'Rename session' }, checkpoint('rename-closed'),
+])
+
 export const SPLIT_INPUT_CASES = Object.freeze({
   'transcript-search': { profileTag: 'input-search-v1', steps: SPLIT_TRANSCRIPT_SEARCH_STEPS },
   'focus-resize': { profileTag: 'input-focus-v1', steps: SPLIT_FOCUS_RESIZE_STEPS },
   'editor-feedback': { profileTag: 'input-feedback-v1', steps: SPLIT_EDITOR_FEEDBACK_STEPS },
   'local-shell': { profileTag: 'input-shell-v1', steps: SPLIT_LOCAL_SHELL_STEPS },
+  rename: { profileTag: 'input-rename-v1', steps: SPLIT_RENAME_STEPS },
 })
