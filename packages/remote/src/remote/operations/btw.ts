@@ -10,10 +10,10 @@ import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
 import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
 
 const zh: Readonly<Record<string, string>> = {
-  'Usage: /btw <question> | /btw close': '用法：/btw <问题> | /btw close',
   'No current session': '当前没有会话',
-  'BTW view closed; the side session keeps running': 'BTW 视图已关闭；旁路会话仍在运行',
-  'BTW question shown in the side view': 'BTW 问题已在侧视图展示',
+  'no side question is open': '当前没有打开的侧问题',
+  'dismissed the side question': '已关闭侧问题',
+  'asked the side question': '已提出侧问题',
   'The BTW question was cancelled': 'BTW 问题已取消',
 }
 
@@ -38,14 +38,14 @@ class RemoteBtwCommand {
   }
 
   readonly execute = async (rawInput: string, signal: AbortSignal): Promise<void> => {
-    if (this.disposed) return
+    if (this.disposed || signal.aborted) return
     const input = rawInput.trim()
-    if (input === '') throw new Error(this.t('Usage: /btw <question> | /btw close'))
     const { base, options } = this.operations
-    if (input === 'close') {
+    if (input === '') {
+      const open = options.btw.close()
       this.operations.presentSlot.closeBtw()
-      options.btw.close()
-      base.notice.set(this.t('BTW view closed; the side session keeps running'))
+      if (!open) throw new Error(this.t('no side question is open'))
+      base.notice.set(this.t('dismissed the side question'))
       return
     }
     const current = base.hosts.current()
@@ -69,7 +69,7 @@ class RemoteBtwCommand {
         kind: 'btw', access: 'interactive', label: 'btw', cwd: session.selection.cwd,
         ...session.selection.historyFloorSeq === undefined ? {} : { historyFloorSeq: session.selection.historyFloorSeq },
       })
-      base.notice.set(this.t('BTW question shown in the side view'))
+      base.notice.set(this.t('asked the side question'))
     } catch (error) {
       if (operation.valid()) throw error
     } finally { operation.dispose() }
@@ -82,7 +82,7 @@ export function mountRemoteBtwOperations(context: RemoteOperationsContext): () =
   const unregister = context.base.commands.register({
     name: 'btw',
     description: 'Ask a side question in a temporary Agent session',
-    input: { hint: '<question>|close' },
+    input: { hint: '<question>' },
     execute: command.execute,
   })
   return () => { unregister(); command.dispose() }

@@ -33,7 +33,7 @@ function fixture(floor: number | null = 25) {
   const session = { parent: ref, child, view: { ready: Promise.resolve(binding) }, selection: { ref: child, cwd: '/host/repo', ...floor === null ? {} : { historyFloorSeq: floor } } }
   const ask = vi.fn(async () => ({ ok: true as const, value: session }))
   const active = vi.fn(() => ({ parent: ref, child }))
-  const close = vi.fn()
+  const close = vi.fn(() => true)
   const present = vi.fn()
   const closePresent = vi.fn()
   const slot = new RemotePresentSlot({ present, closePresent })
@@ -53,20 +53,35 @@ function fixture(floor: number | null = 25) {
 describe('native BTW command composition', () => {
   it('presents the exact BTW binding with inherited history and closes only that view', async () => {
     const f = fixture()
-    await expect(f.execute(' ')).rejects.toThrow('Usage: /btw')
     await f.execute(' explain this ')
     expect(f.ask).toHaveBeenCalledWith(f.ref, 'explain this', { signal: expect.any(AbortSignal) })
     expect(f.present).toHaveBeenCalledWith(f.child, f.binding, { kind: 'btw', access: 'interactive', label: 'btw', cwd: '/host/repo', historyFloorSeq: 25 })
-    expect(f.notice.set).toHaveBeenLastCalledWith('BTW question shown in the side view')
-    await f.execute('close')
+    expect(f.notice.set).toHaveBeenLastCalledWith('asked the side question')
+    await f.execute('')
     expect(f.closePresent).toHaveBeenCalledWith(f.child)
     expect(f.close).toHaveBeenCalledOnce()
-    expect(f.notice.set).toHaveBeenLastCalledWith('BTW view closed; the side session keeps running')
+    expect(f.notice.set).toHaveBeenLastCalledWith('dismissed the side question')
     f.unmount()
     expect(f.commands.list()).toEqual([])
     expect(f.topology.size + f.connections.size).toBe(0)
     await f.execute('after unload')
     expect(f.ask).toHaveBeenCalledOnce()
+  })
+
+  it('treats the bare command as close and refuses missing questions without creating Host work', async () => {
+    const f = fixture()
+    const cancelled = new AbortController(); cancelled.abort()
+    await f.execute('', cancelled.signal)
+    expect(f.close).not.toHaveBeenCalled()
+    await f.execute(' ')
+    expect(f.close).toHaveBeenCalledOnce()
+    expect(f.notice.set).toHaveBeenLastCalledWith('dismissed the side question')
+    f.close.mockReturnValue(false)
+    await expect(f.execute('')).rejects.toThrow('no side question is open')
+    expect(f.ask).not.toHaveBeenCalled()
+    await f.execute('close')
+    expect(f.ask).toHaveBeenCalledWith(f.ref, 'close', { signal: expect.any(AbortSignal) })
+    f.unmount()
   })
 
   it('preserves absence of a history floor and reports a current native failure', async () => {
@@ -130,5 +145,17 @@ describe('native BTW command composition', () => {
     asking.resolve({ ok: false, error: { code: 'stale' } } as never)
     await expect(pending).resolves.toBeUndefined()
     expect(f.present).not.toHaveBeenCalled()
+  })
+
+  it('does not create a side question if its caller retires during native scope capture', async () => {
+    const f = fixture()
+    const caller = new AbortController()
+    vi.spyOn(f.client.state, 'getSnapshot').mockImplementationOnce(() => {
+      caller.abort()
+      return { generation: 1 } as ReturnType<typeof f.client.state.getSnapshot>
+    })
+    await f.execute('cancelled while observing the Host', caller.signal)
+    expect(f.ask).not.toHaveBeenCalled()
+    f.unmount()
   })
 })
