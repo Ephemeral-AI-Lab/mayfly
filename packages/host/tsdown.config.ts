@@ -1,5 +1,6 @@
 import { defineConfig } from 'tsdown'
 import { typertPlugin } from '@deepseek-ai/dsh-typert-generator/tsdown'
+import { sourceDecoratorsPlugin } from '../../script/source-decorators.mjs'
 
 export default defineConfig({
   cwd: import.meta.dirname,
@@ -17,5 +18,5 @@ export default defineConfig({
   dts: false,
   clean: false,
   sourcemap: true,
-  plugins: [typertPlugin({ mode: 'package', faces: ['host'] })],
+  plugins: [sourceDecoratorsPlugin(), typertPlugin({ mode: 'package', faces: ['host'] })],
 })

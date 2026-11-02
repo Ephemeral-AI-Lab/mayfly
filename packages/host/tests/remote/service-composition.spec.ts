@@ -50,6 +50,32 @@ async function host(): Promise<{ ctx: Context, service: HostService, unload(): P
 }
 
 describe('Host Remote composition', () => {
+  it('streams a live attributed Workflow replacement through the installed built service', async () => {
+    const { ctx, service } = await host()
+    const session = ctx.sessions.get(SessionId('parent'))!
+    const iterator = service.followWorkflow({ sessionId: session.id }, new AbortController().signal)[Symbol.asyncIterator]()
+    await iterator.next()
+    ctx.emit('workflow/start', { id: 'foreign', meta: { name: 'foreign' } } as never)
+    ctx.emit('session/event', session, { type: 'tool-workflow/run-start', seq: 1, time: 1, data: { runId: 'r', name: 'live' } } as never)
+    expect((await iterator.next()).value).toMatchObject({ type: 'replacement', value: { runs: [{ id: 'r' }] } })
+    await iterator.return?.()
+  })
+
+  it('streams a native no-prompt authorization result through the installed built service', async () => {
+    const { ctx } = await host()
+    ctx.authorization.describe = (() => ({ key: credentialKey('fixture', 'account'), methods: [{ id: 'browser', label: 'Browser' }], label: 'Fixture', inFlight: false })) as typeof ctx.authorization.describe
+    ctx.authorization.begin = (async () => ({ status: 'authorized' })) as typeof ctx.authorization.begin
+    const signal = new AbortController().signal
+    const receiver = ctx.extend({ invocation: {
+      request: { namespace: 'mayflyHost', method: 'authorize', args: { key: 'fixture/account' } },
+      service: 'mayflyHost', signal,
+      peer: { id: 'fixture-peer' as never, ctx, principal: { kind: 'owner' }, signal, interactions: 'none', dispose: async () => {} },
+      uplink: () => ({ async *[Symbol.asyncIterator]() {} }),
+    } }).get('mayflyHost') as HostService
+    const frames = []
+    for await (const frame of receiver.authorize({ key: credentialKey('fixture', 'account') }, signal)) frames.push(frame)
+    expect(frames).toMatchObject([{ type: 'started' }, { type: 'settled', status: 'authorized' }])
+  })
   it('declares every addressed Session to native Gateway authorization, including both child drain identities', async () => {
     const { service } = await host()
     const methods = new Map(remoteMethods(service).map(method => [method.method, method]))

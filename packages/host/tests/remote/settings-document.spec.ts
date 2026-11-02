@@ -63,6 +63,15 @@ describe('readSettingsDocument', () => {
     controller.abort()
     await expect(readSettingsDocument(ctx, controller.signal)).rejects.toThrow()
   })
+
+  it('rejects cancellation while the native document path is being prepared', async () => {
+    const controller = new AbortController()
+    const context = { settings: { prepareDocument: async () => {
+      controller.abort(new Error('cancelled preparation'))
+      return '/unused'
+    } } } as unknown as Context
+    await expect(readSettingsDocument(context, controller.signal)).rejects.toThrow('cancelled preparation')
+  })
 })
 
 describe('writeSettingsDocument', () => {
@@ -110,6 +119,18 @@ describe('writeSettingsDocument', () => {
     const context = { settings: { writable: true, prepareDocument: async () => ++prepares === 3 ? temporary! : file } } as unknown as Context
     await expect(writeSettingsDocument(context, { expectedRevision: revisionOf('one'), content: 'two' }, new AbortController().signal))
       .rejects.toMatchObject({ code: 'mayflyHost/settings-document-unavailable' })
+    expect(await readFile(file, 'utf8')).toBe('one')
+  })
+
+  it('does not write when cancelled after revision checks but before native path preparation settles', async () => {
+    const { file } = await documentContext('one')
+    const controller = new AbortController()
+    let prepares = 0
+    const context = { settings: { writable: true, prepareDocument: async () => {
+      if (++prepares === 3) controller.abort(new Error('cancelled before write'))
+      return file
+    } } } as unknown as Context
+    await expect(writeSettingsDocument(context, { expectedRevision: revisionOf('one'), content: 'two' }, controller.signal)).rejects.toThrow('cancelled before write')
     expect(await readFile(file, 'utf8')).toBe('one')
   })
   it('writes the new content only when the revision matches, and returns the next revision', async () => {

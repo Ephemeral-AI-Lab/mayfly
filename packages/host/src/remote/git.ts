@@ -35,8 +35,8 @@ function readStatusDump(output: string): Pick<TreeFacts, 'dirty' | 'ahead' | 'be
     if (line.startsWith('## ')) {
       const match = AHEAD_BEHIND_RE.exec(line)
       if (match !== null) {
-        ahead = Number.parseInt(match[1] ?? '0', 10) || 0
-        behind = Number.parseInt(match[2] ?? '0', 10) || 0
+        ahead = Number.parseInt(match[1] ?? '0', 10)
+        behind = Number.parseInt(match[2] ?? '0', 10)
       }
     } else if (line.trim().length > 0) dirty = true
   }

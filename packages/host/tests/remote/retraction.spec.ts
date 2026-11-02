@@ -53,7 +53,7 @@ function harness(options: Partial<{
       return dispose
     },
     sessionProjections: { snapshot: (): { values: { mayflyRetraction: { open: object | null } } } => ({
-      values: { mayflyRetraction: { open: options.open ?? {
+      values: { mayflyRetraction: { open: 'open' in options ? options.open : {
         turn: 3, startSeq: 10, step: 1, messageIds: options.messageIds ?? ['m-1'], toolActivity: options.toolActivity ?? false,
       } } },
     }) },
@@ -62,7 +62,7 @@ function harness(options: Partial<{
   const coordinator = new RetractionCoordinator(ctx)
   // Listeners here take one argument; the session/event pair shape is not needed.
   const emit = (name: string, first: unknown, second?: unknown): void => { listeners.get(name)?.(first, second) }
-  return { coordinator, agent, session, appended, emit, ctx }
+  return { coordinator, agent, session, appended, emit, ctx, dispose: (): void => { for (const dispose of disposers) dispose() } }
 }
 
 describe('mayflyRetractionProjectionDefinition', () => {
@@ -98,6 +98,16 @@ describe('mayflyRetractionProjectionDefinition', () => {
     state = fold(state, event('user/message', { source: { kind: 'agent' }, id: 'm-2' }) as never)
     expect(state.open?.messageIds).toEqual(['m-1'])
   })
+
+  it('ignores unrelated and tool-free events while preserving the matching current step', () => {
+    const empty = { open: null }
+    expect(fold(empty, event('user/message', { source: { kind: 'user' }, id: 'm' }) as never)).toBe(empty)
+    let state = fold(empty, event('turn/start', { turn: 1 }) as never)
+    for (const item of [event('step/start', { turn: 2, step: 9 }), event('tool/result', { turn: 2 }), event('assistant/message', { turn: 2, message: { content: [] } }), event('assistant/message', { turn: 1, message: { content: [{ type: 'text', text: 'answer' }] } }), event('session/title', {})]) expect(fold(state, item as never)).toBe(state)
+    state = fold(state, event('step/start', { turn: 1, step: 4 }) as never)
+    expect(state.open?.step).toBe(4)
+    expect(mayflyRetractionProjectionDefinition.wire.view(state)).toBe(state)
+  })
 })
 
 describe('RetractionCoordinator.tryRetract', () => {
@@ -126,9 +136,53 @@ describe('RetractionCoordinator.tryRetract', () => {
     const idle = harness({ status: 'idle' })
     expect(idle.coordinator.tryRetract(idle.agent, 'm-1')).toBe(false)
   })
+
+  it('refuses a closed projection or unloaded coordinator', () => {
+    const closed = harness({ open: null })
+    expect(closed.coordinator.tryRetract(closed.agent, 'm-1')).toBe(false)
+    const retired = harness()
+    retired.dispose()
+    expect(retired.coordinator.tryRetract(retired.agent, 'm-1')).toBe(false)
+  })
 })
 
 describe('RetractionCoordinator persistence', () => {
+  it('skips persistence after owner unload or when the turn has no visible surface', async () => {
+    const retired = harness()
+    retired.coordinator.tryRetract(retired.agent, 'm-1')
+    retired.emit('session/event', retired.session, { type: 'turn/end', data: { turn: 3 }, seq: 30 })
+    retired.dispose()
+    await Promise.resolve()
+    expect(retired.session.append).not.toHaveBeenCalled()
+    const invisible = harness()
+    invisible.session.surface.nodes = []
+    invisible.coordinator.tryRetract(invisible.agent, 'm-1')
+    invisible.emit('session/event', invisible.session, { type: 'turn/end', data: { turn: 3 }, seq: 30 })
+    await Promise.resolve()
+    expect(invisible.session.append).not.toHaveBeenCalled()
+  })
+
+  it('logs append failures without throwing from a late microtask', async () => {
+    for (const failure of [new Error('journal closed'), 'write rejected']) {
+      const h = harness()
+      h.session.append.mockImplementation(() => { throw failure })
+      h.coordinator.tryRetract(h.agent, 'm-1')
+      h.emit('session/event', h.session, { type: 'turn/end', data: { turn: 3 }, seq: 30 })
+      await Promise.resolve()
+      expect(h.ctx.logger.warn).toHaveBeenCalledWith(expect.stringContaining(failure instanceof Error ? failure.message : failure))
+    }
+  })
+
+  it('ignores an unregistered Agent and a foreign Session object at turn close', async () => {
+    const h = harness()
+    h.coordinator.tryRetract(h.agent, 'm-1')
+    h.emit('session/event', h.session, { type: 'step/start', data: { turn: 3, step: 1 }, seq: 29 })
+    h.emit('session/event', { ...h.session }, { type: 'turn/end', data: { turn: 3 }, seq: 30 })
+    h.ctx.agents.get = (() => undefined) as typeof h.ctx.agents.get
+    h.emit('session/event', h.session, { type: 'turn/end', data: { turn: 3 }, seq: 30 })
+    await Promise.resolve()
+    expect(h.session.append).not.toHaveBeenCalled()
+  })
   it('waits for the authoritative turn end, then replaces the turn\'s surface nodes', async () => {
     const { coordinator, agent, session, emit } = harness()
     coordinator.tryRetract(agent, 'm-1')

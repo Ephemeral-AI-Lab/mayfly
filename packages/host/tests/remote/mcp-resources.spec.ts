@@ -77,6 +77,12 @@ describe('listMcpResources', () => {
 })
 
 describe('readMcpResource', () => {
+  it('keeps absent content empty and uses requested identity for binary metadata without a URI', async () => {
+    const empty = bridge({ result: { value: {} } })
+    expect(await readMcpResource(empty.ctx, { sessionId: 'session-1' as never, server: 'docs', uri: 'docs://a' }, new AbortController().signal)).toEqual({ text: '' })
+    const binary = bridge({ result: { value: { contents: [{}] } } })
+    expect(await readMcpResource(binary.ctx, { sessionId: 'session-1' as never, server: 'docs', uri: 'docs://a' }, new AbortController().signal)).toEqual({ text: 'Binary resource: docs://a (unknown media type)' })
+  })
   it('reads through the native tool and joins text contents', async () => {
     const { ctx, executed } = bridge({ result: { value: { contents: [{ text: 'part one' }, { text: 'part two' }] } } })
     const body = await readMcpResource(ctx, { sessionId: 'session-1' as never, server: 'docs', uri: 'docs://a' }, new AbortController().signal)

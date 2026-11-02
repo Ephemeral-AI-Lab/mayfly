@@ -62,6 +62,11 @@ test plus its refusal path, and the generated client artifact must be rebuilt
 runtime present and absent, a configured server without tools, and the
 redaction of every connection detail. The built artifacts are what the Remote
 package consumes, so rebuild before judging any client behavior.
+The Host build lowers decorators through `script/source-decorators.mjs` before
+native Typert metadata generation. Its output must match the native generator;
+only synthetic decorator calls without a source body stay unmapped. Keep
+decorator expressions and business method bodies mapped, and run
+`node --test script/tests/source-decorators.test.mjs` when changing this chain.
 Preset or skill changes require upstream-row comparison, published payload
 closure, native registry registration/mount and skill-catalog evidence, unload
 and second-Session isolation, plus dedicated-profile acceptance. Keep the two

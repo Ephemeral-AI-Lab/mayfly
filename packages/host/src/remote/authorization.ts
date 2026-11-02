@@ -40,8 +40,6 @@ function publicPrompt(request: AuthorizationPrompt): MayflyAuthorizationPrompt {
       return { kind: request.kind, message: request.message, ...request.placeholder === undefined ? {} : { placeholder: request.placeholder } }
     case 'select':
       return { kind: 'select', message: request.message, options: request.options.map(option => ({ ...option })) }
-    default:
-      throw new Error('unsupported authorization prompt')
   }
 }
 

@@ -77,7 +77,7 @@ describe('providerBalance', () => {
     const balance = await providerBalance(ctx('sk-secret'), new AbortController().signal)
     expect(balance).toMatchObject({ status: 'ready', available: true, wallets: [{ currency: 'CNY', total: '42.50' }] })
     expect(url()).toContain('https://api.deepseek.com/user/balance')
-    expect((seen()?.headers as Record<string, string>).authorization).toBe('Bearer sk-secret')
+    expect((seen()?.headers as Record<string, string> | undefined)?.authorization).toBe('Bearer sk-secret')
   })
 
   it('prefers the configured base URL, then the environment, then the default', async () => {
@@ -117,5 +117,24 @@ describe('providerBalance', () => {
     const balance = await providerBalance(ctx('sk'), new AbortController().signal)
     expect(balance).toMatchObject({ wallets: [{ currency: 'USD', total: '9.00', granted: '4.00' }] })
     expect((balance as unknown as { wallets: object[] }).wallets[0]).not.toHaveProperty('toppedUp')
+  })
+
+  it('rejects empty or malformed wallet rows and unsuccessful HTTP responses', async () => {
+    for (const body of [null, 'bad', { balance_infos: [null] }, { balance_infos: [1] }]) {
+      fetchAnswer(body)
+      expect(await providerBalance(ctx('sk'), new AbortController().signal)).toEqual({ status: 'unavailable', reason: 'network' })
+    }
+    for (const status of [403, 500, 201]) {
+      fetchAnswer({ balance_infos: [] }, status)
+      expect(await providerBalance(ctx('sk'), new AbortController().signal)).toEqual({ status: 'unavailable', reason: status === 403 ? 'rejected' : 'network' })
+    }
+  })
+
+  it('accepts topped-up amounts and ignores empty configured and environment endpoints', async () => {
+    vi.stubEnv('DEEPSEEK_BASE_URL', '')
+    const response = fetchAnswer({ balance_infos: [{ currency: 'USD', total_balance: '3', topped_up_balance: '3' }] })
+    expect(await providerBalance(ctx('sk', { baseURL: '' }), new AbortController().signal)).toEqual({ status: 'ready', wallets: [{ currency: 'USD', total: '3', toppedUp: '3' }] })
+    expect(response.url()).toBe('https://api.deepseek.com/user/balance')
+    vi.unstubAllEnvs()
   })
 })

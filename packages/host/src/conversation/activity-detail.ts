@@ -29,10 +29,10 @@ const CONTROLS = /[\x00-\x1f\x7f-\x9f]/gu
  * @returns the one-line detail, or `''`.
  */
 export function normalizeDetail(value: unknown): string {
-  const text = typeof value === 'string'
+  const normalized = (typeof value === 'string'
     ? value
-    : Array.isArray(value) && value.every(item => typeof item === 'string') ? value.join(', ') : ''
-  const normalized = text.replace(CONTROLS, ' ').replace(/\s+/gu, ' ').trim()
+    : Array.isArray(value) && value.every(item => typeof item === 'string') ? value.join(', ') : '')
+    .replace(CONTROLS, ' ').replace(/\s+/gu, ' ').trim()
   const parts = Array.from(graphemes.segment(normalized), part => part.segment)
   return parts.length <= LIVE_DETAIL_MAX_CHARS ? normalized : `${parts.slice(0, LIVE_DETAIL_MAX_CHARS - 1).join('').trimEnd()}…`
 }

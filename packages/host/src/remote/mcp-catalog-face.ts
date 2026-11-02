@@ -57,11 +57,9 @@ export function mcpCatalogFace(ctx: Context): McpCatalogFace | undefined {
 export function mcpCatalogServers(ctx: Context): readonly McpCatalogServerRow[] | undefined {
   const face = mcpCatalogFace(ctx)
   if (face === undefined) return undefined
-  const listServers = face.listServers
-  if (typeof listServers !== 'function') return undefined
   let listed: unknown
   try {
-    listed = listServers.call(face)
+    listed = face.listServers!()
   } catch {
     return []
   }

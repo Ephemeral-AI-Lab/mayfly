@@ -63,7 +63,7 @@ export async function modelCatalogDetails(ctx: Context, providerFilter: string |
         : undefined
       return {
         ...row,
-        providerLabel: labels.get(row.provider) ?? row.provider,
+        providerLabel: labels.get(row.provider)!,
         ...info?.context?.contextWindow === undefined ? {} : { contextWindow: info.context.contextWindow },
         ...efforts === undefined ? {} : { efforts },
         ...reasoning?.defaultEffort === undefined ? {} : { defaultEffort: String(reasoning.defaultEffort) },

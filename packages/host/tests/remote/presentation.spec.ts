@@ -51,6 +51,17 @@ describe('parseToolArguments', () => {
 })
 
 describe('presentTool', () => {
+  it('detaches result metadata before a native presenter can mutate it', () => {
+    const metadata = { source: { label: 'original' } }
+    const presenter = { ctx: { tools: { get: () => ({
+      presentResult: (_args: unknown, result: { meta: typeof metadata }) => {
+        result.meta.source.label = 'presented'
+        return { card: 'generic', text: result.meta.source.label }
+      },
+    }) } } } as unknown as Agent
+    expect(presentTool(presenter, input('s', 'c', { result: { content: [], isError: false, meta: metadata } }))).toMatchObject({ result: { text: 'presented' } })
+    expect(metadata.source.label).toBe('original')
+  })
   it('carries the call and result views of a healthy presenter', () => {
     const presentation = presentTool(agent(), input('session-1', 'c1'))
     expect(presentation.updatedSeq).toBe(5)

@@ -83,4 +83,13 @@ describe('workspacePath', () => {
     await expect(workspacePath(ctx({ resolve: resolver }), { path: '/work' }, controller.signal)).rejects.toThrow()
     expect(resolver).not.toHaveBeenCalled()
   })
+
+  it('discards path resolution that settles after caller cancellation', async () => {
+    const controller = new AbortController()
+    const resolver = async (): Promise<undefined> => {
+      controller.abort(new Error('cancelled resolution'))
+      return undefined
+    }
+    await expect(workspacePath(ctx({ resolve: resolver }), { path: '/work' }, controller.signal)).rejects.toThrow('cancelled resolution')
+  })
 })

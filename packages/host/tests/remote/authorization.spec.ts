@@ -6,41 +6,42 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { cancelAuthorization, authorize } from '../../src/remote/authorization.ts'
-import { AuthorizationError } from '@deepseek-ai/dsh-authorization'
+import { AuthorizationError, type AuthorizationNotice, type AuthorizationOutcome, type AuthorizationPrompt } from '@deepseek-ai/dsh-authorization'
 
 /** One answer the client pushes up the uplink. */
 type UplinkAnswer = { operationId: string, promptId: string, type: 'answer' | 'decline', value?: string }
 
 /** A controllable uplink the test pushes answers into. */
-function uplink(): { iterable: AsyncIterable<UplinkAnswer>, push(answer: UplinkAnswer): void, close(): void } {
+function uplink(): { iterable: AsyncIterable<UplinkAnswer>, push(answer: UplinkAnswer): void, close(): void, fail(error: unknown): void } {
   const buffered: UplinkAnswer[] = []
-  const waiting: ((result: IteratorResult<UplinkAnswer>) => void)[] = []
+  const waiting: { resolve(result: IteratorResult<UplinkAnswer>): void, reject(error: unknown): void }[] = []
   let done = false
   return {
     iterable: {
       [Symbol.asyncIterator]: (): AsyncIterator<UplinkAnswer> => ({
-        next: (): Promise<IteratorResult<UplinkAnswer>> => new Promise(resolve => {
+        next: (): Promise<IteratorResult<UplinkAnswer>> => new Promise((resolve, reject) => {
           const value = buffered.shift()
           if (value !== undefined) resolve({ value, done: false })
           else if (done) resolve({ value: undefined, done: true })
-          else waiting.push(resolve)
+          else waiting.push({ resolve, reject })
         }),
         return: async (): Promise<IteratorResult<UplinkAnswer>> => {
           done = true
-          for (const settle of waiting.splice(0)) settle({ value: undefined, done: true })
+          for (const settle of waiting.splice(0)) settle.resolve({ value: undefined, done: true })
           return { value: undefined, done: true }
         },
       }),
     },
     push: (answer: UplinkAnswer): void => {
       const settle = waiting.shift()
-      if (settle !== undefined) settle({ value: answer, done: false })
+      if (settle !== undefined) settle.resolve({ value: answer, done: false })
       else buffered.push(answer)
     },
     close: (): void => {
       done = true
-      for (const settle of waiting.splice(0)) settle({ value: undefined, done: true })
+      for (const settle of waiting.splice(0)) settle.resolve({ value: undefined, done: true })
     },
+    fail: (error: unknown): void => { done = true; for (const settle of waiting.splice(0)) settle.reject(error) },
   }
 }
 
@@ -49,7 +50,9 @@ function harness(overrides: Partial<{
   readonly methods: readonly { id: string }[]
   readonly inFlight: boolean
   readonly beginError?: unknown
-  readonly outcome: { status: string }
+  readonly outcome: AuthorizationOutcome
+  readonly prompt: AuthorizationPrompt
+  readonly notice: AuthorizationNotice
 }> = {}): {
   ctx: Context
   uplink: ReturnType<typeof uplink>
@@ -68,17 +71,18 @@ function harness(overrides: Partial<{
         const methods = overrides.methods === undefined ? [{ id: 'oauth' }] : overrides.methods
         return methods.length === 0 ? undefined : { methods, inFlight: overrides.inFlight ?? false }
       },
-      begin: async (request: { interaction: { notify(): void, prompt(prompt: never): Promise<string> } }): Promise<{ status: string }> => {
+      begin: async (request: { interaction: { notify(notice: AuthorizationNotice): void, prompt(prompt: never): Promise<string> } }): Promise<AuthorizationOutcome> => {
         if (overrides.beginError !== undefined) throw overrides.beginError
         capturedPrompt = request.interaction.prompt as typeof capturedPrompt
         // Drive the captured prompt exactly once: the native flow asks, and
         // the run settles only once the client answers it.
-        const answer = await request.interaction.prompt({
+        if (overrides.notice !== undefined) request.interaction.notify(overrides.notice)
+        const answer = await request.interaction.prompt((overrides.prompt ?? {
           kind: 'secret',
           message: 'paste the key',
-        } as never)
+        }) as never)
         lastAnswer = answer
-        return overrides.outcome ?? { status: 'granted' }
+        return overrides.outcome ?? { status: 'authorized' }
       },
       cancel,
     },
@@ -105,6 +109,71 @@ async function drain(stream: AsyncIterable<unknown>): Promise<{ frames: unknown[
 }
 
 describe('authorize', () => {
+  it('forwards selected native methods, text placeholders, notices and addressed answers', async () => {
+    const h = harness({ prompt: { kind: 'text', message: 'device code', placeholder: 'ABCD' }, notice: { message: 'Open browser', url: 'https://login.example' } })
+    const native = vi.spyOn(h.ctx.authorization, 'begin')
+    const iterator = authorize(h.ctx, { key: 'deepseek/api' as never, method: 'oauth' }, new AbortController().signal)[Symbol.asyncIterator]()
+    const started = (await iterator.next()).value!
+    expect((await iterator.next()).value).toMatchObject({ type: 'notice', notice: { message: 'Open browser' } })
+    const prompt = (await iterator.next()).value as { operationId: string, promptId: string }
+    expect(prompt).toMatchObject({ type: 'prompt', prompt: { kind: 'text', placeholder: 'ABCD' } })
+    h.uplink.push({ operationId: 'another operation', promptId: prompt.promptId, type: 'answer', value: 'wrong operation' })
+    h.uplink.push({ operationId: prompt.operationId, promptId: 'retired prompt', type: 'answer', value: 'wrong prompt' })
+    h.uplink.push({ ...prompt, type: 'answer', value: 'ABCD' })
+    const frames = await drain({ [Symbol.asyncIterator]: () => iterator })
+    expect(frames.error).toBeUndefined()
+    expect(h.answer()).toBe('ABCD')
+    expect(native).toHaveBeenCalledWith(expect.objectContaining({ method: 'oauth' }))
+    expect(started).toMatchObject({ operationId: prompt.operationId })
+  })
+
+  it('copies native select choices and rejects only the addressed declined prompt', async () => {
+    const options = [{ id: 'work', label: 'Work', description: 'organization account' }]
+    const h = harness({ prompt: { kind: 'select', message: 'Account', options } })
+    const iterator = authorize(h.ctx, { key: 'deepseek/api' as never }, new AbortController().signal)[Symbol.asyncIterator]()
+    await iterator.next()
+    const prompt = (await iterator.next()).value as { operationId: string, promptId: string, prompt: { options: typeof options } }
+    expect(prompt.prompt.options).toEqual(options)
+    expect(prompt.prompt.options[0]).not.toBe(options[0])
+    h.uplink.push({ operationId: prompt.operationId, promptId: prompt.promptId, type: 'decline' })
+    const outcome = await drain({ [Symbol.asyncIterator]: () => iterator })
+    expect(outcome.error).toMatchObject({ code: 'mayflyHost/authorization-failed' })
+    expect(h.answer()).toBeUndefined()
+  })
+
+  it('withdraws an individual prompt and closes a flow when its uplink fails', async () => {
+    for (const before of [false, true]) {
+      const controller = new AbortController()
+      if (before) controller.abort()
+      const h = harness({ prompt: { kind: 'secret', message: 'key', signal: controller.signal } })
+      const iterator = authorize(h.ctx, { key: 'deepseek/api' as never }, new AbortController().signal)[Symbol.asyncIterator]()
+      await iterator.next()
+      if (!before) { await iterator.next(); controller.abort() }
+      const outcome = await drain({ [Symbol.asyncIterator]: () => iterator })
+      expect(outcome.error).toMatchObject({ code: 'mayflyHost/authorization-failed' })
+      expect(h.cancel).toHaveBeenCalled()
+    }
+    const broken = harness()
+    const iterator = authorize(broken.ctx, { key: 'deepseek/api' as never }, new AbortController().signal)[Symbol.asyncIterator]()
+    await iterator.next()
+    await iterator.next()
+    broken.uplink.fail(new Error('uplink ended'))
+    const outcome = await drain({ [Symbol.asyncIterator]: () => iterator })
+    expect(outcome.error).toBeInstanceOf(Error)
+    expect(broken.cancel).toHaveBeenCalled()
+  })
+
+  it('allows a completed uplink and maps native races to the documented refusal codes', async () => {
+    for (const [code, expected] of [['UNKNOWN_METHOD', 'mayflyHost/authorization-unavailable'], ['ALREADY_IN_FLIGHT', 'mayflyHost/authorization-in-flight']] as const) {
+      const h = harness({ beginError: new AuthorizationError('flow changed', code) })
+      h.uplink.close()
+      expect((await drain(authorize(h.ctx, { key: 'deepseek/api' as never }, new AbortController().signal))).error).toMatchObject({ code: expected })
+    }
+    const missingInvocation = harness()
+    Object.defineProperty(missingInvocation.ctx, 'invocation', { value: undefined })
+    expect((await drain(authorize(missingInvocation.ctx, { key: 'deepseek/api' as never }, new AbortController().signal))).error).toMatchObject({ code: 'gateway/internal' })
+    expect((await drain(authorize(harness().ctx, { key: '/api' as never }, new AbortController().signal))).error).toMatchObject({ code: 'mayflyHost/authorization-unavailable' })
+  })
   it('runs a prompt round-trip: started, prompt, answer, prompt-ended, settled', async () => {
     const h = harness()
     const stream = authorize(h.ctx, { key: 'deepseek/api' as never }, new AbortController().signal)
@@ -121,7 +190,7 @@ describe('authorize', () => {
     const ended = await iterator.next()
     expect(ended.value).toMatchObject({ type: 'prompt-ended', promptId })
     const settled = await iterator.next()
-    expect(settled.value).toMatchObject({ type: 'settled', status: 'granted' })
+    expect(settled.value).toMatchObject({ type: 'settled', status: 'authorized' })
     expect(h.answer()).toBe('sk-typed')
     const done = await iterator.next()
     expect(done.done).toBe(true)

@@ -9,6 +9,7 @@ import {
   STATUS_RETRY_MS,
   STATUS_TTL_MS,
   createGitBadgeCache,
+  runGitCommand,
   type GitCommandRunner,
 } from '../../src/remote/git.ts'
 
@@ -37,6 +38,18 @@ function header(ahead?: number, behind?: number): string {
 }
 
 describe('createGitBadgeCache', () => {
+  it('runs the bounded native Git command successfully without shell interpolation', async () => {
+    expect(await runGitCommand(['--version'], import.meta.dirname, new AbortController().signal)).toMatch(/^git version /u)
+  })
+
+  it('parses a one-sided tracking relationship and tolerates malformed or missing numstat fields', async () => {
+    for (const [ahead, behind] of [[3, undefined], [undefined, 2]] as const) {
+      const { run } = runner({ 'branch --show-current': 'main', 'status --porcelain -b': `${header(ahead, behind)}\n M a`, 'diff --numstat HEAD --': 'bogus\t-2\ta\n0\t0\tb\n4\n' })
+      expect(await createGitBadgeCache('/work', run).getStatus(new AbortController().signal)).toMatchObject({ ahead: ahead ?? 0, behind: behind ?? 0, diffAdded: 4, diffDeleted: 0 })
+    }
+    const { run } = runner({ 'branch --show-current': 'main', 'status --porcelain -b': '## main\n M a' })
+    expect(await createGitBadgeCache('/work', run).getStatus(new AbortController().signal)).toMatchObject({ dirty: true, diffAdded: 0, diffDeleted: 0 })
+  })
   it('reports a clean tree with its branch and ahead/behind', async () => {
     const { run } = runner({
       'branch --show-current': 'main\n',

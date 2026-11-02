@@ -190,33 +190,33 @@ interface LiveRun {
   interrupted?: true
 }
 
-function mergeAgent(base: MayflyWorkflowAgent | undefined, live: MayflyWorkflowAgent | undefined): MayflyWorkflowAgent {
-  const source = base ?? live!
-  const outcome = live?.outcome ?? base?.outcome
+function mergeAgent(base: MayflyWorkflowAgent | undefined, live: MayflyWorkflowAgent): MayflyWorkflowAgent {
+  const source = base ?? live
+  const outcome = live.outcome ?? base?.outcome
   const merged = { ...source, ...live, ...outcome === undefined ? {} : { outcome } }
   if (outcome !== undefined) return withoutAgentInterruption(merged)
-  return (live?.interrupted ?? base?.interrupted) === true ? { ...merged, interrupted: true } : merged
+  return (live.interrupted ?? base?.interrupted) === true ? { ...merged, interrupted: true } : merged
 }
 
-function mergeRun(base: MayflyWorkflowRun | undefined, live: LiveRun | undefined): MayflyWorkflowRun {
-  const source = base ?? live!
-  const stopReason = base?.stopReason ?? live?.stopReason
+function mergeRun(base: MayflyWorkflowRun | undefined, live: LiveRun): MayflyWorkflowRun {
+  const source = base ?? live
+  const stopReason = base?.stopReason ?? live.stopReason
   const agents = new Map<number, MayflyWorkflowAgent>()
   for (const agent of base?.agents ?? []) agents.set(agent.seq, agent)
-  for (const agent of live?.agents ?? []) agents.set(agent.seq, mergeAgent(agents.get(agent.seq), agent))
-  const phasesSeen = [...new Set([...base?.phasesSeen ?? [], ...live?.phasesSeen ?? []])]
+  for (const agent of live.agents) agents.set(agent.seq, mergeAgent(agents.get(agent.seq), agent))
+  const phasesSeen = [...new Set([...base?.phasesSeen ?? [], ...live.phasesSeen])]
   return {
     id: source.id,
     name: source.name,
-    ...live?.phases === undefined ? {} : { phases: live.phases },
+    ...live.phases === undefined ? {} : { phases: live.phases },
     phasesSeen,
-    ...(live?.currentPhase ?? base?.currentPhase) === undefined ? {} : { currentPhase: live?.currentPhase ?? base?.currentPhase },
+    ...(live.currentPhase ?? base?.currentPhase) === undefined ? {} : { currentPhase: live.currentPhase ?? base?.currentPhase },
     agents: [...agents.values()].toSorted((left, right) => left.seq - right.seq),
-    startedAt: base?.startedAt ?? live!.startedAt,
+    startedAt: base?.startedAt ?? live.startedAt,
     ...stopReason === undefined ? {} : { stopReason },
-    ...(base?.endedAt ?? live?.endedAt) === undefined ? {} : { endedAt: base?.endedAt ?? live?.endedAt },
-    ...(live?.agentsStarted ?? base?.agentsStarted) === undefined ? {} : { agentsStarted: live?.agentsStarted ?? base?.agentsStarted },
-    ...stopReason === undefined && (base?.interrupted ?? live?.interrupted) === true ? { interrupted: true as const } : {},
+    ...(base?.endedAt ?? live.endedAt) === undefined ? {} : { endedAt: base?.endedAt ?? live.endedAt },
+    ...live.agentsStarted === undefined ? {} : { agentsStarted: live.agentsStarted },
+    ...stopReason === undefined && (base?.interrupted ?? live.interrupted) === true ? { interrupted: true as const } : {},
   }
 }
 
@@ -404,11 +404,7 @@ export async function* followWorkflow(
     const baseline = catalog.snapshot(ctx, session)
     lastSignature = JSON.stringify(baseline)
     yield { type: 'baseline', value: baseline }
-    while (true) {
-      const next = await queue.next()
-      if (next.done === true) return
-      yield next.value
-    }
+    for await (const next of queue) yield next
   } finally {
     offCatalog()
     offProjection()
