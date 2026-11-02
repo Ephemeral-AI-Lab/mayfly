@@ -4,6 +4,7 @@
  */
 
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { Context } from '@deepseek-ai/cordis'
 import type {
   MayflyComponents,
   MayflyEditor,
@@ -33,6 +34,7 @@ export interface EditorCompositionHandle {
 }
 
 interface EditorCompositionOptions {
+  readonly ctx: Context
   readonly app: RemoteApp
   readonly editor: MayflyEditor
   readonly screen: MayflyScreen
@@ -44,6 +46,7 @@ interface EditorCompositionOptions {
   readonly exit: () => void | Promise<void>
   /** Restore focus through the owning dock so its frame and status remain visible. */
   readonly focusEditor?: () => void
+  readonly startupKey?: (data: string, text: string) => boolean
   /** Feature-owned slash-command contributions routed before Host command dispatch. */
   readonly featureCommands?: RemoteFeatureCommandSource | undefined
   /** Borrow the exact displayed binding; native SessionFace performs addressed child routing. */
@@ -99,12 +102,14 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     exit: options.exit,
   }
   const featureOptions: EditorFeatureOptions = {
+    ctx: options.ctx,
     editor: options.editor,
     screen: options.screen,
     components: options.components,
     colors: options.colors,
     keymap: options.keymap,
     ...options.focusEditor === undefined ? {} : { focusEditor: options.focusEditor },
+    ...options.startupKey === undefined ? {} : { startupKey: options.startupKey },
     session,
     async ensureSession() {
       await options.app.ensureSession(options.localCwd)

@@ -1,200 +1,114 @@
-/**
- * Width-responsive official skill list/detail overlay.
- * @module @ephemeral-ai/mayfly/remote/editor/skills-panel
- */
-
-import type {
-  MayflyComponents,
-  MayflyFocusable,
-  MayflyOverlayHandle,
-  MayflyScreen,
-  MayflySemanticColors,
-} from '@ephemeral-ai/mayfly/core'
-import type { SkillEntry } from '@deepseek-ai/dsh-api-remotes/client'
-import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
+/** The reference wire skill browser over one exact native catalog. @module remote/editor/skills-panel */
+import type { Context } from '@deepseek-ai/cordis'
+import { skillsNode, interactionTranslator, mountInteractionLocale, observeInteractionLocale } from '@ephemeral-ai/mayfly/command-panels'
+import type { MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import type { EditorSkills } from './skills.ts'
-import { errorMessage } from './utils.ts'
-import { remotePanelOverlayOptions } from '../panels.ts'
+import type { EditorFeatureSession } from './types.ts'
 
 interface SkillsPanelOptions {
+  readonly ctx: Context
   readonly skills: EditorSkills
-  readonly screen: MayflyScreen
-  readonly components: MayflyComponents
-  readonly colors: MayflySemanticColors
-  readonly t: MayflyTranslate
+  readonly session: () => EditorFeatureSession | undefined
   readonly restoreFocus: () => void
 }
 
-class SkillsPanel implements MayflyFocusable {
-  focused = false
-  private selected = 0
-  private detail = false
-  private filtering = false
-  private filter = ''
+/** Metadata not carried by this alpha's SkillEntry is identified beside the affected browser. */
+export const REMOTE_SKILLS_METADATA_LIMITATION = 'Source and provider metadata are not exposed by the native skills API.'
 
-  constructor(
-    private readonly options: SkillsPanelOptions,
-    private readonly close: () => void,
-    private readonly refresh: () => Promise<void>,
-  ) {}
-
-  invalidate(): void {}
-
-  handleInput(data: string): void {
-    if (this.filtering) {
-      if (data === '\x1b' || data === '\r' || data === '\n') {
-        this.filtering = false
-        return
-      }
-      if (data === '\x7f' || data === '\b') {
-        this.filter = this.filter.slice(0, -1)
-        this.selected = 0
-        return
-      }
-      if (data.length === 1 && data >= ' ' && data !== '\x7f') {
-        this.filter += data
-        this.selected = 0
-        return
-      }
-    }
-    if (data === '\x1b') {
-      if (this.detail) this.detail = false
-      else this.close()
-      return
-    }
-    if (data === '\x03' || (!this.filtering && (data === 'q' || data === 'Q'))) {
-      this.close()
-      return
-    }
-    if (!this.filtering && data === '/') {
-      this.filtering = true
-      return
-    }
-    if (!this.filtering && (data === 'r' || data === 'R')) {
-      void this.refresh()
-      return
-    }
-    if (data === '\x1b[A') {
-      this.selected = Math.max(0, this.selected - 1)
-      return
-    }
-    if (data === '\x1b[B') {
-      this.selected = Math.min(Math.max(0, this.rows().length - 1), this.selected + 1)
-      return
-    }
-    if (data === '\r' || data === '\n' || data === '\x1b[C') {
-      if (this.rows().length > 0) this.detail = !this.detail
-      return
-    }
-    if (data === '\x1b[D') this.detail = false
-  }
-
-  render(width: number): string[] {
-    const safe = Math.max(1, Math.floor(width))
-    const snapshot = this.options.skills.snapshot()
-    const rows = this.rows()
-    this.selected = Math.min(this.selected, Math.max(0, rows.length - 1))
-    const focused = rows[this.selected]
-    const title = this.detail && focused !== undefined ? focused.name : this.options.t('Skills')
-    const warning = snapshot.complete
-      ? snapshot.error === undefined ? [] : [this.options.colors.warning(this.options.t('Skill catalog is incomplete; showing the last complete catalog'))]
-      : [this.options.colors.warning(this.options.t('Skill catalog is incomplete; showing the last complete catalog'))]
-    const heading = this.filtering || this.filter !== '' ? `/${this.filter}` : ''
-    const body = rows.length === 0
-      ? [this.options.colors.muted(this.options.t('No skills available'))]
-      : this.detail && focused !== undefined
-        ? this.detailRows(focused, safe)
-        : this.listRows(rows, focused, safe)
-    const hint = this.filtering
-      ? 'Type filter · Enter/Esc done'
-      : `${heading === '' ? '' : `${heading} · `}↑↓ select · Enter ${this.detail ? 'list' : 'detail'} · / filter · r refresh · Esc ${this.detail ? 'back' : 'close'}`
-    return [
-      this.options.components.truncateToWidth(this.options.colors.primary(title), safe),
-      ...warning.map(line => this.options.components.truncateToWidth(line, safe)),
-      ...body,
-      this.options.components.truncateToWidth(this.options.colors.muted(hint), safe),
-    ]
-  }
-
-  private rows(): readonly SkillEntry[] {
-    const query = this.filter.toLocaleLowerCase()
-    return this.options.skills.list()
-      .filter(skill => query === '' || skill.name.toLocaleLowerCase().includes(query) || skill.description.toLocaleLowerCase().includes(query))
-      .toSorted((left, right) => left.name.localeCompare(right.name))
-  }
-
-  private listRows(rows: readonly SkillEntry[], focused: SkillEntry | undefined, width: number): string[] {
-    const wide = width >= 64 && focused !== undefined
-    const listWidth = wide ? Math.max(24, Math.floor(width * 0.42)) : width
-    const lines = rows.slice(Math.max(0, this.selected - 11), Math.max(0, this.selected - 11) + 12).map((skill) => {
-      const selected = skill === focused
-      const badge = skill.modelInvocable ? '' : ` [${this.options.t('user-only')}]`
-      const text = `${selected ? '> ' : '  '}${skill.name}${badge} — ${skill.description}`
-      const line = this.options.components.truncateToWidth(text, listWidth)
-      return selected ? this.options.colors.accent(line) : line
-    })
-    if (!wide || focused === undefined) return lines
-    const detail = this.detailRows(focused, width - listWidth - 2)
-    const height = Math.max(lines.length, detail.length)
-    return Array.from({ length: height }, (_, index) => {
-      const left = lines[index] ?? ''
-      const right = detail[index] ?? ''
-      const padding = Math.max(0, listWidth - this.options.components.visibleWidth(left))
-      return this.options.components.truncateToWidth(`${left}${' '.repeat(padding)}  ${right}`, width)
-    })
-  }
-
-  private detailRows(skill: SkillEntry, width: number): string[] {
-    const text = [
-      skill.description,
-      ...skill.whenToUse === undefined ? [] : ['', skill.whenToUse],
-      '',
-      `${this.options.t('Invocation')}: ${skill.modelInvocable ? 'model + user' : this.options.t('user-only')}`,
-      ...skill.path === undefined ? [] : [`${this.options.t('Path')}: ${skill.path}`],
-    ]
-    return text.flatMap(line => line === ''
-      ? ['']
-      : this.options.components.wrapText(line, Math.max(1, width)).map(row => this.options.colors.muted(row)))
-  }
-}
-
-/** Owns one skill overlay and refreshes it on every open and explicit refresh. */
+/** An ordinary editor overlay; native selection and catalog owners supply every fact. */
 export class EditorSkillsPanel {
   private handle: MayflyOverlayHandle | undefined
+  private cleanup: (() => void) | undefined
   private generation = 0
+  private readonly t
 
-  constructor(private readonly options: SkillsPanelOptions) {}
+  constructor(private readonly options: SkillsPanelOptions) {
+    mountInteractionLocale(options.ctx)
+    this.t = interactionTranslator(options.ctx)
+  }
 
-  get open(): boolean { return this.handle !== undefined }
+  get open(): boolean { return this.handle?.closed === false }
 
   async show(): Promise<void> {
+    if (this.open) { this.options.ctx.mayflyOverlays.focus('mayfly.skills'); return }
+    const selected = this.options.session()
+    if (selected === undefined) return
     const generation = ++this.generation
-    this.handle?.hide()
-    this.handle = undefined
+    const isCurrent = (): boolean => {
+      const current = this.options.session()
+      return generation === this.generation && current?.client === selected.client
+        && current.session === selected.session && current.generation === selected.generation
+        && current.ref.host === selected.ref.host && current.ref.sessionId === selected.ref.sessionId
+    }
     await this.options.skills.refresh()
-    if (generation !== this.generation) return
-    const close = (): void => {
-      if (generation !== this.generation) return
-      this.handle?.hide()
-      this.handle = undefined
-      this.options.restoreFocus()
+    if (!isCurrent()) return
+    let focused: string | undefined
+    let detailMode = false
+    const view = () => {
+      const snapshot = this.options.skills.snapshot()
+      return skillsNode(snapshot.skills.map(skill => ({
+        name: skill.name, description: skill.description,
+        ...skill.whenToUse === undefined ? {} : { whenToUse: skill.whenToUse },
+        invocation: { modelInvocable: skill.modelInvocable },
+      })), snapshot.complete, this.t, { focused, detailMode, metadataNote: REMOTE_SKILLS_METADATA_LIMITATION })
     }
-    const refresh = async (): Promise<void> => {
-      try {
-        await this.options.skills.refresh()
-      } catch (error) {
-        if (generation === this.generation) throw new Error(errorMessage(error, 'skill refresh failed'))
-      }
-      if (generation === this.generation) this.options.screen.requestRender()
+    const refresh = (): void => {
+      if (!isCurrent()) { this.close(); return }
+      const names = this.options.skills.list().map(skill => skill.name)
+      if (focused === undefined || !names.includes(focused)) focused = names[0]
+      if (detailMode && focused === undefined) detailMode = false
+      if (this.open) this.handle!.set(view())
     }
-    const panel = new SkillsPanel(this.options, close, refresh)
-    this.handle = this.options.screen.showOverlay(panel, remotePanelOverlayOptions(this.options.screen, { maxHeight: '75%' }))
-    this.options.screen.requestRender()
+    const handle = this.options.ctx.mayflyOverlays.open({
+      id: 'mayfly.skills', presentation: 'editor', capturing: true, dismissal: 'discard',
+      scope: { kind: 'session', sessionId: selected.ref.sessionId },
+      onEvent: { action: async (event, context) => {
+        if (context.signal.aborted || !isCurrent()) return { kind: 'cancelled', dismiss: true }
+        if (event.kind === 'dismiss') {
+          if (detailMode) { detailMode = false; refresh(); return { kind: 'completed', dismiss: false } }
+          this.close()
+          this.options.restoreFocus()
+          return { kind: 'completed' }
+        }
+        if (event.kind === 'selection-accept' && (event.controlId === 'skills' || event.controlId === 'skills-narrow')) {
+          const name = event.selectedIds[0]
+          if (name === undefined || !this.options.skills.list().some(skill => skill.name === name)) return { kind: 'cancelled' }
+          focused = name
+          if (event.controlId === 'skills-narrow') detailMode = true
+          refresh()
+          return { kind: 'completed' }
+        }
+        if (event.kind === 'activate' && event.actionId === 'refresh') {
+          await this.options.skills.refresh()
+          if (!isCurrent()) return { kind: 'cancelled', dismiss: true }
+          refresh()
+        }
+        return { kind: 'completed' }
+      } },
+    }, view())
+    this.handle = handle
+    const offSkills = this.options.skills.subscribe(refresh)
+    const offLocale = observeInteractionLocale(this.options.ctx, refresh)
+    const offRegistry = this.options.ctx.mayflyOverlays.subscribe(delta => {
+      if (delta.kind === 'remove' && delta.id === 'mayfly.skills' && handle.closed) this.finish(handle)
+    })
+    this.cleanup = () => { offSkills(); offLocale(); offRegistry() }
+    if (handle.closed) { this.finish(handle); return }
+    refresh()
   }
 
   close(): void {
     this.generation += 1
-    this.handle?.hide()
+    const handle = this.handle
+    if (handle !== undefined) { handle.close(); this.finish(handle) }
+  }
+
+  private finish(handle: MayflyOverlayHandle): void {
+    if (this.handle !== handle) return
+    this.generation += 1
     this.handle = undefined
+    const cleanup = this.cleanup
+    this.cleanup = undefined
+    cleanup?.()
   }
 }

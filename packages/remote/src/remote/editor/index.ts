@@ -135,11 +135,9 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     exit: options.local.exit,
   })
   const panel = new EditorSkillsPanel({
+    ctx: options.ctx,
     skills,
-    screen: options.screen,
-    components: options.components,
-    colors: options.colors,
-    t,
+    session: options.session,
     restoreFocus: focusEditor,
   })
   const shell = new EditorShell(options.screen, options.components, options.colors, t)
@@ -538,6 +536,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
   editor.onKey = data => {
     if (disposed) return false
     detectSelection()
+    if (options.startupKey?.(data, editor.getText()) === true) return true
     const running = options.session()?.session.getSnapshot().running === true
     if (options.keymap.matches(data, 'mayfly.interaction.backspace') && editor.tokenBackspace()) return true
     if (options.keymap.matches(data, 'mayfly.image.paste')) {

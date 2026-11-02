@@ -23,6 +23,7 @@ import type { FileUploadValue } from '@deepseek-ai/dsh-client-file-upload/client
 import type { ImageAttachmentLimits, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { Context } from '@deepseek-ai/cordis'
 import type { HostClient, SessionRef } from '../../client/types.ts'
 import type { RemoteNotice } from '../notice.ts'
 
@@ -123,6 +124,7 @@ export type EditorUpload = (
 
 /** Inputs required to attach all Remote-owned editor features to the foundation's editor. */
 export interface EditorFeatureOptions {
+  readonly ctx: Context
   readonly editor: MayflyEditor
   readonly screen: MayflyScreen
   readonly components: MayflyComponents
@@ -135,6 +137,8 @@ export interface EditorFeatureOptions {
   readonly preparePrompt?: (selected: EditorFeatureSession, signal: AbortSignal) => Promise<void>
   /** Restore focus through the mounted editor shell, when the frontend owns one. */
   readonly focusEditor?: () => void
+  /** Foundation-owned startup prelude navigation before ordinary editor actions. */
+  readonly startupKey?: (data: string, text: string) => boolean
   readonly notice: RemoteNotice
   readonly upload: EditorUpload
   readonly files: EditorHostFiles

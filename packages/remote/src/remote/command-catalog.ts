@@ -21,7 +21,7 @@ export const FRONTEND_COMMANDS: readonly (RemoteCommandDescriptor & Pick<RemoteF
   { name: 'host', description: 'List attached Hosts', scope: 'sessionless', group: 'remote' },
   { name: 'attach', description: 'Attach a Host URL', scope: 'sessionless', group: 'remote', input: { hint: '<host-url>' } },
   { name: 'detach', description: 'Detach the current Host without stopping it', scope: 'sessionless', group: 'remote' },
-  { name: 'skills', description: 'List available skills' },
+  { name: 'skills', description: 'List available skills (the # prompt invokes one)' },
   { name: 'help', description: 'Show available commands and key bindings', scope: 'sessionless' },
   { name: 'host-status', description: 'Show current Host and Session diagnostics', group: 'remote' },
   { name: 'context', description: 'Show token usage and the context window' },

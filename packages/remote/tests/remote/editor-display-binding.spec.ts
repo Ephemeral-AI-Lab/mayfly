@@ -40,7 +40,7 @@ function host(name: string) {
   }
 }
 
-function fixture(initialAccess: Displayed['access'] = 'resumable', featureCommands = new RemoteFeatureCommandRegistry()) {
+function fixture(initialAccess: Displayed['access'] = 'resumable', featureCommands = new RemoteFeatureCommandRegistry(), startupKey?: (data: string, text: string) => boolean) {
   const primary = host('primary')
   const child = host('one')
   const otherHost = host('two')
@@ -66,8 +66,9 @@ function fixture(initialAccess: Displayed['access'] = 'resumable', featureComman
   } as unknown as RemoteApp
   const notices: string[] = []
   const exit = vi.fn()
-  const handle = mountEditorComposition({ app, editor, screen, components, colors, keymap, notice: { set: text => { notices.push(text) } }, localCwd: '/remote', exit,
+  const handle = mountEditorComposition({ ctx, app, editor, screen, components, colors, keymap, notice: { set: text => { notices.push(text) } }, localCwd: '/remote', exit,
     featureCommands,
+    ...startupKey === undefined ? {} : { startupKey },
     selection: () => displayed,
     subscribeSelection: listener => { displayedListeners.add(listener); return () => { displayedListeners.delete(listener) } },
   })
@@ -239,5 +240,15 @@ describe('editor composition displayed native binding integration', () => {
     await flush()
     expect(theme).toHaveBeenCalledOnce()
     expect(f.child.executeCommand).not.toHaveBeenCalled()
+  })
+
+  it('offers startup navigation the actual draft before ordinary editor key handling', () => {
+    const startup = vi.fn((data: string) => data === 's')
+    const f = fixture('resumable', new RemoteFeatureCommandRegistry(), startup)
+    f.editor.setText('keep the typed draft')
+    expect(f.editor.onKey?.('s')).toBe(true)
+    expect(startup).toHaveBeenCalledWith('s', 'keep the typed draft')
+    expect(f.editor.getText()).toBe('keep the typed draft')
+    expect(f.child.prompt).not.toHaveBeenCalled()
   })
 })
