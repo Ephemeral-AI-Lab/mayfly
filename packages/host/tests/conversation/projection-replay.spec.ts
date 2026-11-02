@@ -1,0 +1,1082 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import {
+  ToolCallId,
+  MessageId,
+  type AssistantMessage,
+  type ContentBlock,
+  type ToolResultMessage,
+  type UserMessage,
+} from '@deepseek-ai/dsh-llm'
+import {
+  SessionId,
+  SessionStore,
+  type SessionEvent,
+} from '@deepseek-ai/dsh-session'
+import { CommandId } from '@deepseek-ai/dsh-commands/brand'
+import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
+import * as conversationPlugin from '../../lib/index.js'
+import {
+  conversationProjectionDefinition,
+  conversationProjectionSchema,
+  conversationProjectionStateSchema,
+  foldConversationProjection,
+  initialConversationState,
+  isTurnRetraction,
+  settleKey,
+} from '../../src/conversation/projection.ts'
+import type { ConversationProjectionState } from '../../src/conversation/types.ts'
+
+let nextSeq = 0
+
+beforeEach(() => {
+  nextSeq = 0
+})
+
+/** An event's data as the fixtures write it: an assistant message may leave out its stream. */
+type FixtureData<T extends SessionEvent['type']> = T extends 'assistant/message'
+  ? Omit<SessionEvent<T>['data'], 'stream'> & Partial<Pick<SessionEvent<T>['data'], 'stream'>>
+  : SessionEvent<T>['data']
+
+function event<T extends SessionEvent['type']>(
+  type: T,
+  data: FixtureData<T>,
+  options: { readonly append?: boolean, readonly replace?: boolean, readonly time?: number } = {},
+): SessionEvent<T> {
+  const seq = nextSeq
+  nextSeq += 1
+  // Harness 0.1.5 assistant messages embed their stream; fixtures that do not
+  // care about streaming carry the empty stream.
+  const resolved = type === 'assistant/message' && data !== null && typeof data === 'object' && !('stream' in data)
+    ? { ...(data as object), stream: [] }
+    : data
+  return {
+    type,
+    seq,
+    time: options.time ?? 1_700_000_000_000 + seq,
+    data: resolved,
+    ...(options.append ? { surfaceOp: 'append' } : {}),
+    ...(options.replace ? { surfaceOp: { op: 'replace', startSeq: 0, endSeq: 0 } } : {}),
+  } as unknown as SessionEvent<T>
+}
+
+/** One `assistant/attempt` whose compact stream holds a single packed run. */
+function attemptEvent(turn: number, step: number, kind: 'reasoning' | 'text', text: string): SessionEvent<'assistant/attempt'> {
+  return event('assistant/attempt', {
+    turn,
+    step,
+    stream: [{ type: kind === 'reasoning' ? 'reasoning-chunks' : 'text-chunks', time0: 1_700_000_000_000, index: 0, dt: [], texts: [text] }],
+  })
+}
+
+/** Mayfly's durable retraction marker: an empty mayfly-attributed developer replacement. */
+function retractionMarker(turn: number, step: number): SessionEvent<'developer/message'> {
+  return event('developer/message', {
+    turn,
+    step,
+    message: { id: MessageId(`retraction-${String(nextSeq)}`), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
+  }, { replace: true })
+}
+
+function userMessage(text: string, content: readonly ContentBlock[] = [], source: UserMessage['source'] = { kind: 'user' }): UserMessage {
+  return {
+    id: MessageId(`user-${String(nextSeq)}`),
+    role: 'user',
+    content: [{ type: 'text', text }, ...content],
+    source,
+  }
+}
+
+function assistantMessage(content: readonly ContentBlock[]): AssistantMessage {
+  return {
+    id: MessageId(`assistant-${String(nextSeq)}`),
+    role: 'assistant',
+    content: [...content],
+    source: { kind: 'model', provider: 'mock', model: 'mock' },
+  }
+}
+
+function toolResultMessage(callId: string, content: readonly ContentBlock[], isError = false): ToolResultMessage {
+  return {
+    id: MessageId(`result-${String(nextSeq)}`),
+    role: 'tool',
+    content: [...content],
+    toolCallId: ToolCallId(callId),
+    isError,
+    source: { kind: 'tool', callId: ToolCallId(callId) },
+  }
+}
+
+function fold(events: readonly SessionEvent[]) {
+  return events.reduce(foldConversationProjection, initialConversationState())
+}
+
+describe('mayflyConversation projection', () => {
+  it('converges streaming chunks on authoritative assistant messages and pairs tool results', () => {
+    const events: SessionEvent[] = [
+      event('turn/start', { turn: 2 }),
+      event('user/message', userMessage('hello'), { append: true }),
+      event('step/start', { turn: 2, step: 0 }),
+      attemptEvent(2, 0, 'reasoning', '  '),
+      attemptEvent(2, 0, 'reasoning', 'think'),
+      attemptEvent(2, 0, 'text', 'draft'),
+      attemptEvent(2, 0, 'text', ' answer'),
+      event('assistant/message', {
+        turn: 2,
+        step: 0,
+        message: assistantMessage([
+          { type: 'reasoning', text: 'final thought' },
+          { type: 'text', text: 'final answer' },
+        ]),
+      }, { append: true }),
+      event('tool/call', { turn: 2, step: 0, callId: ToolCallId('call-1'), name: 'read', arguments: '{"path":"a"}' }, { time: 100 }),
+      event('tool/result', {
+        turn: 2,
+        step: 0,
+        message: toolResultMessage('call-1', [{ type: 'text', text: 'line one' }]),
+        meta: 'presented result',
+      }, { append: true, time: 160 }),
+      event('tool/call', { turn: 2, step: 0, callId: ToolCallId('todo-1'), name: 'todo_write', arguments: '{}' }),
+      event('tool/call', { turn: 2, step: 0, callId: ToolCallId('agent-1'), name: 'subagent_fork', arguments: '{}' }),
+      event('turn/end', { turn: 2, reason: { kind: 'completed' } }),
+    ]
+
+    const state = fold(events)
+    expect(state.active).toBe(false)
+    expect(state.pendingReasoning).toBe('')
+    expect(state.entries).toMatchObject([
+      { kind: 'user', turn: 2, text: 'hello', images: [] },
+      { kind: 'thinking', turn: 2, step: 0, text: 'final thought', streaming: false },
+      { kind: 'assistant', turn: 2, step: 0, text: 'final answer', streaming: false },
+      {
+        kind: 'tool',
+        callId: 'call-1',
+        channel: 'transcript',
+        startedAt: 100,
+        result: { text: 'presented result', isError: false, endedAt: 160 },
+      },
+      { kind: 'tool', callId: 'todo-1', channel: 'todo' },
+      { kind: 'tool', callId: 'agent-1', channel: 'agents' },
+    ])
+    expect(state.turns).toEqual([{ turn: 2, startedAt: events[0]!.time, endedAt: events.at(-1)!.time, outcome: 'completed' }])
+    expect(conversationProjectionDefinition.wire.view(state)).toEqual({ entries: state.entries, streaming: false, settledSteps: ['2:0'], turns: state.turns })
+  })
+
+  it('uses append-origin human rows and preserves durable image references', () => {
+    const image = {
+      type: 'image' as const,
+      attachment: {
+        attachmentId: 'image-1' as never,
+        mediaType: 'image/png' as const,
+        bytes: 12,
+        width: 4,
+        height: 3,
+        name: 'plot.png',
+        originalDimensions: { width: 8, height: 6 },
+      },
+    }
+    const state = fold([
+      event('turn/start', { turn: 1 }),
+      event('user/message', userMessage('', [image, {
+        type: 'image',
+        attachment: {
+          attachmentId: 'image-2' as never,
+          mediaType: 'image/png',
+          bytes: 12,
+          width: 4,
+          height: 3,
+        },
+      }]), { append: true }),
+      event('user/message', userMessage(''), { append: true }),
+      event('user/message', userMessage('replacement'), { replace: true }),
+      event('user/message', userMessage('injected', [], { kind: 'system-prompt' }), { append: true }),
+      event('assistant/message', { turn: 1, step: 0, message: assistantMessage([{ type: 'text', text: 'hidden' }]) }, { replace: true }),
+      event('assistant/message', { turn: 1, step: 0, message: assistantMessage([{ type: 'image', attachment: image.attachment }]) }, { append: true }),
+    ])
+    expect(state.entries).toHaveLength(2)
+    expect(state.entries[0]).toEqual(expect.objectContaining({
+      kind: 'user',
+      // The attachment rows own the `[image]` marker; the body stays empty.
+      text: '',
+      images: [{
+        attachmentId: 'image-1',
+        mediaType: 'image/png',
+        bytes: 12,
+        width: 4,
+        height: 3,
+        name: 'plot.png',
+        originalDimensions: { width: 8, height: 6 },
+      }, {
+        attachmentId: 'image-2', mediaType: 'image/png', bytes: 12, width: 4, height: 3,
+      }],
+    }))
+    expect(state.entries[1]).toEqual(expect.objectContaining({ kind: 'assistant', text: '[image]' }))
+  })
+
+  it('renders a persisted late question reply as an ordinary user message', () => {
+    // Harness 0.2.0 persists a continued ask_user_question's late answer as a
+    // user/message whose source kind is `user-question-reply`: the transcript
+    // must show the reply, not swallow it as an injected source.
+    const state = fold([
+      event('turn/start', { turn: 1 }),
+      event('user/message', userMessage('hello'), { append: true }),
+      event('user/message', userMessage('yes, ship it', [], {
+        kind: 'user-question-reply',
+        callId: ToolCallId('call-1'),
+        outcome: 'answered',
+      }), { append: true }),
+    ])
+    expect(state.entries).toHaveLength(2)
+    expect(state.entries[0]).toEqual(expect.objectContaining({ kind: 'user', text: 'hello' }))
+    expect(state.entries[1]).toEqual(expect.objectContaining({ kind: 'user', text: 'yes, ship it' }))
+  })
+
+  it('handles unpaired failures, interruptions, and rejects finalized or interrupted late chunks', () => {
+    let state = fold([
+      event('turn/start', { turn: 3 }),
+      event('step/start', { turn: 3, step: 0 }),
+      attemptEvent(3, 0, 'text', 'partial'),
+      event('assistant/message', { turn: 3, step: 0, message: assistantMessage([{ type: 'text', text: 'done' }]) }, { append: true }),
+    ])
+    const finalized = state
+    state = foldConversationProjection(state, attemptEvent(3, 0, 'text', 'late'))
+    expect(state).toBe(finalized)
+
+    state = foldConversationProjection(state, event('tool/result', {
+      turn: 3,
+      step: 1,
+      message: toolResultMessage('orphan', [{ type: 'text', text: 'bad' }], true),
+      error: { name: 'ToolError', code: 'E_TOOL' },
+      meta: { details: true },
+    }, { append: true, time: 220 }))
+    expect(state.entries.at(-1)).toMatchObject({
+      kind: 'tool',
+      callId: 'orphan',
+      name: 'tool',
+      result: { text: 'bad', isError: true, endedAt: 220, meta: { details: true }, code: 'E_TOOL' },
+    })
+    const replacementResult = foldConversationProjection(state, event('tool/result', {
+      turn: 3,
+      step: 1,
+      message: toolResultMessage('orphan', [{ type: 'text', text: 'replacement' }]),
+    }, { replace: true }))
+    expect(replacementResult).toBe(state)
+
+    state = foldConversationProjection(state, event('turn/end', {
+      turn: 3,
+      reason: { kind: 'aborted', reason: { kind: 'user' } },
+    }))
+    const interrupted = state
+    state = foldConversationProjection(state, attemptEvent(3, 2, 'reasoning', 'late'))
+    expect(state).toBe(interrupted)
+    state = foldConversationProjection(state, event('turn/end', {
+      turn: 3,
+      reason: { kind: 'interrupted' },
+    }))
+    expect(state).toStrictEqual(interrupted)
+
+    state = foldConversationProjection(state, event('turn/start', { turn: 4 }))
+    state = foldConversationProjection(state, event('turn/end', {
+      turn: 4,
+      reason: { kind: 'error', error: { message: 'endpoint down', code: 'HTTP_404' } },
+    }))
+    state = foldConversationProjection(state, event('turn/start', { turn: 5 }))
+    state = foldConversationProjection(state, event('turn/end', {
+      turn: 5,
+      reason: { kind: 'error', error: { message: 'unknown', code: '' } },
+    }))
+    expect(state.entries.slice(-2)).toMatchObject([
+      { kind: 'error', turn: 4, message: 'endpoint down', code: 'HTTP_404' },
+      { kind: 'error', turn: 5, message: 'unknown' },
+    ])
+  })
+
+  it('records turn lifecycle times, reasoning durations, and spawn-class channels', () => {
+    const reasoningAt = (times: readonly number[]) => times.map(time => ({ type: 'chunk' as const, time, chunk: { type: 'reasoning-delta' as const, index: 0, text: `r${String(time)}` } }))
+    let state = fold([
+      event('turn/start', { turn: 1 }, { time: 1_000 }),
+      event('step/start', { turn: 1, step: 0 }),
+      // A failed attempt's durable stream carries its reasoning span.
+      event('assistant/attempt', { turn: 1, step: 0, stream: reasoningAt([1_100, 3_100]) }),
+    ])
+    expect(state.entries).toMatchObject([{ kind: 'thinking', durationMs: 2_000, streaming: true }])
+    // The authoritative message rewrites the open reasoning with its own span.
+    state = foldConversationProjection(state, event('assistant/message', {
+      turn: 1, step: 0, stream: reasoningAt([1_100, 4_100]),
+      message: assistantMessage([{ type: 'reasoning', text: 'thought' }, { type: 'text', text: 'ok' }]),
+    }, { append: true }))
+    expect(state.entries[0]).toMatchObject({ kind: 'thinking', durationMs: 3_000, streaming: false })
+    // A message without an attempt inserts reasoning with its span; an empty stream records none.
+    state = foldConversationProjection(state, event('step/start', { turn: 1, step: 1 }))
+    state = foldConversationProjection(state, event('assistant/message', {
+      turn: 1, step: 1, stream: reasoningAt([5_000, 5_500]),
+      message: assistantMessage([{ type: 'reasoning', text: 'again' }]),
+    }, { append: true }))
+    state = foldConversationProjection(state, event('step/start', { turn: 1, step: 2 }))
+    state = foldConversationProjection(state, event('assistant/message', {
+      turn: 1, step: 2, message: assistantMessage([{ type: 'reasoning', text: 'untimed' }]),
+    }, { append: true }))
+    expect(state.entries.filter(entry => entry.kind === 'thinking').map(entry => (entry as { durationMs?: number }).durationMs)).toEqual([3_000, 500, undefined])
+    state = foldConversationProjection(state, event('tool/call', { turn: 1, step: 2, callId: ToolCallId('x-1'), name: 'subagent_codex', arguments: '{}' }))
+    expect(state.entries.at(-1)).toMatchObject({ kind: 'tool', channel: 'agents' })
+    state = foldConversationProjection(state, event('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }, { time: 9_000 }))
+    // A later synthetic closer keeps the first recorded outcome.
+    state = foldConversationProjection(state, event('turn/end', { turn: 1, reason: { kind: 'interrupted' } }, { time: 9_500 }))
+    // A close without a recorded start adopts the close time.
+    state = foldConversationProjection(state, event('turn/end', { turn: 2, reason: { kind: 'error', error: { message: 'boom', code: '' } } }, { time: 12_000 }))
+    expect(state.turns).toEqual([
+      { turn: 1, startedAt: 1_000, endedAt: 9_000, outcome: 'aborted' },
+      { turn: 2, startedAt: 12_000, endedAt: 12_000, outcome: 'error' },
+    ])
+    state = foldConversationProjection(state, retractionMarker(2, 0))
+    expect(state.turns.map(turn => turn.turn)).toEqual([1])
+  })
+
+  it('durably removes a safely retracted turn and rejects its late events', () => {
+    let state = fold([
+      event('turn/start', { turn: 6 }),
+      event('user/message', userMessage('revise this'), { append: true }),
+      event('step/start', { turn: 6, step: 0 }),
+      attemptEvent(6, 0, 'reasoning', 'partial thought'),
+      attemptEvent(6, 0, 'text', 'partial answer'),
+      event('assistant/message', {
+        turn: 6,
+        step: 0,
+        message: assistantMessage([
+          { type: 'reasoning', text: 'partial thought' },
+          { type: 'text', text: 'partial answer' },
+        ]),
+      }, { append: true }),
+      event('turn/end', { turn: 6, reason: { kind: 'aborted', reason: { kind: 'user' } } }),
+    ])
+    expect(state.entries.map(entry => entry.kind)).toEqual(['user', 'thinking', 'assistant', 'interrupted'])
+
+    const marker = retractionMarker(6, 0)
+    expect(isTurnRetraction(marker)).toBe(true)
+    state = foldConversationProjection(state, marker)
+    expect(state.entries).toEqual([])
+    expect(state.active).toBe(false)
+    expect(state.retractedTurns).toEqual([6])
+    expect(state.interruptedTurns).toEqual([])
+    expect(state.finalizedSteps).toEqual([])
+
+    const retracted = state
+    state = foldConversationProjection(state, event('turn/start', { turn: 6 }))
+    state = foldConversationProjection(state, event('step/start', { turn: 6, step: 1 }))
+    state = foldConversationProjection(state, event('user/message', userMessage('late user'), { append: true }))
+    state = foldConversationProjection(state, attemptEvent(6, 0, 'text', 'late answer'))
+    state = foldConversationProjection(state, event('assistant/message', {
+      turn: 6, step: 0, message: assistantMessage([{ type: 'text', text: 'late final' }]),
+    }, { append: true }))
+    state = foldConversationProjection(state, event('tool/call', {
+      turn: 6, step: 0, callId: ToolCallId('late-tool'), name: 'read', arguments: '{}',
+    }))
+    state = foldConversationProjection(state, event('turn/end', {
+      turn: 6, reason: { kind: 'interrupted' },
+    }))
+    expect(state).toBe(retracted)
+    expect(isTurnRetraction(event('developer/message', {
+      turn: 7, step: 0,
+      message: { id: MessageId('appended'), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
+    }, { append: true }))).toBe(false)
+    expect(foldConversationProjection(state, marker)).toBe(state)
+  })
+
+  it('recognizes only the exact retraction marker and preserves other active turns', () => {
+    expect(isTurnRetraction(event('turn/start', { turn: 1 }))).toBe(false)
+    // An ordinary assistant replacement is not a retraction.
+    expect(isTurnRetraction(event('assistant/message', {
+      turn: 1, step: 0, message: assistantMessage([]),
+    }, { replace: true }))).toBe(false)
+    // A developer replacement with content is an incremental change, not a retraction.
+    expect(isTurnRetraction(event('developer/message', {
+      turn: 1, step: 0,
+      message: { id: MessageId('sys-kept'), role: 'developer', content: [{ type: 'text', text: 'kept' }], source: { kind: 'mayfly-retraction' } },
+    }, { replace: true }))).toBe(false)
+    // Without the replacement op the marker is an ordinary empty developer message.
+    expect(isTurnRetraction(event('developer/message', {
+      turn: 1, step: 0,
+      message: { id: MessageId('sys-plain'), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
+    }))).toBe(false)
+
+    const active = fold([
+      event('turn/start', { turn: 8 }),
+      event('step/start', { turn: 8, step: 0 }),
+      attemptEvent(8, 0, 'reasoning', 'kept thought'),
+      attemptEvent(8, 0, 'text', 'kept answer'),
+      event('tool/call', { turn: 8, step: 0, callId: ToolCallId('kept-tool'), name: 'read', arguments: '{}' }),
+    ])
+    const retracted = foldConversationProjection(active, retractionMarker(7, 0))
+    expect(retracted.active).toBe(true)
+    expect(retracted.streamingStep).toBe(active.streamingStep)
+    expect(retracted.streamingAssistantId).toBe(active.streamingAssistantId)
+    expect(retracted.streamingThinkingId).toBe(active.streamingThinkingId)
+    expect(retracted.pendingReasoning).toBe(active.pendingReasoning)
+    expect(retracted.entries).toEqual(active.entries)
+  })
+
+  it('replays historical assistant retractions without restoring the removed turn', () => {
+    const history = [
+      event('turn/start', { turn: 1 }),
+      event('user/message', userMessage('withdrawn prompt'), { append: true }),
+      event('step/start', { turn: 1, step: 1 }),
+      attemptEvent(1, 1, 'reasoning', 'withdrawn thought'),
+      event('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }),
+    ]
+    // The storage boundary has translated coordinates and removed assistant
+    // provenance; the historical interrupted empty replacement still survives.
+    const marker = event('assistant/message', {
+      turn: 1, step: 1, message: assistantMessage([]), stream: [], interrupted: true,
+    }, { replace: true })
+    expect(isTurnRetraction(marker)).toBe(true)
+    const retracted = fold([...history, marker])
+    expect(retracted.entries).toEqual([])
+    expect(retracted.retractedTurns).toEqual([1])
+    expect(foldConversationProjection(retracted, attemptEvent(1, 1, 'text', 'late prefix'))).toBe(retracted)
+    const resumed = foldConversationProjection(retracted, event('turn/start', { turn: 2 }))
+    const current = foldConversationProjection(resumed, event('user/message', userMessage('new prompt'), { append: true }))
+    expect(current.entries).toMatchObject([{ kind: 'user', turn: 2, text: 'new prompt' }])
+    expect(isTurnRetraction(event('assistant/message', {
+      turn: 2, step: 1, message: assistantMessage([{ type: 'text', text: 'visible prefix' }]), interrupted: true, stream: [],
+    }, { replace: true }))).toBe(false)
+    expect(isTurnRetraction(event('assistant/message', {
+      turn: 2, step: 1, message: assistantMessage([]), interrupted: true, stream: [],
+    }, { append: true }))).toBe(false)
+  })
+
+  it('clears active streaming lookup state when retracting before turn end', () => {
+    const active = fold([
+      event('turn/start', { turn: 9 }),
+      event('step/start', { turn: 9, step: 0 }),
+      attemptEvent(9, 0, 'reasoning', 'thought'),
+      attemptEvent(9, 0, 'text', 'answer'),
+      event('tool/call', { turn: 9, step: 0, callId: ToolCallId('removed-tool'), name: 'read', arguments: '{}' }),
+    ])
+    const retracted = foldConversationProjection(active, retractionMarker(9, 0))
+    expect(retracted).toMatchObject({
+      entries: [], active: false, streamingStep: null,
+      streamingAssistantId: null, streamingThinkingId: null,
+      pendingReasoning: '', retractedTurns: [9],
+    })
+  })
+
+  it('folds foreign or malformed attempt streams without entries', () => {
+    let state = foldConversationProjection(initialConversationState(), event('turn/start', { turn: 9 }))
+    state = foldConversationProjection(state, event('step/start', { turn: 9, step: 0 }))
+    // No stream at all folds empty.
+    state = foldConversationProjection(state, event('assistant/attempt', { turn: 9, step: 0 } as never))
+    expect(state.entries).toEqual([])
+    // A malformed packed record folds empty rather than throwing.
+    state = foldConversationProjection(state, event('assistant/attempt', {
+      turn: 9, step: 0, stream: [{ type: 'reasoning-chunks', time0: 1, index: 0, dt: [], texts: ['a', 'b'] }],
+    }))
+    expect(state.entries).toEqual([])
+    // Empty-text deltas contribute nothing.
+    state = foldConversationProjection(state, attemptEvent(9, 0, 'text', ''))
+    expect(state.entries).toEqual([])
+    expect(state.streamingStep).toBe('9:0')
+  })
+
+  it('runs boundary records and re-opens a parked thinking entry from the attempt fold', () => {
+    let state = fold([
+      event('turn/start', { turn: 10 }),
+      event('step/start', { turn: 10, step: 0 }),
+      attemptEvent(10, 0, 'reasoning', 'first'),
+    ])
+    // Raw boundary records: finish parks the streaming entry; block-end
+    // reasoning and block-start text exercise the remaining sides.
+    state = foldConversationProjection(state, event('assistant/attempt', {
+      turn: 10, step: 0,
+      stream: [
+        { type: 'chunk', time: 5, chunk: { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'first' } } },
+        { type: 'chunk', time: 6, chunk: { type: 'block-start', index: 1, blockType: 'text' } },
+        { type: 'chunk', time: 7, chunk: { type: 'finish', reason: { kind: 'stop' } } },
+      ],
+    }))
+    // A later boundary-only attempt replaces the parked attempt entirely.
+    expect(state.entries.find(entry => entry.kind === 'thinking')).toBeUndefined()
+    state = foldConversationProjection(state, attemptEvent(10, 0, 'reasoning', ' more'))
+    expect(state.entries.find(entry => entry.kind === 'thinking')).toMatchObject({
+      text: ' more',
+      streaming: true,
+      outputProgress: { chars: 5, startedAt: 1_700_000_000_000 },
+    })
+  })
+
+  it('settles incomplete steps, ignores unrelated chunks, and validates checkpoints', () => {
+    let state = initialConversationState()
+    const unrelated = event('request/context', { provider: 'mock', model: 'mock' })
+    expect(foldConversationProjection(state, unrelated)).toBe(state)
+    state = foldConversationProjection(state, event('turn/start', { turn: 7 }))
+    state = foldConversationProjection(state, event('step/start', { turn: 7, step: 0 }))
+    // An attempt whose stream holds only a boundary record contributes no
+    // delta text — the unrelated-chunk case of the packed stream world.
+    state = foldConversationProjection(state, event('assistant/attempt', {
+      turn: 7, step: 0, stream: [{ type: 'chunk', time: 1, chunk: { type: 'block-start', index: 0, blockType: 'text' } }],
+    }))
+    state = foldConversationProjection(state, attemptEvent(7, 0, 'reasoning', ' '))
+    const beforeWhitespace = state
+    expect(state.pendingReasoning).toBe(' ')
+    state = foldConversationProjection(state, attemptEvent(7, 0, 'text', ''))
+    state = foldConversationProjection(state, event('step/start', { turn: 7, step: 1 }))
+    expect(state.streamingStep).toBeNull()
+    expect(state.pendingReasoning).toBe('')
+    expect(state.entries).toEqual([])
+    expect(beforeWhitespace.streamingStep).toBe('7:0')
+
+    expect(conversationProjectionSchema.safeParse({ entries: state.entries, streaming: true, settledSteps: [], turns: [] }).success).toBe(true)
+    expect(conversationProjectionSchema.safeParse({ entries: state.entries, streaming: true, settledSteps: [] }).success).toBe(false)
+    expect(conversationProjectionSchema.safeParse({ entries: [], streaming: 'yes' }).success).toBe(false)
+    expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
+    expect(conversationProjectionStateSchema.safeParse({ ...state, finalizedSteps: [1] }).success).toBe(false)
+    expect(conversationProjectionDefinition.stateVersion).toBe(13)
+  })
+
+  it('covers final-only replay, mid-stream settling, nested result text, and defensive restored ids', () => {
+    let state = fold([
+      event('turn/start', { turn: 8 }),
+      event('assistant/message', {
+        turn: 8,
+        step: 0,
+        message: assistantMessage([{ type: 'reasoning', text: 'replayed thought' }]),
+      }, { append: true }),
+      event('assistant/message', {
+        turn: 8,
+        step: 1,
+        message: assistantMessage([{ type: 'text', text: 'replayed answer' }]),
+      }, { append: true }),
+    ])
+    expect(state.entries).toMatchObject([
+      { kind: 'thinking', text: 'replayed thought', streaming: false },
+      { kind: 'assistant', text: 'replayed answer', streaming: false },
+    ])
+    const finalized = state
+    state = foldConversationProjection(state, event('assistant/message', {
+      turn: 8,
+      step: 1,
+      message: assistantMessage([{ type: 'text', text: 'duplicate' }]),
+    }, { append: true }))
+    expect(state).toBe(finalized)
+
+    state = foldConversationProjection(state, event('turn/start', { turn: 9 }))
+    state = foldConversationProjection(state, event('assistant/attempt', {
+      turn: 9, step: 0, stream: [
+        { type: 'text-chunks', time0: 1, index: 1, dt: [], texts: ['answer first'] },
+        { type: 'reasoning-chunks', time0: 2, index: 0, dt: [1], texts: ['thought after', ' continued'] },
+      ],
+    }))
+    state = foldConversationProjection(state, event('step/start', { turn: 9, step: 1 }))
+    expect(state.entries.slice(-2)).toMatchObject([
+      { kind: 'thinking', text: 'thought after continued', streaming: false },
+      { kind: 'assistant', text: 'answer first', streaming: false },
+    ])
+
+    state = foldConversationProjection(state, event('tool/result', {
+      turn: 9,
+      step: 1,
+      message: toolResultMessage('nested', [
+        { type: 'image', attachment: { attachmentId: 'img-nested' as never, mediaType: 'image/png', bytes: 1, width: 1, height: 1 } },
+        { type: 'text', text: 'nested text' },
+      ]),
+    }, { append: true }))
+    expect(state.entries.at(-1)).toMatchObject({ kind: 'tool', result: { text: '[image]\nnested text' } })
+    expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
+
+    const crossed: ConversationProjectionState = {
+      ...initialConversationState(),
+      entries: [
+        { kind: 'assistant', id: 'assistant-id', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'a', streaming: true },
+        { kind: 'thinking', id: 'thinking-id', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 't', streaming: true },
+      ],
+      streamingStep: '1:0',
+      streamingThinkingId: 'assistant-id',
+      streamingAssistantId: 'thinking-id',
+    }
+    const crossedReasoning = foldConversationProjection(crossed, attemptEvent(1, 0, 'reasoning', 'ignored kind'))
+    expect(crossedReasoning.entries).toEqual(crossed.entries)
+    const crossedText = foldConversationProjection(crossed, attemptEvent(1, 0, 'text', 'ignored kind'))
+    expect(crossedText.entries).toEqual(crossed.entries)
+    const settled = foldConversationProjection(crossed, event('step/start', { turn: 1, step: 1 }))
+    expect(settled.streamingThinkingId).toBeNull()
+    expect(settled.streamingAssistantId).toBeNull()
+
+    const missing: ConversationProjectionState = {
+      ...crossed,
+      streamingThinkingId: 'missing-thinking',
+      streamingAssistantId: 'missing-assistant',
+    }
+    expect(foldConversationProjection(missing, event('step/start', { turn: 1, step: 2 })).entries).toEqual(missing.entries)
+
+    const crossedFinal = foldConversationProjection(crossed, event('assistant/message', {
+      turn: 1,
+      step: 0,
+      message: assistantMessage([{ type: 'reasoning', text: 'final t' }, { type: 'text', text: 'final a' }]),
+    }, { append: true }))
+    expect(crossedFinal.finalizedSteps).toContain('1:0')
+
+    let answerFirst = foldConversationProjection(initialConversationState(), attemptEvent(10, 0, 'text', 'draft'))
+    answerFirst = foldConversationProjection(answerFirst, event('assistant/message', {
+      turn: 10,
+      step: 0,
+      message: assistantMessage([{ type: 'reasoning', text: 'insert before answer' }, { type: 'text', text: 'final' }]),
+    }, { append: true }))
+    expect(answerFirst.entries.map(entry => entry.kind)).toEqual(['thinking', 'assistant'])
+
+    const badToolPair: ConversationProjectionState = {
+      ...initialConversationState(),
+      entries: [{ kind: 'assistant', id: 'tool:paired', seq: 1, updatedSeq: 1, turn: 1, step: 0, text: 'a', streaming: false }],
+    }
+    const unchangedPair = foldConversationProjection(badToolPair, event('tool/result', {
+      turn: 1,
+      step: 0,
+      message: toolResultMessage('paired', [{ type: 'text', text: 'result' }]),
+    }, { append: true }))
+    expect(unchangedPair.entries).toEqual(badToolPair.entries)
+  })
+
+  it('clears dangling stream ids when retracting a turn', () => {
+    const state: ConversationProjectionState = {
+      ...initialConversationState(), currentTurn: 4, active: true,
+      streamingStep: '4:0', streamingThinkingId: 'missing-thinking', streamingAssistantId: 'missing-assistant',
+      entries: [{ kind: 'thinking', id: 'missing-thinking', seq: 1, updatedSeq: 1, turn: 4, step: 0, text: 'x', streaming: true }],
+    }
+    const retraction = event('developer/message', {
+      turn: 4, step: 0, message: { id: MessageId('retraction-4'), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
+    }, { replace: true })
+    const next = foldConversationProjection(state, retraction)
+    expect(next.streamingThinkingId).toBeNull()
+    expect(next.streamingAssistantId).toBeNull()
+  })
+
+  it('pauses current reasoning on tool calls without losing its authoritative replacement id', () => {
+    let state = fold([
+      event('turn/start', { turn: 1 }),
+      attemptEvent(1, 0, 'reasoning', 'working'),
+    ])
+    state = foldConversationProjection(state, event('tool/call', { turn: 1, step: 0, callId: ToolCallId('pause'), name: 'read', arguments: '{}' }))
+    expect(state.entries[0]).toMatchObject({ kind: 'thinking', streaming: false, text: 'working' })
+    expect(state.streamingThinkingId).toBe('thinking:1:0')
+    state = foldConversationProjection(state, event('tool/call', { turn: 1, step: 0, callId: ToolCallId('still-paused'), name: 'read', arguments: '{}' }))
+    expect(state.entries[0]).toMatchObject({ kind: 'thinking', streaming: false, text: 'working' })
+    const retractedOther = foldConversationProjection(state, retractionMarker(2, 0))
+    expect(retractedOther.streamingThinkingId).toBe(state.streamingThinkingId)
+  })
+
+  it('opens a manual row at /compact dispatch, adopts the transaction, and settles on end', () => {
+    let state = fold([
+      event('turn/start', { turn: 1 }),
+      event('user/message', userMessage('first prompt'), { append: true }),
+      event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    state = foldConversationProjection(state, event('command/run', {
+      commandId: CommandId('cmd-1'), name: 'compact', source: { kind: 'user' },
+    }, { time: 1_000 }))
+    expect(state.entries.at(-1)).toMatchObject({
+      kind: 'compaction', id: 'compaction:cmd:cmd-1', state: 'running', trigger: 'manual',
+      turn: 1, commandId: 'cmd-1', startedAt: 1_000,
+    })
+
+    // Unrelated commands and a duplicate run leave the open row untouched.
+    const opened = state
+    state = foldConversationProjection(state, event('command/run', {
+      commandId: CommandId('cmd-2'), name: 'help', source: { kind: 'user' },
+    }))
+    state = foldConversationProjection(state, event('command/run', {
+      commandId: CommandId('cmd-1'), name: 'compact', source: { kind: 'user' },
+    }))
+    expect(state).toBe(opened)
+
+    state = foldConversationProjection(state, event('compaction/start', {
+      compactionId: 'cmp-1' as never, sourceCommandId: CommandId('cmd-1'), turn: null,
+    }, { time: 1_100 }))
+    expect(state.entries.at(-1)).toMatchObject({ id: 'compaction:cmd:cmd-1', compactionId: 'cmp-1', state: 'running' })
+
+    // A repeated start for the adopted transaction is an idempotent touch.
+    state = foldConversationProjection(state, event('compaction/start', {
+      compactionId: 'cmp-1' as never, sourceCommandId: CommandId('cmd-1'), turn: null,
+    }, { time: 1_200 }))
+    expect(state.entries.at(-1)).toMatchObject({ id: 'compaction:cmd:cmd-1', compactionId: 'cmp-1', state: 'running' })
+
+    const summary = [{ type: 'text' as const, text: 'condensed earlier context' }]
+    state = foldConversationProjection(state, event('compaction/summary', {
+      compactionId: 'cmp-1' as never,
+      sourceCommandId: CommandId('cmd-1'),
+      summary,
+      shadowedRange: { start: 1 as never, end: 2 as never },
+      shadowedSeqs: [1, 2, 3] as never,
+      shadowedTokenCount: 18_200,
+      provider: 'mock',
+      model: 'mock',
+      llmStreamCall: true,
+      rawOutput: summary,
+    }, { time: 2_000 }))
+    expect(state.entries.at(-1)).toMatchObject({
+      state: 'running', shadowedCount: 3, shadowedTokens: 18_200,
+      provider: 'mock', model: 'mock', summary: 'condensed earlier context',
+    })
+
+    // The checkpoint replacement is model-facing; it never becomes a row.
+    state = foldConversationProjection(state, event('user/message',
+      userMessage('condensed earlier context', [], { kind: 'compact-checkpoint', compactionId: 'cmp-1' } as never),
+      { replace: true }))
+    expect(state.entries.filter(entry => entry.kind === 'user')).toHaveLength(1)
+
+    state = foldConversationProjection(state, event('compaction/end', {
+      compactionId: 'cmp-1' as never, sourceCommandId: CommandId('cmd-1'), turn: null,
+    }, { time: 2_100 }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'ok', endedAt: 2_100 })
+
+    // The trailing command/done no longer owns the row.
+    const settled = state
+    state = foldConversationProjection(state, event('command/done', {
+      commandId: CommandId('cmd-1'), kind: 'success', text: 'Compacted 3 history items (~18200 tokens).',
+    }))
+    expect(state).toBe(settled)
+  })
+
+  it('settles never-started manual attempts through command/done alone', () => {
+    let state = fold([
+      event('command/run', { commandId: CommandId('cmd-2'), name: 'compact', source: { kind: 'user' } }, { time: 1_000 }),
+      event('command/done', { commandId: CommandId('cmd-2'), kind: 'success', text: 'No compactable history yet.' }, { time: 1_050 }),
+    ])
+    expect(state.entries).toMatchObject([{
+      kind: 'compaction', state: 'ok', trigger: 'manual', detail: 'No compactable history yet.', endedAt: 1_050,
+    }])
+    state = foldConversationProjection(state, event('command/run', { commandId: CommandId('cmd-3'), name: 'compact', source: { kind: 'user' } }))
+    state = foldConversationProjection(state, event('command/done', { commandId: CommandId('cmd-3'), kind: 'error', text: 'A compaction is already running.' }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'error', error: 'A compaction is already running.' })
+    // A bare success or error result still settles the row.
+    state = foldConversationProjection(state, event('command/run', { commandId: CommandId('cmd-5'), name: 'compact', source: { kind: 'user' } }))
+    state = foldConversationProjection(state, event('command/done', { commandId: CommandId('cmd-5'), kind: 'success' }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'ok' })
+    expect(state.entries.at(-1)).not.toHaveProperty('detail')
+    state = foldConversationProjection(state, event('command/run', { commandId: CommandId('cmd-6'), name: 'compact', source: { kind: 'user' } }))
+    state = foldConversationProjection(state, event('command/done', { commandId: CommandId('cmd-6'), kind: 'error' }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'error', error: 'compaction failed' })
+    // A settled row is not resurrected by a late lifecycle event.
+    state = foldConversationProjection(state, event('compaction/start', {
+      compactionId: 'cmp-3' as never, sourceCommandId: CommandId('cmd-3'), turn: null,
+    }))
+    expect(state.entries.filter(entry => entry.kind === 'compaction')).toHaveLength(5)
+    expect(state.entries[1]).toMatchObject({ state: 'error', error: 'A compaction is already running.' })
+    expect(state.entries.at(-1)).toMatchObject({ state: 'running', trigger: 'manual', compactionId: 'cmp-3' })
+  })
+
+  it('opens an automatic row inside the active turn and settles it on error', () => {
+    let state = fold([
+      event('turn/start', { turn: 4 }),
+      event('user/message', userMessage('big task'), { append: true }),
+    ])
+    state = foldConversationProjection(state, event('compaction/start', {
+      compactionId: 'cmp-auto' as never, turn: 4,
+    }, { time: 5_000 }))
+    expect(state.entries.at(-1)).toMatchObject({
+      kind: 'compaction', id: 'compaction:cmp-auto', state: 'running', trigger: 'auto', turn: 4, startedAt: 5_000,
+    })
+    state = foldConversationProjection(state, event('compaction/end', {
+      compactionId: 'cmp-auto' as never, turn: 4, error: 'summary was not smaller than the shadowed content',
+    }, { time: 6_000 }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'error', endedAt: 6_000, error: 'summary was not smaller than the shadowed content' })
+    // Unknown lifecycle events fold empty.
+    const settled = state
+    state = foldConversationProjection(state, event('compaction/end', { compactionId: 'cmp-none' as never, turn: null }))
+    expect(state).toBe(settled)
+    state = foldConversationProjection(state, event('compaction/summary', {
+      compactionId: 'cmp-none' as never, summary: [{ type: 'text', text: 'orphan' }],
+      shadowedRange: { start: 1 as never, end: 1 as never }, shadowedSeqs: [], shadowedTokenCount: 0,
+      provider: 'mock', model: 'mock',
+    }))
+    expect(state).toBe(settled)
+    // An empty summary leaves the preview slot unset.
+    state = foldConversationProjection(state, event('compaction/start', { compactionId: 'cmp-img' as never, turn: 4 }))
+    state = foldConversationProjection(state, event('compaction/summary', {
+      compactionId: 'cmp-img' as never, summary: [],
+      shadowedRange: { start: 1 as never, end: 1 as never }, shadowedSeqs: [1] as never, shadowedTokenCount: 4,
+      provider: 'mock', model: 'mock',
+    }))
+    expect(state.entries.at(-1)).toMatchObject({ state: 'running', shadowedCount: 1, shadowedTokens: 4 })
+    expect(state.entries.at(-1)).not.toHaveProperty('summary')
+  })
+
+  it('settles a still-running compaction as interrupted at session/end-seed', () => {
+    let state = fold([
+      event('user/message', userMessage('prompt'), { append: true }),
+      event('command/run', { commandId: CommandId('cmd-4'), name: 'compact', source: { kind: 'user' } }),
+      event('compaction/start', { compactionId: 'cmp-4' as never, sourceCommandId: CommandId('cmd-4'), turn: null }),
+      event('command/run', { commandId: CommandId('cmd-7'), name: 'compact', source: { kind: 'user' } }),
+      event('command/done', { commandId: CommandId('cmd-7'), kind: 'error', text: 'A compaction is already running.' }),
+    ])
+    state = foldConversationProjection(state, event('session/end-seed', {}, { time: 9_000 }))
+    // Only the still-running row settles; the user row and the settled error row are untouched.
+    expect(state.entries).toMatchObject([
+      { kind: 'user' },
+      { kind: 'compaction', state: 'error', endedAt: 9_000, error: 'compaction interrupted by restart' },
+      { kind: 'compaction', state: 'error', error: 'A compaction is already running.' },
+    ])
+    expect(state.entries[2]).not.toHaveProperty('endedAt', 9_000)
+  })
+})
+
+describe('mayflyConversation projection over a long history', () => {
+  it('keeps only the last two turns of settled step keys in a 2,000-step session', () => {
+    let state = initialConversationState()
+    const steps: string[] = []
+    for (let turn = 1; turn <= 1_000; turn += 1) {
+      state = foldConversationProjection(state, event('turn/start', { turn }))
+      for (let step = 0; step < 2; step += 1) {
+        state = foldConversationProjection(state, event('step/start', { turn, step }))
+        // A retry reopens the step: the tail splice replaces the first attempt
+        // instead of appending a second pair of rows.
+        state = foldConversationProjection(state, attemptEvent(turn, step, 'text', `draft ${String(turn)}/${String(step)}`))
+        state = foldConversationProjection(state, attemptEvent(turn, step, 'text', ` answer ${String(turn)}/${String(step)}`))
+        state = foldConversationProjection(state, event('assistant/message', {
+          turn, step, message: assistantMessage([{ type: 'text', text: `final ${String(turn)}/${String(step)}` }]),
+        }, { append: true }))
+        steps.push(settleKey(turn, step))
+      }
+    }
+    expect(state.entries).toHaveLength(2_000)
+    expect(state.finalizedSteps).toHaveLength(4)
+    expect(state.finalizedSteps).toEqual(steps.slice(-4))
+    expect(conversationProjectionDefinition.wire.view(state).settledSteps).toEqual(steps.slice(-4))
+    // The current and previous turns stay fenced; older keys are no longer retained.
+    expect(state.finalizedSteps).not.toContain('1:0')
+    const settled = state
+    expect(foldConversationProjection(state, attemptEvent(1_000, 1, 'text', 'late'))).toBe(settled)
+    expect(foldConversationProjection(state, attemptEvent(999, 1, 'text', 'late'))).toBe(settled)
+    expect(foldConversationProjection(state, event('assistant/message', {
+      turn: 1_000, step: 1, message: assistantMessage([{ type: 'text', text: 'duplicate' }]),
+    }, { append: true }))).toBe(settled)
+  })
+
+  it('finds the entries it updates from the tail, not by walking the history', () => {
+    // A resumed session folds thousands of turns; an event only ever updates the entries it just opened. Every id of the
+    // settled history counts its reads, so a lookup that starts at the head shows as thousands of them.
+    let reads = 0
+    const history: ConversationProjectionState['entries'][number][] = Array.from({ length: 5_000 }, (_, turn) => {
+      const entry = { kind: 'user' as const, id: `user:${String(turn)}`, seq: turn, updatedSeq: turn, turn, text: 'earlier', images: [] }
+      return Object.defineProperty({ ...entry }, 'id', { get() { reads += 1; return entry.id }, enumerable: true })
+    })
+    let state: ConversationProjectionState = { ...initialConversationState(), currentTurn: 4_999, entries: history }
+    for (const next of [
+      event('turn/start', { turn: 5_000 }),
+      event('step/start', { turn: 5_000, step: 0 }),
+      attemptEvent(5_000, 0, 'text', 'draft'),
+      attemptEvent(5_000, 0, 'text', ' more'),
+      event('assistant/message', { turn: 5_000, step: 0, message: assistantMessage([{ type: 'text', text: 'final' }]) }, { append: true }),
+      event('tool/call', { turn: 5_000, step: 0, callId: ToolCallId('long-history'), name: 'read', arguments: '{}' }),
+      event('tool/result', { turn: 5_000, step: 0, message: toolResultMessage('long-history', [{ type: 'text', text: 'ok' }]) }, { append: true }),
+      event('turn/end', { turn: 5_000, reason: { kind: 'completed' } }),
+    ]) state = foldConversationProjection(state, next)
+    expect(state.entries.at(-1)).toMatchObject({ kind: 'tool', callId: 'long-history', result: { text: 'ok' } })
+    expect(reads).toBeLessThan(100)
+  })
+})
+
+describe('SessionProjectionRegistry integration', () => {
+  it('replays, checkpoints, restores, drives live changes, and removes the Host projections on unload', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    const session = ctx.sessions.create(SessionId('conversation-spec'))
+    session.append('turn/start', { turn: 0 })
+    session.append('user/message', userMessage('replayed'), { surfaceOp: 'append' })
+
+    const fiber = await ctx.plugin(conversationPlugin)
+    expect(ctx.sessionProjections.snapshot(session)).toMatchObject({
+      asOfSeq: 1,
+      values: { mayflyConversation: { entries: [{ kind: 'user', text: 'replayed' }], streaming: true } },
+    })
+    const changes: number[] = []
+    const off = ctx.sessionProjections.onChanged((changedSession, key, _value, seq) => {
+      if (changedSession === session && key === 'mayflyConversation') changes.push(seq)
+    })
+    session.append('step/start', { turn: 0, step: 0 })
+    session.append('assistant/attempt', { turn: 0, step: 0, stream: [{ type: 'text-chunks', time0: 1, index: 0, dt: [], texts: ['live'] }] })
+    expect(changes).toEqual([2, 3])
+
+    const checkpoint = ctx.sessionProjections.checkpoint(session)
+    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 13, seq: 3 })
+    const obsolete = { ...checkpoint, mayflyConversation: { ...checkpoint.mayflyConversation!, ver: 4 } }
+    expect(ctx.sessionProjections.restoreFloor(obsolete)).toBe(0)
+    expect(ctx.sessionProjections.viewCheckpoint(obsolete)).not.toHaveProperty('mayflyConversation')
+    expect(ctx.sessionProjections.viewCheckpoint(checkpoint)).toMatchObject({
+      mayflyConversation: { entries: expect.arrayContaining([expect.objectContaining({ kind: 'assistant', text: 'live' })]) },
+    })
+    const floor = ctx.sessionProjections.restoreFloor(checkpoint)
+    expect(floor).toBe(3)
+    const restored = ctx.sessionProjections.restore(checkpoint, session.snapshotEvents().filter(row => row.seq >= floor!), floor!, session.header, session.inheritedEventCount)
+    expect(restored.snapshot).toEqual(ctx.sessionProjections.snapshot(session))
+    expect(ctx.sessionProjections.stateOf(session, 'mayflyConversation')).toBeDefined()
+
+    off()
+    await fiber.dispose()
+    expect(ctx.sessionProjections.snapshot(session)).toEqual({ asOfSeq: 3, values: {} })
+    await ctx.fiber.dispose()
+  })
+
+  it('loads open compaction ids from a persisted checkpoint and settles the transaction', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    const session = ctx.sessions.create(SessionId('conversation-compaction-load'))
+    const fiber = await ctx.plugin(conversationPlugin)
+    session.append('turn/start', { turn: 1 })
+    session.append('command/run', { commandId: CommandId('cmd-load'), name: 'compact', source: { kind: 'user' } })
+    session.append('compaction/start', { compactionId: 'cmp-load' as never, sourceCommandId: CommandId('cmd-load'), turn: null })
+    // The cache stores a JSON checkpoint; load the row exactly as written.
+    const stored = JSON.parse(JSON.stringify(ctx.sessionProjections.checkpoint(session))) as ReturnType<typeof ctx.sessionProjections.checkpoint>
+    const floor = ctx.sessionProjections.restoreFloor(stored)
+    const restored = ctx.sessionProjections.restore(
+      stored,
+      session.snapshotEvents().filter(row => row.seq >= floor!),
+      floor!,
+      session.header,
+      session.inheritedEventCount,
+    )
+    const state = conversationProjectionStateSchema.parse(restored.checkpoint.mayflyConversation!.val)
+    expect(state.openCompactions).toEqual([{
+      entryId: 'compaction:cmd:cmd-load', commandId: 'cmd-load', compactionId: 'cmp-load',
+    }])
+    const settled = foldConversationProjection(state, event('compaction/end', {
+      compactionId: 'cmp-load' as never, sourceCommandId: CommandId('cmd-load'), turn: null,
+    }, { time: 9_000 }))
+    expect(settled.entries.at(-1)).toMatchObject({ kind: 'compaction', state: 'ok', endedAt: 9_000 })
+    expect(settled.openCompactions).toEqual([])
+    await fiber.dispose()
+    await ctx.fiber.dispose()
+  })
+})
+
+describe('mayflyConversation projection stale and defensive folds', () => {
+  it('drops a foreign settled key when a later step settles', () => {
+    const state: ConversationProjectionState = { ...initialConversationState(), finalizedSteps: ['foreign'] }
+    const next = foldConversationProjection(state, event('assistant/message', {
+      turn: 2, step: 0, message: assistantMessage([{ type: 'text', text: 'answer' }]),
+    }, { append: true }))
+    expect(next.finalizedSteps).toEqual(['2:0'])
+  })
+
+  it('ignores a compaction end whose open record matches no transaction', () => {
+    const state = fold([
+      event('compaction/start', { compactionId: 'cmp-open' as never, turn: null }),
+    ])
+    expect(foldConversationProjection(state, event('compaction/end', { compactionId: 'cmp-other' as never, turn: null }))).toBe(state)
+  })
+
+  it('ignores compactions whose open record lost its running entry, kind, or state', () => {
+    const state = fold([event('compaction/start', { compactionId: 'cmp-lost' as never, turn: null })])
+    const end = event('compaction/end', { compactionId: 'cmp-lost' as never, turn: null })
+    const missing = { ...state, entries: [] }
+    expect(foldConversationProjection(missing, end)).toBe(missing)
+    const wrongKind = { ...state, entries: state.entries.map(entry => entry.kind === 'compaction' ? { ...entry, kind: 'user' as const, text: 'not a compaction', images: [] } : entry) }
+    expect(foldConversationProjection(wrongKind, end)).toBe(wrongKind)
+    const settled = { ...state, entries: state.entries.map(entry => entry.kind === 'compaction' ? { ...entry, state: 'ok' as const } : entry) }
+    expect(foldConversationProjection(settled, end)).toBe(settled)
+  })
+
+  it('splices a retried attempt past the tool rows of the same step', () => {
+    let state = fold([
+      event('turn/start', { turn: 2 }),
+      event('tool/call', { turn: 2, step: 0, callId: ToolCallId('call-retry'), name: 'read', arguments: '{}' }),
+    ])
+    state = foldConversationProjection(state, attemptEvent(2, 0, 'text', 'draft'))
+    expect(state.entries.filter(entry => entry.kind === 'tool')).toHaveLength(1)
+    expect(state.entries.filter(entry => entry.kind === 'assistant')).toHaveLength(1)
+  })
+
+  it('drops the open compaction record of a retracted turn', () => {
+    const state = fold([
+      event('turn/start', { turn: 3 }),
+      event('compaction/start', { compactionId: 'cmp-retract' as never, turn: null }),
+    ])
+    expect(state.openCompactions).toHaveLength(1)
+    const retracted = foldConversationProjection(state, retractionMarker(state.currentTurn, 0))
+    expect(retracted.entries.some(entry => entry.kind === 'compaction')).toBe(false)
+    expect(retracted.openCompactions).toEqual([])
+  })
+
+  it('leaves a session/end-seed fold unchanged when no compaction is open', () => {
+    const state = fold([event('user/message', userMessage('nothing open'), { append: true })])
+    expect(foldConversationProjection(state, event('session/end-seed', {}, { time: 1 }))).toBe(state)
+  })
+
+  it('settles the stale open records of a session/end-seed that lost their entries', () => {
+    const state = fold([event('compaction/start', { compactionId: 'cmp-stale' as never, turn: null })])
+    const stale = { ...state, entries: [] }
+    const next = foldConversationProjection(stale, event('session/end-seed', {}, { time: 2 }))
+    expect(next.entries).toEqual([])
+    expect(next.openCompactions).toEqual([])
+  })
+
+  it('folds a goal round only when it is appended at a positive round', () => {
+    const base = fold([event('turn/start', { turn: 1 })])
+    const goal = (round: number, append: boolean) => event('user/message', {
+      ...userMessage('goal prompt'),
+      source: { kind: 'goal', round },
+    } as never, append ? { append: true } : {})
+    expect(foldConversationProjection(base, goal(0, true))).toBe(base)
+    expect(foldConversationProjection(base, goal(1, false))).toBe(base)
+    const round = foldConversationProjection(base, goal(1, true))
+    expect(round.entries.at(-1)).toMatchObject({ kind: 'goal-round', round: 1 })
+  })
+
+  it('folds a goal change as a clear row or a full lifecycle row', () => {
+    const base = fold([event('turn/start', { turn: 4 })])
+    const change = (operation: string, blockedReason?: { code: string, message: string }) => event('goal/change', {
+      operation,
+      goal: { objective: 'ship it', ...(blockedReason === undefined ? {} : { blockedReason }) },
+      roundsStarted: 2, createdAt: 10, updatedAt: 20,
+    } as never)
+    const cleared = foldConversationProjection(base, change('clear'))
+    expect(cleared.entries.at(-1)).toMatchObject({ kind: 'goal-change', operation: 'clear' })
+    const full = foldConversationProjection(base, change('blocked', { code: 'needs-input', message: 'answer first' }))
+    expect(full.entries.at(-1)).toMatchObject({
+      kind: 'goal-change', operation: 'blocked', objective: 'ship it', roundsStarted: 2,
+      blockedReason: { code: 'needs-input', message: 'answer first' },
+    })
+    const unblocked = foldConversationProjection(base, change('resume'))
+    expect(unblocked.entries.at(-1)).not.toHaveProperty('blockedReason')
+  })
+
+  it('keeps a goal change out of a retracted current turn', () => {
+    const state = fold([
+      event('turn/start', { turn: 5 }),
+      event('developer/message', {
+        turn: 5, step: 0,
+        message: { id: MessageId('retract-5'), role: 'developer', content: [], source: { kind: 'mayfly-retraction' } },
+      }, { replace: true }),
+    ])
+    expect(state.retractedTurns).toEqual([5])
+    expect(foldConversationProjection(state, event('goal/change', {
+      operation: 'clear', goal: { objective: 'x' }, roundsStarted: 0, createdAt: 0, updatedAt: 0,
+    } as never))).toBe(state)
+  })
+
+  it('keeps the reasoning progress of a thinking attempt', () => {
+    const next = foldConversationProjection(initialConversationState(), attemptEvent(1, 0, 'reasoning', 'thinking...'))
+    const thinking = next.entries.find(entry => entry.kind === 'thinking')
+    expect(thinking).toMatchObject({ streaming: true })
+    expect(thinking).toHaveProperty('outputProgress')
+  })
+
+  it('keeps the reasoning row of a thinking-then-composing retry without its progress', () => {
+    const next = foldConversationProjection(initialConversationState(), event('assistant/attempt', {
+      turn: 1, step: 0, stream: [
+        { type: 'reasoning-chunks', time0: 1_000, index: 0, dt: [], texts: ['considered'] },
+        { type: 'text-chunks', time0: 1_500, index: 1, dt: [], texts: ['answer'] },
+      ],
+    }))
+    const thinking = next.entries.find(entry => entry.kind === 'thinking')
+    expect(thinking).toMatchObject({ text: 'considered', streaming: false })
+    expect(thinking).not.toHaveProperty('outputProgress')
+  })
+
+  it('rejects non-object wire views through the strict schema', () => {
+    const schema = conversationProjectionDefinition.wire.viewSchema
+    expect(schema.safeParse(null).success).toBe(false)
+    expect(schema.safeParse([]).success).toBe(false)
+    expect(schema.safeParse({ streaming: false }).success).toBe(false)
+    expect(schema.safeParse({ streaming: false, entries: [], settledSteps: [], turns: [] }).success).toBe(true)
+  })
+})

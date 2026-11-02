@@ -18,12 +18,13 @@ beforeEach(() => {
 })
 
 /** A context answering one advertised URL and an optional loader. */
-function ctx(overrides: Partial<{ readonly loader: { await(): Promise<void> } | undefined }> = {}): Context {
+function ctx(overrides: Partial<{ readonly loader: { await(): Promise<void> } | undefined, readonly disposers: (() => void)[] }> = {}): Context {
   return {
     webApp: { getAdvertisedUrl: (): string => 'http://127.0.0.1:3080' },
     connection: { authenticatedUrl: (url: string): string => `${url}/?token=sekret` },
     effect: (fn: () => () => void): (() => void) => {
       const dispose = fn()
+      overrides.disposers?.push(dispose)
       return () => { if (typeof dispose === 'function') dispose() }
     },
     get: (key: string): unknown => key === 'loader' ? overrides.loader : undefined,
@@ -54,5 +55,23 @@ describe('mayfly-host-startup', () => {
   it('prints immediately in a hand-built tree with no loader', async () => {
     await apply(ctx())
     expect(printed).toEqual(['mayfly host: http://127.0.0.1:3080/?token=sekret'])
+  })
+
+  it('does not announce readiness after its owning Fiber unloads during startup', async () => {
+    const gate = Promise.withResolvers<void>()
+    const disposers: (() => void)[] = []
+    apply(ctx({ loader: { await: () => gate.promise }, disposers }))
+    disposers[0]!()
+    gate.resolve()
+    await new Promise(resolve => setImmediate(resolve))
+    expect(printed).toEqual([])
+  })
+
+  it('leaves failed native startup diagnostics to Loader and prints no authenticated URL', async () => {
+    const gate = Promise.withResolvers<void>()
+    apply(ctx({ loader: { await: () => gate.promise } }))
+    gate.reject(new Error('native profile did not settle'))
+    await new Promise(resolve => setImmediate(resolve))
+    expect(printed).toEqual([])
   })
 })

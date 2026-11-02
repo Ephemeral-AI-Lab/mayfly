@@ -18,5 +18,7 @@ describe('deliverablesProjection', () => {
       { id: '7/0', path: '/work/a.md', description: 'notes' },
       { id: '7/1', path: '/work/b.png' },
     ])
+    expect(deliverablesProjection.wire.view(next)).toBe(next)
+    expect(deliverablesProjection.wire.viewSchema.parse(next)).toEqual(next)
   })
 })
