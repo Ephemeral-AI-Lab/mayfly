@@ -48,4 +48,17 @@ describe('actual Remote command catalog', () => {
     expect(names).not.toContain('plugin')
     expect(names).not.toContain('model')
   })
+
+  it('reserves local aliases before feature/native discovery and removes aliases already owned by a real command', () => {
+    const commands = remoteCommandCatalog(true, [
+      feature('aaa', { aliases: ['help', 'quit', 'q', 'custom'] }),
+      feature('clear'),
+      feature('other', { aliases: [] }),
+    ], [{ name: 'q', description: 'native duplicate alias' }, { name: 'resume', description: 'native duplicate alias' }])
+    expect(commands.find(command => command.name === 'aaa')).toMatchObject({ aliases: ['custom'] })
+    expect(commands.find(command => command.name === 'other')).not.toHaveProperty('aliases')
+    expect(commands.map(command => command.name)).not.toContain('clear')
+    expect(commands.map(command => command.name)).not.toContain('q')
+    expect(commands.map(command => command.name)).not.toContain('resume')
+  })
 })

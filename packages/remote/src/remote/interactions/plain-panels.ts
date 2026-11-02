@@ -40,7 +40,7 @@ export class RemotePlainPanels implements RemoteAppPanels {
       return true
     }).toSorted((a, b) => a.name.localeCompare(b.name))
     const row = (command: RemoteCommandDescriptor) => ({
-      label: `/${command.name}${command.aliases === undefined ? '' : ` (${command.aliases.map(alias => `/${alias}`).join(', ')})`}`,
+      label: `/${command.name}${command.aliases === undefined || command.aliases.length === 0 ? '' : ` (${command.aliases.map(alias => `/${alias}`).join(', ')})`}`,
       description: this.t(command.description),
     })
     const remote = unique.filter(command => command.group === 'remote')

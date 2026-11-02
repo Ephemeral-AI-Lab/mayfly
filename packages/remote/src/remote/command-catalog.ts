@@ -47,10 +47,12 @@ export function remoteCommandCatalog(
   function append(command: RemoteCommandDescriptor): void {
     if (seen.has(command.name)) return
     seen.add(command.name)
+    const aliases = command.aliases?.filter(alias => !seen.has(alias)) ?? []
+    for (const alias of aliases) seen.add(alias)
     commands.push({
       name: command.name,
       description: command.description,
-      ...command.aliases === undefined ? {} : { aliases: command.aliases },
+      ...aliases.length === 0 ? {} : { aliases },
       ...command.input === undefined ? {} : { input: command.input },
       ...command.group === undefined ? {} : { group: command.group },
     })

@@ -45,5 +45,7 @@ describe('shared reference skill model', () => {
     expect(empty).toMatchObject({ title: 'Skills', escapeLabel: 'close' })
     expect(JSON.stringify(empty)).toContain('No skills available')
     expect(skillsNode([fact('one')], true, t)).toMatchObject({ title: 'Skills' })
+    const native = nodes(skillsNode([fact('zebra'), fact('alpha')], true, t)).find(item => item['kind'] === 'list' && item['id'] === 'skills')!
+    expect((native['items'] as readonly { readonly id: string }[]).map(item => item.id)).toEqual(['alpha', 'zebra'])
   })
 })

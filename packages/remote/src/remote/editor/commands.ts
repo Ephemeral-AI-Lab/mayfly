@@ -57,7 +57,7 @@ export class EditorCommands {
   list(): readonly EditorCommandDescriptor[] {
     this.syncSelection()
     const local = this.options.local.list()
-    const names = new Set(local.map(command => command.name))
+    const names = new Set(local.flatMap(command => [command.name, ...command.aliases ?? []]))
     return [...local, ...this.host.filter(command => !names.has(command.name))]
       .toSorted((left, right) => left.name.localeCompare(right.name))
   }

@@ -96,10 +96,11 @@ describe('shared wire command panels', () => {
       panels.showHelp([
         { name: 'theme', description: 'Switch the color theme', aliases: ['color'] },
         { name: 'theme', description: 'duplicate Host description' },
-        { name: 'quit', description: 'Exit Mayfly' },
+        { name: 'quit', description: 'Exit Mayfly', aliases: [] },
         { name: 'attach', description: 'Attach a Host URL', group: 'remote' },
       ])
       expect(text()).toContain('/theme (/color)')
+      expect(text()).not.toContain('/quit ()')
       expect(text()).not.toContain('duplicate Host description')
       expect(text().indexOf('Panels and pickers')).toBeLessThan(text().indexOf('Remote'))
       expect(text().indexOf('Remote')).toBeLessThan(text().indexOf('/attach'))

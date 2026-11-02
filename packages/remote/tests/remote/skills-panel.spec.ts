@@ -101,6 +101,20 @@ describe('shared native skills browser', () => {
     expect(f.restoreFocus).not.toHaveBeenCalled()
   })
 
+  it('keeps a wide selection in the shared browser and ignores unrelated actions', async () => {
+    const f = await fixture()
+    await f.panel.show()
+    const selected = await f.action({ kind: 'selection-accept', controlId: 'skills', selectedIds: ['review'], pagePath: [] })
+    expect(selected).toMatchObject({ reply: { kind: 'completed' } })
+    expect(f.text()).toContain('"title":"Skills"')
+    expect(f.text()).toContain('Use after an implementation is ready')
+    const before = f.text()
+    const unrelated = await f.action({ kind: 'activate', controlId: 'skills-actions', actionId: 'noop', pagePath: [] })
+    expect(unrelated).toMatchObject({ reply: { kind: 'completed' } })
+    expect(f.text()).toBe(before)
+    expect(f.host.listSkills).toHaveBeenCalledOnce()
+  })
+
   it('fences an initial list result after explicit close or a same-id Host replacement', async () => {
     for (const change of ['close', 'replace'] as const) {
       const f = await fixture()
@@ -114,6 +128,24 @@ describe('shared native skills browser', () => {
       expect(f.ctx.mayflyOverlays.list()).toEqual([])
       expect(f.restoreFocus).not.toHaveBeenCalled()
     }
+  })
+
+  it('handles reentrant overlay withdrawal during registration and a stale action before selection invalidation arrives', async () => {
+    const withdrawn = await fixture()
+    const off = withdrawn.ctx.mayflyOverlays.subscribe(delta => {
+      if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.skills') withdrawn.ctx.mayflyOverlays.close('mayfly.skills')
+    })
+    await withdrawn.panel.show()
+    expect(withdrawn.panel.open).toBe(false)
+    expect(withdrawn.ctx.mayflyOverlays.list()).toEqual([])
+    off()
+    const stale = await fixture()
+    await stale.panel.show()
+    stale.select(wire('two').selected)
+    const result = await stale.action({ kind: 'activate', controlId: 'skills-actions', actionId: 'refresh', pagePath: [] })
+    expect(result).toMatchObject({ reply: { kind: 'cancelled', dismiss: true } })
+    expect(stale.host.listSkills).toHaveBeenCalledOnce()
+    stale.panel.close()
   })
 
   it('closes a retired exact-binding browser and ignores its pending native refresh', async () => {
