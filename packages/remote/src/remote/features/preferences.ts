@@ -20,6 +20,7 @@ import { REMOTE_MAYFLY_SETTINGS_REQUIREMENT, type RemoteSettingsController } fro
 /** Theme and locale controller for one feature mount. */
 export class RemotePreferencesController extends RemoteFeatureController {
   private readGeneration = 0
+  private lastHostTheme: { readonly client: HostClient, readonly theme: string } | undefined
   private readonly lifetime = new AbortController()
   private readonly referenceTranslate: MayflyTranslate
   constructor(context: RemoteFeatureContext, private readonly settings: RemoteSettingsController) {
@@ -51,9 +52,13 @@ export class RemotePreferencesController extends RemoteFeatureController {
       const language = remoteProperty(mayfly.value, 'language')
       const theme = remoteProperty(mayfly.value, 'theme')
       if (typeof language === 'string' && REMOTE_LANGUAGES.some(option => option.id === language)) this.context.presentation.setLocale(language)
-      const themeChanged = typeof theme === 'string' && theme !== this.context.presentation.snapshot.theme
-      if (typeof theme === 'string' && this.context.presentation.themes.some(option => option.key === theme)) await this.context.presentation.applyTheme(theme)
+      const defaultChanged = typeof theme === 'string' && (this.lastHostTheme?.client !== client || this.lastHostTheme.theme !== theme)
+      const themeChanged = defaultChanged && theme !== this.context.presentation.snapshot.theme
+      if (themeChanged && this.context.presentation.themes.some(option => option.key === theme)) {
+        await this.context.presentation.applyTheme(theme)
+      }
       if (!operation.valid() || generation !== this.readGeneration || !this.isActive(client)) return
+      if (typeof theme === 'string') this.lastHostTheme = { client, theme }
       if (!themeChanged && previous !== undefined && (previous.glyphs !== resolved.glyphs || previous.monochrome !== resolved.monochrome || previous.reducedMotion !== resolved.reducedMotion)) await this.context.presentation.reloadTheme()
     } finally { operation.dispose() }
   }
@@ -69,7 +74,7 @@ export class RemotePreferencesController extends RemoteFeatureController {
     await this.context.presentation.reloadTheme()
   }
 
-  /** Open the local theme picker and persist through the official Mayfly schema when present. */
+  /** Open the reference live theme picker independently of Host settings persistence. */
   openTheme(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): void {
     if (this.lifetime.signal.aborted) return
     const operation = client === undefined ? undefined : this.hostOperation(client, this.lifetime.signal)
@@ -129,7 +134,7 @@ export class RemotePreferencesController extends RemoteFeatureController {
     operation?.onDispose(() => { mounted.close() })
   }
 
-  /** Apply one local theme immediately; persistence failure never rolls it back. */
+  /** Apply one live theme; onboarding persists its chosen default explicitly. */
   async applyTheme(client: HostClient | undefined, theme: string, parent?: AbortSignal): Promise<void> {
     const signal = parent === undefined ? this.lifetime.signal : AbortSignal.any([parent, this.lifetime.signal])
     const operation = client === undefined ? undefined : this.hostOperation(client, signal)
@@ -138,7 +143,6 @@ export class RemotePreferencesController extends RemoteFeatureController {
       await this.context.presentation.applyTheme(theme)
       if (signal.aborted || operation !== undefined && !operation.valid()) return
       this.context.notice.set(this.context.t('switched to theme "{key}"', { key: remoteThemeName(theme) }))
-      if (client !== undefined) await this.persist(client, 'mayfly', [{ op: 'set', path: ['theme'], value: theme }], true, operation?.signal)
     } finally { operation?.dispose() }
   }
 
@@ -157,8 +161,8 @@ export class RemotePreferencesController extends RemoteFeatureController {
   }
 
   /** Persist a startup or other Mayfly preference through the official schema. */
-  async persistMayfly(client: HostClient, operations: readonly SettingsPathOpView[]): Promise<void> {
-    await this.persist(client, 'mayfly', operations)
+  async persistMayfly(client: HostClient, operations: readonly SettingsPathOpView[], parent?: AbortSignal): Promise<void> {
+    await this.persist(client, 'mayfly', operations, true, parent)
   }
 
   private isActive(client: HostClient): boolean {

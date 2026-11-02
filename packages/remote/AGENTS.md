@@ -56,7 +56,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   confirmations derive from the Host's resolved sandbox/approval spec, never
   from a preset name. Host preference synchronization applies only to the
   currently selected/active Host; background settings or reconnect events cannot
-  replace its renderer settings.
+  replace its renderer settings. `/theme` changes live presentation without a
+  settings write; unrelated Host writes retain that choice until its persisted
+  default changes. Onboarding persists its theme default explicitly under its
+  caller's cancellation and Host generation.
 - Raw settings editing uses `createRemoteSettingsEditor` with core-owned
   `screen.suspend`. Editing happens locally; writes use the original Host
   document revision and reject results after cancellation or selection change.

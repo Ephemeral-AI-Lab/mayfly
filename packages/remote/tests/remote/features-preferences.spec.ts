@@ -29,7 +29,8 @@ describe('Remote reference theme and language pickers', () => {
     expect(test.render()).toContain('"selectedIds":["dark"]')
     expect(await test.act({ kind: 'selection-accept', controlId: 'themes', selectedIds: ['tide'] })).toMatchObject({ kind: 'completed', dismiss: true })
     expect(test.presentation.applyTheme).toHaveBeenCalledExactlyOnceWith('tide')
-    expect(test.settings.mutate).toHaveBeenCalledWith(test.client, 'mayfly', [{ op: 'set', path: ['theme'], value: 'tide' }], { descriptor: 7, fields: 'fields' }, expect.any(AbortSignal))
+    expect(test.settings.mutate).not.toHaveBeenCalled()
+    expect(test.describe).not.toHaveBeenCalled()
     expect(test.opened[0]!.refresh).toHaveBeenCalled()
     test.opened[0]!.close()
     expect(test.presentationListeners.size).toBe(0)
@@ -64,29 +65,39 @@ describe('Remote reference theme and language pickers', () => {
     expect(await test.act({ kind: 'selection-accept', controlId: 'languages', selectedIds: ['zh'] }, abort.signal)).toMatchObject({ kind: 'cancelled' })
   })
 
-  it('preserves a local pick on persistence failure and reports the missing Host schema honestly', async () => {
+  it('completes a live theme pick with readonly or overridden Host defaults and no persistence', async () => {
     const test = fixture()
+    test.setSettings({ writable: false, hasDocument: true, namespaces: [namespace()] })
     test.settings.mutate.mockRejectedValueOnce(new Error('Host refused write'))
     test.controller.openTheme()
-    expect(await test.act({ kind: 'selection-accept', controlId: 'themes', selectedIds: ['light'] })).toEqual({ kind: 'failed', message: 'Host refused write' })
+    expect(await test.act({ kind: 'selection-accept', controlId: 'themes', selectedIds: ['light'] })).toMatchObject({ kind: 'completed', dismiss: true })
     expect(test.presentation.snapshot.theme).toBe('light')
+    expect(test.describe).not.toHaveBeenCalled()
+    expect(test.settings.mutate).not.toHaveBeenCalled()
     test.setSettings({ writable: true, hasDocument: true, namespaces: [] })
     await test.controller.applyTheme(test.client, 'tide')
-    expect(test.notice.set).toHaveBeenCalledWith(expect.stringContaining('mayfly-host must register'))
     expect(test.presentation.snapshot.theme).toBe('tide')
+    expect(test.notice.set).not.toHaveBeenCalledWith(expect.stringContaining('mayfly-host must register'))
   })
 
-  it('drops persistence when the picker action aborts during the native describe read', async () => {
+  it('fences local theme completion and explicit default persistence when the caller aborts', async () => {
     const test = fixture()
-    const pending = deferred<unknown>()
-    test.describe.mockReturnValueOnce(pending.promise)
+    const applyingTheme = deferred<void>()
+    test.presentation.applyTheme.mockImplementationOnce(async () => applyingTheme.promise)
     test.controller.openTheme()
     const abort = new AbortController()
     const applying = test.act({ kind: 'selection-accept', controlId: 'themes', selectedIds: ['tide'] }, abort.signal)
-    await vi.waitFor(() => { expect(test.describe).toHaveBeenCalledOnce() })
     abort.abort()
-    pending.resolve({ ok: true, value: { writable: true, namespaces: [namespace()] } })
+    applyingTheme.resolve()
     expect(await applying).toMatchObject({ kind: 'cancelled' })
+    expect(test.settings.mutate).not.toHaveBeenCalled()
+    const pending = deferred<unknown>()
+    test.describe.mockReturnValueOnce(pending.promise)
+    const scope = new AbortController()
+    const persisting = test.controller.persistMayfly(test.client, [{ op: 'set', path: ['theme'], value: 'tide' }], scope.signal)
+    scope.abort()
+    pending.resolve({ ok: true, value: { writable: true, namespaces: [namespace()] } })
+    await persisting
     expect(test.settings.mutate).not.toHaveBeenCalled()
   })
 
@@ -125,6 +136,20 @@ describe('Host settings to Frontend readonly presentation bridge', () => {
     expect(test.presentation.applyTheme).toHaveBeenCalledWith('tide')
     expect(test.presentation.setLocale).toHaveBeenCalledWith('zh')
     expect(test.settings.mutate).not.toHaveBeenCalled()
+  })
+
+  it('keeps a live /theme choice across unrelated Host writes until its persisted default changes', async () => {
+    const test = fixture()
+    await test.controller.applyHostPreferences(test.client)
+    await test.controller.applyTheme(test.client, 'tide')
+    test.presentation.applyTheme.mockClear()
+    test.setSettings({ writable: true, hasDocument: true, namespaces: [namespace('mayfly', { revision: 8, value: { theme: 'dark', quietHints: 'off' } })] })
+    await test.controller.applyHostPreferences(test.client)
+    expect(test.presentation.snapshot.theme).toBe('tide')
+    expect(test.presentation.applyTheme).not.toHaveBeenCalled()
+    test.setSettings({ writable: true, hasDocument: true, namespaces: [namespace('mayfly', { revision: 9, value: { theme: 'light' } })] })
+    await test.controller.applyHostPreferences(test.client)
+    expect(test.presentation.applyTheme).toHaveBeenCalledExactlyOnceWith('light')
   })
 
   it('reloads the existing palette only when glyph/monochrome/motion presentation changes', async () => {
