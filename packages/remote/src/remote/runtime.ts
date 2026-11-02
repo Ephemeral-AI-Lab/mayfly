@@ -118,6 +118,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       ctx.mayflyComponents,
       displayedFacts,
       {
+        identity: () => app?.activeClient,
         home: () => app?.activeClient?.remote.$host.home ?? '',
         directory: () => options.cwd ?? process.cwd(),
         colors: () => ctx.mayflyTheme.colors,
