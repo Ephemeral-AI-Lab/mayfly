@@ -3,7 +3,7 @@
  * duplicate-entry refusal, and per-session Agent reuse.
  * @module
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { parseToolArguments, presentTool, presentTools } from '../../src/remote/presentation.ts'
@@ -76,6 +76,21 @@ describe('presentTool', () => {
     expect(presentation.result).toBeUndefined()
     expect(Object.hasOwn(presentation, 'result')).toBe(false)
   })
+
+  it('keeps a generic call without rawInput and isolates result presenter failures', () => {
+    const presenter = { ctx: { tools: { get: () => ({
+      presentCall: () => ({ card: 'generic', title: 'Tool' }),
+      presentResult: () => { throw new Error('bad result presenter') },
+    }) } } } as unknown as Agent
+    expect(presentTool(presenter, input('s', 'c'))).toEqual({ updatedSeq: 5, call: { card: 'generic', title: 'Tool' } })
+  })
+
+  it('drops non-JSON generic rawInput rather than leaking a callback', () => {
+    const presenter = { ctx: { tools: { get: () => ({
+      presentCall: () => ({ card: 'generic', rawInput: { callback: () => undefined } }),
+    }) } } } as unknown as Agent
+    expect(presentTool(presenter, input('s', 'c'))).toEqual({ updatedSeq: 5 })
+  })
 })
 
 describe('presentTools', () => {
@@ -116,5 +131,43 @@ describe('presentTools', () => {
     const controller = new AbortController()
     controller.abort()
     await expect(presentTools(context, { entries: [input('session-1', 'c1')] }, controller.signal)).rejects.toThrow()
+  })
+
+  it('returns an empty aborted batch as cancellation too', async () => {
+    const { ctx: context } = ctx()
+    await expect(presentTools(context, { entries: [] }, AbortSignal.abort())).rejects.toThrow()
+  })
+
+  it('keeps live presentations while cold child entries use generic cards without activation', async () => {
+    const { ctx: context } = ctx()
+    const liveAgent = context.agents.get('session-1' as never)
+    const liveSession = context.sessions.get('session-1' as never)
+    const resolveAgent = vi.fn()
+    const cold = { id: 'child-1', header: { origin: 'subagent' } }
+    const mixed = {
+      agents: { get: (id: string) => id === 'session-1' ? liveAgent : undefined },
+      sessions: { get: (id: string) => id === 'session-1' ? liveSession : cold },
+      sessionController: { resolveAgent },
+    } as unknown as Context
+    const response = await presentTools(mixed, { entries: [input('child-1', 'a'), input('session-1', 'b'), input('child-1', 'c')] }, new AbortController().signal)
+    expect(response.presentations['child-1']).toEqual({ a: { updatedSeq: 5 }, c: { updatedSeq: 5 } })
+    expect(response.presentations['session-1']?.['b']?.call).toBeDefined()
+    expect(resolveAgent).not.toHaveBeenCalled()
+  })
+
+  it('does not hide non-child resolution errors as generic presentations', async () => {
+    const context = {
+      agents: { get: () => undefined }, sessions: { get: () => undefined },
+      sessionController: { resolveAgent: async () => { throw new Error('transport failed') } },
+    } as unknown as Context
+    await expect(presentTools(context, { entries: [input('missing', 'a')] }, new AbortController().signal)).rejects.toThrow('transport failed')
+  })
+
+  it('discards a presentation if its presenter cancels the operation', async () => {
+    const controller = new AbortController()
+    const session = { id: 'session-1', header: { origin: 'user' } }
+    const live = { ...agent(), session, ctx: { tools: { get: () => ({ presentCall: () => { controller.abort(new Error('cancelled presenter')); return undefined } }) } } }
+    const context = { agents: { get: () => live }, sessions: { get: () => session } } as unknown as Context
+    await expect(presentTools(context, { entries: [input('session-1', 'a')] }, controller.signal)).rejects.toThrow('cancelled presenter')
   })
 })

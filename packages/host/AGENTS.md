@@ -15,16 +15,22 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
   `stateVersion` 13 and must stay a pure immutable fold: renderers never fold a
   second session log, and a semantics change increments the version with the
   fold change that caused it.
-- `src/remote/` owns the `mayflyHost` Remote service and its DTOs in
-  `src/types.ts`. Every method resolves the exact Agent for the requested
-  Session before doing work, and every error carries a `mayflyHost/*` code with
-  a client-safe message. Payloads crossing the wire contain no functions,
+- `src/remote/` owns the `mayflyHost` Remote service and its client-safe DTOs in
+  `src/types.ts`; Remote consumers import these instead of maintaining copies.
+  Agent-scoped methods resolve the exact Agent and reject stale or cancelled
+  asynchronous results. Passive history and workspace reads do not activate an
+  Agent. A cold child's tool presentation uses generic durable content rather
+  than resuming the child or failing other Sessions in the batch. Every error
+  carries a public domain code with a client-safe message. Payloads contain no functions,
   AbortSignals, tool definitions, credentials, or raw connection errors.
 - The MCP catalog reads the optional native resource runtime through the narrow
   structural face in `src/remote/mcp-catalog-face.ts`. A composition without
   that runtime keeps the tool-derived catalog, leaves `config` unresolved, and
   must not advertise `mcpTransportHealth`; an unconnected server is never
-  reported as `no-tools`.
+  reported as `no-tools` or `synced`, but as `unknown`.
+- Handshake versions come from the published package manifest. Raw settings
+  writes are serialized by the service-owned `SettingsDocumentCoordinator`;
+  stale content revisions remain conflicts, including during validation.
 - `src/settings.ts` is the `mayfly` settings namespace schema; presentation
   application stays in the TUI. `cordis.patch.yml` composes the Host profile
   over `dsh-base`/`dsh-web-app` and changes only the browser/URL handoff.
@@ -48,8 +54,10 @@ the `mayfly-host` profile in one shot: it matches the global dsh line to the
 Host manifest, seeds the profile from the web template, denies the optional
 native build scripts before the first install, links this package as a bundle,
 and asserts the composed profile carries the Web runtime and the Mayfly rows.
-`script/mayfly-remote.sh '<url>'` launches the Remote TUI against the URL the
-profile prints. A spec that needs the hub or the plugin entry imports the
+Pass the authenticated URL through `MAYFLY_DSH_STARTUP_URL` when launching the
+Remote, never through argv. Use dedicated acceptance profiles and a pinned
+local dsh binary; do not use the installer to change the global installation.
+A spec that needs the hub or the plugin entry imports the
 built `lib/` (see service.spec.ts); `src/remote/service.ts` decorators do not
 survive vitest's oxc transform, and the `experimentalDecorators` tsconfig flag
 does not change that.

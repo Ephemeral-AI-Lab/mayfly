@@ -6,12 +6,19 @@ import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-skill'
 import type { MayflyDefaultModelRequest, MayflyModelCatalogDetails, MayflyModelSelection, MayflyPermissionCatalogDetails, MayflyPermissionCatalogRequest, MayflyPermissionSpec, MayflySkillCatalog, MayflySkillSummary } from '../types.ts'
 import { frozen } from './json.ts'
-import { resolveExactAgent, sessionDirectory } from './session.ts'
+import { requireExactAgent, resolveExactAgent, sessionDirectory } from './session.ts'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 
 /** Discover user-invocable skills with their native source/provider fields. */
 export async function skillCatalog(ctx: Context, sessionId: Parameters<typeof resolveExactAgent>[1], signal: AbortSignal): Promise<MayflySkillCatalog> {
   const agent = await resolveExactAgent(ctx, sessionId, signal)
-  const snapshot = await ctx.skills.snapshot({ cwd: sessionDirectory(ctx, agent.session), scope: agent, signal })
+  const cwd = sessionDirectory(ctx, agent.session)
+  const snapshot = await ctx.skills.snapshot({ cwd, scope: agent, signal })
+  signal.throwIfAborted()
+  requireExactAgent(ctx, sessionId, agent)
+  if (sessionDirectory(ctx, agent.session) !== cwd) {
+    throw new RemoteError('mayflyHost/session-stale', `session "${sessionId}" changed working directory during skill discovery`, { sessionId })
+  }
   const skills = snapshot.skills.filter(skill => skill.invocation.userInvocable).map((skill): MayflySkillSummary => ({
     ...skill.path === undefined ? {} : { path: skill.path },
     name: skill.name,
@@ -26,6 +33,7 @@ export async function skillCatalog(ctx: Context, sessionId: Parameters<typeof re
 
 /** Resolve every advertised model's context and reasoning metadata through its owning adapter. */
 export async function modelCatalogDetails(ctx: Context, providerFilter: string | undefined, signal: AbortSignal): Promise<MayflyModelCatalogDetails> {
+  signal.throwIfAborted()
   const providers = ctx.llm.listProviders()
   if (providerFilter !== undefined && !providers.some(provider => provider.id === providerFilter)) {
     throw new Error(`provider "${providerFilter}" is not registered`)
@@ -33,11 +41,14 @@ export async function modelCatalogDetails(ctx: Context, providerFilter: string |
   const labels = new Map(providers.map(provider => [provider.id, provider.name.length > 0 ? provider.name : provider.id]))
   const rows: { provider: string, id: string, name: string }[] = []
   for (const provider of providers) {
+    signal.throwIfAborted()
     if (providerFilter !== undefined && provider.id !== providerFilter) continue
     try {
       const models = await ctx.llm.listModels(provider.id)
+      signal.throwIfAborted()
       for (const model of models) rows.push({ provider: provider.id, id: model.id, name: model.name.length > 0 ? model.name : model.id })
     } catch {
+      signal.throwIfAborted()
       // An unavailable advisory provider contributes no rows.
     }
   }

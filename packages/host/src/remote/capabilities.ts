@@ -9,6 +9,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyHostCapabilities, MayflyHostFeature } from '../types.ts'
 import { mcpCatalogFace } from './mcp-catalog-face.ts'
+import { hostVersion, requiredDshVersion } from './version.ts'
 
 /** Features this Host package implements in every composition. */
 const MAYFLY_HOST_BASE_FEATURES: readonly MayflyHostFeature[] = [
@@ -41,8 +42,8 @@ export function mayflyHostFeatures(ctx: Context): readonly MayflyHostFeature[] {
 export function mayflyHostCapabilities(ctx: Context): MayflyHostCapabilities {
   return Object.freeze({
     protocolVersion: 1,
-    hostVersion: '0.1.4-rc.2',
-    requiredDshVersion: '0.2.2-alpha.2',
+    hostVersion,
+    requiredDshVersion,
     features: Object.freeze(mayflyHostFeatures(ctx)),
   })
 }

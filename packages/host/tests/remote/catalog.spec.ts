@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
-import { collectMcpCatalog, collectToolCatalog } from '../../src/remote/catalog.ts'
+import { collectMcpCatalog, collectToolCatalog, mcpCatalog, toolCatalog } from '../../src/remote/catalog.ts'
 
 /** One tool schema with the fields the catalog reads. */
 function schema(name: string, overrides: Partial<ToolSchema> = {}): ToolSchema {
@@ -63,6 +63,16 @@ describe('collectMcpCatalog', () => {
     expect(collectMcpCatalog(synced.ctx, synced.agent).servers[0]?.toolsVisible).toHaveLength(1)
   })
 
+  it.each(['connecting', 'reconnecting', 'disconnected'] as const)('keeps %s servers unknown instead of claiming no tools or healthy tools', connection => {
+    const { ctx: context, agent } = ctx({ health: [
+      { serverName: 'empty', transport: 'stdio', endpoint: null, connection, toolsVisible: false },
+      { serverName: 'cached', transport: 'stdio', endpoint: null, connection, toolsVisible: true },
+    ], global: [schema('mcp__cached__read')] })
+    const servers = collectMcpCatalog(context, agent).servers
+    expect(servers.map(server => server.status)).toEqual(['unknown', 'unknown'])
+    expect(servers.map(server => server.connection)).toEqual([connection, connection])
+  })
+
   it('redacts userinfo and query from an endpoint and drops non-HTTP schemes', () => {
     const { ctx: context, agent } = ctx({
       health: [
@@ -84,6 +94,16 @@ describe('collectMcpCatalog', () => {
     const server = collectMcpCatalog(context, agent).servers[0]
     expect(server?.config).toEqual({ transport: null, endpoint: null })
     expect(server).not.toHaveProperty('connection')
+  })
+
+  it('drops malformed endpoint URLs and rejects non-JSON tool schemas', () => {
+    const { ctx: context, agent } = ctx({ health: [
+      { serverName: 'bad', transport: 'streamable-http', endpoint: 'invalid URL', connection: 'connected', toolsVisible: true },
+      { serverName: 'empty', transport: 'streamable-http', endpoint: '', connection: 'connected', toolsVisible: true },
+    ] })
+    expect(collectMcpCatalog(context, agent).servers.every(server => server.config.endpoint === null)).toBe(true)
+    const invalid = ctx({ visible: [schema('broken', { parameters: { callback: () => undefined } } as never)] })
+    expect(() => collectToolCatalog(invalid.ctx, invalid.agent)).toThrow('parameters are not lossless JSON')
   })
 
   it('counts malformed mcp-prefixed names as orphans without a server row', () => {
@@ -122,5 +142,33 @@ describe('collectToolCatalog', () => {
     // Name order puts 'eager' first; find by name instead of by index.
     expect(catalog.tools.find(tool => tool.name === 'lazy')).toHaveProperty('deferLoading', true)
     expect(catalog.tools.find(tool => tool.name === 'eager')).not.toHaveProperty('deferLoading')
+  })
+})
+
+describe('exact scoped catalog reads', () => {
+  function fixture(stale = false): Context {
+    const session = { id: 's', header: { origin: 'user' } }
+    const agent = { id: 's', session }
+    let registered: unknown = agent
+    return {
+      agents: { get: () => registered }, sessions: { get: () => session }, get: () => undefined,
+      tools: { schemas: () => {
+        if (stale) registered = { ...agent }
+        return [schema('mcp__docs__read')]
+      } },
+    } as unknown as Context
+  }
+
+  it('returns the exact live Agent catalogs', async () => {
+    const context = fixture()
+    const signal = new AbortController().signal
+    await expect(mcpCatalog(context, 's' as never, signal)).resolves.toMatchObject({ sessionLive: true, servers: [{ serverName: 'docs' }] })
+    await expect(toolCatalog(context, 's' as never, signal)).resolves.toMatchObject({ tools: [{ name: 'mcp__docs__read' }] })
+  })
+
+  it('discards synchronous native catalogs that replaced the exact Agent', async () => {
+    const signal = new AbortController().signal
+    await expect(mcpCatalog(fixture(true), 's' as never, signal)).rejects.toMatchObject({ code: 'mayflyHost/session-stale' })
+    await expect(toolCatalog(fixture(true), 's' as never, signal)).rejects.toMatchObject({ code: 'mayflyHost/session-stale' })
   })
 })

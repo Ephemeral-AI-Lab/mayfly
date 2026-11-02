@@ -5,11 +5,13 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { readSettingsDocument, writeSettingsDocument } from '../../src/remote/settings-document.ts'
+import { readSettingsDocument, SettingsDocumentCoordinator, writeSettingsDocument } from '../../src/remote/settings-document.ts'
+import { mkdtempTracked, registerTempDirCleanup } from '../../../mayfly/tests/core/temp-dir.ts'
+
+registerTempDirCleanup()
 
 /** The hash the module compares revisions by. */
 function revisionOf(content: string): string {
@@ -26,7 +28,7 @@ afterEach(async (): Promise<void> => {
 
 /** A context whose settings document is one temp file. */
 async function documentContext(initial: string, writable = true): Promise<{ ctx: Context, file: string, write(content: string): Promise<void> }> {
-  temporary = await mkdtemp(join(tmpdir(), 'mayfly-settings-'))
+  temporary = mkdtempTracked('mayfly-settings-')
   const file = join(temporary, 'settings.json')
   await writeFile(file, initial, 'utf8')
   const ctx = {
@@ -64,6 +66,52 @@ describe('readSettingsDocument', () => {
 })
 
 describe('writeSettingsDocument', () => {
+  it('serializes concurrent compare-and-write requests instead of losing a writer', async () => {
+    const { ctx, file } = await documentContext('one')
+    const coordinator = new SettingsDocumentCoordinator()
+    const signal = new AbortController().signal
+    const request = { expectedRevision: revisionOf('one'), content: 'two' }
+    const first = coordinator.write(ctx, request, signal)
+    const second = coordinator.write(ctx, { ...request, content: 'three' }, signal)
+    const results = await Promise.allSettled([first, second])
+    expect(results[0]?.status).toBe('fulfilled')
+    expect(results[1]).toMatchObject({ status: 'rejected', reason: { code: 'mayflyHost/settings-conflict' } })
+    expect(await readFile(file, 'utf8')).toBe('two')
+    await expect(coordinator.write(ctx, { expectedRevision: revisionOf('two'), content: 'four' }, signal)).resolves.toMatchObject({ content: 'four' })
+  })
+
+  it('discards a cancelled queued writer and lets subsequent writers proceed', async () => {
+    const { ctx, file } = await documentContext('one')
+    const coordinator = new SettingsDocumentCoordinator()
+    const controller = new AbortController()
+    const cancelled = coordinator.write(ctx, { expectedRevision: revisionOf('one'), content: 'cancelled' }, controller.signal)
+    controller.abort(new Error('cancelled edit'))
+    const next = coordinator.write(ctx, { expectedRevision: revisionOf('one'), content: 'next' }, new AbortController().signal)
+    await expect(cancelled).rejects.toThrow('cancelled edit')
+    await expect(next).resolves.toMatchObject({ content: 'next' })
+    expect(await readFile(file, 'utf8')).toBe('next')
+  })
+
+  it('preserves the conflict code if another writer changes the document during validation', async () => {
+    const { file } = await documentContext('one')
+    let prepares = 0
+    const raced = { settings: { writable: true, prepareDocument: async () => {
+      if (++prepares === 2) await writeFile(file, 'external', 'utf8')
+      return file
+    } } } as unknown as Context
+    await expect(writeSettingsDocument(raced, { expectedRevision: revisionOf('one'), content: 'mine' }, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'mayflyHost/settings-conflict', details: { actualRevision: revisionOf('external') } })
+    expect(await readFile(file, 'utf8')).toBe('external')
+  })
+
+  it('uses a public failure code when the validated document cannot be written', async () => {
+    const { file } = await documentContext('one')
+    let prepares = 0
+    const context = { settings: { writable: true, prepareDocument: async () => ++prepares === 3 ? temporary! : file } } as unknown as Context
+    await expect(writeSettingsDocument(context, { expectedRevision: revisionOf('one'), content: 'two' }, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'mayflyHost/settings-document-unavailable' })
+    expect(await readFile(file, 'utf8')).toBe('one')
+  })
   it('writes the new content only when the revision matches, and returns the next revision', async () => {
     const { ctx, file } = await documentContext('one')
     const before = await readSettingsDocument(ctx, new AbortController().signal)

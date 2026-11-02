@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { mayflyHostCapabilities, mayflyHostFeatures } from '../../src/remote/capabilities.ts'
 import { mcpCatalogFace } from '../../src/remote/mcp-catalog-face.ts'
+import { createRequire } from 'node:module'
 
 /** A context whose `mcpResources` carries (or omits) a callable `listServers`. */
 function ctx(withListing: boolean | 'malformed'): Context {
@@ -47,10 +48,11 @@ describe('mayflyHostCapabilities', () => {
   })
 
   it('reports one protocol version and the Host build', () => {
+    const manifest = createRequire(import.meta.url)('../../package.json') as { version: string, peerDependencies: Record<string, string> }
     const capabilities = mayflyHostCapabilities(ctx(false))
     expect(capabilities.protocolVersion).toBe(1)
-    expect(capabilities.hostVersion).toMatch(/^\d+\.\d+\.\d+/u)
-    expect(capabilities.requiredDshVersion).toMatch(/^\d+\.\d+\.\d+/u)
+    expect(capabilities.hostVersion).toBe(manifest.version)
+    expect(capabilities.requiredDshVersion).toBe(manifest.peerDependencies['@deepseek-ai/dsh-agent'])
   })
 })
 

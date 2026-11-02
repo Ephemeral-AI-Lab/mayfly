@@ -85,6 +85,18 @@ describe('readMcpResource', () => {
 })
 
 describe('the exact-session bridge', () => {
+  it('discards a resource body returned after Agent replacement', async () => {
+    const { ctx } = bridge({ result: { value: { contents: [{ text: 'old scope' }] } } })
+    const execute = ctx.tools.execute.bind(ctx.tools)
+    ctx.tools.execute = (async (...args: Parameters<typeof execute>) => {
+      const result = await execute(...args)
+      ctx.agents.get = (() => undefined) as typeof ctx.agents.get
+      return result
+    }) as typeof ctx.tools.execute
+    await expect(readMcpResource(ctx, { sessionId: 'session-1' as never, server: 'docs', uri: 'docs://a' }, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'mayflyHost/session-stale' })
+  })
+
   it('refuses a session with no live Agent rather than executing', async () => {
     const session = { id: 'child-1', header: { origin: 'subagent' } }
     const execute = vi.fn()

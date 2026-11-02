@@ -20,7 +20,7 @@ import { createGitBadgeCache, type GitBadgeCache } from './git.ts'
 import { listMcpResources, readMcpResource } from './mcp-resources.ts'
 import { presentTools } from './presentation.ts'
 import { RetractionCoordinator, retractTurn } from './retraction.ts'
-import { readSettingsDocument, writeSettingsDocument } from './settings-document.ts'
+import { readSettingsDocument, SettingsDocumentCoordinator } from './settings-document.ts'
 import { requireExactAgent, resolveExactAgent, sessionDirectory } from './session.ts'
 import { subagentDrain } from './subagent.ts'
 import { followWorkflow, WorkflowLiveCatalog } from './workflow.ts'
@@ -44,6 +44,7 @@ export class MayflyHostService extends TypertRemoteService {
   private readonly lifetime: AbortController
   private readonly workflows: WorkflowLiveCatalog
   private readonly retractions: RetractionCoordinator
+  private readonly settingsDocuments = new SettingsDocumentCoordinator()
   private readonly gitCaches = new WeakMap<Agent, { readonly cwd: string, readonly cache: GitBadgeCache }>()
 
   /** @param ctx - owning Host context. */
@@ -169,7 +170,7 @@ export class MayflyHostService extends TypertRemoteService {
   /** Compare-and-write only the actual settings document. */
   @Remote('writeSettingsDocument')
   writeSettingsDocument(request: MayflySettingsDocumentWrite, signal: AbortSignal): Promise<MayflySettingsDocument> {
-    return writeSettingsDocument(this.ctx, request, this.signal(signal))
+    return this.settingsDocuments.write(this.ctx, request, this.signal(signal))
   }
 
   /** Drain one continuable child through its exact direct parent. */

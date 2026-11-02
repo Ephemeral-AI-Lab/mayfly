@@ -100,6 +100,31 @@ describe('resolveExactAgent', () => {
       .rejects.toMatchObject({ code: 'session/not-found' })
   })
 
+  it('normalizes a detached child ownership refusal without activating it', async () => {
+    const { ctx } = fixture('detached-child', { live: false,
+      resolveAgent: async () => ({ error: new RemoteError('session/agent-busy', 'owned by subagent routing', { reason: 'use subagent delivery for this child session' }) }),
+    })
+    await expect(resolveExactAgent(ctx, SessionId('detached-child'), new AbortController().signal))
+      .rejects.toMatchObject({ code: 'mayflyHost/agent-unavailable' })
+  })
+
+  it('preserves other agent-busy failures', async () => {
+    const { ctx } = fixture('busy', { live: false,
+      resolveAgent: async () => ({ error: new RemoteError('session/agent-busy', 'busy', { reason: 'another operation' }) }),
+    })
+    await expect(resolveExactAgent(ctx, SessionId('busy'), new AbortController().signal))
+      .rejects.toMatchObject({ code: 'session/agent-busy' })
+  })
+
+  it('discards a resolution completed after caller cancellation', async () => {
+    const controller = new AbortController()
+    const { ctx } = fixture('late', { live: false, resolveAgent: async () => {
+      controller.abort(new Error('cancelled resolution'))
+      return { error: new RemoteError('session/not-found', 'missing', { sessionId: SessionId('late') }) }
+    } })
+    await expect(resolveExactAgent(ctx, SessionId('late'), controller.signal)).rejects.toThrow('cancelled resolution')
+  })
+
   it('refuses to start on an already-aborted signal', async () => {
     const { ctx } = fixture()
     const controller = new AbortController()

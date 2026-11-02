@@ -184,8 +184,8 @@ export type MayflyToolSchema = Omit<ToolSchema, 'parameters'> & {
   readonly parameters: Readonly<Record<string, ConversationJson>>
 }
 
-/** Derived MCP server status; it does not claim transport health. */
-export type MayflyMcpStatus = 'synced' | 'restricted' | 'no-tools'
+/** Tool availability is unknown until a configured server is connected. */
+export type MayflyMcpStatus = 'synced' | 'restricted' | 'no-tools' | 'unknown'
 
 /** One server discovered through its registered tool namespace. */
 export interface MayflyMcpServer {

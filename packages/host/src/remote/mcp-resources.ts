@@ -7,11 +7,12 @@ import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConversationJson } from '../conversation/types.ts'
 import type { MayflyMcpResourceBody, MayflyMcpResourceItem, MayflyMcpResourceListRequest, MayflyMcpResourcePage, MayflyMcpResourceReadRequest } from '../types.ts'
 import { frozen, jsonSnapshot } from './json.ts'
-import { resolveExactAgent } from './session.ts'
+import { requireExactAgent, resolveExactAgent } from './session.ts'
 
 async function invoke(ctx: Context, agent: Agent, name: string, args: Record<string, string>, signal: AbortSignal, server: string): Promise<unknown> {
   const batch = await ctx.tools.execute({ calls: [{ type: 'tool-call', id: randomUUID() as ToolCallId, name, arguments: JSON.stringify(args) }], agent, signal })
   signal.throwIfAborted()
+  requireExactAgent(ctx, agent.id, agent)
   const outcome = batch.results[0]?.result
   if (outcome === undefined) throw new RemoteError('mayflyHost/mcp-resource-failed', `MCP resource operation returned no result for "${server}"`, { server, message: 'no result' })
   if (outcome.isError) {

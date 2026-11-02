@@ -7,7 +7,7 @@ import type { ConversationJson } from '../conversation/types.ts'
 import type { MayflyMcpCatalog, MayflyMcpServer, MayflyMcpStatus, MayflyToolCatalog, MayflyToolSchema } from '../types.ts'
 import { mcpCatalogServers, type McpCatalogServerRow } from './mcp-catalog-face.ts'
 import { frozen, jsonSnapshot } from './json.ts'
-import { resolveExactAgent } from './session.ts'
+import { requireExactAgent, resolveExactAgent } from './session.ts'
 
 const MCP_TOOL_NAME = /^mcp__([A-Za-z0-9_-]{1,32})__(.+)$/u
 
@@ -57,7 +57,9 @@ function serverDto(serverName: string, registeredCount: number, toolsVisible: re
   return {
     entryId: serverName,
     serverName,
-    status: configuredWithoutTools || registeredCount === 0 ? 'no-tools' : statusOf(registeredCount, toolsVisible.length),
+    status: health !== undefined && health.connection !== 'connected'
+      ? 'unknown'
+      : configuredWithoutTools || registeredCount === 0 ? 'no-tools' : statusOf(registeredCount, toolsVisible.length),
     registeredCount,
     toolsVisible,
     config: health === undefined
@@ -107,11 +109,17 @@ export function collectToolCatalog(ctx: Context, agent: Agent): MayflyToolCatalo
 /** Resolve the authorized exact Agent, then take one construction-frozen MCP snapshot. */
 export async function mcpCatalog(ctx: Context, sessionId: Parameters<typeof resolveExactAgent>[1], signal: AbortSignal): Promise<MayflyMcpCatalog> {
   const agent = await resolveExactAgent(ctx, sessionId, signal)
-  return collectMcpCatalog(ctx, agent)
+  const catalog = collectMcpCatalog(ctx, agent)
+  signal.throwIfAborted()
+  requireExactAgent(ctx, sessionId, agent)
+  return catalog
 }
 
 /** Resolve the authorized exact Agent, then take one construction-frozen tool snapshot. */
 export async function toolCatalog(ctx: Context, sessionId: Parameters<typeof resolveExactAgent>[1], signal: AbortSignal): Promise<MayflyToolCatalog> {
   const agent = await resolveExactAgent(ctx, sessionId, signal)
-  return collectToolCatalog(ctx, agent)
+  const catalog = collectToolCatalog(ctx, agent)
+  signal.throwIfAborted()
+  requireExactAgent(ctx, sessionId, agent)
+  return catalog
 }

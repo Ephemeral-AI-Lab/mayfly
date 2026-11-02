@@ -60,7 +60,9 @@ export function presentTool(agent: Agent, entry: MayflyToolPresentationInput): M
 
 /** Resolve changed entries in order, deduplicating exact-Agent activation by Session. */
 export async function presentTools(ctx: Context, request: MayflyPresentToolsRequest, signal: AbortSignal): Promise<MayflyPresentToolsResponse> {
+  signal.throwIfAborted()
   const agents = new Map<SessionId, Agent>()
+  const unavailable = new Set<SessionId>()
   const seen = new Set<string>()
   for (const entry of request.entries) {
     signal.throwIfAborted()
@@ -72,15 +74,24 @@ export async function presentTools(ctx: Context, request: MayflyPresentToolsRequ
   }
   const presentations = Object.create(null) as Record<string, Record<string, MayflyToolPresentation>>
   for (const entry of request.entries) {
+    signal.throwIfAborted()
     const sessionKey = String(entry.sessionId)
     let agent = agents.get(entry.sessionId)
-    if (agent === undefined) {
-      agent = await resolveExactAgent(ctx, entry.sessionId, signal)
-      agents.set(entry.sessionId, agent)
+    if (agent === undefined && !unavailable.has(entry.sessionId)) {
+      try {
+        agent = await resolveExactAgent(ctx, entry.sessionId, signal)
+        agents.set(entry.sessionId, agent)
+      } catch (error) {
+        if (!(error instanceof RemoteError) || error.code !== 'mayflyHost/agent-unavailable') throw error
+        // Historical child Sessions remain browsable without resurrecting an
+        // Agent. Their durable input/result renders through the generic card.
+        unavailable.add(entry.sessionId)
+      }
     }
     const session = presentations[sessionKey] ??= Object.create(null) as Record<string, MayflyToolPresentation>
-    session[entry.callId] = presentTool(agent, entry)
+    session[entry.callId] = agent === undefined ? frozen({ updatedSeq: entry.updatedSeq }) : presentTool(agent, entry)
   }
+  signal.throwIfAborted()
   for (const [sessionId, agent] of agents) requireExactAgent(ctx, sessionId, agent)
   return frozen({ presentations })
 }
