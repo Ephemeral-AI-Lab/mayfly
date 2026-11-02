@@ -13,9 +13,10 @@ import { captureSplitTerminal } from './split-terminal.mjs'
 
 /** Baseline and candidate must execute these same semantic steps and checkpoints. */
 export const SPLIT_SMOKE_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' },
   { step: 'checkpoint', name: 'startup' },
   { step: 'type', text: '/help' }, { step: 'key', name: 'enter' },
-  { step: 'until', text: '/quit' }, { step: 'checkpoint', name: 'help' },
+  { step: 'until', text: 'Commands' }, { step: 'checkpoint', name: 'help' },
   { step: 'key', name: 'esc' },
   { step: 'type', text: '中文 draft 🪰' }, { step: 'checkpoint', name: 'unicode-draft' },
   { step: 'key', name: 'ctrl+u' },

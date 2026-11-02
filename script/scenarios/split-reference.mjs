@@ -44,13 +44,15 @@ export function compareSplitReference(referenceDir, checkpoints, { cols, rows })
   }
   const failures = []
   for (const checkpoint of checkpoints) {
-    const file = `${checkpoint.name}-${cols}x${rows}.grid`
+    const width = checkpoint.cols ?? cols
+    const height = checkpoint.rows ?? rows
+    const file = `${checkpoint.name}-${width}x${height}.grid`
     const expectedHash = manifest.checkpoints?.[file]
     if (typeof expectedHash !== 'string') { failures.push(`${checkpoint.name}: no frozen reference checkpoint (${file})`); continue }
     const expected = readFileSync(join(referenceDir, file), 'utf8')
     if (createHash('sha256').update(expected).digest('hex') !== expectedHash) throw new Error(`Reference checksum mismatch: ${file}`)
     const parsed = parseGrid(expected)
-    if (parsed.cols !== cols || parsed.lines.length !== rows) throw new Error(`Reference dimensions mismatch: ${file}`)
+    if (parsed.cols !== width || parsed.lines.length !== height) throw new Error(`Reference dimensions mismatch: ${file}`)
     const differences = diffGrids(normalizeSplitGrid(expected), normalizeSplitGrid(checkpoint.grid))
     if (differences.length > 0) failures.push(`${checkpoint.name}:\n${differences.join('\n')}`)
   }

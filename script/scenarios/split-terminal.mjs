@@ -91,5 +91,6 @@ export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, st
     if (exitCode === undefined) terminal.kill()
     screen.dispose()
   }
+  if (/ERR_MODULE_NOT_FOUND|StartupError|failed to import:|action failed|replay failed/u.test(output)) failures.push('Product emitted a loader or scenario failure; inspect the PTY log')
   return { checkpoints, failures, output: redactSplitOutput(output, startupUrl), exitCode }
 }

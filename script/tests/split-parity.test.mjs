@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { commandContracts } from '../scenarios/split-commands.mjs'
 import { serializeGrid } from '../scenarios/grid.mjs'
 import { compareSplitReference, normalizeSplitGrid, redactSplitOutput, SPLIT_REFERENCE, verifyReferenceTarball } from '../scenarios/split-reference.mjs'
@@ -60,4 +62,25 @@ test('command inventory reads canonical names, aliases and loop registrations wi
   `, 'fixture.ts')
   assert.deepEqual(result.commands.map(command => command.name), ['model', 'new', 'version', 'changelog'])
   assert.deepEqual(result.aliases, [{ canonical: 'new', aliases: ['clear'] }])
+})
+
+test('capture clock stays frozen for frames but releases before Date-based input drain deadlines', t => {
+  const { dir } = fixture(t)
+  const release = join(dir, 'release-clock')
+  const clock = fileURLToPath(new URL('../scenarios/split-clock.mjs', import.meta.url))
+  const output = execFileSync(process.execPath, ['--import', clock, '--input-type=module', '-e', `
+    import assert from 'node:assert/strict'
+    import { writeFileSync } from 'node:fs'
+    import { setTimeout as sleep } from 'node:timers/promises'
+    const frozen = Date.now()
+    await sleep(30)
+    assert.equal(Date.now(), frozen)
+    writeFileSync(process.env.MAYFLY_SPLIT_CLOCK_RELEASE, 'release')
+    await sleep(40)
+    assert.ok(Date.now() > frozen)
+    const end = Date.now() + 30
+    while (Date.now() < end) await sleep(5)
+    console.log('drained')
+  `], { encoding: 'utf8', env: { ...process.env, MAYFLY_SPLIT_CLOCK_RELEASE: release }, timeout: 3000 })
+  assert.equal(output.trim(), 'drained')
 })

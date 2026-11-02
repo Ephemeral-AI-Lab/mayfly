@@ -32,7 +32,29 @@ text/style/cursor grid, with PTY and Host logs and a JSON report. A smoke run
 always reports `parityVerified: false`: these are integration results, not a
 claim of rc.2 equivalence.
 
-## Compare with frozen reference frames
+## Capture and compare the published reference automatically
+
+```sh
+node script/split-parity.mjs
+```
+
+The default command downloads the published reference tarball, verifies its
+frozen npm integrity, installs its own artifact-local dsh `0.2.1-rc.2` and the
+published optional peer closure, and drives the same semantic steps through the
+actual rc.2 TUI. Its package files are never replaced with candidate sources.
+It then runs the split candidate and compares every checkpoint. Reference
+package and profile lockfile hashes and the step definition hash are recorded.
+Subsequent reference captures must reproduce the existing frames and provenance;
+changes are refused, not accepted by rewriting an expected grid. Use
+`--capture-reference` to run only this reference capture.
+
+The initial acquisition needs registry access. Installs are confined to
+`.artifacts/split-parity/published-reference/`, with dependency build scripts
+disabled. The optional peers use the exact pins declared by the published
+package; they are needed for a complete reference composition. This graph is
+kept separate from the candidate's newer Harness graph.
+
+A pre-existing independently frozen capture can also be used:
 
 ```sh
 node script/split-parity.mjs --reference /path/to/frozen-rc2 --cols 80 --rows 24
