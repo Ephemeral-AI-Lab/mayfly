@@ -197,7 +197,7 @@ export class UiSurfaceModel {
         .map(([key, form]) => [key, form.draftRevision, form.schemaRevision, Object.values(form.fields).map(field => [field.definition.id, field.revision, field.conflict, field.error !== undefined]).toSorted((left, right) => String(left[0]).localeCompare(String(right[0])))]).toSorted((left, right) => String(left[0]).localeCompare(String(right[0]))),
       [...this.choices].flatMap(([key, choice]) => {
         const segments = JSON.parse(key)[0] as [string, string][]
-        return JSON.stringify(segments.slice(0, pagePath.length)) === prefix ? [[key, choice.selectedIds, choice.inputs ?? {}]] : []
+        return JSON.stringify(segments.slice(0, pagePath.length)) === prefix ? [[key, choice.selectedIds, choice.inputs]] : []
       }),
     ])
   }
@@ -252,6 +252,7 @@ export class UiSurfaceModel {
     if (!this.live) return
     if (snapshot.events !== this.input.events) throw new Error('replacement requires a new surface instance')
     if (snapshot.node === this.rawNode && snapshot.revision === this.input.revision) {
+      if (!sameUiSource(this.input.source, snapshot.source)) this.decision = undefined
       this.input = snapshot
       this.changed()
       return
@@ -261,6 +262,7 @@ export class UiSurfaceModel {
       this.notifications.clear('snapshot', false)
       this.cancelTasks()
       this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.prompts.clear(); this.sliders.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
+      this.decision = undefined
       this.rawNode = null; this.sourceNode = null; this.admittedNode = null; this.reviews.clear(); this.reviewSignature = ''; this.input = snapshot
       this.changed()
       return
@@ -526,7 +528,7 @@ export class UiSurfaceModel {
     let choice: UiControlAddress | undefined
     visitUiControls(this.admittedNode!, (node, path) => {
       if (choice !== undefined || node.kind !== 'list' || node.role !== 'choose' || JSON.stringify(path) !== JSON.stringify(pagePath)) return
-      const itemId = this.choices.get(uiControlKey({ pagePath: path, controlId: node.id }))?.focusedId ?? node.items.find(item => item.disabled !== true)?.id
+      const itemId = this.choices.get(uiControlKey({ pagePath: path, controlId: node.id }))?.focusedId
       if (itemId !== undefined) choice = { pagePath: path, controlId: node.id, itemId }
     })
     return choice
@@ -842,7 +844,7 @@ export class UiSurfaceModel {
         report: feedback => { if (this.live && !task.controller.signal.aborted) this.report(task.id, feedback) },
       })
       if (!this.live || task.controller.signal.aborted) return
-      if (!this.readInputsCurrent(task)) return
+      // Every draft change runs changed(), which aborts stale reads before this continuation resumes.
       const reply = prepared.reply
       if (reply === undefined) {
         this.setPhase(task, 'succeeded')
@@ -954,7 +956,9 @@ export class UiSurfaceModel {
         const ids = state?.definition.role === 'browse' && state.selectedIds.length === 0 && state.focusedId !== undefined
           ? [state.focusedId]
           : state?.selectedIds
-        return ids !== undefined && ids.length === selection.selectedIds.length && ids.every(id => selection.selectedIds.includes(id))
+        if (ids === undefined || ids.length !== selection.selectedIds.length || !ids.every(id => selection.selectedIds.includes(id))) return false
+        const segmentId = ids.length === 1 && state!.definition.mode !== 'multiple' ? choiceReportedSegment(state!, ids[0]!) : undefined
+        return segmentId === selection.segmentId && ids.every(id => (state!.inputs![id] ?? '') === (selection.inputs?.[id] ?? ''))
       })
     if (!current) task.controller.abort()
     return current
