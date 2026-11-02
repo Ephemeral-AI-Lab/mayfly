@@ -1,3 +1,4 @@
+/** Independent TUI composition over exact native Host selections and mount-owned lifetimes. @module remote/runtime */
 import { Context } from '@deepseek-ai/cordis'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import { MessageId } from '@deepseek-ai/dsh-llm/brand'
@@ -101,7 +102,9 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       return ref === undefined || binding === undefined || client === undefined ? undefined
         : { ref, binding, client, access: side?.facts.access ?? 'interactive' as const }
     }
-    toolPresentations = new RemoteToolPresentationCache(ref => resolveMayflyToolPresentation(() => app?.registry.list() ?? [], ref))
+    // Presentation requests require an attached native Session; the App is
+    // constructed before any source can receive that Session binding.
+    toolPresentations = new RemoteToolPresentationCache(ref => resolveMayflyToolPresentation(() => app!.registry.list(), ref))
     conversation = new RemoteConversationModelSource(toolPresentations, () => transcript?.refresh(), {
       defaultCwd: options.cwd ?? process.cwd(),
       onPresentation: () => {
