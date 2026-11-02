@@ -12,7 +12,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { GoalProjection, GoalView } from '@deepseek-ai/dsh-goal'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { ui, type MayflyInlineSpan, type MayflyPaneSummary, type MayflyTone, type MayflyActionItem, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { ui, type MayflyInlineSpan, type MayflyPaneSummary, type MayflyTone, type MayflyActionItem, type MayflyUiActionEvent, type MayflyUiEventContext, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { TickSource } from './tick.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
@@ -153,12 +153,14 @@ export function goalPanel(state: GoalItemState, t: MayflyTranslate): MayflyUiNod
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const tick = ctx.get('mayflyTick') as TickSource | undefined
+  let unloaded = false
   /**
    * A button of the panel: the `/goal` subcommand of the same name on the exact current Agent and goal. An action built for
    * an older revision (the goal changed under the open panel) is refused, never applied to the newer goal.
    */
-  const act = (event: MayflyUiActionEvent): MayflyUiActionReply => {
+  const act = (event: MayflyUiActionEvent, context: MayflyUiEventContext): MayflyUiActionReply => {
     if (event.kind !== 'activate') return { kind: 'completed' }
+    if (unloaded || context.signal.aborted) return { kind: 'cancelled' }
     const [verb, revision] = event.actionId.replace(/^goal-/u, '').split(':')
     const agent = ctx.mayflyCurrentAgent.current()
     try {
@@ -197,6 +199,7 @@ export function apply(ctx: Context): void {
     })
   }
   const publish = (): void => {
+    if (unloaded) return
     syncTick()
     const state: GoalItemState = { goal, ...done === undefined ? {} : { done: { rounds: done.rounds, total: done.total } } }
     const summary = goalSummary(state, t)
@@ -208,6 +211,7 @@ export function apply(ctx: Context): void {
     pane.setSummary(summary)
   }
   const derive = (): void => {
+    if (unloaded) return
     const agent = ctx.mayflyCurrentAgent.current()
     let next: GoalView | undefined
     try {
@@ -229,7 +233,7 @@ export function apply(ctx: Context): void {
   // The projection feed is the durable goal's only source; activation is a
   // process-local edge with no durable projection value.
   const offProjection = ctx.sessionProjections.onChanged((session, key) => {
-    if (key !== 'goal' || session !== ctx.mayflyCurrentAgent.current()?.session) return
+    if (unloaded || key !== 'goal' || session !== ctx.mayflyCurrentAgent.current()?.session) return
     derive()
   })
   const offLocale = observeTranscriptLocale(ctx, () => { published = ''; derive() })
@@ -242,6 +246,7 @@ export function apply(ctx: Context): void {
   })
   derive()
   ctx.effect(() => () => {
+    unloaded = true
     offAgent()
     offProjection()
     offActivation()

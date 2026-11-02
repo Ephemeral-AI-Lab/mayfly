@@ -121,7 +121,7 @@ class BannerComponent implements MayflyComponent {
     if (splash === 'pending') return []
     if (splash !== undefined) {
       const start = this.state.flyInStart
-      const at = !this.state.greeted && !this.reducedMotion ? 0 : start === undefined ? undefined : performance.now() - start
+      const at = start === undefined ? undefined : performance.now() - start
       return composeSplashLines(this.deps, splash, width, this.rows(), at !== undefined && at < FLY_IN_TOTAL_MS ? at : undefined)
     }
     // Before the first conversation is known: the fly-in's first frame, the four lines held and the mark still off screen.
@@ -144,7 +144,8 @@ class BannerComponent implements MayflyComponent {
 
 /** One blank row opens the banner, under the top of the screen, and one closes it, the gap every turn after it has. */
 function closed(lines: string[]): string[] {
-  return lines.length === 0 ? lines : ['', ...lines, '']
+  /* The gutter admits a positive content width; the banner then has four rows. */
+  return ['', ...lines, '']
 }
 
 /**
@@ -164,6 +165,7 @@ function mountPainter(ctx: Context, state: BannerState): void {
     ascii: components.presentation?.glyphs === 'ascii',
   }, components.presentation?.reducedMotion === true, () => Math.max(1, ctx.mayflyScreen.rows - ctx.mayflyScreen.editorRowsFromBottom))
   let timer: ReturnType<typeof setInterval> | undefined
+  let active = true
   const stop = (): void => {
     if (timer !== undefined) clearInterval(timer)
     timer = undefined
@@ -172,6 +174,7 @@ function mountPainter(ctx: Context, state: BannerState): void {
     if (components.presentation?.reducedMotion === true) state.flyInStart = undefined
     if (state.flyInStart === undefined || timer !== undefined) return
     timer = setInterval(() => {
+      if (!active) return
       const start = state.flyInStart
       if (start === undefined || performance.now() - start >= FLY_IN_TOTAL_MS) {
         stop()
@@ -179,12 +182,13 @@ function mountPainter(ctx: Context, state: BannerState): void {
       }
       ctx.mayflyScreen.requestRender()
     }, FLY_IN_FRAME_MS)
-    timer.unref?.()
+    timer.unref()
   }
   ctx.effect(() => {
     state.onFlyIn = play
     return () => {
-      if (state.onFlyIn === play) state.onFlyIn = undefined
+      active = false
+      state.onFlyIn = undefined
       stop()
     }
   })
@@ -215,7 +219,23 @@ export function apply(ctx: Context, config: Config = {}): void {
     greeted: false,
     flyInStart: undefined,
     onFlyIn: undefined,
-    splash: () => undefined,
+    splash: () => {
+      if (startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return undefined
+      if (!booted) return 'pending'
+      return {
+        version: displayVersion,
+        labels: {
+          slogan: SLOGAN,
+          recent: t('Recent sessions'),
+          more: t('↑ browse · /sessions for all'),
+          moreFocused: t('↵ resume · esc back'),
+          empty: t('No sessions here yet'),
+          emptyHint: t('Describe a task below to start one.'),
+        },
+        recent,
+        focus: ctx.get('mayflyInteractionState')?.splash.focus,
+      }
+    },
   }
   const rederive = (agent: Agent | null): void => {
     const fallback = ctx.agentDefaultModel.currentSelection()
@@ -278,10 +298,10 @@ export function apply(ctx: Context, config: Config = {}): void {
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort())
   /** Hand the editor the ids on show, so `↑` can browse them; a focused row that no longer exists is let go. */
-  const publishBrowse = (): void => {
+  const publishBrowse = (entries: readonly SplashSession[]): void => {
     const browse = ctx.get('mayflyInteractionState')?.splash
-    if (browse === undefined) return
-    browse.ids = recent?.map(entry => entry.id) ?? []
+    if (browse === undefined || startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return
+    browse.ids = entries.map(entry => entry.id)
     if (browse.focus !== undefined && browse.focus >= browse.ids.length) browse.focus = undefined
   }
   /** The list is not on screen (a session took its place, or the setting is off): nothing to browse. */
@@ -296,6 +316,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     if (loading || !booted || startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return
     loading = true
     void refreshSessionList(ctx, listCache, lifetime.signal).then(() => {
+      if (lifetime.signal.aborted) return
       const now = Date.now()
       const cwd = process.cwd()
       const usable = sessionListRows(ctx, listCache)
@@ -312,7 +333,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         live: row.running,
       })
       recent = shown.map(item)
-      publishBrowse()
+      publishBrowse(recent)
     }).catch((error: unknown) => {
       if (lifetime.signal.aborted) return
       ctx.logger.warn(`splash: recent sessions unavailable: ${String(error)}`)
@@ -321,23 +342,6 @@ export function apply(ctx: Context, config: Config = {}): void {
       loading = false
       if (!lifetime.signal.aborted) ctx.mayflyScreen.requestRender()
     })
-  }
-  state.splash = () => {
-    if (startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return undefined
-    if (!booted) return 'pending'
-    return {
-      version: displayVersion,
-      labels: {
-        slogan: SLOGAN,
-        recent: t('Recent sessions'),
-        more: t('↑ browse · /sessions for all'),
-        moreFocused: t('↵ resume · esc back'),
-        empty: t('No sessions here yet'),
-        emptyHint: t('Describe a task below to start one.'),
-      },
-      recent,
-      focus: ctx.get('mayflyInteractionState')?.splash.focus,
-    }
   }
   const followStartup = (): void => {
     const next = readStartup()
@@ -373,7 +377,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   // A host that never shows a conversation still gets its banner, at rest.
   ctx.effect(() => {
     const wait = setTimeout(() => {
-      if (state.greeted) return
+      if (lifetime.signal.aborted || state.greeted) return
       state.greeted = true
       ctx.mayflyScreen.requestRender()
     }, GREETING_WAIT_MS)
