@@ -327,7 +327,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       btw: app.btw,
       present: (ref, binding, facts) => { sideViews!.present(binding, { ref, cwd: facts.cwd ?? '' }, facts) },
       closePresent: ref => { sideViews!.close(ref) },
-      copy: (text) => editorComposition!.controller.copyText(text).then(() => undefined),
+      copy: (text) => editorComposition!.controller.copyText(text),
     })
     commandSource = mergeRemoteFeatureCommandSources(
       features.commands,

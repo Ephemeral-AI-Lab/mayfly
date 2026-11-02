@@ -11,6 +11,10 @@ export type * from '@ephemeral-ai/mayfly-host/types'
 
 /** Generated mayflyHost methods consumed by Domain. */
 export interface MayflyHostRemote {
+  traceCatalog(request: Host.MayflyTraceCatalogRequest, signal?: AbortSignal): Promise<RemoteResult<readonly Host.MayflyTraceItem[]>>
+  traceDetail(request: Host.MayflyTraceDetailRequest, signal?: AbortSignal): Promise<RemoteResult<Host.MayflyTraceDetail>>
+  statsSession(request: Host.MayflyHostSessionRequest, signal?: AbortSignal): Promise<RemoteResult<Host.MayflyStatsSession>>
+  statsHistory(request: Host.MayflyStatsHistoryRequest, signal?: AbortSignal): RemoteStreamHandle<Host.MayflyStatsHistory, never>
   capabilities(): Promise<RemoteResult<Host.MayflyHostCapabilities>>
   presentTools(request: Host.MayflyPresentToolsRequest, signal?: AbortSignal): Promise<RemoteResult<Host.MayflyPresentToolsResponse>>
   followWorkflow(request: Host.MayflyHostSessionRequest, signal?: AbortSignal): AsyncIterable<Host.MayflyWorkflowFrame>

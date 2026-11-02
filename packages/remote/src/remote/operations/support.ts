@@ -37,7 +37,7 @@ export interface RemoteOperationsOptions {
   /** Close the side view; it never touches the Host Session behind it. */
   readonly closePresent?: (ref?: SessionRef) => void
   /** Copy text through the integrator's clipboard path. */
-  readonly copy?: (text: string) => Promise<void>
+  readonly copy?: (text: string) => Promise<'native' | 'osc52' | void>
 }
 
 /** One operations module mount over the shared feature context, options, and presented view. */
