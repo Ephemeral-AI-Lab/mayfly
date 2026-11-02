@@ -195,8 +195,9 @@ describe('Windows staging', () => {
 
   it('returns ordered copied-file results and still cleans staging on a local read error', async () => {
     native.read.mockResolvedValueOnce('files').mockResolvedValueOnce('one.png\r\ntwo.png\n')
-    native.files.mockResolvedValueOnce({ kind: 'images', images: [] })
-    expect(await read('auto')).toEqual({ kind: 'images', images: [], backend: 'win32' })
+    const images = [{ data: new Uint8Array(png), mediaType: 'image/png', name: 'one.png' }]
+    native.files.mockResolvedValueOnce({ kind: 'images', images })
+    expect(await read('auto')).toEqual({ kind: 'images', images, backend: 'win32' })
     expect(native.files.mock.calls[0]?.[0]).toEqual(['/tmp/paste-stage/files/one.png', '/tmp/paste-stage/files/two.png'])
     native.read.mockResolvedValueOnce('files').mockResolvedValueOnce('')
     expect(await read('auto')).toEqual({ kind: 'no-image' })
@@ -267,8 +268,9 @@ describe('macOS staging', () => {
 
   it('reads macOS copied-file lists, returns file refusals and retains soft errors', async () => {
     native.run.mockResolvedValueOnce(ok('«class furl»')).mockResolvedValueOnce(ok('/local/one.png\n\n/local/two.png\n'))
-    native.files.mockResolvedValueOnce({ kind: 'images', images: [] })
-    expect(await read('auto')).toEqual({ kind: 'images', images: [], backend: 'darwin' })
+    const images = [{ data: new Uint8Array(png), mediaType: 'image/png', name: 'one.png' }]
+    native.files.mockResolvedValueOnce({ kind: 'images', images })
+    expect(await read('auto')).toEqual({ kind: 'images', images, backend: 'darwin' })
     expect(native.files.mock.calls[0]?.[0]).toEqual(['/local/one.png', '/local/two.png'])
     native.run.mockResolvedValueOnce(ok('«class furl»'))
     native.files.mockResolvedValueOnce({ kind: 'file-failed', detail: 'too large' })

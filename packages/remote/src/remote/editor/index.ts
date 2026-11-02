@@ -156,7 +156,6 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
   }
 
   const syncGhosts = (): void => {
-    if (disposed) return
     editor.setGhostHint(autocomplete.ghost(editor.getText()))
     options.screen.requestRender()
   }
