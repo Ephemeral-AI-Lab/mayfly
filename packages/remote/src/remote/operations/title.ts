@@ -38,26 +38,24 @@ class RemoteTitleController {
     this.lifecycle.dispose()
     for (const dispose of this.subscriptions) dispose()
     this.subscriptions = []
-    if (this.last !== undefined) this.context.base.screen.setTitle(FALLBACK_TITLE)
+    this.context.base.screen.setTitle(FALLBACK_TITLE)
     this.last = undefined
   }
 
   private readonly attach = (generation: number): void => {
-    if (this.disposed) return
     for (const dispose of this.subscriptions) dispose()
     this.subscriptions = []
     const current = this.lifecycle.selection(generation)
     if (current !== undefined) {
       const title = current.binding.session.projections.faceOf('title')
       const catalog = current.client.sessions.list
-      const update = (): void => { this.publish(current) }
+      const update = (): void => { if (this.lifecycle.owns(generation)) this.publish(current) }
       this.subscriptions = [title.subscribe(update), catalog.subscribe(update)]
     }
     this.publish(current)
   }
 
   private publish(current: RemoteFeatureSelection | undefined): void {
-    if (this.disposed) return
     const projected = current === undefined ? undefined : current.binding.session.projections.faceOf('title').getSnapshot()
     const projectedTitle = typeof projected === 'string'
       ? projected

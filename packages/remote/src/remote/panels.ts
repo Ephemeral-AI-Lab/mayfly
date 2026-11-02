@@ -105,8 +105,8 @@ export class RemotePanelController implements RemoteOverlayHost {
     private readonly screen: MayflyScreen,
     private readonly restoreFocus: () => void,
     /** Present when the host should paint panels as opaque overlays. */
-    private readonly opaque: boolean = false,
-    measure: Pick<MayflyComponents, 'visibleWidth'> = { visibleWidth: text => text.replace(/\x1b\[[0-9;]*m/gu, '').length },
+    private readonly opaque: boolean,
+    measure: Pick<MayflyComponents, 'visibleWidth'>,
   ) {
     this.measure = measure
   }
@@ -122,7 +122,7 @@ export class RemotePanelController implements RemoteOverlayHost {
       generation,
       get closed() { return record.closed },
       close: () => {
-        if (this.active !== record || record.closed) return
+        if (this.active !== record) return
         this.closeActive(true)
       },
     }

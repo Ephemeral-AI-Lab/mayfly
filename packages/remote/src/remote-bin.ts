@@ -1,3 +1,4 @@
+/** Environment-authenticated independent terminal entry and redacted CLI diagnostics. @module */
 import { readFileSync, realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -128,8 +129,8 @@ function startupUrl(host: string | undefined): string {
     throw new Error('MAYFLY_DSH_STARTUP_URL must be an HTTP(S) URL with exactly one non-empty token')
   }
   const tokens = url.searchParams.getAll('token')
-  const token = tokens[0]
-  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username !== '' || url.password !== '' || tokens.length !== 1 || token === undefined || token === '') {
+  const token = tokens[0] ?? ''
+  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username !== '' || url.password !== '' || tokens.length !== 1 || token === '') {
     throw new Error('MAYFLY_DSH_STARTUP_URL must be an HTTP(S) URL with exactly one non-empty token')
   }
   if (host === undefined) return url.href
