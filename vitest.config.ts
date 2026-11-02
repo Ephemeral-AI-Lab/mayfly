@@ -24,11 +24,8 @@ export default defineConfig({
       { extends: true, test: { name: 'suite', include: SPECS, exclude: [PERF, '**/node_modules/**'], env: { MAYFLY_UI_VERIFY_MEMO: '1' } } },
       { extends: true, test: { name: 'perf', include: [PERF] } },
     ],
-    // A report with a repository-wide floor (D25). The 99% baseline is lowered
-    // to 95% on the 0.1.4-rc.1 release branch (owner decision, 2026-10-18) while
-    // the native/compose component decision tests are still being finalized;
-    // restore 99 once that test debt is paid. The floor still catches a real
-    // coverage collapse, and the full tier measures it.
+    // Executable package and example source is covered per file. An aggregate
+    // percentage cannot hide an untested command or lifecycle owner.
     coverage: {
       provider: 'v8',
       excludeAfterRemap: true,
@@ -36,7 +33,7 @@ export default defineConfig({
       // Types-only files carry no executable code.
       exclude: ['packages/*/src/types.ts', 'examples/*/src/types.ts'],
       reportsDirectory: '.artifacts/coverage',
-      thresholds: { statements: 95, branches: 95, functions: 95, lines: 95 },
+      thresholds: { perFile: true, statements: 100, branches: 100, functions: 100, lines: 100 },
       reporter: ['text-summary', 'json-summary', 'html'],
     },
   },

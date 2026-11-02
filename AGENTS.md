@@ -131,7 +131,10 @@ dependency build scripts without review.
 Keep README language variants in sync. AGENTS files contain durable boundaries
 and verification triggers, not change history or test-result snapshots. Update
 them when ownership, lifecycle, public surfaces, or required checks change.
-There is no maintainer `.agents/skills` layer. The three historical skills in
-`packages/mayfly/presets/mayfly-cordis/skills/` remain private reference fixtures;
-the shared renderer does not publish presets or skills. They are not required
-for ordinary repository development.
+There is no maintainer `.agents/skills` layer. The three shipped skills in
+`packages/host/presets/mayfly-cordis/skills/` teach Host extensions, Remote
+source integration, and user-owned compositions against the official Harness
+APIs. They are not required for ordinary repository development. The historical
+`packages/mayfly/presets/` payload remains a private reference fixture; the
+shared renderer does not publish presets or skills. Run `check:agent-docs`
+after editing either agent guidance or the shipped Host skills.
