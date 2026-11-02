@@ -92,6 +92,7 @@ function appFixture() {
     showStatus: vi.fn(),
     showContext: vi.fn(),
     showVersion: vi.fn(),
+    showChangelog: vi.fn(),
     showRewind: vi.fn(),
   }
   return { conversation, status, panels, browser: { open: vi.fn() } }
@@ -346,6 +347,9 @@ describe('RemoteApp', () => {
     expect(panels.showStatus).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/workspace' }))
     await app.execute('/version')
     expect(panels.showVersion).toHaveBeenCalledOnce()
+    await app.execute('/changelog')
+    expect(panels.showChangelog).toHaveBeenCalledOnce()
+    expect(fixture.session.command).not.toHaveBeenCalled()
     await app.execute('/sessions')
     expect(browser.open).toHaveBeenCalledWith(fixture.client, expect.objectContaining({ sessionId: fixture.sessionId }), expect.any(Function))
 

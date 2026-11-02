@@ -1,7 +1,7 @@
 /** Shared wire command panels for the standalone frontend. @module remote/interactions/plain-panels */
 import type { Context } from '@deepseek-ai/cordis'
 import { MAYFLY_VERSION } from '@ephemeral-ai/mayfly/banner-content'
-import { helpNode, displayKey, SHARED_KEY_REFERENCE, interactionTranslator, mountInteractionLocale, observeInteractionLocale, versionNode, usageNode, rewindNode, type RewindCandidate } from '@ephemeral-ai/mayfly/command-panels'
+import { helpNode, displayKey, SHARED_KEY_REFERENCE, interactionTranslator, mountInteractionLocale, observeInteractionLocale, changelogNode, CHANGELOG_ENTRIES, versionNode, usageNode, rewindNode, type RewindCandidate } from '@ephemeral-ai/mayfly/command-panels'
 import { contextPercent, formatTokens } from '@ephemeral-ai/mayfly/status-context'
 import { panel, ui, type MayflyOverlayHandle, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { RemotePresentationFacts } from '../../transcript/remote-model.ts'
@@ -17,6 +17,7 @@ export interface RemoteAppPanels {
   showContext(source: RemoteContextPanelSource): void
   showRewind?(candidates: readonly RewindCandidate[], choose: (seq: number) => Promise<void>, isCurrent: () => boolean, subscribe: (invalidate: () => void) => () => void): void
   showVersion(harness?: string): void
+  showChangelog(): void
 }
 
 /** Wire overlays retain focus and drafts in the shared frontend across renderer reload. */
@@ -98,6 +99,12 @@ export class RemotePlainPanels implements RemoteAppPanels {
 
   showVersion(harness?: string): void {
     this.open('version', () => panel({ title: this.t('Version'), escapeLabel: 'back', body: versionNode({ mayfly: MAYFLY_VERSION, harness: harness ?? this.t('not advertised by the Host') }) }))
+  }
+
+  showChangelog(): void {
+    this.open('changelog', () => panel({ title: this.t('Changelog'), escapeLabel: 'back',
+      body: ui.stack.column([ui.child(ui.scroll(changelogNode(CHANGELOG_ENTRIES, this.t), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]),
+    }))
   }
 
   dispose(): void {

@@ -26,6 +26,7 @@ export const FRONTEND_COMMANDS: readonly (RemoteCommandDescriptor & Pick<RemoteF
   { name: 'host-status', description: 'Show current Host and Session diagnostics', group: 'remote' },
   { name: 'context', description: 'Show token usage and the context window' },
   { name: 'version', description: 'Show the Mayfly and harness versions' },
+  { name: 'changelog', description: "Show the release changelog (what's new)" },
   { name: 'init', description: 'Analyze the codebase and write AGENTS.md' },
 ]
 

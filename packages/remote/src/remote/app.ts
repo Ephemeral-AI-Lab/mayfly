@@ -434,6 +434,10 @@ export class RemoteApp {
       })
       return { exit: false }
     }
+    if (name === 'changelog') {
+      this.panels.showChangelog()
+      return { exit: false }
+    }
     if (name === 'version') {
       const client = this.activeClient
       const generation = client?.state.getSnapshot().generation

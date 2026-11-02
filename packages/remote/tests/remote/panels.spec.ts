@@ -9,6 +9,8 @@ import { HostKey } from '../../src/client/types.ts'
 import { RemotePlainPanels } from '../../src/remote/interactions/plain-panels.ts'
 import type { RemotePresentationFacts } from '../../src/transcript/remote-model.ts'
 import type { RemoteSessionUsageFacts } from '../../src/remote/session-information.ts'
+import { changelogNode, CHANGELOG_ENTRIES, interactionTranslator } from '@ephemeral-ai/mayfly/command-panels'
+import { panel, ui } from '@ephemeral-ai/mayfly-ui'
 
 async function fixture() {
   const ctx = new Context()
@@ -122,6 +124,27 @@ describe('shared wire command panels', () => {
     } finally { await ctx.fiber.dispose() }
   })
 
+  it('shows the reference changelog with scrolling, live locale and app-owned dismissal', async () => {
+    const { ctx, panels, text } = await fixture()
+    const t = interactionTranslator(ctx)
+    const expected = () => panel({ title: t('Changelog'), escapeLabel: 'back',
+      body: ui.stack.column([ui.child(ui.scroll(changelogNode(CHANGELOG_ENTRIES, t), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]),
+    })
+    try {
+      panels.showChangelog()
+      const entry = ctx.mayflyOverlays.list()[0]!
+      expect(entry.definition).toMatchObject({ presentation: 'editor', capturing: true, scope: { kind: 'app', targetId: 'changelog' } })
+      expect(entry.node).toEqual(expected())
+      expect(text()).toContain('0.1.4-rc.2')
+      ctx.mayflyLocale.setPreference('zh')
+      await vi.waitFor(() => { expect(text()).toContain('变更记录') })
+      expect(ctx.mayflyOverlays.list()[0]!.node).toEqual(expected())
+      panels.dispose()
+      ctx.mayflyLocale.setPreference('en')
+      expect(ctx.mayflyOverlays.list()).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('keeps shared context usage current and closes it when its native selection retires', async () => {
     const { ctx, panels, text } = await fixture()
     let current: RemoteSessionUsageFacts | undefined = {
@@ -167,6 +190,7 @@ describe('shared wire command panels', () => {
       const show = [
         () => { panels.showHelp([{ name: 'sessions', description: '会话😀'.repeat(30), aliases: ['resume'] }, { name: 'attach', description: 'Connect a Host URL', group: 'remote' }]) },
         () => { panels.showVersion('0.2.2-alpha.2') },
+        () => { panels.showChangelog() },
         () => { panels.showStatus(facts) },
         () => { panels.showContext({ read: () => context, subscribe: () => () => {} }) },
       ]

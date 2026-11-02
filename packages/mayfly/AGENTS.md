@@ -117,6 +117,11 @@ detail nodes used by the in-process `/sessions` panel. Remote maps its native
 Client snapshots into readonly display facts; this shared model must never
 retain a Session, open history, or perform Workspace writes.
 
+`command-panels` exposes the reference changelog content and its pure node
+builder alongside help, version, context, rewind, and update presentation.
+The Remote router owns command admission; its app-scoped overlay owns locale
+subscriptions, scrolling, focus restoration, and disposal.
+
 A `mayflyPanes` pane with `placement: 'views'` is a view of the status row, kept
 by `core/views-lane.ts` (`SurfaceManager.views`), not by a pane lane: it has no
 rows of its own, its summary joins the status row through the footer, and an entered
