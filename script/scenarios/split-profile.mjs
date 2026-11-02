@@ -58,6 +58,7 @@ export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe 
     `- id: session-persistence-jsonl\n  config:\n    root: ${JSON.stringify(join(runDir, 'sessions'))}`,
     `- id: storage-json\n  config:\n    root: ${JSON.stringify(join(runDir, 'storages'))}`,
     '- id: session-title-llm\n  disabled: true',
+    ...(fixture === 'native-agents' ? [`- insert:\n    - id: mayfly-split-agents-fixture\n      name: ${JSON.stringify(new URL('./split-agents-fixture.mjs', import.meta.url).href)}`] : []),
     `- id: mayfly\n  config:\n    reducedMotion: true\n    updateCheck: false${startup === undefined ? '' : `\n    startup: ${JSON.stringify(startup)}`}`,
     ...(probe ? [
       '- id: user-approval\n  config:\n    policy: ask',

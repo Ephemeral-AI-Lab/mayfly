@@ -112,6 +112,7 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
     `- id: storage-json\n  config:\n    root: ${JSON.stringify(join(run, 'storages'))}`,
     `- id: mayfly\n  config:\n    reducedMotion: true\n    updateCheck: false${startup === undefined ? '' : `\n    startup: ${JSON.stringify(startup)}`}`,
     '- id: session-title-llm\n  disabled: true',
+    ...(fixture === 'native-agents' ? [`- insert:\n    - id: mayfly-split-agents-fixture\n      name: ${JSON.stringify(new URL('./split-agents-fixture.mjs', import.meta.url).href)}`] : []),
     ...(probe ? [
       '- id: user-approval\n  config:\n    policy: ask',
       `- insert:\n    - id: mayfly-split-parity-probe\n      name: ${JSON.stringify(new URL('./split-probe.mjs', import.meta.url).href)}`,

@@ -8,6 +8,7 @@
 import { createServer } from 'node:http'
 import { splitProbeInstruction } from './split-cases.mjs'
 import { splitNativeInstruction } from './split-native-fixture.mjs'
+import { splitAgentsInstruction } from './split-agents-fixture.mjs'
 
 const TITLE = 'Replay session'
 const REPLY = 'This is a replay session: the model is a stub. Type nothing; the conversation above is scripted.'
@@ -92,7 +93,7 @@ export async function startStubModel({ balance = 'ok', probe = false } = {}) {
       let body = {}
       try { body = JSON.parse(raw) } catch { /* answered as a prompt */ }
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' })
-      const native = splitNativeInstruction(body)
+      const native = splitAgentsInstruction(body) ?? splitNativeInstruction(body)
       if (native !== undefined) {
         response.end(native.completed ? sse(native.reply) : toolSse(native.name, native.input, native.id))
         return
