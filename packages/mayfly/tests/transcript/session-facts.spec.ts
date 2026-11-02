@@ -399,6 +399,53 @@ describe('SessionFactsService', () => {
       await ctx.fiber.dispose()
     })
 
+    it('coalesces fresh draft counters read by a native projection before its live notification', async () => {
+      vi.useFakeTimers()
+      const { ctx, live, service, published, projections, childSession, chunk } = childFixture()
+      chunk('draft')
+      await Promise.resolve()
+      const count = published.length
+      chunk(' more')
+      const facts = projections.snapshot(childSession).values.mayflyConversationFacts
+      projections.emit(childSession, 'mayflyConversationFacts', facts)
+      expect(published).toHaveLength(count)
+      await Promise.resolve()
+      expect(published).toHaveLength(count)
+      vi.advanceTimersByTime(CHILD_VOLATILE_MS)
+      expect(published).toHaveLength(count + 1)
+      expect(published.at(-1)?.[0]).toMatchObject({ liveChars: 10, activity: 'Writing…' })
+      service.dispose()
+      live.dispose()
+      await ctx.fiber.dispose()
+    })
+
+    it('ignores an old volatile callback already queued before changing the parent Agent', async () => {
+      vi.useFakeTimers()
+      const { ctx, live, service, published, chunk, switchAgent } = childFixture()
+      chunk('draft')
+      await Promise.resolve()
+      const timeout = vi.spyOn(globalThis, 'setTimeout')
+      try {
+        chunk(' more')
+        await Promise.resolve()
+        const stale = timeout.mock.calls.at(-1)![0] as () => void
+        switchAgent(null)
+        const count = published.length
+        stale()
+        expect(published).toHaveLength(count)
+        expect(published.at(-1)).toEqual([])
+        expect(vi.getTimerCount()).toBe(0)
+        service.dispose()
+        stale()
+        expect(published).toHaveLength(count)
+      } finally {
+        timeout.mockRestore()
+        service.dispose()
+        live.dispose()
+        await ctx.fiber.dispose()
+      }
+    })
+
     it('publishes a tool-call delta immediately, not on the volatile cadence', async () => {
       vi.useFakeTimers()
       const { ctx, live, service, published, projections, childSession } = childFixture()

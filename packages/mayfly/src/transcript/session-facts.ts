@@ -159,6 +159,7 @@ export class SessionFactsService extends Service {
   private readonly children = new Map<string, ChildRecord>()
   private childList: readonly ChildSessionFacts[] | undefined
   private volatileTimer: ReturnType<typeof setTimeout> | undefined
+  private volatileGeneration = 0
   private readonly offProjection: () => void
   private readonly offAgent: () => void
   private readonly offLive: () => void
@@ -401,17 +402,13 @@ export class SessionFactsService extends Service {
     const record = this.children.get(id)
     if (record === undefined) return
     const projected = projectChildSessionFacts(id, record.facts, record.draft, selection)
-    const change = childChange(record.projected, projected)
-    if (change === 'same') {
+    if (equalChildSessionFacts(record.projected, projected)) {
       this.children.set(id, { ...record, selection, projected: record.projected })
       return
     }
     this.children.set(id, { ...record, selection, projected })
     this.childList = undefined
-    if (change === 'volatile') {
-      this.scheduleChildren()
-      return
-    }
+    // A model selection changes no draft counters, so every changed selection publishes structurally.
     this.pruneChildren()
     this.publishChildren()
   }
@@ -476,7 +473,9 @@ export class SessionFactsService extends Service {
   /** Coalesce streamed-character-only changes into one trailing publish. */
   private scheduleChildren(): void {
     if (this.volatileTimer !== undefined) return
+    const generation = ++this.volatileGeneration
     this.volatileTimer = setTimeout(() => {
+      if (generation !== this.volatileGeneration) return
       this.volatileTimer = undefined
       this.publishChildren()
     }, CHILD_VOLATILE_MS)
@@ -484,6 +483,7 @@ export class SessionFactsService extends Service {
   }
 
   private cancelChildren(): void {
+    this.volatileGeneration += 1
     if (this.volatileTimer === undefined) return
     clearTimeout(this.volatileTimer)
     this.volatileTimer = undefined

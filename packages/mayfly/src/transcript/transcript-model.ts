@@ -152,6 +152,8 @@ interface SearchCorpus {
 
 /** A search of the displayed conversation: its line above the editor, the pattern, what it found, and which hit the stream stands on. */
 interface StreamSearchState {
+  /** Identity of the line whose callbacks may still act on this search. */
+  readonly owner: object
   readonly line: MayflySearchLine
   /** `/` goes toward the newer rows, `?` toward the older. */
   readonly forward: boolean
@@ -197,6 +199,7 @@ export class TranscriptController {
   /** Where the next cursor send lands, before the newest row: the rows a turn's toggle turned its own row into. */
   private cursorIds: readonly string[] | undefined
   private offTick: (() => void) | undefined
+  private tickOwner: object | undefined
   private search: StreamSearchState | undefined
   /** The search is open, or opening: the stream's focus changes are the search's to announce. */
   private searching = false
@@ -232,6 +235,7 @@ export class TranscriptController {
   /** How long the last publish took: the window after it grows with it. */
   private publishCostMs = 0
   private trailing: unknown
+  private trailingGeneration = 0
   /** The tick time a trailing publish carries, when the request came from the clock; a refresh publishes at its own fire time. */
   private trailingNow: number | undefined
   /** The displayed model carries a live turn: it publishes on the fixed live budget and keeps the watchdog armed. */
@@ -242,6 +246,7 @@ export class TranscriptController {
   private publishedModel: TranscriptModel | null = null
   /** The watchdog's next check while a live turn is displayed. */
   private watchdog: unknown
+  private watchdogGeneration = 0
 
   constructor(private readonly options: TranscriptControllerOptions) {}
 
@@ -328,25 +333,28 @@ export class TranscriptController {
     // Inside the window of the last publish: one publish at its end reads whatever the model is by then.
     this.trailingNow = now
     const clock = this.options.clock
+    const generation = ++this.trailingGeneration
     const publishLater = (): void => {
+      if (generation !== this.trailingGeneration) return
       const at = this.trailingNow
       this.trailing = undefined
       this.trailingNow = undefined
       this.publishNow(at)
     }
     this.trailing = clock?.setTimeout(publishLater, wait) ?? setTimeout(publishLater, wait)
-    if (this.trailing !== undefined && typeof (this.trailing as { unref?: unknown }).unref === 'function') (this.trailing as { unref(): void }).unref()
+    if (typeof (this.trailing as { unref?: unknown }).unref === 'function') (this.trailing as { unref(): void }).unref()
   }
 
   private publishNow(now?: number): void {
-    if (this.active === undefined || this.screen === undefined) return
+    // requestPublish admits an attached view; a cancelled timer's generation cannot reach this helper.
     this.publish(now ?? this.nowMs())
-    this.screen.requestRender()
+    this.screen!.requestRender()
   }
 
   private nowMs(): number { return this.options.clock?.now() ?? Date.now() }
 
   private cancelTrailing(): void {
+    this.trailingGeneration += 1
     if (this.trailing === undefined) return
     if (this.options.clock === undefined) clearTimeout(this.trailing as ReturnType<typeof setTimeout>)
     else this.options.clock.clearTimeout(this.trailing)
@@ -391,8 +399,8 @@ export class TranscriptController {
   }
 
   private setDisclosure(disclosure: Disclosure): void {
-    const view = this.activeView()
-    if (view === undefined) return
+    // Only accepting a rendered row calls this helper, so its retained view still owns the disclosure.
+    const view = this.activeView()!
     view.disclosure = disclosure
     this.publish()
   }
@@ -404,16 +412,19 @@ export class TranscriptController {
   beginSearch(forward: boolean): void {
     const screen = this.screen
     if (screen === undefined || this.slot === undefined || this.active === undefined) return
-    this.search?.line.dispose()
+    const previous = this.search
+    this.search = undefined
+    previous?.line.dispose()
     this.searching = true
+    const owner = {}
     const line = screen.mountSearchLine({
       prefix: forward ? '/' : '?',
-      onChange: pattern => { this.patternChanged(pattern) },
-      onAccept: () => { this.acceptSearch() },
-      onAbandon: () => { this.endSearch() },
+      onChange: pattern => { const search = this.search; if (search?.owner === owner) this.patternChanged(search, pattern) },
+      onAccept: () => { const search = this.search; if (search?.owner === owner) this.acceptSearch(search) },
+      onAbandon: () => { if (this.search?.owner === owner) this.endSearch() },
     })
     const model = this.model()
-    this.search = { line, forward, pattern: '', read: { kind: 'empty' }, phase: 'input', model, result: EMPTY_RESULT, index: -1, visited: new Set() }
+    this.search = { owner, line, forward, pattern: '', read: { kind: 'empty' }, phase: 'input', model, result: EMPTY_RESULT, index: -1, visited: new Set() }
     this.search.result = this.searchHits(this.search, model)
     const view = this.activeView()
     if (view !== undefined) view.disclosure = { ...view.disclosure, forced: new Set() }
@@ -433,7 +444,7 @@ export class TranscriptController {
     if (search === undefined) return
     const row = search.phase === 'select' ? this.slot?.cursor(STREAM.list) : undefined
     const turn = search.result.hits[search.index]?.turn
-    this.stopSearching()
+    this.stopSearching(search)
     if (row !== undefined) {
       this.cursorIds = [row, ...turn === undefined ? [] : [`turn-header:${String(turn)}`, `process:${String(turn)}`]]
       this.cursorRev += 1
@@ -446,15 +457,14 @@ export class TranscriptController {
 
   /** The search goes without the keys returning: another conversation is shown, or the controller leaves. */
   closeSearch(): void {
-    if (this.search === undefined) return
-    this.stopSearching()
+    const search = this.search
+    if (search === undefined) return
+    this.stopSearching(search)
     this.options.focusMode?.('prompt')
     this.publish()
   }
 
-  private stopSearching(): void {
-    const search = this.search
-    if (search === undefined) return
+  private stopSearching(search: StreamSearchState): void {
     this.search = undefined
     this.searching = false
     search.line.dispose()
@@ -464,9 +474,7 @@ export class TranscriptController {
     if (view !== undefined) view.disclosure = { ...view.disclosure, forced: new Set() }
   }
 
-  private patternChanged(pattern: string): void {
-    const search = this.search
-    if (search === undefined) return
+  private patternChanged(search: StreamSearchState, pattern: string): void {
     search.pattern = pattern
     search.read = readPattern(pattern)
     search.model = this.model()
@@ -476,12 +484,11 @@ export class TranscriptController {
   }
 
   /** `Enter` on the pattern: the cursor goes to the first match past where it stood, and the matches become the stream's rows to walk. */
-  private acceptSearch(): void {
-    const search = this.search
-    if (search === undefined || search.result.hits.length === 0) return
-    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+  private acceptSearch(search: StreamSearchState): void {
+    if (search.result.hits.length === 0) return
+    const facts = this.activeView()!.facts
     const cursor = this.slot?.cursor(STREAM.list)
-    const owner = cursor === undefined ? undefined : facts?.locate(cursor)
+    const owner = cursor === undefined ? undefined : facts.locate(cursor)
     const orders = owner === undefined ? [] : owner.parts.flatMap(part => search.result.orders.get(part) ?? [])
     const start = owner?.turn === undefined ? undefined : search.result.turnStart.get(owner.turn)
     const hits = search.result.hits
@@ -501,7 +508,7 @@ export class TranscriptController {
     this.resume = true
     this.options.focusMode?.('search-select')
     this.slot?.focus()
-    this.land(search.forward ? 1 : -1)
+    this.land(search, search.forward ? 1 : -1)
   }
 
   /** `↑`/`↓` and `n`/`N` on the matches: the cursor moves to the previous or next one, wrapping. */
@@ -509,7 +516,7 @@ export class TranscriptController {
     const search = this.search
     if (search === undefined || search.phase !== 'select' || search.result.hits.length === 0) return
     search.index = (search.index + step + search.result.hits.length) % search.result.hits.length
-    this.land(step)
+    this.land(search, step)
   }
 
   /** `n` goes on in the direction of the search, `N` back. */
@@ -522,18 +529,16 @@ export class TranscriptController {
    * Stand the stream on the hit at the search's index: its turn is mounted and open, and the cursor goes to the row that
    * draws it. A hit no row draws is passed over in the direction of the step.
    */
-  private land(step: number): void {
-    const search = this.search
-    if (search === undefined) return
-    const facts = this.active === undefined ? undefined : this.views.get(this.active)?.facts
+  private land(search: StreamSearchState, step: number): void {
+    // A selected hit belongs to the displayed view; replacing or dropping it synchronously replaces the search results.
+    const view = this.activeView()!
+    const facts = view.facts
     const hits = search.result.hits
     let landed = false
-    for (let tries = 0; tries < Math.max(1, hits.length); tries += 1) {
-      const hit = hits[search.index]
-      if (hit === undefined || facts === undefined) break
+    for (let tries = 0; tries < hits.length; tries += 1) {
+      const hit = hits[search.index]!
       search.visited.add(hit.turn)
-      const view = this.activeView()
-      if (view !== undefined) view.disclosure = { ...view.disclosure, forced: new Set(search.visited) }
+      view.disclosure = { ...view.disclosure, forced: new Set(search.visited) }
       // A row the stream already draws can take the cursor in the one publish that also mounts the visited turn.
       const drawn = facts.rowOf(hit.part)
       if (drawn !== undefined) {
@@ -605,8 +610,6 @@ export class TranscriptController {
     this.stopWatchdog()
     this.streaming = false
     this.dirty = false
-    this.offTick?.()
-    this.offTick = undefined
     this.unmount()
     this.views.clear()
     this.active = undefined
@@ -650,6 +653,7 @@ export class TranscriptController {
     this.syncSearch(model)
     if (view === undefined || model === null) {
       this.setStreaming(false)
+      this.stopTick()
       slot.set(null)
       slot.track(STREAM.list, undefined)
       slot.setMarked(false)
@@ -700,10 +704,10 @@ export class TranscriptController {
 
   /** Keep a floor under a live turn: a lost live notification costs at most {@link STREAM_WATCHDOG_MS}. */
   private armWatchdog(): void {
-    if (this.watchdog !== undefined || !this.streaming) return
+    const generation = ++this.watchdogGeneration
     const fire = (): void => {
+      if (generation !== this.watchdogGeneration) return
       this.watchdog = undefined
-      if (!this.streaming || this.screen === undefined) return
       // A scheduled trailing publish already reads the newest model; only a lost wake needs the floor's own publish.
       if (this.trailing === undefined && (this.dirty || this.currentModel() !== this.publishedModel)) this.requestPublish(undefined, true)
       // The publish may have ended the live turn (its settlement): only a still-live model keeps the floor.
@@ -714,6 +718,7 @@ export class TranscriptController {
   }
 
   private stopWatchdog(): void {
+    this.watchdogGeneration += 1
     if (this.watchdog === undefined) return
     if (this.options.clock === undefined) clearTimeout(this.watchdog as ReturnType<typeof setTimeout>)
     else this.options.clock.clearTimeout(this.watchdog)
@@ -765,19 +770,26 @@ export class TranscriptController {
     const running = (row: StreamRow): boolean => (row.kind === 'tool' && row.state === 'pending') || (row.kind === 'compaction' && row.facts.state === 'running')
     const pending = facts.turns.some(turn => turn.rows.some(running) || (turn.after?.some(running) ?? false))
     if (!pending) {
-      this.offTick?.()
-      this.offTick = undefined
+      this.stopTick()
       return
     }
     if (this.offTick !== undefined || this.options.tick === undefined) return
+    const owner = {}
+    this.tickOwner = owner
     this.offTick = this.options.tick.subscribe((now) => {
-      this.requestPublish(now)
+      if (this.tickOwner === owner) this.requestPublish(now)
     })
   }
 
+  private stopTick(): void {
+    this.tickOwner = undefined
+    this.offTick?.()
+    this.offTick = undefined
+  }
+
   private mount(): void {
-    const screen = this.screen
-    if (screen === undefined) return
+    // attach assigns the screen immediately before this synchronous mount.
+    const screen = this.screen!
     this.slot = screen.mountNodeSlot('transcript.conversation', {
       region: 'content',
       // The stream's keys are taught on the notification pane while it holds focus, not on a row of its own.
@@ -873,7 +885,6 @@ export class TranscriptController {
    */
   private revealCursor(): void {
     if (!this.pendingReveal) return
-    if (!this.focused) { this.pendingReveal = false; return }
     const row = this.slot?.cursorRow()
     const tail = this.screen?.contentTail()
     // No cursor painted yet (the frame has not rendered): ask again on the next layout.
@@ -913,7 +924,6 @@ export class TranscriptController {
     this.cursorIds = undefined
     // A header, a compact title, and the closing line stand for their turn: the cursor follows to the turn's other row.
     if (owner.kind !== 'entries') {
-      if (owner.turn === undefined) return
       this.cursorIds = [`turn-header:${String(owner.turn)}`, `process:${String(owner.turn)}`]
       this.cursorRev += 1
       this.toggleTurn(owner.turn)
@@ -931,7 +941,8 @@ export class TranscriptController {
 
   /** The displayed view's disclosure, or the empty value when nothing is displayed. */
   private viewDisclosure(): Disclosure {
-    return this.activeView()?.disclosure ?? NO_DISCLOSURE
+    // A run can only be accepted from the retained view that supplied its row facts.
+    return this.activeView()!.disclosure
   }
 
   private withRowText(mode: CopyMode, use: (text: string) => void): void {
@@ -944,6 +955,7 @@ export class TranscriptController {
   private unmount(): void {
     this.cancelTrailing()
     this.stopWatchdog()
+    this.stopTick()
     this.streaming = false
     this.pendingReveal = false
     this.lastCursor = undefined

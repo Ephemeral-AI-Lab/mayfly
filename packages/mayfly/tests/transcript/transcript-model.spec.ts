@@ -46,6 +46,8 @@ function bench(entries: TranscriptEntryModel[] = [user(1, 'one')], queued: { id:
     tracked: [] as (string | undefined)[],
     turned: [] as number[],
     cursor: undefined as string | undefined,
+    cursorLine: undefined as number | undefined,
+    hasTail: true,
     cursorTargets: [] as string[],
     focusRows: [] as string[],
     keys: [] as Record<string, string>[],
@@ -70,7 +72,7 @@ function bench(entries: TranscriptEntryModel[] = [user(1, 'one')], queued: { id:
     setKeys: (keys: Record<string, string>) => { state.keys.push(keys) },
     spotlight: (on: boolean) => { state.spotlit.push(on) },
     trackedRow: () => trackedRow,
-    cursorRow: () => undefined,
+    cursorRow: () => state.cursorLine,
     dispose: () => {},
   } as unknown as MayflyNodeSlot
   const tail = { away: false, top: 0, viewport: 10 }
@@ -99,7 +101,7 @@ function bench(entries: TranscriptEntryModel[] = [user(1, 'one')], queued: { id:
     scrollContentTo: vi.fn(),
     requestRender: vi.fn(),
     watchContentTail: (callback: () => void) => { layout = callback; return () => { layout = undefined } },
-    contentTail: () => tail,
+    contentTail: () => state.hasTail ? tail : undefined,
   } as unknown as TranscriptScreen
   const focusRows: (string | undefined)[] = []
   let model = createTranscriptModel('a', entries)
@@ -188,6 +190,42 @@ describe('the new-messages marker on the content scroll', () => {
 })
 
 describe('focus and search on the stream', () => {
+  it('reveals a moved cursor after it paints and leaves manual scrolling alone until another move', () => {
+    const b = bench([user(1, 'one'), user(2, 'two'), user(3, 'three')])
+    b.state.onFocusChange!(true)
+    b.state.onMove!('user:1')
+    b.layout()
+    expect(b.screen.scrollContentTo).not.toHaveBeenCalled()
+    b.state.cursorLine = 3
+    b.state.hasTail = false
+    b.layout()
+    expect(b.screen.scrollContentTo).not.toHaveBeenCalled()
+    b.state.hasTail = true
+    b.tail.top = 10
+    b.layout()
+    expect(b.screen.scrollContentTo).toHaveBeenLastCalledWith(3)
+    vi.mocked(b.screen.scrollContentTo).mockClear()
+    b.state.cursorLine = 30
+    b.layout()
+    expect(b.screen.scrollContentTo).not.toHaveBeenCalled()
+    b.state.onMove!('user:3')
+    b.layout()
+    expect(b.screen.scrollContentTo).toHaveBeenLastCalledWith(21)
+    vi.mocked(b.screen.scrollContentTo).mockClear()
+    b.state.cursorLine = 15
+    b.state.onMove!('user:2')
+    b.layout()
+    expect(b.screen.scrollContentTo).not.toHaveBeenCalled()
+    b.state.onMove!(undefined)
+    b.layout()
+    expect(b.screen.scrollContentTo).not.toHaveBeenCalled()
+    b.state.onMove!('user:3')
+    b.state.onFocusChange!(false)
+    b.layout()
+    expect(b.screen.scrollContentTo).not.toHaveBeenCalled()
+    b.controller.dispose()
+  })
+
   it('reports the row under a focused cursor, and releases the keys outside a search', () => {
     const b = bench([user(1, 'one')], [{ id: 'm1', text: 'later', lane: 'turn' }])
     b.state.cursor = 'queued.m1'
@@ -234,6 +272,28 @@ describe('focus and search on the stream', () => {
 })
 
 describe('controller models and presentation', () => {
+  it('ignores disclosure actions with no displayed view', () => {
+    const b = bench()
+    b.controller.show(undefined)
+    expect(b.controller.toggleRecent()).toBe(false)
+    const published = b.state.published.length
+    b.controller.toggleTurn(1)
+    b.controller.toggleRows(['user:1'])
+    expect(b.state.published).toHaveLength(published)
+    b.controller.dispose()
+  })
+
+  it('accepts empty-slot focus and ignores unfocused cursor observation without a displayed view', () => {
+    const b = bench()
+    b.controller.show(undefined)
+    b.state.handlers!.onFocus()
+    b.state.onMove!('queued.missing')
+    b.press(STREAM.queuedSteer)
+    b.state.onFocusChange!(false)
+    expect(b.focusRows).toEqual([])
+    b.controller.dispose()
+  })
+
   it('builds and appends models without folding events, and exposes the default policy', () => {
     const first = createTranscriptModel('a', [user(1, 'one')], false, 3, [{ turn: 1, startedAt: 0 }])
     expect(first).toMatchObject({ id: 'a', generation: 3, streaming: false, turns: [{ turn: 1, startedAt: 0 }] })
@@ -268,6 +328,16 @@ describe('a search that must mount the hit it finds', () => {
 })
 
 describe('the marker without a test clock', () => {
+  it('publishes the native timer window and releases its handle on disposal', async () => {
+    const b = bench([user(1, 'one')], [], false)
+    const published = b.state.published.length
+    b.controller.republish()
+    await vi.waitFor(() => { expect(b.state.published.length).toBeGreaterThan(published) })
+    b.controller.republish()
+    b.controller.dispose()
+    expect(b.state.published.at(-1)).not.toBeNull()
+  })
+
   it('uses the platform timers and clears a paused marker', () => {
     vi.useFakeTimers()
     try {
