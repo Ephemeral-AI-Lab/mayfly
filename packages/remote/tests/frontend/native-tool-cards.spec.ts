@@ -1,34 +1,29 @@
-/** Real native filesystem event/presenter transport into the reference transcript and terminal renderer. @module */
+/** Real native filesystem event/presenter transport into the public reference transcript mapper. @module */
 import { describe, expect, it, vi } from 'vitest'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { conversationTranscriptModel } from '@ephemeral-ai/mayfly/transcript'
 import type { ConversationProjection } from '@ephemeral-ai/mayfly/conversation'
-import { compileMayflyUiNode, visibleWidth } from '@ephemeral-ai/mayfly/core'
-import { foldConversationProjection, initialConversationState } from '../../../host/src/conversation/projection.ts'
-import { presentTool } from '../../../host/src/remote/presentation.ts'
-import { nativeFilePresenters } from '../../../host/tests/remote/native-files-presenters.ts'
-import { TranscriptView } from '../../../mayfly/src/components/transcript-view.ts'
-import { StreamFacts } from '../../../mayfly/src/transcript/stream-facts.ts'
-import { TranscriptPresentationPolicy } from '../../../mayfly/src/transcript/presentation-policy.ts'
-import { NO_DISCLOSURE } from '../../../mayfly/src/transcript/disclosure.ts'
 import { HostKey } from '../../src/client/types.ts'
+import type { MayflyPresentToolsResponse } from '../../src/frontend/host-contract.ts'
 import { RemoteToolPresentationCache, type RemoteToolPresentationRequest } from '../../src/frontend/tool-presentations.ts'
-import fixture from '../fixtures/native-files-wave24.json' with { type: 'json' }
-import { good, tick, translate } from '../remote/task-feature-fixture.ts'
-import { fakeMayflyComponents, plain, plainColors } from '../remote/render-fixture.ts'
+import fixture from '../fixtures/native-files-transport.json' with { type: 'json' }
+import { good, tick } from '../remote/task-feature-fixture.ts'
 
 describe('native builtin filesystem cards', () => {
   it('preserves actual Read line counts, Edit diffs and absolute Write preview through the Host/Remote boundary', async () => {
-    const state = fixture.events.reduce((state, event) => foldConversationProjection(state, event as never), initialConversationState())
-    const projection: ConversationProjection = { entries: state.entries, streaming: state.active, settledSteps: state.finalizedSteps, turns: state.turns }
-    const definitions = nativeFilePresenters()
-    const native = { get: (name: string) => definitions.get(name) }
-    const lookup = vi.fn((name: string, selected: Agent) => { expect(selected).toBe(agent); return definitions.get(name) })
-    const agent = { ctx: { tools: { get: lookup } } } as unknown as Agent
+    // This wire fixture is verified against actual native definitions and
+    // Host folds by host/tests/remote/native-files-cards.spec.ts. Keep Host
+    // source and the shared renderer's source in their own TS native realms.
+    const projection = fixture.projection as ConversationProjection
+    const presentations = fixture.presentations as MayflyPresentToolsResponse['presentations']
+    const native = { get: (_name: string, callId?: string) => {
+      const value = presentations.session?.[callId ?? '']
+      return value === undefined ? undefined : { presentCall: () => value.call, presentResult: () => value.result }
+    } }
     const present = vi.fn(async (request: RemoteToolPresentationRequest, signal: AbortSignal) => {
       signal.throwIfAborted()
-      return good({ presentations: { session: Object.fromEntries(request.entries.map(entry => [entry.callId, presentTool(agent, entry)])) } })
+      expect(request.entries.map(entry => entry.callId)).toEqual(Object.keys(presentations.session!))
+      return good({ presentations })
     })
     const cache = new RemoteToolPresentationCache(() => ({ presentationRevision: 'native:0.2.2-alpha.2', present }))
     const ref = { host: HostKey('native'), sessionId: SessionId('session') }
@@ -45,27 +40,6 @@ describe('native builtin filesystem cards', () => {
       { kind: 'transcript-tool' },
     ])
     expect(present).toHaveBeenCalledOnce()
-    expect(lookup).toHaveBeenCalledTimes(8)
-    const policy = new TranscriptPresentationPolicy()
-    policy.apply({ transcriptView: 'verbose' })
-    const facts = new StreamFacts().build(remote, { policy: policy.snapshot(), disclosure: NO_DISCLOSURE, liveTurnHeader: false, t: translate, queued: [], now: 1767258000000 })
-    const node = TranscriptView(facts)
-    for (const width of [12, 40, 80, 120, 240]) {
-      const rendered = compileMayflyUiNode(node, { components: fakeMayflyComponents(), colors: plainColors(), getViewport: () => ({ columns: width, rows: 100 }), screenMode: 'main', emit() {} })
-      expect(rendered.ok).toBe(true)
-      if (!rendered.ok) throw new Error(rendered.message)
-      const rows = plain(rendered.value.component.render(width))
-      for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
-      if (width === 240) {
-        const text = rows.join('\n')
-        expect(text).toContain('2 lines')
-        expect(text).toContain('before parity change')
-        expect(text).toContain('after parity change')
-        expect(text).toContain('Native delivered file')
-        expect(text).toContain('Exact preview 你好 🪰')
-        expect(text).toContain(`${fixture.provenance.cwd}/parity-deliverable.txt`)
-      }
-    }
     await cache.dispose()
   })
 })
