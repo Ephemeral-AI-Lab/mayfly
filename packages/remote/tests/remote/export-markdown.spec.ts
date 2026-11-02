@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
-  buildRemoteExportMarkdown, buildRemoteFullExportMarkdown, remoteExportFileName, remoteExportItems, sanitizeRemoteExportName,
+  buildRemoteExportMarkdown, buildRemoteFullExportMarkdown, remoteExportFileName, remoteExportItems,
 } from '../../src/remote/operations/export-markdown.ts'
 import { entry, events, exportedAt, projection, wire } from './export-fixture.ts'
 
@@ -91,11 +91,7 @@ describe('full wire audit export', () => {
   })
 })
 
-it('creates bounded bare export filenames and preserves Unicode graphemes in caller names', () => {
+it('generates the immutable default filename safely from a session id', () => {
   expect(remoteExportFileName('sess-12345678', exportedAt)).toBe('mayfly-export-sess-123-20260821-071530.md')
   expect(remoteExportFileName('../bad/name', exportedAt)).not.toContain('/')
-  for (const name of ['', '.', '..', '\n/\\\0']) expect(sanitizeRemoteExportName(name)).toBeUndefined()
-  expect(sanitizeRemoteExportName('/path\\name.md')).toBe('pathname.md')
-  expect(sanitizeRemoteExportName(' notes ')).toBe('notes.md')
-  expect(sanitizeRemoteExportName('界'.repeat(110))).toBe(`${'界'.repeat(100)}.md`)
 })

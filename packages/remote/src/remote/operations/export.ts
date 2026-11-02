@@ -1,18 +1,18 @@
 /**
  * `/export` and `/save` render the Host conversation projection, with native
- * backwards `session.events` paging for full audit exports, written exclusively
- * inside the local `mayfly-exports/` directory.
+ * backwards `session.events` paging for full audit exports, written to caller
+ * paths on the TUI machine with overwrite-aware ownership cleanup.
  * @module @ephemeral-ai/mayfly/remote/operations/export
  */
 
-import { mkdir, unlink, writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import type { ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { remoteErrorMessage } from '../features/official.ts'
 import {
-  buildRemoteExportMarkdown, buildRemoteFullExportMarkdown, remoteExportFileName, remoteExportItems, sanitizeRemoteExportName,
+  buildRemoteExportMarkdown, buildRemoteFullExportMarkdown, remoteExportFileName, remoteExportItems,
 } from './export-markdown.ts'
 import {
   collectRemoteSessionEvents, registerRemoteOperationsLocale, type RemoteOperationsContext,
@@ -21,15 +21,10 @@ import {
 /** Page size of one backwards history read. */
 const EXPORT_PAGE_MESSAGES = 500
 
-/** Attempts to find an unused exclusive filename before giving up. */
-const EXPORT_NAME_ATTEMPTS = 100
-
 const zh: Readonly<Record<string, string>> = {
   'Export the current session as Markdown': '将当前会话导出为 Markdown',
   'No current session': '当前没有会话',
-  'Usage: /export [full] [name]': '用法：/export [full] [name]',
   'Nothing to export yet': '还没有可导出的内容',
-  'Could not find an unused export filename': '找不到可用的导出文件名',
   'Exported {count} events to {path}': '已导出 {count} 条事件到 {path}',
   'Exported {count} items to {path}': '已导出 {count} 项内容到 {path}',
   'Session changed during export': '导出期间会话已更改',
@@ -49,29 +44,10 @@ class RemoteExportCommand {
   /** Retire pending local writes when the command's owning composition unloads. */
   dispose(): void { this.active = false }
 
-  /** Write one exclusively created file, never overwriting, cleaning a partial on failure. */
-  private async writeExclusive(directory: string, name: string, content: string, assertCurrent: () => void): Promise<string> {
-    for (let attempt = 0; attempt < EXPORT_NAME_ATTEMPTS; attempt += 1) {
-      const candidate = attempt === 0 ? name : `${name.replace(/\.md$/u, '')}-${String(attempt + 1)}.md`
-      const target = resolve(directory, candidate)
-      assertCurrent()
-      try {
-        await writeFile(target, content, { encoding: 'utf8', flag: 'wx' })
-        assertCurrent()
-        return target
-      } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException | null)?.code === 'EEXIST') continue
-        await unlink(target).then(undefined, () => undefined)
-        throw error
-      }
-    }
-    throw new Error(this.t('Could not find an unused export filename'))
-  }
-
   readonly execute = async (rawInput: string, signal: AbortSignal): Promise<void> => {
-    const tokens = rawInput.trim().split(/\s+/u).filter(token => token !== '')
-    const full = tokens[0] === 'full'
-    const nameArg = (full ? tokens.slice(1) : tokens).join(' ')
+    const trimmed = rawInput.trim()
+    const full = trimmed === 'full' || trimmed.startsWith('full ')
+    const pathArg = full ? trimmed.slice(4).trim() : trimmed
     const current = this.context.base.hosts.current()
     if (current === undefined) throw new Error(this.t('No current session'))
     const generation = current.client.state.getSnapshot().generation
@@ -107,16 +83,23 @@ class RemoteExportCommand {
       markdown = buildRemoteExportMarkdown({ sessionId: current.ref.sessionId, workDir, items, exportedAt })
     }
     if (count === 0) throw new Error(this.t('Nothing to export yet'))
-    const directory = resolve(this.context.options.localCwd, 'mayfly-exports')
-    const name = nameArg === ''
-      ? remoteExportFileName(current.ref.sessionId, exportedAt)
-      : sanitizeRemoteExportName(nameArg)
-    if (name === undefined) throw new Error(this.t('Usage: /export [full] [name]'))
-    await mkdir(directory, { recursive: true })
+    const target = resolve(this.context.options.localCwd, pathArg || remoteExportFileName(current.ref.sessionId, exportedAt))
     assertCurrent()
-    let target: string
+    await mkdir(dirname(target), { recursive: true })
+    assertCurrent()
     try {
-      target = await this.writeExclusive(directory, name, markdown, assertCurrent)
+      const previous = await readFile(target).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return undefined
+        throw error
+      })
+      assertCurrent()
+      try {
+        await writeFile(target, markdown, 'utf8')
+        assertCurrent()
+      } catch (error: unknown) {
+        await (previous === undefined ? unlink(target) : writeFile(target, previous)).then(undefined, () => undefined)
+        throw error
+      }
     } catch (error: unknown) {
       throw new Error(`could not write export: ${remoteErrorMessage(error)}`)
     }
@@ -136,13 +119,13 @@ export function mountRemoteExportOperations(context: RemoteOperationsContext): (
     context.base.commands.register({
       name: 'export',
       description: 'Export the current session as Markdown',
-      input: { hint: '[full] [name]' },
+      input: { hint: '[full] [<path>]' },
       execute: command.execute,
     }),
     context.base.commands.register({
       name: 'save',
       description: 'Save the current session as a Markdown file',
-      input: { hint: '[full] [name]' },
+      input: { hint: '[full] [<path>]' },
       execute: command.execute,
     }),
   ]

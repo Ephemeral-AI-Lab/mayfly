@@ -295,11 +295,3 @@ export function remoteExportFileName(sessionId: string, now: Date): string {
   const timestamp = now.toISOString().replaceAll(/[-:]/g, '').replace('T', '-').slice(0, 15)
   return `mayfly-export-${shortId}-${timestamp}.md`
 }
-
-/** Sanitize one caller-supplied filename to a bare name inside the export directory. */
-export function sanitizeRemoteExportName(requested: string): string | undefined {
-  const bare = requested.replaceAll(/[\\/\u0000-\u001F\u007F]/gu, '').trim()
-  if (bare === '' || bare === '.' || bare === '..') return undefined
-  const capped = [...bare].slice(0, 100).join('')
-  return capped.endsWith('.md') ? capped : `${capped}.md`
-}

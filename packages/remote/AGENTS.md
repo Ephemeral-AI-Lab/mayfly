@@ -166,9 +166,11 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   `/copy` reads the newest non-empty visible assistant item from that same whole
   projection, never a bounded raw journal window, and fences clipboard results
   against caller, exact binding, Client, connection generation, and unload.
-  Exports write exclusively to bare filenames under local `mayfly-exports/`,
-  fence the exact Host/Session/binding/connection generation and command owner,
-  and remove a newly written file if its owner retires before write settlement.
+  Exports resolve relative paths against the TUI working directory, accept
+  absolute paths, create parent directories, and overwrite existing files. They
+  fence the caller, exact Host/Session/binding/connection generation and command
+  owner; a failed or stale write removes a newly created file or restores the
+  original bytes of an overwritten file.
 - Durable conversation and facts come from whole Host projections.
   `src/conversation/` and `src/transcript/` map their latest snapshots plus a
   bounded current-attempt stream overlay; they never fold a second durable
