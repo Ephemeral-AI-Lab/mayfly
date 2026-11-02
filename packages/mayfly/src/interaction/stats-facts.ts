@@ -5,13 +5,12 @@
  *
  * @module @ephemeral-ai/mayfly/interaction/stats-facts
  */
-import { homedir } from 'node:os'
 import type { MayflyInlineSpan, MayflyTone } from '@ephemeral-ai/mayfly-ui'
 import type { AccountTabFacts, StatsFacts, StatsRow, ModelBlock, ModelsChart, HeatmapVariant } from '../components/stats-panel.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { formatCreated, type SessionInfoFacts } from './session-info-model.ts'
 import { formatAgo } from './session-list-model.ts'
-import { isLowBalance, type AccountSnapshot, type BalanceResult, type WalletCurrency } from './stats-account.ts'
+import { isLowBalance, type AccountSnapshot, type BalanceResult, type WalletCurrency } from './stats-account-model.ts'
 import { formatMoney, moneyOf, type Currency, type Money, type ModelTokens, type PriceSources } from './pricing.ts'
 import { aggregate, dailyChart, heatmapGrid, RANGES, type DayTokens, type ModelTotals, type StatsAggregate, type StatsRange } from './stats-index/stats.ts'
 import type { SessionDigest } from './stats-index/digest.ts'
@@ -33,6 +32,8 @@ export interface IndexState {
 
 /** Everything the panel's texts are made from. */
 export interface StatsInput {
+  /** Home directory of the Host that owns these Session paths. */
+  readonly home: string
   readonly t: MayflyTranslate
   readonly locale: 'zh' | 'en'
   readonly now: number
@@ -68,8 +69,7 @@ export function formatSpan(ms: number): string {
 }
 
 /** The directory with the home folder as `~`. */
-function homeCollapsed(path: string): string {
-  const home = homedir()
+function homeCollapsed(path: string, home: string): string {
   return home !== '' && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path
 }
 
@@ -85,7 +85,7 @@ function sessionTab(input: StatsInput, currency: Currency): StatsFacts['session'
   const refresh = t('refresh')
   if (session === undefined) return { rows: [], byModel: [], unavailable: t('Session information unavailable'), refresh }
   const rows: StatsRow[] = []
-  rows.push({ label: t('Working directory'), value: text(session.cwd === undefined ? t('(unknown)') : homeCollapsed(session.cwd)) })
+  rows.push({ label: t('Working directory'), value: text(session.cwd === undefined ? t('(unknown)') : homeCollapsed(session.cwd, input.home)) })
   rows.push({ label: t('Agent'), value: text(t(session.status)) })
   rows.push({ label: t('Model'), value: text(session.model === undefined ? t('not set') : `${session.model.model} (${session.model.provider})${session.model.reasoningEffort === undefined ? '' : ` · ${t('thinking {level}', { level: session.model.reasoningEffort })}`}`) })
   const { used, window } = session.usage.context

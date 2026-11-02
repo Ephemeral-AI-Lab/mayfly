@@ -15,7 +15,7 @@ function event(type: string, data: object, time = 1): SessionEvent {
 }
 
 function initial(): MayflyWorkflowSnapshot {
-  return definition.init(SessionId('parent'), { id: SessionId('parent') } as never)
+  return definition.init({ id: SessionId('parent') } as never)
 }
 
 function replay(events: readonly SessionEvent[]): MayflyWorkflowSnapshot {

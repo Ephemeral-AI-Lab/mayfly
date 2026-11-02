@@ -2,6 +2,7 @@
  * @module @ephemeral-ai/mayfly/interaction/stats-command
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { homedir } from 'node:os'
 import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { MayflyOverlayHandle, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
@@ -16,7 +17,8 @@ import { currentMayflySettings } from './settings.ts'
 import { buildStatsFacts, statsSummary, STATS_TABS, type IndexState, type StatsTab } from './stats-facts.ts'
 import { foldDigest, type SessionDigest } from './stats-index/digest.ts'
 import { createStatsIndex, readDigests, refreshStatsIndex } from './stats-index/index.ts'
-import { readAccountSnapshot, type AccountSnapshot } from './stats-account.ts'
+import { readAccountSnapshot } from './stats-account.ts'
+import type { AccountSnapshot } from './stats-account-model.ts'
 import { aggregate, RANGES, type StatsRange } from './stats-index/stats.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 
@@ -117,6 +119,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         }
         const cwd = (): string | undefined => allWorkspaces ? undefined : agent.session.header.cwd
         const facts = () => buildStatsFacts({
+          home: homedir(),
           t, locale: owner.get('mayflyLocale')?.locale === 'zh' ? 'zh' : 'en', now: Date.now(), tab, range, allWorkspaces,
           session: readSession(), sessionTokens: sessionTokens(), digests: digests(), index: progress, sources: sources(), version,
           account: { snapshot: accountCache?.route === routeOf() ? accountCache : undefined, loading: accountLoading },

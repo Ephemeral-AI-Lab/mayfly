@@ -94,3 +94,27 @@ fence every await against Agent, Session, cwd and delivery replacement. Preview
 bytes are capped at 256 KiB; opaque filesystem targets never cross Remote.
 Latest workspace changes use the native announcing event and retained summary
 without activating a cold Session.
+
+## Passive statistics, traces, and recorded files
+
+`statsSession` and `statsHistory` use native Session Query observations with
+`projectionMode: 'none'`. They never activate an Agent. The Host owns the
+complete event fold into readonly local-day usage digests; Remote receives
+whole snapshots. Each history request owns its listing, leases, progress and
+cancellation. The service-owned cache reuses only unchanged cold revisions;
+live logs are folded again. Preserve the rc.2 newest-300 cap, four-reader pool,
+precise provider/model identity and peak/off-peak buckets, and retire reads on
+source replacement or Fiber unload.
+
+`traceCatalog` and `traceDetail` passively read the complete native log and
+native replacement/source relationships. A selected item's exact event
+identities must still exist before detail is returned. The Host owns canonical
+aggregation and detached immutable JSON; shared presentation owns no native
+Session access.
+
+`deliveredFile` accepts a recorded delivery id, resolves only that record
+through the exact selected Agent's filesystem, and checks Agent, cwd and record
+after every await. Text previews read at most 256 KiB; binary data gets the
+reference message. `latestWorkspaceChanges` reads only resident native
+comparisons and never activates a cold Session. Filesystem targets do not cross
+the wire; native Session open operations own external application admission.

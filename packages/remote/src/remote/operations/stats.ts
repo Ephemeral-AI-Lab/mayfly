@@ -1,197 +1,243 @@
-/**
- * `/stats` current Session statistics from live projections plus the Host
- * session catalog snapshot.
- * @module @ephemeral-ai/mayfly/remote/operations/stats
- */
-
-import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
-import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
-import type { RemoteFeatureSelection } from '../features.ts'
-import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
-import { remoteStatsPanel, type RemoteStatsState } from '../panels/operations/stats.ts'
-import { isRemoteFeatureSelection } from '../interactions/selection.ts'
-import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
+/** rc.2 statistics tabs over whole Host digests and native Client projections. @module */
 import {
-  isRemoteRecord, registerRemoteOperationsLocale, remoteReadNumber, remoteReadString,
-  type RemoteOperationsContext,
-} from './support.ts'
+  StatsPanel, buildStatsFacts, statsSummary, STATS_TABS, RANGES, aggregate,
+  type AccountSnapshot, type IndexState, type SessionDigest, type StatsRange, type StatsTab,
+} from '@ephemeral-ai/mayfly/stats-presentation'
+import { currentMayflySettings } from '@ephemeral-ai/mayfly/settings'
+import { loadModelsDevIndex, type ModelsDevIndex } from '@ephemeral-ai/mayfly/configuration-panels'
+import { interactionTranslator, mountInteractionLocale } from '@ephemeral-ai/mayfly/editor-presentation'
+import type { MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyStatsDigest, MayflyStatsSession } from '@ephemeral-ai/mayfly-host/types'
+import { mayflyHostRemote } from '../../frontend/host-mount.ts'
+import type { RemoteFeatureSelection } from '../features.ts'
+import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
+import { remoteValue, remoteErrorMessage } from '../features/official.ts'
+import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
+import { remoteSessionInformation, REMOTE_SESSION_INFO_KEYS } from '../session-information.ts'
+import { copyLocalText } from '../local/clipboard.ts'
+import { remoteClientVersion } from '../features/version.ts'
+import { remoteStatsAccount } from './stats-account.ts'
+import { remoteReadNumber, type RemoteOperationsContext } from './support.ts'
 
-/** Projections the stats panel reads at one cursor. */
-const STATS_KEYS = ['sessionStats', 'tokenUsage', 'contextPressure', 'modelSelection'] as const
-
-/** Recent catalog rows the panel lists. */
-const RECENT_LIMIT = 8
-
-const zh: Readonly<Record<string, string>> = {
-  'Show current session statistics': '显示当前会话统计',
-  'Session statistics': '会话统计',
-  'Session': '会话',
-  'Turns': '轮数',
-  'Steps': '步骤数',
-  'Model': '模型',
-  'Provider': '提供商',
-  'Reasoning': '推理强度',
-  'Tokens': '令牌',
-  'Input': '输入',
-  'Cache read': '缓存读取',
-  'Cache write': '缓存写入',
-  'Output': '输出',
-  'Context': '上下文',
-  'Used': '已占用',
-  'Window': '窗口',
-  'Share': '占比',
-  'Host sessions': 'Host 会话',
-  'Total': '总数',
-  'No sessions in the Host catalog': 'Host 目录中没有会话',
-  'live': '运行中',
-  'unavailable': '不可用',
-  'default': '默认',
-  'Figures come from live projections; no full history is replayed for this panel.': '数字来自实时投影；本面板不回放完整历史。',
-  'No current session': '当前没有会话',
-  'Usage: /stats': '用法：/stats',
+/** Decode the Host's complete digest; this never reads or folds Session events. */
+export function remoteStatsDigest(value: MayflyStatsDigest): SessionDigest {
+  return { ...value, cwd: value.cwd, days: new Map(value.days.map(day => [day.key, { turns: day.turns, models: new Map(day.models.map(model => [`${model.provider}\0${model.model}`, { ...model, peak: { ...model.peak }, offPeak: { ...model.offPeak } }])) }])) }
 }
 
-/** The empty state shown before the first projection read lands. */
-
-function readStatsSession(value: unknown): RemoteStatsState['session'] {
-  return {
-    turns: remoteReadNumber(value, 'turns'),
-    steps: remoteReadNumber(value, 'steps'),
-    llmMs: remoteReadNumber(value, 'llmMs'),
-    toolMs: remoteReadNumber(value, 'toolMs'),
-    ttftMs: remoteReadNumber(value, 'ttftMs'),
-    decodeMs: remoteReadNumber(value, 'decodeMs'),
-    decodeTokens: remoteReadNumber(value, 'decodeTokens'),
-  }
-}
-
-function readStatsUsage(value: unknown): RemoteStatsState['usage'] {
-  return {
-    input: remoteReadNumber(value, 'uncachedInputTokens'),
-    cacheRead: remoteReadNumber(value, 'cacheReadTokens'),
-    cacheWrite: remoteReadNumber(value, 'cacheWriteTokens'),
-    output: remoteReadNumber(value, 'outputTokens'),
-  }
-}
-
-function readStatsContext(value: unknown): RemoteStatsState['context'] {
-  const used = remoteReadNumber(value, 'projectedTokens') ?? remoteReadNumber(value, 'pressureTokens')
-  return { used, window: remoteReadNumber(value, 'contextWindow') }
-}
-
-function readStatsModel(value: unknown): RemoteStatsState['model'] {
-  const route = isRemoteRecord(value) ? (isRemoteRecord(value['next']) ? value['next'] : isRemoteRecord(value['lastUsed']) ? value['lastUsed'] : undefined) : undefined
-  return {
-    provider: remoteReadString(route, 'provider'),
-    model: remoteReadString(route, 'model'),
-    reasoningEffort: remoteReadString(route, 'reasoningEffort'),
-  }
-}
+const ACCOUNT_FRESH_MS = 5 * 60 * 1000
+const REPAINT_MS = 100
+const KEYS = [...REMOTE_SESSION_INFO_KEYS, 'sessionStats'] as const
 
 class RemoteStatsController {
-  private readonly t: MayflyTranslate
+  private readonly t
   private readonly lifecycle: RemoteFeatureLifecycle
-  private state: RemoteStatsState | undefined
-  private browser: RemoteBrowserPanel | undefined
-  private subscriptions: readonly (() => void)[] = []
-  private disposed = false
+  private panel: RemoteBrowserPanel | undefined
+  private retire: (() => void) | undefined
+  private accountCache: AccountSnapshot | undefined
 
   constructor(private readonly context: RemoteOperationsContext) {
-    const { base } = context
-    this.t = memoizedLocaleTranslator(base.ctx, 'remote-operations-stats').translate
-    registerRemoteOperationsLocale(base, 'remote-operations-stats', zh)
-    this.lifecycle = new RemoteFeatureLifecycle(base, this.attach)
+    mountInteractionLocale(context.base.ctx)
+    this.t = interactionTranslator(context.base.ctx)
+    this.lifecycle = new RemoteFeatureLifecycle(context.base, () => {
+      this.retire?.()
+      this.accountCache = undefined
+    })
     this.lifecycle.start()
   }
 
   readonly dispose = (): void => {
-    if (this.disposed) return
-    this.disposed = true
     this.lifecycle.dispose()
-    for (const dispose of this.subscriptions) dispose()
-    this.subscriptions = []
-    this.browser?.close()
+    this.retire?.()
+    this.accountCache = undefined
   }
 
-  private readonly attach = (generation: number): void => {
-    if (this.disposed) return
-    for (const dispose of this.subscriptions) dispose()
-    this.subscriptions = []
-    this.browser?.close()
-    this.browser = undefined
-    this.state = undefined
-    const current = this.lifecycle.selection(generation)
-    if (current !== undefined) {
-      const faces = STATS_KEYS.map(key => current.binding.session.projections.faceOf(key))
-      const catalog = current.client.sessions.list
-      const update = (): void => { this.read(current) }
-      this.subscriptions = [...faces.map(face => face.subscribe(update)), catalog.subscribe(update)]
-      this.read(current)
-    }
-  }
-
-  private read(current: RemoteFeatureSelection): void {
-    const values = Object.fromEntries(STATS_KEYS.map(key => [key, current.binding.session.projections.faceOf(key).getSnapshot()]))
-    const catalog = current.client.sessions.list.getSnapshot()
-    const recent = catalog.ids
-      .map(id => ({ id, summary: catalog.byId[id] }))
-      .filter((entry): entry is { id: typeof entry.id, summary: NonNullable<typeof entry.summary> } => entry.summary !== undefined)
-      .toSorted((left, right) => (right.summary.updatedAt ?? 0) - (left.summary.updatedAt ?? 0))
-      .slice(0, RECENT_LIMIT)
-      .map(entry => ({
-        id: entry.id,
-        title: entry.summary.displayTitle,
-        updatedAt: entry.summary.updatedAt,
-        running: entry.summary.running,
-        current: entry.id === current.ref.sessionId,
-      }))
-    this.state = {
-      sessionId: current.ref.sessionId,
-      session: readStatsSession(values['sessionStats']),
-      usage: readStatsUsage(values['tokenUsage']),
-      context: readStatsContext(values['contextPressure']),
-      model: readStatsModel(values['modelSelection']),
-      totalSessions: catalog.ids.length,
-      recent,
-      error: undefined,
-    }
-    this.browser?.refresh()
-  }
-
-  readonly execute = async (rawInput: string): Promise<void> => {
-    if (rawInput.trim() !== '') throw new Error(this.t('Usage: /stats'))
+  readonly execute = async (input: string): Promise<void> => {
+    if (input.trim() !== '') throw new Error('Usage: /stats')
     const current = this.context.base.hosts.current()
-    if (current === undefined) throw new Error(this.t('No current session'))
-    this.browser?.close()
-    this.browser = openRemoteBrowser(this.context.base, {
-      id: 'remote.operations.stats',
-      scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref),
-      view: () => remoteStatsPanel(this.state ?? {
-        sessionId: current.ref.sessionId,
-        session: { turns: undefined, steps: undefined, llmMs: undefined, toolMs: undefined, ttftMs: undefined, decodeMs: undefined, decodeTokens: undefined },
-        usage: { input: undefined, cacheRead: undefined, cacheWrite: undefined, output: undefined },
-        context: { used: undefined, window: undefined },
-        model: { provider: undefined, model: undefined, reasoningEffort: undefined },
-        totalSessions: undefined,
-        recent: [],
-        error: undefined,
-      }, this.t),
-      onClosed: () => { this.browser = undefined },
+    if (current === undefined) throw new Error(this.t('no session is live yet'))
+    if (this.context.base.ctx.mayflyOverlays.focus('mayfly.stats')) return
+    this.retire?.()
+    this.open(current, this.lifecycle.currentGeneration())
+  }
+
+  private open(current: RemoteFeatureSelection, captured: number): void {
+    const { base } = this.context
+    const lifetime = new AbortController()
+    const signal = lifetime.signal
+    const valid = (): boolean => {
+      const next = this.lifecycle.selection(captured)
+      return !signal.aborted && next?.client === current.client && next.binding === current.binding
+        && next.ref.host === current.ref.host && next.ref.sessionId === current.ref.sessionId
+    }
+    let tab: StatsTab = 'session'
+    let range: StatsRange = 'all'
+    let allWorkspaces = true
+    let session: MayflyStatsSession | undefined
+    let stored: readonly SessionDigest[] = []
+    let progress: IndexState | undefined
+    let modelsDev: ModelsDevIndex | undefined
+    let accountLoading = false
+    let accountRoute: string | undefined
+    let accountGeneration: AbortController | undefined
+    let historyGeneration: AbortController | undefined
+    let sessionGeneration: AbortController | undefined
+    let started = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let sessionDirty = false
+    const offs: Array<() => void> = []
+    const version = { mayfly: remoteClientVersion(), harness: '' }
+    const usage = () => remoteSessionInformation(current.binding, { model: undefined, provider: undefined })
+    const route = () => usage().model?.provider
+    const locale = (): 'zh' | 'en' => base.ctx.mayflyLocale.locale === 'zh' ? 'zh' : 'en'
+    const facts = () => {
+      const digest = session?.digest === undefined ? undefined : remoteStatsDigest(session.digest)
+      const digests = digest === undefined ? stored : [digest, ...stored.filter(item => item.id !== digest.id)]
+      const stats = current.binding.session.projections.faceOf('sessionStats').getSnapshot()
+      const number = (key: string): number => remoteReadNumber(stats, key) ?? 0
+      const settings = currentMayflySettings(base.ctx)
+      return buildStatsFacts({
+        home: current.client.remote.$host.home ?? '', t: this.t, locale: locale(), now: Date.now(), tab, range, allWorkspaces,
+        session: session === undefined ? undefined : {
+          ...usage(), id: current.ref.sessionId, createdAt: session.createdAt, ...session.cwd === undefined ? {} : { cwd: session.cwd }, status: session.status,
+          turns: number('turns'), steps: number('steps'),
+          ...stats === undefined ? {} : { timing: { llmMs: number('llmMs'), toolMs: number('toolMs'), ttftMs: number('ttftMs'), ttftSteps: number('ttftSteps'), decodeMs: number('decodeMs'), decodeTokens: number('decodeTokens') } },
+        },
+        sessionTokens: digest === undefined ? [] : aggregate([digest], 'all', Date.now()).models,
+        digests, index: progress, sources: { user: settings.prices, modelsDev, usdCnyRate: settings.usdCnyRate },
+        account: { snapshot: this.accountCache?.route === route() ? this.accountCache : undefined, loading: accountLoading },
+        lowBalance: { CNY: settings.lowBalanceCny, USD: settings.lowBalanceUsd }, version,
+      })
+    }
+    const node = () => StatsPanel(facts())
+    const publish = (): void => {
+      if (!valid()) return
+      if (timer !== undefined) { clearTimeout(timer); timer = undefined }
+      this.panel?.refresh()
+    }
+    const schedule = (): void => {
+      if (!valid() || timer !== undefined) return
+      timer = setTimeout(() => {
+        timer = undefined
+        publish()
+        if (sessionDirty) { sessionDirty = false; void readSession() }
+      }, REPAINT_MS)
+    }
+    const readSession = async (): Promise<void> => {
+      sessionGeneration?.abort()
+      const mine = new AbortController()
+      sessionGeneration = mine
+      const retire = AbortSignal.any([signal, mine.signal])
+      try {
+        const value = await remoteValue(mayflyHostRemote(current.client).statsSession({ sessionId: current.ref.sessionId }, retire))
+        if (!valid() || retire.aborted) return
+        session = value
+        version.harness = value.harnessVersion
+        loadAccount()
+        publish()
+      } catch (error) {
+        if (valid() && !retire.aborted) { base.notice.set(remoteErrorMessage(error)); publish() }
+      }
+    }
+    const startIndex = (): void => {
+      historyGeneration?.abort()
+      const mine = new AbortController()
+      historyGeneration = mine
+      const retire = AbortSignal.any([signal, mine.signal])
+      started = true
+      stored = []
+      progress = { running: true, done: 0, total: 0, skipped: 0, failed: 0 }
+      schedule()
+      void (async () => {
+        const stream = mayflyHostRemote(current.client).statsHistory({ sessionId: current.ref.sessionId, allWorkspaces }, retire)
+        try {
+          for await (const frame of stream) {
+            if (!valid() || retire.aborted) return
+            stored = frame.digests.map(remoteStatsDigest)
+            progress = { running: frame.running, done: frame.done, total: frame.total, skipped: frame.skipped, failed: frame.failed }
+            schedule()
+          }
+        } catch (error) {
+          if (valid() && !retire.aborted) progress = { running: false, done: 0, total: 0, skipped: 0, failed: 0, error: remoteErrorMessage(error) }
+        } finally {
+          stream.dispose()
+          if (valid() && !retire.aborted) { progress = { ...progress!, running: false }; publish() }
+        }
+      })()
+    }
+    const loadAccount = (): void => {
+      const provider = route()
+      if (provider === undefined) return
+      const cached = this.accountCache?.route === provider ? this.accountCache : undefined
+      const failed = cached?.balance?.status === 'unavailable' && !['signed-out', 'no-key'].includes(cached.balance.reason)
+      if (cached !== undefined && !failed && Date.now() - cached.at < ACCOUNT_FRESH_MS) return
+      if (accountLoading && accountRoute === provider) return
+      accountGeneration?.abort()
+      const mine = new AbortController()
+      accountGeneration = mine
+      const retire = AbortSignal.any([signal, mine.signal])
+      accountLoading = true
+      accountRoute = provider
+      schedule()
+      void remoteStatsAccount(current.client, provider, locale(), version.mayfly, retire).then(value => {
+        if (valid() && !retire.aborted && route() === provider) this.accountCache = value
+      }).catch(() => {}).finally(() => {
+        if (!valid() || retire.aborted) return
+        accountLoading = false
+        publish()
+      })
+    }
+    const close = (): void => {
+      if (signal.aborted) return
+      lifetime.abort()
+      if (timer !== undefined) clearTimeout(timer)
+      historyGeneration?.abort(); accountGeneration?.abort(); sessionGeneration?.abort()
+      for (const off of offs) off()
+      this.panel?.close()
+      this.panel = undefined
+      this.retire = undefined
+    }
+    this.retire = close
+    this.panel = openRemoteBrowser(base, {
+      id: 'mayfly.stats', scope: { kind: 'session', sessionId: current.ref.sessionId }, isCurrent: valid, signal,
+      view: node, onClosed: close,
+      observe: event => {
+        if (event.kind !== 'tab-change') return
+        const next = STATS_TABS.find(item => item === event.tabId)
+        if (next === undefined || next === tab) return
+        tab = next
+        if ((tab === 'history' || tab === 'models') && !started) startIndex()
+        if (tab === 'account') loadAccount()
+        publish()
+      },
+      action: async (event, context): Promise<MayflyUiActionReply> => {
+        if (!valid() || context.signal.aborted) return { kind: 'cancelled' }
+        if (event.kind !== 'activate') return { kind: 'completed' }
+        if (event.actionId === 'copy') {
+          try {
+            const text = statsSummary(facts(), tab)
+            const method = await (this.context.options.copy?.(text) ?? copyLocalText(text, signal))
+            if (!valid() || context.signal.aborted) return { kind: 'cancelled' }
+            return { kind: 'completed', feedback: { severity: 'success', message: `${this.t('copied the stats summary')}${method === 'osc52' ? this.t(' via terminal escape sequence (unverified)') : ''}` } }
+          } catch (error) { return valid() ? { kind: 'failed', message: this.t('could not copy: {error}', { error: remoteErrorMessage(error) }) } : { kind: 'cancelled' } }
+        }
+        if (event.actionId === 'refresh') void readSession()
+        else if (event.actionId === 'range') range = RANGES[(RANGES.indexOf(range) + 1) % RANGES.length]!
+        else if (event.actionId === 'workspace') { allWorkspaces = !allWorkspaces; startIndex() }
+        else return { kind: 'completed' }
+        return { kind: 'accepted', node: node(), source: [] }
+      },
     })
+    if (signal.aborted) return
+    for (const key of KEYS) offs.push(current.binding.session.projections.faceOf(key).subscribe(() => { sessionDirty = true; schedule() }))
+    offs.push(current.binding.session.subscribe(() => { sessionDirty = true; schedule() }))
+    void readSession()
+    void loadModelsDevIndex(base.ctx, signal).then(value => { if (valid()) { modelsDev = value; schedule() } }).catch(() => {})
   }
 }
 
-/** Mount the `/stats` session statistics command and panel. */
+/** Mount reference statistics over the exact selected native Host and Session. */
 export function mountRemoteStatsOperations(context: RemoteOperationsContext): () => void {
   const controller = new RemoteStatsController(context)
-  const unregister = context.base.commands.register({
-    name: 'stats',
-    description: 'Show current session statistics',
-    execute: controller.execute,
-  })
-  return () => {
-    unregister()
-    controller.dispose()
-  }
+  const off = context.base.commands.register({ name: 'stats', description: 'Show this session, the history of your sessions, and the usage per model', execute: controller.execute })
+  return () => { off(); controller.dispose() }
 }

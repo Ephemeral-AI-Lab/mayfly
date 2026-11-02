@@ -182,7 +182,7 @@ describe('mayflyConversationFacts projection', () => {
     for (const domain of [
       event('request/context', { contextWindow: 32 }),
       event('request/header', { header: { config: { model: 'm', provider: 'p', reasoningEffort: 'high' } } }),
-      event('todo/write', { todos: [{ content: 'ship', status: 'pending' }] }),
+      event('todo/write' as SessionEvent['type'], { todos: [{ content: 'ship', status: 'pending' }] }),
     ]) expect(foldConversationFacts(state, domain)).toBe(state)
     expect('model' in state).toBe(false)
     expect('contextTokens' in state).toBe(false)

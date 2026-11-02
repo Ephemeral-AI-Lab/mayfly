@@ -327,3 +327,10 @@ establish complete reference parity.
 both native and Remote controllers. Facts expose only metadata and preview/open
 availability; filesystem targets stay in their controller. Preserve the frozen
 source fixtures and interaction width scan when changing its output.
+
+`./stats-presentation` exposes the rc.2 statistics panel, pure facts, summaries,
+range aggregation and readonly digest/account types. It performs no native
+Session, account, credential or filesystem reads. Owners supply the Host home
+directory explicitly when collapsing Host paths; a Remote machine's home must
+not determine their display. Native account I/O stays outside the pure account
+model, which preserves decimal amounts for exact wallet addition.

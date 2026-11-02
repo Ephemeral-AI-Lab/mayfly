@@ -106,6 +106,14 @@
     "./session-browser": {
       "types": "./lib/types/session-browser.d.ts",
       "default": "./lib/session-browser.js"
+    },
+    "./stats-presentation": {
+      "types": "./lib/types/stats-presentation.d.ts",
+      "default": "./lib/stats-presentation.js"
+    },
+    "./files-browser": {
+      "types": "./lib/types/files-browser.d.ts",
+      "default": "./lib/files-browser.js"
     }
   },
   "files": [

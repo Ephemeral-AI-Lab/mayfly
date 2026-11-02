@@ -163,3 +163,13 @@ deliveries plus the latest retained native workspace comparison. Metadata and
 native Session controller and Copy uses the Frontend clipboard. Exact Client,
 Session binding, connection generation, focus and caller cancellation fence
 reads and acknowledgements. Closing releases observers and never stops Host work.
+
+`/stats` consumes `./stats-presentation` for all four reference tabs. Native
+projection faces provide current Session facts and Host statistics methods
+provide creation metadata and complete usage digests; the frontend never folds
+the journal for statistics. Date ranges, workspace scope, copy feedback,
+coalesced progress, price discovery and five-minute account caching belong to
+one panel lifetime. Host/selection/connection replacement retires its native
+reads, streams, timers and cached account identity. Account facts use only
+native redacted provider settings, credential descriptions and platform
+account methods; API-key balance credentials stay entirely on Host.

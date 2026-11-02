@@ -26,7 +26,7 @@ export function entry(value: object): ConversationEntry {
 }
 
 export function wire(type: string, data: unknown, seq = 1): SessionWireEvent {
-  return { type, data, seq, time: seq }
+  return { type, data: data as SessionWireEvent['data'], seq, time: seq }
 }
 
 export const events: readonly SessionWireEvent[] = [

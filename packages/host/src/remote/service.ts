@@ -13,6 +13,8 @@ import type {} from 'zod'
 import { mayflyHostCapabilities } from './capabilities.ts'
 import type { MayflyAuthorizationAnswer, MayflyAuthorizationFrame, MayflyAuthorizationRequest, MayflyDefaultModelRequest, MayflyGitStatus, MayflyHostCapabilities, MayflyHostSessionRequest, MayflyMcpCatalog, MayflyMcpResourceBody, MayflyMcpResourceListRequest, MayflyMcpResourcePage, MayflyMcpResourceReadRequest, MayflyModelCatalogDetails, MayflyModelCatalogRequest, MayflyModelSelection, MayflyPermissionCatalogDetails, MayflyPermissionCatalogRequest, MayflyPresentToolsRequest, MayflyPresentToolsResponse, MayflyProviderBalance, MayflyRetractTurnRequest, MayflySettingsDocument, MayflySettingsDocumentWrite, MayflySkillCatalog, MayflySubagentDrainRequest, MayflyToolCatalog, MayflyWorkspace, MayflyWorkspaceChangesRequest, MayflyWorkspaceChangesSummaryResult, MayflyWorkspaceDiffRequest, MayflyWorkspaceFileDiffResult, MayflyWorkspacePathRequest, MayflyWorkflowFrame } from '../types.ts'
 import { authorize, cancelAuthorization } from './authorization.ts'
+import { deliveredFile, latestWorkspaceChanges } from './deliverables.ts'
+import type { MayflyDeliveredFileRequest, MayflyDeliveredFileDetail, MayflyLatestWorkspaceChanges } from '../types.ts'
 import { traceCatalog, traceDetail } from './trace-catalog.ts'
 import type { MayflyTraceCatalogRequest, MayflyTraceDetailRequest, MayflyTraceItem, MayflyTraceDetail } from './trace-contract.ts'
 import { StatsHistory, statsSession } from './stats.ts'
@@ -159,6 +161,18 @@ export class MayflyHostService extends TypertRemoteService {
   @Remote('permissionCatalogDetails')
   permissionCatalogDetails(request: MayflyPermissionCatalogRequest, signal: AbortSignal): MayflyPermissionCatalogDetails {
     return permissionCatalogDetails(this.ctx, request, this.signal(signal))
+  }
+
+  /** Resolve one recorded file through the exact Agent's native filesystem. */
+  @Remote({ resources: { session: request => request.sessionId } })
+  deliveredFile(request: MayflyDeliveredFileRequest, signal: AbortSignal): Promise<MayflyDeliveredFileDetail> {
+    return deliveredFile(this.ctx, request, this.signal(signal))
+  }
+
+  /** Read the latest retained native workspace change summary without activating an Agent. */
+  @Remote({ resources: { session: request => request.sessionId } })
+  latestWorkspaceChanges(request: MayflyHostSessionRequest, signal: AbortSignal): MayflyLatestWorkspaceChanges | null {
+    return latestWorkspaceChanges(this.ctx, request, this.signal(signal))
   }
 
   /** Read the canonical native trace timeline without activating an Agent. */

@@ -10,7 +10,7 @@ import { formatCreated, type SessionInfoFacts } from '../../src/interaction/sess
 import { formatAgo } from '../../src/interaction/session-list-model.ts'
 import { dayKey, type DayDigest, type ModelDay, type SessionDigest } from '../../src/interaction/stats-index/digest.ts'
 import { dayOffset } from '../../src/interaction/stats-index/stats.ts'
-import type { AccountSnapshot, BalanceResult, Wallet } from '../../src/interaction/stats-account.ts'
+import type { AccountSnapshot, BalanceResult, Wallet } from '../../src/interaction/stats-account-model.ts'
 import type { ModelTokens, PriceSources, UserPrice } from '../../src/interaction/pricing.ts'
 import type { StatsRow } from '../../src/components/stats-panel.ts'
 import { buildStatsFacts, formatSpan, statsSummary, STATS_TABS, type StatsInput } from '../../src/interaction/stats-facts.ts'
@@ -46,6 +46,7 @@ function sessionFacts(overrides: Partial<SessionInfoFacts> = {}): SessionInfoFac
 
 function input(overrides: Partial<StatsInput> = {}): StatsInput {
   return {
+    home: homedir(),
     t, locale: 'en', now: NOW, tab: 'session', range: 'all', allWorkspaces: true,
     session: sessionFacts(), sessionTokens: [], digests: [], index: undefined,
     sources: sources(), account: { snapshot: undefined, loading: false },
@@ -100,6 +101,17 @@ describe('formatSpan', () => {
 })
 
 describe('session tab', () => {
+  it('collapses only the owning Host home and keeps paths literal when it is unknown', () => {
+    for (const [home, cwd, expected] of [
+      ['/host/home', '/host/home/work', '~/work'],
+      ['/host/home', '/host/home-other/work', '/host/home-other/work'],
+      ['', '/work', '/work'],
+    ]) {
+      const facts = buildStatsFacts(input({ home: home!, session: sessionFacts({ cwd: cwd! }) }))
+      expect(plain(sessionRow(facts, 'Working directory')!.value)).toBe(expected)
+    }
+  })
+
   it('explains an unreadable session and keeps the refresh hint', () => {
     const facts = buildStatsFacts(input({ session: undefined }))
     expect(facts.session).toEqual({ rows: [], byModel: [], unavailable: 'Session information unavailable', refresh: 'refresh' })

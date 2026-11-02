@@ -25,7 +25,7 @@ interface InfoProjections {
 /** Adapt native projection values without replaying events or retaining a second domain state. */
 export function remoteSessionInformation(
   binding: SessionBinding,
-  presentation: RemotePresentationFacts,
+  presentation: Pick<RemotePresentationFacts, 'provider' | 'model'>,
 ): RemoteSessionUsageFacts {
   const values = Object.fromEntries(REMOTE_SESSION_INFO_KEYS.map(key => [key, binding.session.projections.faceOf(key).getSnapshot()])) as InfoProjections
   const usage = values.tokenUsage

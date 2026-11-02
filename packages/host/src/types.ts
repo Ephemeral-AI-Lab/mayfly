@@ -66,6 +66,7 @@ export type MayflyHostFeature =
   | 'mcpTransportHealth'
   | 'stats'
   | 'trace'
+  | 'deliveredFiles'
 
 /** Version and feature facts a Client validates before entering its UI. */
 export interface MayflyHostCapabilities {
@@ -100,6 +101,7 @@ export type MayflyHostErrorCode =
   | 'mayflyHost/subagent-drain-unavailable'
   | 'mayflyHost/subagent-drain-unauthorized'
   | 'mayflyHost/mcp-resource-failed'
+  | 'mayflyHost/delivery-unavailable'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertResourceMap {
@@ -132,6 +134,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'mayflyHost/subagent-drain-unavailable': { readonly childId: string, readonly reason: string }
     /** The exact direct parent no longer owns the resident child activation. */
     'mayflyHost/subagent-drain-unauthorized': { readonly childId: string }
+    /** A requested delivery is absent from the exact Session's recorded projection. */
+    'mayflyHost/delivery-unavailable': MayflyDeliveredFileRequest
     /** A native MCP resource operation returned an error result. */
     'mayflyHost/mcp-resource-failed': { readonly server: string, readonly message: string }
   }
@@ -464,4 +468,25 @@ export interface MayflyMcpResourceReadRequest extends MayflyHostSessionRequest {
 /** Text and binary summaries; raw binary bytes never cross Remote. */
 export interface MayflyMcpResourceBody {
   readonly text: string
+}
+
+/** Read only a recorded delivery identity; callers cannot supply arbitrary paths. */
+export interface MayflyDeliveredFileRequest extends MayflyHostSessionRequest {
+  readonly deliveryId: string
+  readonly preview?: boolean
+}
+
+/** Host-native filesystem facts and an optional bounded text preview. */
+export interface MayflyDeliveredFileDetail {
+  readonly path: string
+  readonly displayPath: string
+  readonly fileType?: 'file' | 'directory' | 'other'
+  readonly size?: number
+  readonly preview?: string
+}
+
+/** Latest native workspace comparison retained by a resident Session. */
+export interface MayflyLatestWorkspaceChanges {
+  readonly seq: number
+  readonly summary: WorkspaceChangesSummary
 }
