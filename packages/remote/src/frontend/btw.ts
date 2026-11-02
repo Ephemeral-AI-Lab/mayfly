@@ -168,13 +168,15 @@ export class RemoteBtwService {
     return this.actions.retainView(child, role)
   }
 
-  /** Close only the displayed BTW lease; the Host Session and its work remain untouched. */
-  close(): void {
+  /** Close the pending or displayed view and report whether one existed; Host work keeps its own lifetime. */
+  close(): boolean {
+    const existed = this.pending !== undefined || this.active !== undefined
     this.pending?.abort(new RemoteBtwSupersededError('BTW view was closed'))
     this.pending = undefined
     const active = this.active
     this.active = undefined
     active?.lease.release()
+    return existed
   }
 
   /** Abort pending work, release the active lease, and await stale continuations. */

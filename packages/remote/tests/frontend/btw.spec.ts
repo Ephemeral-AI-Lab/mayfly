@@ -95,8 +95,9 @@ describe('RemoteBtwService', () => {
     expect(f.prompt).toHaveBeenCalledWith([{ type: 'text', text: 'side question' }], 'queue', expect.any(AbortSignal), expect.stringMatching(/^request-/u))
     expect(f.actions.current).toEqual(ref())
     expect(f.btw.current()).toEqual({ parent: ref(), child: ref('one', childId) })
-    f.btw.close()
+    expect(f.btw.close()).toBe(true)
     expect(f.btw.current()).toBeUndefined()
+    expect(f.btw.close()).toBe(false)
     expect(f.cancel).not.toHaveBeenCalled()
     await f.btw.dispose()
     await f.registry.detach(HostKey('one'))
@@ -215,7 +216,8 @@ describe('RemoteBtwService', () => {
     const asked = f.btw.ask(ref(), 'side')
     const cancelled = expect(asked).rejects.toBeInstanceOf(RemoteBtwSupersededError)
     await flush()
-    f.btw.close()
+    expect(f.btw.close()).toBe(true)
+    expect(f.btw.close()).toBe(false)
     fork.resolve(childId)
     await cancelled
     expect(f.prompt).not.toHaveBeenCalled()
@@ -225,6 +227,17 @@ describe('RemoteBtwService', () => {
     await f.btw.dispose()
     await expect(f.btw.ask(ref(), 'later')).rejects.toBeInstanceOf(RemoteBtwSupersededError)
     await expect(f.btw.ask(ref(), '  ')).rejects.toThrow('BTW question must not be empty')
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('reports no open view without changing the primary or cancelling Host work', async () => {
+    const f = await fixture()
+    expect(f.btw.close()).toBe(false)
+    expect(f.btw.close()).toBe(false)
+    expect(f.actions.current).toEqual(ref())
+    expect(f.cancel).not.toHaveBeenCalled()
+    await f.btw.dispose()
+    expect(f.btw.close()).toBe(false)
     await f.registry.detach(HostKey('one'))
   })
 
