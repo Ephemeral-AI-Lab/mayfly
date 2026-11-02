@@ -1,319 +1,278 @@
-import { describe, expect, it, vi } from 'vitest'
-import { SessionId } from '@deepseek-ai/dsh-session/types'
-import type {
-  SettingsDescribeValue,
-  SettingsNamespaceView,
-} from '@deepseek-ai/dsh-api-remotes/client'
+import Schema from '@deepseek-ai/schemastery'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { SettingsDescribeValue } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflySettingsDocument } from '@ephemeral-ai/mayfly-host/types'
-import { HostKey } from '../../src/client/types.ts'
-import type { HostClient, SessionRef } from '../../src/client/types.ts'
-import type { RemoteFeatureContext } from '../../src/remote/features/contracts.ts'
+import { RemoteSettingsController, remoteMayflySettingsPersistence } from '../../src/remote/features/settings.ts'
 import { RemoteCallError } from '../../src/remote/features/official.ts'
-import {
-  REMOTE_MAYFLY_SETTINGS_REQUIREMENT,
-  RemoteSettingsController,
-  remoteMayflySettingsPersistence,
-} from '../../src/remote/features/settings.ts'
-import type { RemoteFeaturePanel } from '../../src/remote/features/panel.ts'
+import { remoteSettingsSecretPath, remoteSettingsWithoutSecrets } from '../../src/remote/features/settings-model.ts'
+import { configurationFixture, deferred, namespace, schemaJson } from './configuration-fixture.ts'
+const mocks = vi.hoisted(() => ({ open: vi.fn() }))
+vi.mock('../../src/remote/panels/browser.ts', () => ({ openRemoteBrowser: mocks.open }))
+const cleanups: (() => void)[] = []
+afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup() })
 
-/** One redacted namespace view the Host describes. */
-function namespace(ns: string, revision = 7): SettingsNamespaceView {
-  return { ns, autoGenerate: true, schema: {}, value: {}, applies: 'live', secrets: [], revision }
+const document = (overrides: Partial<MayflySettingsDocument> = {}): MayflySettingsDocument => ({ writable: true, revision: 'original', content: 'original content', ...overrides })
+function fixture(options: Parameters<typeof configurationFixture>[1] & { readonly withDocuments?: boolean, readonly withEdit?: boolean } = {}) {
+  const test = configurationFixture(mocks.open, options)
+  const readDocument = vi.fn(async (_client: unknown, _signal?: AbortSignal) => document())
+  const writeDocument = vi.fn(async (_client: unknown, content: string, _revision: string, _signal?: AbortSignal) => document({ content, revision: 'saved' }))
+  const edit = vi.fn(async (_client: unknown, _content: string, _signal: AbortSignal): Promise<string | undefined> => 'edited')
+  const controller = new RemoteSettingsController(test.context, options.withDocuments === false ? undefined : { readDocument, writeDocument }, options.withEdit === false ? undefined : edit)
+  cleanups.push(() => { controller.dispose(); test.dispose() })
+  const submit = (ns = 'mayfly', fields: readonly unknown[] = [{ id: '["theme"]', change: 'set', value: 'tide' }], source = test.browser().source!()) => test.act({
+    kind: 'submit', submission: { source, forms: [{ pagePath: [{ controlId: 'namespaces', itemId: ns }], formId: 'settings-form', draftRevision: 1, fields }] },
+  })
+  return { ...test, controller, readDocument, writeDocument, edit, submit }
 }
 
-/** One settings document as the Host-owned DTO returns it. */
-function document(overrides: Partial<MayflySettingsDocument> = {}): MayflySettingsDocument {
-  return { writable: true, content: 'line one\nline two', revision: 'rev-abcdef123456789', ...overrides }
-}
+describe('Remote exact reference settings rail', () => {
+  it('projects the shared rail, forms, source revisions, and external-editor action', async () => {
+    const test = fixture({ namespaces: [namespace(), namespace('shell', { schema: schemaJson(Schema.object({ timeoutMs: Schema.number().default(100) })), value: { timeoutMs: 100 } })] })
+    await test.controller.open()
+    expect(test.browser()).toMatchObject({ id: 'mayfly.settings', scope: { kind: 'app', targetId: 'settings' }, dismissal: 'confirm-dirty' })
+    const wire = test.render()
+    expect(wire).toContain('"id":"namespaces"')
+    expect(wire).toContain('settings-form')
+    expect(wire).toContain('Shell timeout (ms)')
+    expect(wire).toContain('Open settings.yaml in $EDITOR')
+    expect(test.browser().source!()).toEqual([
+      { resourceId: 'settings/mayfly', revision: 7 }, { resourceId: 'settings/mayfly/fields', revision: expect.any(String) },
+      { resourceId: 'settings/shell', revision: 7 }, { resourceId: 'settings/shell/fields', revision: expect.any(String) },
+    ])
+    test.locale.setPreference('zh')
+    expect(test.render()).toContain('设置')
+    expect(test.render()).toContain('Shell 超时（毫秒）')
+  })
 
-/** Translate with the `{name}` interpolation the document subtitle relies on. */
-const translate = vi.fn((key: string, params?: Readonly<Record<string, string | number>>) => params === undefined
-  ? key
-  : key.replace(/\{(\w+)\}/gu, (_match, name: string) => String(params[name])))
+  it('focuses and switches an existing rail, filters opaque namespaces, and has an exact empty state', async () => {
+    const test = fixture({ namespaces: [namespace(), namespace('opaque', { schema: schemaJson(Schema.any()), value: { private: 'hidden' } })] })
+    await test.controller.open()
+    await test.controller.openNamespace(test.client, 'mayfly')
+    expect(test.opened).toHaveLength(1)
+    expect(test.ctx.mayflyOverlays.focus).toHaveBeenCalledWith('mayfly.settings')
+    expect(test.emitTab).toHaveBeenCalledWith({ kind: 'tab-change', pagePath: [], controlId: 'namespaces', tabId: 'mayfly' })
+    expect(test.render()).not.toContain('private')
+    expect(test.render()).not.toContain('opaque')
+    const empty = fixture({ namespaces: [] })
+    await empty.controller.open()
+    expect(empty.render()).toContain('No settings namespaces')
+    const unknown = fixture()
+    await unknown.controller.openNamespace(unknown.client, 'absent')
+    expect(unknown.opened).toHaveLength(0)
+  })
 
-interface FixtureOptions {
-  readonly namespaces?: readonly SettingsNamespaceView[]
-  readonly document?: MayflySettingsDocument
-  readonly withDocuments?: boolean
-  readonly withEdit?: boolean
-}
+  it('saves typed path changes once, acknowledges fresh source revisions, and keeps the rail open', async () => {
+    const test = fixture()
+    await test.controller.open()
+    const reply = await test.submit()
+    expect(test.mutate).toHaveBeenCalledExactlyOnceWith('mayfly', [{ op: 'set', path: ['theme'], value: 'tide' }], 7)
+    expect(reply).toMatchObject({ kind: 'accepted', feedback: { severity: 'success', message: 'Settings saved' }, source: [{ resourceId: 'settings/mayfly', revision: 8 }, { resourceId: 'settings/mayfly/fields', revision: expect.any(String) }] })
+    expect(test.opened[0]!.close).not.toHaveBeenCalled()
+  })
 
-function fixture(options: FixtureOptions = {}) {
-  const ref: SessionRef = { host: HostKey('local'), sessionId: SessionId('session-1') }
-  const describe = vi.fn(async (): Promise<unknown> => ({
-    ok: true,
-    value: {
-      writable: true,
-      hasDocument: true,
-      namespaces: [...options.namespaces ?? [namespace('llm-deepseek'), namespace('mayfly')]],
-    } satisfies SettingsDescribeValue,
-  }))
-  const update = vi.fn(async (): Promise<unknown> => ({ ok: true, value: namespace('llm-deepseek') }))
-  const replace = vi.fn(async (): Promise<unknown> => ({ ok: true, value: namespace('llm-deepseek') }))
-  const mutate = vi.fn(async (): Promise<unknown> => ({ ok: true, value: namespace('llm-deepseek') }))
-  const offSettings = vi.fn()
-  const on = vi.fn((_event: string, _listener: (ns: string, revision: number) => void) => offSettings)
-  const remote = {
-    settings: { describe, update, replace, mutate },
-    permissionPresets: { catalog: vi.fn(async () => ({ ok: true, value: { options: [] } })) },
-    agentPresets: { list: vi.fn(async () => ({ ok: true, value: { presets: [] } })) },
-    $on: on,
-  }
-  const client = { key: HostKey('local'), remote } as unknown as HostClient
-  const attached = vi.fn(() => true)
-  const current = vi.fn(() => ({ ref, client, binding: {} }))
-  const hosts = {
-    current,
-    list: vi.fn(() => (attached() ? [client] : [])),
-    subscribe: vi.fn(() => () => {}),
-  }
-  const readDocument = vi.fn(async (_client: unknown, _signal: AbortSignal) => options.document ?? document())
-  const writeDocument = vi.fn(async (_client: HostClient, content: string, _expectedRevision: string) =>
-    document({ content, revision: `rev-${String(content.length)}` }))
-  const documents = options.withDocuments === false ? undefined : { readDocument, writeDocument }
-  const edit = options.withEdit === false ? undefined : vi.fn(async (): Promise<string | undefined> => 'edited body')
-  const opened: { component: RemoteFeaturePanel, lease: { closed: boolean, close: ReturnType<typeof vi.fn> } }[] = []
-  const overlays = {
-    open: vi.fn((component: RemoteFeaturePanel) => {
-      const lease = { closed: false, close: vi.fn() }
-      opened.push({ component, lease })
-      return lease
-    }),
-    close: vi.fn(),
-  }
-  const notice = { set: vi.fn() }
-  const context = {
-    ctx: {},
-    screen: { requestRender: vi.fn() },
-    components: { truncateToWidth: (text: string, width: number) => text.slice(0, width) },
-    colors: {
-      primary: (text: string) => text,
-      accent: (text: string) => text,
-      muted: (text: string) => text,
-    },
-    overlays,
-    hosts,
-    notice,
-    t: translate,
-    subscribeLocale: vi.fn(() => () => {}),
-    presentation: {},
-  } as unknown as RemoteFeatureContext
-  const controller = new RemoteSettingsController(context, documents, edit)
-  const panel = (index = 0): RemoteFeaturePanel => opened[index]!.component
-  const render = (index = 0, width = 120): string => panel(index).render(width).join('\n')
-  return {
-    controller, client, ref, hosts, attached, current, remote, describe, update, replace, mutate,
-    documents, readDocument, writeDocument, edit, on, offSettings,
-    overlays, opened, notice, panel, render,
-  }
-}
+  it('handles unchanged/reset submissions and refuses missing or unavailable forms', async () => {
+    const test = fixture()
+    await test.controller.open()
+    expect(await test.submit('mayfly', [{ id: '["theme"]', change: 'unchanged', value: 'dark' }])).toMatchObject({ kind: 'accepted' })
+    expect(test.mutate).not.toHaveBeenCalled()
+    expect(await test.submit('mayfly', [{ id: '["theme"]', change: 'reset' }])).toMatchObject({ kind: 'accepted' })
+    expect(test.mutate).toHaveBeenCalledWith('mayfly', [{ op: 'unset', path: ['theme'] }], 7)
+    expect(await test.act({ kind: 'submit', submission: { source: [], forms: [] } })).toMatchObject({ kind: 'failed' })
+    expect(await test.submit('absent')).toMatchObject({ kind: 'cancelled', dismiss: true })
+    expect(await test.act({ kind: 'activate', actionId: 'other' })).toEqual({ kind: 'completed' })
+  })
 
-describe('remoteMayflySettingsPersistence', () => {
-  it('reports availability from the Host namespace list, not from wishful defaulting', () => {
-    expect(remoteMayflySettingsPersistence({ writable: true, hasDocument: false, namespaces: [namespace('mayfly')] })).toBe('available')
-    expect(remoteMayflySettingsPersistence({ writable: true, hasDocument: false, namespaces: [namespace('llm-deepseek')] })).toBe('host-schema-required')
+  it('refuses descriptor, schema/base, and dynamic-choice drift without refresh-and-retry writes', async () => {
+    for (const drift of ['descriptor', 'fields', 'choices']) {
+      const ns = drift === 'choices' ? 'permission' : 'mayfly'
+      const initial = namespace(ns, drift === 'choices' ? { schema: schemaJson(Schema.object({ defaultPreset: Schema.string() })), value: { defaultPreset: 'safe' } } : {})
+      const test = fixture({ namespaces: [initial] })
+      await test.controller.open()
+      const source = test.browser().source!()
+      if (drift === 'choices') test.catalog.mockResolvedValueOnce({ ok: true, value: { options: [{ value: 'new' }] } })
+      else test.setSettings({ writable: true, hasDocument: true, namespaces: [drift === 'descriptor' ? { ...initial, revision: 8 } : { ...initial, base: { theme: 'light' } }] })
+      expect(await test.submit(ns, [], source)).toMatchObject({ kind: 'conflict', message: 'Settings changed elsewhere; review before saving' })
+      expect(test.mutate).not.toHaveBeenCalled()
+    }
+  })
+
+  it('returns native concurrent-write conflicts with latest sources, and redacts unknown failures', async () => {
+    const test = fixture()
+    await test.controller.open()
+    test.mutate.mockResolvedValueOnce({ ok: false, error: { code: 'settings/conflict', message: 'revision changed' } })
+    expect(await test.submit()).toMatchObject({ kind: 'conflict' })
+    expect(test.mutate).toHaveBeenCalledOnce()
+    test.mutate.mockRejectedValueOnce(new Error('secret-value-from-host'))
+    const reply = await test.submit()
+    expect(reply).toMatchObject({ kind: 'failed', message: 'Settings could not be saved' })
+    expect(JSON.stringify(reply)).not.toContain('secret-value-from-host')
+  })
+
+  it('never exposes saved secrets or defaults, accepts only explicit fresh secret changes', async () => {
+    const test = fixture({ namespaces: [namespace('credentials', { schema: schemaJson(Schema.object({ apiKey: Schema.string().role('secret').default('secret-default'), opaque: Schema.any() })), value: { apiKey: 'saved-secret', opaque: { private: 'opaque-secret' } }, secrets: [{ path: ['apiKey'], set: true }] })] })
+    await test.controller.open()
+    expect(test.render()).not.toMatch(/secret-default|saved-secret|opaque-secret/)
+    expect(test.render()).toContain('Configured; leave unchanged')
+    expect(await test.submit('credentials', [{ id: '["apiKey"]', change: 'set', value: 'new-explicit-secret' }])).toMatchObject({ kind: 'accepted' })
+    expect(test.mutate).toHaveBeenCalledWith('credentials', [{ op: 'set', path: ['apiKey'], value: 'new-explicit-secret' }], 7)
+    expect(test.render()).not.toContain('new-explicit-secret')
+  })
+
+  it('orders background reads and preserves rail selection through updates', async () => {
+    const test = fixture({ namespaces: [namespace(), namespace('shell')] })
+    await test.controller.open()
+    test.observe({ kind: 'tab-change', pagePath: [], controlId: 'namespaces', tabId: 'shell' })
+    const first = deferred<unknown>()
+    test.describe.mockReturnValueOnce(first.promise)
+    test.emit('settings/document-updated', 'mayfly', 8)
+    test.describe.mockResolvedValueOnce({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace('shell', { revision: 9 })] } satisfies SettingsDescribeValue })
+    test.emit('settings/document-updated', 'shell', 9)
+    await vi.waitFor(() => { expect(test.browser().source!()[0]?.revision).toBe(9) })
+    first.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } })
+    await Promise.resolve(); await Promise.resolve()
+    expect(test.browser().source!()[0]?.revision).toBe(9)
+    expect(test.render()).toContain('"activeId":"shell"')
+  })
+
+  it('drops delayed opens and submits on detach, reconnect, disposal, or action abort', async () => {
+    const test = fixture()
+    const first = deferred<unknown>()
+    test.describe.mockReturnValueOnce(first.promise)
+    const opening = test.controller.open()
+    test.reconnect()
+    first.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } })
+    await opening
+    expect(test.opened).toHaveLength(0)
+    await test.controller.open()
+    const read = deferred<unknown>()
+    test.describe.mockReturnValueOnce(read.promise)
+    const saving = test.submit()
+    test.detach()
+    read.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } })
+    expect(await saving).toMatchObject({ kind: 'cancelled' })
+    expect(test.mutate).not.toHaveBeenCalled()
+    expect([...test.events.values()].every(listeners => listeners.size === 0)).toBe(true)
+    await test.controller.open()
+    expect(test.opened).toHaveLength(1)
+  })
+
+  it('handles failed reads, missing Hosts, read-only fields, and absent document integration', async () => {
+    const failed = fixture()
+    failed.describe.mockRejectedValueOnce(new Error('offline'))
+    await failed.controller.open()
+    expect(failed.notice.set).toHaveBeenCalledWith('offline')
+    failed.detach()
+    await failed.controller.open()
+    expect(failed.opened).toHaveLength(0)
+    const readOnly = fixture({ withDocuments: false })
+    readOnly.setSettings({ writable: false, hasDocument: false, namespaces: [namespace()] })
+    await readOnly.controller.open()
+    expect(readOnly.render()).toContain('"disabled":true')
+    expect(await readOnly.submit()).toMatchObject({ kind: 'failed' })
+    expect(readOnly.mutate).not.toHaveBeenCalled()
+    expect(await readOnly.act({ kind: 'activate', actionId: 'open-file' })).toMatchObject({ kind: 'failed' })
   })
 })
 
-describe('RemoteSettingsController namespace roster', () => {
-  it('lists the namespaces the Host reports with their revision details', async () => {
-    const { controller, render, opened } = fixture()
-    await controller.open()
-
-    expect(opened).toHaveLength(1)
-    const text = render()
-    expect(text).toContain('Settings')
-    expect(text).toContain('llm-deepseek')
-    expect(text).toContain('revision 7')
-    expect(text).toContain('mayfly')
-    // The Host registers the Mayfly schema, so the follow-up requirement is not shown.
-    expect(text).not.toContain(REMOTE_MAYFLY_SETTINGS_REQUIREMENT)
+describe('Remote raw settings editor', () => {
+  it('edits directly with the original document revision and refreshes the open rail', async () => {
+    const test = fixture()
+    await test.controller.open()
+    expect(await test.act({ kind: 'activate', actionId: 'open-file' })).toMatchObject({ kind: 'completed', feedback: { message: 'Settings file saved' } })
+    expect(test.edit).toHaveBeenCalledWith(test.client, 'original content', expect.any(AbortSignal))
+    expect(test.writeDocument).toHaveBeenCalledWith(test.client, 'edited', 'original', expect.any(AbortSignal))
+    expect(test.opened[0]!.refresh).toHaveBeenCalled()
+    await test.controller.openDocument(test.client)
+    expect(test.notice.set).toHaveBeenCalledWith('Settings file saved')
   })
 
-  it('shows the Host follow-up requirement when no mayfly namespace exists', async () => {
-    const { controller, render } = fixture({ namespaces: [namespace('llm-deepseek')] })
-    await controller.open()
-    expect(render(0, 400)).toContain(REMOTE_MAYFLY_SETTINGS_REQUIREMENT)
+  it('never writes after cancellation, unchanged text, read-only status, or detach during editing', async () => {
+    const test = fixture()
+    test.edit.mockResolvedValueOnce(undefined)
+    await test.controller.openDocument(test.client)
+    test.edit.mockResolvedValueOnce('original content')
+    await test.controller.openDocument(test.client)
+    test.readDocument.mockResolvedValueOnce(document({ writable: false }))
+    await test.controller.openDocument(test.client)
+    expect(test.notice.set).toHaveBeenCalledWith('Settings are read-only')
+    const pending = deferred<string | undefined>()
+    test.edit.mockReturnValueOnce(pending.promise)
+    const editing = test.controller.openDocument(test.client)
+    await vi.waitFor(() => { expect(test.edit).toHaveBeenCalledTimes(3) })
+    test.detach()
+    pending.resolve('late content')
+    await editing
+    expect(test.writeDocument).not.toHaveBeenCalled()
   })
 
-  it('renders an explicit empty state when the Host reports no namespaces', async () => {
-    const { controller, render } = fixture({ namespaces: [], withDocuments: false })
-    await controller.open()
-    const text = render()
-    expect(text).toContain('No settings namespaces')
-    expect(text).toContain('—')
+  it('propagates action cancellation into the editor and rejects an original-revision conflict', async () => {
+    const test = fixture()
+    await test.controller.open()
+    const signal = new AbortController()
+    const pending = deferred<string | undefined>()
+    test.edit.mockReturnValueOnce(pending.promise)
+    const editing = test.act({ kind: 'activate', actionId: 'open-file' }, signal.signal)
+    await vi.waitFor(() => { expect(test.edit).toHaveBeenCalledOnce() })
+    signal.abort()
+    expect(test.edit.mock.calls[0]![2].aborted).toBe(true)
+    pending.resolve('late')
+    expect(await editing).toEqual({ kind: 'cancelled' })
+    expect(test.writeDocument).not.toHaveBeenCalled()
+    test.writeDocument.mockRejectedValueOnce(new RemoteCallError('mayflyHost/settings-conflict', 'moved'))
+    expect(await test.act({ kind: 'activate', actionId: 'open-file' })).toEqual({ kind: 'failed', message: 'The settings file changed while the editor was open' })
+    expect(test.writeDocument).toHaveBeenCalledOnce()
   })
 
-  it('offers the raw document row only when the document DTO is composed', async () => {
-    const withDocuments = fixture()
-    await withDocuments.controller.open()
-    expect(withDocuments.render()).toContain('Settings document')
-
-    const without = fixture({ withDocuments: false })
-    await without.controller.open()
-    expect(without.render()).not.toContain('Settings document')
-  })
-
-  it('reports a describe failure as a notice and never throws', async () => {
-    const { controller, describe, notice, opened } = fixture()
-    describe.mockResolvedValueOnce({ ok: false, error: { code: 'unavailable', message: 'settings provider missing' } })
-
-    await expect(controller.open()).resolves.toBeUndefined()
-    expect(notice.set).toHaveBeenCalledWith('settings provider missing')
-    expect(opened).toEqual([])
-  })
-
-  it('drops a roster whose Host detached during the describe read', async () => {
-    const { controller, describe, attached, opened, notice } = fixture()
-    let release!: (value: unknown) => void
-    describe.mockReturnValueOnce(new Promise((resolve) => { release = resolve }))
-    const opening = controller.open()
-    attached.mockReturnValue(false)
-    release({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace('mayfly')] } })
-    await opening
-
-    expect(opened).toEqual([])
-    expect(notice.set).not.toHaveBeenCalled()
+  it('reports missing integration and safe read failures without opening a preview', async () => {
+    const missing = fixture({ withEdit: false })
+    await missing.controller.openDocument(missing.client)
+    expect(missing.notice.set).toHaveBeenCalledWith('no editor configured ($VISUAL/$EDITOR)')
+    const noDocument = fixture({ withDocuments: false })
+    await noDocument.controller.openDocument(noDocument.client)
+    expect(noDocument.notice.set).toHaveBeenCalledWith('settings file unavailable')
+    const failed = fixture()
+    failed.readDocument.mockRejectedValueOnce(new Error('private settings text'))
+    await failed.controller.openDocument(failed.client)
+    expect(failed.notice.set).toHaveBeenCalledWith('Settings file could not be edited')
+    expect(failed.opened).toHaveLength(0)
   })
 })
 
-describe('RemoteSettingsController settings document', () => {
-  it('shows the revision and content, reads under the operation signal, and watches updates', async () => {
-    const { controller, client, render, readDocument, on } = fixture()
-    await controller.openDocument(client)
-
-    expect(readDocument).toHaveBeenCalledOnce()
-    expect(readDocument.mock.calls[0]![0]).toBe(client)
-    expect(readDocument.mock.calls[0]![1]).toBeInstanceOf(AbortSignal)
-    expect(on).toHaveBeenCalledWith('settings/document-updated', expect.any(Function))
-    const text = render()
-    expect(text).toContain('line one')
-    expect(text).toContain('line two')
-    expect(text).toContain('revision rev-abcdef12')
-    expect(text).toContain('Edit in external editor')
+describe('programmatic native settings writes', () => {
+  it('checks native descriptor/schema revisions and fences late reads before every write', async () => {
+    const test = fixture()
+    const revision = test.controller.revision(namespace(), true)
+    await test.controller.update(test.client, 'mayfly', { theme: 'light' }, revision)
+    await test.controller.replace(test.client, 'mayfly', { theme: 'light' }, revision)
+    await test.controller.mutate(test.client, 'mayfly', [{ op: 'set', path: ['theme'], value: 'light' }], revision)
+    expect(test.update).toHaveBeenCalledWith('mayfly', { theme: 'light' }, 7)
+    expect(test.replace).toHaveBeenCalledWith('mayfly', { theme: 'light' }, 7)
+    expect(test.mutate).toHaveBeenCalledOnce()
+    await expect(test.controller.mutate(test.client, 'mayfly', [], { ...revision, fields: 'stale' })).rejects.toThrow('changed elsewhere')
+    await expect(test.controller.mutate(test.client, 'absent', [], revision)).rejects.toThrow('unavailable')
+    const pending = deferred<unknown>()
+    test.describe.mockReturnValueOnce(pending.promise)
+    const write = test.controller.update(test.client, 'mayfly', { theme: 'light' }, revision)
+    test.detach()
+    pending.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } })
+    await expect(write).rejects.toThrow('no longer attached')
+    expect(test.update).toHaveBeenCalledOnce()
+    await expect(test.controller.describe(test.client)).resolves.toBeUndefined()
   })
 
-  it('shows at most the first ten content lines', async () => {
-    const content = Array.from({ length: 12 }, (_, index) => `line ${String(index + 1)}`).join('\n')
-    const { controller, client, render } = fixture({ document: document({ content }) })
-    await controller.openDocument(client)
-    const text = render()
-    expect(text).toContain('line 10')
-    expect(text).not.toContain('line 11')
-    expect(text).not.toContain('line 12')
-    // The panel must not imply that what it shows is all there is.
-    expect(text).toContain('2 more lines')
+  it('strips schema secrets through supported containers and refuses programmatic secret writes', async () => {
+    const schema = schemaJson(Schema.object({ apiKey: Schema.string().role('secret'), visible: Schema.string(), items: Schema.array(Schema.object({ secret: Schema.string().role('secret'), label: Schema.string() })), dict: Schema.dict(Schema.string().role('secret')) }))
+    const descriptor = namespace('credentials', { schema, secrets: [{ path: ['apiKey'], set: true }] })
+    const test = fixture({ namespaces: [descriptor] })
+    const revision = test.controller.revision(descriptor, true)
+    await expect(test.controller.mutate(test.client, 'credentials', [{ op: 'set', path: ['apiKey'], value: 'secret' }], revision)).rejects.toThrow('credential controls')
+    expect(remoteSettingsSecretPath(descriptor, ['apiKey'])).toBe(true)
+    expect(remoteSettingsSecretPath(descriptor, ['visible'])).toBe(false)
+    expect(remoteSettingsWithoutSecrets(schema, { apiKey: 'private', visible: 'yes', items: [{ secret: 'private', label: 'ok' }], dict: { a: 'private' } })).toEqual({ visible: 'yes', items: [{ label: 'ok' }], dict: {} })
   })
 
-  it('says the document is empty instead of painting a blank row', async () => {
-    const { controller, client, render } = fixture({ document: document({ content: '   \n' }) })
-    await controller.openDocument(client)
-    expect(render()).toContain('The settings document is empty')
-  })
-
-  it('marks a read-only document and refuses to invoke the editor', async () => {
-    const { controller, client, render, panel, edit } = fixture({ document: document({ writable: false }) })
-    await controller.openDocument(client)
-
-    expect(render()).toContain('read-only')
-    panel().handleInput('\x1b[B')
-    panel().handleInput('\r')
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(edit).not.toHaveBeenCalled()
-  })
-
-  it('writes the edited text through the Host with the revision it read', async () => {
-    const { controller, client, panel, writeDocument, notice, opened } = fixture()
-    await controller.openDocument(client)
-    panel().handleInput('\x1b[B')
-    panel().handleInput('\r')
-
-    await vi.waitFor(() => { expect(writeDocument).toHaveBeenCalledOnce() })
-    const [selectedClient, content, expectedRevision, signal] = writeDocument.mock.calls[0] as unknown as [HostClient, string, string, AbortSignal]
-    expect(selectedClient).toBe(client)
-    expect(content).toBe('edited body')
-    // The write carries the exact revision the read returned, never a fresh one.
-    expect(expectedRevision).toBe('rev-abcdef123456789')
-    expect(signal).toBeInstanceOf(AbortSignal)
-    await vi.waitFor(() => { expect(notice.set).toHaveBeenCalledWith('Settings document saved') })
-    expect(opened[0]!.lease.close).not.toHaveBeenCalled()
-  })
-
-  it('does not write when the editor cancels or returns the unchanged document', async () => {
-    const cancelled = fixture()
-    await cancelled.controller.openDocument(cancelled.client)
-    cancelled.edit!.mockResolvedValueOnce(undefined)
-    cancelled.panel().handleInput('\x1b[B')
-    cancelled.panel().handleInput('\r')
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(cancelled.writeDocument).not.toHaveBeenCalled()
-    expect(cancelled.notice.set).not.toHaveBeenCalled()
-
-    const unchanged = fixture()
-    await unchanged.controller.openDocument(unchanged.client)
-    unchanged.edit!.mockResolvedValueOnce('line one\nline two')
-    unchanged.panel().handleInput('\x1b[B')
-    unchanged.panel().handleInput('\r')
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(unchanged.writeDocument).not.toHaveBeenCalled()
-  })
-
-  it('reports a stale-revision write as a conflict instead of a silent save', async () => {
-    const { controller, client, panel, writeDocument, notice } = fixture()
-    writeDocument.mockRejectedValueOnce(new RemoteCallError('mayflyHost/settings-conflict', 'revision moved'))
-    await controller.openDocument(client)
-    panel().handleInput('\x1b[B')
-    panel().handleInput('\r')
-
-    await vi.waitFor(() => { expect(notice.set).toHaveBeenCalledOnce() })
-    const message = String(notice.set.mock.calls[0]![0])
-    expect(message).toContain('settings-conflict')
-    expect(message).toContain('changed elsewhere')
-    expect(message).not.toContain('Settings document saved')
-  })
-
-  it('reports a document read failure as a notice and opens no panel', async () => {
-    const { controller, client, readDocument, notice, opened } = fixture()
-    readDocument.mockRejectedValueOnce(new Error('socket closed'))
-
-    await expect(controller.openDocument(client)).resolves.toBeUndefined()
-    expect(notice.set).toHaveBeenCalledWith('socket closed')
-    expect(opened).toEqual([])
-  })
-
-  it('says so, without writing, when no external editor is configured', async () => {
-    const { controller, client, panel, writeDocument, notice } = fixture({ withEdit: false })
-    await controller.openDocument(client)
-    panel().handleInput('\x1b[B')
-    panel().handleInput('\r')
-
-    await vi.waitFor(() => {
-      expect(notice.set).toHaveBeenCalledWith('No external editor is configured for the settings document')
-    })
-    expect(writeDocument).not.toHaveBeenCalled()
-  })
-
-  it('drops a document read that settles after the Host detached', async () => {
-    const { controller, client, readDocument, attached, notice, opened } = fixture()
-    let release!: (value: MayflySettingsDocument) => void
-    readDocument.mockReturnValueOnce(new Promise((resolve) => { release = resolve }))
-    const opening = controller.openDocument(client)
-    attached.mockReturnValue(false)
-    release(document())
-    await opening
-
-    expect(opened).toEqual([])
-    expect(notice.set).not.toHaveBeenCalled()
-  })
-
-  it('refreshes an open document from the Host event', async () => {
-    const { controller, client, render, readDocument, on } = fixture()
-    await controller.openDocument(client)
-    expect(render()).toContain('line one')
-
-    readDocument.mockResolvedValueOnce(document({ content: 'replaced body', revision: 'rev-2' }))
-    const listener = on.mock.calls[0]![1] as (ns: string, revision: number) => void
-    listener('settings', 2)
-    await vi.waitFor(() => { expect(render()).toContain('replaced body') })
+  it('reports Host schema availability from real namespaces only', () => {
+    expect(remoteMayflySettingsPersistence({ writable: true, hasDocument: true, namespaces: [namespace()] })).toBe('available')
+    expect(remoteMayflySettingsPersistence({ writable: true, hasDocument: true, namespaces: [] })).toBe('host-schema-required')
   })
 })

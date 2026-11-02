@@ -105,12 +105,13 @@ export class RemoteConfigurationHost implements
     try {
       if (!await hasMayflyHostFeature(client, 'permissionCatalogDetails', operation.signal)) return undefined
       const details = await remoteValue(mayflyHostRemote(client).permissionCatalogDetails(
-        { ...currentPreset === undefined ? {} : { currentPreset } },
+        currentPreset === undefined ? {} : { currentPreset },
         operation.signal,
       ))
       if (!operation.valid()) return undefined
       return {
         yolo: details.yolo,
+        spec: value => details.specs[value],
         detail: (value: string): string | undefined => {
           const spec = details.specs[value]
           return spec === undefined ? undefined : `sandbox ${spec.sandbox} · approval ${spec.approval}`

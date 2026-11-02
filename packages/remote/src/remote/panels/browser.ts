@@ -11,6 +11,7 @@ import type {
   MayflyUiNode,
   MayflyUiObservationEvent,
   MayflyUiScope,
+  MayflySourceStamp,
 } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteFeatureContext } from '../features.ts'
 
@@ -27,7 +28,10 @@ export interface RemoteBrowserOptions {
   readonly scope: MayflyUiScope
   readonly isCurrent: () => boolean
   readonly signal?: AbortSignal
+  readonly dismissal?: 'confirm-dirty' | 'discard'
   readonly view: () => MayflyUiNode
+  /** Native data and field revisions acknowledged by a structured form submit. */
+  readonly source?: () => readonly MayflySourceStamp[]
   readonly observe?: (event: MayflyUiObservationEvent) => void
   readonly action?: (event: MayflyUiActionEvent, context: MayflyUiEventContext) => MayflyUiActionReply | Promise<MayflyUiActionReply>
   readonly back?: () => boolean
@@ -39,7 +43,8 @@ export function openRemoteBrowser(options: Pick<RemoteFeatureContext, 'ctx' | 's
   let handle: MayflyOverlayHandle | undefined
   let cleanup: (() => void) | undefined
   let closed = false
-  const source = [{ resourceId: browser.id, revision: 1 }]
+  const fallbackSource = [{ resourceId: browser.id, revision: 1 }]
+  const source = (): readonly MayflySourceStamp[] => browser.source?.() ?? fallbackSource
   const finish = (): void => {
     if (closed) return
     closed = true
@@ -55,8 +60,8 @@ export function openRemoteBrowser(options: Pick<RemoteFeatureContext, 'ctx' | 's
     presentation: 'editor',
     capturing: true,
     scope: browser.scope,
-    source,
-    dismissal: 'discard',
+    source: source(),
+    dismissal: browser.dismissal ?? 'discard',
     onEvent: {
       observe: event => {
         if (!closed && browser.isCurrent()) browser.observe?.(event)
@@ -73,7 +78,7 @@ export function openRemoteBrowser(options: Pick<RemoteFeatureContext, 'ctx' | 's
     },
   }, browser.view())
   const refresh = (): void => {
-    if (!closed && handle?.closed === false && browser.isCurrent()) handle.set(browser.view(), { source })
+    if (!closed && handle?.closed === false && browser.isCurrent()) handle.set(browser.view(), { source: source() })
   }
   const offRegistry = options.ctx.mayflyOverlays.subscribe((delta) => {
     if (delta.kind === 'remove' && delta.id === browser.id && handle?.closed) finish()

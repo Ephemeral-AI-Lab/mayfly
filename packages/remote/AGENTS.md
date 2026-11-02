@@ -38,6 +38,15 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   archive actions. Listing and detail reads never retain a Session. Child
   conversations use the operations composition's shared presented-view slot;
   readonly native access metadata and BTW history floors accompany bindings.
+- Theme/language pickers, settings rail, and permission decision lane use the
+  shared reference wire builders. The settings rail submits both native
+  descriptor and field-projection revisions; a conflict never refreshes and
+  retries a write. Native redacted secrets stay blank in forms; only explicit
+  fresh secret edits become native path operations. Permission danger
+  confirmations derive from the Host's resolved sandbox/approval spec, never
+  from a preset name. Host preference synchronization applies only to the
+  currently selected/active Host; background settings or reconnect events cannot
+  replace its renderer settings.
 - Raw settings editing uses `createRemoteSettingsEditor` with core-owned
   `screen.suspend`. Editing happens locally; writes use the original Host
   document revision and reject results after cancellation or selection change.

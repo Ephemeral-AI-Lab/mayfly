@@ -5,7 +5,8 @@
  * @module @ephemeral-ai/mayfly/remote/features/configuration
  */
 
-import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
+import { interpolateLocaleMessage, memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
+import { interactionTranslator, mountInteractionLocale } from '@ephemeral-ai/mayfly/editor-presentation'
 import type { HostClient } from '../../client/types.ts'
 import { RemoteAccountController } from './account.ts'
 import type { RemoteConfigurationHost } from './configuration-host.ts'
@@ -24,6 +25,7 @@ import { CordisRemoteLocalPresentation } from './presentation.ts'
 import { RemoteAgentPresetsController } from './presets.ts'
 import { RemoteProvidersController } from './providers.ts'
 import { RemoteSettingsController, type RemoteSettingsEdit } from './settings.ts'
+import { onRemoteSettingsDocumentUpdated } from './official.ts'
 
 /** Foundation context before the optional local presentation adapter is installed. */
 export type RemoteConfigurationMountContext = Omit<RemoteFeatureContext, 'presentation'> & {
@@ -56,10 +58,16 @@ export function createRemoteConfigurationFeatures(
   adapters: RemoteConfigurationAdapters,
 ): RemoteConfigurationFeatures {
   const presentation = base.presentation ?? new CordisRemoteLocalPresentation(base)
+  mountInteractionLocale(base.ctx)
   const releaseLocale = base.ctx.effect(() => base.ctx.mayflyLocale.register('remote-configuration', REMOTE_CONFIGURATION_LOCALE))
+  const remoteTranslate = memoizedLocaleTranslator(base.ctx, 'remote-configuration').translate
+  const referenceTranslate = interactionTranslator(base.ctx)
   const context: RemoteFeatureContext = {
     ...base,
-    t: memoizedLocaleTranslator(base.ctx, 'remote-configuration').translate,
+    t: (key, values) => {
+      const translated = remoteTranslate(key, values)
+      return translated === interpolateLocaleMessage(key, values) ? referenceTranslate(key, values) : translated
+    },
     presentation,
   }
   const settings = new RemoteSettingsController(context, adapters.host, adapters.settingsEdit)
@@ -71,12 +79,29 @@ export function createRemoteConfigurationFeatures(
   const presets = new RemoteAgentPresetsController(context, settings)
   const onboarding = new RemoteOnboardingController(context, providers, account, settings, permissions, preferences, models)
   const attached = new Set<HostClient>()
+  const preferenceListeners = new Map<HostClient, () => void>()
+  let preferencesClient: HostClient | undefined
   const reconcile = (): void => {
     const clients = context.hosts.list()
-    for (const client of attached) if (!clients.includes(client)) attached.delete(client)
+    for (const client of attached) if (!clients.includes(client)) {
+      attached.delete(client)
+      preferenceListeners.get(client)?.()
+      preferenceListeners.delete(client)
+    }
     const client = context.hosts.current()?.client ?? context.hosts.active?.() ?? clients[0]
+    if (client !== preferencesClient) {
+      preferencesClient = client
+      if (client !== undefined) void preferences.applyHostPreferences(client).catch(() => {})
+    }
     if (client === undefined || attached.has(client)) return
     attached.add(client)
+    const refreshPreferences = (): void => {
+      if ((context.hosts.current()?.client ?? context.hosts.active?.() ?? context.hosts.list()[0]) !== client) return
+      void preferences.applyHostPreferences(client).catch(() => {})
+    }
+    const offSettings = onRemoteSettingsDocumentUpdated(client, ns => { if (ns === 'mayfly') refreshPreferences() })
+    const offState = client.state.subscribe(() => { if (client.state.getSnapshot().status === 'connected') refreshPreferences() })
+    preferenceListeners.set(client, () => { offSettings(); offState() })
     void onboarding.onReady(client)
   }
   const offTopology = context.hosts.subscribe(reconcile)
@@ -95,6 +120,8 @@ export function createRemoteConfigurationFeatures(
       if (disposed) return
       disposed = true
       offTopology()
+      for (const off of preferenceListeners.values()) off()
+      preferenceListeners.clear()
       onboarding.dispose()
       presets.dispose()
       preferences.dispose()
