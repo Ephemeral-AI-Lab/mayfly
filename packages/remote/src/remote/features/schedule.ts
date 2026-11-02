@@ -116,7 +116,6 @@ class RemoteScheduleController {
   }
 
   private readonly attach = (generation: number): void => {
-    if (this.disposed) return
     this.ticket += 1
     this.records = undefined
     this.catalog = undefined

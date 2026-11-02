@@ -47,7 +47,6 @@ class RemoteTodoController {
   }
 
   private readonly attach = (generation: number): void => {
-    if (this.disposed) return
     for (const dispose of this.subscriptions) dispose()
     this.subscriptions = []
     if (this.timer !== undefined) clearTimeout(this.timer)
@@ -79,7 +78,6 @@ class RemoteTodoController {
     if (settled) {
       if (this.tracking) {
         this.done = { total: next.length }
-        if (this.timer !== undefined) clearTimeout(this.timer)
         this.timer = setTimeout(() => {
           this.done = undefined
           if (!this.disposed) this.publish()
