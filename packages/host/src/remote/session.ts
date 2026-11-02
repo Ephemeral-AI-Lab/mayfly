@@ -31,8 +31,9 @@ export async function resolveExactAgent(ctx: Context, sessionId: SessionId, sign
   if ('error' in found) {
     // The native controller also refuses detached child Sessions whose header
     // was not resident when this request began. Keep one public refusal code.
-    if (found.error.code === 'session/agent-busy' && 'reason' in found.error.details
-      && found.error.details.reason === 'use subagent delivery for this child session') {
+    const details: unknown = found.error.details
+    if (found.error.code === 'session/agent-busy' && typeof details === 'object' && details !== null
+      && 'reason' in details && details.reason === 'use subagent delivery for this child session') {
       throw new RemoteError('mayflyHost/agent-unavailable', `child session "${sessionId}" has no live Agent`, { sessionId })
     }
     throw found.error

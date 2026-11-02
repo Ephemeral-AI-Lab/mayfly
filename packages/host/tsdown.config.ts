@@ -16,5 +16,6 @@ export default defineConfig({
   fixedExtension: false,
   dts: false,
   clean: false,
+  sourcemap: true,
   plugins: [typertPlugin({ mode: 'package', faces: ['host'] })],
 })
