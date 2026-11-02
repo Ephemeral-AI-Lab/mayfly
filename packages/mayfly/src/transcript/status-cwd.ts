@@ -49,6 +49,13 @@ export function shortenCwd(path: string, home: string, platform: NodeJS.Platform
   return `…/${segments.slice(-MAX_CWD_SEGMENTS).join('/')}`
 }
 
+/** Build the published cwd row from an already home-shortened and abbreviated path. */
+export function buildCwdStatusNode(text: string): MayflyStatusNode | null {
+  if (text === '') return null
+  const leaf = text.split('/').filter(segment => segment.length > 0 && segment !== '…' && segment !== '~').at(-1)
+  return shedNode({ kind: 'text', content: text, tone: 'muted' }, leaf === undefined || leaf === text ? [] : [{ rank: SHED.cwd, node: { kind: 'text', content: leaf, tone: 'muted' } }])
+}
+
 /**
  * Register the cwd entry. Recomputes on current-Agent changes and on the
  * native `workingDirectory` projection; a redraw is requested only when the
@@ -60,12 +67,7 @@ export function apply(ctx: Context): void {
   let agent: Agent | null = facts?.currentAgent ?? null
   const directory = (): string => agent === null ? process.cwd() : sessionDirectory(ctx, agent.session)
   let text = shortenCwd(directory(), homedir())
-  /** The directory gives up its depth when the row is crowded: only its last segment stays. */
-  const node = (): MayflyStatusNode | null => {
-    if (text === '') return null
-    const leaf = text.split('/').filter(segment => segment.length > 0 && segment !== '…' && segment !== '~').at(-1)
-    return shedNode({ kind: 'text', content: text, tone: 'muted' }, leaf === undefined || leaf === text ? [] : [{ rank: SHED.cwd, node: { kind: 'text', content: leaf, tone: 'muted' } }])
-  }
+  const node = (): MayflyStatusNode | null => buildCwdStatusNode(text)
   const status = ctx.mayflyStatus.register({ id: 'mayfly.status.cwd', priority: 7, overflow: 'truncate' }, node())
 
   const refresh = (): void => {

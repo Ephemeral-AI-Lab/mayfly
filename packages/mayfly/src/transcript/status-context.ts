@@ -41,7 +41,7 @@ const CONTEXT_KEYS = ['tokenUsage', 'contextPressure', 'contextBreakdown'] as co
 const CONTEXT_KEY_SET: ReadonlySet<string> = new Set(CONTEXT_KEYS)
 
 /** The native projections the compact row reads; composition is kept for one cursor cut. */
-interface ContextValues {
+export interface ContextStatusValues {
   readonly usage?: TokenUsageProjection | undefined
   readonly pressure?: ContextPressureProjection | undefined
   /** Heuristic system/tools/message composition from the same cut; not the occupancy total. */
@@ -59,11 +59,10 @@ export function contextTokens(usage: TokenUsage): number {
 }
 
 /** Read the native context projections for one exact Session at one cursor. */
-function readContext(ctx: Context, session: Session): ContextValues {
+function readContext(ctx: Context, session: Session): ContextStatusValues {
   const { values } = ctx.sessionProjections.snapshot(session, CONTEXT_KEYS)
   return { usage: values.tokenUsage, pressure: values.contextPressure, breakdown: values.contextBreakdown }
 }
-
 
 /**
  * One decimal, trailing `.0` trimmed: 1 → `1`, 1.5 → `1.5`, 2.04 → `2`.
@@ -157,44 +156,47 @@ function normalizeWindow(contextWindow: number | undefined): number | undefined 
     : undefined
 }
 
+/** Build the published context/cache bars and all their narrower forms from one native snapshot. */
+export function buildContextStatusNode(values: ContextStatusValues): MayflyStatusNode | null {
+  const pressure = values.pressure
+  const used = pressure?.projectedTokens ?? pressure?.pressureTokens
+  if (used === undefined || used <= 0) return null
+  const max = normalizeWindow(pressure?.contextWindow)
+  // Without an advertised window there is no share to draw: the plain count, shed whole when the row is crowded.
+  if (max === undefined) return shedNode({ kind: 'text', content: `ctx ${formatTokens(used)}` }, [{ rank: SHED.context, node: null }])
+  const percent = contextPercent(used, max)
+  const context: MayflyStatusNode = {
+    kind: 'progress', label: 'ctx', value: percent, max: 100, style: 'cells', width: CONTEXT_CELLS, tone: contextTone(percent), showCount: false, showPercent: true,
+  }
+  const usage = values.usage
+  const promptTokens = usage === undefined ? 0 : usage.uncachedInputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
+  if (usage === undefined || promptTokens <= 0) {
+    return shedNode(context, [{ rank: SHED.bar, node: { kind: 'text', content: `ctx ${String(percent)}%` } }, { rank: SHED.context, node: null }])
+  }
+  const cacheRead = usage.cacheReadTokens
+  const cache: MayflyStatusNode = {
+    kind: 'progress', label: 'cache', value: cachePercent(cacheRead, promptTokens), max: 100, style: 'cells', width: CACHE_CELLS, tone: cacheTone(cachePercent(cacheRead, promptTokens)), showCount: false, showPercent: true,
+  }
+  // The cache bar goes first when the row is crowded, then the context bar becomes its percentage, then the readout.
+  return shedNode({ kind: 'stack', direction: 'row', gap: 2, children: [{ node: cache }, { node: context }] }, [
+    { rank: SHED.cache, node: context },
+    { rank: SHED.bar, node: { kind: 'text', content: `ctx ${String(percent)}%` } },
+    { rank: SHED.context, node: null },
+  ])
+}
+
 /**
  * Register the context entry over the exact selected Agent's native projections.
  * @param ctx - plugin context.
  */
 export function apply(ctx: Context): void {
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
-  let values: ContextValues = {}
-  const read = (): ContextValues => {
+  let values: ContextStatusValues = {}
+  const read = (): ContextStatusValues => {
     const session = factsService?.currentAgent?.session
     return session === undefined ? {} : readContext(ctx, session)
   }
-  const node = (): MayflyStatusNode | null => {
-    const pressure = values.pressure
-    const used = pressure?.projectedTokens ?? pressure?.pressureTokens
-    if (used === undefined || used <= 0) return null
-    const max = normalizeWindow(pressure?.contextWindow)
-    // Without an advertised window there is no share to draw: the plain count, shed whole when the row is crowded.
-    if (max === undefined) return shedNode({ kind: 'text', content: `ctx ${formatTokens(used)}` }, [{ rank: SHED.context, node: null }])
-    const percent = contextPercent(used, max)
-    const context: MayflyStatusNode = {
-      kind: 'progress', label: 'ctx', value: percent, max: 100, style: 'cells', width: CONTEXT_CELLS, tone: contextTone(percent), showCount: false, showPercent: true,
-    }
-    const usage = values.usage
-    const promptTokens = usage === undefined ? 0 : usage.uncachedInputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
-    if (usage === undefined || promptTokens <= 0) {
-      return shedNode(context, [{ rank: SHED.bar, node: { kind: 'text', content: `ctx ${String(percent)}%` } }, { rank: SHED.context, node: null }])
-    }
-    const cacheRead = usage.cacheReadTokens
-    const cache: MayflyStatusNode = {
-      kind: 'progress', label: 'cache', value: cachePercent(cacheRead, promptTokens), max: 100, style: 'cells', width: CACHE_CELLS, tone: cacheTone(cachePercent(cacheRead, promptTokens)), showCount: false, showPercent: true,
-    }
-    // The cache bar goes first when the row is crowded, then the context bar becomes its percentage, then the readout.
-    return shedNode({ kind: 'stack', direction: 'row', gap: 2, children: [{ node: cache }, { node: context }] }, [
-      { rank: SHED.cache, node: context },
-      { rank: SHED.bar, node: { kind: 'text', content: `ctx ${String(percent)}%` } },
-      { rank: SHED.context, node: null },
-    ])
-  }
+  const node = (): MayflyStatusNode | null => buildContextStatusNode(values)
   values = read()
   const initial = node()
   const status = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 6, band: 'right', overflow: 'hide' }, initial)

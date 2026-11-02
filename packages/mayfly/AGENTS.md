@@ -165,6 +165,15 @@ without edits, and its row renderers join the owning `width-scan.spec.ts`.
 
 ## Views lane
 
+The pure `buildModelStatusNode`, `buildCwdStatusNode`, and
+`buildContextStatusNode` helpers on the existing status subpaths also serve the
+independent Remote frontend. `transcript.mountStatusFooter` leases their shared
+registry row and returns an early disposer in addition to Fiber cleanup. Keep
+these data-to-node helpers independent of Agent access; the native in-process
+producers and Remote supply their own exact-snapshot facts. `banner-content`
+exports the splash composer/types and canonical fly-in timing for the same
+reason.
+
 A `mayflyPanes` pane with `placement: 'views'` is a view of the status row, kept
 by `core/views-lane.ts` (`SurfaceManager.views`), not by a pane lane: it has no
 rows of its own, its summary joins the status row through the footer, and an entered

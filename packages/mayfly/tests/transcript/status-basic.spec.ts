@@ -15,6 +15,11 @@ import { userEvent } from './helpers.ts'
 import { asAgent, bootStatusPlugin, COLORS, fakeAgent } from './status-fakes.ts'
 
 describe('mayfly-status-basic-model', () => {
+  it('builds no model node before any selection exists', () => {
+    expect(basic.buildModelStatusNode(undefined)).toBeNull()
+    expect(basic.buildModelStatusNode({ model: '' })).toBeNull()
+  })
+
   it('renders nothing without an attached agent', async () => {
     const harness = await bootStatusPlugin(basic)
     expect(harness.entry.render(80)).toBe('')

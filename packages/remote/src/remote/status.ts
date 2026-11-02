@@ -1,51 +1,70 @@
-/**
- * Session-facts footer for the independent remote Frontend.
- * @module @ephemeral-ai/mayfly/remote/status
- */
-
-import { shortenCwd } from '@ephemeral-ai/mayfly/status-cwd'
-import { contextPercent, formatTokens } from '@ephemeral-ai/mayfly/status-context'
-import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
+/** Native projection status entries using the published Mayfly footer renderer. @module */
+import type { Context } from '@deepseek-ai/cordis'
+import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
+import { buildModelStatusNode } from '@ephemeral-ai/mayfly/status-basic-model'
+import { buildCwdStatusNode, shortenCwd } from '@ephemeral-ai/mayfly/status-cwd'
+import { buildContextStatusNode, type ContextStatusValues } from '@ephemeral-ai/mayfly/status-context'
+import { mountStatusFooter } from '@ephemeral-ai/mayfly/transcript'
 import type { RemotePresentationFacts } from '../transcript/remote-model.ts'
 
-/** Two-band model/cwd/title/context footer with no transient command state. */
-export class RemoteStatusComponent implements MayflyComponent {
-  constructor(
-    private readonly components: MayflyComponents,
-    private readonly colors: MayflySemanticColors,
-    private readonly facts: () => RemotePresentationFacts,
-  ) {}
+/** One authoritative Client snapshot paired with the current presentation. */
+export interface RemoteStatusSnapshot {
+  readonly presentation: RemotePresentationFacts
+  readonly values: Readonly<Record<string, unknown>>
+}
 
-  render(width: number): string[] {
-    const current = this.facts()
-    const model = current.ref === undefined ? '' : current.model ?? 'default'
-    const cwd = shortenCwd(current.cwd, '')
-    const left = [
-      ...(model === '' ? [] : [model]),
-      ...(cwd === '' ? [] : [this.colors.muted(cwd)]),
-    ].join('  ')
-    const title = current.title === undefined ? '' : this.colors.muted(current.title)
-    const context = current.contextTokens <= 0
-      ? ''
-      : current.contextWindow === undefined
-        ? `ctx ${formatTokens(current.contextTokens)}`
-        : `context: ${String(contextPercent(current.contextTokens, current.contextWindow))}% (${formatTokens(current.contextTokens)}/${formatTokens(current.contextWindow)})`
-    return [
-      ...(left === '' && title === '' ? [] : [this.align(left, title, width)]),
-      ...(context === '' ? [] : [this.align('', context, width)]),
+/** Host-owned paths, including startup before any Session exists. */
+export interface RemoteStatusOptions {
+  readonly home?: () => string
+  readonly directory?: () => string
+}
+
+/** Explicit refresh and early cleanup; the owning Fiber also releases every resource. */
+export interface RemoteStatusHandle {
+  refresh(): void
+  dispose(): Promise<void>
+}
+
+/** Register native facts in the same row as feature and external-plugin entries. */
+export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot, options: RemoteStatusOptions = {}): RemoteStatusHandle {
+  const model = ctx.mayflyStatus.register({ id: 'mayfly.status.basic', priority: 0, overflow: 'truncate' })
+  const cwd = ctx.mayflyStatus.register({ id: 'mayfly.status.cwd', priority: 7, overflow: 'truncate' })
+  const context = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 6, band: 'right', overflow: 'hide' })
+  let disposed = false
+  const signatures: string[] = []
+  const refresh = (): void => {
+    if (disposed) return
+    const { presentation: facts, values } = read()
+    const projected = values['modelSelection'] as { readonly next?: { readonly reasoningEffort?: string }, readonly lastUsed?: { readonly reasoningEffort?: string } } | undefined
+    const selected = projected?.next ?? projected?.lastUsed
+    const effort = selected === undefined ? (facts as RemotePresentationFacts & { readonly reasoningEffort?: string }).reasoningEffort : selected.reasoningEffort
+    const nodes: readonly (MayflyStatusNode | null)[] = [
+      buildModelStatusNode({
+        model: facts.model ?? (facts.ref === undefined ? '' : 'no model'),
+        ...facts.provider === undefined ? {} : { provider: facts.provider },
+        ...effort === undefined ? {} : { effort },
+      }),
+      buildCwdStatusNode(shortenCwd(facts.cwd || options.directory?.() || '', options.home?.() ?? '')),
+      buildContextStatusNode({ usage: values['tokenUsage'] as ContextStatusValues['usage'], pressure: values['contextPressure'] as ContextStatusValues['pressure'], breakdown: values['contextBreakdown'] as ContextStatusValues['breakdown'] }),
     ]
+    for (const [index, registration] of [model, cwd, context].entries()) {
+      const node = nodes[index]!
+      const signature = JSON.stringify(node)
+      if (signature === signatures[index]) continue
+      signatures[index] = signature
+      registration.set(node)
+    }
   }
-
-  invalidate(): void {}
-
-  private align(left: string, right: string, width: number): string {
-    if (width <= 0) return ''
-    const leftText = this.components.truncateToWidth(left, width)
-    const leftWidth = this.components.visibleWidth(leftText)
-    const budget = right === '' ? 0 : Math.max(0, width - leftWidth - (leftText === '' ? 0 : 2))
-    const rightText = budget <= 0 ? '' : this.components.truncateToWidth(right, budget)
-    const rightWidth = this.components.visibleWidth(rightText)
-    const gap = Math.max(leftText === '' || rightText === '' ? 0 : 2, width - leftWidth - rightWidth)
-    return this.components.truncateToWidth(`${leftText}${' '.repeat(gap)}${rightText}`, width)
-  }
+  refresh()
+  const unmountFooter = mountStatusFooter(ctx, ctx.mayflyScreen)
+  const release = ctx.effect(() => () => {
+    disposed = true
+    model.dispose()
+    cwd.dispose()
+    context.dispose()
+  })
+  return { refresh, async dispose() {
+    await release()
+    await unmountFooter()
+  } }
 }

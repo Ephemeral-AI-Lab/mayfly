@@ -31,7 +31,7 @@ export const name = 'mayfly-status-basic-model'
 export const inject = ['mayflyStatus', 'mayflySessionFacts', 'sessionProjections']
 
 /** The displayed triple: the provider, the model, and the source-paired effort id. */
-interface RowSelection {
+export interface StatusModelSelection {
   readonly provider?: string
   readonly model: string
   readonly effort?: string
@@ -43,7 +43,7 @@ interface RowSelection {
  * @param value - the projected `modelSelection` view value.
  * @returns the projected selection, or `undefined` before any selection.
  */
-function selectionFromValue(value: unknown): RowSelection | undefined {
+function selectionFromValue(value: unknown): StatusModelSelection | undefined {
   const projected = value as ModelSelectionProjection | undefined
   const selected = projected?.next ?? projected?.lastUsed
   if (selected === undefined || selected === null) return undefined
@@ -56,7 +56,7 @@ function selectionFromValue(value: unknown): RowSelection | undefined {
  * @param session - the current Agent's session, if any.
  * @returns the projected selection, or `undefined` before any selection.
  */
-function projectedSelection(ctx: Context, session: Session | undefined): RowSelection | undefined {
+function projectedSelection(ctx: Context, session: Session | undefined): StatusModelSelection | undefined {
   if (session === undefined) return undefined
   return selectionFromValue(ctx.sessionProjections.snapshot(session, ['modelSelection']).values.modelSelection)
 }
@@ -66,18 +66,34 @@ function capitalizeEffort(id: string): string {
   return id.charAt(0).toUpperCase() + id.slice(1)
 }
 
+/** Build the published model row and its narrower forms from one paired selection. */
+export function buildModelStatusNode(selection: StatusModelSelection | undefined): MayflyStatusNode | null {
+  const model = selection?.model ?? ''
+  if (model === '') return null
+  const provider = selection?.provider ?? ''
+  const effort = selection?.effort === undefined ? '' : capitalizeEffort(selection.effort)
+  const text = `${provider === '' ? model : `${provider}/${model}`}${effort === '' ? '' : ` ${effort}`}`
+  const plain = (content: string): MayflyStatusNode => ({ kind: 'text', content, tone: 'default' })
+  const withEffort = effort === '' ? model : `${model} ${effort}`
+  return shedNode(plain(text), [
+    ...provider === '' ? [] : [{ rank: SHED.provider, node: plain(withEffort) }],
+    ...effort === '' ? [] : [{ rank: SHED.effort, node: plain(model) }],
+    { rank: SHED.model, node: null },
+  ])
+}
+
 /** Register the baseline model row. */
 export function apply(ctx: Context): void {
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService
   let agent = factsService.currentAgent
   /** The session whose projected selection is cached, and that selection; refreshed on attach and change only. */
   let projectedFor: Session | undefined
-  let projected: RowSelection | undefined
+  let projected: StatusModelSelection | undefined
   let text = ''
   let provider = ''
   let model = ''
   let effort = ''
-  const defaultSelection = (): RowSelection | undefined => {
+  const defaultSelection = (): StatusModelSelection | undefined => {
     const saved = ctx.get('agentDefaultModel')?.currentSelection()
     return saved === undefined ? undefined : { provider: saved.provider, model: saved.model, ...(saved.reasoningEffort === undefined ? {} : { effort: String(saved.reasoningEffort) }) }
   }
@@ -93,7 +109,7 @@ export function apply(ctx: Context): void {
       projectedFor = session
       projected = projectedSelection(ctx, session)
     }
-    const selection: RowSelection | undefined = projected
+    const selection: StatusModelSelection | undefined = projected
       ?? (header === undefined
         ? undefined
         : { provider: header.provider, model: header.model, ...(header.reasoningEffort === undefined ? {} : { effort: String(header.reasoningEffort) }) })
@@ -109,17 +125,7 @@ export function apply(ctx: Context): void {
     text = effort === '' || model === '' ? named : `${named} ${effort}`
   }
   derive()
-  /** The full `provider/model Effort`, then without the provider, without the thinking level, and last not at all. */
-  const node = (): MayflyStatusNode | null => {
-    if (text === '') return null
-    const plain = (content: string): MayflyStatusNode => ({ kind: 'text', content, tone: 'default' })
-    const withEffort = effort === '' ? model : `${model} ${effort}`
-    return shedNode(plain(text), [
-      ...provider === '' ? [] : [{ rank: SHED.provider, node: plain(withEffort) }],
-      ...effort === '' ? [] : [{ rank: SHED.effort, node: plain(model) }],
-      { rank: SHED.model, node: null },
-    ])
-  }
+  const node = (): MayflyStatusNode | null => buildModelStatusNode({ model, provider, effort })
   const status = ctx.mayflyStatus.register({ id: 'mayfly.status.basic', priority: 0, overflow: 'truncate' }, node())
   let published = text
   const refresh = (): void => {
