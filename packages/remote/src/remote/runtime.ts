@@ -8,7 +8,11 @@ import * as ThemeDark from '@ephemeral-ai/mayfly/theme-dark'
 import * as Frontend from '@ephemeral-ai/mayfly/frontend'
 import { currentMayflySettings } from '@ephemeral-ai/mayfly/settings'
 import { INTERACTION_KEY_ACTIONS, displayKey, interactionTranslator } from '@ephemeral-ai/mayfly/command-panels'
-import { TranscriptController, type TranscriptControllerOptions } from '@ephemeral-ai/mayfly/transcript'
+import {
+  followPresentationSettings, mountTranscriptLocale, observeTranscriptLocale,
+  TRANSCRIPT_LOCALE, TranscriptController, TranscriptPresentationPolicy, transcriptTranslator,
+  type TranscriptControllerOptions,
+} from '@ephemeral-ai/mayfly/transcript'
 
 type QueueAction = Parameters<NonNullable<TranscriptControllerOptions['rows']>['queued']>[0]
 type DecisionRequests = ReturnType<NonNullable<TranscriptControllerOptions['requests']>>
@@ -162,11 +166,17 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       }
     }
     const requests: Record<'approval' | 'plan', DecisionRequests> = { approval: [], plan: [] }
+    mountTranscriptLocale(ctx, 'transcript', TRANSCRIPT_LOCALE)
+    const t = transcriptTranslator(ctx, 'transcript')
+    const presentation = new TranscriptPresentationPolicy()
+    followPresentationSettings(ctx, presentation, () => transcript?.refreshPresentationPolicy())
     transcript = new TranscriptController({
-      t: Frontend.interpolateLocaleMessage,
+      t, presentation,
       queued: () => displayedFacts().queue,
       requests: () => [...requests.approval, ...requests.plan],
       tick: ctx.mayflyTick,
+      focusMode: mode => { if (!lifetime.signal.aborted) ctx.emit('mayfly/focus-mode-changed', mode) },
+      focusRow: row => { if (!lifetime.signal.aborted) ctx.emit('mayfly/focus-row-changed', row) },
       context: () => ({
         window: displayedFacts().contextWindow,
         tokens: displayedFacts().contextTokens,
@@ -197,6 +207,27 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     transcript.setView('remote', () => conversation!.snapshot())
     transcript.show('remote')
     transcript.attach(screen)
+    let offTranscriptKeys: () => void = () => {}
+    const registerTranscriptKeys = (): void => {
+      offTranscriptKeys()
+      offTranscriptKeys = ctx.mayflyKeymap.register([{
+        id: 'mayfly.transcript.toggle-collapse',
+        keys: 'ctrl+o',
+        description: t('Toggle detail expansion (tool output, long messages)'),
+        handler: () => {
+          if (lifetime.signal.aborted) return
+          transcript!.toggleRecent()
+          screen.requestRender(true)
+        },
+      }])
+    }
+    registerTranscriptKeys()
+    ctx.effect(() => () => offTranscriptKeys())
+    ctx.effect(() => observeTranscriptLocale(ctx, () => {
+      if (lifetime.signal.aborted) return
+      transcript!.refreshLocale()
+      registerTranscriptKeys()
+    }))
 
     const execute = async (text: string): Promise<void> => {
       const result = await app!.execute(text)
@@ -224,6 +255,15 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         toggle: navigation === undefined ? undefined : `${keyHint('mayfly.interaction.toggle-agent-view')} ${t(navigation.counterpart === 'primary' ? 'main' : navigation.counterpart)} · ${keyHint('mayfly.interaction.close-agent-view')} ${t(navigation.close === 'subagent' ? 'detach' : 'close')}`,
       }
     })
+    ctx.effect(() => ctx.on('mayfly/request-new-messages', () => {
+      if (!lifetime.signal.aborted) transcript!.jumpNew()
+    }))
+    ctx.effect(() => ctx.on('mayfly/request-help', () => {
+      if (lifetime.signal.aborted) return
+      void execute('/help').catch((error: unknown) => {
+        if (!lifetime.signal.aborted) editor!.notice.set(error instanceof Error ? error.message : String(error))
+      })
+    }))
     completionDrawer = mountRemoteCompletionDrawer(ctx, screen, editor.editor, ctx.mayflyTheme.colors, ctx.mayflyComponents)
     sideViews = new RemoteSideViews(transcript, toolPresentations, screen, editor.notice, {
       modelCatalog: host => conversation!.getModelCatalog(host),

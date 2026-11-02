@@ -1,0 +1,178 @@
+/** Real core editor and transcript focus transitions through a recording terminal boundary. @module remote/tests/editor-focus */
+import { Context } from '@deepseek-ai/cordis'
+import {
+  compileMayflyUiNode, MayflyComponentsService, MayflyKeymapService, MayflyScreenService,
+  type MayflyComponent, type MayflyComponentsDeps, type MayflyFocusable, type MayflySemanticColors,
+} from '@ephemeral-ai/mayfly/core'
+import { INTERACTION_KEY_ACTIONS } from '@ephemeral-ai/mayfly/command-panels'
+import { createTranscriptModel, TranscriptController } from '@ephemeral-ai/mayfly/transcript'
+import * as Frontend from '@ephemeral-ai/mayfly/frontend'
+import { ui } from '@ephemeral-ai/mayfly-ui'
+import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mountRemoteEditor } from '../../src/remote/editor.ts'
+
+const identity = (text: string): string => text
+const colors = new Proxy({ logoInks: Array.from({ length: 5 }, () => identity) }, {
+  get: (target, property) => property === 'logoInks' ? target.logoInks : identity,
+}) as unknown as MayflySemanticColors
+const owners: Array<() => Promise<void>> = []
+afterEach(async () => { for (const dispose of owners.splice(0).reverse()) await dispose() })
+const flush = async (): Promise<void> => { await new Promise<void>(resolve => setImmediate(resolve)) }
+
+async function fixture(columns: number) {
+  const ctx = new Context()
+  await ctx.plugin(MayflyUiProvider)
+  await ctx.plugin(Frontend)
+  await ctx.plugin(MayflyKeymapService)
+  ctx.mayflyKeymap.register([...INTERACTION_KEY_ACTIONS])
+  const children: MayflyComponent[] = []
+  const docks: MayflyComponent[] = []
+  let focused: MayflyFocusable | null = null
+  let scrollHandler: ((data: string) => boolean) | undefined
+  const requestRender = vi.fn()
+  // Only terminal delivery is doubled: the public screen owns every slot,
+  // the shared transcript owns its list/search, and the real editor owns its caret.
+  const runtime = {
+    columns, rows: 30, mode: 'alternate', requestRender,
+    surfaces: { views: { onEnteredChange: () => () => {}, panel: () => [], enter: () => false, leave() {} } },
+    addChild(component: MayflyComponent) { children.push(component) },
+    addBottomChild(component: MayflyComponent) { docks.push(component) },
+    addDockChild(component: MayflyComponent) { docks.push(component) },
+    removeChild(component: MayflyComponent) {
+      const index = docks.indexOf(component)
+      if (index >= 0) docks.splice(index, 1)
+      if (focused === component) this.setFocus(null)
+    },
+    setFocus(component: MayflyFocusable | null) {
+      if (focused !== null) focused.focused = false
+      focused = component
+      if (focused !== null) focused.focused = true
+    },
+    hasCapturingOverlay: () => false,
+    surfaceLaneRows: () => 0, dockRows: () => 0,
+    setContentScrollbarColors() {}, contentStart: () => 0,
+    contentTail: () => undefined, watchContentTail: () => () => {},
+    scrollContent: () => false, scrollContentTo() {}, followContent() {},
+    setContentScrollHandler(handler: ((data: string) => boolean) | undefined) {
+      scrollHandler = handler
+      return () => { scrollHandler = undefined }
+    },
+  }
+  await ctx.plugin(MayflyScreenService, runtime as unknown as ConstructorParameters<typeof MayflyScreenService>[1])
+  const screen = ctx.mayflyScreen
+  const components = new MayflyComponentsService(ctx, {
+    theme: { colors }, tui: { requestRender, terminal: { rows: 30, columns } },
+  } as unknown as MayflyComponentsDeps)
+  const unbind = screen.bindNodeSlots({
+    interaction: ctx.mayflyUiInteraction, components, colors, keymap: ctx.mayflyKeymap,
+    mode: 'alternate', requestRender,
+  })
+  const handle = mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+  const prompt = focused
+  const modes: string[] = []
+  const queued = [{ id: 'queued-one', text: 'queued message remains available', lane: 'turn' as const }]
+  const transcript = new TranscriptController({
+    t: (text, values) => text.replace(/\{([^}]+)\}/gu, (_token, key: string) => String(values?.[key] ?? '')),
+    queued: () => queued,
+    focusMode: mode => { modes.push(mode); ctx.emit('mayfly/focus-mode-changed', mode) },
+  })
+  transcript.setView('main', createTranscriptModel('focus', [ui.text('needle first turn'), ui.text('needle second turn')], false))
+  transcript.show('main')
+  transcript.attach(screen)
+  const paint = (): string[] => [...children, ...docks].flatMap(child => child.render(columns))
+  paint()
+  const send = async (data: string): Promise<void> => {
+    if (scrollHandler?.(data) !== true) focused?.handleInput?.(data)
+    await flush(); paint()
+  }
+  owners.push(async () => { transcript.dispose(); handle.dispose(); unbind(); await ctx.fiber.dispose() })
+  return { ctx, screen, components, editor: handle.editor, handle, prompt, transcript, modes, paint, send, focused: () => focused }
+}
+
+describe('standalone editor and core transcript focus', () => {
+  it.each([1, 8, 20, 40, 80, 160])('preserves the exact draft caret across repeated transcript visits at width %i', async width => {
+    const f = await fixture(width)
+    f.editor.addToHistory('old recalled history')
+    f.editor.setText('keep 猫 draft')
+    for (let index = 0; index < 6; index++) await f.send('\x1b[D')
+    const before = f.editor.renderContent(Math.max(width, 20))
+    for (const [up, down] of [
+      ['\x1b[1;3A', '\x1b[1;3B'],
+      ['\x1bOS', '\x1b[15~'],
+      ['\x1b[1;3A', '\x1b'],
+    ] as const) {
+      await f.send(up)
+      expect(f.focused()).not.toBe(f.prompt)
+      expect(f.editor.focused).toBe(false)
+      expect(f.editor.getText()).toBe('keep 猫 draft')
+      expect(f.modes.at(-1)).toBe('conversation')
+      for (const row of f.paint()) expect(f.components.visibleWidth(row)).toBeLessThanOrEqual(width)
+      await f.send(down)
+      expect(f.focused()).toBe(f.prompt)
+      expect(f.editor.focused).toBe(true)
+      expect(f.modes.at(-1)).toBe('prompt')
+      expect(f.editor.renderContent(Math.max(width, 20))).toEqual(before)
+    }
+    await f.send('!')
+    expect(f.editor.getText()).toBe('keep 猫! draft')
+  })
+
+  it.each([20, 80, 160])('enters actual transcript search and returns through the native focus owner at width %i', async width => {
+    const f = await fixture(width)
+    await f.send('\x1b[1;3A')
+    await f.send('/')
+    expect(f.focused()).not.toBe(f.prompt)
+    await f.send('needle')
+    expect(f.paint().join('\n')).toContain('2')
+    await f.send('\r')
+    await f.send('\x1b')
+    await f.send('\x1b')
+    expect(f.focused()).toBe(f.prompt)
+    expect(f.editor.getText()).toBe('')
+    expect(f.paint().join('\n')).toContain('queued message')
+  })
+
+  it('retains the draft and caret across serial view switches while searching', async () => {
+    const f = await fixture(80)
+    f.editor.setText('before after')
+    for (let index = 0; index < 6; index++) await f.send('\x1b[D')
+    const before = f.editor.renderContent(80)
+    f.transcript.setView('child', createTranscriptModel('child', [ui.text('child conversation')], false))
+    for (const view of ['child', 'main', 'child', 'main']) {
+      await f.send('\x1b[1;3A')
+      await f.send('/')
+      await f.send('needle')
+      f.transcript.show(view)
+      f.paint()
+      expect(f.focused()).toBe(f.prompt)
+      expect(f.editor.renderContent(80)).toEqual(before)
+    }
+    await f.send('!')
+    expect(f.editor.getText()).toBe('before! after')
+  })
+
+  it('restores the retained editor and its caret after an editor overlay closes', async () => {
+    const f = await fixture(80)
+    f.editor.setText('before after')
+    for (let index = 0; index < 6; index++) await f.send('\x1b[D')
+    const before = f.editor.renderContent(80)
+    const compiled = compileMayflyUiNode(ui.form({ id: 'overlay', fields: [{ kind: 'input', id: 'value', label: 'Overlay', value: '' }] }), {
+      components: f.components, colors, keymap: f.ctx.mayflyKeymap,
+      onUnhandledEscape: () => { f.screen.setEditorReplacement(null) },
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) throw new Error(compiled.message)
+    f.screen.setEditorReplacement(compiled.value.focusTarget)
+    expect(f.editor.focused).toBe(false)
+    await f.send('\x1b')
+    expect(f.editor.focused).toBe(true)
+    expect(f.editor.renderContent(80)).toEqual(before)
+    await f.send('\x1bOS')
+    expect(f.modes.at(-1)).toBe('conversation')
+    await f.send('\x1b[15~')
+    expect(f.editor.renderContent(80)).toEqual(before)
+    await f.send('!')
+    expect(f.editor.getText()).toBe('before! after')
+  })
+})

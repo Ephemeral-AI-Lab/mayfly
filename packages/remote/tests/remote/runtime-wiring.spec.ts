@@ -20,6 +20,10 @@ type SessionsOptions = ConstructorParameters<typeof import('../../src/remote/fea
 const wiring = vi.hoisted(() => ({
   ctx: undefined as Context | undefined,
   keyActions: [] as MayflyKeyAction[],
+  localeChanged: undefined as (() => void) | undefined,
+  policyChanged: undefined as (() => void) | undefined,
+  locale: 'en', offLocale: vi.fn(), refreshLocale: vi.fn(), refreshPresentationPolicy: vi.fn(), toggleRecent: vi.fn(), jumpNew: vi.fn(),
+  execute: vi.fn(async (_text: string): Promise<{ exit: boolean }> => ({ exit: false })),
   image: undefined as ((id: string) => Promise<unknown>) | undefined,
   toolResolver: undefined as ((ref: SessionRef) => unknown) | undefined,
   statusOptions: undefined as Parameters<typeof import('../../src/remote/status.ts').mountRemoteStatus>[2] | undefined,
@@ -68,6 +72,7 @@ const wiring = vi.hoisted(() => ({
   settingsSuspend: undefined as ((run: () => Promise<unknown>) => Promise<unknown>) | undefined,
   focus: vi.fn(), handleInput: vi.fn(() => false), autocomplete: vi.fn(() => false),
   early: undefined as (() => void) | undefined,
+  onEditorMount: undefined as ((ctx: Context) => void) | undefined,
 }))
 
 vi.mock('../../src/remote/app.ts', () => ({ RemoteApp: class {
@@ -81,7 +86,7 @@ vi.mock('../../src/remote/app.ts', () => ({ RemoteApp: class {
         list: () => wiring.client === undefined ? [] : [wiring.client], get: (host: unknown) => host === wiring.client?.key ? wiring.client : undefined,
         detach: vi.fn(async () => {}),
       },
-      attach: vi.fn(async () => {}), execute: vi.fn(async () => ({ exit: false })), cancel: vi.fn(async () => {}),
+      attach: vi.fn(async () => {}), execute: wiring.execute, cancel: vi.fn(async () => {}),
       selectOrCreate: wiring.selectOrCreate, subscribeTopology: (listener: () => void) => { wiring.topologies.add(listener); return () => wiring.topologies.delete(listener) },
     }
   }
@@ -99,6 +104,7 @@ vi.mock('../../src/transcript/remote-model.ts', () => ({ RemoteConversationModel
 } }))
 vi.mock('../../src/remote/editor.ts', () => ({ mountRemoteEditor: vi.fn((_ctx, _screen, _components, _colors, actions, state) => {
   wiring.actions = actions; wiring.editorState = state
+  wiring.onEditorMount?.(_ctx)
   return { notice: { set: wiring.notice }, editor: { isShowingAutocomplete: wiring.autocomplete }, focus: wiring.focus, refresh: wiring.refreshEditor, retheme: vi.fn(), dispose: vi.fn() }
 }) }))
 vi.mock('../../src/remote/side-views.ts', () => ({ RemoteSideViews: class {
@@ -159,20 +165,36 @@ vi.mock('../../src/remote/editor-composition.ts', () => ({ mountEditorCompositio
   return { controller: wiring.controller, dispose: vi.fn() }
 }) }))
 vi.mock('../../src/remote/host-composition.ts', () => ({ resolveMayflyToolPresentation: vi.fn((list: () => readonly HostClient[]) => { list(); return undefined }) }))
-vi.mock('@ephemeral-ai/mayfly/transcript', () => ({ TranscriptController: class {
+vi.mock('@ephemeral-ai/mayfly/transcript', () => ({
+  ACTION_TOGGLE_COLLAPSE: 'mayfly.transcript.toggle-collapse',
+  TRANSCRIPT_LOCALE: {}, mountTranscriptLocale: vi.fn(),
+  transcriptTranslator: () => (text: string) => `${wiring.locale}:${text}`,
+  observeTranscriptLocale: (_ctx: unknown, changed: () => void) => { wiring.localeChanged = changed; return wiring.offLocale },
+  TranscriptPresentationPolicy: class {},
+  followPresentationSettings: (_ctx: unknown, _policy: unknown, changed: () => void) => { wiring.policyChanged = changed; changed() },
+  TranscriptController: class {
   constructor(options: TranscriptControllerOptions) { wiring.transcript = options; wiring.early?.() }
   readonly setView = vi.fn()
   readonly show = vi.fn()
   readonly attach = vi.fn()
   readonly refresh = vi.fn()
   readonly republish = wiring.republish
+  readonly toggleRecent = wiring.toggleRecent
+  readonly jumpNew = wiring.jumpNew
+  readonly refreshLocale = wiring.refreshLocale
+  readonly refreshPresentationPolicy = wiring.refreshPresentationPolicy
   readonly dispose = vi.fn()
 } }))
 vi.mock('@ephemeral-ai/mayfly/core', () => ({ name: 'core', Config: undefined, inject: [], apply(ctx: Context) {
   wiring.ctx = ctx
   ctx.provide('mayflyScreen', { rows: 30, editorRowsFromBottom: 4, mountContentSlot: () => ({ dispose() {} }), requestRender: wiring.requestRender, suspend: wiring.suspend } as never)
   ctx.provide('mayflyComponents', {} as never)
-  ctx.provide('mayflyKeymap', { register(actions: MayflyKeyAction[]) { wiring.keyActions = actions; return () => {} }, getKeys: () => ['f7'] } as never)
+  ctx.provide('mayflyKeymap', {
+    register(actions: MayflyKeyAction[]) {
+      wiring.keyActions.push(...actions)
+      return () => { wiring.keyActions = wiring.keyActions.filter(action => !actions.includes(action)) }
+    }, getKeys: () => ['f7'],
+  } as never)
   ctx.provide('mayflyTheme', { colors: {} } as never)
   ctx.provide('mayflyUiImages', { provide(provider: typeof wiring.image) { wiring.image = provider; return () => {} } } as never)
 } }))
@@ -202,15 +224,18 @@ beforeEach(() => {
   wiring.side = undefined; wiring.sideFacts = undefined; wiring.sideStatus = undefined; wiring.navigation = undefined
   wiring.currentSide = undefined; wiring.closeTarget = undefined; wiring.back = false; wiring.references = []
   wiring.primaryImage = undefined; wiring.sideImage = undefined; wiring.generation = 1; wiring.early = undefined
+  wiring.onEditorMount = undefined
   wiring.defaultFacts = { ref, queue: [], contextWindow: 100, contextTokens: 10 } as unknown as RemotePresentationFacts
   wiring.actions = undefined; wiring.editorOptions = undefined; wiring.operations = undefined; wiring.topologies.clear(); wiring.sideListeners.clear()
+  wiring.keyActions = []; wiring.locale = 'en'; wiring.localeChanged = undefined; wiring.policyChanged = undefined
+  wiring.execute.mockResolvedValue({ exit: false })
   wiring.controller.updateQueue.mockResolvedValue(false)
   wiring.controller.copyText.mockResolvedValue('native')
   wiring.controller.openText.mockResolvedValue(undefined)
   wiring.controller.readAttachment.mockResolvedValue(undefined)
   wiring.openChild.mockResolvedValue(undefined); wiring.openBtw.mockResolvedValue(undefined); wiring.selectOrCreate.mockResolvedValue(undefined)
 })
-afterEach(async () => { wiring.actions?.exit(); await running; running = undefined; vi.useRealTimers() })
+afterEach(async () => { wiring.actions?.exit(); await running; running = undefined; vi.useRealTimers(); vi.restoreAllMocks() })
 async function start(cwd: string | null = '/local/workspace', sessionId?: string) {
   running = runRemoteFrontend({ startupUrl: 'http://127.0.0.1:3080/?token=fixture', ...cwd === null ? {} : { cwd }, ...sessionId === undefined ? {} : { sessionId } })
   void running.catch(() => {})
@@ -220,6 +245,82 @@ async function start(cwd: string | null = '/local/workspace', sessionId?: string
 const selected = () => wiring.features!.hosts.current!()
 
 describe('standalone Remote runtime wiring', () => {
+  it('forwards native transcript focus and queued-row facts only while the runtime owns them', async () => {
+    await start()
+    const mode = vi.fn(), row = vi.fn()
+    const offMode = wiring.ctx!.on('mayfly/focus-mode-changed', mode)
+    const offRow = wiring.ctx!.on('mayfly/focus-row-changed', row)
+    const focusMode = wiring.transcript!.focusMode!
+    const focusRow = wiring.transcript!.focusRow!
+    for (const next of ['conversation', 'search', 'search-select', 'prompt'] as const) focusMode(next)
+    for (const next of ['queued', 'steering', undefined] as const) focusRow(next)
+    expect(mode.mock.calls.map(call => call[0])).toEqual(['conversation', 'search', 'search-select', 'prompt'])
+    expect(row.mock.calls.map(call => call[0])).toEqual(['queued', 'steering', undefined])
+    wiring.actions!.exit()
+    await running
+    focusMode('conversation')
+    focusRow('queued')
+    await flush()
+    expect(mode).toHaveBeenCalledTimes(4)
+    expect(row).toHaveBeenCalledTimes(3)
+    offMode(); offRow()
+  })
+
+  it('owns transcript expansion, new-message, help, locale and presentation registrations through unload', async () => {
+    let callback!: (event: string) => () => void
+    wiring.onEditorMount = ctx => {
+      const subscriptions = vi.spyOn(ctx, 'on')
+      callback = event => subscriptions.mock.calls.find(call => call[0] === event)![1] as () => void
+    }
+    await start()
+    const toggle = wiring.keyActions.find(action => action.id === 'mayfly.transcript.toggle-collapse')!
+    expect(toggle).toMatchObject({ keys: 'ctrl+o', description: 'en:Toggle detail expansion (tool output, long messages)' })
+    toggle.handler!()
+    expect(wiring.toggleRecent).toHaveBeenCalledOnce()
+    expect(wiring.requestRender).toHaveBeenCalledWith(true)
+    const newMessages = callback('mayfly/request-new-messages')
+    newMessages()
+    expect(wiring.jumpNew).toHaveBeenCalledOnce()
+    wiring.policyChanged!()
+    expect(wiring.refreshPresentationPolicy).toHaveBeenCalledOnce()
+    const locale = wiring.localeChanged!
+    wiring.locale = 'zh'
+    locale()
+    expect(wiring.refreshLocale).toHaveBeenCalledOnce()
+    expect(wiring.keyActions.filter(action => action.id === toggle.id)).toEqual([
+      expect.objectContaining({ description: 'zh:Toggle detail expansion (tool output, long messages)' }),
+    ])
+    const help = callback('mayfly/request-help')
+    help()
+    await flush()
+    expect(wiring.execute).toHaveBeenCalledWith('/help')
+    wiring.execute.mockRejectedValueOnce(new Error('help unavailable'))
+    help()
+    await flush()
+    expect(wiring.notice).toHaveBeenLastCalledWith('help unavailable')
+    wiring.execute.mockRejectedValueOnce('help refused')
+    help()
+    await flush()
+    expect(wiring.notice).toHaveBeenLastCalledWith('help refused')
+    let reject!: (error: Error) => void
+    wiring.execute.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail }))
+    help()
+    wiring.actions!.exit()
+    await running
+    const notices = wiring.notice.mock.calls.length
+    const renders = wiring.requestRender.mock.calls.length
+    reject(new Error('late old help failed'))
+    toggle.handler!(); newMessages(); help(); locale()
+    await flush()
+    expect(wiring.notice).toHaveBeenCalledTimes(notices)
+    expect(wiring.requestRender).toHaveBeenCalledTimes(renders)
+    expect(wiring.toggleRecent).toHaveBeenCalledOnce()
+    expect(wiring.jumpNew).toHaveBeenCalledOnce()
+    expect(wiring.refreshLocale).toHaveBeenCalledOnce()
+    expect(wiring.offLocale).toHaveBeenCalledOnce()
+    expect(wiring.keyActions).toEqual([])
+  })
+
   it('binds exact displayed selections, model catalogs, key actions and disposable topology listeners', async () => {
     await start('/local/workspace', 'native-initial')
     expect(wiring.initialCommands).toEqual([])
@@ -228,7 +329,7 @@ describe('standalone Remote runtime wiring', () => {
     expect(selected()).toMatchObject({ ref, binding, client, access: 'interactive' })
     expect(wiring.features!.hosts.active!()).toBe(client)
     expect(wiring.features!.hosts.list()).toEqual([client])
-    expect(wiring.keyActions.map(action => action.id)).toEqual(['mayfly.interaction.toggle-agent-view', 'mayfly.interaction.close-agent-view', 'other'])
+    expect(wiring.keyActions.map(action => action.id)).toEqual(['mayfly.interaction.toggle-agent-view', 'mayfly.interaction.close-agent-view', 'other', 'mayfly.transcript.toggle-collapse'])
     const key = (id: string) => wiring.keyActions.find(action => action.id.endsWith(id))!.handler!()
     key('toggle-agent-view'); expect(wiring.notice).toHaveBeenCalledWith('no other conversation is open')
     wiring.back = true; wiring.notice.mockClear(); key('toggle-agent-view'); expect(wiring.notice).not.toHaveBeenCalled()

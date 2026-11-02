@@ -6,6 +6,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import {
   compileMayflyEditorShellNode,
+  normalizeWheelInput,
   type MayflyComponents,
   type MayflyEditor,
   type MayflyEditorShellComponent,
@@ -17,6 +18,13 @@ import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import { Editor, mountInteractionLocale, placeholderLadder, placeholderState, type PlaceholderView } from '@ephemeral-ai/mayfly/editor-presentation'
 import type { RemoteNotice } from './notice.ts'
 import { RemoteNotifications, type RemoteNotificationPresentation } from './notifications.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** The empty prompt requests the existing key-help surface. */
+    'mayfly/request-help'(): void
+  }
+}
 
 /** Local commands emitted by the small standalone remote editor. */
 export interface RemoteEditorActions {
@@ -91,16 +99,23 @@ export function mountRemoteEditor(
   presentation: () => RemoteEditorPresentation = () => ({}),
 ): RemoteEditorHandle {
   const editor: MayflyEditor = components.createEditor()
+  let disposed = false
   mountInteractionLocale(ctx)
   const t = memoizedLocaleTranslator(ctx, 'interaction').translate
   const notifications = new RemoteNotifications(ctx, presentation)
   editor.onSubmit = (value) => {
+    if (disposed) return
     const text = value.trim()
     if (text.length === 0) return
     editor.addToHistory(value)
-    void Promise.resolve(actions.submit(text)).catch((error: unknown) => { actions.onError(error) })
+    void Promise.resolve(actions.submit(text)).catch((error: unknown) => { if (!disposed) actions.onError(error) })
   }
   editor.onKey = (data) => {
+    if (disposed) return false
+    if (data === '?' && editor.getText().length === 0 && !shellMode && !editor.isShowingAutocomplete()) {
+      ctx.emit('mayfly/request-help')
+      return true
+    }
     if (data === '\x03') {
       if (editor.getText().length > 0) {
         editor.setText('')
@@ -114,12 +129,18 @@ export function mountRemoteEditor(
       else actions.cancel()
       return true
     }
+    if (ctx.mayflyKeymap.matches(data, 'ui.focus-next')
+      && editor.getText().length === 0
+      && !editor.isShowingAutocomplete()
+      && screen.enterViews()) return true
+    if (ctx.mayflyKeymap.matches(data, 'ui.focus-prev')
+      && !editor.isShowingAutocomplete()
+      && screen.focusConversation()) return true
     return false
   }
   let shellMode = false
   let frameShape = ''
   let dock: RemoteEditorDock | undefined
-  let disposed = false
   const repaint = (): void => { screen.requestRender() }
   const compile = (): MayflyEditorShellComponent | undefined => {
     const facts = presentation()
@@ -150,6 +171,7 @@ export function mountRemoteEditor(
   dock = new RemoteEditorDock(shell, sync)
   const originalShellMode = editor.setShellMode
   editor.setShellMode = next => {
+    if (disposed) return
     originalShellMode?.call(editor, next)
     shellMode = next
     sync()
@@ -157,6 +179,30 @@ export function mountRemoteEditor(
   }
   const slot = screen.mountDockSlot('editor.prompt', dock)
   slot.focus()
+  const offScroll = screen.setContentScrollHandler(data => {
+    if (disposed || !dock!.focused) return false
+    const wheel = normalizeWheelInput(data)
+    if (wheel !== undefined) {
+      const direction = ctx.mayflyKeymap.matches(wheel, 'ui.up')
+        ? 'up' : ctx.mayflyKeymap.matches(wheel, 'ui.down') ? 'down' : undefined
+      if (direction === undefined) return false
+      screen.scrollContent(direction, 3)
+      return true
+    }
+    const pageUp = ctx.mayflyKeymap.matches(data, 'ui.page-up')
+    const pageDown = ctx.mayflyKeymap.matches(data, 'ui.page-down')
+    if (pageUp || pageDown) return screen.scrollContent(pageUp ? 'up' : 'down', Math.max(1, screen.rows - 4))
+    if (ctx.mayflyKeymap.matches(data, 'mayfly.interaction.follow-tail')) {
+      ctx.emit('mayfly/request-new-messages')
+      return true
+    }
+    if (editor.getText().length > 0) return false
+    if (ctx.mayflyKeymap.matches(data, 'ui.end')) {
+      screen.followContent()
+      return true
+    }
+    return false
+  })
   return {
     editor,
     notice: notifications.notice,
@@ -170,11 +216,12 @@ export function mountRemoteEditor(
       repaint()
     },
     refresh() { sync(); if (!disposed) repaint() },
-    focus() { slot.focus() },
+    focus() { if (!disposed) slot.focus() },
     dispose() {
       if (disposed) return
       disposed = true
       editor.setShellMode = originalShellMode
+      offScroll()
       notifications.dispose()
       slot.dispose()
     },

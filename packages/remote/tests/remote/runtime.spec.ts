@@ -199,6 +199,10 @@ vi.mock('../../src/remote/host-composition.ts', () => ({
 }))
 
 vi.mock('@ephemeral-ai/mayfly/transcript', () => ({
+  ACTION_TOGGLE_COLLAPSE: 'mayfly.transcript.toggle-collapse',
+  TRANSCRIPT_LOCALE: {}, mountTranscriptLocale: vi.fn(),
+  transcriptTranslator: () => (text: string) => text,
+  observeTranscriptLocale: () => vi.fn(), TranscriptPresentationPolicy: class {}, followPresentationSettings: vi.fn(),
   TranscriptController: class {
     readonly setView = vi.fn((_name: string, source: () => unknown) => { mocks.transcriptSource = source })
     readonly show = vi.fn()

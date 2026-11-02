@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import * as Frontend from '@ephemeral-ai/mayfly/frontend'
 import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
+import { MayflyKeymapService } from '@ephemeral-ai/mayfly/core'
+import { INTERACTION_KEY_ACTIONS } from '@ephemeral-ai/mayfly/command-panels'
 import { mountRemoteEditor } from '../../src/remote/editor.ts'
 import type {
   MayflyComponents, MayflyEditor, MayflyFocusable, MayflyScreenService, MayflySemanticColors,
@@ -30,11 +32,13 @@ const colors = {
 const contexts: Context[] = []
 afterEach(async () => { vi.restoreAllMocks(); for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 
-async function fixture() {
+async function fixture(rows = 30) {
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(MayflyUiProvider)
   await ctx.plugin(Frontend)
+  await ctx.plugin(MayflyKeymapService)
+  ctx.mayflyKeymap.register([...INTERACTION_KEY_ACTIONS])
   const editor = {
     setPromptSymbol: vi.fn(),
     setShellMode: vi.fn(),
@@ -46,13 +50,19 @@ async function fixture() {
     addToHistory: vi.fn(),
     getText: vi.fn(() => ''),
     setText: vi.fn(),
+    isShowingAutocomplete: vi.fn(() => false),
     handleInput: vi.fn(),
     render: vi.fn(() => ['editor']),
     invalidate: vi.fn(),
     focused: false,
   } as unknown as MayflyEditor
   const slot = { focus: vi.fn(), dispose: vi.fn() }
-  const screen = { mountDockSlot: vi.fn(() => slot), requestRender: vi.fn() } as unknown as MayflyScreenService
+  const offScroll = vi.fn()
+  const screen = {
+    rows, mountDockSlot: vi.fn(() => slot), requestRender: vi.fn(),
+    enterViews: vi.fn(() => false), focusConversation: vi.fn(() => false),
+    setContentScrollHandler: vi.fn(() => offScroll), scrollContent: vi.fn(() => false), followContent: vi.fn(),
+  } as unknown as MayflyScreenService
   const components = {
     createEditor: () => editor,
     wrapText: (text: string) => [text],
@@ -60,7 +70,7 @@ async function fixture() {
     visibleWidth: (text: string) => text.length,
     strong: (text: string) => text,
   } as unknown as MayflyComponents
-  return { ctx, editor, slot, screen, components }
+  return { ctx, editor, slot, screen, components, offScroll }
 }
 
 describe('mountRemoteEditor', () => {
@@ -207,5 +217,159 @@ describe('mountRemoteEditor', () => {
     handle.dispose()
     handle.retheme(components, colors)
     expect(editor.updateColors).toHaveBeenCalledOnce()
+  })
+
+  it.each(['\x1b[1;3A', '\x1bOS'])('routes previous focus through the registered action with a retained draft: %j', async key => {
+    const { ctx, editor, screen, components } = await fixture()
+    mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+    editor.getText = vi.fn(() => 'retain this draft')
+    vi.mocked(screen.focusConversation).mockReturnValue(true)
+    expect(editor.onKey?.(key)).toBe(true)
+    expect(screen.focusConversation).toHaveBeenCalledOnce()
+    expect(editor.setText).not.toHaveBeenCalled()
+    expect(screen.enterViews).not.toHaveBeenCalled()
+  })
+
+  it.each(['\x1b[1;3B', '\x1b[15~'])('routes next focus only from an empty prompt without autocomplete: %j', async key => {
+    const { ctx, editor, screen, components } = await fixture()
+    mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+    vi.mocked(screen.enterViews).mockReturnValue(true)
+    editor.getText = vi.fn(() => 'draft')
+    expect(editor.onKey?.(key)).toBe(false)
+    expect(screen.enterViews).not.toHaveBeenCalled()
+    editor.getText = vi.fn(() => '')
+    vi.mocked(editor.isShowingAutocomplete).mockReturnValue(true)
+    expect(editor.onKey?.(key)).toBe(false)
+    expect(screen.enterViews).not.toHaveBeenCalled()
+    vi.mocked(editor.isShowingAutocomplete).mockReturnValue(false)
+    expect(editor.onKey?.(key)).toBe(true)
+    expect(screen.enterViews).toHaveBeenCalledOnce()
+  })
+
+  it('preserves autocomplete ownership and leaves unavailable focus targets to the editor', async () => {
+    const { ctx, editor, screen, components } = await fixture()
+    mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+    vi.mocked(editor.isShowingAutocomplete).mockReturnValue(true)
+    expect(editor.onKey?.('\x1b[1;3A')).toBe(false)
+    expect(screen.focusConversation).not.toHaveBeenCalled()
+    vi.mocked(editor.isShowingAutocomplete).mockReturnValue(false)
+    expect(editor.onKey?.('\x1b[1;3A')).toBe(false)
+    expect(editor.onKey?.('\x1b[1;3B')).toBe(false)
+    expect(screen.focusConversation).toHaveBeenCalledOnce()
+    expect(screen.enterViews).toHaveBeenCalledOnce()
+  })
+
+  it('honors live native key rebinding instead of claiming the default raw bytes', async () => {
+    const { ctx, editor, screen, components } = await fixture()
+    mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+    ctx.mayflyKeymap.bind('ui.focus-prev', 'ctrl+f4')
+    ctx.mayflyKeymap.bind('ui.focus-next', 'ctrl+f5')
+    vi.mocked(screen.focusConversation).mockReturnValue(true)
+    vi.mocked(screen.enterViews).mockReturnValue(true)
+    for (const key of ['\x1b[1;3A', '\x1bOS', '\x1b[1;3B', '\x1b[15~']) expect(editor.onKey?.(key)).toBe(false)
+    expect(editor.onKey?.('\x1b[1;5S')).toBe(true)
+    expect(editor.onKey?.('\x1b[15;5~')).toBe(true)
+    expect(screen.focusConversation).toHaveBeenCalledOnce()
+    expect(screen.enterViews).toHaveBeenCalledOnce()
+  })
+
+  it('opens native key help only from an empty prompt outside shell and autocomplete', async () => {
+    const { ctx, editor, screen, components } = await fixture()
+    mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+    const help = vi.fn()
+    ctx.on('mayfly/request-help', help)
+    editor.getText = vi.fn(() => 'draft')
+    expect(editor.onKey?.('?')).toBe(false)
+    editor.getText = vi.fn(() => '')
+    editor.setShellMode(true)
+    expect(editor.onKey?.('?')).toBe(false)
+    editor.setShellMode(false)
+    vi.mocked(editor.isShowingAutocomplete).mockReturnValue(true)
+    expect(editor.onKey?.('?')).toBe(false)
+    expect(help).not.toHaveBeenCalled()
+    vi.mocked(editor.isShowingAutocomplete).mockReturnValue(false)
+    expect(editor.onKey?.('?')).toBe(true)
+    expect(help).toHaveBeenCalledOnce()
+  })
+
+  it('keeps focused wheel reports at the boundary and routes page, marker and tail actions through core', async () => {
+    const { ctx, editor, screen, components, offScroll } = await fixture()
+    const handle = mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+    const scroll = vi.mocked(screen.setContentScrollHandler).mock.calls[0]![0]!
+    const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]! as MayflyFocusable
+    expect(scroll('\x1b[5~')).toBe(false)
+    expect(screen.scrollContent).not.toHaveBeenCalled()
+    dock.focused = true
+    expect(scroll('\x1b[<64;2;3M')).toBe(true)
+    expect(screen.scrollContent).toHaveBeenLastCalledWith('up', 3)
+    expect(scroll('\x1b[<65;2;3M')).toBe(true)
+    expect(screen.scrollContent).toHaveBeenLastCalledWith('down', 3)
+    expect(scroll('\x1b[5~')).toBe(false)
+    expect(screen.scrollContent).toHaveBeenLastCalledWith('up', 26)
+    vi.mocked(screen.scrollContent).mockReturnValue(true)
+    expect(scroll('\x1b[6~')).toBe(true)
+    expect(screen.scrollContent).toHaveBeenLastCalledWith('down', 26)
+    editor.getText = vi.fn(() => 'draft')
+    const newMessages = vi.fn()
+    ctx.on('mayfly/request-new-messages', newMessages)
+    expect(scroll('\x1b[1;5B')).toBe(true)
+    expect(newMessages).toHaveBeenCalledOnce()
+    expect(scroll('\x1b[F')).toBe(false)
+    expect(screen.followContent).not.toHaveBeenCalled()
+    editor.getText = vi.fn(() => '')
+    expect(scroll('\x1b[F')).toBe(true)
+    expect(screen.followContent).toHaveBeenCalledOnce()
+    expect(scroll('x')).toBe(false)
+    expect(editor.setText).not.toHaveBeenCalled()
+    handle.dispose()
+    expect(offScroll).toHaveBeenCalledOnce()
+    expect(scroll('\x1b[<64;2;3M')).toBe(false)
+    expect(scroll('\x1b[1;5B')).toBe(false)
+    expect(newMessages).toHaveBeenCalledOnce()
+  })
+
+  it('honors scroll rebindings and clamps page movement on a short terminal', async () => {
+    const { ctx, screen, components } = await fixture(2)
+    mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+    const scroll = vi.mocked(screen.setContentScrollHandler).mock.calls[0]![0]!
+    const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]! as MayflyFocusable
+    dock.focused = true
+    scroll('\x1b[5~')
+    expect(screen.scrollContent).toHaveBeenLastCalledWith('up', 1)
+    ctx.mayflyKeymap.bind('ui.up', 'ctrl+up')
+    expect(scroll('\x1b[<64;2;3M')).toBe(false)
+    ctx.mayflyKeymap.bind('ui.page-up', 'ctrl+pageUp')
+    vi.mocked(screen.scrollContent).mockClear()
+    expect(scroll('\x1b[5~')).toBe(false)
+    scroll('\x1b[5;5~')
+    expect(screen.scrollContent).toHaveBeenCalledWith('up', 1)
+  })
+
+  it('retires captured callbacks and pending submission failures before a replacement mount', async () => {
+    const { ctx, editor, slot, screen, components } = await fixture()
+    let reject!: (error: Error) => void
+    const pending = new Promise<void>((_resolve, fail) => { reject = fail })
+    const actions = { submit: vi.fn(() => pending), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
+    const handle = mountRemoteEditor(ctx, screen, components, colors, actions)
+    const key = editor.onKey!
+    const submit = editor.onSubmit!
+    const shell = editor.setShellMode
+    submit('before unload')
+    handle.dispose()
+    const renders = vi.mocked(screen.requestRender).mock.calls.length
+    for (const data of ['\x1b[1;3A', '\x1b[1;3B', '\x03', '\x1b']) expect(key(data)).toBe(false)
+    submit('queued after unload')
+    shell(true)
+    handle.focus()
+    reject(new Error('old submission failed'))
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(actions.submit).toHaveBeenCalledOnce()
+    expect(actions.onError).not.toHaveBeenCalled()
+    expect(actions.exit).not.toHaveBeenCalled()
+    expect(actions.cancel).not.toHaveBeenCalled()
+    expect(screen.focusConversation).not.toHaveBeenCalled()
+    expect(screen.enterViews).not.toHaveBeenCalled()
+    expect(screen.requestRender).toHaveBeenCalledTimes(renders)
+    expect(slot.focus).toHaveBeenCalledOnce()
   })
 })

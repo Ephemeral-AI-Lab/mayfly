@@ -51,6 +51,13 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Browser cleanup owns the mount before overlay publication. An already aborted
   caller opens no panel; synchronous close during registration or an immediate
   locale snapshot leaves no later observer and runs close feedback once.
+- Editor focus and content navigation use the existing core keymap and screen
+  APIs: autocomplete keeps focus keys, a failed target preserves editor fallback,
+  and a retained draft/caret survives transcript and overlay visits. Core alone
+  normalizes terminal wheel reports and owns actual focus/scroll state. The
+  runtime forwards the shared transcript controller's focus-mode/row facts,
+  new-message requests, Ctrl+O expansion, presentation settings and locale
+  invalidation; those registrations and queued callbacks retire with its mount.
 - `/plugin` consumes the shared rc.2 marketplace presentation and calls the
   official selected Host plugin manager for every install, remove, and enable.
   Its catalog, installed rows, notifications, and restart chip belong to one
