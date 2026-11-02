@@ -11,8 +11,7 @@
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { HostClient } from '../../client/types.ts'
-import { remoteErrorMessage, remoteValue } from '../features/official.ts'
-import { isRemoteFeatureSelection } from '../interactions/selection.ts'
+import { RemoteFeatureOperation, remoteErrorMessage, remoteValue } from '../features/official.ts'
 import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
 
 /** The native registry's settings namespace; `selectedDefault` is the next Session's preset. */
@@ -77,9 +76,10 @@ class RemotePresetOperationsController {
       this.context.base.notice.set(this.t('No Host is attached'))
       return
     }
+    const operation = new RemoteFeatureOperation(this.context.base, client, selection, signal)
     try {
       const roster = await remoteValue(client.remote.agentPresets.list())
-      if (signal.aborted || this.disposed) return
+      if (!operation.valid() || this.disposed) return
       const needle = name.toLowerCase()
       const match = roster.presets.find(preset => preset.id.toLowerCase() === needle)
         ?? roster.presets.find(preset => preset.name?.toLowerCase() === needle)
@@ -97,23 +97,23 @@ class RemotePresetOperationsController {
         return
       }
       if (selection === undefined) {
-        await this.setDefault(client, match.id, match.name ?? match.id)
+        await this.setDefault(client, match.id, match.name ?? match.id, operation)
         return
       }
       // A replaced selection must never receive a preset chosen for the old one.
-      if (!isRemoteFeatureSelection(this.context.base.hosts.current(), client, selection.ref)) return
+      if (!operation.valid()) return
       const selected = await remoteValue(client.remote.agentPresets.select(selection.ref.sessionId, match.id))
-      if (signal.aborted || this.disposed) return
+      if (!operation.valid() || this.disposed) return
       this.context.base.notice.set(this.t('Preset switched to {preset}', { preset: selected }))
     } catch (error) {
-      if (!this.disposed && !signal.aborted) this.context.base.notice.set(remoteErrorMessage(error))
-    }
+      if (!this.disposed && operation.valid()) this.context.base.notice.set(remoteErrorMessage(error))
+    } finally { operation.dispose() }
   }
 
   /** Persist the preset a later blank Session takes, bound to the descriptor revision. */
-  private async setDefault(client: HostClient, id: string, label: string): Promise<void> {
+  private async setDefault(client: HostClient, id: string, label: string, operation: RemoteFeatureOperation): Promise<void> {
     const settings = await remoteValue(client.remote.settings.describe())
-    if (this.disposed) return
+    if (this.disposed || !operation.valid()) return
     const descriptor = settings.namespaces.find(candidate => candidate.ns === PRESET_SETTINGS_NS)
     if (descriptor === undefined || !settings.writable) {
       this.context.base.notice.set(this.t('preset selection is unavailable'))
@@ -124,7 +124,7 @@ class RemotePresetOperationsController {
       [{ op: 'set', path: ['selectedDefault'], value: id }],
       descriptor.revision,
     ))
-    if (this.disposed) return
+    if (this.disposed || !operation.valid()) return
     this.context.base.notice.set(this.t('Default preset: {preset}', { preset: label }))
   }
 }
