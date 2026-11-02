@@ -770,7 +770,8 @@ const recordKey = (values: Readonly<Record<string, string>> | undefined): string
 /** The summed revisions of `sources`: revisions only grow, so any change to any of them moves the sum. */
 function stampOf(sources: readonly RowSource[]): number {
   let total = 0
-  for (const source of sources) total += source.revision ?? 0
+  // Only sources with a revision enter the live-source list; a fixed source never reaches this fold.
+  for (const source of sources) total += source.revision!
   return total
 }
 
@@ -996,17 +997,17 @@ export class FlowListPainter implements RowSource {
   }
 
   row(index: number): string {
-    if (index < 0 || index >= this.length) return ''
-    if (index >= this.itemTotal) return this.tail[index - this.itemTotal] ?? ''
+    if (!Number.isInteger(index) || index < 0 || index >= this.length) return ''
+    if (index >= this.itemTotal) return this.tail[index - this.itemTotal]!
     const at = this.tree.locate(index)
-    const block = this.blocks[at]
-    if (block === undefined) return ''
+    const block = this.blocks[at]!
     let offset = index - this.tree.sum(at - 1)
-    for (const entry of block.entries) {
-      if (offset < entry.lines.length) return entry.lines[offset] ?? ''
-      offset -= entry.lines.length
+    let entry = 0
+    while (offset >= block.entries[entry]!.lines.length) {
+      offset -= block.entries[entry]!.lines.length
+      entry += 1
     }
-    return ''
+    return block.entries[entry]!.lines[offset]!
   }
 
   /**

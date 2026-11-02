@@ -599,6 +599,8 @@ describe('the flow list painter', () => {
     expect(plain([rows[1]!])[0]).toBe('→|B')
     expect(painter.row(-1)).toBe('')
     expect(painter.row(3)).toBe('')
+    expect(painter.row(0.5)).toBe('')
+    expect(painter.row(Number.NaN)).toBe('')
     expect(painter.locate('a')).toBe(0)
     expect(painter.locate('b')).toBe(1)
     expect(painter.locate('missing')).toBeUndefined()
@@ -735,6 +737,47 @@ describe('the flow list painter', () => {
     expect(painter.length).toBe(4)
   })
 
+  it('refreshes a live body whose content changes without changing its height', () => {
+    let text = 'before'
+    let revision = 0
+    const body = virtualRows({ length: 1, get revision() { return revision }, row: () => text })
+    const item: MayflyListItem = { id: 'a', label: 'Answer', body: ui.text('body'), bodyAlways: true }
+    const painter = new FlowListPainter()
+    painter.sync(inputOf([item], { body: () => body, focused: false }, {}, new Set(['a'])))
+    const rows = painter.rows()
+    expect(rows[1]).toContain('before')
+    const previous = painter.revision
+    text = 'after'
+    revision += 1
+    expect(painter.length).toBe(2)
+    expect(painter.revision).toBeGreaterThan(previous)
+    expect(rows[1]).toContain('after')
+    // A window containing only the head leaves the later body outside its preparation budget.
+    painter.prepare(0, 1)
+    expect(rows[0]).toContain('Answer')
+    painter.prepare(1, 2)
+    expect(rows[1]).toContain('after')
+  })
+
+  it('keeps numbered and checked tree rows, group highlights and an empty cell array width-safe', () => {
+    const items: MayflyListItem[] = [
+      { id: 'a', label: 'Current', current: true, group: 'Group', cells: [], detail: 'detail' },
+      { id: 'b', parentId: 'a', under: 'a', label: 'Child', cells: [{ spans: [{ text: 'left' }], max: 8 }, { spans: [{ text: 'right' }], max: 8 }], right: [{ text: 'end' }] },
+    ]
+    const painter = new FlowListPainter()
+    const input = inputOf(items, { focused: false, selectedIds: ['a'] }, { mode: 'multiple', marks: true, tree: true, numbered: true, highlight: { pattern: 'Current' } })
+    painter.sync(input)
+    const rows = plain([...painter.rows()])
+    expect(rows.join('\n')).toContain('1.')
+    expect(rows.join('\n')).toContain('Current ✓')
+    expect(rows[0]).toBe('Group')
+    expect(rows.every(row => visibleWidth(row) <= 30)).toBe(true)
+    painter.sync({ ...input, node: { ...input.node, numbered: false } })
+    expect(plain([...painter.rows()]).join('\n')).not.toContain('1.')
+    painter.sync({ ...input, options: { ...input.options, cursorId: undefined } })
+    expect(painter.markerFree).toBe(true)
+  })
+
   it('reserves the segment footer and reads its rows past the items', () => {
     const items: MayflyListItem[] = [{ id: 'a', label: 'A', segment: { label: 'Thinking', options: [{ id: 'x', label: 'x' }] } }]
     const painter = new FlowListPainter()
@@ -810,6 +853,18 @@ describe('list input rows and location', () => {
     const painted = plain(renderList(node, 30, 10, idle, colors, 0, undefined, { rows: specs(items) }))
     expect(painted[0]).toHaveLength(30)
     expect(painted[0]!.trimEnd().endsWith('…')).toBe(true)
+    const equal: MayflyListItem[] = [{ id: 'b', label: 'Row', indent: 1, cells: [{ spans: [{ text: 'first column' }], max: 12 }, { spans: [{ text: 'second column' }], max: 12 }], right: [{ text: '!' }], detail: 'description' }]
+    const columns = plain(renderList(ui.list({ id: 'equal', role: 'browse', selectedIds: [], items: equal }), 22, 10, idle, colors, 0, undefined, { rows: specs(equal) }))
+    expect(columns[0]!.length).toBeLessThanOrEqual(22)
+    expect(columns[0]).toContain('…')
+    const wide = plain(renderList(ui.list({ id: 'wide', role: 'browse', selectedIds: [], items: equal }), 80, 10, idle, colors, 0, undefined, { rows: specs(equal) }))
+    expect(wide[0]).toContain('description')
+  })
+
+  it('keeps a description readable beside an empty label with no cell columns', () => {
+    const items: MayflyListItem[] = [{ id: 'a', label: '', cells: [], detail: 'description' }]
+    const node = ui.list({ id: 'empty-label', role: 'browse', selectedIds: [], items })
+    expect(plain(renderList(node, 80, 10, idle, colors, 0, undefined, { rows: specs(items) }))).toEqual(['   description'])
   })
 })
 
@@ -827,6 +882,7 @@ describe('the segment footer of a focused row without a strip', () => {
       { id: 'b', label: 'B', segment: { options: [{ id: 'x', label: 'x' }] } },
     ]
     const bare = (row: MayflyListItem) => row.id === 'b' ? { segment: row.segment!, pinned: null, active: undefined } : undefined
+    expect(plain(renderList(ui.list({ id: 'default-label', role: 'browse', selectedIds: [], items: unlabeled }), 40, 10, on('a'), colors, 0, undefined, { rows: specs(unlabeled), cursorId: 'a', segment: bare })).at(-1)).toBe('  ○ Options: no choice')
     expect(plain(renderList(ui.list({ id: 'u', role: 'browse', selectedIds: [], items: unlabeled }), 40, 10, on('a'), colors, 0, undefined, { rows: specs(unlabeled), cursorId: 'a', segment: bare, segmentLabel: 'Effort' })).at(-1)).toBe('  ○ Effort: no choice')
     const translate = (key: string) => key === 'no choice' ? 'nothing to pick' : key
     expect(plain(renderList(ui.list({ id: 't', role: 'browse', selectedIds: [], items: unlabeled }), 40, 10, on('a'), colors, 0, undefined, { rows: specs(unlabeled), cursorId: 'a', segment: bare, segmentLabel: 'Effort', translate })).at(-1)).toBe('  ○ Effort: nothing to pick')
