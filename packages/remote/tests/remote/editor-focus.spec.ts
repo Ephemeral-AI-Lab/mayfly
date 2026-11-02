@@ -69,7 +69,8 @@ async function fixture(columns: number) {
     mode: 'alternate', requestRender,
   })
   let presentation: RemoteEditorPresentation = {}
-  const handle = mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }, () => presentation)
+  const submit = vi.fn()
+  const handle = mountRemoteEditor(ctx, screen, components, colors, { submit, onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }, () => presentation)
   const prompt = focused
   const modes: string[] = []
   const queued = [{ id: 'queued-one', text: 'queued message remains available', lane: 'turn' as const }]
@@ -89,12 +90,58 @@ async function fixture(columns: number) {
   }
   owners.push(async () => { transcript.dispose(); handle.dispose(); unbind(); await ctx.fiber.dispose() })
   return {
-    ctx, screen, components, editor: handle.editor, handle, prompt, transcript, modes, paint, send, focused: () => focused,
+    ctx, screen, components, editor: handle.editor, handle, prompt, transcript, modes, paint, send, submit, focused: () => focused,
     present(next: RemoteEditorPresentation) { presentation = next; handle.refresh() },
   }
 }
 
 describe('standalone editor and core transcript focus', () => {
+  it('retires pending extension transform, completion and action on a real palette replacement while keeping the original native draft', async () => {
+    const f = await fixture(80)
+    const providers = vi.spyOn(f.editor, 'setAutocompleteProvider')
+    const transform = Promise.withResolvers<{ readonly text: string }>()
+    const complete = Promise.withResolvers<readonly { readonly id: string, readonly label: string, readonly insertText: string }[]>()
+    const action = Promise.withResolvers<{ readonly kind: 'completed', readonly feedback: { readonly severity: 'success', readonly message: string } }>()
+    const signals = new Map<string, AbortSignal>()
+    const prepare = vi.fn((text: string) => ({ text, captured: { content: [{ type: 'text' as const, text }], pending: [], assertFileScope() {}, rollback() {} } }))
+    const unbind = f.handle.extensions.bind({
+      autocomplete: { sources: () => [], subscribe: () => () => {} },
+      beginWait: () => () => {},
+      captureSubmit: source => ({ text: source, attachments: [], prepare }),
+      shouldTransformSubmit: () => true,
+    })
+    const registration = f.ctx.mayflyEditorExtensions.register({
+      id: 'acme.palette-pending',
+      transformSubmit: (_request, context) => { signals.set('transform', context.signal); return transform.promise },
+      complete: (_request, context) => { signals.set('complete', context.signal); return complete.promise },
+      onEvent: { action: (_event, context) => { signals.set('action', context.signal); return action.promise } },
+    }, { actions: [{ id: 'apply', label: 'Apply extension', key: 'ctrl+r' }] })
+    const suggestions = providers.mock.calls.at(-1)![0]!.getSuggestions(['@seed'], 0, 5, { signal: new AbortController().signal })
+    f.editor.setText('original native draft')
+    f.editor.submit()
+    await f.send('\x12')
+    await vi.waitFor(() => { expect(signals.size).toBe(3) })
+    f.handle.retheme(f.components, colors)
+    expect([...signals.values()].map(signal => signal.aborted)).toEqual([false, false, false])
+    f.paint()
+    const before = f.editor.renderContent(80)
+    f.handle.retheme(f.components, new Proxy(colors, {}))
+    expect([...signals.values()].map(signal => signal.aborted)).toEqual([true, true, true])
+    transform.resolve({ text: 'late transformed draft' })
+    complete.resolve([{ id: 'late', label: 'Late completion', insertText: 'late' }])
+    action.resolve({ kind: 'completed', feedback: { severity: 'success', message: 'Late action feedback' } })
+    expect(await suggestions).toBeNull()
+    await flush()
+    f.paint()
+    expect(f.editor.getText()).toBe('original native draft')
+    expect(f.editor.renderContent(80)).toEqual(before)
+    expect(f.submit).not.toHaveBeenCalled()
+    expect(prepare).not.toHaveBeenCalled()
+    expect(f.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
+    registration.dispose()
+    unbind()
+  })
+
   it.each([1, 8, 20, 40, 80, 160])('consumes direct extension decorations and actions through the retained editor shell at width %i', async width => {
     const f = await fixture(width)
     f.editor.setText('keep draft')

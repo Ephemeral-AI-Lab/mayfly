@@ -176,6 +176,9 @@ export function mountRemoteEditor(
     notice: notifications.notice,
     retheme(nextComponents, nextColors) {
       if (disposed) return
+      if (components === nextComponents && colors === nextColors) return
+      extensions.invalidateSession()
+      notifications.clear()
       components = nextComponents
       colors = nextColors
       editor.updateColors(nextColors)

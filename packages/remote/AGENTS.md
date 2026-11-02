@@ -66,6 +66,8 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   catalog, projection, locale and settings updates refresh its memoized shape;
   only a palette change forces recompilation. Unbinding or route retirement
   fences late work.
+  A real palette-service replacement retires pending extension callbacks and
+  this input owner's feedback; the initial same-service bind retires neither.
   History/token facts and delayed prompt waits belong to the editor feature
   Fiber. File, clipboard and extension waits share one 150 ms owner; settlement,
   cancellation, selection replacement and unload release their exact scopes.

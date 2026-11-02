@@ -229,6 +229,34 @@ describe('mountRemoteEditor', () => {
     expect(editor.updateColors).toHaveBeenCalledOnce()
   })
 
+  it('retires command and extension feedback only on a real palette replacement while preserving external owners', async () => {
+    const { ctx, screen, components } = await fixture()
+    const handle = mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })
+    const external = ctx.mayflyUiInteraction.createNotificationOwner('external')
+    const registration = ctx.mayflyEditorExtensions.register({ id: 'acme.palette', onEvent: {
+      action: () => ({ kind: 'completed', feedback: { severity: 'success', message: 'extension feedback' } }),
+    } }, { actions: [{ id: 'apply', label: 'Apply extension', key: 'ctrl+r' }] })
+    handle.extensions.focused = true
+    handle.extensions.render(80)
+    handle.extensions.handleInput('\x12')
+    await vi.waitFor(() => { expect(ctx.mayflyUiInteraction.notificationSnapshot()).toContainEqual(expect.objectContaining({ message: 'extension feedback' })) })
+    handle.notice.set('command feedback')
+    external.report('work', { kind: 'app', targetId: 'external' }, { severity: 'info', message: 'external feedback' })
+    const notices = ctx.mayflyUiInteraction.notificationSnapshot()
+    expect(notices).toHaveLength(3)
+    handle.retheme(components, colors)
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toEqual(notices.map(({ id, message }) => expect.objectContaining({ id, message })))
+    const nextColors = { ...colors }
+    handle.retheme(components, nextColors)
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([expect.objectContaining({ message: 'external feedback' })])
+    handle.notice.set('another command')
+    handle.retheme({ ...components }, nextColors)
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([expect.objectContaining({ message: 'external feedback' })])
+    registration.dispose()
+    external.dispose()
+    handle.dispose()
+  })
+
   it('refreshes readonly settings and locale without a keystroke and fences queued snapshots after unload', async () => {
     const { ctx, editor, screen, components } = await fixture()
     const observeLocale = vi.spyOn(ctx.mayflyLocale, 'subscribe')
