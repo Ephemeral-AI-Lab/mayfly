@@ -139,6 +139,15 @@ normalized. Paths, timing fields and Host endpoint labels need an explicitly
 reviewed fixture or field normalization; broad whitespace/color masking is
 not allowed.
 
+The published reference and candidate run different Harness versions. Actual
+native model metadata, inherited reasoning effort, and prompt/tool composition
+can therefore differ before rendering. See
+[split-native-data-differences.md](./split-native-data-differences.md) for the
+captured request/projection evidence and the distinction between upstream
+data changes and split adaptation defects. A raw comparison retains those
+differences; a controlled comparison requires equal inputs configured through
+native APIs and independent reference provenance.
+
 ## Remaining acceptance coverage
 
 The initial split backend is infrastructure, not a completed parity claim.
