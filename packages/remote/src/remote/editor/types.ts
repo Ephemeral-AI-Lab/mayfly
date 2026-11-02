@@ -180,7 +180,7 @@ export interface EditorFeatureController {
   /** Force the current Session skill catalog to refresh. */
   refreshSkills(): Promise<void>
   /** Open the skill list/detail panel for the exact selected Session. */
-  openSkills(): Promise<void>
+  openSkills(signal?: AbortSignal): Promise<void>
   /** Apply one official pending-queue mutation without replaying failures. */
   updateQueue(itemId: MessageId, action: QueueAction): Promise<boolean>
   /** Restore one removed queue draft without submitting it. */

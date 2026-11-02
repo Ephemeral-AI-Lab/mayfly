@@ -52,19 +52,20 @@ class RemoteStatsController {
     this.accountCache = undefined
   }
 
-  readonly execute = async (input: string): Promise<void> => {
+  readonly execute = async (input: string, signal: AbortSignal): Promise<void> => {
+    if (signal.aborted) return
     if (input.trim() !== '') throw new Error('Usage: /stats')
     const current = this.context.base.hosts.current()
     if (current === undefined) throw new Error(this.t('no session is live yet'))
     if (this.context.base.ctx.mayflyOverlays.focus('mayfly.stats')) return
     this.retire?.()
-    this.open(current, this.lifecycle.currentGeneration())
+    this.open(current, this.lifecycle.currentGeneration(), signal)
   }
 
-  private open(current: RemoteFeatureSelection, captured: number): void {
+  private open(current: RemoteFeatureSelection, captured: number, parent: AbortSignal): void {
     const { base } = this.context
     const lifetime = new AbortController()
-    const signal = lifetime.signal
+    const signal = AbortSignal.any([lifetime.signal, parent])
     const valid = (): boolean => {
       const next = this.lifecycle.selection(captured)
       return !signal.aborted && next?.client === current.client && next.binding === current.binding
@@ -193,7 +194,7 @@ class RemoteStatsController {
       })
     }
     const close = (): void => {
-      if (signal.aborted) return
+      if (lifetime.signal.aborted) return
       lifetime.abort()
       if (timer !== undefined) clearTimeout(timer)
       historyGeneration?.abort(); accountGeneration?.abort(); sessionGeneration?.abort()

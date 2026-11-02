@@ -96,7 +96,7 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
         return { kind: 'error', text: `/${invocation.name} does not accept attachments; no command was sent` }
       }
       if (invocation.name === 'skills') {
-        await controller.openSkills()
+        await controller.openSkills(invocation.signal)
         return { kind: 'success' }
       }
       if (!FRONTEND_COMMANDS.some(command => command.name === invocation.name)

@@ -53,7 +53,7 @@ function fixture(options: { readonly files?: typeof delivered | null, readonly n
     return { get closed() { return closed }, refresh, close }
   })
   const unmount = mountRemoteFilesOperations(context)
-  const execute = (text = '') => commands.list().find(command => command.name === 'files')!.execute(text, new AbortController().signal)
+  const execute = (text = '', signal = new AbortController().signal) => commands.list().find(command => command.name === 'files')!.execute(text, signal)
   const act = (event: object, signal = new AbortController().signal) => browser!.action!(event as MayflyUiActionEvent, { signal } as MayflyUiEventContext)
   const select = (id?: string, controlId = 'files') => act({ kind: 'selection-accept', controlId, selectedIds: id === undefined ? [] : [id] })
   const activate = (actionId: string, signal?: AbortSignal) => act({ kind: 'activate', actionId }, signal)
@@ -83,11 +83,35 @@ const contains = (node: MayflyUiNode, text: string) => JSON.stringify(node).incl
 const items = (node: MayflyUiNode) => nodes(node).find(row => row.kind === 'list' && row.id === 'files')!.items as readonly { id: string, label: string, group?: string }[]
 
 describe('native Files command composition', () => {
+  it('keeps cancelled callers from opening or publishing late file reads and releases their exact observers', async () => {
+    const f = fixture()
+    f.execute('', AbortSignal.abort())
+    expect(f.deliveredFile).not.toHaveBeenCalled()
+    const pending = deferred<unknown>()
+    f.deliveredFile.mockReturnValueOnce(pending.promise)
+    const caller = new AbortController()
+    f.execute('', caller.signal)
+    const signal = f.deliveredFile.mock.calls[0]![1]!
+    caller.abort()
+    expect(signal.aborted).toBe(true)
+    expect(f.close).toHaveBeenCalledOnce()
+    expect(f.listeners.projection.size + f.listeners.events.size).toBe(0)
+    const paints = f.refresh.mock.calls.length
+    pending.resolve(ok({ path: '/stale', displayPath: '/stale', fileType: 'file', size: 9 }))
+    await tick()
+    expect(f.refresh).toHaveBeenCalledTimes(paints)
+    expect(await f.activate('open')).toMatchObject({ kind: 'cancelled' })
+    expect(f.openWorkspacePath).not.toHaveBeenCalled()
+    f.unmount()
+  })
+
   it('registers the command, shows rc.2 Files chrome and details, and releases reads and registration on unload', async () => {
     const f = fixture()
     expect(f.commands.list().map(command => command.name)).toEqual(['files'])
     await f.execute()
     await tick()
+    expect(await f.activate('open', AbortSignal.abort())).toEqual({ kind: 'cancelled' })
+    expect(f.openWorkspacePath).not.toHaveBeenCalled()
     expect(f.browser().id).toBe('remote.operations.files')
     expect(f.browser().scope).toEqual({ kind: 'session', sessionId: 'lead' })
     expect(f.browser().isCurrent()).toBe(true)

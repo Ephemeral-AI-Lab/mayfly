@@ -21,6 +21,7 @@ export class EditorSkillsPanel {
   private cleanup: (() => void) | undefined
   private generation = 0
   private lifetime: AbortController | undefined
+  private offCaller: (() => void) | undefined
   private readonly t
 
   constructor(private readonly options: SkillsPanelOptions) {
@@ -30,15 +31,20 @@ export class EditorSkillsPanel {
 
   get open(): boolean { return this.handle?.closed === false }
 
-  async show(): Promise<void> {
+  async show(parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted) return
     if (this.open) { this.options.ctx.mayflyOverlays.focus('mayfly.skills'); return }
     const selected = this.options.session()
     if (selected === undefined) return
     const generation = ++this.generation
     const connectionGeneration = selected.client.state.getSnapshot().generation
+    this.offCaller?.()
     this.lifetime?.abort()
     const lifetime = new AbortController()
     this.lifetime = lifetime
+    const abort = (): void => { if (this.lifetime === lifetime) this.close() }
+    parent?.addEventListener('abort', abort, { once: true })
+    this.offCaller = () => { parent?.removeEventListener('abort', abort) }
     const isCurrent = (): boolean => {
       const current = this.options.session()
       return !lifetime.signal.aborted && generation === this.generation && current?.client === selected.client
@@ -47,7 +53,7 @@ export class EditorSkillsPanel {
         && selected.client.state.getSnapshot().generation === connectionGeneration
     }
     await this.options.skills.refresh(lifetime.signal)
-    if (!isCurrent()) return
+    if (!isCurrent()) { if (this.lifetime === lifetime) this.close(); return }
     let focused: string | undefined
     let detailMode = false
     const view = () => {
@@ -107,6 +113,8 @@ export class EditorSkillsPanel {
 
   close(): void {
     this.generation += 1
+    this.offCaller?.()
+    this.offCaller = undefined
     this.lifetime?.abort()
     this.lifetime = undefined
     const handle = this.handle
@@ -116,6 +124,8 @@ export class EditorSkillsPanel {
   private finish(handle: MayflyOverlayHandle): void {
     if (this.handle !== handle) return
     this.generation += 1
+    this.offCaller?.()
+    this.offCaller = undefined
     this.lifetime?.abort()
     this.lifetime = undefined
     this.handle = undefined

@@ -62,6 +62,28 @@ async function fixture(selected = true, injectedCopy = true) {
 }
 
 describe('rc.2 Remote statistics', () => {
+  it('retires a command caller during statistics discovery without publishing its late result or retaining timers', async () => {
+    const f = await fixture()
+    await f.run('stats', '', AbortSignal.abort())
+    expect(f.panels).toHaveLength(0)
+    const pending = Promise.withResolvers<unknown>()
+    f.read.mockReturnValueOnce(pending.promise)
+    const caller = new AbortController()
+    await f.run('stats', '', caller.signal)
+    expect(f.read).toHaveBeenCalledOnce()
+    caller.abort()
+    expect(f.panel().options.signal!.aborted).toBe(true)
+    f.panel().close()
+    expect(f.listeners.size).toBe(0)
+    for (const value of Object.values(f.values)) expect(value.listeners.size).toBe(0)
+    const paints = f.panel().refresh.mock.calls.length
+    pending.resolve(good(initial))
+    await tick()
+    expect(f.panel().refresh).toHaveBeenCalledTimes(paints)
+    expect(await f.act('copy')).toMatchObject({ kind: 'cancelled' })
+    expect(f.copy).not.toHaveBeenCalled()
+  })
+
   it('decodes detached whole digests without folding logs, renders every reference tab at narrow widths', async () => {
     const decoded = remoteStatsDigest(digest)
     expect(decoded.days.get(digest.days[0]!.key)!.models.get('p\0m')!.peak).toEqual(buckets)

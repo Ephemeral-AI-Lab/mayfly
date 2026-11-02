@@ -758,6 +758,7 @@ describe('mounted editor routes and ownership', () => {
     const draft = new EditorDraftStore()
     draft.stashMode('bash')
     const f = await fixture({ draft }, false)
+    await f.controller.openSkills(AbortSignal.abort())
     await f.controller.openSkills()
     expect(f.notice.set).toHaveBeenLastCalledWith('no active session')
     expect(f.host.listCommands).not.toHaveBeenCalled()

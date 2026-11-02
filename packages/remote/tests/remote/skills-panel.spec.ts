@@ -44,6 +44,44 @@ async function fixture(metadata = false) {
 }
 
 describe('shared native skills browser', () => {
+  it('owns the command caller through catalog discovery and retires only its exact skill browser', async () => {
+    const f = await fixture(true)
+    await f.panel.show(AbortSignal.abort())
+    expect(f.catalog).not.toHaveBeenCalled()
+    const pending = deferred<Awaited<ReturnType<MayflyHostRemote['skillCatalog']>>>()
+    f.catalog.mockReturnValueOnce(pending.promise)
+    const first = new AbortController()
+    const opening = f.panel.show(first.signal)
+    await vi.waitFor(() => { expect(f.catalog).toHaveBeenCalledOnce() })
+    first.abort()
+    pending.resolve({ ok: true, value: f.native })
+    await opening
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    const mounted = new AbortController()
+    await f.panel.show(mounted.signal)
+    const observer = new AbortController()
+    await f.panel.show(observer.signal)
+    observer.abort()
+    expect(f.panel.open).toBe(true)
+    mounted.abort()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    await f.panel.show()
+    expect(f.panel.open).toBe(true)
+  })
+
+  it('ignores an old caller abort callback already queued before a replacement browser', async () => {
+    const f = await fixture(true)
+    const caller = new AbortController()
+    const subscribe = vi.spyOn(caller.signal, 'addEventListener')
+    await f.panel.show(caller.signal)
+    const queued = subscribe.mock.calls.find(([name]) => name === 'abort')![1] as () => void
+    f.panel.close()
+    await f.panel.show()
+    queued()
+    expect(f.panel.open).toBe(true)
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+  })
+
   it('opens a real editor wire surface and names the missing metadata capability only on a plain official Host', async () => {
     const f = await fixture()
     await f.panel.show()

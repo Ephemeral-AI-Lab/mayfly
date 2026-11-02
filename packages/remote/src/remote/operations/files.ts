@@ -136,6 +136,7 @@ class RemoteFilesBrowser {
   }
 
   private async action(event: MayflyUiActionEvent, owner: MayflyUiEventContext): Promise<MayflyUiActionReply> {
+    if (!this.operation.valid() || owner.signal.aborted) return { kind: 'cancelled' }
     if (event.kind === 'selection-accept') {
       if (event.controlId !== 'files' && event.controlId !== 'files-narrow') return { kind: 'completed' }
       const id = event.selectedIds[0]
@@ -191,12 +192,13 @@ class RemoteFilesController extends RemoteFeatureController<RemoteOperationsCont
     registerRemoteOperationsLocale(filesContext.base, 'remote-operations-files', zh)
   }
 
-  readonly execute = (rawInput: string): void => {
+  readonly execute = (rawInput: string, signal: AbortSignal): void => {
+    if (signal.aborted) return
     if (rawInput.trim() !== '') throw new Error(this.t('Usage: /files'))
     const current = this.filesContext.base.hosts.current()
     if (current === undefined) { this.filesContext.base.notice.set(this.t('No current session')); return }
     this.operation?.dispose()
-    const operation = this.sessionOperation(current)
+    const operation = this.sessionOperation(current, signal)
     if (operation === undefined) return
     this.operation = operation
     new RemoteFilesBrowser(this.filesContext, current, operation, this.t)

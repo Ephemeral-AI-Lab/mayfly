@@ -382,13 +382,14 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
       detectSelection()
       await refreshSkills()
     },
-    async openSkills() {
+    async openSkills(signal) {
+      if (signal?.aborted) return
       detectSelection()
       if (options.session() === undefined) {
         options.notice.set(t('no active session'))
         return
       }
-      await panel.show()
+      await panel.show(signal)
     },
     updateQueue(itemId: MessageId, action: QueueAction): Promise<boolean> {
       detectSelection()
