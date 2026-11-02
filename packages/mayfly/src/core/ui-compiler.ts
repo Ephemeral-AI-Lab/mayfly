@@ -3053,6 +3053,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
     const index = controls.findIndex(control => sameFocusIdentity(control.identity, identity))
     if (index < 0) return false
     const control = controls[index]!
+    // A restored list cursor must also move the frontend choice that paints and locates the focused row.
+    if (control.kind === 'event' && control.listEntry !== undefined) this.surfaceRuntime.interaction?.updateChoice(
+      { pagePath: control.identity.pagePath!, controlId: control.listEntry.node.id },
+      { kind: 'focus', id: control.identity.itemId! },
+    )
     this.state.activeKey = control.key
     this.state.activeGroup = control.group
     this.state.desiredKey = control.key

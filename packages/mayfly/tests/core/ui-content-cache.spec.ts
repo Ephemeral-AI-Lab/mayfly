@@ -15,7 +15,10 @@ describe('MayflyContentCache', () => {
   it('returns stored rows and prices them by paintedRowsBytes', () => {
     const cache = new MayflyContentCache()
     const painted = rows('row', 3)
+    expect(cache.size).toBe(0)
     cache.put('k', painted, paintedRowsBytes(painted))
+    expect(cache.size).toBe(1)
+    expect(cache.bytes).toBe(paintedRowsBytes(painted))
     expect(cache.get('k')).toBe(painted)
     expect(cache.get('missing')).toBeUndefined()
     expect(paintedRowsBytes(['abcd', 'ef'])).toBe(64 + 4 * 2 + 40 + 2 * 2 + 40)
@@ -25,10 +28,12 @@ describe('MayflyContentCache', () => {
     const cache = new MayflyContentCache(200)
     cache.put('k', rows('a', 1), 100)
     cache.put('k', rows('b', 1), 60)
+    expect(cache.bytes).toBe(60)
     const [entry] = cache.get('k')!
     expect(entry).toBe('b0')
     // 60 + the next put's 60 exceeds the 200 budget only once both are held.
     cache.put('j', rows('c', 1), 60)
+    expect(cache.bytes).toBe(120)
     expect(cache.get('j')).toBeDefined()
   })
 

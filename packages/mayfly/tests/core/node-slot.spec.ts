@@ -573,6 +573,37 @@ describe('node slot lease: routes and re-leases', () => {
 describe('node slot lease: tracking, marking, and ended leases', () => {
   const dismiss: MayflyUiEvent = { kind: 'dismiss', pagePath: [] }
 
+  it('reports the painted cursor in content coordinates only while the focused lease is mounted', () => {
+    let start: number | undefined = 5
+    const bare = bareHost(undefined, {}, () => start)
+    const { lease, component } = bare.lease('transcript.conversation', { region: 'content' })
+    expect(lease.cursorRow()).toBeUndefined()
+    lease.set(streamList(streamItems(5)))
+    const unbind = bare.host.bind(bare.compiler)
+    component.render(80)
+    expect(lease.cursorRow()).toBeUndefined()
+    component.focused = true
+    lease.focusRow('stream', 'item-2')
+    component.render(80)
+    expect(lease.cursor('stream')).toBe('item-2')
+    expect(lease.cursorRow()).toBe(7)
+    start = undefined
+    expect(lease.cursorRow()).toBeUndefined()
+    start = 5
+    const dock = bare.lease('editor.prompt', { region: 'dock' })
+    dock.lease.set(streamList(streamItems(3)))
+    dock.component.focused = true
+    dock.component.render(80)
+    expect(dock.lease.cursorRow()).toBeUndefined()
+    unbind()
+    expect(lease.cursorRow()).toBeUndefined()
+    bare.host.bind(bare.compiler)
+    component.render(80)
+    expect(lease.cursorRow()).toBe(7)
+    lease.dispose()
+    expect(lease.cursorRow()).toBeUndefined()
+  })
+
   it('follows a row into the scroll content and reads its line', () => {
     const bare = bareHost(undefined, {}, () => 5)
     const { lease, component } = bare.lease('transcript.conversation', { region: 'content' })
