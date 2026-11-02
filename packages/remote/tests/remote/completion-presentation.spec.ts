@@ -34,6 +34,7 @@ describe('Remote completion presentation', () => {
     expect(overlay.anchor).toBe('bottom-left')
     expect(overlay.nonCapturing).toBe(true)
     expect(overlay.visible?.(columns, 24)).toBe(true)
+    expect(overlay.width).toBe(80)
     expect(overlay.offsetY).toBe(-4)
     expect(plain(drawer.render(columns))[0]).toContain('> /theme')
     ctx.emit('mayfly/prompt-wait-changed', 'Waiting for files…')
@@ -41,6 +42,7 @@ describe('Remote completion presentation', () => {
     expect(plain(drawer.render(columns)).at(-1)).toContain('Waiting for files…')
     for (const width of [1, 8, 20, 40, 80, 120]) {
       columns = width
+      expect(overlay.width).toBe(width)
       for (const row of drawer.render(width)) expect(components.visibleWidth(row)).toBeLessThanOrEqual(width)
     }
     editorRows = 8
@@ -55,6 +57,24 @@ describe('Remote completion presentation', () => {
     const renders = requestRender.mock.calls.length
     ctx.emit('mayfly/prompt-wait-changed', 'late')
     expect(requestRender).toHaveBeenCalledTimes(renders)
+    await ctx.fiber.dispose()
+  })
+
+  it('ignores a wait callback already captured by native dispatch when an earlier listener unloads it', async () => {
+    const ctx = new Context()
+    let mount!: ReturnType<typeof mountRemoteCompletionDrawer>
+    ctx.on('mayfly/prompt-wait-changed', () => { mount.dispose() })
+    const hide = vi.fn()
+    const requestRender = vi.fn()
+    const screen = { columns: 80, editorRowsFromBottom: 1, requestRender, showOverlay: () => ({ hide }) } as unknown as MayflyScreenService
+    const editor = { completion: () => undefined } as MayflyEditor
+    mount = mountRemoteCompletionDrawer(ctx, screen, editor, plainColors(), fakeMayflyComponents())
+    // Cordis snapshots the listeners before invoking the first one. Unload removes future dispatches,
+    // while this dispatch still owns the completion listener that follows the disposer.
+    ctx.emit('mayfly/prompt-wait-changed', 'Waiting after unload')
+    expect(hide).toHaveBeenCalledOnce()
+    expect(requestRender).not.toHaveBeenCalled()
+    mount.dispose()
     await ctx.fiber.dispose()
   })
 

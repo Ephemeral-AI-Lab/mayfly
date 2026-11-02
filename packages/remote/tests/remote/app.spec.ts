@@ -1047,4 +1047,24 @@ describe('RemoteApp rewind', () => {
     await pending
     expect(test.status.set).toHaveBeenCalledWith('no user turns to rewind')
   })
+
+  it('retires a rewind after history settles but before its caller resumes', async () => {
+    const test = rewindFixture()
+    await test.app.attach('http://one.test/')
+    await test.app.selectOrCreate('shared-session')
+    const native = Promise.withResolvers<Awaited<ReturnType<typeof test.events>>>()
+    test.events.mockReturnValueOnce(native.promise)
+    const pending = test.app.execute('/rewind')
+    expect(test.events).toHaveBeenCalledOnce()
+    native.resolve({ ok: true, value: { records: [], hasMore: false } })
+    // The native result unwrap and history collection each resume once. Selection can retire in
+    // the following microtask, after collection's cancellation check and before the app resumes.
+    await Promise.resolve()
+    await Promise.resolve()
+    test.app.clearSession()
+    await pending
+    expect(test.panels.showRewind).not.toHaveBeenCalled()
+    expect(test.status.set).not.toHaveBeenCalledWith('no user turns to rewind')
+    expect(test.app.registry.current).toBeUndefined()
+  })
 })
