@@ -186,7 +186,6 @@ export class RemotePermissionsController extends RemoteFeatureController {
   }
 
   private async selectInOperation(operation: RemoteFeatureOperation, selection: RemoteFeatureSelection, value: string, signal?: AbortSignal): Promise<void> {
-    if (!operation.valid() || signal?.aborted) return
     const catalog = await remoteValue(selection.client.remote.permissionPresets.catalog())
     if (!operation.valid() || signal?.aborted) return
     if (!catalog.options.some(option => option.value === value)) throw new Error(this.translate('permission command is unavailable'))

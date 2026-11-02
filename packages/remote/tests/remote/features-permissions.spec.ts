@@ -8,7 +8,7 @@ vi.mock('../../src/remote/panels/browser.ts', () => ({ openRemoteBrowser: mocks.
 const cleanups: (() => void)[] = []
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup() })
 
-function fixture(options: Parameters<typeof configurationFixture>[1] = {}) {
+function fixture(options: Parameters<typeof configurationFixture>[1] & { readonly withSource?: boolean } = {}) {
   const test = configurationFixture(mocks.open, options)
   const settings = { revision: vi.fn(() => ({ descriptor: 7, fields: 'revision' })), mutate: vi.fn(async () => ({})) }
   const specs: Record<string, MayflyPermissionSpec> = {
@@ -18,7 +18,7 @@ function fixture(options: Parameters<typeof configurationFixture>[1] = {}) {
   const source: RemotePermissionDetailSource = { resolve: vi.fn(async () => ({ yolo: false,
     spec: (value: string) => specs[value], detail: (value: string) => specs[value] === undefined ? undefined : `sandbox ${specs[value].sandbox} · approval ${specs[value].approval}`,
   })) }
-  const controller = new RemotePermissionsController(test.context, settings as unknown as RemoteSettingsController, source)
+  const controller = new RemotePermissionsController(test.context, settings as unknown as RemoteSettingsController, options.withSource === false ? undefined : source)
   cleanups.push(() => { controller.dispose(); test.dispose() })
   return { ...test, settings, source, specs, controller }
 }
@@ -144,5 +144,126 @@ describe('Remote permission reference UI', () => {
     const empty = fixture({ session: false })
     await empty.controller.open()
     expect(empty.opened).toHaveLength(0)
+  })
+
+  it('refuses missing or foreign Session scopes and catalogs retired Host generations without publishing late reads', async () => {
+    const test = fixture()
+    const pending = deferred<unknown>()
+    test.catalog.mockReturnValueOnce(pending.promise)
+    const reading = test.controller.catalog(test.selection)
+    test.reconnect()
+    pending.resolve({ ok: true, value: permissionCatalog() })
+    expect(await reading).toBeUndefined()
+    await test.controller.select({ ...test.selection.ref, sessionId: 'foreign' as typeof test.selection.ref.sessionId }, 'safe')
+    await test.controller.select({ ...test.selection.ref, host: 'foreign' as typeof test.selection.ref.host }, 'safe')
+    test.select(undefined)
+    await test.controller.select(test.selection.ref, 'safe')
+    test.detach()
+    await test.controller.open()
+    expect(await test.controller.catalog(test.selection)).toBeUndefined()
+    expect(test.command).not.toHaveBeenCalled()
+    expect(test.opened).toEqual([])
+    const disposed = fixture()
+    disposed.controller.dispose()
+    expect(await disposed.controller.catalog()).toBeUndefined()
+    await disposed.controller.select(disposed.selection.ref, 'safe')
+    expect(disposed.command).not.toHaveBeenCalled()
+  })
+
+  it('keeps native-only options when optional consequences are unavailable or fail to load', async () => {
+    const bare = fixture({ withSource: false })
+    await bare.controller.open()
+    expect(bare.render()).not.toContain('sandbox read-only')
+    expect(bare.render()).not.toContain('confirmLabel')
+    bare.project(undefined)
+    expect(bare.render()).toContain('"selectedIds":[]')
+    const failed = fixture()
+    vi.mocked(failed.source.resolve).mockRejectedValueOnce(new Error('optional spec unavailable'))
+    await failed.controller.open()
+    expect(failed.render()).not.toContain('sandbox read-only')
+    expect(failed.notice.set).not.toHaveBeenCalled()
+  })
+
+  it('reports only current opening failures and leaves stale catalog errors silent', async () => {
+    const test = fixture()
+    test.catalog.mockRejectedValueOnce(new Error('current catalog failed'))
+    await test.controller.open()
+    expect(test.notice.set).toHaveBeenCalledExactlyOnceWith('current catalog failed')
+    const pending = Promise.withResolvers<unknown>()
+    test.catalog.mockReturnValueOnce(pending.promise)
+    const opening = test.controller.open()
+    test.reconnect()
+    pending.reject(new Error('retired catalog failed'))
+    await opening
+    expect(test.notice.set).toHaveBeenCalledOnce()
+    expect(test.opened).toEqual([])
+  })
+
+  it('rejects cancelled actions before any native read and ignores missing selections and unrelated events', async () => {
+    const test = fixture()
+    await test.controller.open()
+    expect(test.browser().isCurrent!()).toBe(true)
+    expect(await test.act({ kind: 'activate', controlId: 'permissions' })).toEqual({ kind: 'completed' })
+    expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: [] })).toEqual({ kind: 'completed' })
+    const cancelled = new AbortController(); cancelled.abort()
+    expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['safe'] }, cancelled.signal)).toEqual({ kind: 'cancelled', dismiss: true })
+    expect(test.catalog).toHaveBeenCalledOnce()
+    const notify = [...test.projectionListeners][0]!
+    test.opened[0]!.close()
+    notify()
+    expect(test.browser().isCurrent!()).toBe(false)
+    expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['safe'] })).toEqual({ kind: 'cancelled', dismiss: true })
+    expect(test.command).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])('fences a native permission command settling after reconnect (reject=%s)', async rejected => {
+    const test = fixture()
+    await test.controller.open()
+    const response = Promise.withResolvers<unknown>()
+    test.command.mockReturnValueOnce(response.promise)
+    const action = test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['review'] })
+    await vi.waitFor(() => { expect(test.command).toHaveBeenCalledOnce() })
+    test.reconnect()
+    if (rejected) response.reject(new Error('obsolete permission result'))
+    else response.resolve({ ok: true, value: { matched: true } })
+    expect(await action).toEqual({ kind: 'cancelled', dismiss: true })
+    expect(test.notice.set).not.toHaveBeenCalled()
+  })
+
+  it('refreshes native default options and its selected preset without retaining a Session', async () => {
+    const test = fixture({ session: false, namespaces: [namespace('permission')] })
+    await test.controller.open()
+    test.catalog.mockResolvedValueOnce({ ok: true, value: { ...permissionCatalog(), defaultPreset: 'review', defaultOptions: permissionCatalog().options.slice(1) } })
+    test.emit('permission-presets/catalog-changed')
+    await vi.waitFor(() => { expect(test.opened[0]!.refresh).toHaveBeenCalledOnce() })
+    expect(test.render()).toContain('"selectedIds":["review"]')
+    expect(test.render()).not.toContain('"id":"safe"')
+    test.settings.mutate.mockRejectedValueOnce(new Error('native settings conflict'))
+    expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['review'] })).toEqual({ kind: 'failed', message: 'native settings conflict' })
+    expect(test.settings.revision).toHaveBeenCalledWith(expect.objectContaining({ ns: 'permission' }), true)
+    expect(test.command).not.toHaveBeenCalled()
+  })
+
+  it('surfaces current refresh failures and rejects errors from older refreshes or closed panels', async () => {
+    const test = fixture()
+    await test.controller.open()
+    const pending = Promise.withResolvers<unknown>()
+    test.catalog.mockReturnValueOnce(pending.promise)
+    test.emit('permission-presets/catalog-changed')
+    test.emit('permission-presets/catalog-changed')
+    await vi.waitFor(() => { expect(test.opened[0]!.refresh).toHaveBeenCalledOnce() })
+    pending.reject(new Error('obsolete refresh failed'))
+    await Promise.resolve(); await Promise.resolve()
+    expect(test.notice.set).not.toHaveBeenCalled()
+    test.catalog.mockRejectedValueOnce(new Error('current refresh failed'))
+    test.emit('permission-presets/catalog-changed')
+    await vi.waitFor(() => { expect(test.notice.set).toHaveBeenCalledWith('current refresh failed') })
+    const retired = Promise.withResolvers<unknown>()
+    test.catalog.mockReturnValueOnce(retired.promise)
+    test.emit('permission-presets/catalog-changed')
+    test.opened[0]!.close()
+    retired.reject(new Error('closed refresh failed'))
+    await Promise.resolve(); await Promise.resolve()
+    expect(test.notice.set).toHaveBeenCalledOnce()
   })
 })
