@@ -23,10 +23,10 @@ const EXPORT_PAGE_MESSAGES = 500
 
 const zh: Readonly<Record<string, string>> = {
   'Export the current session as Markdown': '将当前会话导出为 Markdown',
-  'No current session': '当前没有会话',
-  'Nothing to export yet': '还没有可导出的内容',
-  'Exported {count} events to {path}': '已导出 {count} 条事件到 {path}',
-  'Exported {count} items to {path}': '已导出 {count} 项内容到 {path}',
+  'no session is live yet': '还没有正在运行的会话',
+  'nothing to export yet': '还没有可导出的内容',
+  'exported {count} events to {path}': '已导出 {count} 条事件到 {path}',
+  'exported {count} items to {path}': '已导出 {count} 项内容到 {path}',
   'Session changed during export': '导出期间会话已更改',
   'Conversation projection is unavailable': '会话投影不可用',
 }
@@ -49,7 +49,7 @@ class RemoteExportCommand {
     const full = trimmed === 'full' || trimmed.startsWith('full ')
     const pathArg = full ? trimmed.slice(4).trim() : trimmed
     const current = this.context.base.hosts.current()
-    if (current === undefined) throw new Error(this.t('No current session'))
+    if (current === undefined) throw new Error(this.t('no session is live yet'))
     const generation = current.client.state.getSnapshot().generation
     const assertCurrent = (): void => {
       signal.throwIfAborted()
@@ -82,7 +82,7 @@ class RemoteExportCommand {
       count = items.length
       markdown = buildRemoteExportMarkdown({ sessionId: current.ref.sessionId, workDir, items, exportedAt })
     }
-    if (count === 0) throw new Error(this.t('Nothing to export yet'))
+    if (count === 0) throw new Error(this.t('nothing to export yet'))
     const target = resolve(this.context.options.localCwd, pathArg || remoteExportFileName(current.ref.sessionId, exportedAt))
     assertCurrent()
     await mkdir(dirname(target), { recursive: true })
@@ -103,7 +103,7 @@ class RemoteExportCommand {
     } catch (error: unknown) {
       throw new Error(`could not write export: ${remoteErrorMessage(error)}`)
     }
-    this.context.base.notice.set(this.t(full ? 'Exported {count} events to {path}' : 'Exported {count} items to {path}', { count, path: target }))
+    this.context.base.notice.set(this.t(full ? 'exported {count} events to {path}' : 'exported {count} items to {path}', { count, path: target }), 'success')
   }
 }
 

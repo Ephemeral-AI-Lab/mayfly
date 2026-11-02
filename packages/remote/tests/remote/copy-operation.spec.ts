@@ -49,7 +49,7 @@ function fixture(options: { readonly withoutCopy?: boolean, readonly entries?: r
   const ctx = fakeContext()
   const notice = { set: vi.fn() }
   const commands = new RemoteFeatureCommandRegistry()
-  const copy = vi.fn(async (_text: string) => {})
+  const copy = vi.fn(async (_text: string): Promise<'native' | 'osc52' | void> => 'native')
   const journal = vi.fn()
   const snapshot = vi.fn((): ConversationProjection | undefined => conversation(options.entries ?? [assistant('reply')]))
   const faceOf = vi.fn(() => ({ getSnapshot: snapshot }))
@@ -85,12 +85,12 @@ describe('mountRemoteCopyOperations', () => {
     await f.run()
     expect(f.faceOf).toHaveBeenCalledExactlyOnceWith('mayflyConversation')
     expect(f.copy).toHaveBeenCalledExactlyOnceWith('visible answer')
-    expect(f.notice.set).toHaveBeenCalledWith('Copied 14 characters')
+    expect(f.notice.set).toHaveBeenCalledWith('copied the last assistant message (14 characters)', 'success')
     expect(f.journal).not.toHaveBeenCalled()
     f.snapshot.mockReturnValueOnce(conversation([question('question')]))
     await f.run()
     expect(f.copy).toHaveBeenCalledTimes(1)
-    expect(f.notice.set).toHaveBeenLastCalledWith('No assistant reply to copy yet')
+    expect(f.notice.set).toHaveBeenLastCalledWith('no assistant message to copy')
   })
 
   it('uses the whole projection beyond the old 2000-event window and preserves folded text verbatim', async () => {
@@ -105,11 +105,19 @@ describe('mountRemoteCopyOperations', () => {
     const f = fixture({ entries: [] })
     mountRemoteCopyOperations(f.context)
     await f.run()
-    expect(f.notice.set).toHaveBeenCalledWith('No assistant reply to copy yet')
+    expect(f.notice.set).toHaveBeenCalledWith('no assistant message to copy')
     f.snapshot.mockReturnValueOnce(undefined)
     await expect(f.run()).rejects.toThrow('Conversation projection is unavailable')
     expect(f.journal).not.toHaveBeenCalled()
     expect(f.copy).not.toHaveBeenCalled()
+  })
+
+  it('keeps terminal escape clipboard delivery explicitly unverified', async () => {
+    const f = fixture()
+    mountRemoteCopyOperations(f.context)
+    f.copy.mockResolvedValueOnce('osc52')
+    await f.run()
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('copied via terminal escape sequence (unverified, 5 characters)', 'success')
   })
 
   it('reports missing selection and clipboard without reading the projection', async () => {
@@ -117,7 +125,7 @@ describe('mountRemoteCopyOperations', () => {
     mountRemoteCopyOperations(f.context)
     f.select(undefined)
     await f.run()
-    expect(f.notice.set).toHaveBeenCalledWith('No current session')
+    expect(f.notice.set).toHaveBeenCalledWith('no session is live yet')
     expect(f.snapshot).not.toHaveBeenCalled()
     const unavailable = fixture({ withoutCopy: true })
     mountRemoteCopyOperations(unavailable.context)
@@ -175,7 +183,7 @@ describe('mountRemoteCopyOperations', () => {
     mountRemoteCopyOperations(f.context)
     f.copy.mockRejectedValueOnce(new Error('clipboard closed'))
     await f.run()
-    expect(f.notice.set).toHaveBeenCalledWith('Could not copy: clipboard closed')
+    expect(f.notice.set).toHaveBeenCalledWith('could not copy to clipboard: clipboard closed')
     f.snapshot.mockImplementationOnce(() => { throw new Error('projection offline') })
     await expect(f.run()).rejects.toThrow('projection offline')
     f.snapshot.mockImplementationOnce(() => { f.select(undefined); throw new Error('obsolete projection error') })

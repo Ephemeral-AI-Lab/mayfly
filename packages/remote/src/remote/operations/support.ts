@@ -29,7 +29,7 @@ export interface RemotePresentedViewFacts {
 
 /** Narrow integrator seam the operations composition is mounted with. */
 export interface RemoteOperationsOptions {
-  /** Local directory owning `/export` output; writes resolve inside its `mayfly-exports/` child only. */
+  /** Local base directory for relative `/save` and `/export` paths. */
   readonly localCwd: string
   /** BTW orchestration over the integrator's HostActions/HostRegistry pair. */
   readonly btw: RemoteBtwService

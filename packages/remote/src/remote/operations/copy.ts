@@ -14,11 +14,12 @@ import {
 } from './support.ts'
 
 const zh: Readonly<Record<string, string>> = {
-  'Copied {count} characters': '已复制 {count} 个字符',
-  'No assistant reply to copy yet': '还没有可复制的助手回复',
+  'copied the last assistant message ({count} characters)': '已复制最后一条助手消息（{count} 个字符）',
+  'copied via terminal escape sequence (unverified, {count} characters)': '已通过终端转义序列复制（未经验证，{count} 个字符）',
+  'no assistant message to copy': '没有可复制的助手消息',
   'Clipboard is unavailable in this frontend': '当前前端不支持剪贴板',
-  'Could not copy: {message}': '复制失败：{message}',
-  'No current session': '当前没有会话',
+  'could not copy to clipboard: {message}': '无法复制到剪贴板：{message}',
+  'no session is live yet': '还没有正在运行的会话',
   'Usage: /copy': '用法：/copy',
   'Conversation projection is unavailable': '会话投影不可用',
 }
@@ -50,7 +51,7 @@ class RemoteCopyCommand extends RemoteFeatureController<RemoteOperationsContext[
     // here would surface as 'Submission was not confirmed; no retry was sent',
     // which reads like a transport fault. Every other Remote command notices.
     if (current === undefined) {
-      this.copyContext.base.notice.set(this.t('No current session'))
+      this.copyContext.base.notice.set(this.t('no session is live yet'))
       return undefined
     }
     const copy = this.copyContext.options.copy
@@ -66,18 +67,20 @@ class RemoteCopyCommand extends RemoteFeatureController<RemoteOperationsContext[
       if (projection === undefined) throw new Error(this.t('Conversation projection is unavailable'))
       const text = latestAssistantText(projection.entries)
       if (text === undefined) {
-        this.copyContext.base.notice.set(this.t('No assistant reply to copy yet'))
+        this.copyContext.base.notice.set(this.t('no assistant message to copy'))
         return
       }
       try {
-        await copy(text)
+        const method = await copy(text)
+        if (!operation.valid()) return
+        this.copyContext.base.notice.set(this.t(method === 'osc52'
+          ? 'copied via terminal escape sequence (unverified, {count} characters)'
+          : 'copied the last assistant message ({count} characters)', { count: text.length }), 'success')
       } catch (error: unknown) {
         // Clipboard refusal is an outcome; it must still belong to the displayed Session.
-        if (operation.valid()) this.copyContext.base.notice.set(this.t('Could not copy: {message}', { message: remoteErrorMessage(error) }))
+        if (operation.valid()) this.copyContext.base.notice.set(this.t('could not copy to clipboard: {message}', { message: remoteErrorMessage(error) }))
         return
       }
-      if (!operation.valid()) return
-      this.copyContext.base.notice.set(this.t('Copied {count} characters', { count: text.length }))
     } catch (error: unknown) {
       if (operation.valid()) throw error
     } finally { operation.dispose() }
