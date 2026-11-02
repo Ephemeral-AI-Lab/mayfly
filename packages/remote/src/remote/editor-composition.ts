@@ -57,6 +57,7 @@ interface EditorCompositionOptions {
 /** Attach editor features once and fence their selection, reconnect, and local process lifetimes. */
 export function mountEditorComposition(options: EditorCompositionOptions): EditorCompositionHandle {
   let generation = 0
+  let disposed = false
   const session = (): EditorFeatureSession | undefined => {
     if (options.selection !== undefined) {
       const current = options.selection()
@@ -135,21 +136,26 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     for (const client of attached) {
       if (connectionListeners.has(client)) continue
       connectionGenerations.set(client, client.state.getSnapshot().generation)
-      connectionListeners.set(client, client.state.subscribe(() => {
+      let active = true
+      const stop = client.state.subscribe(() => {
+        if (!active) return
         const snapshot = client.state.getSnapshot()
         if (connectionGenerations.get(client) === snapshot.generation) return
         connectionGenerations.set(client, snapshot.generation)
         generation += 1
         controller.hostReconnected()
-      }))
+      })
+      connectionListeners.set(client, () => { active = false; stop() })
     }
   }
   const offTopology = options.app.subscribeTopology(() => {
+    if (disposed) return
     generation += 1
     syncConnections()
     controller.selectionChanged()
   })
   const offSelection = options.subscribeSelection?.(() => {
+    if (disposed) return
     generation += 1
     controller.selectionChanged()
   })
@@ -157,6 +163,8 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
   return {
     controller,
     dispose() {
+      if (disposed) return
+      disposed = true
       offTopology()
       offSelection?.()
       for (const dispose of connectionListeners.values()) dispose()

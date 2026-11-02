@@ -38,7 +38,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   The editor uses shared readonly `Editor` and placeholder models. Theme swaps
   call its `retheme` handle around the same native editor, preserving its draft,
   caret, undo, history, paste, and completion state. Notification clocks and core
-  focus/tail/prompt listeners belong to that mount and stop on unload.
+  focus/tail/prompt listeners belong to that mount and stop on unload. Editor
+  composition retires each connection subscription independently; queued
+  callbacks from a detached subscription or disposed composition cannot call
+  the current editor controller, including after the same Client reattaches.
 - `/plugin` consumes the shared rc.2 marketplace presentation and calls the
   official selected Host plugin manager for every install, remove, and enable.
   Its catalog, installed rows, notifications, and restart chip belong to one
