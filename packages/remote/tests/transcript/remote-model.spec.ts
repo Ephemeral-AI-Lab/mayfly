@@ -14,8 +14,27 @@ import { foldConversationProjection, initialConversationState } from '../../../h
 import { HostKey } from '../../src/client/types.ts'
 import { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
 import type { ToolPresentationSource } from '@ephemeral-ai/mayfly/transcript'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 
 const tools = { get: () => undefined } as ToolPresentationSource
+
+function nativeCatalog(effort = 'high'): ModelCatalog {
+  return {
+    default: { provider: 'provider', model: 'model' },
+    groups: [{ id: 'provider', name: 'Provider', models: [{ id: 'model', name: 'Model', reasoning: { efforts: [], defaultEffort: effort } }] }],
+    failures: [], routableProviders: ['provider'],
+  } as unknown as ModelCatalog
+}
+
+function requestHeader(provider = 'provider', model = 'model', effort: string | null = 'high', seq = 1): SessionEventLikeEntry {
+  return {
+    type: 'event',
+    event: { type: 'request/header', seq: SessionSeq(seq), time: 0, data: { header: {
+      config: { provider, model, ...effort === null ? {} : { reasoningEffort: effort } },
+      adapterDefaults: { reasoningEffort: true }, tools: [],
+    } } },
+  } as unknown as SessionEventLikeEntry
+}
 
 function projection<T>(initial: T) {
   let value = initial
@@ -481,6 +500,95 @@ describe('RemoteConversationModelSource', () => {
     expect(source.presentation().reasoningEffort).toBeUndefined()
     source.attach(null)
     expect(source.presentation()).toMatchObject({ cwd: '/host/startup', model: 'model', reasoningEffort: 'low' })
+    source.dispose()
+  })
+
+  it('restores an admitted default effort while wire next aliases lastUsed, without pinning the selection', () => {
+    const events = new TestEventSource()
+    events.replace([requestHeader()], false)
+    const native = { provider: 'provider', model: 'model' }
+    const selected = projection<unknown>({ next: native, lastUsed: native })
+    const source = new RemoteConversationModelSource(tools, vi.fn())
+    source.setDefaultModel({ ...native, reasoningEffort: 'max' })
+    source.attach(events.binding({ modelSelection: selected }), { ref: { host: HostKey('host'), sessionId: SessionId('same-session') }, cwd: '' })
+    expect(source.presentation()).toMatchObject({ ...native, reasoningEffort: 'high' })
+    expect(selected.getSnapshot()).toEqual({ next: native, lastUsed: native })
+    events.append(requestHeader('provider', 'model', 'low', 2))
+    expect(source.presentation().reasoningEffort).toBe('low')
+    events.append(requestHeader('provider', 'model', null, 3))
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    source.dispose()
+  })
+
+  it('never carries an old header or catalog level into a pending route or default-effort choice', () => {
+    const events = new TestEventSource()
+    events.replace([requestHeader('provider', 'model', 'max')], false)
+    const previous = { provider: 'provider', model: 'model', reasoningEffort: 'max' }
+    const selected = projection<unknown>({ next: previous, lastUsed: previous })
+    const source = new RemoteConversationModelSource(tools, vi.fn())
+    source.setModelCatalog(HostKey('host'), nativeCatalog())
+    source.attach(events.binding({ modelSelection: selected }), { ref: { host: HostKey('host'), sessionId: SessionId('session') }, cwd: '' })
+    expect(source.presentation().reasoningEffort).toBe('max')
+    selected.set({ next: { provider: 'provider', model: 'model' }, lastUsed: previous })
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    selected.set({ next: { provider: 'provider', model: 'new-model' }, lastUsed: previous })
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    selected.set({ next: { provider: 'other-provider', model: 'model' }, lastUsed: previous })
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    selected.set({ next: { provider: 'provider', model: 'model' }, lastUsed: null })
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    source.dispose()
+  })
+
+  it('resolves a used route from exact Host metadata when its request header is outside the native tail page', () => {
+    const events = new TestEventSource()
+    events.replace([assistant('Long response tail', 1, 200)], true)
+    const native = { provider: 'provider', model: 'model' }
+    const selected = projection<unknown>({ next: native, lastUsed: native })
+    const changed = vi.fn()
+    const source = new RemoteConversationModelSource(tools, vi.fn(), { onPresentation: changed })
+    const catalog = nativeCatalog()
+    source.setModelCatalog(HostKey('first'), catalog)
+    const revision = changed.mock.calls.length
+    source.setModelCatalog(HostKey('first'), catalog)
+    expect(changed).toHaveBeenCalledTimes(revision)
+    source.attach(events.binding({ modelSelection: selected }), { ref: { host: HostKey('first'), sessionId: SessionId('same-session') }, cwd: '' })
+    expect(source.presentation().reasoningEffort).toBe('high')
+    source.setVisible(false)
+    events.replace([assistant('Reconnected tail', 1, 201)], true)
+    source.setVisible(true)
+    expect(source.presentation().reasoningEffort).toBe('high')
+    source.attach(events.binding({ modelSelection: selected }), { ref: { host: HostKey('second'), sessionId: SessionId('same-session') }, cwd: '' })
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    source.setModelCatalog(HostKey('second'), nativeCatalog('low'))
+    expect(source.presentation().reasoningEffort).toBe('low')
+    source.setModelCatalog(HostKey('second'), undefined)
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    source.attach(null)
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    source.dispose()
+    const after = changed.mock.calls.length
+    source.setModelCatalog(HostKey('first'), nativeCatalog('max'))
+    expect(changed).toHaveBeenCalledTimes(after)
+  })
+
+  it('does not invent effective metadata for an unavailable provider, model, or non-reasoning route', () => {
+    const events = new TestEventSource()
+    events.replace([requestHeader('other-provider', 'other-model')], false)
+    const selected = projection<unknown>({ next: { provider: 'provider', model: 'model' }, lastUsed: { provider: 'provider', model: 'model' } })
+    const source = new RemoteConversationModelSource(tools, vi.fn())
+    source.attach(events.binding({ modelSelection: selected }), { ref: { host: HostKey('host'), sessionId: SessionId('session') }, cwd: '' })
+    source.setModelCatalog(HostKey('host'), nativeCatalog())
+    expect(source.presentation().reasoningEffort).toBe('high')
+    for (const [provider, model] of [['absent', 'model'], ['provider', 'absent']]) {
+      const route = { provider, model }
+      selected.set({ next: route, lastUsed: route })
+      expect(source.presentation().reasoningEffort).toBeUndefined()
+    }
+    const route = { provider: 'provider', model: 'plain' }
+    selected.set({ next: route, lastUsed: route })
+    source.setModelCatalog(HostKey('host'), { ...nativeCatalog(), groups: [{ id: 'provider', name: 'Provider', models: [{ id: 'plain', name: 'Plain' }] }] })
+    expect(source.presentation().reasoningEffort).toBeUndefined()
     source.dispose()
   })
 

@@ -143,8 +143,19 @@ describe('mountRemoteStatus', () => {
       expect(mounted.rows(120)[0]).toContain('Max')
       mounted.update({ presentation: fallback, values: { modelSelection: { next: null, lastUsed: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' } } } })
       expect(mounted.rows(120)[0]).toContain('High')
-      mounted.update({ presentation: fallback, values: { modelSelection: { next: { provider: 'deepseek', model: 'deepseek-chat' }, lastUsed: null } } })
+      mounted.update({ presentation: facts(), values: { modelSelection: { next: { provider: 'deepseek', model: 'deepseek-chat' }, lastUsed: null } } })
       expect(mounted.rows(120)[0]).not.toContain('Max')
     } finally { await mounted.owner.dispose() }
+  })
+
+  it('renders a used route effective effort and rejects a presentation from another route', async () => {
+    const native = { provider: 'deepseek', model: 'deepseek-chat' }
+    const mounted = await mount({ presentation: facts({ reasoningEffort: 'high' }), values: { modelSelection: { next: native, lastUsed: native } } })
+    expect(mounted.rows(120)[0]).toContain('High')
+    mounted.update({ presentation: facts({ reasoningEffort: 'high' }), values: { modelSelection: { next: { provider: 'other', model: 'deepseek-chat' } } } })
+    expect(mounted.rows(120)[0]).not.toContain('High')
+    mounted.update({ presentation: facts({ reasoningEffort: 'high' }), values: { modelSelection: { next: { provider: 'deepseek', model: 'other' } } } })
+    expect(mounted.rows(120)[0]).not.toContain('High')
+    await mounted.owner.dispose()
   })
 })

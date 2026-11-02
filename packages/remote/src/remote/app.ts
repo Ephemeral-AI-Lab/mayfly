@@ -146,8 +146,19 @@ export class RemoteApp {
     const client = await this.registry.attach(key)
     if (generation === this.defaultModelGeneration) this.activeHost = key
     this.publishTopology()
-    const [, defaultModel] = await Promise.all([client.sessions.refresh(), this.actions.defaultModel(key)])
-    if (generation === this.defaultModelGeneration) this.conversation.setDefaultModel(defaultModel)
+    const connection = client.state.getSnapshot().generation
+    const current = (): boolean => generation === this.defaultModelGeneration
+      && this.registry.get(key) === client && client.state.getSnapshot().generation === connection
+    const result = await Promise.all([client.sessions.refresh(), this.actions.modelCatalog(key)]).catch(error => {
+      if (current()) throw error
+      return undefined
+    })
+    if (current() && result !== undefined) {
+      const catalog = result[1]
+      if (!catalog.ok) throw catalog.error
+      this.conversation.setModelCatalog(key, catalog.value)
+      this.conversation.setDefaultModel(catalog.value.default)
+    }
     return client
   }
 
@@ -345,6 +356,7 @@ export class RemoteApp {
         this.creating = undefined
         this.planPreparation = undefined
         this.defaultModelGeneration += 1
+        this.conversation.setModelCatalog(host, undefined)
         this.conversation.setDefaultModel(undefined)
         this.conversation.attach(null)
         const detaching = this.registry.detach(host)

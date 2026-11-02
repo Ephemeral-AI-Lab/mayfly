@@ -4,12 +4,14 @@
  */
 import type {
   SessionBinding, SessionEventSource, SessionSnapshot,
+  SessionEventLikeEntry,
 } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ConversationFactsState, ConversationImage, ConversationProjection } from '@ephemeral-ai/mayfly/conversation'
 import { freezeModel, type TranscriptEntryModel, type TranscriptModel } from '@ephemeral-ai/mayfly/frontend'
 import { conversationTranscriptModel, createTranscriptModel } from '@ephemeral-ai/mayfly/transcript'
 import type { ToolPresentationSource } from '@ephemeral-ai/mayfly/transcript'
-import type { SessionRef } from '../client/types.ts'
+import type { HostKey, SessionRef } from '../client/types.ts'
 import { projectLiveConversation, type RemoteLiveConversation } from '../conversation/live.ts'
 import {
   RemoteSessionFactsSource,
@@ -72,6 +74,7 @@ export class RemoteConversationModelSource {
   private durableValue: unknown
   private live: RemoteLiveConversation | undefined
   private defaultModel: RemoteModelSelection | undefined
+  private readonly modelCatalogs = new Map<HostKey, ModelCatalog>()
   private generation = 0
   private attachmentGeneration = 0
   private revision = -1
@@ -139,22 +142,36 @@ export class RemoteConversationModelSource {
     this.options.onPresentation?.()
   }
 
+  /** Retain a native metadata snapshot under its physical Host identity; selection remains native projection state. */
+  setModelCatalog(host: HostKey, catalog: ModelCatalog | undefined): void {
+    if (this.disposed || this.modelCatalogs.get(host) === catalog) return
+    if (catalog === undefined) this.modelCatalogs.delete(host)
+    else this.modelCatalogs.set(host, catalog)
+    this.options.onPresentation?.()
+  }
+
   /** Return the current selected Session's immutable banner and footer facts. */
   presentation(): RemotePresentationFacts {
     const snapshot = this.facts.snapshot()
     const selectedModel = readModelSelection(snapshot.values['modelSelection'])
+    const recordedModel = readRecordedModelSelection(snapshot.values['modelSelection'])
+    const ref = this.selection?.ref ?? snapshot.ref
+    const catalog = ref === undefined ? undefined : this.modelCatalogs.get(ref.host)
+    const effort = selectedModel === undefined
+      ? this.defaultModel?.reasoningEffort
+      : selectedModel.reasoningEffort ?? recordedEffort(this.source?.getSnapshot().entries, selectedModel, recordedModel, catalog)
     const context = readContextPressure(snapshot.values['contextPressure'])
     const active = snapshot.session?.running === true
       || this.durable.streaming
       || this.live?.projection.streaming === true
     const title = snapshot.values['title']
     return {
-      ref: this.selection?.ref ?? snapshot.ref,
+      ref,
       cwd: snapshot.cwd !== '' ? snapshot.cwd : this.selection?.cwd ?? this.options.defaultCwd ?? '',
       title: typeof title === 'string' ? title : undefined,
       model: selectedModel?.model ?? this.defaultModel?.model,
       provider: selectedModel?.provider ?? this.defaultModel?.provider,
-      ...((selectedModel ?? this.defaultModel)?.reasoningEffort === undefined ? {} : { reasoningEffort: (selectedModel ?? this.defaultModel)!.reasoningEffort! }),
+      ...effort === undefined ? {} : { reasoningEffort: effort },
       mode: snapshot.values['permissions'],
       status: snapshot.session,
       contextTokens: context.contextTokens,
@@ -237,6 +254,7 @@ export class RemoteConversationModelSource {
     this.source = null
     this.binding = null
     this.selection = undefined
+    this.modelCatalogs.clear()
     this.generation += 1
     this.attachmentGeneration += 1
     this.revision = -1
@@ -376,6 +394,28 @@ function readContextPressure(value: unknown): { readonly contextTokens: number, 
 function readModelSelection(value: unknown): RemoteModelSelection | undefined {
   if (!isRecord(value)) return undefined
   return readModelRoute(value['next']) ?? readModelRoute(value['lastUsed'])
+}
+
+/** The wire's `next` includes `lastUsed`; equality, rather than nullness, distinguishes a pending choice. */
+function readRecordedModelSelection(value: unknown): RemoteModelSelection | undefined {
+  return isRecord(value) ? readModelRoute(value['lastUsed']) : undefined
+}
+
+/** Read an admitted request's effective level without inheriting it into a new model/effort choice. */
+function recordedEffort(
+  entries: readonly SessionEventLikeEntry[] | undefined,
+  selected: RemoteModelSelection,
+  lastUsed: RemoteModelSelection | undefined,
+  catalog: ModelCatalog | undefined,
+): string | undefined {
+  if (lastUsed === undefined || selected.provider !== lastUsed.provider || selected.model !== lastUsed.model
+    || selected.reasoningEffort !== lastUsed.reasoningEffort) return undefined
+  const latest = entries?.findLast(entry => entry.type === 'event' && entry.event.type === 'request/header')
+  if (latest?.type === 'event' && latest.event.type === 'request/header') {
+    const request = latest.event.data.header.config
+    if (request.provider === selected.provider && request.model === selected.model) return request.reasoningEffort
+  }
+  return catalog?.groups.find(group => group.id === selected.provider)?.models.find(model => model.id === selected.model)?.reasoning?.defaultEffort
 }
 
 function readModelRoute(value: unknown): RemoteModelSelection | undefined {

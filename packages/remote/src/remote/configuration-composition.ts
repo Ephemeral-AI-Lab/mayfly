@@ -6,7 +6,7 @@
  */
 
 import type { HostClient } from '../client/types.ts'
-import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ModelCatalog, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import type { RemoteFeatureCommandSource } from './features/commands.ts'
 import { RemoteAccountNodeIO } from './features/configuration-account.ts'
 import { RemoteConfigurationHost } from './features/configuration-host.ts'
@@ -30,6 +30,8 @@ export interface RemoteConfigurationCompositionOptions {
   readonly copy?: (text: string) => Promise<void>
   /** Publish the native confirmed default route to the active Host's footer. */
   readonly onDefaultModelSelected?: (client: HostClient, selected: ModelSelection) => void
+  /** Publish a native catalog snapshot only after the configuration operation confirms its generation. */
+  readonly onModelCatalogObserved?: (client: HostClient, catalog: ModelCatalog) => void
 }
 
 /** Mounted configuration composition plus its lifetime. */
@@ -53,6 +55,7 @@ export function mountRemoteConfigurationComposition(
     accountIO,
     clientVersion: options.clientVersion,
     host,
+    ...options.onModelCatalogObserved === undefined ? {} : { catalogObserved: options.onModelCatalogObserved },
     ...options.edit === undefined ? {} : { settingsEdit: options.edit },
   })
   const currentClient = (): HostClient | undefined =>

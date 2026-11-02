@@ -88,6 +88,11 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   bounded current-attempt stream overlay; they never fold a second durable
   history or facts store. Only live command completion produces a notice.
   Reconnect replaces the baseline and historical commands never replay notices.
+  Effective reasoning labels may read an admitted native request header or the
+  exact Host/route's native model catalog when that header is outside the tail
+  page. A pending selection never inherits an older request's effort; metadata
+  refreshes are generation-fenced and never turn a provider default into an
+  explicit model-selection write.
 - Slash-command images use native encoded attachments. The official command
   DTO lacks file-upload receipts: refuse commands with staged files, restore
   their draft, and explicitly state that no command was sent. Ordinary prompts

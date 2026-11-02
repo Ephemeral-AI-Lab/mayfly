@@ -83,6 +83,7 @@ function appFixture() {
   const conversation = {
     attach: vi.fn(),
     setDefaultModel: vi.fn(),
+    setModelCatalog: vi.fn(),
     presentation: vi.fn(() => ({ cwd: '/workspace', contextTokens: 0, active: false, phase: 'idle' })),
   } as unknown as RemoteConversationModelSource
   const status = { set: vi.fn() } as RemoteNotice
@@ -453,8 +454,56 @@ describe('RemoteApp', () => {
     await attaching
     expect(conversation.setDefaultModel).toHaveBeenCalledWith({ model: 'new-model', provider: 'new-provider' })
     expect(conversation.setDefaultModel).not.toHaveBeenCalledWith({ model: 'old-model', provider: 'old-provider' })
+    expect(conversation.setModelCatalog).toHaveBeenCalledWith(second.client.key, expect.objectContaining({ default: { model: 'new-model', provider: 'new-provider' } }))
+    expect(conversation.setModelCatalog).not.toHaveBeenCalledWith(first.client.key, expect.anything())
     await app.execute('/detach')
     expect(conversation.setDefaultModel).toHaveBeenCalledWith(undefined)
+    expect(conversation.setModelCatalog).toHaveBeenCalledWith(second.client.key, undefined)
+  })
+
+  it('fences native model metadata across a physical reconnection or a detached Client', async () => {
+    for (const invalidate of ['reconnect', 'detach'] as const) {
+      const fixture = clientFixture(HostKey('http://host/'))
+      let generation = 1
+      fixture.client.state.getSnapshot = () => ({ status: 'connected', generation })
+      let settle!: (value: unknown) => void
+      fixture.client.remote.session.modelCatalog = vi.fn(() => new Promise(resolve => { settle = resolve })) as never
+      const { conversation, status, panels } = appFixture()
+      const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+      const attaching = app.attach('http://host/')
+      await vi.waitFor(() => { expect(fixture.client.remote.session.modelCatalog).toHaveBeenCalledOnce() })
+      if (invalidate === 'reconnect') generation += 1
+      else await app.registry.detach(fixture.client.key)
+      settle({ ok: true, value: { default: { provider: 'old', model: 'old' }, groups: [] } })
+      await attaching
+      expect(conversation.setModelCatalog).not.toHaveBeenCalled()
+      expect(conversation.setDefaultModel).not.toHaveBeenCalled()
+    }
+  })
+
+  it('rejects current metadata failures and ignores failures delivered after another Host became active', async () => {
+    const fixture = clientFixture(HostKey('http://current/'))
+    const failure = { code: 'unavailable', message: 'Catalog unavailable' }
+    fixture.client.remote.session.modelCatalog = vi.fn(async () => ({ ok: false, error: failure })) as never
+    const current = appFixture()
+    const app = new RemoteApp(current.conversation, current.status, current.panels, () => fixture.client)
+    await expect(app.attach('http://current/')).rejects.toEqual(failure)
+    expect(current.conversation.setModelCatalog).not.toHaveBeenCalled()
+    fixture.client.remote.session.modelCatalog = vi.fn(async () => { throw new Error('Transport failed') }) as never
+    await expect(app.attach('http://current/')).rejects.toThrow('Transport failed')
+
+    const first = clientFixture(HostKey('http://first/'))
+    const second = clientFixture(HostKey('http://second/'))
+    let reject!: (error: Error) => void
+    first.client.remote.session.modelCatalog = vi.fn(() => new Promise((_, fail) => { reject = fail })) as never
+    const stale = appFixture()
+    const switching = new RemoteApp(stale.conversation, stale.status, stale.panels, key => key === first.client.key ? first.client : second.client)
+    const attaching = switching.attach('http://first/')
+    await vi.waitFor(() => { expect(first.client.remote.session.modelCatalog).toHaveBeenCalledOnce() })
+    await switching.attach('http://second/')
+    reject(new Error('Late transport failure'))
+    await expect(attaching).resolves.toBe(first.client)
+    expect(stale.conversation.setModelCatalog).not.toHaveBeenCalledWith(first.client.key, expect.anything())
   })
 
   it('uses the mounted feature directory without creating or querying a Session at startup', async () => {

@@ -10,6 +10,7 @@ import { interactionTranslator, mountInteractionLocale } from '@ephemeral-ai/may
 import type { HostClient } from '../../client/types.ts'
 import { RemoteAccountController } from './account.ts'
 import type { RemoteConfigurationHost } from './configuration-host.ts'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import { RemoteFeatureCommandRegistry } from './commands.ts'
 import { REMOTE_CONFIGURATION_LOCALE } from './locale.ts'
 import type {
@@ -37,6 +38,7 @@ export type RemoteConfigurationMountContext = Omit<RemoteFeatureContext, 'presen
 export interface RemoteConfigurationAdapters extends RemoteFeatureAdapters {
   readonly host?: RemoteConfigurationHost
   readonly settingsEdit?: RemoteSettingsEdit
+  readonly catalogObserved?: (client: HostClient, catalog: ModelCatalog) => void
 }
 
 /** Controllers exposed for foundation command routing plus their joint lifetime. */
@@ -71,7 +73,7 @@ export function createRemoteConfigurationFeatures(
     presentation,
   }
   const settings = new RemoteSettingsController(context, adapters.host, adapters.settingsEdit)
-  const models = new RemoteModelsController(context, adapters.host, adapters.host)
+  const models = new RemoteModelsController(context, adapters.host, adapters.host, adapters.catalogObserved)
   const account = new RemoteAccountController(context, adapters.accountIO, adapters.clientVersion)
   const providers = new RemoteProvidersController(context, client => account.open(client), adapters.host, adapters.host, adapters.accountIO, route => models.open('', route))
   const permissions = new RemotePermissionsController(context, settings, adapters.host)
