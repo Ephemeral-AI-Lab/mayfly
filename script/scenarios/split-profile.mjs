@@ -45,6 +45,7 @@ export async function launchSplitHost({ root, dshBin, artifacts, baseURL }) {
   const runDir = join(artifacts, 'runs', randomUUID())
   mkdirSync(runDir, { recursive: true })
   const patch = join(runDir, 'overlay.yml')
+  const clockRelease = join(runDir, 'release-clock')
   writeFileSync(patch, [
     `- id: session-persistence-jsonl\n  config:\n    root: ${JSON.stringify(join(runDir, 'sessions'))}`,
     `- id: storage-json\n  config:\n    root: ${JSON.stringify(join(runDir, 'storages'))}`,
@@ -53,7 +54,7 @@ export async function launchSplitHost({ root, dshBin, artifacts, baseURL }) {
   ].join('\n') + '\n')
   const child = spawn(dshBin, ['--profile', 'mayfly-split-test', '--patch', patch, '--host', '127.0.0.1', '--port', '0', '--no-open'], {
     cwd: profile.cwd,
-    env: { ...profile.env, DEEPSEEK_BASE_URL: `${baseURL}/v1`, NODE_OPTIONS: `--import=${pathToFileURL(join(root, 'script/scenarios/clock.mjs')).href}` },
+    env: { ...profile.env, DEEPSEEK_BASE_URL: `${baseURL}/v1`, MAYFLY_SPLIT_CLOCK_RELEASE: clockRelease, NODE_OPTIONS: `--import=${pathToFileURL(join(root, 'script/scenarios/split-clock.mjs')).href}` },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let output = ''
@@ -71,7 +72,7 @@ export async function launchSplitHost({ root, dshBin, artifacts, baseURL }) {
   const started = performance.now()
   for (;;) {
     const url = /mayfly host: (https?:\/\/[^\s\u001b]+)/u.exec(output)?.[1]
-    if (url !== undefined) return { ...profile, child, startupUrl: url, stop, diagnostics: () => redactSplitOutput(output, url) }
+    if (url !== undefined) return { ...profile, child, startupUrl: url, clockRelease, stop, diagnostics: () => redactSplitOutput(output, url) }
     if (spawnError !== undefined || child.exitCode !== null || performance.now() - started > 90_000) {
       await stop()
       throw new Error(`Split Host did not become ready: ${spawnError?.message ?? ''}\n${redactSplitOutput(output)}`)
