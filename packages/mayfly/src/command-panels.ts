@@ -13,3 +13,6 @@ export { agentsPanelModel, type MayflySubagentTreeEntry } from './interaction/ag
 export { renamePanelModel } from './interaction/rename-model.ts'
 export { applyUpdateProgress, createUpdateProgressState, updatePanelModel, type UpdateOutcome, type UpdateProgress, type UpdateProgressState } from './interaction/update-model.ts'
 export { compareVersions } from './interaction/updater/version.ts'
+export { firstSentence, toolItems, toolDetailBody, toolDetailNode, toolsBrowserNode, serverItems as mcpServerItems, serverConfigNode as mcpServerConfigNode, listPanel as mcpListNode, serverPage as mcpServerPageNode, toolPanel as mcpToolNode, resourcePanel as mcpResourceNode, resourceBodyPanel as mcpResourceBodyNode, resourceItems as mcpResourceItems, type McpServerFacts, type McpCatalogFacts, type ResourceState as McpResourceFacts, type ServerTab as McpServerTab } from './interaction/catalog-model.ts'
+export { isLiveJob, sortJobs, formatJobDuration, jobItems, jobDetailsNode, jobOutputNode, jobListPanel } from './interaction/jobs-model.ts'
+export { scheduleNode, formatReminderFrequency, formatReminderRelative, SCHEDULE_TICK_MS } from './interaction/schedule-model.ts'

@@ -5,7 +5,6 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'
-import type { MayflyListItem } from '@ephemeral-ai/mayfly-ui'
 
 /** One page of an MCP resource or resource-template catalog. */
 export interface McpResourceCatalog {
@@ -60,12 +59,4 @@ export async function readMcpResource(ctx: Context, agent: Agent, server: string
   return contents.map(content => typeof content.text === 'string' ? content.text : `Binary resource: ${String(content.uri ?? uri)} (${String(content.mimeType ?? 'unknown media type')})`).join('\n\n')
 }
 
-/** The rows of one resource or template page: the name, with the URI as the row's description. */
-export function resourceItems(items: readonly Record<string, unknown>[]): readonly MayflyListItem[] {
-  return items.map((item, index) => ({
-    id: String(index),
-    label: String(item.name ?? item.uri ?? item.uriTemplate ?? index),
-    detail: String(item.description ?? item.uri ?? item.uriTemplate ?? ''),
-    searchText: [item.name, item.uri, item.uriTemplate, item.description].filter(value => typeof value === 'string').join(' '),
-  }))
-}
+export { resourceItems } from './catalog-model.ts'

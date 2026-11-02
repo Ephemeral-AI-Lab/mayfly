@@ -133,6 +133,11 @@ and selected-row stop confirmation. Owners supply native descendant facts and
 localized availability reasons; the model never lists or stops an Agent.
 The Remote router owns command admission; its app-scoped overlay owns locale
 subscriptions, scrolling, focus restoration, and disposal.
+It also exposes the rc.2 MCP/tool catalog, Job browser and reminder builders.
+The private native owners consume the same pure models. Preserve resource URI
+editing, template rows, resource body/back layers and the distinct Job browser
+list; the Jobs status view is a different presentation. Missing tool parameters
+remain absent facts and render the reference empty-schema message.
 
 `trace` exposes the rc.2 timeline, responsive detail nodes, and clipboard
 formatters over readonly native trace facts. Host owns complete Session queries,

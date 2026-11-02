@@ -2,60 +2,21 @@
  * @module @ephemeral-ai/mayfly/interaction/mcp-commands
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-commands'
-import { panel, ui, type MayflyField, type MayflyListItem, type MayflyOverlayHandle, type MayflySubmission, type MayflyTone, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiEventContext, type MayflyUiNode, type MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/locale.ts'
-import { collectMcpServers, type McpCatalog, type McpServerView, type McpStatus } from './mcp-servers.ts'
-import { listMcpResources, readMcpResource, resourceItems } from './mcp-resources.ts'
-import { firstSentence } from './tools-commands.ts'
+import { type MayflyOverlayHandle, type MayflySubmission, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiEventContext, type MayflyUiNode, type MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
+import { collectMcpServers, type McpCatalog } from './mcp-servers.ts'
+import { listMcpResources, readMcpResource } from './mcp-resources.ts'
+import { listPanel, serverPage, toolPanel, resourcePanel, resourceBodyPanel } from './catalog-model.ts'
+export { serverItems, serverConfigNode, mcpServerNode } from './catalog-model.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 
 export const name = 'mayfly-mcp-command'
 export const inject = ['commands', 'tools', 'mayflyCurrentAgent', 'mayflyOverlays']
-const STATUS_ORDER: readonly McpStatus[] = ['no-tools', 'restricted', 'synced']
-const STATUS_TONE: Readonly<Record<McpStatus, MayflyTone>> = { synced: 'success', restricted: 'warning', 'no-tools': 'warning' }
 const SERVER_TABS = ['tools', 'config', 'resources'] as const
 type ServerTab = typeof SERVER_TABS[number]
 type Page = 'list' | 'server' | 'tool' | 'resource' | 'body'
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error)
-
-export function serverItems(catalog: McpCatalog, t: MayflyTranslate): readonly MayflyListItem[] {
-  return catalog.servers.toSorted((left, right) => STATUS_ORDER.indexOf(left.status) - STATUS_ORDER.indexOf(right.status) || left.serverName.localeCompare(right.serverName)).map(server => ({
-    id: server.entryId, label: server.serverName,
-    cells: [
-      { spans: [{ text: t(server.status), tone: STATUS_TONE[server.status] }], min: 10, shed: 2 },
-      { spans: [{ text: t('{visible}/{registered} tools', { visible: server.toolsVisible.length, registered: server.registeredCount }) }], align: 'right', min: 12, shed: 1 },
-    ],
-    searchText: server.serverName,
-  }))
-}
-
-function field(label: string, text: string, tone: MayflyTone = 'default'): MayflyField { return { label, value: [{ text, tone }] } }
-
-export function serverConfigNode(server: McpServerView, t: MayflyTranslate): MayflyUiNode {
-  return ui.stack.column([
-    ui.divider({ label: t('Status') }),
-    ui.fields([
-      field(t('Status'), t(server.status), STATUS_TONE[server.status]),
-      field(t('Registered tools'), String(server.registeredCount)),
-      field(t('Visible tools'), String(server.toolsVisible.length)),
-    ]),
-    ...server.status === 'no-tools' ? [ui.text(t('No tools registered; connection state is unavailable'), { tone: 'muted' })] : [],
-    ...server.status === 'restricted' ? [ui.text(t('Tools are registered but restricted for this Agent'), { tone: 'muted' })] : [],
-    /* No native service reports an MCP client's transport, endpoint, or
-       health. Label the fields unresolved instead of showing a fabricated
-       connection or reading a loader entry. */
-    ui.divider({ label: t('Connection') }),
-    ui.fields([
-      field(t('Transport'), t('(not resolved)')),
-      field(t('Endpoint'), t('(not resolved)')),
-    ]),
-  ])
-}
-
-/** The per-server page state: the active tab and, once read, the resource catalog. */
 interface ResourceState {
   readonly templates: boolean
   items: Record<string, unknown>[]
@@ -64,7 +25,6 @@ interface ResourceState {
   loaded: boolean
   error: string | undefined
 }
-
 interface ViewState {
   page: Page
   serverId: string
@@ -72,88 +32,10 @@ interface ViewState {
   toolName: string | undefined
   resource: ResourceState | undefined
   resourceIndex: number | undefined
-  bodyText: string
-  bodyLabel: string
+  bodyText: string | undefined
+  bodyLabel: string | undefined
 }
-
-const emptyState = (): ViewState => ({ page: 'list', serverId: '', tab: 'tools', toolName: undefined, resource: undefined, resourceIndex: undefined, bodyText: '', bodyLabel: '' })
-
-function listPanel(catalog: McpCatalog, available: boolean, t: MayflyTranslate): MayflyUiNode {
-  return panel({ title: t('MCP servers'), escapeLabel: 'close', body: ui.stack.column([
-    ...available ? [] : [ui.text(t('MCP catalog unavailable; showing the last snapshot'), { tone: 'danger' })],
-    ui.list({ id: 'servers', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash', items: serverItems(catalog, t), empty: ui.empty({ title: t('No MCP servers are declared') }) }),
-    ...catalog.orphanCount === 0 ? [] : [ui.text(t('{count} registered MCP tools have no declared server', { count: catalog.orphanCount }), { tone: 'muted' })],
-    ui.actions({ id: 'mcp-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
-  ]) })
-}
-
-function serverPage(server: McpServerView, tab: ServerTab, resources: ResourceState | undefined, t: MayflyTranslate): MayflyUiNode {
-  const prefix = `mcp__${server.serverName}__`
-  const tools = server.toolsVisible.map(schema => ({ id: schema.name, label: schema.name.slice(prefix.length), detail: firstSentence(schema.description) }))
-  const toolPage = ui.list({ id: 'tools', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items: tools, empty: ui.empty({ title: t(server.registeredCount > 0 ? 'No tools visible to this session' : 'No tools registered') }) })
-  const configPage = ui.scroll(serverConfigNode(server, t), { scrollbar: true })
-  let resourcesPage: MayflyUiNode
-  if (resources === undefined || resources.loading && resources.items.length === 0) {
-    resourcesPage = ui.loader({})
-  } else if (resources.error !== undefined) {
-    resourcesPage = ui.text(resources.error, { tone: 'danger', overflow: 'wrap' })
-  } else {
-    resourcesPage = ui.stack.column([
-      ui.text(resources.templates ? t('Templates') : t('Resources'), { tone: 'muted' }),
-      ui.list({ id: 'resources', role: 'browse', filterable: true, filterMode: 'slash', selectedIds: [], items: resourceItems(resources.items), empty: ui.empty({ title: 'No resources' }) }),
-      ...resources.loading ? [ui.loader({})] : [],
-    ])
-  }
-  return panel({ title: server.serverName, escapeLabel: 'back', body: ui.stack.column([
-    ui.tabs({ id: 'server-pages', activeId: tab, items: [
-      { id: 'tools', label: t('Tools'), count: server.toolsVisible.length },
-      { id: 'config', label: t('Configuration') },
-      { id: 'resources', label: t('Resources') },
-    ] }),
-    ui.child(toolPage, { tab: { controlId: 'server-pages', itemId: 'tools' }, grow: 1, minSize: 1 }),
-    ui.child(configPage, { tab: { controlId: 'server-pages', itemId: 'config' }, grow: 1, minSize: 1 }),
-    ui.child(resourcesPage, { tab: { controlId: 'server-pages', itemId: 'resources' }, grow: 1, minSize: 1 }),
-    ui.actions({ id: 'server-actions', items: [
-      { id: 'resources', label: t('Resources'), hintLabel: t('resources'), key: 'v', hidden: true },
-      { id: 'templates', label: t('Templates'), hintLabel: t('templates'), key: 't', hidden: true },
-      ...tab === 'resources' && resources?.cursor !== undefined && !resources.loading ? [{ id: 'more', label: t('More'), hintLabel: t('more'), key: 'm', hidden: true }] : [],
-      { id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true },
-    ] }),
-  ]) })
-}
-
-function toolPanel(server: McpServerView, schema: ToolSchema, t: MayflyTranslate): MayflyUiNode {
-  return panel({ title: schema.name, subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([
-    ui.child(ui.scroll(ui.stack.column([
-      ui.fields([{ label: t('Name'), value: [{ text: schema.name }] }]),
-      ui.divider({ label: t('Description') }),
-      schema.description.length === 0 ? ui.text(t('(no description)'), { tone: 'muted' }) : ui.markdown(schema.description),
-      ui.divider({ label: t('Parameters') }),
-      ui.code(JSON.stringify(schema.parameters, null, 2), { language: 'json' }),
-    ]), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
-    ui.actions({ id: 'tool-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] }),
-  ]) })
-}
-
-function resourcePanel(server: McpServerView, resource: ResourceState, index: number, t: MayflyTranslate): MayflyUiNode {
-  const item = resource.items[index]!
-  const initial = String(item.uri ?? item.uriTemplate ?? '')
-  return panel({ title: String(item.name ?? initial), subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([
-    ...typeof item.description === 'string' && item.description !== '' ? [ui.text(item.description, { tone: 'muted', overflow: 'wrap' })] : [],
-    ui.form({ id: 'resource-uri', enterSubmits: 'read', fields: [{ kind: 'input', id: 'uri', label: t('Resource URI'), value: initial }] }),
-    ui.actions({ id: 'resource-actions', items: [{ id: 'read', label: t('Read'), hintLabel: t('read'), hidden: true, read: [{ pagePath: [], formId: 'resource-uri' }] }] }),
-  ]) })
-}
-
-function resourceBodyPanel(server: McpServerView, state: ViewState, t: MayflyTranslate): MayflyUiNode {
-  const text = state.bodyText
-  return panel({ title: state.bodyLabel, subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([ui.child(ui.scroll(ui.text(text === '' ? t('(no output)') : text, { overflow: 'wrap' }), { id: 'resource-body', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]) })
-}
-
-/** The server page with its Tools, Configuration, and Resources tabs, as its own panel. */
-export function mcpServerNode(server: McpServerView, t: MayflyTranslate): MayflyUiNode {
-  return serverPage(server, 'tools', undefined, t)
-}
+const emptyState = (): ViewState => ({ page: 'list', serverId: '', tab: 'tools', toolName: undefined, resource: undefined, resourceIndex: undefined, bodyText: undefined, bodyLabel: undefined })
 
 export function apply(ctx: Context): void {
   mountInteractionLocale(ctx)
