@@ -42,10 +42,6 @@ export type { MayflySettings } from '../frontend/settings.ts'
 import { resolvePresentation, samePresentation } from '../core/presentation.ts'
 import { applyTheme, reloadTheme } from './theme-switch.ts'
 
-function cell(value: unknown): unknown {
-  return typeof (value as { get?: unknown } | null | undefined)?.get === 'function' ? (value as { get(): unknown }).get() : value
-}
-
 /** User token prices by `provider/model` (a dict, typed by hand so the declaration stays portable). */
 const PRICES: z<Record<string, { input: number, output: number, cacheRead?: number, cacheWrite?: number, currency: 'USD' | 'CNY' }>> = z.dict(z.object({
   input: z.number().min(0).required(), output: z.number().min(0).required(), cacheRead: z.number().min(0), cacheWrite: z.number().min(0),
@@ -124,8 +120,7 @@ async function syncTheme(ctx: Context, isUnloaded: () => boolean): Promise<void>
   if (result.kind === 'success') {
     state.lastAppliedTheme = theme
   } else {
-    /* the swap's error results always carry text */
-    ctx.logger.warn(result.text ?? `could not apply theme "${theme}"`)
+    ctx.logger.warn(result.text)
   }
 }
 
@@ -152,7 +147,7 @@ async function syncPresentation(ctx: Context, isUnloaded: () => boolean): Promis
  */
 function syncLocale(ctx: Context): void {
   const value = ctx.get('settings')?.describe().find(entry => String(entry.ns) === 'locale')?.value
-  const host = cell(value !== null && typeof value === 'object' ? (value as Record<string, unknown>).preference : undefined)
+  const host = value !== null && typeof value === 'object' ? (value as Record<string, unknown>).preference : undefined
   const stored = host === 'zh' || host === 'en' ? host : currentMayflySettings(ctx).language
   ctx.get('mayflyLocale')?.setPreference(stored === 'zh' || stored === 'en' ? stored : undefined)
 }

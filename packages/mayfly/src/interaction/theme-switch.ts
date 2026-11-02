@@ -143,7 +143,7 @@ export async function reloadTheme(ctx: Context): Promise<void> {
 }
 
 /** Apply a built-in theme by key for the persisted settings default. */
-export async function applyTheme(ctx: Context, key: string): Promise<CommandResult> {
+export async function applyTheme(ctx: Context, key: string): Promise<{ readonly kind: 'success' | 'error', readonly text: string }> {
   const t = interactionTranslator(ctx)
   const target = BUILTIN.get(key)
   if (target === undefined) {

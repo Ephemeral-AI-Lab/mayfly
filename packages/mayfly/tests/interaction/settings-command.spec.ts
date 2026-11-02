@@ -33,6 +33,63 @@ const save = (entry: MayflyOverlayEntry, fields: readonly MayflySubmittedField[]
 })
 
 describe('native settings UI', () => {
+  it('ignores a captured command after its owning frontend unloads', async () => {
+    const bench = await setup()
+    const handler = bench.commands.entries.get('settings')!.handler
+    await bench.front.dispose()
+    expect(await handler({} as never)).toEqual({ kind: 'success' })
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('does not open a namespace retired while dynamic choices are loading', async () => {
+    const bench = await setup()
+    const gate = Promise.withResolvers<never[]>()
+    bench.ctx.provide('agentPresets', { list: () => gate.promise } as never)
+    const pending = openSettingsNamespace(bench.ctx, NS)
+    await bench.owner.dispose()
+    gate.resolve([])
+    expect(await pending).toBe(false)
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('opens an empty settings rail when its last namespace has retired', async () => {
+    const bench = await setup()
+    await bench.owner.dispose()
+    expect(await bench.commands.entries.get('settings')!.handler({} as never)).toEqual({ kind: 'success' })
+    expect(JSON.stringify(bench.ctx.mayflyUiInteraction.get('overlay', ROOT)!.node)).toContain('No settings namespaces')
+  })
+
+  it('drops a queued refresh when the settings rail closes before the microtask', async () => {
+    const bench = await setup()
+    await bench.open()
+    await flushRequests()
+    bench.ctx.emit('settings/document-updated', NS as never, 1)
+    bench.ctx.mayflyOverlays.close(ROOT)
+    await flushRequests()
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('uses the environment editor for a queued document action after frontend withdrawal', async () => {
+    const bench = await setup()
+    await bench.open()
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === ROOT)!
+    bench.ctx.provide('mayflyScreen', { suspend: async (task: () => Promise<unknown>) => task() } as never)
+    vi.stubEnv('VISUAL', 'environment-editor')
+    vi.spyOn(bench.settings, 'prepareDocument').mockResolvedValue(undefined as never)
+    await bench.front.dispose()
+    expect(bench.ctx.get('mayflyInteractionState')).toBeUndefined()
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'settings-global-actions', actionId: 'open-file' }, actionContext(entry))).toMatchObject({ kind: 'failed', message: 'settings file unavailable' })
+  })
+
+  it('retires a saved form whose namespace becomes opaque', async () => {
+    const bench = await setup()
+    await bench.open()
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === ROOT)!
+    await bench.owner.dispose()
+    bench.settings.register(NS, Schema.object({ opaque: Schema.any() }).volatile())
+    expect(await entry.definition.onEvent!.action!(save(entry), actionContext(entry))).toMatchObject({ kind: 'cancelled', dismiss: true })
+  })
+
   it('browses the namespace rail without a renderer or current Agent and focuses an existing editor', async () => {
     const bench = await setup()
     await bench.ctx.plugin({ name: 'second-settings', inject: ['settings'], apply(ctx: Context) { (ctx.settings as unknown as MemorySettings).register('second-settings', Schema.object({ value: Schema.string().default('x') }).volatile(), { owner: ctx }) } })
@@ -497,9 +554,11 @@ describe('native settings UI', () => {
     caller.abort()
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
 
+    const before = vi.spyOn(bench.ctx, 'on')
     bench.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === ROOT) bench.ctx.mayflyOverlays.close(ROOT) })
     expect(await openSettingsNamespace(bench.ctx, NS)).toBe(true)
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+    expect(before.mock.calls.filter(call => call[0] === 'settings/document-updated')).toEqual([])
 
     bench.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === ROOT) bench.ctx.mayflyOverlays.close(ROOT) })
     await expect(bench.commands.entries.get('settings')!.handler({} as never)).resolves.toEqual({ kind: 'success' })

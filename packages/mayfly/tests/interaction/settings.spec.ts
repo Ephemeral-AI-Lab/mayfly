@@ -147,6 +147,10 @@ function settle(ms = 30): Promise<void> {
 }
 
 describe('mayfly-settings schema and registration', () => {
+  it('keeps other settings while replacing a removed palette with the baseline', () => {
+    expect(resolveConfig({ theme: 'removed-palette', updateCheck: false })).toEqual({ ...settingsPlugin.DEFAULT_SETTINGS, theme: 'dark', updateCheck: false })
+  })
+
   it('resolves every schema default and starts on the composition defaults', () => {
     const ctx = createContext()
     expect(settingsPlugin.currentMayflySettings(ctx)).toEqual(settingsPlugin.DEFAULT_SETTINGS)

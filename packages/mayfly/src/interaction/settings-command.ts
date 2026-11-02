@@ -140,7 +140,7 @@ async function openSettings(ctx: Context, callerSignal?: AbortSignal, initialNs?
     },
   }, initialSnapshot.node, { signal, reopen: 'focus', onClosed: () => teardown?.() })
   /* no await between the focus check and open; only a re-entrant listener could land a same-id overlay here */
-  if (opened === undefined) { releaseLifetime(); return true }
+  if (opened === undefined || opened.closed) { releaseLifetime(); return true }
   handle = opened
   let scheduled = false
   const schedule = (): void => {
