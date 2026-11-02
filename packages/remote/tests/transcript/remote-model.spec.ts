@@ -592,6 +592,94 @@ describe('RemoteConversationModelSource', () => {
     source.dispose()
   })
 
+  it('keeps fork history floors aligned across entries, settled steps, turns, images, and Session facts', () => {
+    const events = new TestEventSource()
+    const durable = foldConversation([turn(1, 1), user('inherited', 2), assistant('old answer', 1, 3), turn(2, 10), user('child reply', 11)])
+    const image = { attachmentId: 'native-image', mediaType: 'image/png', bytes: 1, width: 2, height: 3 } as const
+    const conversation = projection<unknown>({
+      ...durable,
+      entries: durable.entries.map(entry => entry.kind === 'user' && entry.turn === 2 ? { ...entry, images: [image] } : entry),
+      settledSteps: ['1:0', '2:0'],
+    })
+    const source = new RemoteConversationModelSource(tools, vi.fn())
+    const ref = { host: HostKey('host'), sessionId: SessionId('child') }
+    source.attach(events.binding({ mayflyConversation: conversation }), { ref, cwd: '/child', historyFloorSeq: 3 })
+    expect(source.sessionFacts()).toMatchObject({ ref, cwd: '/child' })
+    expect(source.snapshot().entries).toEqual([expect.objectContaining({ kind: 'transcript-user', text: 'child reply' })])
+    expect(source.snapshot().turns?.map(turn => turn.turn)).toEqual([2])
+    expect(source.imageAttachment('native-image')).toEqual(image)
+    expect(source.imageAttachment('missing')).toBeUndefined()
+    source.dispose()
+    expect(source.imageAttachment('native-image')).toBeUndefined()
+  })
+
+  it('ignores malformed durable projections and accepts pressure-only native context facts', () => {
+    const events = new TestEventSource()
+    const conversation = projection<unknown>({ entries: [], streaming: false, settledSteps: [], turns: [] })
+    const pressure = projection<unknown>({ pressureTokens: 64, contextWindow: 128 })
+    const source = new RemoteConversationModelSource(tools, vi.fn())
+    source.attach(events.binding({ mayflyConversation: conversation, contextPressure: pressure }))
+    expect(source.presentation()).toMatchObject({ contextTokens: 64, contextWindow: 128 })
+    for (const value of [{}, { entries: 'bad', streaming: false }, { entries: [], streaming: 1 },
+      { entries: [], streaming: false }, { entries: [], streaming: false, settledSteps: [1] },
+      { entries: [], streaming: false, settledSteps: [], turns: 'bad' }]) {
+      conversation.set(value)
+      expect(source.snapshot().entries).toEqual([])
+    }
+    pressure.set({})
+    expect(source.presentation()).toMatchObject({ contextTokens: 0, contextWindow: undefined })
+    source.dispose()
+    source.setDefaultModel({ provider: 'late', model: 'late' })
+    source.attach(events.binding())
+    expect(source.presentation().model).toBeUndefined()
+  })
+
+  it('refreshes exact-Host tool presentation without converting hidden views and rejects late cache callbacks', () => {
+    let changed!: () => void
+    const unsubscribe = vi.fn()
+    const scoped = { get: vi.fn(() => undefined), source: vi.fn(() => tools), subscribe: vi.fn((listener: () => void) => { changed = listener; return unsubscribe }) }
+    const publish = vi.fn()
+    const source = new RemoteConversationModelSource(scoped, publish)
+    const events = new TestEventSource()
+    const ref = { host: HostKey('host'), sessionId: SessionId('session') }
+    source.attach(events.binding(), { ref, cwd: '' })
+    expect(scoped.source).toHaveBeenLastCalledWith(ref, expect.objectContaining({ entries: [] }))
+    const before = publish.mock.calls.length
+    changed()
+    expect(publish.mock.calls.length).toBeGreaterThan(before)
+    source.setVisible(false)
+    const hidden = publish.mock.calls.length
+    changed()
+    expect(publish).toHaveBeenCalledTimes(hidden)
+    source.setVisible(true)
+    expect(publish.mock.calls.length).toBeGreaterThan(hidden)
+    source.attach(null)
+    source.setVisible(false)
+    changed()
+    source.setVisible(true)
+    expect(source.snapshot().entries).toEqual([])
+    source.dispose()
+    const retired = publish.mock.calls.length
+    changed()
+    expect(publish).toHaveBeenCalledTimes(retired)
+    expect(unsubscribe).toHaveBeenCalledOnce()
+    source.setVisible(false)
+  })
+
+  it.each([
+    [{ type: 'reasoning-delta', index: 0, text: 'Inspect the source' }, 'thinking'],
+    [{ type: 'text-delta', index: 0, text: 'The answer' }, 'composing'],
+    [{ type: 'tool-call-delta', index: 0, id: 'native-call', name: 'bash', argumentsDelta: '{' }, 'waiting'],
+    [{ type: 'block-start', index: 0, blockType: 'file' }, 'waiting'],
+  ])('derives the current presentation phase from native transient %j', (chunk, phase) => {
+    const events = new TestEventSource()
+    const source = new RemoteConversationModelSource(tools, vi.fn())
+    source.attach(events.binding())
+    events.append({ ...live('', 1, 2, 0), event: { ...live('', 1, 2, 0).event, data: { ...live('', 1, 2, 0).event.data, chunk } } } as unknown as SessionEventLikeEntry)
+    expect(source.presentation()).toMatchObject({ active: true, phase })
+    source.dispose()
+  })
+
   it('ignores stale projection callbacks after selecting another Session', () => {
     const events = new TestEventSource()
     let staleTitle!: () => void
