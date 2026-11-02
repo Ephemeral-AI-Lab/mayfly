@@ -115,8 +115,8 @@ export class TranscriptPresentationPolicy {
 
 /**
  * Feed one policy from the host `mayfly` settings section: the current value
- * now, then every `settings/document-updated` for that namespace. The
- * listener is Fiber-owned, so it retires with `ctx`.
+ * now, then native document updates or a resolved frontend settings source.
+ * The listeners and their queued callbacks retire with the calling Fiber.
  * @param ctx - the owning plugin context.
  * @param policy - the tree's policy capsule.
  * @param onChange - called after an update changed an effective value.
@@ -124,7 +124,19 @@ export class TranscriptPresentationPolicy {
 export function followPresentationSettings(ctx: Context, policy: TranscriptPresentationPolicy, onChange: () => void): void {
   const read = (): unknown => ctx.get('mayflyInteractionState')?.settingsSource()
   policy.apply(read())
-  ctx.on('settings/document-updated', (ns) => {
-    if (String(ns) === 'mayfly' && policy.apply(read())) onChange()
+  let disposed = false
+  const update = (): void => {
+    if (!disposed && policy.apply(read())) onChange()
+  }
+  ctx.effect(() => {
+    const offSource = ctx.on('mayfly/settings-source-ready', update)
+    const offDocument = ctx.on('settings/document-updated', (ns) => {
+      if (String(ns) === 'mayfly') update()
+    })
+    return () => {
+      disposed = true
+      offSource()
+      offDocument()
+    }
   })
 }

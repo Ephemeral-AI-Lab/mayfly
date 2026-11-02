@@ -5,7 +5,7 @@ import { buildConversationStatus, interactionTranslator } from '@ephemeral-ai/ma
 import { buildModelStatusNode } from '@ephemeral-ai/mayfly/status-basic-model'
 import { buildCwdStatusNode, shortenCwd } from '@ephemeral-ai/mayfly/status-cwd'
 import { buildContextStatusNode, type ContextStatusValues } from '@ephemeral-ai/mayfly/status-context'
-import { mountStatusFooter } from '@ephemeral-ai/mayfly/transcript'
+import { focusModeNode, mountStatusFooter, transcriptTranslator } from '@ephemeral-ai/mayfly/transcript'
 import type { RemotePresentationFacts } from '../transcript/remote-model.ts'
 
 /** One authoritative Client snapshot paired with the current presentation. */
@@ -32,6 +32,8 @@ export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot
   const model = ctx.mayflyStatus.register({ id: 'mayfly.status.basic', priority: 0, overflow: 'truncate' })
   const cwd = ctx.mayflyStatus.register({ id: 'mayfly.status.cwd', priority: 7, overflow: 'truncate' })
   const conversation = ctx.mayflyStatus.register({ id: 'mayfly.status.conversation-view', priority: 1 })
+  const focus = ctx.mayflyStatus.register({ id: 'mayfly.status.focus', priority: 1 }, null)
+  const focusTranslate = transcriptTranslator(ctx, 'transcript')
   const t = interactionTranslator(ctx)
   const context = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 6, band: 'right', overflow: 'hide' })
   let disposed = false
@@ -67,12 +69,19 @@ export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot
   }
   refresh()
   const unmountFooter = mountStatusFooter(ctx, ctx.mayflyScreen)
-  const release = ctx.effect(() => () => {
-    disposed = true
-    model.dispose()
-    cwd.dispose()
-    conversation.dispose()
-    context.dispose()
+  const release = ctx.effect(() => {
+    const offFocus = ctx.on('mayfly/focus-mode-changed', mode => {
+      if (!disposed) focus.set(focusModeNode(mode, focusTranslate))
+    })
+    return () => {
+      disposed = true
+      offFocus()
+      model.dispose()
+      cwd.dispose()
+      conversation.dispose()
+      context.dispose()
+      focus.dispose()
+    }
   })
   return { refresh, async dispose() {
     await release()

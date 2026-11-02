@@ -322,6 +322,14 @@ published by this shared renderer package.
 
 ## Split frontend consumers
 
+The shared `transcript` entry exposes the presentation policy, resolved-settings
+observer, locale catalog and focus-status builder to independent frontends.
+Each frontend owns its policy capsule and publishes controller focus facts;
+the observer follows both native document updates and frontend settings-source
+replacement, retiring queued callbacks with its Fiber. Core's
+`normalizeWheelInput` is the shared terminal decoder; frontends route its
+structured result to the existing scroll controller instead of decoding ANSI.
+
 `./plugin-marketplace` exposes the shared marketplace component, readonly
 model/facts and discovery catalog. Host plugin mutations remain native Remote
 calls in the independent frontend; this subpath never imports Host services.

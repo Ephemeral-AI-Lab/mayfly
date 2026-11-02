@@ -4,6 +4,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { MayflyStatusService } from '@ephemeral-ai/mayfly-ui/provider'
 import type { MayflyStatusEntry, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { compileMayflyUiNode } from '@ephemeral-ai/mayfly/core'
+import type { focusModeNode } from '@ephemeral-ai/mayfly/transcript'
 import { describe, expect, it, vi } from 'vitest'
 import { plain, plainColors, fakeMayflyComponents } from './render-fixture.ts'
 import { HostKey } from '../../src/client/types.ts'
@@ -12,6 +13,7 @@ import type { RemotePresentationFacts } from '../../src/transcript/remote-model.
 
 const components = fakeMayflyComponents()
 const colors = plainColors()
+type MayflyFocusMode = Parameters<typeof focusModeNode>[0]
 
 function facts(overrides: Partial<RemotePresentationFacts> = {}): RemotePresentationFacts {
   return {
@@ -29,6 +31,7 @@ async function mount(initial: RemoteStatusSnapshot, paths?: { home?: () => strin
   const listeners = new Set<() => void>()
   const lane = { entries: [] as MayflyStatusEntry[], entered: false, active: undefined as string | undefined }
   const dispose = vi.fn()
+  const on = vi.spyOn(ctx, 'on')
   const screen = {
     mountNodeSlot: vi.fn(() => ({ set: (node: MayflyUiNode | null) => { publications.push(node) }, dispose })),
     views: {
@@ -52,10 +55,32 @@ async function mount(initial: RemoteStatusSnapshot, paths?: { home?: () => strin
     expect(compiled.ok).toBe(true)
     return plain((compiled.ok ? compiled.value.component : compiled.errorComponent).render(width)).map(row => row.trimEnd())
   }
-  return { status, publications, screen, lane, listeners, owner, handle, rows, update(next: RemoteStatusSnapshot) { snapshot = next; handle.refresh() } }
+  return { ctx, on, status, publications, screen, lane, listeners, owner, handle, rows, update(next: RemoteStatusSnapshot) { snapshot = next; handle.refresh() } }
 }
 
 describe('mountRemoteStatus', () => {
+  it('shows the shared inverse focus chip and withdraws it on prompt return and unload', async () => {
+    const mounted = await mount({ presentation: facts(), values: {} })
+    try {
+      const queued = mounted.on.mock.calls.find(call => call[0] === 'mayfly/focus-mode-changed')?.[1] as ((mode: MayflyFocusMode) => void) | undefined
+      expect(queued).toBeTypeOf('function')
+      for (const mode of ['conversation', 'search', 'search-select', 'view'] as const) {
+        mounted.ctx.emit('mayfly/focus-mode-changed', mode)
+        const node = mounted.status.list().find(entry => entry.id === 'mayfly.status.focus')!.node
+        expect(node).toMatchObject({ kind: 'rich-text', spans: [{ text: ` ${mode === 'search-select' ? 'search' : mode} `, tone: 'primary', styles: ['strong', 'inverse'] }] })
+        expect(mounted.rows(160).join('\n')).toContain(mode === 'search-select' ? 'search' : mode)
+        for (const width of [1, 8, 20, 40, 80, 160]) {
+          expect(mounted.rows(width).every(row => components.visibleWidth(row) <= width)).toBe(true)
+        }
+      }
+      mounted.ctx.emit('mayfly/focus-mode-changed', 'prompt')
+      expect(mounted.status.list().find(entry => entry.id === 'mayfly.status.focus')!.node).toBeNull()
+      await mounted.handle.dispose()
+      queued!('conversation')
+      mounted.ctx.emit('mayfly/focus-mode-changed', 'search')
+      expect(mounted.status.list()).toEqual([])
+    } finally { await mounted.owner.dispose() }
+  })
   it('renders native occupancy/cache and paired effort in the rc.2 single row', async () => {
     const current: RemoteStatusSnapshot = {
       presentation: facts(),
@@ -74,13 +99,13 @@ describe('mountRemoteStatus', () => {
     expect(text.match(/50%/gu)).toHaveLength(2)
     expect(text).not.toContain('Remote architecture')
     expect(mounted.screen.mountNodeSlot).toHaveBeenCalledWith('status.footer', { region: 'footer' })
-    const revisions = mounted.status.list().map(entry => entry.revision)
+    const revisions = mounted.status.list().filter(entry => entry.id !== 'mayfly.status.basic').map(entry => entry.revision)
     const before = mounted.publications.length
     mounted.handle.refresh()
     expect(mounted.publications).toHaveLength(before)
     mounted.update({ ...current, values: { ...current.values, modelSelection: { next: { provider: 'deepseek', model: 'deepseek-chat' } } } })
     expect(mounted.rows(160).join('\n')).not.toContain(' Max')
-    expect(mounted.status.list().filter(entry => entry.id !== 'mayfly.status.basic').map(entry => entry.revision)).toEqual(revisions.slice(1))
+    expect(mounted.status.list().filter(entry => entry.id !== 'mayfly.status.basic').map(entry => entry.revision)).toEqual(revisions)
     await mounted.owner.dispose()
   })
 

@@ -5,3 +5,6 @@ export type { TranscriptControllerOptions } from './transcript/transcript-model.
 export type { ToolPresentationSource } from './transcript/present.ts'
 export type { ToolPresentationFacts } from './transcript/tool-model.ts'
 export { mountStatusFooter } from './transcript/status-rows.ts'
+export { focusModeNode } from './transcript/status-focus.ts'
+export { TranscriptPresentationPolicy, followPresentationSettings } from './transcript/presentation-policy.ts'
+export { TRANSCRIPT_LOCALE, mountTranscriptLocale, transcriptTranslator, observeTranscriptLocale } from './transcript/locale.ts'
