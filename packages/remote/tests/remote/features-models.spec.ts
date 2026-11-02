@@ -434,6 +434,178 @@ describe('RemoteModelsController reference wire UI', () => {
     expect(await test.controller.select(test.ref, selection('deepseek', 'chat'))).toEqual(selection('deepseek', 'chat'))
     test.controller.dispose()
   })
+
+  it('keeps adapter-default provenance in native selection and renders an explicit pin only when present', async () => {
+    const metadata = detailsOf({ 'deepseek/chat': { efforts: ['low', 'high'], defaultEffort: 'high' } })
+    for (const pinned of [false, true]) {
+      const test = fixture({ details: metadata, projection: { lastUsed: selection('deepseek', 'chat', pinned ? 'high' : undefined) } })
+      await test.controller.open()
+      const node = test.browser().view() as unknown as { child: { items: readonly { segment: { inheritedId?: string, selectedId?: string } }[] } }
+      expect(node.child.items[0]!.segment).toEqual({ label: 'Thinking', options: [{ id: 'low', label: 'low' }, { id: 'high', label: 'high' }], inheritedId: 'high', ...pinned ? { selectedId: 'high' } : {} })
+      expect(test.selectModel).not.toHaveBeenCalled()
+      test.controller.dispose()
+    }
+  })
+
+  it('fences native catalog and selection results and refuses missing, foreign, or unloaded scopes', async () => {
+    const test = fixture()
+    const pending = deferred<unknown>()
+    test.modelCatalog.mockReturnValueOnce(pending.promise)
+    const reading = test.controller.catalog(test.client)
+    test.controller.dispose()
+    pending.resolve({ ok: true, value: catalog() })
+    expect(await reading).toBeUndefined()
+    expect(await test.controller.select(test.ref, selection('deepseek', 'chat'))).toBeUndefined()
+    expect(await test.controller.open()).toBeUndefined()
+    expect(await test.controller.effort()).toBeUndefined()
+    const missing = fixture({ current: false, attached: false })
+    expect(await missing.controller.select(missing.ref, selection('deepseek', 'chat'))).toBeUndefined()
+    await missing.controller.open()
+    expect(missing.opened).toEqual([])
+    missing.controller.dispose()
+    const late = fixture()
+    const result = deferred<unknown>()
+    late.selectModel.mockReturnValueOnce(result.promise)
+    const selecting = late.controller.select(late.ref, selection('deepseek', 'chat', 'high'))
+    late.controller.dispose()
+    result.resolve({ ok: true, value: { selected: selection('deepseek', 'chat', 'high') } })
+    expect(await selecting).toBeUndefined()
+  })
+
+  it('ignores a missing selected row, missing model label, and a failed optional metadata source', async () => {
+    const test = fixture({ catalog: catalog({ groups: [{ id: 'deepseek', name: 'DeepSeek', models: [model('chat', { name: '' }), model('other', { reasoning: { efforts: [{ id: 'high', name: 'High' }] } })] }] }) })
+    test.source!.load.mockRejectedValueOnce(new Error('optional metadata unavailable'))
+    await test.controller.open('', 'deepseek')
+    expect(test.render()).toContain('DeepSeek/chat')
+    expect(test.notice.set).not.toHaveBeenCalled()
+    await test.act({ kind: 'dismiss' })
+    test.projection.getSnapshot.mockReturnValue({ next: selection('deepseek', 'gone') })
+    await test.controller.effort()
+    expect(test.notice.set).toHaveBeenCalledWith('the current model exposes no reasoning efforts')
+    test.controller.dispose()
+  })
+
+  it('admits only current effort actions and preserves exact Host writes including reset', async () => {
+    const test = fixture({ projection: { next: selection('deepseek', 'chat', 'high') }, details: detailsOf({ 'deepseek/chat': { efforts: ['low', 'high'] } }) })
+    await test.controller.effort()
+    expect(test.render()).not.toContain('provider default:')
+    expect(test.browser().isCurrent!()).toBe(true)
+    expect(await test.act({ kind: 'activate', controlId: 'unrelated' })).toEqual({ kind: 'completed' })
+    expect(await test.act({ kind: 'slider-accept', controlId: 'unrelated', value: 'low' })).toEqual({ kind: 'completed' })
+    const cancelled = new AbortController(); cancelled.abort()
+    const context = { signal: cancelled.signal } as MayflyUiEventContext
+    expect(await test.browser().action!({ kind: 'slider-accept', controlId: 'effort', value: 'low', pagePath: [] }, context)).toEqual({ kind: 'cancelled' })
+    expect(await test.act({ kind: 'slider-accept', controlId: 'effort', value: 'gone' })).toMatchObject({ kind: 'failed' })
+    expect(await test.act({ kind: 'slider-accept', controlId: 'effort', value: null })).toEqual({ kind: 'completed', dismiss: true })
+    expect(test.selectModel).toHaveBeenCalledExactlyOnceWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat' })
+    test.browser().onClosed!()
+    expect(test.browser().isCurrent!()).toBe(false)
+    expect(test.opened[0]!.lease.close).toHaveBeenCalledOnce()
+    test.controller.dispose()
+  })
+
+  it('fences pending default reads before refresh and commit, including late failure feedback', async () => {
+    const test = fixture({ current: false, details: detailsOf({ 'deepseek/chat': { efforts: ['low', 'high'], defaultEffort: 'low' } }) })
+    await test.controller.open()
+    const selected = deferred<ModelSelection>()
+    test.defaultModel!.read.mockReturnValueOnce(selected.promise)
+    const writing = test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])], segmentId: 'high' })
+    test.controller.dispose()
+    selected.resolve(selection('deepseek', 'chat'))
+    expect(await writing).toMatchObject({ kind: 'cancelled' })
+    expect(test.defaultModel!.select).not.toHaveBeenCalled()
+    expect(await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })).toMatchObject({ kind: 'cancelled' })
+
+    const late = fixture({ projection: { next: selection('deepseek', 'previous') } })
+    await late.controller.open()
+    const response = Promise.withResolvers<unknown>()
+    late.selectModel.mockReturnValueOnce(response.promise)
+    const failed = late.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })
+    late.controller.dispose()
+    response.reject(new Error('obsolete transport failure'))
+    expect(await failed).toMatchObject({ kind: 'cancelled' })
+    expect(late.notice.set).not.toHaveBeenCalled()
+  })
+
+  it('refreshes Session-independent defaults and drops refreshes whose default read outlives the owner', async () => {
+    const test = fixture({ current: false })
+    await test.controller.open()
+    await test.act({ kind: 'activate', actionId: 'refresh' })
+    const pending = deferred<ModelSelection>()
+    test.defaultModel!.read.mockReturnValueOnce(pending.promise)
+    const refreshing = test.act({ kind: 'activate', actionId: 'refresh' })
+    await vi.waitFor(() => { expect(test.defaultModel!.read).toHaveBeenCalledTimes(3) })
+    test.controller.dispose()
+    pending.resolve(selection('deepseek', 'chat'))
+    await refreshing
+    expect(test.opened[0]!.lease.refresh).toHaveBeenCalledOnce()
+  })
+
+  it('checks cancellation before selection actions and ignores native projection notifications already queued on close', async () => {
+    const test = fixture()
+    await test.controller.open()
+    const notify = [...test.listeners][0]!
+    const cancelled = new AbortController(); cancelled.abort()
+    expect(await test.browser().action!({ kind: 'selection-accept', controlId: 'selection', selectedIds: ['gone'], pagePath: [] }, { signal: cancelled.signal } as MayflyUiEventContext)).toEqual({ kind: 'cancelled' })
+    test.browser().onClosed!()
+    notify()
+    expect(test.opened[0]!.lease.refresh).not.toHaveBeenCalled()
+    test.controller.dispose()
+  })
+
+  it('keeps an older refresh error from overwriting a newer successful native catalog', async () => {
+    const test = fixture()
+    await test.controller.open()
+    const older = Promise.withResolvers<unknown>()
+    test.modelCatalog.mockReturnValueOnce(older.promise)
+    const stale = test.act({ kind: 'activate', actionId: 'refresh' })
+    await test.act({ kind: 'activate', actionId: 'refresh' })
+    older.reject(new Error('stale refresh error'))
+    await stale
+    expect(test.notice.set).not.toHaveBeenCalled()
+    test.modelCatalog.mockRejectedValueOnce(new Error('current refresh failed'))
+    await test.act({ kind: 'activate', actionId: 'refresh' })
+    expect(test.notice.set).toHaveBeenCalledExactlyOnceWith('current refresh failed')
+    test.controller.dispose()
+  })
+
+  it.each(['cycle', 'open', 'effort'] as const)('suppresses %s fallback notices when a catalog observer retires the target between awaits', async method => {
+    const test = fixture({ catalog: catalog({ groups: [] }), observeCatalog: true })
+    test.catalogObserved!.mockImplementation(() => { queueMicrotask(() => test.controller.dispose()) })
+    if (method === 'open') await test.controller.open('absent')
+    else await test.controller[method]()
+    expect(test.notice.set).not.toHaveBeenCalled()
+    expect(test.opened).toEqual([])
+  })
+
+  it('retains provider filtering on refreshed catalogs and refuses failures from a retired read', async () => {
+    const test = fixture({ catalog: catalog({ groups: [
+      { id: 'deepseek', name: 'DeepSeek', models: [model('chat')] },
+      { id: 'foreign', name: 'Foreign', models: [model('elsewhere')] },
+    ] }) })
+    await test.controller.open('', 'deepseek')
+    expect(test.browser().isCurrent!()).toBe(true)
+    await test.act({ kind: 'activate', actionId: 'refresh' })
+    expect(test.render()).toContain('DeepSeek/chat')
+    expect(test.render()).not.toContain('elsewhere')
+    const pending = Promise.withResolvers<unknown>()
+    test.modelCatalog.mockReturnValueOnce(pending.promise)
+    const refresh = test.act({ kind: 'activate', actionId: 'refresh' })
+    test.controller.dispose()
+    pending.reject(new Error('retired refresh failure'))
+    await refresh
+    expect(test.notice.set).not.toHaveBeenCalled()
+    expect(test.browser().isCurrent!()).toBe(false)
+
+    const initial = fixture()
+    const opening = Promise.withResolvers<unknown>()
+    initial.modelCatalog.mockReturnValueOnce(opening.promise)
+    const opened = initial.controller.open()
+    initial.controller.dispose()
+    opening.reject(new Error('retired catalog failure'))
+    await opened
+    expect(initial.notice.set).not.toHaveBeenCalled()
+  })
 })
 
 describe('reference Alt+M provider cycle', () => {

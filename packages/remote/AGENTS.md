@@ -97,6 +97,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   environment-owned keys remain intact when a profile is removed. Authorization
   answers reach the Host only after the shared UI acknowledges the answer action;
   dismissal, detach, and reconnect retire outstanding prompts and discovery.
+- Model pickers preserve the native selection's explicit/default effort
+  provenance. An adapter-default request header never creates an explicit pin;
+  the shared reference picker renders that native distinction. Newer catalog
+  refreshes retire both successful and failed results of older refreshes.
   A prompt already closed during mounting must acquire no later ACK observer.
   Retrying profile setup after successful sign-in reuses that exact authorization
   owner and never starts another native authorization attempt.

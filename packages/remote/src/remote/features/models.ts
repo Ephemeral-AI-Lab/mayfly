@@ -319,7 +319,7 @@ export class RemoteModelsController extends RemoteFeatureController {
         currentCatalog = catalog
         rows = remoteModelRows(catalog, current, details).filter(row => providerFilter === undefined || row.provider === providerFilter)
         panel.refresh()
-      } catch (error) { if (target.operation.valid()) this.context.notice.set(remoteErrorMessage(error)) }
+      } catch (error) { if (target.operation.valid() && generation === revision) this.context.notice.set(remoteErrorMessage(error)) }
     }
     panel = openRemoteBrowser(this.context, {
       id: 'mayfly.models', scope: this.scope(target), signal: target.operation.signal,
