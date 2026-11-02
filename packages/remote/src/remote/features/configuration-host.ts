@@ -12,6 +12,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials/types'
 import type {
   MayflyModelSelection,
+  MayflyHostFeature,
   MayflyProviderBalance,
   MayflySettingsDocument,
 } from '@ephemeral-ai/mayfly-host/types'
@@ -52,12 +53,18 @@ export class RemoteConfigurationHost implements
     return new RemoteFeatureOperation({ hosts: this.hosts }, client, undefined, parent)
   }
 
+  private async feature(client: HostClient, feature: MayflyHostFeature, operation: RemoteFeatureOperation): Promise<boolean> {
+    const present = await hasMayflyHostFeature(client, feature, operation.signal)
+    if (!operation.valid()) throw new Error('Host is no longer attached')
+    return present
+  }
+
   /** @inheritdoc */
   async load(client: HostClient, parent?: AbortSignal): Promise<RemoteModelCatalogDetails | undefined> {
     const operation = this.scope(client, parent)
     if (operation === undefined) return undefined
     try {
-      if (!await hasMayflyHostFeature(client, 'modelCatalogDetails', operation.signal)) return undefined
+      if (!await this.feature(client, 'modelCatalogDetails', operation)) return undefined
       const details = await remoteValue(mayflyHostRemote(client).modelCatalogDetails({}, operation.signal))
       if (!operation.valid()) return undefined
       const items = new Map(details.items.map(item => [JSON.stringify([item.provider, item.id]), item]))
@@ -77,7 +84,7 @@ export class RemoteConfigurationHost implements
     const operation = this.scope(client, parent)
     if (operation === undefined) throw new Error('Host is no longer attached')
     try {
-      if (!await hasMayflyHostFeature(client, 'defaultModel', operation.signal)) throw new Error(unavailableCapability('defaultModel'))
+      if (!await this.feature(client, 'defaultModel', operation)) throw new Error(unavailableCapability('defaultModel'))
       const selected = await remoteValue(mayflyHostRemote(client).defaultModel({ operation: 'read' }, operation.signal))
       if (!operation.valid()) throw new Error('Host is no longer attached')
       return modelSelection(selected)
@@ -89,7 +96,7 @@ export class RemoteConfigurationHost implements
     const operation = this.scope(client, parent)
     if (operation === undefined) throw new Error('Host is no longer attached')
     try {
-      if (!await hasMayflyHostFeature(client, 'defaultModel', operation.signal)) throw new Error(unavailableCapability('defaultModel'))
+      if (!await this.feature(client, 'defaultModel', operation)) throw new Error(unavailableCapability('defaultModel'))
       const selected = await remoteValue(mayflyHostRemote(client).defaultModel({
         operation: 'select',
         provider: next.provider,
@@ -108,7 +115,7 @@ export class RemoteConfigurationHost implements
     const operation = this.scope(client, parent)
     if (operation === undefined) return undefined
     try {
-      if (!await hasMayflyHostFeature(client, 'permissionCatalogDetails', operation.signal)) return undefined
+      if (!await this.feature(client, 'permissionCatalogDetails', operation)) return undefined
       const details = await remoteValue(mayflyHostRemote(client).permissionCatalogDetails(
         currentPreset === undefined ? {} : { currentPreset },
         operation.signal,
@@ -132,7 +139,7 @@ export class RemoteConfigurationHost implements
     const operation = this.scope(client, parent)
     if (operation === undefined) throw new Error('Host is no longer attached')
     try {
-      if (!await hasMayflyHostFeature(client, 'settingsDocument', operation.signal)) throw new Error(unavailableCapability('settingsDocument'))
+      if (!await this.feature(client, 'settingsDocument', operation)) throw new Error(unavailableCapability('settingsDocument'))
       const document = await remoteValue(mayflyHostRemote(client).readSettingsDocument(operation.signal))
       if (!operation.valid()) throw new Error('Host is no longer attached')
       return document
@@ -144,7 +151,7 @@ export class RemoteConfigurationHost implements
     const operation = this.scope(client, parent)
     if (operation === undefined) throw new Error('Host is no longer attached')
     try {
-      if (!await hasMayflyHostFeature(client, 'settingsDocument', operation.signal)) throw new Error(unavailableCapability('settingsDocument'))
+      if (!await this.feature(client, 'settingsDocument', operation)) throw new Error(unavailableCapability('settingsDocument'))
       const document = await remoteValue(mayflyHostRemote(client).writeSettingsDocument({ content, expectedRevision }, operation.signal))
       if (!operation.valid()) throw new Error('Host is no longer attached')
       return document
@@ -156,7 +163,7 @@ export class RemoteConfigurationHost implements
     const operation = this.scope(client, parent)
     if (operation === undefined) return undefined
     try {
-      if (!await hasMayflyHostFeature(client, 'providerBalance', operation.signal)) return undefined
+      if (!await this.feature(client, 'providerBalance', operation)) return undefined
       const balance = await remoteValue(mayflyHostRemote(client).providerBalance(operation.signal))
       return operation.valid() ? balance : undefined
     } catch {
@@ -175,7 +182,7 @@ export class RemoteConfigurationHost implements
     const operation = this.scope(client, parent)
     if (operation === undefined) return 'cancelled'
     try {
-      if (!await hasMayflyHostFeature(client, 'authorization', operation.signal)) throw new Error(unavailableCapability('authorization'))
+      if (!await this.feature(client, 'authorization', operation)) throw new Error(unavailableCapability('authorization'))
       const handle = mayflyHostRemote(client).authorize(
         { key: brandString<CredentialKey>(key), ...method === undefined ? {} : { method } },
         operation.signal,
@@ -194,7 +201,7 @@ export class RemoteConfigurationHost implements
                   ...frame.prompt.placeholder === undefined ? {} : { placeholder: frame.prompt.placeholder },
                 }
             const reply = operation.valid() ? await interaction.prompt(view) : undefined
-            if (reply !== undefined && reply.type === 'answer') {
+            if (operation.valid() && reply !== undefined && reply.type === 'answer') {
               handle.send({ type: 'answer', operationId: frame.operationId, promptId: frame.promptId, value: reply.value })
             } else {
               handle.send({ type: 'decline', operationId: frame.operationId, promptId: frame.promptId })
