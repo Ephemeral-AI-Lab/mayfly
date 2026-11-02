@@ -9,7 +9,7 @@ import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import { ACTIVITY_LOCALE, buildTipRotation, mountTranscriptLocale, STATUS_TIPS, type MayflyDecisionWait } from '@ephemeral-ai/mayfly/editor-presentation'
 import { contextPercent } from '@ephemeral-ai/mayfly/status-context'
 import type { RemoteFeatureContext } from '../features.ts'
-import { RemoteActivityRow } from '../panels/activity-row.ts'
+import { RemoteActivityRow, type RemoteActivityPhase } from '../panels/activity-row.ts'
 import {
   deriveRemoteActivity,
   remoteCompactElapsedMs,
@@ -55,7 +55,6 @@ class RemoteActivityController {
   private readonly seen = new Set<string>()
   private subscriptions: readonly (() => void)[] = []
   private activity = EMPTY_ACTIVITY
-  private statusActive = false
   private waiting = false
   private decision: MayflyDecisionWait | undefined
   private dialog = false
@@ -95,7 +94,7 @@ class RemoteActivityController {
       this.syncWaiting()
       this.publishActivity()
     })
-    this.offPanel = options.ctx.on('mayfly/panel-open-changed', open => {
+    this.offPanel = options.ctx.on('mayfly/editor-slot-swapped', open => {
       this.dialog = open
       this.publishActivity()
     })
@@ -130,7 +129,6 @@ class RemoteActivityController {
     for (const dispose of this.subscriptions) dispose()
     this.subscriptions = []
     this.activity = EMPTY_ACTIVITY
-    this.statusActive = false
     this.waiting = false
     this.decision = undefined
     this.live = false
@@ -142,7 +140,6 @@ class RemoteActivityController {
     this.notifications.clearAll()
     const current = this.lifecycle.selection(generation)
     if (current !== undefined) {
-      this.statusActive = current.binding.session.getSnapshot().running
       const conversation = current.binding.session.projections.faceOf('mayflyConversation')
       const facts = current.binding.session.projections.faceOf('mayflyConversationFacts')
       const questions = current.binding.session.projections.faceOf('userQuestions')
@@ -162,19 +159,10 @@ class RemoteActivityController {
       }
       this.subscriptions = [
         conversation.subscribe(update),
-        facts.subscribe(() => {
-          if (!this.lifecycle.owns(generation)) return
-          const next = facts.getSnapshot() as ConversationFacts | undefined
-          if (next !== undefined && !next.active && next.turn > 0) this.statusActive = false
-          update()
-        }),
+        facts.subscribe(update),
         questions.subscribe(update),
         pressure.subscribe(update),
-        current.binding.session.subscribe(() => {
-          if (!this.lifecycle.owns(generation)) return
-          this.statusActive = current.binding.session.getSnapshot().running
-          update()
-        }),
+        current.binding.session.subscribe(update),
       ]
       update()
       const key = `${current.ref.host}\0${current.ref.sessionId}`
@@ -205,7 +193,7 @@ class RemoteActivityController {
   private publishActivity(): void {
     if (this.disposed) return
     const waiting = this.waiting || this.decision !== undefined
-    if ((!this.activity.active && !this.statusActive && !waiting) || (this.dialog && this.decision === undefined && !this.waiting)) {
+    if ((!this.activity.active && !waiting) || (this.dialog && this.decision === undefined && !this.waiting)) {
       this.live = false
       this.activityPane.set(null)
       return
@@ -213,7 +201,8 @@ class RemoteActivityController {
     if (!this.live || this.activity.turn !== this.turn) this.nextTip()
     this.live = true
     this.turn = this.activity.turn
-    const phase = waiting ? 'waiting' : this.activity.phase === 'idle' ? 'diving' : this.activity.phase
+    // The inactive guard above excludes the derivation's idle snapshots.
+    const phase = waiting ? 'waiting' : this.activity.phase as RemoteActivityPhase
     let stage: (typeof THINKING_STAGES)[number] | undefined
     if (phase === 'thinking') {
       this.phaseSeenAt ??= this.now

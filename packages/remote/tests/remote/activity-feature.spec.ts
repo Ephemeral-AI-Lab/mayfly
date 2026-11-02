@@ -88,13 +88,13 @@ describe('Remote shared activity and approval waiting', () => {
   })
   it('keeps waiting visible above a decision and hides activity beneath an ordinary panel', async () => {
     const f = await fixture(); f.active()
-    f.ctx.emit('mayfly/panel-open-changed', true)
+    f.ctx.emit('mayfly/editor-slot-swapped', true)
     expect(f.rows()).toEqual([])
     const pending = f.request()
     expect(f.rows()[1]).toContain('Waiting for your approval')
     f.model().requestClose(); await pending
     expect(f.rows()).toEqual([])
-    f.ctx.emit('mayfly/panel-open-changed', false)
+    f.ctx.emit('mayfly/editor-slot-swapped', false)
     expect(f.rows()[1]).toContain('Calling tools')
   })
   it('follows native user-question projection while selecting the localized approval label', async () => {
@@ -135,15 +135,35 @@ describe('Remote shared activity and approval waiting', () => {
     expect(f.rows()[1]).toContain('Deep diving')
     f.session.set({ running: false }); expect(f.rows()).toEqual([])
   })
-  it('presents the native running status before the next turn facts arrive, matching the reference tip walk', async () => {
+  it('keeps current native Facts authoritative when Session.running arrives before a new turn', async () => {
     const f = await fixture(); f.active(1); f.idle(1)
     f.session.set({ running: true })
-    expect(f.rows()[1]).toContain('Deep diving')
-    expect(f.rows()[2]).toContain('Ctrl+O to expand tool details')
+    expect(f.rows()).toEqual([])
     f.active(2)
-    expect(f.rows()[2]).toContain('/plugin to browse and install plugins')
+    expect(f.rows()[2]).toContain('Ctrl+O to expand tool details')
     f.idle(2)
     expect(f.rows()).toEqual([])
+  })
+  it('matches the reference rotation across native approval cancellation and editor-slot release', async () => {
+    const f = await fixture(); f.active(1)
+    const rejected = f.request()
+    f.ctx.emit('mayfly/editor-slot-swapped', true)
+    expect(f.rows()[2]).toContain('Esc to interrupt the turn')
+    // A user answer closes the occupied slot before settling the native request.
+    f.ctx.emit('mayfly/editor-slot-swapped', false)
+    f.model().requestClose(); await rejected
+    f.idle(1); f.active(2)
+    const cancellation = new AbortController()
+    const aborted = f.request({ signal: cancellation.signal })
+    f.ctx.emit('mayfly/editor-slot-swapped', true)
+    expect(f.rows()[2]).toContain('Ctrl+O to expand tool details')
+    cancellation.abort(); await expect(aborted).resolves.toBe('cancelled')
+    // A native cancellation clears the wait before the renderer releases its slot.
+    expect(f.rows()).toEqual([])
+    f.ctx.emit('mayfly/editor-slot-swapped', false)
+    expect(f.rows()[2]).toContain('/plugin to browse and install plugins')
+    f.idle(2); f.active(3)
+    expect(f.rows()[2]).toContain('! to run a shell command')
   })
   it('keeps the first thinking stage when a native timestamp is slightly ahead of the local clock', async () => {
     vi.useFakeTimers(); vi.setSystemTime(1_000)
