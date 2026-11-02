@@ -6,6 +6,8 @@ import type { RemotePresentationFacts } from '../transcript/remote-model.ts'
 
 /** Renderer-owned live sources; the Host owns directory and home values. */
 export interface RemoteBannerOptions {
+  /** The physical Host Client owns one greeting, including before its first Session. */
+  readonly identity?: () => unknown
   readonly home?: () => string
   readonly directory?: () => string
   /** Elapsed milliseconds of the reference fly-in, or undefined at rest. */
@@ -20,6 +22,9 @@ export interface RemoteBannerOptions {
 /** The rc.2 banner composer and one-column gutter, including its opening/closing rows. */
 export class RemoteBannerComponent implements MayflyComponent {
   private readonly gutter: GutterComponent
+  private identity: unknown
+  private session: RemotePresentationFacts['ref']
+  private greeting: Pick<RemotePresentationFacts, 'model' | 'provider'> | undefined
 
   constructor(
     private readonly colors: MayflySemanticColors,
@@ -40,6 +45,18 @@ export class RemoteBannerComponent implements MayflyComponent {
 
   private compose(width: number): string[] {
     const current = this.facts()
+    const identity = this.options.identity?.()
+    if (identity !== this.identity || current.ref?.host !== this.session?.host || current.ref?.sessionId !== this.session?.sessionId) {
+      this.identity = identity
+      this.session = current.ref
+      this.greeting = undefined
+    }
+    // The reference greeting observes Session selections. Before a Session
+    // exists, changing the next-request default updates the footer only.
+    if (this.greeting === undefined || this.greeting.model === undefined || this.greeting.provider === undefined) {
+      this.greeting = { model: current.model, provider: current.provider }
+    }
+    const route = current.ref === undefined ? this.greeting : current
     const components = this.options.components?.() ?? this.components
     const deps = {
       colors: this.options.colors?.() ?? this.colors,
@@ -54,8 +71,8 @@ export class RemoteBannerComponent implements MayflyComponent {
     if (splash !== undefined) return composeSplashLines(deps, splash, width, this.options.rows?.() ?? 1, at)
     const rows = composeBannerLines(deps, {
       version: MAYFLY_VERSION,
-      model: current.model ?? 'default',
-      provider: current.provider ?? 'default',
+      model: route.model ?? 'default',
+      provider: route.provider ?? 'default',
       cwd: shortenHome(current.cwd || this.options.directory?.() || 'unknown', this.options.home?.() ?? ''),
     }, width, at)
     return ['', ...rows, '']

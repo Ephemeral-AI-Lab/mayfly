@@ -42,6 +42,42 @@ function facts(model: string | undefined): RemotePresentationFacts {
 }
 
 describe('RemoteBannerComponent', () => {
+  it('keeps the sessionless greeting route across default picks and renderer invalidation, then follows native Session routes', () => {
+    let current: RemotePresentationFacts = { ...facts('flash'), ref: undefined }
+    const banner = new RemoteBannerComponent(colors, components, () => current)
+    expect(banner.render(100).join('\n')).toContain('flash · deepseek')
+    current = { ...current, model: 'pro' }
+    banner.invalidate()
+    expect(banner.render(100).join('\n')).toContain('flash · deepseek')
+    current = facts('pro')
+    expect(banner.render(100).join('\n')).toContain('pro · deepseek')
+    current = { ...current, model: 'flash' }
+    expect(banner.render(100).join('\n')).toContain('flash · deepseek')
+    current = { ...facts('pro'), ref: undefined }
+    expect(banner.render(100).join('\n')).toContain('pro · deepseek')
+  })
+
+  it('waits for the first catalog route and resets the greeting for another physical Host or exact Session identity', () => {
+    let identity: unknown = { host: 'one' }
+    let current: RemotePresentationFacts = { ...facts(undefined), ref: undefined, provider: undefined }
+    const banner = new RemoteBannerComponent(colors, components, () => current, { identity: () => identity })
+    expect(banner.render(100).join('\n')).toContain('default · default')
+    current = { ...current, provider: 'deepseek' }
+    expect(banner.render(100).join('\n')).toContain('default · deepseek')
+    current = { ...current, model: 'flash' }
+    expect(banner.render(100).join('\n')).toContain('flash · deepseek')
+    current = { ...current, model: 'pro' }
+    expect(banner.render(100).join('\n')).toContain('flash · deepseek')
+    identity = { host: 'two' }
+    expect(banner.render(100).join('\n')).toContain('pro · deepseek')
+    current = facts('flash')
+    expect(banner.render(100).join('\n')).toContain('flash · deepseek')
+    current = { ...facts('pro'), ref: { host: HostKey('other'), sessionId: SessionId('session-1') } }
+    expect(banner.render(100).join('\n')).toContain('pro · deepseek')
+    current = { ...current, ref: { host: HostKey('other'), sessionId: SessionId('session-2') } }
+    expect(banner.render(100).join('\n')).toContain('pro · deepseek')
+  })
+
   it('renders the Mayfly welcome banner with live remote model facts', () => {
     let model: string | undefined = 'deepseek-chat'
     const banner = new RemoteBannerComponent(colors, components, () => facts(model))
