@@ -74,6 +74,10 @@ export class RemoteApp {
   private readonly topologyListeners = new Set<() => void>()
   private activeHost: HostKey | undefined
   private defaultModelGeneration = 0
+  private readonly hostVersions = new WeakMap<HostClient, {
+    readonly generation: number
+    readonly pending: Promise<string | undefined>
+  }>()
   private selectionGeneration = 0
   private creating: Promise<SessionRef> | undefined
   private pendingPlan = false
@@ -144,6 +148,9 @@ export class RemoteApp {
     const generation = ++this.defaultModelGeneration
     this.endpoints.set(key, startupUrl)
     const client = await this.registry.attach(key)
+    // The native inventory includes full management metadata. Warm this read
+    // during startup so the local version panel does not wait for it on Enter.
+    void this.harnessVersion(client).catch(() => {})
     if (generation === this.defaultModelGeneration) this.activeHost = key
     this.publishTopology()
     const connection = client.state.getSnapshot().generation
@@ -431,13 +438,15 @@ export class RemoteApp {
       const client = this.activeClient
       const generation = client?.state.getSnapshot().generation
       const isCurrent = (): boolean => this.activeClient === client && generation === client?.state.getSnapshot().generation
-      const result = await client?.remote.pluginManager.listBundles().catch(error => {
+      const pending = client === undefined ? undefined : this.harnessVersion(client)
+      // Consume the startup read once; another /version refreshes the native
+      // inventory instead of retaining a stale package version indefinitely.
+      if (client !== undefined) this.hostVersions.delete(client)
+      const harness = await pending?.catch(error => {
         if (isCurrent()) throw error
         return undefined
       })
       if (!isCurrent()) return { exit: false }
-      if (result !== undefined && !result.ok) throw new Error(result.error.message)
-      const harness = result?.value.find(bundle => bundle.name === '@deepseek-ai/dsh-base')?.version
       this.panels.showVersion(harness)
       return { exit: false }
     }
@@ -446,6 +455,22 @@ export class RemoteApp {
     if (!result.ok) this.notice.set(result.error.message)
     else if (!result.value.matched) this.notice.set(`Unknown command: ${text}`)
     return { exit: false }
+  }
+
+  private harnessVersion(client: HostClient): Promise<string | undefined> {
+    const generation = client.state.getSnapshot().generation
+    const cached = this.hostVersions.get(client)
+    if (cached?.generation === generation) return cached.pending
+    const pending = client.remote.pluginManager.listBundles().then(result => {
+      if (!result.ok) throw new Error(result.error.message)
+      return result.value.find(bundle => bundle.name === '@deepseek-ai/dsh-base')?.version
+    })
+    const entry = { generation, pending }
+    this.hostVersions.set(client, entry)
+    void pending.catch(() => {
+      if (this.hostVersions.get(client) === entry) this.hostVersions.delete(client)
+    })
+    return pending
   }
 
   async cancel(): Promise<void> {

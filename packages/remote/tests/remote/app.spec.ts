@@ -684,6 +684,8 @@ describe('RemoteApp', () => {
     fixture.client.state.getSnapshot = () => ({ status: 'connected', generation })
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
     await app.attach('http://host/')
+    await app.execute('/version')
+    vi.mocked(panels.showVersion).mockClear()
     let settle!: (value: unknown) => void
     fixture.client.remote.pluginManager.listBundles = vi.fn(() => new Promise(resolve => { settle = resolve })) as never
     const pending = app.execute('/version')
@@ -693,6 +695,71 @@ describe('RemoteApp', () => {
     expect(panels.showVersion).not.toHaveBeenCalled()
     fixture.client.remote.pluginManager.listBundles = vi.fn(async () => ({ ok: false, error: { message: 'Host inventory denied' } })) as never
     await expect(app.execute('/version')).rejects.toThrow('Host inventory denied')
+  })
+
+  it('warms the exact Host version without delaying attach and consumes that read only once', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    let settle!: (value: unknown) => void
+    fixture.client.remote.pluginManager.listBundles = vi.fn(() => new Promise(resolve => { settle = resolve })) as never
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    expect(panels.showVersion).not.toHaveBeenCalled()
+    const pending = app.execute('/version')
+    expect(fixture.client.remote.pluginManager.listBundles).toHaveBeenCalledOnce()
+    settle({ ok: true, value: [{ name: '@deepseek-ai/dsh-base', version: 'native-version' }] })
+    await pending
+    expect(panels.showVersion).toHaveBeenLastCalledWith('native-version')
+    fixture.client.remote.pluginManager.listBundles = vi.fn(async () => ({ ok: true, value: [] })) as never
+    await app.execute('/version')
+    expect(panels.showVersion).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('retries a failed startup inventory and never fails attaching because optional metadata is unavailable', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    vi.mocked(fixture.client.remote.pluginManager.listBundles).mockRejectedValueOnce(new Error('offline metadata'))
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    await app.execute('/version')
+    expect(fixture.client.remote.pluginManager.listBundles).toHaveBeenCalledTimes(2)
+    expect(panels.showVersion).toHaveBeenLastCalledWith('0.2.2-alpha.2')
+  })
+
+  it('invalidates a warmed version on reconnect and fences late startup failure against the new read', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    let generation = 1
+    fixture.client.state.getSnapshot = () => ({ status: 'connected', generation })
+    let reject!: (reason: Error) => void
+    fixture.client.remote.pluginManager.listBundles = vi.fn(() => new Promise((_resolve, fail) => { reject = fail })) as never
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    generation += 1
+    fixture.client.remote.pluginManager.listBundles = vi.fn(async () => ({ ok: true, value: [{ name: '@deepseek-ai/dsh-base', version: 'new-generation' }] })) as never
+    reject(new Error('old startup failure'))
+    await app.execute('/version')
+    expect(panels.showVersion).toHaveBeenLastCalledWith('new-generation')
+  })
+
+  it('ignores a rejected version read after reconnect and can show a sessionless panel without any Host', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    let generation = 1
+    fixture.client.state.getSnapshot = () => ({ status: 'connected', generation })
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.execute('/version')
+    expect(panels.showVersion).toHaveBeenLastCalledWith(undefined)
+    await app.attach('http://host/')
+    await app.execute('/version')
+    vi.mocked(panels.showVersion).mockClear()
+    let reject!: (reason: Error) => void
+    fixture.client.remote.pluginManager.listBundles = vi.fn(() => new Promise((_resolve, fail) => { reject = fail })) as never
+    const pending = app.execute('/version')
+    generation += 1
+    reject(new Error('retired transport'))
+    await pending
+    expect(panels.showVersion).not.toHaveBeenCalled()
   })
 
   it('provides a live exact-binding context source and retires it on primary selection change', async () => {
