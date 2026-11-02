@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { commandContracts } from '../scenarios/split-commands.mjs'
+import { splitProbeInstruction } from '../scenarios/split-cases.mjs'
+import { awaitProbeAudit, readProbeAudit } from '../scenarios/split-audit.mjs'
+import { startSplitNetwork } from '../scenarios/split-network.mjs'
 import { serializeGrid } from '../scenarios/grid.mjs'
 import { compareSplitReference, normalizeSplitGrid, redactSplitOutput, SPLIT_REFERENCE, verifyReferenceTarball } from '../scenarios/split-reference.mjs'
 
@@ -39,6 +43,8 @@ test('comparison refuses missing checkpoints and tampered provenance or referenc
   writeFileSync(join(dir, 'reference.json'), JSON.stringify({ ...manifest, version: 'candidate' }))
   assert.throws(() => compareSplitReference(dir, [{ name: 'startup', grid }], { cols: 20, rows: 2 }), /frozen published/u)
   assert.throws(() => verifyReferenceTarball(Buffer.from('candidate tarball')), /frozen npm integrity/u)
+  writeFileSync(join(dir, 'reference.json'), JSON.stringify({ ...manifest, stepsSha256: 'different' }))
+  assert.throws(() => compareSplitReference(dir, [{ name: 'startup', grid }], { cols: 20, rows: 2, steps: [] }), /semantic steps/u)
 })
 
 test('only named volatile fields normalize, without removing spacing or style differences', () => {
@@ -83,4 +89,51 @@ test('capture clock stays frozen for frames but releases before Date-based input
     console.log('drained')
   `], { encoding: 'utf8', env: { ...process.env, MAYFLY_SPLIT_CLOCK_RELEASE: release }, timeout: 3000 })
   assert.equal(output.trim(), 'drained')
+})
+
+test('probe model follows only the latest user instruction and invokes a native tool once', () => {
+  assert.equal(splitProbeInstruction({ messages: [] }), undefined)
+  const first = { role: 'user', content: [{ type: 'text', text: 'parity:tool:first' }] }
+  assert.deepEqual(splitProbeInstruction({ messages: [first] }), { mode: 'tool', label: 'first', completed: false })
+  const done = { role: 'assistant', content: [{ type: 'tool_use', name: 'parity_probe' }] }
+  assert.deepEqual(splitProbeInstruction({ messages: [first, done] }), { mode: 'tool', label: 'first', completed: true })
+  assert.deepEqual(splitProbeInstruction({ messages: [first, done, { role: 'user', content: 'parity:approval:reject-case' }] }), { mode: 'approval', label: 'reject-case', completed: false })
+})
+
+test('native audit asserts outcomes and refuses duplicate tool execution independently of UI text', async t => {
+  const { dir } = fixture(t)
+  const file = join(dir, 'audit.jsonl')
+  assert.deepEqual(readProbeAudit(file), [])
+  writeFileSync(file, JSON.stringify({ event: 'tool-start', label: 'test' }) + '\n')
+  appendFileSync(file, JSON.stringify({ event: 'approval-decided', label: 'test', outcome: 'rejected' }) + '\n')
+  await awaitProbeAudit(file, { event: 'approval-decided', label: 'test', outcome: 'rejected' })
+  appendFileSync(file, JSON.stringify({ event: 'tool-start', label: 'test' }) + '\n')
+  await assert.rejects(awaitProbeAudit(file, { event: 'tool-start', label: 'test' }), /more than once/u)
+})
+
+test('outage fixture forwards real HTTP and WebSocket bytes, drops them and recovers without stopping Host', { timeout: 5000 }, async t => {
+  const server = createServer((_req, res) => res.end('Host is alive'))
+  server.on('upgrade', (req, socket) => {
+    const accept = createHash('sha1').update(req.headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64')
+    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`)
+    socket.write(Buffer.from([0x81, 5, ...Buffer.from('probe')]))
+    socket.on('error', () => {})
+    socket.on('end', () => socket.destroy())
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const target = `http://127.0.0.1:${server.address().port}/?token=fixture`
+  const proxy = await startSplitNetwork(target)
+  t.after(async () => { await proxy.close(); await new Promise(resolve => server.close(resolve)) })
+  assert.equal(await (await fetch(proxy.startupUrl)).text(), 'Host is alive')
+  const socket = new WebSocket(proxy.startupUrl.replace('http:', 'ws:'))
+  const firstMessage = new Promise((resolve, reject) => { socket.onmessage = event => resolve(event.data); socket.onerror = reject })
+  assert.equal(await firstMessage, 'probe')
+  const closed = new Promise(resolve => { socket.onclose = resolve })
+  proxy.drop()
+  await closed
+  assert.equal((await fetch(proxy.startupUrl)).status, 503)
+  assert.equal(await (await fetch(target)).text(), 'Host is alive')
+  proxy.restore()
+  assert.equal(await (await fetch(proxy.startupUrl)).text(), 'Host is alive')
+  await assert.rejects(startSplitNetwork('https://external.invalid'), /loopback/u)
 })

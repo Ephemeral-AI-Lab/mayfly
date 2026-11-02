@@ -18,7 +18,7 @@ DSH_BIN=/path/to/matching/dsh node script/split-parity.mjs --smoke-only
 ```
 
 The command creates a dedicated `mayfly-split-test` profile inside
-`.artifacts/split-parity/homes/`, starts the real dsh web Host on a random
+the selected artifacts directory, starts the real dsh web Host on a random
 loopback port, and launches the built Remote as a separate Node process under
 a PTY. It never installs dsh globally or modifies an ordinary user profile.
 Optional dependency builds remain denied. It uses the existing deterministic
@@ -70,6 +70,49 @@ The split runner intentionally provides no `--update` or candidate-to-reference
 copying path. Existing scenario grids can be reused only where the semantic
 checkpoint and environment actually match.
 
+## Shared semantic cases and split lifecycle
+
+```sh
+node script/split-parity.mjs --scenario all
+node script/split-parity.mjs --scenario presentation
+node script/split-parity.mjs --scenario tools
+node script/split-parity.mjs --scenario approval
+node script/split-parity.mjs --scenario network --smoke-only
+```
+
+`smoke` covers startup, help, Unicode draft, an actual model turn and `/new`.
+`presentation` switches themes through the picker, keeps a Unicode draft, resizes
+to 40×16 and 120×40, and restores the original theme. `tools` drives a native
+`parity_probe` call through the actual model/tool loop. `approval` asks the native
+approval service, rejects one call, withdraws another pending call through its
+real abort signal, then uses Ctrl+C to abort a running native tool. The pending
+request signal has a fixture-owned five-second deadline. This distinguishes
+native cancellation from card dismissal: rc.2 treats Ctrl+C while the card is
+open as rejection. A fixture audit independently verifies execution count and
+native approval outcomes.
+The fixture is an ordinary Cordis plugin in the isolated test composition; it
+does not inject Remote projections or fabricated session events.
+
+`network` routes the actual Host HTTP/WebSocket connection through a loopback
+forwarder, destroys active sockets while a native tool is executing, then
+restores forwarding. It checks recovery and a single tool completion while the
+Host stays alive. This case has no in-process rc.2 equivalent and always reports
+`parityVerified: false`. All shared semantic cases capture the published reference
+and candidate independently. Passing a native audit alone does not pass a visual
+comparison.
+
+Use `--root /path/to/candidate` to run against another built worktree. Driver and
+fixture files come from the verifier's own tree; the Host/Remote runtime comes
+from the specified candidate. `--artifacts <dir>` selects a separate evidence
+directory and `--results <file>` writes the aggregate report for the gate.
+
+The full code gate keeps one Vitest coverage pass, including deterministic
+renderer work budgets, then runs the real split cases. Round acceptance uses
+Host/Remote smoke; selected PR runtime acceptance uses the full split case set.
+It no longer launches the old in-process scenario, smoke or PTY performance
+commands against the newer Harness. Reference differences are reported with
+split rerun commands and cannot be resolved by accepting candidate goldens.
+
 Missing checkpoints, tampered reference bytes, changed dimensions, text,
 styles, colors and cursor all fail. Only UUID and command-token fields are
 normalized. Paths, timing fields and Host endpoint labels need an explicitly
@@ -81,9 +124,9 @@ not allowed.
 The initial split backend is infrastructure, not a completed parity claim.
 The rc.2 catalog includes startup/sessionless flows, all themes, narrow/short
 terminals, mouse interaction, streaming, approvals, tools and side views.
-Those checkpoints must be driven through the real Host and added to the
-independent matrix before completion. Animation needs fixed-clock intermediate
-frames and real-time PTY review. Reconnect, in-flight detach, same-SessionId
+Cases above cover part of that matrix. All other checkpoints must be driven
+through the real Host and added before completion. Animation needs fixed-clock
+intermediate frames and real-time PTY review. In-flight detach, same-SessionId
 multi-Host isolation and stale replies require additional protocol scenarios.
 
 Commands must retain rc.2 canonical names: `/model`, `/provider`, `/preset`

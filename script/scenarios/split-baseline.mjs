@@ -5,13 +5,13 @@ import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { t as listTar } from 'tar'
 import { SPLIT_SMOKE_STEPS } from './split-runner.mjs'
 import { SPLIT_REFERENCE, redactSplitOutput, verifyReferenceTarball } from './split-reference.mjs'
 import { captureSplitTerminal } from './split-terminal.mjs'
 import { startStubModel } from './stub-model.mjs'
+import { awaitProbeAudit } from './split-audit.mjs'
 
 const HARNESS_REFERENCE_VERSION = '0.2.1-rc.2'
 
@@ -77,7 +77,7 @@ export async function acquirePublishedReference({ root, dir }) {
 }
 
 /** Generate reference frames exclusively from the verified published runtime, never the candidate. */
-export async function capturePublishedReference({ root, dir, cols = 80, rows = 24, steps = SPLIT_SMOKE_STEPS }) {
+export async function capturePublishedReference({ root, dir, cols = 80, rows = 24, steps = SPLIT_SMOKE_STEPS, probe = false, caseName }) {
   const acquired = await acquirePublishedReference({ root, dir })
   const profileHome = join(dir, 'profile-home')
   const profile = join(profileHome, '.dsh/profiles/mayfly-rc2-test')
@@ -102,20 +102,25 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
   mkdirSync(run, { recursive: true })
   const patch = join(run, 'overlay.yml')
   const release = join(run, 'release-clock')
+  const auditLog = join(run, 'probe.jsonl')
   writeFileSync(patch, [
     `- id: session-persistence-jsonl\n  config:\n    root: ${JSON.stringify(join(run, 'sessions'))}`,
     `- id: storage-json\n  config:\n    root: ${JSON.stringify(join(run, 'storages'))}`,
     '- id: mayfly\n  config:\n    reducedMotion: true\n    updateCheck: false',
     '- id: session-title-llm\n  disabled: true',
+    ...(probe ? [
+      '- id: user-approval\n  config:\n    policy: ask',
+      `- insert:\n    - id: mayfly-split-parity-probe\n      name: ${JSON.stringify(new URL('./split-probe.mjs', import.meta.url).href)}`,
+    ] : []),
   ].join('\n') + '\n')
-  const stub = await startStubModel()
-  const childEnv = { ...env, TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8', TZ: 'UTC', DEEPSEEK_BASE_URL: `${stub.baseURL}/v1`, MAYFLY_SPLIT_CLOCK_RELEASE: release, NODE_OPTIONS: `--import=${pathToFileURL(join(root, 'script/scenarios/split-clock.mjs')).href}` }
+  const stub = await startStubModel({ probe })
+  const childEnv = { ...env, TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8', TZ: 'UTC', DEEPSEEK_BASE_URL: `${stub.baseURL}/v1`, MAYFLY_SPLIT_PROBE_LOG: auditLog, MAYFLY_SPLIT_CLOCK_RELEASE: release, NODE_OPTIONS: `--import=${new URL('./split-clock.mjs', import.meta.url).href}` }
   for (const name of ['CI', 'COLUMNS', 'LINES', 'NO_COLOR', 'FORCE_COLOR']) delete childEnv[name]
   let captured
   try {
-    captured = await captureSplitTerminal({ bin: acquired.dshBin, args: ['--profile', 'mayfly-rc2-test', '--patch', patch], cwd: work, env: childEnv, cols, rows, steps, stub, beforeExit: async () => { writeFileSync(release, 'release'); await sleep(30) } })
+    captured = await captureSplitTerminal({ bin: acquired.dshBin, args: ['--profile', 'mayfly-rc2-test', '--patch', patch], cwd: work, env: childEnv, cols, rows, steps, stub, audit: step => awaitProbeAudit(auditLog, step), beforeExit: async () => { writeFileSync(release, 'release'); await sleep(30) } })
   } finally { await stub.close() }
-  const captureDir = join(dir, 'captures')
+  const captureDir = join(dir, 'captures', caseName ?? '')
   mkdirSync(captureDir, { recursive: true })
   writeFileSync(join(captureDir, 'reference.ansi'), captured.output)
   if (captured.failures.length > 0) throw new Error(`Published reference capture failed:\n${captured.failures.join('\n')}`)

@@ -1,12 +1,11 @@
-/** CLI for strict reference comparison or explicitly separate real split smoke. @module script/split-parity */
+/** CLI for immutable reference comparisons and explicitly separate real split behavior cases. @module script/split-parity */
 
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { referenceCommandInventory } from './scenarios/split-commands.mjs'
-import { capturePublishedReference } from './scenarios/split-baseline.mjs'
-import { runSplitScenario } from './scenarios/split-runner.mjs'
+import { runSplitSuite, SPLIT_SCENARIOS } from './scenarios/split-suite.mjs'
 
-const root = fileURLToPath(new URL('..', import.meta.url))
+let root = fileURLToPath(new URL('..', import.meta.url))
 const args = process.argv.slice(2)
 if (args.length === 1 && args[0] === '--inventory') {
   console.log(JSON.stringify(referenceCommandInventory(root), null, 2))
@@ -17,16 +16,21 @@ let smokeOnly = false
 let captureReferenceOnly = false
 let cols = 80
 let rows = 24
-let artifacts = resolve(root, '.artifacts/split-parity')
+let artifacts
+let resultsFile
+let scenario = 'smoke'
 for (let at = 0; at < args.length; at += 1) {
   const arg = args[at]
   if (arg === '--smoke-only') smokeOnly = true
   else if (arg === '--capture-reference') captureReferenceOnly = true
-  else if (['--reference', '--artifacts', '--cols', '--rows'].includes(arg)) {
+  else if (['--root', '--reference', '--artifacts', '--results', '--cols', '--rows', '--scenario'].includes(arg)) {
     const value = args[++at]
     if (value === undefined || value.startsWith('--')) throw new Error(`${arg} requires a value`)
-    if (arg === '--reference') referenceDir = resolve(value)
+    if (arg === '--root') root = resolve(value)
+    else if (arg === '--reference') referenceDir = resolve(value)
     else if (arg === '--artifacts') artifacts = resolve(value)
+    else if (arg === '--results') resultsFile = resolve(value)
+    else if (arg === '--scenario') scenario = value
     else if (arg === '--cols') cols = Number(value)
     else rows = Number(value)
   } else throw new Error(`Unknown argument: ${arg}`)
@@ -34,14 +38,11 @@ for (let at = 0; at < args.length; at += 1) {
 if (smokeOnly && referenceDir !== undefined) throw new Error('Choose either --smoke-only or --reference')
 if (captureReferenceOnly && (smokeOnly || referenceDir !== undefined)) throw new Error('--capture-reference cannot be combined with --smoke-only or --reference')
 if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 20 || rows < 10) throw new Error('Terminal dimensions must be integers with at least 20 columns and 10 rows')
-if (!smokeOnly && referenceDir === undefined) {
-  console.log('Capturing the verified published rc.2 reference with its own isolated Harness runtime')
-  referenceDir = await capturePublishedReference({ root, dir: resolve(artifacts, 'published-reference'), cols, rows })
-  console.log(`Frozen reference: ${referenceDir}`)
-}
-if (captureReferenceOnly) process.exit(0)
-const report = await runSplitScenario({ root, dshBin: process.env.MAYFLY_DSH_BIN ?? process.env.DSH_BIN ?? 'dsh', artifacts, cols, rows, referenceDir })
-console.log(`${report.status}: ${report.checkpoints.length} checkpoints; parityVerified=${report.parityVerified}`)
+if (scenario !== 'all' && !Object.hasOwn(SPLIT_SCENARIOS, scenario)) throw new Error(`--scenario requires all or ${Object.keys(SPLIT_SCENARIOS).join(', ')}`)
+if (scenario === 'all' && referenceDir !== undefined) throw new Error('--reference selects one scenario only')
+artifacts ??= resolve(root, '.artifacts/split-parity', scenario)
+const scenarios = scenario === 'all' ? Object.keys(SPLIT_SCENARIOS).filter(name => !captureReferenceOnly || !SPLIT_SCENARIOS[name].splitOnly) : [scenario]
+const report = await runSplitSuite({ root, dshBin: process.env.MAYFLY_DSH_BIN ?? process.env.DSH_BIN ?? 'dsh', artifacts, resultsFile, cols, rows, scenarios, smokeOnly, captureReferenceOnly, referenceDir })
 for (const failure of report.failures) console.error(failure)
-console.log(`Report: ${resolve(artifacts, 'report.json')}`)
+console.log(`Report: ${resultsFile ?? resolve(artifacts, 'suite.json')}`)
 process.exitCode = report.failures.length === 0 ? 0 : 1

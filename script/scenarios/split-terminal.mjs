@@ -9,7 +9,7 @@ import { normalizeSplitGrid, redactSplitOutput } from './split-reference.mjs'
 const require = createRequire(import.meta.url)
 
 /** Drive identical semantic steps through either real executable. Never inject renderer state. */
-export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, steps, stub, alive = () => {}, startupUrl, onCheckpoint = () => {}, beforeExit = async () => {} }) {
+export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, steps, stub, alive = () => {}, startupUrl, onCheckpoint = () => {}, beforeExit = async () => {}, audit, network }) {
   const terminal = require('node-pty').spawn(bin, args, { name: 'xterm-256color', cols, rows, cwd, env })
   const screen = createScreen({ cols, rows, reply: data => terminal.write(data) })
   let output = ''
@@ -48,13 +48,24 @@ export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, st
         case 'type': terminal.write(step.text); await settle(); break
         case 'key': terminal.write(keyBytes(step.name)); await settle(); break
         case 'resize': terminal.resize(step.cols, step.rows); screen.resize(step.cols, step.rows); await settle(); break
-        case 'until': {
+        case 'wait': await sleep(step.ms); await settle(); break
+        case 'audit':
+          if (audit === undefined) throw new Error('Audit step requires the real native probe fixture')
+          await audit(step)
+          await settle()
+          break
+        case 'network':
+          if (network === undefined) throw new Error('Network step requires the real forwarding fixture')
+          await network(step.action)
+          break
+        case 'until':
+        case 'until-gone': {
           const begin = performance.now()
           for (;;) {
             check()
             await screen.flush()
-            if (screen.find(step.text) !== undefined) break
-            if (performance.now() - begin > 30_000) throw new Error(`Expected text did not appear: ${step.text}`)
+            if ((screen.find(step.text) !== undefined) === (step.step === 'until')) break
+            if (performance.now() - begin > 30_000) throw new Error(`Expected text did not ${step.step === 'until' ? 'appear' : 'disappear'}: ${step.text}`)
             await sleep(25)
           }
           await settle()

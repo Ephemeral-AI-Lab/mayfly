@@ -37,11 +37,12 @@ export function normalizeSplitGrid(grid) {
 }
 
 /** Fail closed if any checkpoint is absent or its reference digest/provenance has changed. Never write references. */
-export function compareSplitReference(referenceDir, checkpoints, { cols, rows }) {
+export function compareSplitReference(referenceDir, checkpoints, { cols, rows, steps }) {
   const manifest = JSON.parse(readFileSync(join(referenceDir, 'reference.json'), 'utf8'))
   if (manifest.package !== SPLIT_REFERENCE.package || manifest.version !== SPLIT_REFERENCE.version || manifest.integrity !== SPLIT_REFERENCE.integrity || manifest.commit !== SPLIT_REFERENCE.commit) {
     throw new Error('Reference manifest does not identify the frozen published rc.2 baseline')
   }
+  if (steps !== undefined && manifest.stepsSha256 !== undefined && manifest.stepsSha256 !== createHash('sha256').update(JSON.stringify(steps)).digest('hex')) throw new Error('Reference semantic steps differ from the candidate scenario')
   const failures = []
   for (const checkpoint of checkpoints) {
     const width = checkpoint.cols ?? cols

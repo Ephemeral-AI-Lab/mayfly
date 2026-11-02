@@ -6,6 +6,7 @@
  */
 
 import { createServer } from 'node:http'
+import { splitProbeInstruction } from './split-cases.mjs'
 
 const TITLE = 'Replay session'
 const REPLY = 'This is a replay session: the model is a stub. Type nothing; the conversation above is scripted.'
@@ -70,7 +71,7 @@ const BALANCE_STATUS = { rejected: 401, down: 503 }
  * @returns `{ baseURL, inFlight(), close() }`: `inFlight()` counts the requests not answered yet, so a scenario settles
  *   only after the title the product asks for has arrived.
  */
-export async function startStubModel({ balance = 'ok' } = {}) {
+export async function startStubModel({ balance = 'ok', probe = false } = {}) {
   const open = new Set()
   /** Responses held by `hold:<ms>`: a person-sized wait is not a request the runner settles on. */
   const held = new Set()
@@ -90,6 +91,13 @@ export async function startStubModel({ balance = 'ok' } = {}) {
       let body = {}
       try { body = JSON.parse(raw) } catch { /* answered as a prompt */ }
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' })
+      const instruction = probe ? splitProbeInstruction(body) : undefined
+      if (instruction !== undefined) {
+        if (!instruction.completed && Array.isArray(body.tools) && body.tools.some(tool => tool.name === 'parity_probe')) {
+          response.end(toolSse('parity_probe', { mode: instruction.mode, label: instruction.label }))
+        } else response.end(sse(`Parity probe finished: ${instruction.label}`))
+        return
+      }
       const spawn = Array.isArray(body.tools) && body.tools.some(tool => tool.name === 'subagent') ? spawnOf(body) : undefined
       if (spawn !== undefined) { response.end(toolSse('subagent', spawn)); return }
       const answer = sse(Array.isArray(body.tools) && body.tools.length > 0 ? REPLY : TITLE)
