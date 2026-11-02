@@ -329,6 +329,8 @@ the observer follows both native document updates and frontend settings-source
 replacement, retiring queued callbacks with its Fiber. Core's
 `normalizeWheelInput` is the shared terminal decoder; frontends route its
 structured result to the existing scroll controller instead of decoding ANSI.
+Core's `sanitizeShellOutput` also owns captured-output control-sequence removal;
+native and independent frontends consume it instead of keeping ANSI parsers.
 
 `./plugin-marketplace` exposes the shared marketplace component, readonly
 model/facts and discovery catalog. Host plugin mutations remain native Remote

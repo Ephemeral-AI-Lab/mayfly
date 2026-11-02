@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { sanitizeShellOutput } from '../../src/interaction/shell-sanitize.ts'
+import { sanitizeShellOutput } from '../../src/core/shell-output.ts'
 
 describe('sanitizeShellOutput', () => {
   it('passes plain text through unchanged', () => {

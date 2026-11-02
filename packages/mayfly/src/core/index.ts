@@ -29,6 +29,7 @@ export type { CompletionDrawerSource } from './completion-drawer.ts'
 export { MayflyKeymapError, MayflyKeymapService, type MayflyKeymapErrorCode } from './keymap.ts'
 export { MayflyScreenService } from './screen.ts'
 export { normalizeWheelInput } from './terminal.ts'
+export { sanitizeShellOutput } from './shell-output.ts'
 export {
   PLUGIN_VIEW_MAX_DEPTH,
   paintPluginTone,

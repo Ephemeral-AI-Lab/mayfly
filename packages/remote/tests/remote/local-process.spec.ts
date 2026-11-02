@@ -2,7 +2,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LocalProcessOwner, failureDetail, runInheritedShell, runLocalTool } from '../../src/remote/local/process.ts'
-import { EditorShell, sanitizeShellOutput } from '../../src/remote/editor/shell.ts'
+import { EditorShell } from '../../src/remote/editor/shell.ts'
 import { visibleWidth } from '../../../mayfly/src/core/width.ts'
 import type { MayflyComponent, MayflyComponents, MayflyScreen, MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
 
@@ -187,10 +187,6 @@ function shellFixture() {
 }
 
 describe('local shell transcript echo', () => {
-  it('strips terminal commands, preserving plain text, newlines and tabs', () => {
-    expect(sanitizeShellOutput('\x1b]52;c;c2VjcmV0\x07\x1b[31mred\x1b[0m\x1b]0;title\x1b\\\x1b7\x00\tkeep\n')).toBe('red\tkeep\n')
-  })
-
   it('renders successful output and warning stderr with width-bounded rows', () => {
     const f = shellFixture()
     const run = f.launch()
@@ -201,6 +197,13 @@ describe('local shell transcript echo', () => {
     expect(f.screen.requestRender).toHaveBeenCalledOnce()
     f.shell.dispose()
     expect(f.slots[0]!.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('renders control-free captured output through the shared core sanitizer', () => {
+    const f = shellFixture()
+    f.launch().callback(null, '\x1b]52;c;c2VjcmV0\x07\x1b[31mred\x1b[0m\x1b]0;title\x1b\\\x1b7\x00\tkeep\n', '')
+    expect(f.contents[0]!.render(80)).toEqual(['  $ printf hello', '  red\tkeep'])
+    f.shell.dispose()
   })
 
   it('paints nonzero and nonnumeric failures and labels empty output', () => {

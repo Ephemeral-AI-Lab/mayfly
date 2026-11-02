@@ -1,8 +1,8 @@
 /** The sanitizer's last-resort path: an engine whose `replace` throws still yields C0-free text, never a crash.
- * @module @ephemeral-ai/mayfly/tests/interaction/shell-sanitize-fallback
+ * @module @ephemeral-ai/mayfly/tests/core/shell-output-fallback
  */
 import { expect, it } from 'vitest'
-import { sanitizeShellOutput } from '../../src/interaction/shell-sanitize.ts'
+import { sanitizeShellOutput } from '../../src/core/shell-output.ts'
 
 it('falls back to stripping only C0 controls when a replace call throws', () => {
   const original = String.prototype.replace

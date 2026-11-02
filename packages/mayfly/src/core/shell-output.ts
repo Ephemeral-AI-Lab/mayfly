@@ -9,7 +9,7 @@
  * `\t` (which the renderer understands). This is the Mayfly port of kimi's
  * `sanitizeShellOutput` (`apps/kimi-code/src/tui/utils/shell-output.ts`).
  *
- * @module @ephemeral-ai/mayfly/interaction/shell-sanitize
+ * @module @ephemeral-ai/mayfly/core/shell-output
  */
 
 // ESC [ <params> <intermediates> <final> — colours, cursor moves, clear, and

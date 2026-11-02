@@ -5,7 +5,7 @@
 
 import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { GutterComponent } from '@ephemeral-ai/mayfly/core'
+import { GutterComponent, sanitizeShellOutput } from '@ephemeral-ai/mayfly/core'
 import type {
   MayflyComponent,
   MayflyComponents,
@@ -17,20 +17,6 @@ import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 
 const MAX_LINES = 200
 const MAX_BYTES = 64 * 1024
-// oxlint-disable-next-line no-control-regex -- terminal control sequences are the input being removed
-const CSI = /\x1b\[[0-9:;<=>?]*[ -/]*[@-~]/g
-// oxlint-disable-next-line no-control-regex -- terminal control sequences are the input being removed
-const OSC = /\x1b\][\s\S]*?(?:\x07|\x1b\\)/g
-// oxlint-disable-next-line no-control-regex -- terminal control sequences are the input being removed
-const ESC = /\x1b(?:[ -/][0-~]|[0-~])/g
-// oxlint-disable-next-line no-control-regex -- C0 controls other than newline and tab are unsafe output
-const C0 = /[\x00-\x08\x0B-\x1B\x1C-\x1F]/g
-
-/** Strip terminal commands while retaining newlines and tabs from captured output. */
-export function sanitizeShellOutput(text: string): string {
-  return text.replace(OSC, '').replace(CSI, '').replace(ESC, '').replace(C0, '')
-}
-
 export interface ShellExecution {
   readonly code: number
   readonly stdout: string

@@ -59,7 +59,6 @@ export { EditorDraftStore, parseEditorCommand, filterEditorCommands } from './ut
 export { activeMention, applyMention, formatMention, mentionPath } from './mentions.ts'
 export { extractSkillPrefix, rewriteSkillTokens } from './skills.ts'
 export { imageMarker, sniffImageMediaType } from './attachments.ts'
-export { sanitizeShellOutput } from './shell.ts'
 export { copyLocalText } from '../local/clipboard.ts'
 export { editLocalText, resolveExternalEditorCommand } from '../local/external-editor.ts'
 
