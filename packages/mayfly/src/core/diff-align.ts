@@ -272,12 +272,10 @@ export function diffModel(ops: readonly DiffOp[], options: DiffPaintOptions = {}
     if (ended) break
     // Skipped context before, between, and around the kept ranges is one `⋯` row per run.
     if (opIndex < lo) segments.push({ kind: 'gap' })
-    for (; opIndex < lo; opIndex += 1) {
-      const op = ops[opIndex]!
-      if (op.type === 'ctx') { old += 1; next += 1 }
-      else if (op.type === 'del') old += 1
-      else next += 1
-    }
+    // Every change owns a kept range, so a skipped stretch contains only unchanged lines.
+    old += lo - opIndex
+    next += lo - opIndex
+    opIndex = lo
     const rows: DiffRowModel[] = []
     let tail: number | undefined
     for (; opIndex <= hi; opIndex += 1) {

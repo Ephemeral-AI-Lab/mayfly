@@ -21,7 +21,7 @@
  */
 
 import { Markdown, type MarkdownTheme } from '@earendil-works/pi-tui'
-import { Marked, type Token, type TokenizerAndRendererExtension } from 'marked'
+import { Marked, type Token, type TokenizerAndRendererExtension, type Tokens } from 'marked'
 import { CONTENT_SEGMENT_UNITS } from './content-segments.ts'
 import { highlightCodeLines } from './highlight.ts'
 import { renderMermaidRows, splitRichDocument } from './rich-document.ts'
@@ -162,15 +162,13 @@ scanParser.use({ extensions: [latexBlockExtension] })
 /** Every `def` token's raw text, in tree order, for the tags marked actually resolved into `links`. */
 function collectDefs(tokens: readonly Token[], links: Readonly<Record<string, unknown>>, into: MarkdownDef[], seen: Set<string>): void {
   for (const token of tokens) {
-    const typed = token as Token & { readonly tag?: string, readonly tokens?: Token[], readonly items?: { readonly tokens?: Token[] }[] }
+    const typed = token as Token & { readonly tag?: string, readonly tokens?: Token[], readonly items?: Tokens.ListItem[] }
     if (typed.type === 'def' && typed.tag !== undefined && typed.tag in links && !seen.has(typed.tag)) {
       seen.add(typed.tag)
       into.push({ tag: typed.tag, raw: typed.raw.endsWith('\n') ? typed.raw : `${typed.raw}\n` })
     }
     if (typed.tokens !== undefined) collectDefs(typed.tokens, links, into, seen)
-    if (typed.items !== undefined) for (const item of typed.items) {
-      if (item.tokens !== undefined) collectDefs(item.tokens, links, into, seen)
-    }
+    if (typed.items !== undefined) for (const item of typed.items) collectDefs(item.tokens, links, into, seen)
   }
 }
 
@@ -217,20 +215,21 @@ function scanNormalized(normalized: string): PreparedMarkdown {
 
   for (const segment of splitRichDocument(normalized)) {
     const segmentRaw = segment.kind === 'mermaid' ? segment.fallback : segment.source
-    const segmentStart = normalized.indexOf(segmentRaw, cursor)
+    // splitRichDocument returns exact, contiguous source slices (Mermaid's fallback retains the whole fence).
+    const segmentStart = cursor
     if (segment.kind === 'mermaid') {
       units.push({ kind: 'mermaid', source: segment.source, fallback: segment.fallback, start: Math.max(0, segmentStart), estimate: segment.source.split('\n').length + 2 })
       cursor = segmentStart + segmentRaw.length
       continue
     }
-    const tokens = scanParser.lexer(segmentRaw) as Token[] & { readonly links?: Record<string, unknown> }
-    if (tokens.links !== undefined) collectDefs(tokens, tokens.links, defs, seenDefs)
+    const tokens = scanParser.lexer(segmentRaw)
+    collectDefs(tokens, tokens.links, defs, seenDefs)
     let start = -1
     let end = -1
     let estimate = 0
     let flow = 0
     let lastIsSpace = true
-    let position = segmentStart < 0 ? cursor : segmentStart
+    let position = segmentStart
     const flush = (closed = false): void => {
       if (start < 0) return
       units.push({ kind: 'block', start, end, estimate, flow, ...closed ? { closed: true as const } : {} })
@@ -280,7 +279,7 @@ function scanNormalized(normalized: string): PreparedMarkdown {
       position = end
     }
     flush()
-    cursor = segmentStart < 0 ? position : segmentStart + segmentRaw.length
+    cursor = segmentStart + segmentRaw.length
   }
   const lines = normalized.split('\n').length
   return { normalized, units, defs, lines, scanned: lines }
@@ -294,7 +293,7 @@ function scanNormalized(normalized: string): PreparedMarkdown {
 export function markdownBlockRows(text: string, defs: readonly MarkdownDef[], width: number, theme: MarkdownTheme, hr: (text: string) => string, closed = false): string[] {
   let fragment = text
   if (defs.length > 0 && text.includes('[')) {
-    const local = (scanParser.lexer(text) as Token[] & { readonly links?: Record<string, unknown> }).links ?? {}
+    const local = scanParser.lexer(text).links
     const prologue = defs.filter(def => !(def.tag in local)).map(def => def.raw).join('')
     if (prologue !== '') fragment = prologue + fragment
   }

@@ -378,6 +378,18 @@ describe('lazy units', () => {
 })
 
 describe('mermaid units', () => {
+  it('keeps repeated Markdown and Mermaid slices at their exact source positions', () => {
+    const fence = '```mermaid\ngraph TD; A-->B\n```\n'
+    const text = `repeat\n\n${fence}repeat\n\n${fence}tail\n`
+    const segments = splitRichDocument(text)
+    expect(segments.map(segment => segment.kind === 'mermaid' ? segment.fallback : segment.source).join('')).toBe(text)
+    const scan = scanMarkdown(text)
+    expect(scan.units.filter(unit => unit.kind === 'mermaid').map(unit => unit.start)).toEqual([
+      text.indexOf(fence), text.indexOf(fence, text.indexOf(fence) + fence.length),
+    ])
+    for (const width of WIDTHS) expect(lazyRows(text, width, makeEnv()).slice()).toEqual(eagerRows(text, width))
+  })
+
   it('paints the source fallback of an unrenderable diagram, and leaves an oversized fallback to raw lines', () => {
     const small = '```mermaid\nnot a diagram\n```'
     expect(markdownMermaidRows('not a diagram', small, 40, theme, hr)?.join('\n')).toContain('not a diagram')

@@ -204,7 +204,7 @@ class SegmentedContent implements RowSource {
       const rows = this.segmentRows(segment)
       if (this.changes !== settled) continue
       countWork(this.env.counters, 'rowsMaterialized')
-      return rows[index - this.tree.sum(segment - 1)] ?? ''
+      return rows[index - this.tree.sum(segment - 1)]!
     }
   }
 
@@ -378,7 +378,7 @@ class DiffRowsSource implements RowSource {
       const rows = this.chunkRows(chunk)
       if (this.changes !== settled) continue
       countWork(this.env.counters, 'rowsMaterialized')
-      return rows[index - this.tree.sum(chunk - 1)] ?? ''
+      return rows[index - this.tree.sum(chunk - 1)]!
     }
   }
 

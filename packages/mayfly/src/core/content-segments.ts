@@ -160,13 +160,14 @@ export class ContentIndex {
     if (this.isCut(segment)) return Math.floor(estimateColumns(text, segmentStart, at) / safe)
     let rows = 0
     const [first, past] = this.segmentLines(segment)
-    for (let line = first; line < past; line += 1) {
-      const [start, end] = this.lineText(line)
-      if (at <= end) return rows + Math.floor(estimateColumns(text, start, at) / safe)
+    // Whole-line segments always contain a line, and `at` is capped at the last one's end.
+    let line = first
+    while (line < past - 1 && at > this.lineText(line)[1]) {
       const cols = this.lineCols[line]!
       rows += cols === 0 ? 1 : Math.ceil(cols / safe)
+      line += 1
     }
-    return rows
+    return rows + Math.floor(estimateColumns(text, this.lineText(line)[0], at) / safe)
   }
 
   /**

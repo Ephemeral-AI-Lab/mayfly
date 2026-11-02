@@ -412,6 +412,23 @@ describe('contentNodeSource', () => {
     expect(lifted.offsetOf!(0)).toBe(0)
     expect(lifted.offsetOf!(1)).toBe(3)
     expect(lifted.offsetOf!(2)).toBe(5)
+    const fields = rowSourceOf(source({ kind: 'fields', rows: [{ label: 'Name', value: [{ text: 'abcdefghijklmnop' }] }] }, 10).rows)!
+    expect(fields.rowOf!(12)).toBe(1)
+    expect(fields.offsetOf!(1)).toBe(10)
+    expect(plainText(fields.row(1))).toBe('abcdefghij')
+  })
+
+  it('prepares a labelled code window in body coordinates while leaving earlier segments lazy', () => {
+    const lines = Array.from({ length: CONTENT_SEGMENT_LINES * 3 }, (_, index) => `line ${String(index)}`.padEnd(40, '.'))
+    const made = makeEnv()
+    const rows = contentNodeRows({ kind: 'code', language: 'ts', code: lines.join('\n') }, 80, made.env)
+    expect(made.counters.segmentsPainted).toBe(0)
+    const from = CONTENT_SEGMENT_LINES + 3
+    prepareRows(rows, from + 1, from + 5)
+    expect(made.counters.segmentsPainted).toBe(1)
+    expect(plainText(rows[from + 1]!)).toBe(lines[from])
+    expect(plainText(rows[0]!)).toBe('ts')
+    expect(made.counters.segmentsPainted).toBe(1)
   })
 
   it('answers out-of-range reads with empty rows across the lazy sources', () => {

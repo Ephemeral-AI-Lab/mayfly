@@ -163,6 +163,19 @@ describe('paintDiffRows', () => {
     expect(rows.map(row => row.trimEnd())).toEqual(['  1 │ + a', '  2 │ + b', '  … +2 rows · Ctrl+O'])
   })
 
+  it('advances both line counters through collapsed context between separate removal and addition hunks', () => {
+    const model = diffModel([
+      { type: 'ctx', text: 'head' }, { type: 'del', text: 'removed' },
+      { type: 'ctx', text: 'hidden one' }, { type: 'ctx', text: 'hidden two' },
+      { type: 'add', text: 'added' }, { type: 'ctx', text: 'tail' },
+    ], { beforeStart: 10, start: 100, context: 0, hunkHeader: false })
+    expect(model.segments).toEqual([
+      { kind: 'gap' }, { kind: 'rows', rows: [{ old: 11, sign: '-', text: 'removed' }] },
+      { kind: 'gap' }, { kind: 'rows', rows: [{ new: 103, sign: '+', text: 'added' }] },
+      { kind: 'gap' },
+    ])
+  })
+
   it('ends the layout at the row budget even when more hunks follow, and shows no rows for a hunk the budget already ended', () => {
     const before = Array.from({ length: 30 }, (_, index) => `l${String(index)}`)
     const after = before.map((line, index) => index % 10 === 5 ? `${line}!` : line)

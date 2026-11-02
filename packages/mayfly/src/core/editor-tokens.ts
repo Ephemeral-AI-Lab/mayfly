@@ -109,9 +109,8 @@ export function findTokenRanges(line: string, pasteIds: ReadonlySet<number>, sou
   return kept
 }
 
-/** The index in a token's text where its label ends: the brackets and the size around it are detail. */
+/** The end of a non-mention token's label; toneOf handles mentions before calling this helper. */
 function labelEnd(token: EditorTokenText): number {
-  if (token.kind === 'mention') return token.text.length
   // `[image #12 84 KB]`: the brackets and the size are detail, `image #12` is the label.
   const match = /^\[([a-z]+ #\d+)/u.exec(token.text)
   return match === null ? token.text.length : 1 + match[1]!.length
@@ -279,8 +278,8 @@ function paintRange(row: string, text: RowText, piece: Piece, token: EditorToken
     if (text.raw[visible] !== at) {
       // An escape sequence between two visible characters: it ends the run so the paint never wraps it.
       flush()
-      const sequence = terminalSequenceAt(row, at)
-      const length = sequence?.length ?? 1
+      // readRow skips only recognized terminal sequences, so every gap in its raw offsets starts one.
+      const length = terminalSequenceAt(row, at)!.length
       out += row.slice(at, at + length)
       at += length
       continue
