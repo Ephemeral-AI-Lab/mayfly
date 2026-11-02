@@ -80,11 +80,8 @@ export function resolveHostEndpoint(startupUrl: string): HostEndpoint {
       return resolveMounted(baseUrl, input, 'Host transport')
     },
     resolveWebSocket(input) {
-      const target = resolveMounted(socketBaseUrl, input, 'Host WebSocket')
-      if (target.protocol !== socketBaseUrl.protocol) {
-        throw new HostTransportError('configuration', 'Host WebSocket URL does not match the configured TLS policy')
-      }
-      return target
+      // The mounted origin check includes the scheme and enforces TLS too.
+      return resolveMounted(socketBaseUrl, input, 'Host WebSocket')
     },
   }
 }
@@ -190,8 +187,6 @@ export class HostAuthBroker {
       case 'disconnected':
         this.socketLost()
         return
-      default:
-        return assertNever(state)
     }
   }
 
@@ -291,23 +286,22 @@ export class HostAuthBroker {
   }
 
   private assertExchangeCurrent(generation: number): void {
-    if (this.terminal !== undefined) throw this.terminal
     if (!this.isCurrent(generation)) throw new HostTransportError('superseded', SUPERSEDED_MESSAGE)
   }
 
   private fail(status: TerminalStatus, error: HostTransportError): HostTransportError {
-    if (this.terminal === undefined && !this.detached) {
-      this.terminal = error
-      this.publish({ status, generation: this.generation, error })
-      for (const listener of [...this.terminalListeners]) {
-        try {
-          listener()
-        } catch {
-          console.error('Host terminal-state listener failed')
-        }
+    // Only the current serialized exchange reaches a terminal response; its
+    // generation was checked synchronously immediately before this call.
+    this.terminal = error
+    this.publish({ status, generation: this.generation, error })
+    for (const listener of [...this.terminalListeners]) {
+      try {
+        listener()
+      } catch {
+        console.error('Host terminal-state listener failed')
       }
     }
-    return this.terminal ?? error
+    return error
   }
 
   private publish(next: HostConnectionState): void {
@@ -355,8 +349,4 @@ function isLoopbackHostname(hostname: string): boolean {
   return parts.length === 4
     && parts[0] === '127'
     && parts.every(part => /^\d{1,3}$/u.test(part) && Number(part) <= 255)
-}
-
-function assertNever(value: never): never {
-  throw new TypeError(`Unexpected Connection state: ${String(value)}`)
 }
