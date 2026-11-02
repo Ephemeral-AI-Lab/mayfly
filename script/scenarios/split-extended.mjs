@@ -39,9 +39,22 @@ export const SPLIT_PANEL_STEPS = Object.freeze([
   ...command('preset'), ...command('permissions'), ...command('model'), ...command('effort'),
 ])
 
+/** Read the real shared release panel after native Session admission, including both width extremes. */
+export const SPLIT_CHANGELOG_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' },
+  { step: 'type', text: 'Say one line about this isolated replay.' }, { step: 'key', name: 'enter' },
+  { step: 'until', text: 'the model is a stub' },
+  { step: 'type', text: '/changelog' }, { step: 'key', name: 'enter' },
+  { step: 'until', text: 'Changelog' }, { step: 'checkpoint', name: 'changelog' },
+  { step: 'resize', cols: 40, rows: 16 }, { step: 'checkpoint', name: 'changelog-narrow' },
+  { step: 'resize', cols: 120, rows: 40 }, { step: 'checkpoint', name: 'changelog-wide' },
+  { step: 'key', name: 'esc' }, { step: 'checkpoint', name: 'changelog-closed' },
+])
+
 /** These references are acquired independently and cannot replace the initial eighteen. */
 export const SPLIT_EXTENDED_CASES = Object.freeze({
   startup: { startup: 'splash', profileTag: 'startup', steps: SPLIT_STARTUP_STEPS },
   'model-shortcut': { profileTag: 'model-shortcut', steps: SPLIT_MODEL_SHORTCUT_STEPS },
   panels: { profileTag: 'panels', steps: SPLIT_PANEL_STEPS },
+  changelog: { profileTag: 'changelog', steps: SPLIT_CHANGELOG_STEPS },
 })
