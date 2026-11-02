@@ -104,7 +104,7 @@ export function mountRemoteConfigurationComposition(
     }),
     base.commands.register({
       name: 'permissions', scope: 'sessionless',
-      description: 'Switch the permission preset for the session or by default',
+      description: 'Choose the permission preset',
       execute: async rawInput => {
         if (rawInput.trim() !== '') throw usage('permissions')
         await features.permissions.open()

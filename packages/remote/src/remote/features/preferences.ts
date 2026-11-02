@@ -14,7 +14,7 @@ import { panel, ui, type MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteFeatureContext } from './contracts.ts'
 import { RemoteFeatureController, remoteErrorMessage, remoteProperty, remoteValue } from './official.ts'
 import { openRemoteBrowser } from '../panels/browser.ts'
-import { REMOTE_LANGUAGES, remoteThemeName } from './presentation.ts'
+import { REMOTE_LANGUAGES } from './presentation.ts'
 import { REMOTE_MAYFLY_SETTINGS_REQUIREMENT, type RemoteSettingsController } from './settings.ts'
 
 /** Theme and locale controller for one feature mount. */
@@ -141,8 +141,8 @@ export class RemotePreferencesController extends RemoteFeatureController {
     if (signal.aborted || client !== undefined && operation === undefined) return
     try {
       await this.context.presentation.applyTheme(theme)
-      if (signal.aborted || operation !== undefined && !operation.valid()) return
-      this.context.notice.set(this.context.t('switched to theme "{key}"', { key: remoteThemeName(theme) }))
+      // rc.2 retires its input/overlay feedback owner during a palette swap.
+      // The retained Remote editor follows the same quiet successful transition.
     } finally { operation?.dispose() }
   }
 
@@ -153,8 +153,6 @@ export class RemotePreferencesController extends RemoteFeatureController {
     if (signal.aborted || client !== undefined && operation === undefined) return
     try {
       await this.context.presentation.applyCustomTheme(path, base)
-      if (signal.aborted || operation !== undefined && !operation.valid()) return
-      this.context.notice.set(this.context.t('switched to theme "{key}"', { key: 'Custom' }))
     } finally { operation?.dispose() }
   }
 

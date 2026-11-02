@@ -215,7 +215,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         toggle: navigation === undefined ? undefined : `${keyHint('mayfly.interaction.toggle-agent-view')} ${t(navigation.counterpart === 'primary' ? 'main' : navigation.counterpart)} · ${keyHint('mayfly.interaction.close-agent-view')} ${t(navigation.close === 'subagent' ? 'detach' : 'close')}`,
       }
     })
-    completionDrawer = mountRemoteCompletionDrawer(screen, editor.editor, ctx.mayflyTheme.colors, ctx.mayflyComponents)
+    completionDrawer = mountRemoteCompletionDrawer(ctx, screen, editor.editor, ctx.mayflyTheme.colors, ctx.mayflyComponents)
     sideViews = new RemoteSideViews(transcript, toolPresentations, screen, editor.notice, {
       changed: () => { status?.refresh(); editor?.refresh() },
       evicted: ref => { operations?.closeChild(ref) },
@@ -240,7 +240,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       open: (client, current, select) => { sessionsBrowser!.open(client, current, select) },
     }, () => {
       const selected = sideViews?.selected()
-      return selected === undefined ? undefined : { ref: selected.ref, access: selected.facts.access, presentation: displayedFacts() }
+      return selected === undefined ? undefined : { ref: selected.ref, access: selected.facts.access, binding: selected.binding, presentation: displayedFacts() }
     }, () => commandSource?.list() ?? [])
     apps.push(app)
     let primaryBinding = app.registry.currentReference?.binding
@@ -334,7 +334,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       apply(owner: Context) {
         editor!.retheme(owner.mayflyComponents, owner.mayflyTheme.colors)
         completionDrawer?.dispose()
-        completionDrawer = mountRemoteCompletionDrawer(screen, editor!.editor, owner.mayflyTheme.colors, owner.mayflyComponents)
+        completionDrawer = mountRemoteCompletionDrawer(owner, screen, editor!.editor, owner.mayflyTheme.colors, owner.mayflyComponents)
         screen.requestRender()
       },
     })
