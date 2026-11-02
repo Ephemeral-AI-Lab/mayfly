@@ -2742,6 +2742,44 @@ describe('interactive prompt, slider, and list inputs', () => {
 })
 
 describe('compiler flow lists and framed surfaces', () => {
+  it('lays out a vertical divider at the row height with its palette and glyph mode', () => {
+    for (const glyphs of ['unicode', 'ascii'] as const) {
+      for (const tone of [undefined, 'warning'] as const) {
+        const f = fixture({ components: { ...components, presentation: { glyphs } } as MayflyComponents })
+        const result = compiled(ui.stack.row([
+          ui.child(ui.text('one\ntwo\nthree'), { grow: 1 }),
+          ui.child(ui.divider({ orientation: 'vertical', ...(tone === undefined ? {} : { tone }) }), { basis: 1, shrink: 0 }),
+          ui.child(ui.text('right'), { grow: 1 }),
+        ]), f.options)
+        const rows = result.component.render(30).map(stripTerminalSequences)
+        expect(rows).toHaveLength(3)
+        expect(rows.every(row => row.includes(glyphs === 'ascii' ? '|' : '│'))).toBe(true)
+        expectLinesFit('vertical divider', rows, 30)
+        result.component.invalidate()
+      }
+    }
+  })
+
+  it('adds the host title to an untitled surface while preserving its body and chrome', () => {
+    const runtime = new MayflyUiSurfaceRuntime()
+    const node = ui.surface({ child: ui.text('body'), chrome: 'overlay' })
+    const result = compileMayflyUiSurfaceNode(node, { ...fixture().options, surfaceRuntime: runtime, title: 'Host title' })
+    if (!result.ok) throw new Error(result.message)
+    const rows = result.value.component.render(40).map(stripTerminalSequences).join('\n')
+    expect(rows).toContain('Host title')
+    expect(rows).toContain('body')
+    // JavaScript consumers can supply a non-string host label; admission still contains it.
+    const invalid = compileMayflyUiSurfaceNode(node, { ...fixture().options, surfaceRuntime: runtime, title: 42 as unknown as string })
+    expect(invalid.ok).toBe(false)
+    runtime.dispose()
+  })
+
+  it('contains a palette failure during eager rich-text source construction', () => {
+    const failing = { ...colors, text: () => { throw new Error('rich palette failed') } }
+    const result = compiled(ui.richText([{ text: 'body' }], { overflow: 'truncate' }), fixture({ colors: failing }).options)
+    expect(result.component.render(40).join('\n')).toContain('rich palette failed')
+  })
+
   it('paints a slider read-only without an interaction model', () => {
     const node = ui.slider({ id: 'level', levels: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], selectedId: 'a' })
     const result = compiled(node, fixture().options)

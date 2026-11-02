@@ -482,11 +482,13 @@ function currentMatch(entries: readonly Entry[], find: RegExp, nth: number | und
   })
   if (total === 0) return undefined
   let remaining = Math.min(Math.max(0, nth), total - 1)
-  for (const found of counts) {
-    if (remaining < found.count) return { entry: found.entry, line: found.line, within: remaining }
-    remaining -= found.count
+  let index = 0
+  while (remaining >= counts[index]!.count) {
+    remaining -= counts[index]!.count
+    index += 1
   }
-  return undefined
+  const found = counts[index]!
+  return { entry: found.entry, line: found.line, within: remaining }
 }
 
 /** The list-wide values one item's rows paint from: the same for every row of one list paint. */
@@ -927,18 +929,21 @@ export class FlowListPainter implements RowSource {
       }
       this.blocks = next
       changed = true
-      if (old.length !== next.length) this.reindex()
-      else {
-        for (let index = prefix; index < next.length; index += 1) {
-          const before = old[index]!
-          const after = next[index]!
-          if (before === after) continue
-          this.measure(index, after)
-          this.byId.set(after.item.id, index)
-          if (before.item.id !== after.item.id) this.byId.delete(before.item.id)
-        }
-        this.itemTotal = this.tree.sum(next.length - 1)
+      // Length is part of the state key: this incremental path always keeps the same block count.
+      // Retire every changed identity before publishing its replacement, so an exchanged id survives.
+      for (let index = prefix; index < next.length; index += 1) {
+        const before = old[index]!
+        const after = next[index]!
+        if (before !== after && before.item.id !== after.item.id) this.byId.delete(before.item.id)
       }
+      for (let index = prefix; index < next.length; index += 1) {
+        const before = old[index]!
+        const after = next[index]!
+        if (before === after) continue
+        this.measure(index, after)
+        this.byId.set(after.item.id, index)
+      }
+      this.itemTotal = this.tree.sum(next.length - 1)
     }
     // A motion body is painted again at every clock frame: its remembered lines would freeze it.
     for (let index = 0; index < this.blocks.length; index += 1) {

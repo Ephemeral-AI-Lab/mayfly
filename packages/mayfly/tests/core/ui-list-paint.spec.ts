@@ -664,6 +664,19 @@ describe('the flow list painter', () => {
     expect(next.at(-1)).toContain('C')
   })
 
+  it('keeps both locations when existing rows exchange positions', () => {
+    const a: MayflyListItem = { id: 'a', label: 'A' }
+    const b: MayflyListItem = { id: 'b', label: 'B' }
+    const c: MayflyListItem = { id: 'c', label: 'C' }
+    const painter = new FlowListPainter()
+    painter.sync(inputOf([a, b, c]))
+    painter.sync(inputOf([b, a, c]))
+    expect(painter.locate('b')).toBe(0)
+    expect(painter.locate('a')).toBe(1)
+    expect(painter.locate('c')).toBe(2)
+    expect(plain([...painter.rows()])).toEqual(['→|B', '  A', '  C'])
+  })
+
   it('repaints a motion body at every sync and highlights a plain pattern', () => {
     const still: MayflyListItem = { id: 's', label: 'still', body: { kind: 'rich-text', spans: [{ text: 'calm' }] }, bodyAlways: true }
     const moving: MayflyListItem = { id: 'm', label: 'moving', body: { kind: 'rich-text', spans: [{ text: 'wave', motion: 'shimmer' }] }, bodyAlways: true }

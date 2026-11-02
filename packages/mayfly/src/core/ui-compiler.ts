@@ -363,7 +363,6 @@ type ControlDescriptor =
   | (ControlBase & { readonly kind: 'text', readonly field: TextField, readonly form: FormNode })
   | (ControlBase & { readonly kind: 'select', readonly field: SelectField, readonly form: FormNode })
   | (ControlBase & { readonly kind: 'toggle', readonly field: ToggleField, readonly form: FormNode })
-  | (ControlBase & { readonly kind: 'submit', readonly form: FormNode })
   | (ControlBase & { readonly kind: 'field-action', readonly address: MayflyFieldAddress, readonly action: UiFieldAction })
   | (ControlBase & { readonly kind: 'editor' })
   | (ControlBase & { readonly kind: 'prompt', readonly node: MayflyPromptNode })
@@ -521,8 +520,8 @@ function staticComponent(render: (width: number) => string[], options: Pick<Pain
       try {
         const rows = glyphRows(render(width), glyphs)
         if (counted) {
-          // A virtual array has painted no rows yet; its source counts what reads through the facade materialize.
-          countWork(options.counters, 'rowsPainted', isVirtualRows(rows) ? 0 : rows.length)
+          // Virtual list/content painters own their row counts and opt out of this eager-leaf count.
+          countWork(options.counters, 'rowsPainted', rows.length)
           countWork(options.counters, 'componentRenders')
         }
         return rows
@@ -548,7 +547,7 @@ function pureStaticComponent(render: (width: number) => string[], options: Pick<
     const known = memo.get(width)
     if (known !== undefined) return known
     const rows = render(width)
-    countWork(options.counters, 'rowsPainted', isVirtualRows(rows) ? 0 : rows.length)
+    countWork(options.counters, 'rowsPainted', rows.length)
     countWork(options.counters, 'componentRenders')
     if (memo.size >= PURE_STATIC_WIDTHS) memo.delete(memo.keys().next().value!)
     memo.set(width, rows)
@@ -906,16 +905,9 @@ function motionFrame(options: RuntimeCompilerOptions): number {
   return options.components.presentation?.reducedMotion === true ? 0 : options.listRuntime.loaderFrame()
 }
 
-function joinSpans(node: { readonly spans: readonly MayflyInlineSpan[] }, colors: MayflySemanticColors): string {
-  return node.spans.map(span => {
-    const painted = safePaint(colors, span.tone, span.text)
-    return (span.styles ?? []).reduce((value, style) => {
-      if (style === 'strong') return `\x1b[1m${value}\x1b[22m`
-      if (style === 'italic') return `\x1b[3m${value}\x1b[23m`
-      if (style === 'inverse') return `\x1b[7m${value}\x1b[27m`
-      return `\x1b[9m${value}\x1b[29m`
-    }, painted)
-  }).join('')
+/** Notification spans contain only the severity glyph and tone; content nodes own rich inline styles. */
+function feedbackRow(spans: ReturnType<typeof feedbackSpans>, colors: MayflySemanticColors): string {
+  return spans.map(span => safePaint(colors, span.tone, span.text)).join('')
 }
 
 /** The one row a gutter or a padding column paints. */
@@ -1192,7 +1184,6 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
         return { kind: 'slider', label: (active.node.hintLabel ?? 'adjust').toLowerCase(), adjustable: facts?.adjustable ?? false, ...(facts?.stuckLeft === true ? { stuckLeft: true as const } : {}), ...(facts?.unpin === true ? { unpin: true } : {}) }
       }
       case 'toggle': return { kind: 'toggle', ...(formEnterAction(active.form, active.field) === undefined ? {} : { enterSubmits: true }) }
-      case 'submit': return { kind: 'submit' }
       case 'field-action': return { kind: 'field-action' }
       case 'text': {
         const completes = editing && active.field.kind !== 'number' && matchingSuggestions(active.field.suggestions, String(state.fieldValue(active.field, active.key))).length > 0
@@ -1254,7 +1245,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
   const numbered = node?.numbered
   const fieldAddress = active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' ? runtime.fieldAddress(active.key) : undefined
   const reset = fieldAddress === undefined ? undefined : fieldReset(interaction?.form(fieldAddress), fieldAddress.fieldId)
-  const save = (active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle' || active?.kind === 'submit') && formSaveTarget(active.form, active.identity.pagePath!, interaction) !== undefined
+  const save = (active?.kind === 'text' || active?.kind === 'select' || active?.kind === 'toggle') && formSaveTarget(active.form, active.identity.pagePath!, interaction) !== undefined
   return {
     mode: mode === 'editor' ? 'editor' : 'ui',
     expanded,
@@ -3171,7 +3162,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       const severity = { info: 0, success: 1, warning: 2, error: 3 }
       const notice = this.surfaceRuntime.interaction?.feedbackSnapshot().toSorted((left, right) => severity[left.severity] - severity[right.severity]).at(-1)
       const feedbackRows = notice === undefined || rowLimit === 1 ? [] : glyphRows([sliceByColumn(
-        joinSpans({ spans: feedbackSpans(notice.severity, sanitizePluginText(notice.message).replace(/[\r\n]+/gu, ' ')) }, this.options.colors),
+        feedbackRow(feedbackSpans(notice.severity, sanitizePluginText(notice.message).replace(/[\r\n]+/gu, ' ')), this.options.colors),
         0, safeWidth, true,
       )], this.options.components.presentation?.glyphs)
       // Without a row limit the frame is the whole tree at its live length: a lazy document reports an estimate until its
@@ -3366,8 +3357,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
 
   private controlRectangles(controls: readonly ControlDescriptor[]): Map<string, LayoutRect> {
     const rectangles = new Map<string, LayoutRect>()
-    /* input returns before geometry lookup when no control exists. */
-    if (controls.length === 0) return rectangles
     const width = Math.max(1, this.viewport.columns)
     // Alternate and interaction surfaces size geometry from the viewport;
     // only the passive inline case needs a measurement render (UX-34).
@@ -3420,9 +3409,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
       const active = controls[this.state.lastIndex]
       const runtimeOptions = this.runtimeOptions
       const grammar = keyGrammar(grammarStateFor(this.state, runtimeOptions, controls, active, this.mode, this.escapeLabel))
-      const binding = grammar.find(candidate => matchesBinding(candidate.match, data, this.options.keymap))
-      /* every grammar ends with a catch-all binding. */
-      if (binding === undefined) return
+      // The grammar always ends in its catch-all, including a surface without controls.
+      const binding = grammar.find(candidate => matchesBinding(candidate.match, data, this.options.keymap))!
       this.apply(binding.intent, data, controls, active)
     } finally {
       if (!this.inputIdle) this.surfaceRuntime.touch()
@@ -3430,9 +3418,8 @@ class CompiledSurface implements MayflyEditorShellComponent {
   }
 
   private moveTo(index: number, within: readonly ControlDescriptor[]): void {
-    const control = within[index]
-    /* every caller resolves an entry from the current control set. */
-    if (control === undefined) return
+    // Callers resolve the index from this exact control walk.
+    const control = within[index]!
     const tabGroups = controlGroups(within).filter(group => group.kind === 'tabs')
     this.state.setEditing(undefined)
     this.state.lastIndex = index
@@ -3451,8 +3438,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
   private moveGroup(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor): void {
     const groups = controlGroups(controls)
     const current = groups.findIndex(group => group.id === active.group)
-    /* a non-tab active control belongs to one content group above. */
-    if (current < 0) return
     const sibling = controls[this.state.lastIndex + delta]
     if (sibling?.group === active.group && !(active.kind === 'event' && (active.role === 'tab' || active.role === 'list-single' || active.role === 'list-multiple'))) {
       this.moveTo(this.state.lastIndex + delta, controls)
@@ -3507,19 +3492,19 @@ class CompiledSurface implements MayflyEditorShellComponent {
   private switchTab(delta: -1 | 1, controls: readonly ControlDescriptor[], active: ControlDescriptor | undefined): void {
     const onStrip = active?.kind === 'event' && active.role === 'tab'
     const group = selectedTabGroup(controlGroups(controls), active, this.state.lastTabGroupIndex)!
-    /* tab groups register only tab-change event controls. */
-    const tabEvent = (control: ControlDescriptor): Extract<MayflyUiEvent, { readonly kind: 'tab-change' }> | undefined =>
-      control.kind === 'event' && control.event.kind === 'tab-change' ? control.event : undefined
-    const entries = group.entries.filter(entry => tabEvent(entry.control) !== undefined)
-    const anchor = tabEvent(entries[0]!.control)!
+    // A tab group's entries are the tab-change controls registered by the strip.
+    const tabEvent = (control: ControlDescriptor): Extract<MayflyUiEvent, { readonly kind: 'tab-change' }> =>
+      (control as Extract<ControlDescriptor, { readonly kind: 'event' }>).event as Extract<MayflyUiEvent, { readonly kind: 'tab-change' }>
+    const entries = group.entries
+    const anchor = tabEvent(entries[0]!.control)
     const currentId = this.surfaceRuntime.activeTab({ pagePath: anchor.pagePath, controlId: anchor.controlId })
-    const currentIndex = entries.findIndex(entry => tabEvent(entry.control)?.tabId === currentId)
+    const currentIndex = entries.findIndex(entry => tabEvent(entry.control).tabId === currentId)
     const target = entries[currentIndex + delta]
     const targetEvent = target === undefined ? undefined : tabEvent(target.control)
     if (targetEvent === undefined) return
     this.state.emit(targetEvent)
     const refreshed = reconcile(this.state)
-    const stripIndex = refreshed.findIndex(control => control.kind === 'event' && control.role === 'tab' && tabEvent(control)?.tabId === targetEvent.tabId)
+    const stripIndex = refreshed.findIndex(control => control.kind === 'event' && control.role === 'tab' && tabEvent(control).tabId === targetEvent.tabId)
     const refreshedGroups = controlGroups(refreshed)
     const content = onStrip ? undefined : refreshedGroups.slice(refreshedGroups.findIndex(candidate => candidate.id === group.id) + 1).find(candidate => candidate.kind === 'content')
     // The strip remembers the tab it now shows, so a later return to it (`Tab`, `←`, `Esc`) lands on that tab.
@@ -3652,17 +3637,17 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'collapse': this.state.expandedKey = undefined; return
       case 'expand': this.state.expandedKey = active!.key; return
       case 'scroll': {
-        const scroll = this.state.scrollViews.get(this.state.expandedKey ?? active!.key)
-        /* compiler registration creates both descriptors atomically. */
-        if (scroll !== undefined) scrollBy(scroll, intent.movement)
+        // Registration creates the scroll descriptor and its view atomically.
+        const scroll = this.state.scrollViews.get(this.state.expandedKey ?? active!.key)!
+        scrollBy(scroll, intent.movement)
         return
       }
       case 'escape': this.escape(intent.step, active); return
       case 'close': this.closeSurface(); return
       case 'rail-back': {
-        const rail = railGroupFor(controls, this.state.lastIndex)
-        /* the grammar binds `←` to the rail only while the surface has one. */
-        if (rail !== undefined) this.moveTo(groupTarget(controls, rail, this.state.groupActiveKeys.get(rail)), controls)
+        // The grammar offers this intent only while a rail is present.
+        const rail = railGroupFor(controls, this.state.lastIndex)!
+        this.moveTo(groupTarget(controls, rail, this.state.groupActiveKeys.get(rail)), controls)
         return
       }
       case 'keyed': this.state.emit(intent.control < controls.length ? (controls[intent.control] as Extract<ControlDescriptor, { readonly kind: 'event' }>).event : this.state.accelerators()[intent.control - controls.length]!.event); return
@@ -3702,8 +3687,14 @@ class CompiledSurface implements MayflyEditorShellComponent {
         return
       }
     }
-    /* every remaining intent is bound only while a control holds focus. */
-    if (active === undefined) return
+    // The remaining grammar intents require a focused control.
+    this.applyFocused(intent, data, controls, active!)
+  }
+
+  private applyFocused(intent: GrammarIntent, data: string, controls: readonly ControlDescriptor[], active: ControlDescriptor): void {
+    const model = this.surfaceRuntime.interaction
+    const listNode = active.kind === 'list' ? active.node : active.kind === 'event' ? active.listEntry?.node : undefined
+    const listAddress = listNode === undefined ? undefined : { pagePath: this.surfaceRuntime.pagePath(listNode), controlId: listNode.id }
     switch (intent.kind) {
       case 'group': this.commitEditing(active); this.moveGroup(intent.delta, reconcile(this.state), active); return
       case 'focus-level': this.focusLevel(intent.delta, controls, active); return
@@ -3745,7 +3736,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       }
       case 'form-save': {
         // The grammar binds `ui.save` only where the form has a target to run.
-        const form = (active as Extract<ControlDescriptor, { readonly kind: 'text' | 'select' | 'toggle' | 'submit' }>).form
+        const form = (active as Extract<ControlDescriptor, { readonly kind: 'text' | 'select' | 'toggle' }>).form
         const pagePath = active.identity.pagePath!
         if (this.state.editingKey === active.key) this.commitEditing(active)
         model?.invoke(formSaveTarget(form, pagePath, model)!, pagePath)
@@ -3856,7 +3847,6 @@ class CompiledSurface implements MayflyEditorShellComponent {
           model?.focusControl({ pagePath: active.address.pagePath, controlId: active.address.fieldId })
           this.restoreFocusIdentity({ pagePath: active.address.pagePath, controlId: active.address.fieldId })
         } else if (active.kind === 'toggle') this.state.setValue(active.key, !this.state.fieldValue(active.field, active.key))
-        else if (active.kind === 'submit') model?.invoke(active.form.submitActionId!, active.identity.pagePath!)
         else this.state.emit((active as Extract<ControlDescriptor, { readonly kind: 'event' }>).event)
         return
     }
