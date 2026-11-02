@@ -7,6 +7,7 @@
 
 import { createServer } from 'node:http'
 import { splitProbeInstruction } from './split-cases.mjs'
+import { splitNativeInstruction } from './split-native-fixture.mjs'
 
 const TITLE = 'Replay session'
 const REPLY = 'This is a replay session: the model is a stub. Type nothing; the conversation above is scripted.'
@@ -38,9 +39,9 @@ const spawnOf = body => {
   }
 }
 
-const toolSse = (name, input) => [
+const toolSse = (name, input, id = 'toolu_stub1') => [
   { type: 'message_start', message: { id: 'stub', type: 'message', role: 'assistant', model: 'stub', content: [], usage: { input_tokens: 0, output_tokens: 0 } } },
-  { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_stub1', name, input: {} } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id, name, input: {} } },
   { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } },
   { type: 'content_block_stop', index: 0 },
   { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 1 } },
@@ -91,6 +92,11 @@ export async function startStubModel({ balance = 'ok', probe = false } = {}) {
       let body = {}
       try { body = JSON.parse(raw) } catch { /* answered as a prompt */ }
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' })
+      const native = splitNativeInstruction(body)
+      if (native !== undefined) {
+        response.end(native.completed ? sse(native.reply) : toolSse(native.name, native.input, native.id))
+        return
+      }
       const instruction = probe ? splitProbeInstruction(body) : undefined
       if (instruction !== undefined) {
         if (!instruction.completed && Array.isArray(body.tools) && body.tools.some(tool => tool.name === 'parity_probe')) {

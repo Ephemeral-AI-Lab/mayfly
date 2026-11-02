@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { redactSplitOutput } from './split-reference.mjs'
+import { seedSplitNativeWorkspace } from './split-native-fixture.mjs'
 
 /** Keep each fixture's Git discovery inside its own home, even when artifacts live in a checkout. */
 export function splitProfileEnvironment(homeDir) {
@@ -43,8 +44,10 @@ export function prepareSplitProfile({ root, dshBin, artifacts }) {
 }
 
 /** Wait for the actual Host's authenticated readiness URL; keep credentials in memory only. */
-export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe = false, startup }) {
+export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe = false, startup, fixture, workspace }) {
   const profile = prepareSplitProfile({ root, dshBin, artifacts })
+  if (workspace !== undefined) { mkdirSync(workspace, { recursive: true }); profile.cwd = workspace }
+  seedSplitNativeWorkspace(profile.cwd, fixture)
   // Reuse installed dependencies, never reuse previous scenarios' sessions or settings.
   const runDir = join(artifacts, 'runs', randomUUID())
   mkdirSync(runDir, { recursive: true })

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,6 +14,7 @@ import { startSplitNetwork } from '../scenarios/split-network.mjs'
 import { serializeGrid } from '../scenarios/grid.mjs'
 import { compareSplitReference, normalizeSplitGrid, redactSplitOutput, SPLIT_REFERENCE, verifyReferenceTarball } from '../scenarios/split-reference.mjs'
 import { splitProfileEnvironment } from '../scenarios/split-profile.mjs'
+import { seedSplitNativeWorkspace, splitNativeInstruction } from '../scenarios/split-native-fixture.mjs'
 
 const grid = serializeGrid({ cols: 20, lines: ['hello', ''], styles: [[{ from: 0, to: 4, style: 'fg:#112233 b' }], []], cursor: [0, 5] })
 
@@ -122,6 +123,55 @@ test('probe model follows only the latest user instruction and invokes a native 
   const done = { role: 'assistant', content: [{ type: 'tool_use', name: 'parity_probe' }] }
   assert.deepEqual(splitProbeInstruction({ messages: [first, done] }), { mode: 'tool', label: 'first', completed: true })
   assert.deepEqual(splitProbeInstruction({ messages: [first, done, { role: 'user', content: 'parity:approval:reject-case' }] }), { mode: 'approval', label: 'reject-case', completed: false })
+})
+
+test('native question fixture traverses actual builtin calls and resets on the next user prompt', () => {
+  assert.equal(splitNativeInstruction({}), undefined)
+  const single = { role: 'user', content: 'native:question:one' }
+  const one = splitNativeInstruction({ messages: [single] })
+  assert.equal(one.name, 'ask_user_question')
+  assert.equal(one.input.questions.length, 1)
+  const done = { role: 'assistant', content: [{ type: 'tool_use', name: one.name }] }
+  assert.deepEqual(splitNativeInstruction({ messages: [single, done, { role: 'tool', content: null }] }), { completed: true, reply: 'Native question finished: one' })
+  const wizard = splitNativeInstruction({ messages: [single, done, { role: 'user', content: [{ type: 'text', text: 'native:question:wizard' }] }] })
+  assert.equal(wizard.input.questions.length, 3)
+  assert.equal(wizard.input.questions[1].multi_select, true)
+})
+
+test('native files fixture uses the real read, edit, write and present input DTOs once in order', () => {
+  const messages = [{ role: 'user', content: 'native:files:delivered' }]
+  const calls = []
+  for (const name of ['read', 'edit', 'write', 'present']) {
+    const call = splitNativeInstruction({ messages })
+    assert.equal(call.name, name)
+    assert.equal(call.completed, false)
+    calls.push(call)
+    messages.push({ role: 'assistant', content: [{ type: 'tool_use', name, input: call.input }] }, { role: 'user', content: [{ type: 'tool_result', content: 'native result' }] })
+  }
+  assert.deepEqual(calls.map(call => call.input), [
+    { file_path: 'parity-change.txt' },
+    { file_path: 'parity-change.txt', old_string: 'before parity change', new_string: 'after parity change' },
+    { file_path: 'parity-deliverable.txt', content: 'Native delivered file\nExact preview 你好 🪰\n' },
+    { files: [{ path: 'parity-deliverable.txt', description: 'Deterministic native delivery' }] },
+  ])
+  assert.deepEqual(splitNativeInstruction({ messages }), { completed: true, reply: 'Native files finished: delivered' })
+})
+
+test('native files reference and candidate reuse an identical committed workspace and literal absolute paths', t => {
+  const { dir } = fixture(t)
+  seedSplitNativeWorkspace(dir, undefined)
+  assert.equal(existsSync(join(dir, 'parity-change.txt')), false)
+  seedSplitNativeWorkspace(dir, 'native-files')
+  const git = args => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim()
+  const revision = git(['rev-parse', 'HEAD'])
+  assert.equal(readFileSync(join(dir, 'parity-change.txt'), 'utf8'), 'before parity change\nunchanged line\n')
+  writeFileSync(join(dir, 'parity-change.txt'), 'after parity change\nunchanged line\n')
+  writeFileSync(join(dir, 'parity-deliverable.txt'), 'Native delivered file\n')
+  seedSplitNativeWorkspace(dir, 'native-files')
+  assert.equal(git(['rev-parse', 'HEAD']), revision)
+  assert.equal(readFileSync(join(dir, 'parity-change.txt'), 'utf8'), 'before parity change\nunchanged line\n')
+  assert.equal(existsSync(join(dir, 'parity-deliverable.txt')), false)
+  assert.equal(git(['diff', '--stat', 'HEAD']), '')
 })
 
 test('native audit asserts outcomes and refuses duplicate tool execution independently of UI text', async t => {
