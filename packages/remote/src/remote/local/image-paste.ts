@@ -70,7 +70,8 @@ function rank(failure: ClipboardFailure): number {
 }
 
 function aggregate(outcomes: readonly ClipboardFailure[]): ClipboardFailure {
-  let best = outcomes[0] ?? { kind: 'no-image' as const }
+  // Every configured policy probes at least one backend or records its cooldown.
+  let best = outcomes[0]!
   for (const outcome of outcomes) if (rank(outcome) < rank(best)) best = outcome
   const kinds = new Set(outcomes.map(outcome => outcome.kind))
   if (!kinds.has('unreachable') || !kinds.has('missing-tool')) return best
