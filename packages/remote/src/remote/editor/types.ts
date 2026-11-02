@@ -131,6 +131,10 @@ export interface EditorFeatureOptions {
   readonly session: () => EditorFeatureSession | undefined
   /** Create the first Host Session on submission, never merely on editor mount. */
   readonly ensureSession?: () => Promise<EditorFeatureSession>
+  /** Complete startup preparation after capturing the exact admitted binding. */
+  readonly preparePrompt?: (selected: EditorFeatureSession, signal: AbortSignal) => Promise<void>
+  /** Restore focus through the mounted editor shell, when the frontend owns one. */
+  readonly focusEditor?: () => void
   readonly notice: RemoteNotice
   readonly upload: EditorUpload
   readonly files: EditorHostFiles

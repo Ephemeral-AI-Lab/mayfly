@@ -215,6 +215,7 @@ export class FakeTheme implements MayflyTheme {
  * synchronously, mirroring the wrapped component's contract.
  */
 export class FakeMayflyEditor implements MayflyEditor {
+  updateColors(_colors: MayflySemanticColors): void {}
   focused = false
   onSubmit: ((text: string) => void) | undefined
   onChange: ((text: string) => void) | undefined

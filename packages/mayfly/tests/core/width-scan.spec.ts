@@ -31,6 +31,7 @@ const statusColors = plainColors()
 
 function scanEditor(text: string): MayflyEditor {
   return {
+    updateColors: () => {},
     focused: false,
     disableSubmit: false,
     setSubmitBarrier: () => {},

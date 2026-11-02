@@ -5,6 +5,7 @@
 
 import type { MayflyGitStatus } from '@ephemeral-ai/mayfly-host/types'
 import type { MayflyStatusRegistration, MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
+import { buildGitStatusNode } from '@ephemeral-ai/mayfly/status-git'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import { RemoteGitPoller } from '../../frontend/git.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../features.ts'
@@ -122,7 +123,7 @@ class RemoteGitController {
       this.status.set({ kind: 'text', content: this.t('gitStatus failed; refresh after reconnecting'), tone: 'warning' })
       return
     }
-    this.status.set(result.value === null ? null : { kind: 'text', content: formatRemoteGitBadge(result.value), tone: 'muted' })
+    this.status.set(buildGitStatusNode(result.value === null ? '' : formatRemoteGitBadge(result.value)))
   }
 }
 

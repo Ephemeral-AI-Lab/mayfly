@@ -50,7 +50,6 @@
   },
   "files": [
     "lib/index.js",
-    "lib/*.js.map",
     "lib/startup.js",
     "lib/settings.js",
     "lib/types/**/*.js",

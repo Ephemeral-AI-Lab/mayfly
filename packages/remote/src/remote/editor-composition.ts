@@ -71,8 +71,8 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     if (client === undefined) return undefined
     return { ref, client, session: reference.binding.session, generation }
   }
-  const fileClient = (sessionId: SessionId, signal: AbortSignal): HostClient => {
-    signal.throwIfAborted()
+  const fileClient = (sessionId: SessionId, signal: AbortSignal | undefined): HostClient => {
+    signal?.throwIfAborted()
     return requireSession(session(), sessionId)
   }
   const files: EditorHostFiles = {

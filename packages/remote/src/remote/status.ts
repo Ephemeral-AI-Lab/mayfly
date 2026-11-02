@@ -1,6 +1,7 @@
 /** Native projection status entries using the published Mayfly footer renderer. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
+import { buildConversationStatus, interactionTranslator } from '@ephemeral-ai/mayfly/command-panels'
 import { buildModelStatusNode } from '@ephemeral-ai/mayfly/status-basic-model'
 import { buildCwdStatusNode, shortenCwd } from '@ephemeral-ai/mayfly/status-cwd'
 import { buildContextStatusNode, type ContextStatusValues } from '@ephemeral-ai/mayfly/status-context'
@@ -11,6 +12,7 @@ import type { RemotePresentationFacts } from '../transcript/remote-model.ts'
 export interface RemoteStatusSnapshot {
   readonly presentation: RemotePresentationFacts
   readonly values: Readonly<Record<string, unknown>>
+  readonly conversation?: 'primary' | 'btw' | 'subagent' | undefined
 }
 
 /** Host-owned paths, including startup before any Session exists. */
@@ -29,12 +31,15 @@ export interface RemoteStatusHandle {
 export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot, options: RemoteStatusOptions = {}): RemoteStatusHandle {
   const model = ctx.mayflyStatus.register({ id: 'mayfly.status.basic', priority: 0, overflow: 'truncate' })
   const cwd = ctx.mayflyStatus.register({ id: 'mayfly.status.cwd', priority: 7, overflow: 'truncate' })
+  const conversation = ctx.mayflyStatus.register({ id: 'mayfly.status.conversation-view', priority: 1 })
+  const t = interactionTranslator(ctx)
   const context = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 6, band: 'right', overflow: 'hide' })
   let disposed = false
   const signatures: string[] = []
   const refresh = (): void => {
     if (disposed) return
-    const { presentation: facts, values } = read()
+    const snapshot = read()
+    const { presentation: facts, values } = snapshot
     const projected = values['modelSelection'] as {
       readonly next?: { readonly reasoningEffort?: string } | null
       readonly lastUsed?: { readonly reasoningEffort?: string } | null
@@ -48,9 +53,10 @@ export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot
         ...effort === undefined ? {} : { effort },
       }),
       buildCwdStatusNode(shortenCwd(facts.cwd || options.directory?.() || '', options.home?.() ?? '')),
+      buildConversationStatus(snapshot.conversation, t),
       buildContextStatusNode({ usage: values['tokenUsage'] as ContextStatusValues['usage'], pressure: values['contextPressure'] as ContextStatusValues['pressure'], breakdown: values['contextBreakdown'] as ContextStatusValues['breakdown'] }),
     ]
-    for (const [index, registration] of [model, cwd, context].entries()) {
+    for (const [index, registration] of [model, cwd, conversation, context].entries()) {
       const node = nodes[index]!
       const signature = JSON.stringify(node)
       if (signature === signatures[index]) continue
@@ -64,6 +70,7 @@ export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot
     disposed = true
     model.dispose()
     cwd.dispose()
+    conversation.dispose()
     context.dispose()
   })
   return { refresh, async dispose() {

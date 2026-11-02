@@ -248,7 +248,7 @@ describe('RemoteSessionsBrowserController', () => {
 
   it('uses authoritative workspace membership before cwd fallback and ignores incomplete native rows', async () => {
     const f = await fixture({ noPaths: true })
-    f.setRows([summary('current', { cwd: '/host/unregistered' }), summary('child'), summary('orphan', { cwd: undefined })])
+    f.setRows([summary('current', { cwd: '/host/unregistered' }), summary('child'), Object.fromEntries(Object.entries(summary('orphan')).filter(([key]) => key !== 'cwd')) as unknown as SessionSummary])
     f.missingRow('loading-row')
     f.open(); await f.flush()
     expect(f.text()).toContain('current')

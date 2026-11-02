@@ -195,7 +195,7 @@ describe('createEditor', () => {
 
       editor.setText('')
       editor.setAutocompleteProvider({
-        getSuggestions: async () => ({ prefix: '/', items: [{ value: '/alpha' }, { value: '/beta' }] }),
+        getSuggestions: async () => ({ prefix: '/', items: [{ value: '/alpha', label: '/alpha' }, { value: '/beta', label: '/beta' }] }),
         applyCompletion: (lines, cursorLine, cursorCol) => ({ lines: [...lines], cursorLine, cursorCol }),
       })
       editor.handleInput!('/')

@@ -280,6 +280,11 @@ export function formatGitBadge(status: GitBadgeStatus | GitUnknownBadgeStatus): 
   return parts.length === 0 ? status.branch : `${status.branch} [${parts.join(' ')}]`
 }
 
+/** Build the reference Git badge with the same status-row shedding priority. */
+export function buildGitStatusNode(text: string): MayflyStatusNode | null {
+  return text === '' ? null : shedNode({ kind: 'text', content: text, tone: 'muted' }, [{ rank: SHED.git, node: null }])
+}
+
 /**
  * Register the git entry. Builds the cache for the current session's
  * directory on load and rebuilds it on Agent and native `workingDirectory`
@@ -297,7 +302,7 @@ export function apply(ctx: Context): void {
   let probeGeneration = 0
   let inFlight: Promise<void> | undefined
   /** The git facts give way after the thinking level: shed, they are not shown. */
-  const node = (): MayflyStatusNode | null => text === '' ? null : shedNode({ kind: 'text', content: text, tone: 'muted' }, [{ rank: SHED.git, node: null }])
+  const node = (): MayflyStatusNode | null => buildGitStatusNode(text)
   const status = ctx.mayflyStatus.register({ id: 'mayfly.status.git', priority: 10 }, node())
   const publish = (force = false): Promise<void> => {
     if (inFlight !== undefined) return inFlight

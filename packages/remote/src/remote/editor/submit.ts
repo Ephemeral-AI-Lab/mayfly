@@ -24,10 +24,14 @@ interface SubmitOptions {
   readonly screen: MayflyScreen
   readonly session: () => EditorFeatureSession | undefined
   readonly ensureSession?: () => Promise<EditorFeatureSession>
+  /** Complete startup preparation after capturing the exact admitted binding. */
+  readonly preparePrompt?: (selected: EditorFeatureSession, signal: AbortSignal) => Promise<void>
   readonly commands: EditorCommands
   readonly skills: EditorSkills
   readonly attachments: EditorAttachments
   readonly draft: EditorDraftStore
+  /** Restore focus through the mounted editor shell, when the frontend owns one. */
+  readonly focusEditor?: () => void
   readonly notice: RemoteNotice
   readonly t: MayflyTranslate
   readonly exit: () => void | Promise<void>
@@ -98,9 +102,10 @@ export class EditorSubmit {
     const submitted = this.options.editor.consumeSubmittedDraft?.() ?? emptyDraft(value)
     this.options.draft.clearDraft()
     if (line.length === 0) return
-    this.options.editor.addToHistory(line)
+    const historyText = submitted.raw.trim()
+    this.options.editor.addToHistory(historyText, submitted.pastes)
     this.stashHistory()
-    this.begin(line, 'queue', submitted, line)
+    this.begin(line, 'queue', submitted, historyText)
   }
 
   /** Ctrl+Enter path; unlike Enter it bypasses the native funnel but uses the same transforms and request identity. */
@@ -119,7 +124,8 @@ export class EditorSubmit {
     if (text.length === 0) return
     this.options.editor.setText(text)
     this.stashDraft()
-    this.options.screen.setFocus(this.options.editor)
+    if (this.options.focusEditor !== undefined) this.options.focusEditor()
+    else this.options.screen.setFocus(this.options.editor)
     this.options.screen.requestRender()
   }
 
@@ -241,6 +247,8 @@ export class EditorSubmit {
         this.fail(record, false)
         return
       }
+      await this.options.preparePrompt?.(selected, controller.signal)
+      if (this.disposed || controller.signal.aborted || !this.isCurrent(selected)) { this.fail(record, false); return }
       const content = captured.content.map((part): PromptContentPart => part.type === 'text'
         ? { ...part, text: this.options.skills.rewrite(part.text) }
         : part)

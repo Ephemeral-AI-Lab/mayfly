@@ -29,6 +29,7 @@ function createTestEditor(): MayflyEditor {
   let value = ''
   let cursor = 0
   const editor = {
+    updateColors: () => {},
     focused: false,
     onSubmit: undefined,
     onChange: undefined,

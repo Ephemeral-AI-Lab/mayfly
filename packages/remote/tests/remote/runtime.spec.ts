@@ -114,6 +114,7 @@ vi.mock('../../src/remote/side-views.ts', () => ({
     readonly current = vi.fn()
     readonly references = vi.fn(() => [])
     readonly sessionFacts = vi.fn()
+    kind() { return undefined }
     readonly navigation = vi.fn()
     readonly subscribe = vi.fn(() => () => {})
   },

@@ -243,11 +243,13 @@ export class RemoteOnboardingController extends RemoteFeatureController {
       choice.theme = theme
       choice.startup = startup
       choice.permission = permission
-      await this.preferences.applyLocale(client, language)
+      await this.preferences.applyLocale(client, language, operation.signal)
       if (!operation.valid()) return { kind: 'cancelled' }
-      await this.preferences.applyTheme(client, theme)
+      await this.preferences.applyTheme(client, theme, operation.signal)
       if (!operation.valid()) return { kind: 'cancelled' }
-      await this.preferences.persistMayfly(client, [{ op: 'set', path: ['startup'], value: startup }])
+      await this.preferences.persistMayfly(client, [{ op: 'set', path: ['theme'], value: theme }], operation.signal)
+      if (!operation.valid()) return { kind: 'cancelled' }
+      await this.preferences.persistMayfly(client, [{ op: 'set', path: ['startup'], value: startup }], operation.signal)
       if (!operation.valid()) return { kind: 'cancelled' }
       const descriptor = resolved.settings.namespaces.find((candidate: SettingsNamespaceView) => candidate.ns === 'permission')
       if (descriptor !== undefined && permission !== resolved.permissionDefault) {
@@ -297,9 +299,11 @@ export class RemoteOnboardingController extends RemoteFeatureController {
         const next = { ...choice }
         changes = changes.then(async () => {
           if (!operation.valid()) return
-          await this.preferences.applyLocale(client, next.language)
+          await this.preferences.applyLocale(client, next.language, operation.signal)
           if (!operation.valid()) return
-          await this.preferences.applyTheme(client, next.theme)
+          await this.preferences.applyTheme(client, next.theme, operation.signal)
+          if (!operation.valid()) return
+          await this.preferences.persistMayfly(client, [{ op: 'set', path: ['theme'], value: next.theme }], operation.signal)
           if (operation.valid()) panel?.refresh()
         }).catch((error: unknown) => { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error)) })
       },

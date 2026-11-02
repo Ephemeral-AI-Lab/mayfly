@@ -10,6 +10,7 @@ import { INTERACTION_KEY_ACTIONS, displayKey, interactionTranslator } from '@eph
 import { TranscriptController, type TranscriptControllerOptions } from '@ephemeral-ai/mayfly/transcript'
 
 type QueueAction = Parameters<NonNullable<TranscriptControllerOptions['rows']>['queued']>[0]
+type DecisionRequests = ReturnType<NonNullable<TranscriptControllerOptions['requests']>>
 import type { SessionRef } from '../client/types.ts'
 import { RemoteToolPresentationCache } from '../frontend/tool-presentations.ts'
 import { RemoteConversationModelSource } from '../transcript/remote-model.ts'
@@ -59,6 +60,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
   let sessionsBrowser: RemoteSessionsBrowserController | undefined
   let cancelled: { readonly ref: SessionRef, readonly text: string, readonly lane: 'turn' | 'step', readonly at: number } | undefined
   let stopped = false
+  const lifetime = new AbortController()
   const done = Promise.withResolvers<void>()
   const stop = (): void => {
     if (stopped) return
@@ -150,9 +152,11 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         editor?.notice.set('Cancelled · u undo')
       }
     }
+    const requests: Record<'approval' | 'plan', DecisionRequests> = { approval: [], plan: [] }
     transcript = new TranscriptController({
       t: Frontend.interpolateLocaleMessage,
       queued: () => displayedFacts().queue,
+      requests: () => [...requests.approval, ...requests.plan],
       tick: ctx.mayflyTick,
       context: () => ({
         window: displayedFacts().contextWindow,
@@ -177,6 +181,10 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         },
       },
     })
+    ctx.effect(() => ctx.on('mayfly/decision-requests-changed', (source, next) => {
+      requests[source] = next
+      transcript?.republish()
+    }))
     transcript.setView('remote', () => conversation!.snapshot())
     transcript.show('remote')
     transcript.attach(screen)
@@ -211,6 +219,21 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     sideViews = new RemoteSideViews(transcript, toolPresentations, screen, editor.notice, {
       changed: () => { status?.refresh(); editor?.refresh() },
       evicted: ref => { operations?.closeChild(ref) },
+      retainOnly: refs => { operations?.retainOnly(refs) },
+      primaryVisible: visible => { conversation!.setVisible(visible) },
+      reopen: (ref, facts) => {
+        const client = app?.registry.get(ref.host)
+        if (client === undefined || operations === undefined) return
+        const generation = client.state.getSnapshot().generation
+        const address = facts.address ?? client.sessions.subagentAddress(ref.sessionId)
+        const opening = facts.kind === 'btw'
+          ? operations.openBtw(client, ref, facts, lifetime.signal)
+          : address === undefined ? Promise.reject(new Error('The native child address is unavailable'))
+            : operations.openChild(client, address, lifetime.signal)
+        void opening.catch((error: unknown) => {
+          if (!lifetime.signal.aborted && app?.activeClient === client && client.state.getSnapshot().generation === generation) editor?.notice.set(error instanceof Error ? error.message : String(error))
+        })
+      },
     })
     panels = new RemotePanelController(screen, () => editor?.focus(), true, ctx.mayflyComponents)
     app = new RemoteApp(conversation, editor.notice, new RemotePlainPanels(ctx), undefined, options.cwd ?? process.cwd(), {
@@ -292,12 +315,14 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       localCwd: options.cwd ?? process.cwd(),
       exit: stop,
       featureCommands: commandSource,
+      focusEditor: () => editor!.focus(),
       selection: displayedSelection,
       subscribeSelection: listener => sideViews!.subscribe(listener),
     })
     status = mountRemoteStatus(ctx, () => ({
       presentation: displayedFacts(),
       values: (sideViews!.sessionFacts() ?? conversation!.sessionFacts()).values,
+      conversation: sideViews!.kind(),
     }), {
       home: () => app?.activeClient?.remote.$host.home ?? '',
       directory: () => options.cwd ?? process.cwd(),
@@ -317,6 +342,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     if (options.task !== undefined && options.task.trim() !== '') await execute(options.task)
     await done.promise
   } finally {
+    lifetime.abort()
     process.removeListener('SIGINT', sigint)
     process.removeListener('SIGTERM', sigterm)
     operations?.dispose()

@@ -115,16 +115,22 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     t,
     bash: () => mode === 'bash',
   })
+  const focusEditor = (): void => {
+    if (options.focusEditor !== undefined) options.focusEditor()
+    else options.screen.setFocus(editor)
+  }
   const submit = new EditorSubmit({
     editor,
     screen: options.screen,
     session: options.session,
     ...options.ensureSession === undefined ? {} : { ensureSession: options.ensureSession },
+    ...options.preparePrompt === undefined ? {} : { preparePrompt: options.preparePrompt },
     commands,
     skills,
     attachments,
     draft,
     notice: options.notice,
+    focusEditor,
     t,
     exit: options.local.exit,
   })
@@ -134,7 +140,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     components: options.components,
     colors: options.colors,
     t,
-    restoreFocus: () => { options.screen.setFocus(editor) },
+    restoreFocus: focusEditor,
   })
   const shell = new EditorShell(options.screen, options.components, options.colors, t)
   const imagePaste = new LocalImagePaste(() => options.local.clipboardBackend?.() ?? 'auto')
@@ -145,9 +151,10 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
   const previousTokenChange = editor.onTokenChange
 
   const closePreview = (): void => {
-    preview?.hide()
+    const active = preview
     preview = undefined
-    if (!disposed) options.screen.setFocus(editor)
+    active?.hide()
+    if (!disposed && active !== undefined) focusEditor()
   }
 
   const syncGhosts = (): void => {
