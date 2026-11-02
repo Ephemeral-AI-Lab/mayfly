@@ -102,11 +102,12 @@ describe('rc.2 Remote statistics', () => {
     expect(f.listeners.size).toBe(0)
   })
 
-  it('requires a selected Session and valid command arguments and focuses an already open panel', async () => {
+  it('requires a selected Session, ignores arguments as rc.2 does and focuses an already open panel', async () => {
     const f = await fixture(false)
-    await expect(f.run('stats', 'extra')).rejects.toThrow('Usage: /stats')
+    await expect(f.run('stats', 'extra')).rejects.toThrow('no session is live yet')
     await expect(f.run('stats')).rejects.toThrow('no session is live yet')
-    const selected = await fixture(); await selected.open()
+    const selected = await fixture(); await selected.run('stats', 'extra'); await tick()
+    expect(selected.panel().options.id).toBe('mayfly.stats')
     const focus = vi.spyOn(selected.ctx.mayflyOverlays, 'focus').mockReturnValue(true)
     await selected.run('stats'); expect(selected.panels).toHaveLength(1); focus.mockRestore()
   })
@@ -154,6 +155,12 @@ describe('rc.2 Remote statistics', () => {
     const pending = f.act('copy'); f.detach(); wait.reject(new Error('late')); expect(await pending).toEqual({ kind: 'cancelled' })
     expect(await f.act('copy')).toEqual({ kind: 'cancelled' })
     const other = await fixture(); await other.open()
+    const caller = new AbortController()
+    const rejected = Promise.withResolvers<'native'>()
+    other.copy.mockReturnValueOnce(rejected.promise)
+    const copying = other.act('copy', { ...eventContext(), signal: caller.signal })
+    caller.abort(); rejected.reject(new Error('late cancelled clipboard failure'))
+    expect(await copying).toEqual({ kind: 'cancelled' })
     expect(await other.act('refresh', { ...eventContext(), signal: AbortSignal.abort() })).toEqual({ kind: 'cancelled' })
     expect(await other.panel().options.action!({ kind: 'dismiss', pagePath: [] } as MayflyUiActionEvent, eventContext())).toEqual({ kind: 'completed' })
     expect(await other.act('unknown')).toEqual({ kind: 'completed' })

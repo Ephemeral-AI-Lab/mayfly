@@ -25,26 +25,27 @@ describe('reference provider command routing', () => {
     expect(await test.commands.execute('provider', '', test.signal)).toBe(false)
   })
 
-  it('routes bare/list/switch to the configured provider roster and native add/edit to the shared editors', async () => {
+  it('routes bare/list to the configured provider roster and native add/edit to the shared editors', async () => {
     const test = fixture()
-    for (const input of ['', 'list', 'LIST', 'switch', 'add', 'ADD', 'edit deepseek', 'EDIT DeepSeek']) await test.commands.execute('provider', input, test.signal)
-    expect(test.execute.mock.calls.map(call => call[0])).toEqual(['', '', '', '', 'add', 'add', 'edit deepseek', 'edit DeepSeek'])
+    for (const input of ['', 'list', 'add', 'edit deepseek', 'edit Pretty One']) await test.commands.execute('provider', input, test.signal)
+    expect(test.execute.mock.calls.map(call => call[0])).toEqual(['', '', 'add', 'edit deepseek', 'edit Pretty One'])
     expect(test.execute.mock.calls.every(call => call[1] === test.signal)).toBe(true)
     test.dispose()
   })
 
-  it('routes exact provider names and explicit switch through the shared filtered model picker', async () => {
+  it('routes explicit switch with exact provider names through the shared filtered model picker', async () => {
     const test = fixture()
-    for (const input of ['deepseek', 'Pretty One', 'switch p1', 'SWITCH Pretty Two']) await test.commands.execute('provider', input, test.signal)
+    for (const input of ['switch deepseek', 'switch Pretty One', 'switch p1', 'switch Pretty Two']) await test.commands.execute('provider', input, test.signal)
     expect(test.execute.mock.calls.map(call => call[0])).toEqual(['switch deepseek', 'switch Pretty One', 'switch p1', 'switch Pretty Two'])
     test.dispose()
   })
 
   it('reports incomplete/destructive verbs and ignores cancelled or retired invocations', async () => {
     const test = fixture()
-    await expect(test.commands.execute('provider', 'edit', test.signal)).rejects.toThrow('Usage: /provider edit <provider>')
-    await test.commands.execute('provider', 'remove p1', test.signal)
-    expect(test.notice.set).toHaveBeenCalledWith('Usage: /provider [list | edit <provider> | switch <provider> | add]')
+    for (const input of ['edit', 'switch', 'remove p1', 'deepseek', 'Pretty One', 'LIST', 'ADD', 'EDIT DeepSeek', 'SWITCH Pretty Two', 'add extra', 'list extra', 'switch\tp1', 'edit\tp1']) {
+      await expect(test.commands.execute('provider', input, test.signal)).rejects.toThrow('usage: /provider [list | edit <provider> | switch <provider> | add]')
+    }
+    expect(test.notice.set).not.toHaveBeenCalled()
     const controller = new AbortController(); controller.abort()
     await test.commands.execute('provider', 'add', controller.signal)
     const handler = test.commands.list()[0]!.execute

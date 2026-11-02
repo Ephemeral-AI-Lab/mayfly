@@ -126,11 +126,10 @@ describe('native Files command composition', () => {
     f.unmount()
   })
 
-  it('rejects invalid input and reports a missing Session before opening anything', async () => {
+  it('ignores reference arguments and reports a missing Session before opening anything', async () => {
     const f = fixture()
-    expect(() => f.execute('extra')).toThrow('Usage: /files')
     f.selection(undefined)
-    f.execute()
+    f.execute('extra')
     expect(f.notice.set).toHaveBeenCalledWith('No current session')
     expect(f.deliveredFile).not.toHaveBeenCalled()
     f.unmount()

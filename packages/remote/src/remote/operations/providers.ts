@@ -24,19 +24,12 @@ export function mountRemoteProviderOperations(context: RemoteOperationsContext):
     execute: async (rawInput, signal) => {
       if (disposed || signal.aborted) return
       const input = rawInput.trim()
-      const words = input.split(/\s+/u)
-      const verb = words[0]!.toLowerCase()
-      const name = words.slice(1).join(' ')
       let route: string
-      if (input === '' || verb === 'list' || verb === 'switch' && name === '') route = ''
-      else if (verb === 'add') route = 'add'
-      else if (verb === 'edit') {
-        if (name === '') throw new Error('Usage: /provider edit <provider>')
-        route = `edit ${name}`
-      } else if (verb === 'remove') {
-        context.base.notice.set('Usage: /provider [list | edit <provider> | switch <provider> | add]')
-        return
-      } else route = `switch ${verb === 'switch' ? name : input}`
+      if (input === '' || input === 'list') route = ''
+      else if (input === 'add') route = 'add'
+      else if (input.startsWith('switch ')) route = `switch ${input.slice('switch '.length).trim()}`
+      else if (input.startsWith('edit ')) route = `edit ${input.slice('edit '.length).trim()}`
+      else throw new Error('usage: /provider [list | edit <provider> | switch <provider> | add]')
       await context.base.commands.execute('providers', route, signal)
     },
   })

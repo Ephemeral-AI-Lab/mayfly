@@ -20,7 +20,6 @@ const zh: Readonly<Record<string, string>> = {
   'Clipboard is unavailable in this frontend': '当前前端不支持剪贴板',
   'could not copy to clipboard: {message}': '无法复制到剪贴板：{message}',
   'no session is live yet': '还没有正在运行的会话',
-  'Usage: /copy': '用法：/copy',
   'Conversation projection is unavailable': '会话投影不可用',
 }
 
@@ -43,9 +42,8 @@ class RemoteCopyCommand extends RemoteFeatureController<RemoteOperationsContext[
     registerRemoteOperationsLocale(base, 'remote-operations-copy', zh)
   }
 
-  readonly execute = async (rawInput: string, signal: AbortSignal): Promise<void> => {
+  readonly execute = async (_rawInput: string, signal: AbortSignal): Promise<void> => {
     if (signal.aborted) return
-    if (rawInput.trim() !== '') throw new Error(this.t('Usage: /copy'))
     const current = this.copyContext.base.hosts.current()
     // A missing selection is an ordinary state, not a failed command: throwing
     // here would surface as 'Submission was not confirmed; no retry was sent',

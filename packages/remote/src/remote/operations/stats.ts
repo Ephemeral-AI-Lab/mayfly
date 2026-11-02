@@ -52,9 +52,8 @@ class RemoteStatsController {
     this.accountCache = undefined
   }
 
-  readonly execute = async (input: string, signal: AbortSignal): Promise<void> => {
+  readonly execute = async (_input: string, signal: AbortSignal): Promise<void> => {
     if (signal.aborted) return
-    if (input.trim() !== '') throw new Error('Usage: /stats')
     const current = this.context.base.hosts.current()
     if (current === undefined) throw new Error(this.t('no session is live yet'))
     if (this.context.base.ctx.mayflyOverlays.focus('mayfly.stats')) return
@@ -225,7 +224,7 @@ class RemoteStatsController {
             const method = await (this.context.options.copy?.(text) ?? copyLocalText(text, signal))
             if (!valid() || context.signal.aborted) return { kind: 'cancelled' }
             return { kind: 'completed', feedback: { severity: 'success', message: `${this.t('copied the stats summary')}${method === 'osc52' ? this.t(' via terminal escape sequence (unverified)') : ''}` } }
-          } catch (error) { return valid() ? { kind: 'failed', message: this.t('could not copy: {error}', { error: remoteErrorMessage(error) }) } : { kind: 'cancelled' } }
+          } catch (error) { return valid() && !context.signal.aborted ? { kind: 'failed', message: this.t('could not copy: {error}', { error: remoteErrorMessage(error) }) } : { kind: 'cancelled' } }
         }
         if (event.actionId === 'refresh') void readSession()
         else if (event.actionId === 'range') range = RANGES[(RANGES.indexOf(range) + 1) % RANGES.length]!

@@ -134,12 +134,15 @@ describe('mountRemoteCopyOperations', () => {
     expect(unavailable.snapshot).not.toHaveBeenCalled()
   })
 
-  it('ignores caller abort and retired dispatchers, and refuses arguments', async () => {
+  it('ignores caller abort and retired dispatchers, and accepts ignored reference arguments', async () => {
     const f = fixture()
     const dispose = mountRemoteCopyOperations(f.context)
     const command = f.commands.list()[0]!
     await f.run('', AbortSignal.abort())
-    await expect(f.run('extra')).rejects.toThrow('Usage: /copy')
+    expect(f.snapshot).not.toHaveBeenCalled()
+    await f.run('extra')
+    expect(f.snapshot).toHaveBeenCalledOnce()
+    f.snapshot.mockClear(); f.copy.mockClear()
     dispose()
     await command.execute('', new AbortController().signal)
     expect(f.snapshot).not.toHaveBeenCalled()

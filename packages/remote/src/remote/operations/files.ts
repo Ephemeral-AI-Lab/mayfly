@@ -11,7 +11,6 @@ import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './
 const zh: Readonly<Record<string, string>> = {
   'Browse files delivered by the agent': '浏览 Agent 交付的文件',
   'No current session': '当前没有会话',
-  'Usage: /files': '用法：/files',
   'Loading file…': '正在加载文件…',
   'Loading comparison…': '正在加载比较…',
   'Name': '名称', 'Description': '描述', 'Path': '路径', 'Type': '类型', 'Size': '大小',
@@ -192,9 +191,8 @@ class RemoteFilesController extends RemoteFeatureController<RemoteOperationsCont
     registerRemoteOperationsLocale(filesContext.base, 'remote-operations-files', zh)
   }
 
-  readonly execute = (rawInput: string, signal: AbortSignal): void => {
+  readonly execute = (_rawInput: string, signal: AbortSignal): void => {
     if (signal.aborted) return
-    if (rawInput.trim() !== '') throw new Error(this.t('Usage: /files'))
     const current = this.filesContext.base.hosts.current()
     if (current === undefined) { this.filesContext.base.notice.set(this.t('No current session')); return }
     this.operation?.dispose()
