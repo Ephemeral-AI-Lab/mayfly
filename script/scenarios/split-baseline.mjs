@@ -13,6 +13,7 @@ import { captureSplitTerminal } from './split-terminal.mjs'
 import { startStubModel } from './stub-model.mjs'
 import { awaitProbeAudit } from './split-audit.mjs'
 import { splitProfileEnvironment } from './split-profile.mjs'
+import { persistedSplitEvidence } from './split-evidence.mjs'
 import { seedSplitNativeWorkspace } from './split-native-fixture.mjs'
 
 const HARNESS_REFERENCE_VERSION = '0.2.1-rc.2'
@@ -140,5 +141,8 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
     manifest.checkpoints[name] = hash
   }
   writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n')
+  // Keep capture/run linkage outside the immutable screen/provenance manifest.
+  const evidence = persistedSplitEvidence(run)
+  writeFileSync(join(captureDir, `native-evidence-${run.slice(run.lastIndexOf('/') + 1)}.json`), JSON.stringify({ referenceManifestSha256: createHash('sha256').update(readFileSync(file)).digest('hex'), ...evidence }, null, 2) + '\n')
   return captureDir
 }

@@ -84,7 +84,7 @@ export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe 
   const started = performance.now()
   for (;;) {
     const url = /mayfly host: (https?:\/\/[^\s\u001b]+)/u.exec(output)?.[1]
-    if (url !== undefined) return { ...profile, child, startupUrl: url, clockRelease, auditLog, stop, diagnostics: () => redactSplitOutput(output, url) }
+    if (url !== undefined) return { ...profile, runDir, child, startupUrl: url, clockRelease, auditLog, stop, diagnostics: () => redactSplitOutput(output, url) }
     if (spawnError !== undefined || child.exitCode !== null || performance.now() - started > 90_000) {
       await stop()
       throw new Error(`Split Host did not become ready: ${spawnError?.message ?? ''}\n${redactSplitOutput(output)}`)

@@ -148,6 +148,47 @@ data changes and split adaptation defects. A raw comparison retains those
 differences; a controlled comparison requires equal inputs configured through
 native APIs and independent reference provenance.
 
+## Exact native-difference review
+
+`script/split-native-review.mjs` validates a separate, explicit review decision:
+
+```sh
+node script/split-native-review.mjs \
+  --review /path/to/native-differences-plan.json \
+  --results /path/to/native-differences-review.json
+```
+
+The plan records a human assessment of the relation between native facts and
+the changed field. It binds the original strict report, frozen reference
+manifest, each differing reference/candidate grid, and every evidence file by
+SHA-256. Native facts use checked JSON pointers or an exact native journal
+sequence/type/payload assertion. Compressed journals require `zstd`; its CLI
+reads all concatenated frames. Source assertions bind the relevant native API
+and direct frontend consumer. Model reviews also require independently captured
+same-facts checkpoints that pass the original strict comparison.
+
+Each decision names an implemented rule, a concrete reason, evidence ids, and
+the exact changed rows, text, style runs, surrounding text and bounded style
+span. The checker accepts only the rule's named field shape. It then restores
+those specifically reviewed rows in memory and strictly compares the whole
+screen. Unexpected text or style rows, cursor/dimension changes, a new grid
+digest, missing/tampered evidence, and nonvisual runtime failures reject the
+review. A partial API rule additionally requires its explicit limitation in
+the captured command UI. It cannot approve a note that exists only in docs.
+
+The result separates `exactCheckpoints` from `reviewedDifferences`. Its status
+is `strict-exact`, `reviewed-native-differences`, or `rejected`; the original
+`strictStatus`, `strictParityVerified` and `strictFailures` remain visible.
+The strict parity CLI and full code gate keep their original failure exit
+semantics. A successful review neither rewrites raw artifacts nor upgrades
+native differences to exact parity. New captures need new reviewed hashes.
+
+New candidate reports include before/after hashes of emitted runtime JavaScript
+and persisted native journal/projection files. The observed source checkout
+HEAD is explicitly labelled as an observation, without inferring a build
+commit. Reference captures retain a separate `native-evidence-<run-id>.json`
+linkage file; the immutable reference manifest and screen bytes remain intact.
+
 ## Remaining acceptance coverage
 
 The initial split backend is infrastructure, not a completed parity claim.

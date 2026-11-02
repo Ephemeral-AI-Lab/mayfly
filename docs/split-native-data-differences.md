@@ -161,3 +161,29 @@ command surfaces. The default-effort adaptation above is implementable with
 existing native APIs and does not qualify for such a limitation. The observed
 `/skills` metadata annotation is a separate limitation and must not be deleted
 to make a screenshot compare pass.
+
+The independent `wave33` model run also exercises real `/effort high`,
+`/effort default`, a second admitted prompt, and model panels at 40, 80 and 120
+columns. Its raw report retains four differing checkpoints and three strict
+exact checkpoints. After explicit `high`, both model pickers show the filled
+dot and `Delete use default`; the remaining wide-row change is native context
+metadata. After reset, the newer native Host writes a selection without an
+effort, while the reference writes `high` again. Both initial native request
+headers record effective `high` with `adapterDefaults.reasoningEffort: true`.
+The newer Host's hollow dot, `(default)` suffix and corresponding key hint
+preserve the native explicit/default distinction. Inventing an explicit pin
+would change native write behavior. This difference is a native fact review,
+not a missing API or an exact-parity claim.
+
+The `wave30` context evidence retains the original grids and both persisted
+native caches. The reference reports `contextWindow: 1000000` and
+`systemTokens: 747`; the candidate reports `1048576` and `1105`. These account
+for the displayed `977k`/`1M` and `747`/`1.1k` differences through the same
+presentation rules. Exact review binds those cache facts to the specific rows;
+it does not ignore token numbers throughout the panel.
+
+The native creative preset's roster description begins `TUI 热挂载 API 暂缺`
+so the independent frontend's missing hot-load entry is visible even when the
+description is truncated. Its skills explain source integration and restart.
+The rc.2 hot-load description cannot be restored truthfully on the newer API;
+this roster difference is an explicitly labelled partial API limitation.
