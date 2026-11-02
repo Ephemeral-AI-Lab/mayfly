@@ -117,6 +117,7 @@ export class RemoteModelsController extends RemoteFeatureController {
     context: RemoteFeatureContext,
     private readonly source?: RemoteModelCatalogSource,
     private readonly defaultModel?: RemoteDefaultModel,
+    private readonly catalogObserved?: (client: HostClient, catalog: ModelCatalog) => void,
   ) {
     super(context)
   }
@@ -127,7 +128,9 @@ export class RemoteModelsController extends RemoteFeatureController {
     if (operation === undefined) return undefined
     try {
       const catalog = await remoteValue(client.remote.session.modelCatalog())
-      return operation.valid() ? catalog : undefined
+      if (!operation.valid()) return undefined
+      this.catalogObserved?.(client, catalog)
+      return catalog
     } finally { operation.dispose() }
   }
 
@@ -249,6 +252,7 @@ export class RemoteModelsController extends RemoteFeatureController {
         ? await this.defaultModel!.read(client, operation.signal)
         : currentRemoteModelSelection(selection.binding.session.projections.faceOf('modelSelection').getSnapshot(), catalog)
       if (!operation.valid()) { operation.dispose(); return undefined }
+      this.catalogObserved?.(client, catalog)
       return { operation, selection, client, catalog, current, details }
     } catch (error) {
       if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
@@ -310,6 +314,7 @@ export class RemoteModelsController extends RemoteFeatureController {
         const nextCurrent = target.selection === undefined ? await this.defaultModel!.read(target.client, target.operation.signal)
           : currentRemoteModelSelection(target.selection.binding.session.projections.faceOf('modelSelection').getSnapshot(), catalog)
         if (!target.operation.valid() || generation !== revision) return
+        this.catalogObserved?.(target.client, catalog)
         current = nextCurrent
         currentCatalog = catalog
         rows = remoteModelRows(catalog, current, details).filter(row => providerFilter === undefined || row.provider === providerFilter)

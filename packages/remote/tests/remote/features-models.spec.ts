@@ -82,6 +82,7 @@ interface FixtureOptions {
   readonly defaultSelection?: ModelSelection
   readonly withDefaultModel?: boolean
   readonly withSource?: boolean
+  readonly observeCatalog?: boolean
 }
 
 function fixture(options: FixtureOptions = {}) {
@@ -154,14 +155,15 @@ function fixture(options: FixtureOptions = {}) {
     opened.push({ options, lease })
     return lease
   })
-  const controller = new RemoteModelsController(context, source, defaultModel)
+  const catalogObserved = options.observeCatalog === true ? vi.fn() : undefined
+  const controller = new RemoteModelsController(context, source, defaultModel, catalogObserved)
   const browser = (index = 0): RemoteBrowserOptions => opened[index]!.options
   const render = (index = 0): string => JSON.stringify(browser(index).view())
   const act = async (event: Record<string, unknown>, index = 0) => await browser(index).action!(event as unknown as MayflyUiActionEvent, { signal: new AbortController().signal, report: vi.fn() } as unknown as MayflyUiEventContext)
   return {
     context, controller, client, ref, binding, projection, faceOf, listeners,
     modelCatalog, selectModel, hosts, current, notice, source, defaultModel,
-    overlays, opened, browser, render, act,
+    overlays, opened, browser, render, act, catalogObserved,
   }
 }
 
@@ -241,6 +243,31 @@ describe('remote model wire values', () => {
 })
 
 describe('RemoteModelsController reference wire UI', () => {
+  it('publishes only admitted native catalogs to the selected Host metadata consumer', async () => {
+    const test = fixture({ observeCatalog: true })
+    expect(await test.controller.catalog(test.client)).toBeDefined()
+    expect(test.catalogObserved).toHaveBeenLastCalledWith(test.client, await test.controller.catalog(test.client))
+    await test.controller.open()
+    const opened = test.catalogObserved!.mock.calls.length
+    await test.act({ kind: 'activate', actionId: 'refresh' })
+    expect(test.catalogObserved).toHaveBeenCalledTimes(opened + 1)
+    test.controller.dispose()
+    const settled = test.catalogObserved!.mock.calls.length
+    expect(await test.controller.catalog(test.client)).toBeUndefined()
+    expect(test.catalogObserved).toHaveBeenCalledTimes(settled)
+  })
+
+  it('never publishes a catalog that settles after selection retirement', async () => {
+    const test = fixture({ observeCatalog: true })
+    const result = deferred<unknown>()
+    test.modelCatalog.mockReturnValueOnce(result.promise)
+    const pending = test.controller.open()
+    test.controller.dispose()
+    result.resolve({ ok: true, value: catalog() })
+    await pending
+    expect(test.catalogObserved).not.toHaveBeenCalled()
+  })
+
   it('opens the reference filterable numbered picker with grouped rows and live thinking segment', async () => {
     const test = fixture({ details: detailsOf({ 'deepseek/chat': { contextWindow: 131072, efforts: ['low', 'high'], defaultEffort: 'low' } }) })
     await test.controller.open()
