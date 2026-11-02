@@ -1,5 +1,5 @@
 /** Host Remote entry routing and Fiber lifetime with the built decorators. @module */
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
@@ -14,7 +14,11 @@ const contexts: Context[] = []
 type HostService = InstanceType<typeof MayflyHostService>
 afterEach(async () => { await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose())) })
 
-async function host(): Promise<{ ctx: Context, service: HostService, unload(): Promise<void> }> {
+class AgentFilesystem extends Service {
+  constructor(ctx: Context, implementation: object) { super(ctx, 'fs'); Object.assign(this, implementation) }
+}
+
+async function host() {
   const ctx = new Context()
   contexts.push(ctx)
   const session = { id: SessionId('parent'), header: { origin: 'user', cwd: '/host', createdAt: 10 }, snapshotEvents: () => [] }
@@ -49,11 +53,17 @@ async function host(): Promise<{ ctx: Context, service: HostService, unload(): P
     workspaceRegistry: { resolveByPath: async () => undefined },
   }
   for (const [key, value] of Object.entries(services)) ctx.provide(key, value)
+  const world = ctx.isolate('fs')
+  const filesystem = world.plugin({ name: 'host-agent-filesystem', apply(scope: Context) { new AgentFilesystem(scope, services['fs'] as object) } })
+  await filesystem
+  // The native Agent owns a real child Fiber; it does not inject each service
+  // that consumers may later resolve in its execution world.
+  await world.plugin({ name: 'host-agent-owner', apply(scope: Context) { agent.ctx = scope } })
   const fiber = ctx.plugin(MayflyHostService)
   await fiber
   const service = ctx.get('mayflyHost') as HostService
   expect(service).toBeInstanceOf(MayflyHostService)
-  return { ctx, service, unload: () => fiber.dispose() }
+  return { ctx, service, filesystem, unload: () => fiber.dispose() }
 }
 
 describe('Host Remote composition', () => {
@@ -137,6 +147,24 @@ describe('Host Remote composition', () => {
     await expect(authorization.next()).rejects.toMatchObject({ code: 'mayflyHost/authorization-unavailable' })
   })
 
+  it('resolves Files in the exact Agent world even when that native ownership Fiber does not inject fs', async () => {
+    const { ctx, service, filesystem } = await host()
+    const agent = ctx.agents.get(SessionId('parent'))!
+    expect(() => agent.ctx.fs).toThrow('cannot get property "fs" without inject')
+    const hostRead = vi.spyOn(ctx.fs, 'resolve').mockRejectedValue(new Error('the root Host filesystem must stay unused'))
+    const signal = new AbortController().signal
+    await expect(service.deliveredFile({ sessionId: agent.id, deliveryId: 'delivery', preview: true }, signal)).resolves.toMatchObject({ preview: 'report' })
+    expect(hostRead).not.toHaveBeenCalled()
+    const completed = Promise.withResolvers<Awaited<ReturnType<Context['fs']['resolve']>>>()
+    const agentRead = vi.spyOn(agent.ctx.get('fs')!, 'resolve').mockReturnValue(completed.promise)
+    const pending = service.deliveredFile({ sessionId: agent.id, deliveryId: 'delivery' }, signal)
+    await vi.waitFor(() => { expect(agentRead).toHaveBeenCalledOnce() })
+    await filesystem.dispose()
+    completed.resolve({ targetKey: 'unloaded-world' as never, displayPath: '/late' })
+    await expect(pending).rejects.toMatchObject({ code: 'mayflyHost/session-stale' })
+    await expect(service.deliveredFile({ sessionId: agent.id, deliveryId: 'delivery' }, signal)).rejects.toMatchObject({ code: 'mayflyHost/delivery-unavailable' })
+  })
+
   it('aborts in-flight work when its actual Cordis Fiber unloads and permits a fresh service', async () => {
     const { ctx, service, unload } = await host()
     let finish!: (value: Awaited<ReturnType<Context['skills']['snapshot']>>) => void
@@ -170,7 +198,7 @@ it('routes the native latest workspace event and aborts delivered-file reads on 
   expect(nativeSummary).toHaveBeenCalledWith(sessionId, 8)
   const resolved = Promise.withResolvers<Awaited<ReturnType<Context['fs']['resolve']>>>()
   let received: AbortSignal | undefined
-  vi.spyOn(ctx.fs, 'resolve').mockImplementation(async (_path, options) => { received = options.signal; return resolved.promise })
+  vi.spyOn(ctx.agents.get(sessionId)!.ctx.get('fs')!, 'resolve').mockImplementation(async (_path, options) => { received = options!.signal; return resolved.promise })
   const pending = service.deliveredFile({ sessionId, deliveryId: 'delivery' }, new AbortController().signal)
   await vi.waitFor(() => { expect(received).toBeDefined() })
   await unload()

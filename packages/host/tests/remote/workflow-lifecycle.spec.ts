@@ -1,6 +1,6 @@
 /** Native Workflow projection replay, live metadata, replacement streams and retirement. @module */
 import { Context } from '@deepseek-ai/cordis'
-import { SessionId, SessionStore, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId, SessionLogOffset, SessionStore, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import type { WorkflowRunInfo } from '@deepseek-ai/dsh-workflow'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -15,7 +15,7 @@ function event(type: string, data: object, time = 1): SessionEvent {
 }
 
 function initial(): MayflyWorkflowSnapshot {
-  return definition.init({ id: SessionId('parent') } as never)
+  return definition.init({ version: SESSION_FORMAT_VERSION, id: SessionId('parent'), createdAt: 0, isSeeded: false }, SessionLogOffset(0))
 }
 
 function replay(events: readonly SessionEvent[]): MayflyWorkflowSnapshot {

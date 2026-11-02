@@ -15,12 +15,13 @@ function fixture() {
   const fs = { resolve: vi.fn(async () => target), stat: vi.fn(async () => stat), processPath: vi.fn(() => '/host/work/report.txt'), readBytes: vi.fn(async () => bytes) }
   let events: readonly { type: string, seq: number }[] = [{ type: 'workspace/changes', seq: 8 }, { type: 'turn/end', seq: 9 }]
   const session = { id: sessionId, header: { cwd: '/header', origin: 'user' }, snapshotEvents: () => events }
-  const agent = { id: sessionId, session, ctx: { fs } }
+  const filesystem = vi.fn((): typeof fs | undefined => fs)
+  const agent = { id: sessionId, session, ctx: { get: filesystem } }
   const agents = { get: vi.fn(() => agent) }
   const sessions = { get: vi.fn(() => session) }
   const summary = vi.fn((): unknown => ({ turn: 3, cwd, files: [], total: 0, added: 0, deleted: 0 }))
   const context = { agents, sessions, sessionProjections: { snapshot: (_session: unknown, keys: readonly string[]) => ({ values: keys.includes('workingDirectory') ? { workingDirectory: cwd } : { mayflyDeliverables: files } }) }, workspaceChanges: { summary } } as unknown as Context
-  return { context, fs, target, agent, agents, sessions, summary,
+  return { context, fs, filesystem, target, agent, agents, sessions, summary,
     cwd: (value: string) => { cwd = value }, files: (value: typeof files) => { files = value }, stat: (value: typeof stat) => { stat = value }, bytes: (value: Uint8Array) => { bytes = value }, events: (value: typeof events) => { events = value },
   }
 }
@@ -99,6 +100,16 @@ describe('recorded delivery filesystem reads', () => {
     const failure = new Error('read denied')
     f.fs.stat.mockRejectedValueOnce(failure)
     await expect(deliveredFile(f.context, request, signal())).rejects.toBe(failure)
+  })
+
+  it('refuses a missing Agent filesystem and rejects a provider removed during resolution', async () => {
+    const f = fixture()
+    f.filesystem.mockReturnValueOnce(undefined)
+    await expect(deliveredFile(f.context, request, signal())).rejects.toMatchObject({ code: 'mayflyHost/delivery-unavailable' })
+    expect(f.fs.resolve).not.toHaveBeenCalled()
+    f.fs.resolve.mockImplementationOnce(async () => { f.filesystem.mockReturnValue(undefined); return f.target })
+    await expect(deliveredFile(f.context, request, signal())).rejects.toMatchObject({ code: 'mayflyHost/session-stale' })
+    expect(f.fs.stat).not.toHaveBeenCalled()
   })
 })
 

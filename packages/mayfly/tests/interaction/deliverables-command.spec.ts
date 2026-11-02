@@ -1,6 +1,7 @@
 /** Real native command, projection and shared UI lifetime for the private Files controller. @module */
 import { Context } from '@deepseek-ai/cordis'
 import type { FsInfo } from '@deepseek-ai/dsh-fs'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { WorkspaceFileDiff } from '@deepseek-ai/dsh-workspace-changes/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { deliverablesProjection } from '../../src/conversation/deliverables.ts'
@@ -24,7 +25,7 @@ async function setup(options: { readonly empty?: boolean, readonly noService?: b
   const unregisterDeliveries = ctx.sessionProjections.register(deliverablesProjection)
   ctx.effect(() => unregisterDeliveries)
   ctx.effect(() => () => bench.agent.ctx.fiber.dispose())
-  if (!options.empty) bench.session.append('deliverables/presented', { files: [{ path: 'report.md', description: 'Report' }, { path: 'other.txt' }] })
+  if (!options.empty) bench.session.append('deliverables/presented', { turn: 1, callId: ToolCallId('initial-delivery'), files: [{ path: 'report.md', description: 'Report' }, { path: 'other.txt' }] })
   const target = { targetKey: 'opaque' as never, displayPath: '/repo/current/report.md' }
   const fs = {
     resolve: vi.fn(async () => target), stat: vi.fn(async (): Promise<FsInfo | undefined> => ({ type: 'file', version: 'v1' as never, size: 12 })),
@@ -96,8 +97,8 @@ describe('native private Files controller', () => {
     expect(await f.choose(undefined)).toMatchObject({ kind: 'cancelled' })
     await f.choose(f.rows()[1]!.id, 'foreign')
     expect(f.fs.resolve).toHaveBeenCalledTimes(1)
-    f.session.append('deliverables/presented', { files: [{ path: 'new.txt' }] })
-    f.otherSession.append('deliverables/presented', { files: [{ path: 'foreign.txt' }] })
+    f.session.append('deliverables/presented', { turn: 1, callId: ToolCallId('next-delivery'), files: [{ path: 'new.txt' }] })
+    f.otherSession.append('deliverables/presented', { turn: 1, callId: ToolCallId('foreign-delivery'), files: [{ path: 'foreign.txt' }] })
     f.otherSession.append('workspace/changes', { turn: 1 })
     f.session.append('turn/start', { turn: 1 })
     await flushRequests()
@@ -106,7 +107,7 @@ describe('native private Files controller', () => {
     expect(f.fs.resolve).toHaveBeenCalledTimes(1)
     await f.choose('absent')
     expect(f.text()).toContain('Select a file')
-    f.session.append('deliverables/presented', { files: [{ path: 'newer.txt' }] })
+    f.session.append('deliverables/presented', { turn: 1, callId: ToolCallId('newer-delivery'), files: [{ path: 'newer.txt' }] })
     await flushRequests()
     expect(f.fs.resolve).toHaveBeenCalledTimes(2)
   })
@@ -211,7 +212,7 @@ describe('native Files read cancellation and replacement', () => {
     const pending = deferred<WorkspaceFileDiff | undefined>()
     f.changes.diff.mockReturnValueOnce(pending.promise)
     await f.open()
-    f.session.append('deliverables/presented', { files: [{ path: 'new.txt' }] })
+    f.session.append('deliverables/presented', { turn: 1, callId: ToolCallId('late-delivery'), files: [{ path: 'new.txt' }] })
     await flushRequests()
     await f.choose(f.rows()[0]!.id)
     pending.resolve(binary)
