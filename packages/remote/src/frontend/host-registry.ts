@@ -120,6 +120,10 @@ export class HostRegistry {
     const previous = this.selection
     this.selection = undefined
     previous?.reference.release()
+    for (const references of this.pendingSelections.values()) {
+      for (const reference of references) reference.release()
+    }
+    this.pendingSelections.clear()
   }
 
   /** List committed Host Clients in attach order. */

@@ -31,6 +31,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Attaching stays Session-independent: the first submitted prompt creates a
   Session, while `/new` and `/clear` release only the primary view. Concurrent
   initial prompts share creation; clearing or detaching fences its late result.
+  Clearing the primary view also releases any pending primary acquisition so a
+  stalled native open cannot retain the old view or block the next selection;
+  independent view-role leases retain their own lifetimes.
   App owns startup plan intent through `startupPlan`; the plan feature only
   reads/writes that intent. Prompt preparation awaits native plan admission
   before admitting the first prompt. Selection listeners never apply it in the

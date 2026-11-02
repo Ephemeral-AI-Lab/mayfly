@@ -5,7 +5,7 @@ import type {
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey, type HostClient, type SessionRef } from '../../src/client/types.ts'
 import {
-  HostNotAttachedError, HostOperationSupersededError, HostRegistry,
+  HostNotAttachedError, HostOperationSupersededError, HostRegistry, hostViewKey,
 } from '../../src/frontend/host-registry.ts'
 
 function deferred<T>(): PromiseWithResolvers<T> {
@@ -377,5 +377,131 @@ describe('HostRegistry', () => {
     expect(oldHost.detach).toHaveBeenCalledOnce()
     expect(newHost.detach).toHaveBeenCalledOnce()
     expect(registry.get(key)).toBeUndefined()
+  })
+
+  it('shares an exact view role across leases and isolates Host, role, and primary ownership', async () => {
+    const a = HostKey('views-a')
+    const b = HostKey('views-b')
+    const references: SessionReference[] = []
+    const retain = vi.fn(() => {
+      const reference = makeReference(sessionId('shared'))
+      references.push(reference)
+      return reference
+    })
+    const registry = new HostRegistry(key => makeHost(key, retain).client)
+    await Promise.all([registry.attach(a), registry.attach(b)])
+    await registry.select(sessionRef(a))
+    const primary = registry.currentReference!
+    const first = registry.retainView(sessionRef(a), 'transcript')
+    const second = registry.retainView(sessionRef(a), 'transcript')
+    const side = registry.retainView(sessionRef(a), 'btw')
+    const foreign = registry.retainView(sessionRef(b), 'transcript')
+
+    expect(retain).toHaveBeenCalledTimes(4)
+    expect(first.reference).toBe(second.reference)
+    expect(first.reference).not.toBe(primary)
+    expect(side.reference).not.toBe(first.reference)
+    expect(foreign.reference).not.toBe(first.reference)
+    expect(await first.ready).toBe(first.reference.binding)
+    expect(Object.isFrozen(first)).toBe(true)
+    expect(Object.isFrozen(first.key.ref)).toBe(true)
+    expect(hostViewKey(first.key)).toBe('["views-a","shared","transcript"]')
+    expect(registry.viewKeys()).toEqual([first.key, side.key, foreign.key])
+
+    first.release(); first.release()
+    expect(first.reference.release).not.toHaveBeenCalled()
+    second.release(); second.release()
+    expect(first.reference.release).toHaveBeenCalledOnce()
+    expect(registry.viewKeys()).toEqual([side.key, foreign.key])
+    registry.clearSelection()
+    expect(primary.release).toHaveBeenCalledOnce()
+    expect(registry.current).toBeUndefined()
+    expect(registry.currentReference).toBeUndefined()
+    expect(side.reference.release).not.toHaveBeenCalled()
+    registry.clearSelection()
+
+    await registry.detach(a)
+    expect(side.reference.release).toHaveBeenCalledOnce()
+    expect(foreign.reference.release).not.toHaveBeenCalled()
+    side.release()
+    expect(side.reference.release).toHaveBeenCalledOnce()
+    expect(registry.viewKeys()).toEqual([foreign.key])
+    foreign.release()
+    expect(foreign.reference.release).toHaveBeenCalledOnce()
+    expect(registry.viewKeys()).toEqual([])
+    expect(references).toHaveLength(4)
+  })
+
+  it('force closes view leases without allowing their later release to retire a replacement', async () => {
+    const host = HostKey('closed-view')
+    const references = [makeReference(sessionId('shared')), makeReference(sessionId('shared'))]
+    const retain = vi.fn(() => references.shift()!)
+    const registry = new HostRegistry(() => makeHost(host, retain).client)
+    await registry.attach(host)
+    const old = registry.retainView(sessionRef(host), 'child')
+    registry.closeView(old.key)
+    registry.closeView(old.key)
+    const replacement = registry.retainView(sessionRef(host), 'child')
+    old.release()
+    expect(old.reference.release).toHaveBeenCalledOnce()
+    expect(replacement.reference.release).not.toHaveBeenCalled()
+    expect(registry.viewKeys()).toEqual([replacement.key])
+    registry.closeView(replacement.key)
+    replacement.release()
+    expect(replacement.reference.release).toHaveBeenCalledOnce()
+    expect(registry.viewKeys()).toEqual([])
+  })
+
+  it('validates view roles, Host attachment, and native child addressing before sharing a reference', async () => {
+    const host = HostKey('addressed-view')
+    const retain = vi.fn(() => makeReference(sessionId('shared')))
+    const registry = new HostRegistry(() => makeHost(host, retain).client)
+    expect(() => registry.retainView(sessionRef(host), '  ')).toThrow('role must not be empty')
+    expect(() => registry.retainView(sessionRef(host), 'child')).toThrow(HostNotAttachedError)
+    await registry.attach(host)
+    const ref = sessionRef(host)
+    const target = { parentSessionId: sessionId('parent'), childSessionId: ref.sessionId, mode: 'one-shot' as const }
+    const view = registry.retainView(ref, 'child', target)
+    const shared = registry.retainView(ref, 'child', { ...target })
+    expect(shared.reference).toBe(view.reference)
+    expect(retain).toHaveBeenCalledWith(target, { source: 'mayflyFrontend' })
+    for (const other of [
+      ref.sessionId,
+      { ...target, parentSessionId: sessionId('another-parent') },
+      { ...target, childSessionId: sessionId('another-child') },
+      { ...target, mode: 'continuable' as const },
+    ]) expect(() => registry.retainView(ref, 'child', other)).toThrow('changed its Session target')
+    const direct = registry.retainView(ref, 'direct')
+    const directAgain = registry.retainView(ref, 'direct', ref.sessionId)
+    expect(directAgain.reference).toBe(direct.reference)
+    expect(() => registry.retainView(ref, 'direct', target)).toThrow('changed its Session target')
+    await registry.detach(host)
+    expect(view.reference.release).toHaveBeenCalledOnce()
+    expect(direct.reference.release).toHaveBeenCalledOnce()
+    shared.release(); directAgain.release(); view.release(); direct.release()
+  })
+
+  it('cancels queued selections before native acquisition and clears an in-flight primary retain immediately', async () => {
+    const host = HostKey('clear-pending')
+    const pending = makeReference(sessionId('pending'), deferred<SessionBinding>().promise)
+    const selected = makeReference(sessionId('selected'))
+    const retain = vi.fn().mockReturnValueOnce(pending).mockReturnValueOnce(selected)
+    const registry = new HostRegistry(() => makeHost(host, retain).client)
+    await registry.attach(host)
+    const queued = registry.select(sessionRef(host, 'queued'))
+    registry.clearSelection()
+    await expect(queued).rejects.toBeInstanceOf(HostOperationSupersededError)
+    expect(retain).not.toHaveBeenCalled()
+
+    const selecting = registry.select(sessionRef(host, 'pending'))
+    await vi.waitFor(() => { expect(retain).toHaveBeenCalledOnce() })
+    const cancelled = expect(selecting).rejects.toThrow('released')
+    registry.clearSelection()
+    expect(pending.release).toHaveBeenCalledOnce()
+    await cancelled
+    await registry.select(sessionRef(host, 'selected'))
+    expect(registry.currentReference).toBe(selected)
+    expect(registry.current).toEqual(sessionRef(host, 'selected'))
+    await registry.detach(host)
   })
 })
