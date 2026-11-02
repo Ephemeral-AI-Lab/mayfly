@@ -100,8 +100,6 @@ class RemotePresetOperationsController {
         await this.setDefault(client, match.id, match.name ?? match.id, operation)
         return
       }
-      // A replaced selection must never receive a preset chosen for the old one.
-      if (!operation.valid()) return
       const selected = await remoteValue(client.remote.agentPresets.select(selection.ref.sessionId, match.id))
       if (!operation.valid() || this.disposed) return
       this.context.base.notice.set(this.t('Preset switched to {preset}', { preset: selected }))

@@ -68,6 +68,7 @@ function fixture() {
 
 function client(presets: readonly PresetRow[] = []) {
   return {
+    key: HostKey('local'),
     remote: {
       agentPresets: {
         list: vi.fn(async () => ({ ok: true, value: { presets } })),
@@ -204,5 +205,136 @@ describe('mountRemotePresetOperations', () => {
     await f.execute('alpha')
     expect(f.notice.set).toHaveBeenCalledWith('No Host is attached')
     dispose()
+  })
+
+  it('keeps queued command callbacks inert after cancellation or unload and refuses a detached roster', async () => {
+    const f = fixture()
+    const dispose = mountRemotePresetOperations(f.context)
+    await f.execute('')
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('No Host is attached')
+    const execute = f.definition().execute
+    const cancelled = new AbortController(); cancelled.abort()
+    await execute('alpha', cancelled.signal)
+    dispose()
+    await execute('', new AbortController().signal)
+    expect(f.commands.execute).not.toHaveBeenCalled()
+    expect(f.notice.set).toHaveBeenCalledOnce()
+  })
+
+  it('reports missing roster handlers and current execution failures without surfacing retired outcomes', async () => {
+    const f = fixture()
+    const host = client()
+    f.attach(host as unknown as HostClient)
+    const dispose = mountRemotePresetOperations(f.context)
+    f.commands.execute.mockResolvedValueOnce(false)
+    await f.execute('')
+    expect(f.notice.set).toHaveBeenCalledWith('Preset browsing is unavailable in this build')
+    f.commands.execute.mockRejectedValueOnce(new Error('roster dispatch failed'))
+    await f.execute('')
+    expect(f.notice.set).toHaveBeenCalledWith('roster dispatch failed')
+    const late = Promise.withResolvers<boolean>()
+    f.commands.execute.mockReturnValueOnce(late.promise)
+    const pending = f.execute('')
+    dispose(); late.reject(new Error('obsolete roster dispatch'))
+    await pending
+    expect(f.notice.set).toHaveBeenCalledTimes(2)
+
+    const cancelled = fixture()
+    cancelled.attach(host as unknown as HostClient)
+    const stop = mountRemotePresetOperations(cancelled.context)
+    const answer = Promise.withResolvers<boolean>()
+    cancelled.commands.execute.mockReturnValueOnce(answer.promise)
+    const signal = new AbortController()
+    const executing = cancelled.execute('', signal.signal)
+    signal.abort(); answer.resolve(false)
+    await executing
+    expect(cancelled.notice.set).not.toHaveBeenCalled()
+    stop()
+  })
+
+  it('retires pending roster reads after unload or exact Session replacement', async () => {
+    for (const detach of [false, true]) {
+      const f = fixture()
+      const host = client([{ id: 'alpha' }])
+      f.attach(host as unknown as HostClient, selection(host as unknown as HostClient))
+      const dispose = mountRemotePresetOperations(f.context)
+      const pending = Promise.withResolvers<Awaited<ReturnType<typeof host.remote.agentPresets.list>>>()
+      host.remote.agentPresets.list.mockReturnValueOnce(pending.promise)
+      const executing = f.execute('alpha')
+      if (detach) f.hosts.current.mockReturnValue(selection(host as unknown as HostClient, 'replacement'))
+      else dispose()
+      pending.resolve({ ok: true, value: { presets: [{ id: 'alpha' }] } })
+      await executing
+      expect(host.remote.agentPresets.select).not.toHaveBeenCalled()
+      expect(f.notice.set).not.toHaveBeenCalled()
+      if (detach) dispose()
+    }
+  })
+
+  it('fences late Session selections and reports only errors owned by the current command', async () => {
+    const f = fixture()
+    const host = client([{ id: 'alpha' }])
+    f.attach(host as unknown as HostClient, selection(host as unknown as HostClient))
+    const dispose = mountRemotePresetOperations(f.context)
+    host.remote.agentPresets.select.mockRejectedValueOnce(new Error('native turn guard failed'))
+    await f.execute('alpha')
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('native turn guard failed')
+    const late = Promise.withResolvers<Awaited<ReturnType<typeof host.remote.agentPresets.select>>>()
+    host.remote.agentPresets.select.mockReturnValueOnce(late.promise)
+    const selecting = f.execute('alpha')
+    await vi.waitFor(() => { expect(host.remote.agentPresets.select).toHaveBeenCalledTimes(2) })
+    f.hosts.current.mockReturnValue(selection(host as unknown as HostClient, 'new-selection'))
+    late.resolve({ ok: true, value: 'Alpha' })
+    await selecting
+    expect(f.notice.set).toHaveBeenCalledOnce()
+    const failed = Promise.withResolvers<Awaited<ReturnType<typeof host.remote.agentPresets.list>>>()
+    host.remote.agentPresets.list.mockReturnValueOnce(failed.promise)
+    const request = f.execute('alpha')
+    f.hosts.list.mockReturnValue([])
+    failed.reject(new Error('detached native failure'))
+    await request
+    expect(f.notice.set).toHaveBeenCalledOnce()
+    dispose()
+  })
+
+  it.each([false, true])('refuses unavailable native default settings (readonly=%s)', async readonly => {
+    const f = fixture()
+    const host = client([{ id: 'alpha' }])
+    f.attach(host as unknown as HostClient)
+    const dispose = mountRemotePresetOperations(f.context)
+    host.remote.settings.describe.mockResolvedValueOnce({ ok: true, value: { writable: !readonly, namespaces: readonly ? [{ ns: 'agent-preset-registry', revision: 7 }] : [] } })
+    await f.execute('alpha')
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('preset selection is unavailable')
+    expect(host.remote.settings.mutate).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('writes unnamed defaults and fences description and mutation settlement under the original Host', async () => {
+    const f = fixture()
+    const host = client([{ id: 'alpha' }])
+    f.attach(host as unknown as HostClient)
+    const dispose = mountRemotePresetOperations(f.context)
+    await f.execute('alpha')
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('Default preset: alpha')
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof host.remote.settings.describe>>>()
+    host.remote.settings.describe.mockReturnValueOnce(pending.promise)
+    const describing = f.execute('alpha')
+    await vi.waitFor(() => { expect(host.remote.settings.describe).toHaveBeenCalledTimes(2) })
+    f.hosts.list.mockReturnValue([])
+    pending.resolve({ ok: true, value: { writable: true, namespaces: [{ ns: 'agent-preset-registry', revision: 9 }] } })
+    await describing
+    expect(host.remote.settings.mutate).toHaveBeenCalledOnce()
+    expect(f.notice.set).toHaveBeenCalledOnce()
+    dispose()
+    const late = fixture()
+    late.attach(host as unknown as HostClient)
+    const stop = mountRemotePresetOperations(late.context)
+    const response = Promise.withResolvers<Awaited<ReturnType<typeof host.remote.settings.mutate>>>()
+    host.remote.settings.mutate.mockReturnValueOnce(response.promise)
+    const mutating = late.execute('alpha')
+    await vi.waitFor(() => { expect(host.remote.settings.mutate).toHaveBeenCalledTimes(2) })
+    stop(); response.resolve({ ok: true, value: {} })
+    await mutating
+    expect(late.notice.set).not.toHaveBeenCalled()
   })
 })

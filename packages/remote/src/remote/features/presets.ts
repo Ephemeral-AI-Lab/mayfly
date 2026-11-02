@@ -84,7 +84,7 @@ export class RemoteAgentPresetsController extends RemoteFeatureController {
               if (!operation.valid() || context.signal.aborted || generation !== sequence) return { kind: 'cancelled' }
               roster = next; mounted?.refresh()
               return { kind: 'completed' }
-            } catch (error) { return operation.valid() && !context.signal.aborted ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' } }
+            } catch (error) { return operation.valid() && !context.signal.aborted && generation === sequence ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' } }
           }
           if (event.kind !== 'selection-accept' || event.controlId !== 'presets') return { kind: 'completed' }
           const id = event.selectedIds[0]
