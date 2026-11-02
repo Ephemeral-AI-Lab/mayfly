@@ -92,10 +92,9 @@ worktree and branch. Never link a checkout into production `mayfly`; use
    `docs/**`, Website pages/assets, and AGENTS-only changes need no runtime profile.
    Executable config, manifests, scripts, preset payload, and shipped skills
    are not documentation-only.
-2. A `website/**` change is edited without a build, a preview, or acceptance
-   until a release. The release runs `pnpm run shots:sync`, `pnpm run
-   website:build`, and a persistent preview: `pnpm --dir website exec vitepress
-   preview . --host 0.0.0.0 --port <port>`, and gives affected routes at
+2. Every `website/**` change requires `pnpm run website:build` and a persistent
+   preview: `pnpm --dir website exec vitepress preview . --host 0.0.0.0 --port
+   <port>`. Give affected routes at
    `http://<actual-lan-ip>:<port>/`, never localhost, loopback, or the bind
    address, for human visual/content acceptance.
 3. Runtime behavior, public seams, composition, preset payload, and shipped
@@ -104,8 +103,8 @@ worktree and branch. Never link a checkout into production `mayfly`; use
    for the Host, then `MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh`
    for the TUI. Include the primary workflow, expected result, fallback or
    narrow-width/lifecycle case, and nearby regression checks. Rebuild after source
-   edits; reinstall when dependencies change. A mixed Website/runtime change takes the runtime path now and the
-   Website path at the release.
+   edits; reinstall when dependencies change. A mixed Website/runtime change
+   requires both acceptance paths.
 4. Wait for all applicable human acceptance before merging, stopping previews,
    or removing profiles. Never redirect acceptance to production `mayfly`.
    After acceptance and merge, rebuild main when runtime output changed, stop

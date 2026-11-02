@@ -1,9 +1,12 @@
 # Mayfly package and release workflow
 
-Mayfly publishes three packages as one `0.1.4-rc.2` lockstep release:
-`@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`, and
+The split runtime publishes five packages in lockstep:
+`@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`,
+`@ephemeral-ai/mayfly-host`, `@ephemeral-ai/mayfly-remote`, and
 `@ephemeral-ai/mayfly-cli`. The exact release order lives in
-`script/package-contract.mjs`. The supported Harness line is `0.2.1-rc.2`.
+`script/package-contract.mjs`. The supported Harness line is `0.2.2-alpha.2`.
+The published `@ephemeral-ai/mayfly@0.1.4-rc.2` remains an immutable parity
+reference; choose a new, unpublished version before releasing the split packages.
 
 Package manifests are the build source of truth. Concrete JavaScript exports
 and bins become tsdown entries; TypeScript project references emit declarations.
@@ -15,7 +18,7 @@ After preparing a new release and writing its changelog entry, set `VERSION`
 to that release and run:
 
 ```sh
-VERSION=0.1.4-rc.2
+VERSION='<next-unpublished-version>'
 pnpm run check -- --tier full --plan
 pnpm release:preflight "$VERSION"
 pnpm run check -- --tier full
@@ -24,13 +27,13 @@ pnpm release:preflight --artifact "$VERSION"
 
 The version bump supports `pnpm release:version <version> --dry-run` and checks
 all release markers before writing. Write a substantive first entry in the
-shipped changelog before preflight. The Website is checked only here, never in
-a round or a gate tier: run `pnpm run shots:sync` and `pnpm run shots:check`,
-then `pnpm run website:build` and a persistent LAN preview
+shipped changelog before preflight. For a release, run `pnpm run shots:sync`
+and `pnpm run shots:check`, then `pnpm run website:build` and a persistent LAN preview
 (`pnpm --dir website exec vitepress preview . --host 0.0.0.0 --port <port>`),
 and give the affected routes for human visual/content acceptance. Do not tag
 until that Website acceptance, the dedicated-profile checks, and the rest of
-the human acceptance are complete.
+the human acceptance are complete. Any earlier Website change also needs its
+own strict build and LAN preview under the repository's acceptance rules.
 For a release manifest change, the full plan includes `check:pack`; otherwise
 run `pnpm run check:pack` before using the artifact preflight. The full gate
 also builds and checks exports, examples, and tests; it does not check screenshots
@@ -39,16 +42,17 @@ or the Website.
 form additionally checks the packed package set. These commands do not
 publish or replace the registry-install matrix.
 
-`check:pack` writes `.artifacts/pack/index.json` and three tarballs, then runs
+`check:pack` writes `.artifacts/pack/index.json` and five tarballs, then runs
 manifest/export/bin/protocol checks, publint, AreTheTypesWrong, package budgets,
 and an external UI-kit install fixture. Release automation publishes those
 exact artifacts and does not rebuild.
 
-`@ephemeral-ai/mayfly-cli` carries archived dsh runtimes. Refresh its isolated npm
-lock with `pnpm run release:lock-cli`; do not resolve it through workspace
-links.
+`@ephemeral-ai/mayfly-cli` ships a small launcher with an exact-version runtime
+dependency on `@ephemeral-ai/mayfly-remote`. It carries no dsh runtime archives.
+The native Host uses the separately installed matching official dsh executable;
+releasing or installing the TUI does not upgrade that installation.
 
-The GitHub repository owns an `npm` environment. Until all three packages have
+The GitHub repository owns an `npm` environment. Until all five packages have
 trusted publishing configured, that environment must provide an `NPM_TOKEN`
 secret whose npm identity can publish under `@ephemeral-ai`. The release jobs
 use the environment for both the candidate publish and dist-tag promotion;
