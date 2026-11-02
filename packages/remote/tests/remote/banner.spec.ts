@@ -5,8 +5,7 @@ import { RemoteBannerComponent } from '../../src/remote/banner.ts'
 import type { MayflyComponents, MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
 import { composeBannerLines } from '@ephemeral-ai/mayfly/banner'
 import { MAYFLY_VERSION } from '@ephemeral-ai/mayfly/banner-content'
-import { plain, plainColors } from '../../../mayfly/tests/helpers.ts'
-import { fakeMayflyComponents } from '../../../mayfly/tests/transcript/helpers.ts'
+import { plain, plainColors, fakeMayflyComponents } from './render-fixture.ts'
 import type { RemotePresentationFacts } from '../../src/transcript/remote-model.ts'
 
 const components = fakeMayflyComponents()
