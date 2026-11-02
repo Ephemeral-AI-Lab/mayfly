@@ -4,6 +4,7 @@ import type {
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
+import type { GoalRef } from '@deepseek-ai/dsh-goal/client'
 import { HostKey, type HostClient, type SessionRef } from '../../src/client/types.ts'
 import { HostActions, type HostPromptInput } from '../../src/frontend/host-actions.ts'
 import { HostNotAttachedError, HostRegistry } from '../../src/frontend/host-registry.ts'
@@ -266,5 +267,76 @@ describe('HostActions', () => {
     client.create.mockRejectedValue(failure)
     await expect(attachedActions.create(host)).rejects.toBe(failure)
     expect(client.create).toHaveBeenCalledOnce()
+  })
+
+  it('keeps catalog reads, searches, addressed writes and side-view leases under the owning native Host', async () => {
+    const host = HostKey('exact-native-actions')
+    const f = makeSession(sessionId('shared'))
+    const client = makeActionHost(host, f.session)
+    const registry = new HostRegistry(() => client.client)
+    const actions = new HostActions(registry)
+    await registry.attach(host)
+    const ref = sessionRef(host)
+    const refresh = vi.fn(async () => {})
+    const refreshProjections = vi.fn(async (..._args: unknown[]) => {})
+    const search = vi.fn(async (..._args: unknown[]): Promise<unknown> => ({ ok: true, value: { items: [{ sessionId: 'hit', snippet: 'native phrase' }], hasMore: true } }))
+    const fork = vi.fn(async (..._args: unknown[]) => sessionId('fork'))
+    Object.assign(client.client.sessions, { refresh, refreshProjections, search, fork })
+    await actions.refresh(host); await actions.refreshProjections(ref)
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(refreshProjections).toHaveBeenCalledWith('shared')
+    const signal = new AbortController().signal
+    expect(await actions.search(ref, 'native phrase', signal)).toEqual({ ok: true, value: { hasMore: true, items: [{ sessionId: 'hit', snippet: 'native phrase', ref: { host, sessionId: 'hit' } }] } })
+    expect(search).toHaveBeenCalledWith('native phrase', signal)
+    const refused = { ok: false, error: { code: 'search-failed', message: 'native unavailable' } }
+    search.mockResolvedValueOnce(refused)
+    expect(await actions.search(ref, 'missing', signal)).toBe(refused)
+    expect(await actions.fork(ref)).toEqual({ host, sessionId: 'fork' })
+    expect(fork).toHaveBeenCalledWith({ sessionId: 'shared' })
+    const lease = actions.retainView(ref, 'secondary')
+    await lease.ready
+    actions.closeView(ref, 'secondary')
+    expect(client.references.at(-1)!.release).toHaveBeenCalledOnce()
+    lease.release()
+    expect(client.references.at(-1)!.release).toHaveBeenCalledOnce()
+
+    const updateQueue = vi.fn(async (..._args: unknown[]) => ({ ok: true, value: { accepted: true } }))
+    const readAttachment = vi.fn(async (..._args: unknown[]) => ({ ok: true, value: { data: new Uint8Array([1]) } }))
+    Object.assign(f.session, { updateQueue, readAttachment })
+    const id = 'message' as Parameters<SessionFace['updateQueue']>[0]
+    await actions.updateQueue(ref, id, { kind: 'remove' })
+    expect(updateQueue).toHaveBeenCalledWith(id, { kind: 'remove' })
+    const image = { attachmentId: 'image', mediaType: 'image/png', bytes: 1, width: 1, height: 1 } as Parameters<SessionFace['readAttachment']>[0]
+    await actions.readAttachment(ref, image)
+    expect(readAttachment).toHaveBeenCalledWith(image)
+    const onAccept = vi.fn()
+    await actions.steer(ref, { ...promptInput(), onAccept })
+    expect(f.session.beginSubmission).toHaveBeenCalledWith(expect.objectContaining({ mode: 'steer', onAccept }))
+    expect(f.session.prompt).toHaveBeenCalledWith(expect.any(Array), 'steer', undefined, f.requestId)
+
+    const goals = Object.fromEntries(['get', 'create', 'edit', 'pause', 'resume', 'complete', 'clear'].map(name => [name, vi.fn(async (..._args: unknown[]) => ({ ok: true, value: name }))]))
+    const skills = { list: vi.fn(async (..._args: unknown[]) => ({ ok: true, value: [] })) }
+    const fileReferences = { list: vi.fn(async (..._args: unknown[]) => ({ ok: true, value: [] })) }
+    const selectModel = vi.fn(async (..._args: unknown[]) => ({ ok: true, value: { accepted: true } }))
+    Object.assign(client.client.remote, { goals, skills, fileReferences })
+    Object.assign(client.client.remote.session, { selectModel })
+    const goal: GoalRef = { id: 'goal' as GoalRef['id'], revision: 3 }
+    await actions.goal(ref)
+    await actions.createGoal(ref, { objective: 'finish' })
+    await actions.editGoal(ref, goal, { maxGoalRounds: 5 })
+    await actions.pauseGoal(ref, goal); await actions.resumeGoal(ref, goal)
+    await actions.completeGoal(ref, goal); await actions.clearGoal(ref, goal)
+    expect(goals['get']).toHaveBeenCalledWith('shared')
+    expect(goals['create']).toHaveBeenCalledWith('shared', { objective: 'finish' })
+    expect(goals['edit']).toHaveBeenCalledWith('shared', goal, { maxGoalRounds: 5 })
+    for (const name of ['pause', 'resume', 'complete', 'clear']) expect(goals[name]).toHaveBeenCalledWith('shared', goal)
+    await actions.listSkills(ref, signal)
+    expect(skills.list).toHaveBeenCalledWith({ sessionId: 'shared' }, signal)
+    await actions.listFileReferences(ref, 'src/', signal)
+    expect(fileReferences.list).toHaveBeenCalledWith('shared', 'src/', signal)
+    await actions.selectModel(ref, { provider: 'native', model: 'model', reasoningEffort: 'high' })
+    expect(selectModel).toHaveBeenCalledWith({ sessionId: 'shared', provider: 'native', model: 'model', reasoningEffort: 'high' })
+    expect(client.references.every(reference => vi.mocked(reference.release).mock.calls.length === 1)).toBe(true)
+    await registry.detach(host)
   })
 })
