@@ -6,8 +6,7 @@ import type { HostClient, SessionRef } from '../../src/client/types.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
 import type { RemoteBrowserOptions } from '../../src/remote/panels/browser.ts'
 import { mountCatalogFeature } from '../../src/remote/features/catalog.ts'
-import { unavailableCapability } from '../../src/remote/features/capabilities.ts'
-import { remoteMcpConfigNode, remoteMcpServerItems } from '../../src/remote/panels/catalog.ts'
+import { mcpServerConfigNode as remoteMcpConfigNode, mcpServerItems as remoteMcpServerItems } from '@ephemeral-ai/mayfly/command-panels'
 import type { MayflyMcpCatalog, MayflyMcpServer } from '@ephemeral-ai/mayfly-host/types'
 
 describe('unknown MCP transport state', () => {
@@ -15,10 +14,10 @@ describe('unknown MCP transport state', () => {
     const unknown = mcpServer({ status: 'unknown', connection: 'disconnected', registeredCount: 1, toolsVisible: [toolSchema('cached-tool')] }) as unknown as MayflyMcpServer
     const empty = mcpServer({ entryId: 'empty', serverName: 'empty', status: 'no-tools', connection: 'connected' }) as unknown as MayflyMcpServer
     const t = (text: string) => text
-    const rows = remoteMcpServerItems({ servers: [empty, unknown], orphanCount: 0, sessionLive: true } as MayflyMcpCatalog, t, t)
+    const rows = remoteMcpServerItems({ servers: [empty, unknown], orphanCount: 0, sessionLive: true } as MayflyMcpCatalog, t)
     expect(rows.map(row => row.id)).toEqual(['entry-alpha', 'empty'])
     expect(rows[0]!.cells![0]!.spans[0]).toEqual({ text: 'unknown', tone: 'muted' })
-    const strings = nodesOf(remoteMcpConfigNode(unknown, t, t)).filter(node => node.kind === 'text').map(node => node.content)
+    const strings = nodesOf(remoteMcpConfigNode(unknown, t)).filter(node => node.kind === 'text').map(node => node.content)
     expect(strings).toContain('Live tool availability is unknown while the server is not connected')
     expect(strings).not.toContain('No tools registered; connection state is unavailable')
   })
@@ -210,7 +209,7 @@ beforeEach(() => {
 })
 
 describe('mountCatalogFeature commands', () => {
-  it('registers exactly /mcp and /tools, refuses arguments, and unregisters both on teardown', async () => {
+  it('registers exactly /mcp and /tools, preserves the reference argument handling, and unregisters both on teardown', async () => {
     const { context, register, commands, disposers } = fixture()
     const panel = { closed: false, refresh: vi.fn(), close: vi.fn() }
     mocks.open.mockReturnValue(panel)
@@ -218,9 +217,6 @@ describe('mountCatalogFeature commands', () => {
 
     expect(register).toHaveBeenCalledTimes(2)
     expect(commands.map(command => command.name)).toEqual(['mcp', 'tools'])
-    await expect(commands[0]!.execute(' alpha', signal)).rejects.toThrow('Usage: /mcp')
-    await expect(commands[1]!.execute(' now', signal)).rejects.toThrow('Usage: /tools')
-    expect(mocks.open).not.toHaveBeenCalled()
 
     await commands[0]!.execute('', signal)
     const browser = browserOf()
@@ -252,7 +248,7 @@ describe('mountCatalogFeature MCP catalog', () => {
     const items = listOf(view, 'servers').items as ReadonlyArray<{ readonly cells: readonly unknown[] }>
     // alpha carries no connection phase, so its row has two cells; a fabricated
     // empty third cell would paint an unexplained gap.
-    expect(items.map(item => item.cells.length)).toEqual([2, 3, 3])
+    expect(items.map(item => item.cells.length)).toEqual([2, 2, 2])
     expect(errorTextsOf(view)).toEqual([])
     dispose()
   })
@@ -293,7 +289,7 @@ describe('mountCatalogFeature MCP catalog', () => {
 
     await commands[0]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-    await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual(['Host does not compose Mayfly']) })
+    await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual(['MCP catalog unavailable; showing the last snapshot']) })
 
     const view = browserOf().view()
     expect(labelsOf(view)).toEqual([])
@@ -311,7 +307,7 @@ describe('mountCatalogFeature MCP catalog', () => {
 
     await commands[0]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-    await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual([unavailableCapability('mcpCatalog')]) })
+    await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual(['MCP catalog unavailable; showing the last snapshot']) })
 
     expect(mcpCatalogRead).not.toHaveBeenCalled()
 
@@ -330,7 +326,7 @@ describe('mountCatalogFeature MCP catalog', () => {
 
     await commands[0]!.execute('', signal)
     await vi.waitFor(() => { expect(mocks.open).toHaveBeenCalledOnce() })
-    await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual(['catalog exploded']) })
+    await vi.waitFor(() => { expect(errorTextsOf(browserOf().view())).toEqual(['MCP catalog unavailable; showing the last snapshot']) })
     expect(labelsOf(browserOf().view())).toEqual([])
 
     await commands[1]!.execute('', signal)

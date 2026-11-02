@@ -138,7 +138,23 @@ describe('native Schedule reads and observations', () => {
     expect(f.status()).toBeNull()
   })
 
-  it('opens selected and Host catalogs, ticks only an open panel and clears exact subscriptions', async () => {
+  it('refocuses the live reminder panel while keeping its first invocation owner and timer', async () => {
+    const f = await fixture('schedule')
+    const owner = new AbortController()
+    await f.run('schedule', '', owner.signal)
+    const panel = f.panels.at(-1)!
+    const count = f.schedule.list.mock.calls.length
+    const other = new AbortController()
+    await f.run('schedule', '', other.signal)
+    expect(f.panels).toHaveLength(1)
+    expect(f.schedule.list).toHaveBeenCalledTimes(count)
+    other.abort()
+    expect(panel.close).not.toHaveBeenCalled()
+    owner.abort()
+    expect(panel.close).toHaveBeenCalledOnce()
+  })
+
+  it('opens selected native reminders, ignores reference command arguments, ticks only an open panel and clears exact subscriptions', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] }); vi.setSystemTime(1_000)
     const f = await fixture('schedule', false)
     await f.run('schedule'); expect(f.options.notice.set).toHaveBeenCalledWith('Schedule unavailable')
@@ -156,33 +172,36 @@ describe('native Schedule reads and observations', () => {
     await f.panels.at(-1)!.options.action!(activated('unrelated'), { signal: new AbortController().signal } as never)
     await f.panels.at(-1)!.options.action!({ kind: 'dismiss', pagePath: [] }, { signal: new AbortController().signal } as never)
     await f.panels.at(-1)!.options.action!(activated('refresh'), { signal: new AbortController().signal } as never); await tick()
+    f.panels.at(-1)!.close()
     await f.run('schedule', 'all'); await tick()
-    expect(panelText(f)).toContain('Host reminders'); expect(panelText(f)).toContain('Session: session')
+    expect(panelText(f)).toContain('Reminders'); expect(f.schedule.catalog).not.toHaveBeenCalled()
     f.panels.at(-1)!.close()
     expect(vi.getTimerCount()).toBe(0)
-    await expect(f.run('schedule', 'invalid')).rejects.toThrow('Usage: /schedule [all]')
+    await f.run('schedule', 'invalid'); expect(panelText(f)).toContain('Reminders'); f.panels.at(-1)!.close()
     const callbacks = [...f.topology]
     f.detach(); expect(f.events.get('schedule/changed')?.size).toBe(0)
     f.stop(); f.stop(); for (const callback of callbacks) callback()
     expect(f.ctx.mayflyStatus.list()).toEqual([])
   })
 
-  it('shows list/catalog errors independently and refreshes on current Host facts only', async () => {
+  it('shows the exact reference unavailable state and refreshes on current Host facts only', async () => {
     const f = await fixture('schedule')
     f.schedule.list.mockResolvedValueOnce(bad('list denied'))
     f.schedule.catalog.mockResolvedValueOnce(bad('catalog denied'))
     f.event('schedule/changed'); await tick()
-    expect(JSON.stringify(f.status())).toContain('Reminders unavailable')
+    expect(f.status()).toBeNull()
     await f.run('schedule'); await tick()
     f.schedule.list.mockResolvedValueOnce(bad('list denied')); f.schedule.catalog.mockResolvedValueOnce(bad('catalog denied'))
     f.event('schedule/changed'); await tick()
-    expect(panelText(f)).toContain('list denied')
+    expect(panelText(f)).toContain('Schedule unavailable')
+    expect(panelText(f)).toContain('The Schedule capability is a Host service; enable it in profile files.')
+    f.panels.at(-1)!.close()
     await f.run('schedule', 'all'); await tick()
-    f.schedule.catalog.mockResolvedValueOnce(bad('catalog denied')); f.event('schedule/changed'); await tick()
-    expect(panelText(f)).toContain('catalog denied')
+    f.schedule.list.mockResolvedValueOnce(bad('list denied')); f.event('schedule/changed'); await tick()
+    expect(panelText(f)).toContain('Schedule unavailable')
     for (const error of [new Error('transport down'), 'transport down']) {
       f.schedule.list.mockRejectedValueOnce(error); f.event('schedule/changed'); await tick()
-      expect(panelText(f)).toContain('transport down')
+      expect(panelText(f)).toContain('Schedule unavailable')
     }
     const stale = f.panels.at(-1)!
     f.select(false); f.event('schedule/changed'); await stale.options.action!(activated('refresh'), { signal: new AbortController().signal } as never); await tick()
@@ -203,7 +222,7 @@ describe('native Schedule reads and observations', () => {
       await tick()
       expect(f.status()).toBeNull()
     }
-    const late = Promise.withResolvers<unknown>(); f.schedule.catalog.mockReturnValueOnce(late.promise)
+    const late = Promise.withResolvers<unknown>(); f.schedule.list.mockReturnValueOnce(late.promise)
     f.event('schedule/changed'); f.reconnect(); late.resolve(good([])); await tick()
     expect(f.status()).toBeNull()
     const failed = Promise.withResolvers<unknown>(); f.schedule.list.mockReturnValueOnce(failed.promise)
@@ -219,7 +238,7 @@ describe('native Schedule reads and observations', () => {
     expect(formatRemoteReminderRelative(new Date(1_100).toISOString(), 1_000, translate)).toBe('in 1 second')
     expect(formatRemoteReminderRelative(new Date(0).toISOString(), 3_000, translate)).toBe('3 seconds overdue')
     const records = [reminder({ id: 'past-active', scheduledAt: new Date(0).toISOString(), status: 'active' }), reminder(), reminder({ id: 'same', scheduledAt: new Date(2_000).toISOString(), timeZone: 'UTC', status: 'active' }), reminder({ id: 'past', scheduledAt: new Date(0).toISOString(), sessionId: 'session', status: 'inactive' }), reminder({ id: 'future', scheduledAt: new Date(3_000).toISOString(), status: 'unknown', timeZone: 1 })]
-    const nodes = [remoteScheduleNode(records, 1_000, translate, 'en', { catalog: true }), remoteScheduleNode(undefined, 1_000, translate, undefined, { error: 'Host unavailable' }), remoteScheduleNode([], 1_000, translate, 'en')]
+    const nodes = [remoteScheduleNode(records, 1_000, translate, 'en'), remoteScheduleNode(undefined, 1_000, translate, undefined), remoteScheduleNode([], 1_000, translate, 'en')]
     for (const node of nodes) for (const width of [1, 8, 20, 40, 80, 120]) expect(f.render(node, width).every(row => visibleWidth(row) <= width)).toBe(true)
   })
 })

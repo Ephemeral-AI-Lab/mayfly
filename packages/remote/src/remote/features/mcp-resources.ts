@@ -17,7 +17,9 @@ import type { HostClient } from '../../client/types.ts'
 
 /** Browser-safe resource metadata; binary bodies stay summarized on the Host. */
 export interface RemoteMcpResourceItem {
-  readonly uri: string
+  readonly [key: string]: unknown
+  readonly uri?: string
+  readonly uriTemplate?: string
   readonly name?: string
   readonly description?: string
   readonly mimeType?: string
@@ -70,7 +72,8 @@ export function remoteMcpResourceItem(row: MayflyMcpResourceItem): RemoteMcpReso
   const description = textOf(row, 'description')
   const mimeType = textOf(row, 'mimeType')
   return {
-    uri: textOf(row, 'uri') ?? '',
+    ...textOf(row, 'uri') === undefined ? {} : { uri: textOf(row, 'uri')! },
+    ...textOf(row, 'uriTemplate') === undefined ? {} : { uriTemplate: textOf(row, 'uriTemplate')! },
     ...name === undefined ? {} : { name },
     ...description === undefined ? {} : { description },
     ...mimeType === undefined ? {} : { mimeType },
@@ -79,7 +82,7 @@ export function remoteMcpResourceItem(row: MayflyMcpResourceItem): RemoteMcpReso
 
 function pageOf(page: MayflyMcpResourcePage): RemoteMcpResourcePage {
   return {
-    items: page.items.filter(row => textOf(row, 'uri') !== undefined).map(remoteMcpResourceItem),
+    items: page.items.map(remoteMcpResourceItem),
     ...page.cursor === undefined ? {} : { nextCursor: page.cursor },
   }
 }

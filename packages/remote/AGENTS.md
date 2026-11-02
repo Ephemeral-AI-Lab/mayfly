@@ -121,6 +121,13 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   observation and schedule reminders keep their feature-owned lifetimes.
   A schedule panel owns its refresh timer before renderer registration, so a
   synchronous close cannot leave a timer running.
+  MCP/tool browsers and reminders consume the native rc.2 pure builders from
+  `command-panels`. MCP resources and `uriTemplate` rows first open an editable
+  URI form, then a separate body page; Escape walks those layers. Resource,
+  template and paging keys retain their reference controls. Reopening a live
+  panel focuses its original invocation. `/mcp`, `/tools` and `/schedule` ignore
+  command arguments as the reference handlers do; reminders read only the
+  selected Session and never depend on a Host-wide catalog succeeding.
 - `/rewind` reads the primary Session through passive native journal pages,
   builds the shared reference turn picker, and forks only after explicit
   acceptance. Busy checks and exact binding/Host/generation fences cover the
