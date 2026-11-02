@@ -6,6 +6,7 @@
 import type { MayflyWorkflowFrame } from '@ephemeral-ai/mayfly-host/types'
 import { ui, type MayflyPaneRegistration, type MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
+import { mayflyHostRemote } from '../../frontend/host-mount.ts'
 import { RemoteWorkflowSource } from '../../frontend/workflow.ts'
 import type { RemoteFeatureContext } from '../features.ts'
 import { remoteWorkflowNode } from '../panels/workflow.ts'
@@ -22,10 +23,9 @@ class RemoteWorkflowController {
   private readonly source = new RemoteWorkflowSource<WorkflowBaseline, WorkflowReplacement>()
   private readonly offSource: () => void
   private readonly pane: MayflyPaneRegistration
-  private ticket = 0
   private capabilityError: string | undefined
   private operationLifetime = new AbortController()
-  private timer: ReturnType<typeof setInterval> | undefined
+  private readonly timer: ReturnType<typeof setInterval>
   private disposed = false
 
   constructor(options: RemoteFeatureContext) {
@@ -51,12 +51,10 @@ class RemoteWorkflowController {
   readonly dispose = (): void => {
     if (this.disposed) return
     this.disposed = true
-    this.ticket += 1
     this.lifecycle.dispose()
     this.operationLifetime.abort()
     this.offSource()
-    if (this.timer !== undefined) clearInterval(this.timer)
-    this.timer = undefined
+    clearInterval(this.timer)
     this.pane.dispose()
     void this.source.dispose().catch((error: unknown) => {
       this.options.notice.set(error instanceof Error ? error.message : String(error))
@@ -65,7 +63,6 @@ class RemoteWorkflowController {
 
   private readonly attach = (generation: number): void => {
     if (this.disposed) return
-    const ticket = ++this.ticket
     this.operationLifetime.abort()
     this.operationLifetime = new AbortController()
     this.capabilityError = undefined
@@ -78,8 +75,9 @@ class RemoteWorkflowController {
     const signal = this.operationLifetime.signal
     void (async () => {
       try {
+        // The capability read checks this operation's signal after its await;
+        // refresh, selection changes, and unload all abort that exact signal.
         const capable = await hasMayflyHostFeature(current.client, 'followWorkflow', signal)
-        if (!this.lifecycle.owns(generation) || ticket !== this.ticket) return
         if (!capable) {
           this.capabilityError = unavailableCapability('followWorkflow')
           this.publish()
@@ -87,11 +85,11 @@ class RemoteWorkflowController {
         }
         await this.source.attach(current.client, current.ref, {
           name: 'Remote Workflow replacements',
-          open: streamSignal => current.client.remote.mayflyHost.followWorkflow({ sessionId: current.ref.sessionId }, streamSignal),
+          open: streamSignal => mayflyHostRemote(current.client).followWorkflow({ sessionId: current.ref.sessionId }, streamSignal),
           isBaseline: (frame): frame is WorkflowBaseline => frame.type === 'baseline',
         })
       } catch (error) {
-        if (this.lifecycle.owns(generation) && ticket === this.ticket && !signal.aborted) {
+        if (!signal.aborted) {
           this.capabilityError = error instanceof Error ? error.message : String(error)
           this.publish()
         }
@@ -105,7 +103,7 @@ class RemoteWorkflowController {
     const snapshot = this.source.snapshot()
     const node = remoteWorkflowNode(snapshot.frame?.value, Date.now(), this.t)
     const error = this.capabilityError ?? (snapshot.error === undefined ? undefined : snapshot.error instanceof Error ? snapshot.error.message : String(snapshot.error))
-    this.pane.set(ui.stack.column([
+    this.pane.set(node === null && error === undefined ? null : ui.stack.column([
       ...node === null ? [] : [{ node }],
       ...error === undefined ? [] : [{ node: ui.text(error, { tone: 'danger', overflow: 'wrap' }) }],
       ...error === undefined ? [] : [{ node: ui.actions({ id: 'workflow-actions', items: [{ id: 'workflow-refresh', label: this.t('Refresh'), hintLabel: this.t('refresh'), semantic: 'refresh', hidden: true }] }) }],
