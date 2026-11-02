@@ -9,5 +9,6 @@ export { changelogNode, versionNode, usageNode, type SessionInfoFacts } from './
 export { CHANGELOG_ENTRIES } from './interaction/changelog-content.ts'
 export { skillGroup, skillsNode, type SkillPresentationFacts, type SkillsViewState } from './interaction/skills-model.ts'
 export { rewindCandidates, rewindNode, type RewindCandidate, type RewindEvent } from './interaction/rewind.ts'
+export { renamePanelModel } from './interaction/rename-model.ts'
 export { applyUpdateProgress, createUpdateProgressState, updatePanelModel, type UpdateOutcome, type UpdateProgress, type UpdateProgressState } from './interaction/update-model.ts'
 export { compareVersions } from './interaction/updater/version.ts'

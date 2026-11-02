@@ -125,7 +125,9 @@ Client snapshots into readonly display facts; this shared model must never
 retain a Session, open history, or perform Workspace writes.
 
 `command-panels` exposes the reference changelog content and its pure node
-builder alongside help, version, context, rewind, and update presentation.
+builder alongside help, version, context, rewind, rename, and update presentation.
+The shared rename model preserves the reference title form and Enter action;
+each frontend owns native writes and the exact selected Session's lifetime.
 The Remote router owns command admission; its app-scoped overlay owns locale
 subscriptions, scrolling, focus restoration, and disposal.
 

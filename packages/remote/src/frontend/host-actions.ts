@@ -212,10 +212,14 @@ export class HostActions {
    * Rename a Session once without replaying transport failures.
    * @param ref - Host-namespaced Session identity.
    * @param title - requested user title.
+   * @param isCurrent - optional owner admission fence, rechecked after native reference acquisition.
    * @returns the official normalized title result.
    */
-  rename(ref: SessionRef, title: string): ReturnType<SessionFace['rename']> {
-    return this.using(ref, undefined, session => session.rename(title))
+  rename(ref: SessionRef, title: string, isCurrent?: () => boolean): ReturnType<SessionFace['rename']> {
+    return this.using(ref, undefined, session => {
+      if (isCurrent?.() === false) throw new Error('The current session changed; run /rename again')
+      return session.rename(title)
+    })
   }
 
   /**

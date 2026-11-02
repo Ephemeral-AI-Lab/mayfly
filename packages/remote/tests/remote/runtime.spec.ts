@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     selectOrCreate: ReturnType<typeof vi.fn>
     execute: ReturnType<typeof vi.fn>
     cancel: ReturnType<typeof vi.fn>
+    dispose: ReturnType<typeof vi.fn>
     registry: { list: () => unknown[], detach: ReturnType<typeof vi.fn> }
   }>,
   editorActions: undefined as { submit: (text: string) => Promise<void>, onError: (error: unknown) => void, cancel: () => Promise<void>, exit: () => void } | undefined,
@@ -70,6 +71,7 @@ vi.mock('../../src/remote/app.ts', () => ({
         selectOrCreate: vi.fn(async () => ({})),
         execute: vi.fn(async (text: string) => ({ exit: text === '/quit' })),
         cancel: vi.fn(async () => {}),
+        dispose: vi.fn(),
         registry: this.registry,
         activeClient: mocks.activeClient,
         subscribeTopology: vi.fn(() => () => {}),
@@ -327,6 +329,8 @@ describe('runRemoteFrontend', () => {
     await running
     expect(mocks.editorDispose).toHaveBeenCalled()
     expect(mocks.panelDispose).toHaveBeenCalled()
+    expect(mocks.apps[0]!.dispose).toHaveBeenCalled()
+    expect(mocks.apps[0]!.dispose.mock.invocationCallOrder[0]).toBeLessThan(mocks.apps[0]!.registry.detach.mock.invocationCallOrder[0]!)
   })
 
   it('stops through SIGINT and SIGTERM', async () => {

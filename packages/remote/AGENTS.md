@@ -37,6 +37,11 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Clearing the primary view also releases any pending primary acquisition so a
   stalled native open cannot retain the old view or block the next selection;
   independent view-role leases retain their own lifetimes.
+  Bare `/rename` uses the shared reference title editor, retains its draft on
+  refocus, and confirms dirty dismissal. Its exact Client, displayed binding,
+  selection and connection generation fence admission and late feedback.
+  App disposal retires pending selection and initial creation before asynchronous
+  runtime teardown, without cancelling work already admitted by the Host.
   App owns startup plan intent through `startupPlan`; the plan feature only
   reads/writes that intent. Prompt preparation awaits native plan admission
   before admitting the first prompt. Selection listeners never apply it in the

@@ -94,7 +94,7 @@ vi.mock('../../src/remote/app.ts', () => ({ RemoteApp: class {
         list: () => wiring.client === undefined ? [] : [wiring.client], get: (host: unknown) => host === wiring.client?.key ? wiring.client : undefined,
         detach: vi.fn(async () => {}),
       },
-      attach: vi.fn(async () => {}), execute: wiring.execute, cancel: vi.fn(async () => {}),
+      attach: vi.fn(async () => {}), execute: wiring.execute, cancel: vi.fn(async () => {}), dispose: vi.fn(),
       selectOrCreate: wiring.selectOrCreate, subscribeTopology: (listener: () => void) => { wiring.topologies.add(listener); return () => wiring.topologies.delete(listener) },
     }
   }

@@ -103,7 +103,7 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
         && await options.featureCommands?.execute(invocation.name, invocation.rawInput, invocation.signal) === true) {
         return { kind: 'success' }
       }
-      const result = await options.app.execute(invocation.line)
+      const result = await options.app.execute(invocation.line, invocation.signal)
       return { kind: 'success', exit: result.exit }
     },
     exit: options.exit,

@@ -236,7 +236,7 @@ describe('editor composition displayed native binding integration', () => {
     const f = fixture('resumable', commands)
     f.enter('/help')
     await flush()
-    expect(f.execute).toHaveBeenCalledWith('/help')
+    expect(f.execute).toHaveBeenCalledWith('/help', expect.any(AbortSignal))
     expect(duplicate).not.toHaveBeenCalled()
     f.enter('/theme')
     await flush()

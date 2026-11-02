@@ -23,6 +23,7 @@ import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
 import { rewindNode } from '../../src/interaction/rewind.ts'
+import { renamePanelModel } from '../../src/interaction/rename-model.ts'
 import { createUpdateProgressState, updatePanelModel } from '../../src/interaction/update-model.ts'
 import { tracePanelModel } from '../../src/interaction/trace-model.ts'
 import { createRealSurface, probeComponents } from '../design/probe.ts'
@@ -96,6 +97,12 @@ describe('interaction width-scan', () => {
   }
 
   for (const { name, text } of ADVERSARIAL) {
+    it(`Rename title editor survives ${name}`, () => {
+      for (const width of SCAN_WIDTHS) {
+        const surface = createRealSurface(renamePanelModel(text), width, { components: probeComponents() })
+        try { expectLinesFit(`rename/${name}`, surface.render(), width) } finally { surface.dispose() }
+      }
+    })
     it(`Trace list and detail survive ${name}`, () => {
       const item = { seq: 1, lastSeq: 2, eventSeqs: [1, 2], time: 1_000, type: 'assistant/attempt', surface: 'current' as const, title: text, summary: text }
       for (const narrow of ['list', 'detail'] as const) for (const width of SCAN_WIDTHS) {

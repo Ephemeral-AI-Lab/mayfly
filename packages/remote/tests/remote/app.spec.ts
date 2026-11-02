@@ -94,9 +94,201 @@ function appFixture() {
     showVersion: vi.fn(),
     showChangelog: vi.fn(),
     showRewind: vi.fn(),
+    showRename: vi.fn(),
   }
   return { conversation, status, panels, browser: { open: vi.fn() } }
 }
+
+describe('RemoteApp title editor and lifetime', () => {
+  it('fences a cancelled title owner before writes and removes its abort subscription', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    await app.selectOrCreate('shared-session')
+    const abort = new AbortController()
+    await app.execute('/rename', abort.signal)
+    const [, save, current, subscribe] = vi.mocked(test.panels.showRename).mock.calls[0]!
+    const listener = vi.fn()
+    const remove = vi.spyOn(abort.signal, 'removeEventListener')
+    const off = subscribe(listener)
+    abort.abort()
+    expect(listener).toHaveBeenCalledOnce()
+    expect(current()).toBe(false)
+    await save('Never admitted')
+    expect(f.client.sessions.using).not.toHaveBeenCalled()
+    off()
+    expect(remove).toHaveBeenCalledWith('abort', listener)
+    await expect(app.execute('/rename', abort.signal)).rejects.toThrow()
+    app.dispose()
+  })
+  it('rechecks ownership after native reference acquisition before admitting the rename write', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const rename = vi.fn(async () => ({ ok: true as const, value: { title: 'never admitted' } }))
+    Object.assign(f.session, { rename })
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    await app.selectOrCreate('shared-session')
+    const ready = Promise.withResolvers<void>()
+    vi.mocked(f.client.sessions.using).mockImplementationOnce(async (_id, _options, operation) => {
+      await ready.promise
+      return operation(f.reference)
+    })
+    const pending = app.execute('/rename Too late')
+    app.dispose()
+    ready.resolve()
+    await pending
+    expect(rename).not.toHaveBeenCalled()
+    expect(test.status.set).not.toHaveBeenCalledWith(expect.stringContaining('Too late'))
+    expect(f.session.cancel).not.toHaveBeenCalled()
+  })
+
+  it('releases a title owner without a displayed-view observer and retires feedback queued after a refusal', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    await app.selectOrCreate('shared-session')
+    await app.execute('/rename')
+    const [, , , subscribe] = vi.mocked(test.panels.showRename).mock.calls[0]!
+    subscribe(() => {})()
+    vi.spyOn(app.actions, 'rename').mockImplementationOnce(() => {
+      const rejected = Promise.reject(new Error('retired rejection'))
+      void rejected.catch(() => { queueMicrotask(() => { app.dispose() }) })
+      return rejected
+    })
+    await app.execute('/rename Changed')
+    expect(test.status.set).not.toHaveBeenCalledWith('retired rejection')
+  })
+  it('prefills the exact displayed title, trims through the form owner, and retires its observers', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const rename = vi.fn(async (title: string) => ({ ok: true as const, value: { title } }))
+    Object.assign(f.session, { rename })
+    f.projectionValues.set('title', 'Current native title')
+    const listeners = new Set<() => void>()
+    const offDisplayed = vi.fn()
+    let view: RemoteAppView | undefined
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client, '/workspace', undefined, () => view, undefined,
+      callback => { listeners.add(callback); return () => { listeners.delete(callback); offDisplayed() } })
+    await app.attach('http://one.test/')
+    await app.selectOrCreate('shared-session')
+    await app.execute('/rename')
+    const [title, save, current, subscribe] = vi.mocked(test.panels.showRename).mock.calls[0]!
+    expect(title).toBe('Current native title')
+    expect(current()).toBe(true)
+    const listener = vi.fn()
+    const off = subscribe(listener)
+    for (const changed of listeners) changed()
+    expect(listener).toHaveBeenCalledOnce()
+    await save('Edited title')
+    expect(rename).toHaveBeenCalledWith('Edited title')
+    rename.mockResolvedValueOnce({ ok: false, error: { message: 'native refused' } } as never)
+    await expect(save('Refused')).rejects.toThrow('native refused')
+    off()
+    expect(offDisplayed).toHaveBeenCalledOnce()
+    view = { ref: app.registry.current!, binding: f.reference.binding, access: 'readonly', presentation: test.conversation.presentation() }
+    expect(current()).toBe(false)
+    await expect(app.execute('/rename')).rejects.toThrow('read-only')
+    view = { ref: view.ref, presentation: view.presentation, access: 'interactive' }
+    await expect(app.execute('/rename')).rejects.toThrow('no native Client binding')
+    app.dispose(); app.dispose()
+    await expect(app.execute('/rename')).rejects.toThrow('disposed')
+    await expect(app.selectOrCreate()).rejects.toThrow('disposed')
+    await expect(app.ensureSession()).rejects.toThrow('disposed')
+    await expect(app.preparePrompt(f.reference.binding as never)).rejects.toThrow('disposed')
+    await expect(app.attach('http://one.test/')).rejects.toThrow('disposed')
+    expect(f.session.cancel).not.toHaveBeenCalled()
+  })
+
+  it.each(['selection', 'binding', 'host', 'connection', 'readonly', 'dispose', 'abort'] as const)('fences both title outcomes after %s retirement', async change => {
+    for (const fails of [false, true]) {
+      const f = clientFixture(HostKey('http://one.test/'))
+      const other = clientFixture(HostKey('http://two.test/'))
+      const test = appFixture()
+      let generation = 1
+      Object.assign(f.client.state, { getSnapshot: () => ({ status: 'connected', generation }) })
+      let view: RemoteAppView = { ref: { host: f.client.key, sessionId: f.sessionId }, binding: f.reference.binding, access: 'interactive', presentation: test.conversation.presentation() }
+      const app = new RemoteApp(test.conversation, test.status, test.panels, key => key === f.client.key ? f.client : other.client, '/workspace', undefined, () => view)
+      await app.attach('http://one.test/')
+      const result = Promise.withResolvers<{ ok: true, value: { title: string } }>()
+      const rename = vi.fn(() => result.promise)
+      Object.assign(f.session, { rename })
+      const abort = new AbortController()
+      await app.execute('/rename', abort.signal)
+      const [, save, current] = vi.mocked(test.panels.showRename).mock.calls[0]!
+      const pending = save('Accepted at original Host')
+      if (change === 'selection') view = { ...view, ref: { ...view.ref, sessionId: SessionId('different') } }
+      if (change === 'abort') abort.abort()
+      if (change === 'binding') view = { ...view, binding: { ...f.reference.binding } }
+      if (change === 'host') { await app.attach('http://two.test/'); view = { ...view, ref: { ...view.ref, host: other.client.key } } }
+      if (change === 'connection') generation += 1
+      if (change === 'readonly') view = { ...view, access: 'readonly' }
+      if (change === 'dispose') app.dispose()
+      expect(current()).toBe(false)
+      if (fails) result.reject(new Error('retired failure'))
+      else result.resolve({ ok: true, value: { title: 'Normalized accepted title' } })
+      await pending
+      await save('Never sent')
+      expect(rename).toHaveBeenCalledOnce()
+      expect(test.status.set).not.toHaveBeenCalled()
+    }
+  })
+
+  it('suppresses retired direct-rename feedback and reports current thrown values', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const rename = vi.fn(async () => { throw 'plain rejection' })
+    Object.assign(f.session, { rename })
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    await app.selectOrCreate()
+    await app.execute('/rename Failed')
+    expect(test.status.set).toHaveBeenLastCalledWith('plain rejection')
+    const pendingTitle = Promise.withResolvers<never>()
+    rename.mockReturnValueOnce(pendingTitle.promise)
+    const pending = app.execute('/rename Late')
+    app.dispose()
+    pendingTitle.reject(new Error('late failure'))
+    await pending
+    expect(test.status.set).toHaveBeenCalledOnce()
+  })
+
+  it('releases pending selection/creation and late attachment resources without cancelling Host work', async () => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    const ready = Promise.withResolvers<SessionBinding>()
+    Object.assign(f.reference, { ready: ready.promise })
+    const selecting = app.selectOrCreate('shared-session')
+    await Promise.resolve()
+    app.dispose()
+    ready.resolve(f.reference.binding)
+    await expect(selecting).rejects.toThrow('superseded')
+    expect(f.reference.release).toHaveBeenCalled()
+    expect(app.registry.current).toBeUndefined()
+    const creatingApp = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await creatingApp.attach('http://one.test/')
+    const created = Promise.withResolvers<SessionId>()
+    vi.mocked(f.client.sessions.create).mockReturnValueOnce(created.promise)
+    const creating = creatingApp.ensureSession()
+    creatingApp.dispose()
+    created.resolve(f.sessionId)
+    await expect(creating).rejects.toThrow('superseded')
+    expect(creatingApp.registry.current).toBeUndefined()
+    const attached = Promise.withResolvers<HostClient>()
+    const attachingApp = new RemoteApp(test.conversation, test.status, test.panels, () => attached.promise)
+    const attaching = attachingApp.attach('http://one.test/')
+    attachingApp.dispose()
+    attached.resolve(f.client)
+    await expect(attaching).rejects.toThrow('disposed')
+    expect(attachingApp.registry.list()).toEqual([])
+    expect(f.client.detach).toHaveBeenCalled()
+    expect(f.session.cancel).not.toHaveBeenCalled()
+  })
+})
 
 describe('RemoteApp', () => {
   it('addresses the active Host while sessionless, preserves exact selection, and falls back after detach', async () => {
@@ -827,10 +1019,11 @@ describe('RemoteApp', () => {
     const app = new RemoteApp(conversation, status, panels, () => fixture.client)
     await app.attach('http://host/')
     await app.selectOrCreate('shared-session')
-    await expect(app.execute('/rename')).rejects.toThrow('Usage: /rename <title>')
+    await app.execute('/rename')
+    expect(panels.showRename).toHaveBeenCalledWith('', expect.any(Function), expect.any(Function), expect.any(Function))
     await app.execute('/rename Revised title')
     expect(rename).toHaveBeenCalledWith('Revised title')
-    expect(status.set).toHaveBeenLastCalledWith('Renamed to Revised title')
+    expect(status.set).toHaveBeenLastCalledWith('renamed session to Revised title')
     rename.mockResolvedValueOnce({ ok: false, error: { message: 'rename denied' } } as never)
     await app.execute('/rename Denied')
     expect(status.set).toHaveBeenLastCalledWith('rename denied')

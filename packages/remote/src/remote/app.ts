@@ -72,6 +72,7 @@ export class RemoteApp {
     readonly pending: Promise<string | undefined>
   }>()
   private selectionGeneration = 0
+  private disposed = false
   private creating: Promise<SessionRef> | undefined
   private pendingPlan = false
   private pendingPlanExplicit = false
@@ -125,6 +126,19 @@ export class RemoteApp {
     return () => this.topologyListeners.delete(listener)
   }
 
+  /** Retire local selection and continuations without cancelling any Host work. */
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    this.defaultModelGeneration += 1
+    this.clearSession()
+    this.topologyListeners.clear()
+  }
+
+  private assertActive(): void {
+    if (this.disposed) throw new Error('Mayfly frontend is disposed')
+  }
+
   /** Selected Host for Session-independent configuration and the empty start view. */
   get activeClient(): HostClient | undefined {
     const key = this.displayedView?.()?.ref.host ?? this.registry.current?.host ?? this.activeHost ?? this.registry.list()[0]?.key
@@ -132,6 +146,7 @@ export class RemoteApp {
   }
 
   async attach(startupUrl: string, hostId?: string): Promise<HostClient> {
+    this.assertActive()
     const url = new URL(startupUrl)
     // Credentials and query parameters identify authentication, not the Host.
     // Scheme and mount path do identify distinct backends behind one authority.
@@ -141,6 +156,10 @@ export class RemoteApp {
     const generation = ++this.defaultModelGeneration
     this.endpoints.set(key, startupUrl)
     const client = await this.registry.attach(key)
+    if (this.disposed) {
+      await this.registry.detach(key)
+      throw new Error('Mayfly frontend is disposed')
+    }
     // The native inventory includes full management metadata. Warm this read
     // during startup so the local version panel does not wait for it on Enter.
     void this.harnessVersion(client).catch(() => {})
@@ -163,6 +182,7 @@ export class RemoteApp {
   }
 
   async selectOrCreate(sessionId?: string, cwd = this.cwd): Promise<SessionRef> {
+    this.assertActive()
     const generation = ++this.selectionGeneration
     const host = this.requireHost()
     const ref = sessionId === undefined
@@ -189,6 +209,7 @@ export class RemoteApp {
 
   /** Admit the first prompt into one shared creation, leaving startup sessionless. */
   ensureSession(cwd = this.cwd): Promise<SessionRef> {
+    if (this.disposed) return Promise.reject(new Error('Mayfly frontend is disposed'))
     if (this.creating !== undefined) return this.creating
     const displayed = this.displayedView?.()
     if (displayed !== undefined) {
@@ -207,6 +228,7 @@ export class RemoteApp {
 
   /** Finish one initial mode write; an explicit plan command supersedes an unstarted startup selection. */
   async preparePrompt(ref: SessionRef, signal?: AbortSignal, intent?: 'plan'): Promise<void> {
+    this.assertActive()
     signal?.throwIfAborted()
     const displayed = this.displayedView?.()
     const current = displayed?.ref ?? this.registry.current
@@ -253,7 +275,9 @@ export class RemoteApp {
     for (const listener of this.topologyListeners) listener()
   }
 
-  async execute(text: string): Promise<{ readonly exit: boolean }> {
+  async execute(text: string, signal?: AbortSignal): Promise<{ readonly exit: boolean }> {
+    this.assertActive()
+    signal?.throwIfAborted()
     if (!text.startsWith('/')) {
       const ref = await this.ensureSession()
       await this.preparePrompt(ref)
@@ -304,11 +328,7 @@ export class RemoteApp {
       return { exit: false }
     }
     if (name === 'rename') {
-      const ref = this.requireSelection()
-      if (input === '') throw new Error('Usage: /rename <title>')
-      const result = await this.actions.rename(ref, input)
-      if (!result.ok) this.notice.set(result.error.message)
-      else this.notice.set(`Renamed to ${result.value.title}`)
+      await this.rename(input, signal)
       return { exit: false }
     }
     if (name === 'fork') {
@@ -487,6 +507,48 @@ export class RemoteApp {
     const current = this.activeHost ?? this.registry.current?.host ?? this.registry.list()[0]?.key
     if (current === undefined) throw new Error('Attach a Host before selecting a Session')
     return current
+  }
+
+  private async rename(input: string, signal?: AbortSignal): Promise<void> {
+    const ref = this.requireSelection()
+    const view = this.displayedView?.()
+    const binding = view === undefined ? this.registry.currentReference?.binding : view.binding
+    if (binding === undefined) throw new Error('The selected conversation has no native Client binding')
+    const client = this.registry.get(ref.host)!
+    const generation = this.selectionGeneration
+    const connection = client.state.getSnapshot().generation
+    const current = (): boolean => {
+      const nextView = this.displayedView?.()
+      const next = nextView?.ref ?? this.registry.current
+      const nextBinding = nextView === undefined ? this.registry.currentReference?.binding : nextView.binding
+      return signal?.aborted !== true && !this.disposed && generation === this.selectionGeneration && this.registry.get(ref.host) === client
+        && client.state.getSnapshot().generation === connection && nextBinding === binding
+        && next?.host === ref.host && next.sessionId === ref.sessionId && nextView?.access === view?.access
+    }
+    const save = async (title: string): Promise<string | undefined> => {
+      if (!current()) return undefined
+      try {
+        const result = await this.actions.rename(ref, title, current)
+        if (!current()) return undefined
+        if (!result.ok) throw new Error(result.error.message)
+        return result.value.title
+      } catch (error) { if (current()) throw error; return undefined }
+    }
+    if (input !== '') {
+      try {
+        const title = await save(input)
+        if (current()) this.notice.set(`renamed session to ${title}`)
+      } catch (error) { if (current()) this.notice.set(error instanceof Error ? error.message : String(error)) }
+      return
+    }
+    const title = binding.session.projections.faceOf('title').getSnapshot()
+    this.panels.showRename(typeof title === 'string' ? title : '', async value => { await save(value) }, current, listener => {
+      const off = [this.subscribeTopology(listener), client.state.subscribe(listener)]
+      const displayed = this.subscribeDisplayedView?.(listener)
+      if (displayed !== undefined) off.push(displayed)
+      signal?.addEventListener('abort', listener, { once: true })
+      return () => { signal?.removeEventListener('abort', listener); for (const stop of off) stop() }
+    })
   }
 
   private async rewind(input: string): Promise<void> {

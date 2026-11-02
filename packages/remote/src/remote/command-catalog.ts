@@ -15,7 +15,7 @@ export const FRONTEND_COMMANDS: readonly (RemoteCommandDescriptor & Pick<RemoteF
   { name: 'quit', description: 'Exit Mayfly', aliases: ['q', 'exit'], scope: 'sessionless' },
   { name: 'new', description: 'Start a new session', aliases: ['clear'], scope: 'sessionless' },
   { name: 'sessions', description: 'List persisted sessions and switch to one (an id resumes directly)', aliases: ['resume'], input: { hint: '[<session-id>]' }, scope: 'sessionless' },
-  { name: 'rename', description: 'Rename the current session: /rename <title>', input: { hint: '<title>' } },
+  { name: 'rename', description: 'Rename the current session (no name opens an editor)', input: { hint: '[<name>]' } },
   { name: 'fork', description: 'Fork the current session into a new one', input: { hint: '[atSeq]' } },
   { name: 'rewind', description: 'Create a branch from an earlier user turn', input: { hint: '[seq]' } },
   { name: 'host', description: 'List attached Hosts', scope: 'sessionless', group: 'remote' },

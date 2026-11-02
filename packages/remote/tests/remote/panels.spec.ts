@@ -32,6 +32,114 @@ const facts: RemotePresentationFacts = {
   contextTokens: 1024, contextWindow: 2048, active: true, phase: 'thinking',
 }
 
+describe('reference title editor', () => {
+  it('edits the real prefilled form, refuses empty input, keeps native failures, and dismisses only an accepted title', async () => {
+    const { ctx, panels, text } = await fixture()
+    const save = vi.fn(async () => {})
+    const changed = new Set<() => void>()
+    const subscribe = (callback: () => void) => { changed.add(callback); return () => { changed.delete(callback) } }
+    try {
+      panels.showRename('Old title', save, () => true, subscribe)
+      expect(text()).toContain('Old title')
+      expect(text()).toContain('Rename session')
+      const model = ctx.mayflyUiInteraction.get('overlay', 'mayfly.rename')!
+      model.edit({ pagePath: [], formId: 'session-rename', fieldId: 'title' }, '   ')
+      model.invoke('save')
+      await vi.waitFor(() => { expect(model.feedbackSnapshot().some(item => item.message === 'Enter a session name')).toBe(true) })
+      expect(save).not.toHaveBeenCalled()
+      save.mockRejectedValueOnce(new Error('native refusal'))
+      model.edit({ pagePath: [], formId: 'session-rename', fieldId: 'title' }, '  Edited  ')
+      model.invoke('save')
+      await vi.waitFor(() => { expect(model.feedbackSnapshot().some(item => item.message === 'native refusal')).toBe(true) })
+      expect(save).toHaveBeenCalledWith('Edited')
+      model.invoke('save')
+      await vi.waitFor(() => { expect(ctx.mayflyOverlays.list()).toEqual([]) })
+      expect(changed.size).toBe(0)
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('focuses the existing draft and uses the reference dirty-dismissal confirmation', async () => {
+    const { ctx, panels } = await fixture()
+    const save = vi.fn(async () => {})
+    const subscribe = vi.fn(() => () => {})
+    try {
+      panels.showRename('Original', save, () => true, subscribe)
+      const model = ctx.mayflyUiInteraction.get('overlay', 'mayfly.rename')!
+      const before = ctx.mayflyOverlays.list()[0]!
+      model.edit({ pagePath: [], formId: 'session-rename', fieldId: 'title' }, 'Unsaved')
+      panels.showRename('New projection', save, () => true, subscribe)
+      expect(ctx.mayflyUiInteraction.get('overlay', 'mayfly.rename')).toBe(model)
+      expect(ctx.mayflyOverlays.list()[0]!.focusRevision).toBeGreaterThan(before.focusRevision)
+      expect(subscribe).toHaveBeenCalledOnce()
+      model.requestClose()
+      expect(JSON.stringify(model.decisionNode)).toContain('Discard unsaved changes?')
+      model.answerDecision(false)
+      expect(ctx.mayflyOverlays.list()).toHaveLength(1)
+      expect(model.formsDirty).toBe(true)
+      model.requestClose()
+      model.answerDecision(true)
+      await vi.waitFor(() => { expect(ctx.mayflyOverlays.list()).toEqual([]) })
+      expect(save).not.toHaveBeenCalled()
+      panels.showRename('Original', save, () => true, subscribe)
+      expect(JSON.stringify(ctx.mayflyUiInteraction.get('overlay', 'mayfly.rename')!.node)).toContain('Original')
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it.each(['replace', 'close', 'unload', 'selection'] as const)('retires late success/failure after %s without closing a successor', async reason => {
+    for (const fails of [false, true]) {
+      const { ctx, panels } = await fixture()
+      let current = true
+      let changed: (() => void) | undefined
+      const stop = vi.fn()
+      const gate = Promise.withResolvers<void>()
+      panels.showRename('Draft', () => gate.promise, () => current, listener => { changed = listener; return stop })
+      const entry = ctx.mayflyOverlays.list()[0]!
+      const context = { surfaceId: entry.id, source: [], signal: new AbortController().signal, revision: entry.revision, operationId: 'save', report: vi.fn() }
+      const event = { kind: 'activate', pagePath: [], controlId: 'rename-actions', actionId: 'save', inputs: { forms: [{ fields: [{ id: 'title', value: 'New title' }] }] } } as never
+      const pending = entry.definition.onEvent!.action!(event, context)
+      if (reason === 'replace') panels.showVersion('successor')
+      if (reason === 'close') panels.dispose()
+      if (reason === 'unload') await ctx.fiber.dispose()
+      if (reason === 'selection') { current = false; changed!() }
+      if (fails) gate.reject('late failure')
+      else gate.resolve()
+      expect(await pending).toEqual({ kind: 'cancelled' })
+      expect(stop).toHaveBeenCalledOnce()
+      if (reason === 'replace') expect(JSON.stringify(ctx.mayflyOverlays.list()[0]!.node)).toContain('successor')
+      changed!()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('contains malformed or irrelevant actions and immediate stale subscriptions', async () => {
+    const { ctx, panels } = await fixture()
+    let current = false
+    const save = vi.fn(async () => {})
+    panels.showRename('', save, () => current, () => () => {})
+    expect(ctx.mayflyOverlays.list()).toEqual([])
+    current = true
+    panels.showRename('', save, () => current, () => () => {})
+    const entry = ctx.mayflyOverlays.list()[0]!
+    const context = { surfaceId: entry.id, source: [], signal: new AbortController().signal, revision: entry.revision, operationId: 'save', report: vi.fn() }
+    for (const event of [
+      { kind: 'activate', actionId: 'other' },
+      { kind: 'selection-accept', selectedIds: [] },
+    ]) expect(await entry.definition.onEvent!.action!({ ...event, pagePath: [], controlId: 'other' } as never, context)).toEqual({ kind: 'completed' })
+    for (const inputs of [undefined, { forms: [] }, { forms: [{ fields: [{ id: 'other', value: 'wrong' }] }] }, { forms: [{ fields: [{ id: 'title', value: 12 }] }] }]) {
+      expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'rename-actions', actionId: 'save', ...inputs === undefined ? {} : { inputs } } as never, context)).toMatchObject({ kind: 'failed', message: 'Enter a session name' })
+    }
+    current = false
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'rename-actions', actionId: 'save' }, context)).toMatchObject({ kind: 'cancelled' })
+    panels.dispose()
+    current = true
+    const stop = vi.fn()
+    panels.showRename('', save, () => current, callback => { current = false; callback(); return stop })
+    expect(stop).toHaveBeenCalledOnce()
+    expect(ctx.mayflyOverlays.list()).toEqual([])
+    await ctx.fiber.dispose()
+  })
+})
+
 describe('shared wire command panels', () => {
   it('shows reference Help with aliases and key sections, replaces panels and unloads registrations', async () => {
     const { ctx, panels, text } = await fixture()
@@ -228,6 +336,7 @@ describe('shared wire command panels', () => {
         () => { panels.showHelp([{ name: 'sessions', description: '会话😀'.repeat(30), aliases: ['resume'] }, { name: 'attach', description: 'Connect a Host URL', group: 'remote' }]) },
         () => { panels.showVersion('0.2.2-alpha.2') },
         () => { panels.showChangelog() },
+        () => { panels.showRename('长标题😀'.repeat(80), async () => {}, () => true, () => () => {}) },
         () => { panels.showStatus(facts) },
         () => { panels.showContext({ read: () => context, subscribe: () => () => {} }) },
       ]

@@ -127,7 +127,7 @@ describe('Remote editor composition', () => {
     f.commands.execute.mockResolvedValueOnce(false)
     await expect(f.options.local.execute(invocation('unknown'))).resolves.toEqual({ kind: 'success', exit: true })
     await expect(f.options.local.execute(invocation('quit'))).resolves.toEqual({ kind: 'success', exit: true })
-    expect(f.app.execute).toHaveBeenCalledWith('/quit untouched')
+    expect(f.app.execute).toHaveBeenCalledWith('/quit untouched', expect.any(AbortSignal))
     f.options.local.exit(); expect(f.exit).toHaveBeenCalledOnce()
     const plain = await fixture()
     await expect(plain.options.local.execute(invocation('native-command'))).resolves.toEqual({ kind: 'success', exit: true })
