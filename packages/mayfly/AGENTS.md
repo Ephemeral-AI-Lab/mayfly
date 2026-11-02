@@ -174,6 +174,11 @@ producers and Remote supply their own exact-snapshot facts. `banner-content`
 exports the splash composer/types and canonical fly-in timing for the same
 reason.
 
+`session-browser` exposes the same workspace rail, catalog/search form, and
+detail nodes used by the in-process `/sessions` panel. Remote maps its native
+Client snapshots into readonly display facts; this shared model must never
+retain a Session, open history, or perform Workspace writes.
+
 A `mayflyPanes` pane with `placement: 'views'` is a view of the status row, kept
 by `core/views-lane.ts` (`SurfaceManager.views`), not by a pane lane: it has no
 rows of its own, its summary joins the status row through the footer, and an entered

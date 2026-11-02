@@ -12,10 +12,11 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-schedule'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
-import { panel, rail, ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyTabItem, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyListItem, MayflyOverlayHandle, MayflyTabItem, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type {} from '../app/conversation-views.ts'
-import { sessionDetailNode, sessionLabel, sessionListFacts, sessionListItem, type SessionListFacts } from './session-list-model.ts'
+import { sessionListFacts, sessionListItem, type SessionListFacts } from './session-list-model.ts'
+import { SessionBrowser } from './session-browser-model.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { refreshSessionList, sessionListRows, type SessionListCache } from './session-list-reads.ts'
 import { sessionWorkspacePlacements, sessionWorkspaceTab, sessionWorkspaces, type SessionWorkspace } from './session-workspaces-model.ts'
@@ -215,47 +216,22 @@ export function openSessionsPanel(ctx: Context, signal: AbortSignal, t: MayflyTr
     if (scope?.kind === 'other') return groups.find(workspace => workspace.workspaceId === undefined)?.id ?? SEARCH_ROW_ID
     return SEARCH_ROW_ID
   }
-  const railBody = (content: MayflyUiNode): MayflyUiNode => {
-    const items = railItems()
-    const active = items.some(item => item.id === activeRailId()) ? activeRailId() : items[0]!.id
-    return rail({
-      rail: { id: 'session-rail', activeId: active, items, hintLabel: t('workspaces') },
-      content,
-    })
-  }
-  const detailActions = (facts: SessionListFacts): MayflyUiNode => ui.actions({ id: 'session-detail-actions', items: [
-    { id: 'open', label: 'Open conversation', hintLabel: 'open', key: 'o', hidden: true, disabled: facts.archived, ...(facts.archived ? { disabledReason: 'Restore the session first' } : {}) },
-    { id: facts.archived ? 'restore' : 'archive', label: facts.archived ? 'Restore' : 'Archive', hintLabel: facts.archived ? 'restore' : 'archive', key: 'a', hidden: true, confirm: facts.archived ? 'Restore this session?' : 'Archive this session?' },
-    ...(activity === '' ? [] : [{ id: 'stop-archive', label: 'Stop activity and archive', hintLabel: 'stop and archive', key: 's', hidden: true, intent: 'danger' as const, confirm: { title: 'Stop this session’s activity and archive it?', detail: activity, confirmLabel: 'Stop and archive', tone: 'danger' as const } }]),
-  ] })
-  const listPage = (): MayflyUiNode => ui.stack.column([
-    ...(message === '' ? [] : [ui.text(message, { tone: 'warning' })]),
-    ...(loading || resolving || loadingReminders ? [ui.loader({ message: t('Loading workspace sessions…') })] : []),
-    ui.form({ id: 'content-search', enterSubmits: 'search', ...(scope?.kind === 'search' ? { autofocus: true } : {}), fields: [{ kind: 'input', id: 'query', label: t(scope?.kind === 'search' ? 'Search all conversation contents' : 'Search this workspace’s conversations'), maxLength: 500, value: '' }] }),
-    ui.list({ id: 'sessions', role: 'browse', tree: searchItems === undefined, filterable: true, filterMode: 'slash', selectedIds: [], autofocus: scope?.kind !== 'search', items: rows(), empty: ui.empty({ title: t(loading || resolving ? 'Waiting for sessions…' : scope?.kind === 'search' && searchItems === undefined ? 'Enter text to search all workspaces' : 'No sessions') }) }),
-    ui.actions({ id: 'session-actions', items: [
-      { id: 'search', label: 'Search contents', hintLabel: 'search', hidden: true, disabled: loading || resolving, read: [{ pagePath: [], formId: 'content-search' }] },
-      { id: 'refresh', label: t('All sessions'), hintLabel: t('all sessions'), key: 'a', hidden: true, disabled: loading || resolving },
-      { id: 'reload', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true, disabled: loading || resolving },
-      { id: 'search-all', label: t('Search all contents'), hintLabel: t('search all'), semantic: 'search', hidden: true, disabled: loading || resolving },
-    ] }),
-  ])
-  const detailPage = (facts: SessionListFacts, notice: string): MayflyUiNode => ui.stack.column([
-    sessionDetailNode(facts, now, t),
-    ...(notice === '' ? [] : [ui.text(notice, { tone: 'warning' })]),
-    ...(activity === '' ? [] : [ui.text(activity, { tone: 'warning' })]),
-    detailActions(facts),
-  ])
   const node = (): MayflyUiNode => {
     const summary = detailId === undefined ? undefined : byId.get(detailId)
-    if (summary !== undefined) {
-      const facts = factsOf(summary, exact.get(String(summary.sessionId))?.values)
-      const notice = exact.get(String(summary.sessionId))?.kind === 'migration-required'
-        ? t('This session uses an older saved format; its details show the last saved values. Open it to finish the migration.')
-        : ''
-      return panel({ title: sessionLabel(facts, t), escapeLabel: 'back', body: railBody(detailPage(facts, notice)) })
-    }
-    return panel({ title: listTitle(), escapeLabel: 'close', body: railBody(listPage()) })
+    const tabs = railItems()
+    const active = tabs.some(item => item.id === activeRailId()) ? activeRailId() : tabs[0]!.id
+    return SessionBrowser({
+      title: listTitle(), tabs, activeTab: active, items: rows(), now,
+      globalSearch: scope?.kind === 'search', awaitingSearch: searchItems === undefined,
+      busy: loading || resolving, loading: loading || resolving || loadingReminders, message,
+      ...summary === undefined ? {} : { detail: {
+        facts: factsOf(summary, exact.get(String(summary.sessionId))?.values),
+        notice: exact.get(String(summary.sessionId))?.kind === 'migration-required'
+          ? t('This session uses an older saved format; its details show the last saved values. Open it to finish the migration.')
+          : '',
+        activity,
+      } },
+    }, t)
   }
   try {
     adoptRows()

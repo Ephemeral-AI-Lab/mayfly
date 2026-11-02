@@ -15,6 +15,16 @@ export interface WorkspaceResolver {
   readonly resolveByPath: (path: string) => Promise<Workspace | undefined>
 }
 
+/** Only display data needed by workspace labels, without native branded identities. */
+export interface SessionWorkspaceLabelFacts {
+  readonly id: string
+  readonly cwd: string | undefined
+  readonly count: number
+  readonly title?: string
+  readonly label?: string
+  readonly current?: boolean
+}
+
 /** One picker row: a registered workspace, or the unregistered fallback. */
 export interface SessionWorkspace {
   /** Stable row id: `workspace:<WorkspaceId>` or the single fallback id. */
@@ -176,7 +186,7 @@ export function sessionWorkspaceItem(workspace: SessionWorkspace, currentCwd: st
  * @param t - interaction translator.
  * @returns the rail tab item.
  */
-export function sessionWorkspaceTab(workspace: SessionWorkspace, currentCwd: string | undefined, home: string, t: MayflyTranslate): MayflyTabItem {
+export function sessionWorkspaceTab(workspace: SessionWorkspaceLabelFacts, currentCwd: string | undefined, home: string, t: MayflyTranslate): MayflyTabItem {
   const label = workspace.label === undefined
     ? workspace.title ?? sessionWorkspaceLabel(workspace.cwd, home, t)
     : t(workspace.label)
