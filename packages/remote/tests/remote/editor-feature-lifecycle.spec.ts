@@ -476,6 +476,20 @@ describe('mounted editor routes and ownership', () => {
     expect(f.notice.set).toHaveBeenCalledTimes(count)
   })
 
+  it.each(['dispose', 'reconnect'] as const)('does not insert an upload marker when %s lands between native receipt settlement and editor continuation', async transition => {
+    const f = await fixture()
+    f.upload.mockImplementationOnce(async () => {
+      queueMicrotask(() => { queueMicrotask(() => {
+        if (transition === 'dispose') f.controller.dispose()
+        else f.controller.hostReconnected()
+      }) })
+      return { ok: true, value: uploadValue }
+    })
+    expect(await f.controller.stageFile(new Uint8Array([1, 2]), 'late.txt')).toBeUndefined()
+    expect(f.editor.getText()).toBe('')
+    expect(f.notice.set).not.toHaveBeenCalled()
+  })
+
   it('refreshes open skills, detects an unannounced selection and accepts missing local options', async () => {
     const f = await fixture({ local: { list: () => [], execute: () => ({ kind: 'unhandled' }), cwd: () => '/remote', exit: vi.fn() } })
     await f.controller.openSkills()

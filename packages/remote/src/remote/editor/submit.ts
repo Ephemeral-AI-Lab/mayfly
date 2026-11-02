@@ -13,7 +13,7 @@ import type {
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteNotice } from '../notice.ts'
 import type { EditorAttachments, CapturedAttachments } from './attachments.ts'
-import type { EditorCommands, EditorCommandAttachment } from './commands.ts'
+import type { EditorCommands } from './commands.ts'
 import type { EditorSkills } from './skills.ts'
 import type { EditorDraftStore } from './utils.ts'
 import { errorMessage, parseEditorCommand } from './utils.ts'
@@ -25,7 +25,7 @@ interface SubmitOptions {
   readonly session: () => EditorFeatureSession | undefined
   readonly ensureSession?: () => Promise<EditorFeatureSession>
   /** Complete startup preparation after capturing the exact admitted binding. */
-  readonly preparePrompt?: (selected: EditorFeatureSession, signal: AbortSignal) => Promise<void>
+  readonly preparePrompt?: (selected: EditorFeatureSession, signal: AbortSignal, intent?: 'plan') => Promise<void>
   readonly commands: EditorCommands
   readonly skills: EditorSkills
   readonly attachments: EditorAttachments
@@ -218,14 +218,23 @@ export class EditorSubmit {
     controller: AbortController,
   ): Promise<void> {
     try {
-      if (parseEditorCommand(record.source) !== undefined && mode === 'queue') {
-        if (captured.content.some(part => part.type === 'file')) {
-          this.options.notice.set('Command file attachments require the focused Host command DTO; no command was sent')
-          this.fail(record, false)
-          return
+      const parsed = parseEditorCommand(record.source)
+      if (parsed !== undefined && mode === 'queue') {
+        const attachments = captured.content.filter(part => part.type !== 'text')
+        const line = captured.content.filter(part => part.type === 'text').map(part => part.text).join('').trim()
+        const input = line.slice(parsed.name.length + 1).trim()
+        if (parsed.name === 'plan' && record.selected === undefined
+          && (input !== '' && input !== 'off' || attachments.length > 0)) {
+          record.selected = await this.options.ensureSession?.()
+          if (this.disposed || controller.signal.aborted || !this.isCurrent(record.selected)) { this.fail(record, false); return }
         }
-        const attachments = captured.content.filter((part): part is EditorCommandAttachment => part.type === 'image')
-        const result = await this.options.commands.execute(record.source, attachments, controller.signal)
+        captured.assertFileScope(record.selected)
+        if (parsed.name === 'plan' && record.selected !== undefined
+          && (input !== 'off' || attachments.length === 0) && this.options.preparePrompt !== undefined) {
+          await this.options.preparePrompt(record.selected, controller.signal, 'plan')
+          if (this.disposed || controller.signal.aborted || !this.isCurrent(record.selected)) { this.fail(record, false); return }
+        }
+        const result = await this.options.commands.execute(line, attachments, controller.signal)
         if (!result.accepted) {
           this.fail(record, false)
           return
@@ -247,6 +256,7 @@ export class EditorSubmit {
         this.fail(record, false)
         return
       }
+      captured.assertFileScope(selected)
       if (this.options.preparePrompt !== undefined) await this.options.preparePrompt(selected, controller.signal)
       if (this.disposed || controller.signal.aborted || !this.isCurrent(selected)) { this.fail(record, false); return }
       const content = captured.content.map((part): PromptContentPart => part.type === 'text'
@@ -288,6 +298,7 @@ export class EditorSubmit {
     const current = this.options.session()
     if (selected === undefined || current === undefined) return selected === current
     return current.client === selected.client
+      && current.session === selected.session
       && current.ref.host === selected.ref.host
       && current.ref.sessionId === selected.ref.sessionId
       && current.generation === selected.generation

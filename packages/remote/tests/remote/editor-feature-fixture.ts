@@ -59,7 +59,7 @@ const cleanup = new Set<() => void>()
 afterEach(() => { for (const dispose of cleanup) dispose(); cleanup.clear() })
 
 /** Only external Host I/O and terminal scheduling are doubled; all editor feature classes are real. */
-export function submissionFixture(initial?: EditorFeatureSession, ensureSession?: () => Promise<EditorFeatureSession>) {
+export function submissionFixture(initial?: EditorFeatureSession, ensureSession?: () => Promise<EditorFeatureSession>, preparePrompt?: (selected: EditorFeatureSession, signal: AbortSignal, intent?: 'plan') => Promise<void>) {
   const requestRender = vi.fn()
   const components = new MayflyComponentsService(new Context(), {
     theme: { colors: new Proxy({}, { get: () => (text: string) => text }) },
@@ -76,13 +76,13 @@ export function submissionFixture(initial?: EditorFeatureSession, ensureSession?
   const skills = new EditorSkills(() => current)
   const commands = new EditorCommands({ session: () => current, local, notice, t: translate })
   const exit = vi.fn()
-  const submit = new EditorSubmit({ editor, screen, session: () => current, ...(ensureSession === undefined ? {} : { ensureSession }), commands, skills, attachments, draft, notice, t: translate, exit })
+  const submit = new EditorSubmit({ editor, screen, session: () => current, ...(ensureSession === undefined ? {} : { ensureSession }), ...preparePrompt === undefined ? {} : { preparePrompt }, commands, skills, attachments, draft, notice, t: translate, exit })
   editor.onSubmit = value => { submit.submit(value) }
   cleanup.add(() => { submit.dispose(); attachments.dispose(); skills.dispose() })
   return {
     editor, screen, components, notices, local, commands, attachments, skills, draft, submit, exit,
     select: (selected: EditorFeatureSession | undefined) => { current = selected },
     enter: (text: string) => { editor.setText(text); editor.handleInput?.('\r') },
-    file: () => attachments.addFile({ receiptId: 'receipt-1', file: { attachmentId: 'attachment-1', name: 'notes.txt', bytes: 12 } } as FileUploadValue),
+    file: () => attachments.addFile({ receiptId: 'receipt-1', file: { attachmentId: 'attachment-1', name: 'notes.txt', bytes: 12 } } as FileUploadValue, current!),
   }
 }

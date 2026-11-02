@@ -84,7 +84,9 @@ describe('Remote editor composition', () => {
     f.restore(); await expect(options.ensureSession!()).resolves.toMatchObject({ ref: f.ref })
     expect(f.app.ensureSession).toHaveBeenCalledWith('/frontend/workspace')
     await options.preparePrompt!(options.session()!, signal)
-    expect(f.app.preparePrompt).toHaveBeenCalledWith(f.ref, signal)
+    expect(f.app.preparePrompt).toHaveBeenCalledWith(f.ref, signal, undefined)
+    await options.preparePrompt!(options.session()!, signal, 'plan')
+    expect(f.app.preparePrompt).toHaveBeenLastCalledWith(f.ref, signal, 'plan')
   })
 
   it('uses injected side selection and preserves access across native reconnect and selection generations', async () => {
@@ -111,8 +113,10 @@ describe('Remote editor composition', () => {
     const f = await fixture(false, true)
     expect(f.options.local.cwd()).toBe('/frontend/workspace')
     expect(f.options.local.list().some(command => command.name === 'local-fixture')).toBe(true)
-    await expect(f.options.local.execute(invocation('model', { attachments: [{ type: 'text', text: 'attached' }] }))).resolves.toEqual({ kind: 'error', text: 'Command attachments require the focused Host command DTO; no command was sent' })
+    await expect(f.options.local.execute(invocation('model', { attachments: [{ type: 'file', receiptId: 'attached' }] }))).resolves.toEqual({ kind: 'error', text: '/model does not accept attachments; no command was sent' })
     expect(f.app.execute).not.toHaveBeenCalled(); expect(f.commands.execute).not.toHaveBeenCalled()
+    await expect(f.options.local.execute(invocation('plan', { session: f.options.session(), attachments: [{ type: 'file', receiptId: 'native-file' }] }))).resolves.toEqual({ kind: 'unhandled' })
+    await expect(f.options.local.execute(invocation('plan'))).resolves.toEqual({ kind: 'success' })
     await expect(f.options.local.execute(invocation('skills'))).resolves.toEqual({ kind: 'success' })
     expect(captured.controller.openSkills).toHaveBeenCalledOnce()
     const command = invocation('local-fixture')

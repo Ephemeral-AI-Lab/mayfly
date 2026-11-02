@@ -3,7 +3,7 @@
  * @module @ephemeral-ai/mayfly/remote/editor/commands
  */
 
-import type { PromptContentPart } from '@deepseek-ai/dsh-api-remotes/client'
+import type { CommandSubmitAttachment } from '@deepseek-ai/dsh-commands/types'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteNotice } from '../notice.ts'
 import type {
@@ -18,8 +18,8 @@ import {
   parseEditorCommand,
 } from './utils.ts'
 
-/** Encoded image accepted by this alpha's official commands.execute wire. */
-export type EditorCommandAttachment = Extract<PromptContentPart, { readonly type: 'image' }>
+/** Ordered encoded images and uploaded file receipts accepted by the native command wire. */
+export type EditorCommandAttachment = CommandSubmitAttachment
 
 interface CommandCatalogOptions {
   readonly session: () => EditorFeatureSession | undefined
@@ -103,6 +103,7 @@ export class EditorCommands {
     signal: AbortSignal,
   ): Promise<{ readonly handled: boolean, readonly exit: boolean, readonly accepted: boolean }> {
     this.syncSelection()
+    if (signal.aborted) return { handled: true, exit: false, accepted: false }
     const parsed = parseEditorCommand(line)
     if (parsed === undefined) {
       this.options.notice.set(this.options.t('unknown command: {command}', { command: line }))
@@ -113,7 +114,7 @@ export class EditorCommands {
       const current = this.options.session()
       if (signal.aborted) return false
       if (selected === undefined || current === undefined) return selected === current
-      return current.client === selected.client && selectionKey(current) === selectionKey(selected)
+      return current.client === selected.client && current.session === selected.session && selectionKey(current) === selectionKey(selected)
     }
     const local = canonicalLocalCommand(this.options.local.list(), parsed.name)
     if (local !== undefined) {
@@ -135,6 +136,7 @@ export class EditorCommands {
         }
       }
     }
+    if (!isCurrent()) return { handled: true, exit: false, accepted: false }
     if (selected === undefined) {
       this.options.notice.set(this.options.t('Send a message first: /{command} needs a session', { command: parsed.name }))
       return { handled: true, exit: false, accepted: false }

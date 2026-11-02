@@ -70,6 +70,49 @@ describe('command discovery and invocation', () => {
     expect(f.notices.at(-1)).toBe('Host completed')
   })
 
+  it('passes native ordered file receipts and complete encoded image metadata to the captured Host command', async () => {
+    const host = wire('other')
+    const f = submissionFixture(host.selected)
+    const attachments = [
+      { type: 'file' as const, receiptId: 'native-receipt-2' },
+      { type: 'image' as const, mediaType: 'image/png' as const, data: 'YWJj', name: 'diagram.png' },
+      { type: 'file' as const, receiptId: 'native-receipt-1' },
+    ]
+    const signal = new AbortController().signal
+    expect(await f.commands.execute('/host-only  untouched', attachments, signal)).toEqual({ handled: true, exit: false, accepted: true })
+    expect(host.executeCommand).toHaveBeenCalledExactlyOnceWith(host.selected.ref.sessionId, '/host-only  untouched', attachments, signal)
+    expect(host.executeCommand.mock.calls[0]![2]).toBe(attachments)
+  })
+
+  it.each(['abort', 'Host', 'binding'] as const)('never dispatches a local-declined file command after %s retirement', async transition => {
+    const host = wire()
+    const f = submissionFixture(host.selected)
+    const pending = deferred<{ kind: 'unhandled' }>()
+    f.local.list = () => [{ name: 'host-only', description: 'Local decline' }]
+    f.local.execute = vi.fn(() => pending.promise)
+    const controller = new AbortController()
+    const command = f.commands.execute('/host-only', [{ type: 'file', receiptId: 'receipt' }], controller.signal)
+    if (transition === 'abort') controller.abort()
+    else f.select(transition === 'Host' ? wire('two').selected : { ...host.selected, session: wire().selected.session })
+    pending.resolve({ kind: 'unhandled' })
+    expect(await command).toEqual({ handled: true, exit: false, accepted: false })
+    expect(host.executeCommand).not.toHaveBeenCalled()
+    expect(f.notices).toEqual([])
+  })
+
+  it('admits no local or native command after the caller has already aborted', async () => {
+    const host = wire()
+    const f = submissionFixture(host.selected)
+    f.local.list = () => [{ name: 'host-only', description: 'Local command' }]
+    f.local.execute = vi.fn()
+    const controller = new AbortController()
+    controller.abort()
+    expect(await f.commands.execute('/host-only', [{ type: 'file', receiptId: 'receipt' }], controller.signal)).toEqual({ handled: true, exit: false, accepted: false })
+    expect(f.local.execute).not.toHaveBeenCalled()
+    expect(host.executeCommand).not.toHaveBeenCalled()
+    expect(f.notices).toEqual([])
+  })
+
   it('does not send invalid/sessionless commands or pretend unknown Host commands succeeded', async () => {
     const host = wire()
     const f = submissionFixture(host.selected)

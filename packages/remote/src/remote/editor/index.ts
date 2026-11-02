@@ -424,7 +424,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
       try {
         const uploaded = await attachments.stageFile(selected, data, name, operation.signal)
         if (disposed || operation.signal.aborted) return undefined
-        editor.insertText(attachments.addFile(uploaded))
+        editor.insertText(attachments.addFile(uploaded, selected))
         submit.stashDraft()
         options.notice.set(t('attached {name}', { name: uploaded.file.name }))
         return uploaded

@@ -621,6 +621,37 @@ describe('RemoteApp', () => {
     expect(fixture.session.prompt).not.toHaveBeenCalled()
   })
 
+  it.each([true, false])('lets an explicit first plan command supersede the unstarted startup plan selection %s once', async active => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    app.startupPlan.set(active)
+    const ref = await app.ensureSession()
+    await app.preparePrompt(ref, new AbortController().signal, 'plan')
+    await app.preparePrompt(ref)
+    expect(app.startupPlan.pending()).toBe(false)
+    expect(fixture.session.command).not.toHaveBeenCalled()
+    expect(fixture.session.prompt).not.toHaveBeenCalled()
+  })
+
+  it('awaits an already admitted startup plan write when an explicit plan command arrives concurrently', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    app.startupPlan.set(true)
+    const ref = await app.ensureSession()
+    let finish!: (value: { ok: true, value: { matched: true } }) => void
+    fixture.session.command.mockImplementation(() => new Promise(resolve => { finish = resolve }) as never)
+    const initial = app.preparePrompt(ref)
+    const explicit = app.preparePrompt(ref, undefined, 'plan')
+    expect(fixture.session.command).toHaveBeenCalledExactlyOnceWith('/plan')
+    finish({ ok: true, value: { matched: true } })
+    await Promise.all([initial, explicit])
+    expect(fixture.session.command).toHaveBeenCalledOnce()
+  })
+
   it('rejects plan admission after selection retirement, reconnect or aborted preparation', async () => {
     const fixture = clientFixture(HostKey('http://host/'))
     const { conversation, status, panels } = appFixture()

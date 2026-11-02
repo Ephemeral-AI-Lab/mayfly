@@ -153,7 +153,7 @@ export function mountPlanFeature(options: RemoteFeatureContext): () => void {
       name: 'plan',
       scope: 'sessionless',
       description: 'Enter or leave plan mode for the next session',
-      input: { hint: '[off]' },
+      input: { hint: '[off|message]' },
       execute: controller.execute,
     }),
     options.commands.register({

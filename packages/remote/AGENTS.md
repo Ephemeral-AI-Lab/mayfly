@@ -159,13 +159,20 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   explicit model-selection write. Side views borrow the primary owner's current
   exact Host catalog through a readonly resolver; they do not copy metadata into
   another cache, and owner detach immediately removes that fallback.
-- Slash-command images use native encoded attachments. The official command
-  DTO lacks file-upload receipts: refuse commands with staged files, restore
-  their draft, and explicitly state that no command was sent. Ordinary prompts
-  keep native upload receipts. MCP transport health is unknown unless the
-  Host advertises the optional sanitized catalog. Passive cold-child history
-  keeps generic tool cards; Agent controls must refuse unavailable scope
-  rather than activate or borrow a parent Agent.
+- Slash commands submit ordered native encoded images and uploaded file
+  receipts through `commands.execute`; markers stay in the reversible draft
+  and are removed from the command line. File receipts retain their exact
+  Host, Client, Session binding and generation; a changed scope refuses dispatch.
+  Refusal restores the original draft and attachments without retrying a write.
+  A selected Session's `/plan` uses native command admission, including ordered
+  attachments and native refusals. `/plan <message>` can create its first Session;
+  the explicit command supersedes unstarted startup mode intent before dispatch
+  so preparation never sends an extra plan switch. Sessionless `/plan` and
+  `/plan off` retain their next-Session behavior.
+  Late upload results after cancellation are never retained. MCP transport
+  health is unknown unless the Host advertises the optional sanitized catalog.
+  Passive cold-child history keeps generic tool cards; Agent controls must
+  refuse unavailable scope rather than activate or borrow a parent Agent.
 - `src/remote-bin.ts` receives credentials only through the authenticated
   `MAYFLY_DSH_STARTUP_URL` environment variable; a non-secret `--host` URL is
   accepted, and a token in argv or a log is refused.

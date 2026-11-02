@@ -5,7 +5,7 @@ import type { MayflyComponents } from '@ephemeral-ai/mayfly/core'
 import { describe, expect, it, vi } from 'vitest'
 import { EditorAttachments, formatImageSize, imageMarker, sniffImageMediaType } from '../../src/remote/editor/attachments.ts'
 import type { EditorUpload } from '../../src/remote/editor/types.ts'
-import { denied, wire } from './editor-feature-fixture.ts'
+import { deferred, denied, wire } from './editor-feature-fixture.ts'
 
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
 const limits: ImageAttachmentLimits = { maxImageBytes: 100, maxMessageImageBytes: 200, maxImagesPerMessage: 3, maxImageDimension: 100, maxImagePixels: 10_000, mediaTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] }
@@ -88,7 +88,7 @@ describe('reversible structured submission attachments', () => {
   it('splits only owned markers into native parts and restores each consumed draft once', () => {
     const f = fixture()
     const marker = f.attachments.addImage(f.host.selected, png, 'image/png', 'photo.png')
-    const file = f.attachments.addFile(receipt)
+    const file = f.attachments.addFile(receipt, f.host.selected)
     expect(file).toBe('[file #2 report_.txt]')
     const captured = f.attachments.capture(`before ${marker} between ${file} after [image #99 unknown]`)
     expect(captured.content).toEqual([
@@ -115,10 +115,65 @@ describe('reversible structured submission attachments', () => {
     expect(f.upload).toHaveBeenCalledWith(f.host.selected.ref.sessionId, bytes, 'notes.txt', lifetime)
     const sentBytes = f.upload.mock.calls[0]![1]
     expect(sentBytes).not.toBe(bytes)
-    const marker = f.attachments.addFile(receipt)
+    const marker = f.attachments.addFile(receipt, f.host.selected)
     expect(f.attachments.capture(marker).pending).toEqual([{ type: 'file', value: receipt.file }])
     f.upload.mockResolvedValueOnce(denied('upload refused') as never)
     await expect(f.attachments.stageFile(f.host.selected, bytes, undefined, lifetime)).rejects.toThrow('upload refused')
+  })
+
+  it('validates each file under its exact Host, Client, native binding, Session id and generation', () => {
+    const f = fixture()
+    const marker = f.attachments.addFile(receipt, f.host.selected)
+    const captured = f.attachments.capture(marker)
+    expect(() => captured.assertFileScope(f.host.selected)).not.toThrow()
+    const owner = f.host.selected
+    const other = wire('other')
+    for (const selection of [
+      undefined,
+      { ...owner, client: other.selected.client },
+      { ...owner, session: other.selected.session },
+      { ...owner, ref: { ...owner.ref, host: other.selected.ref.host } },
+      { ...owner, ref: { ...owner.ref, sessionId: 'other' as typeof owner.ref.sessionId } },
+      { ...owner, generation: owner.generation + 1 },
+    ]) expect(() => captured.assertFileScope(selection)).toThrow('File attachments belong to a different Host or Session generation')
+    captured.rollback()
+    expect(f.attachments.capture(marker).content).toEqual([{ type: 'file', receiptId: receipt.receiptId }])
+    expect(() => f.attachments.capture('no file markers').assertFileScope(undefined)).not.toThrow()
+  })
+
+  it('keeps mixed file/image order and complete file metadata from native upload receipts', async () => {
+    const f = fixture()
+    await f.attachments.stageFile(f.host.selected, new Uint8Array([1, 2, 3]), 'report].txt', new AbortController().signal)
+    const first = f.attachments.addFile(receipt, f.host.selected)
+    const image = f.attachments.addImage(f.host.selected, png, 'image/png', 'diagram.png')
+    const second = f.attachments.addFile(receipt, f.host.selected)
+    const captured = f.attachments.capture(`${first} ${image} ${second}`)
+    expect(captured.content.filter(part => part.type !== 'text')).toEqual([
+      { type: 'file', receiptId: receipt.receiptId },
+      { type: 'image', mediaType: 'image/png', name: 'diagram.png', data: Buffer.from(png).toString('base64') },
+      { type: 'file', receiptId: receipt.receiptId },
+    ])
+    expect(captured.pending.map(part => part.type)).toEqual(['file', 'image', 'file'])
+    expect(captured.pending[0]).toEqual({ type: 'file', value: receipt.file })
+    expect(captured.pending[2]).toEqual({ type: 'file', value: receipt.file })
+    captured.assertFileScope(f.host.selected)
+  })
+
+  it('never starts an aborted upload or retains a receipt that arrived after cancellation', async () => {
+    const f = fixture()
+    const controller = new AbortController()
+    controller.abort(new Error('retired upload'))
+    await expect(f.attachments.stageFile(f.host.selected, png, undefined, controller.signal)).rejects.toThrow('retired upload')
+    expect(f.upload).not.toHaveBeenCalled()
+    const pending = deferred<Awaited<ReturnType<typeof f.upload>>>()
+    f.upload.mockReturnValueOnce(pending.promise)
+    const active = new AbortController()
+    const upload = f.attachments.stageFile(f.host.selected, png, 'retired.txt', active.signal)
+    active.abort(new Error('late upload'))
+    pending.resolve({ ok: true, value: receipt })
+    await expect(upload).rejects.toThrow('late upload')
+    const marker = f.attachments.addFile(receipt, f.host.selected)
+    expect(f.attachments.capture(marker).pending).toEqual([])
   })
 
   it('reads only native addressed image attachments and can present dimensions omitted after admission', async () => {

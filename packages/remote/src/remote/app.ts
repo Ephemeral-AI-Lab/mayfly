@@ -205,8 +205,8 @@ export class RemoteApp {
     return creating
   }
 
-  /** Finish one exact initial mode write before admitting a prompt; failed writes are never retried. */
-  async preparePrompt(ref: SessionRef, signal?: AbortSignal): Promise<void> {
+  /** Finish one initial mode write; an explicit plan command supersedes an unstarted startup selection. */
+  async preparePrompt(ref: SessionRef, signal?: AbortSignal, intent?: 'plan'): Promise<void> {
     signal?.throwIfAborted()
     const displayed = this.displayedView?.()
     const current = displayed?.ref ?? this.registry.current
@@ -222,6 +222,10 @@ export class RemoteApp {
       && this.registry.currentReference?.binding === preparation.binding
       && preparation.client.state.getSnapshot().generation === preparation.connectionGeneration
     if (!isCurrent()) throw new Error('Session selection was superseded')
+    if (intent === 'plan' && preparation.promise === undefined) {
+      this.planPreparation = undefined
+      return
+    }
     preparation.promise ??= (async () => {
       const result = await preparation.binding.session.command(preparation.active ? '/plan' : '/plan off')
       if (!isCurrent()) throw new Error('Session selection was superseded')

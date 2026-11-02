@@ -86,8 +86,11 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     cwd: () => options.localCwd,
     list: () => remoteCommandCatalog(session() !== undefined && session()?.access !== 'readonly', options.featureCommands?.list() ?? []),
     async execute(invocation) {
+      // A live Session's plan command owns its native ordered attachments and
+      // actual success/refusal; sessionless mode intent stays with the feature.
+      if (invocation.name === 'plan' && invocation.session !== undefined) return { kind: 'unhandled' }
       if (invocation.attachments.length > 0) {
-        return { kind: 'error', text: 'Command attachments require the focused Host command DTO; no command was sent' }
+        return { kind: 'error', text: `/${invocation.name} does not accept attachments; no command was sent` }
       }
       if (invocation.name === 'skills') {
         await controller.openSkills()
@@ -116,7 +119,7 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
       await options.app.ensureSession(options.localCwd)
       return requireSelection(session())
     },
-    preparePrompt: (selected, signal) => options.app.preparePrompt(selected.ref, signal),
+    preparePrompt: (selected, signal, intent) => options.app.preparePrompt(selected.ref, signal, intent),
     notice: options.notice,
     upload: (sessionId, data, name, signal) => fileClient(sessionId, signal).fileUpload.upload(sessionId, data, name, signal),
     files,

@@ -27,7 +27,14 @@ interface LocalImage {
 export interface CapturedAttachments {
   readonly content: PromptContentPart[]
   readonly pending: PendingSubmissionAttachment[]
+  /** Uploaded files may be submitted only under the exact scope that received them. */
+  assertFileScope(selected: EditorFeatureSession | undefined): void
   rollback(): void
+}
+
+interface StagedFile {
+  readonly upload: FileUploadValue
+  readonly owner: EditorFeatureSession
 }
 
 /** Every image created by this owner has an explicit local/default name. */
@@ -69,7 +76,7 @@ function isLimits(value: unknown): value is ImageAttachmentLimits {
 /** Instance-owned attachments; no browser Worker, Host fs, or second upload protocol. */
 export class EditorAttachments {
   private readonly images = new Map<string, LocalImage>()
-  private readonly files = new Map<string, FileUploadValue>()
+  private readonly files = new Map<string, StagedFile>()
   private readonly uploads = new Map<string, FileUploadValue>()
   private serial = 0
 
@@ -132,10 +139,10 @@ export class EditorAttachments {
   }
 
   /** Add one uploaded file receipt to the next editor submission. */
-  addFile(upload: FileUploadValue): string {
+  addFile(upload: FileUploadValue, owner: EditorFeatureSession): string {
     this.serial += 1
     const marker = `[file #${String(this.serial)} ${upload.file.name.replaceAll(']', '_')}]`
-    this.files.set(marker, upload)
+    this.files.set(marker, { upload, owner })
     return marker
   }
 
@@ -143,7 +150,7 @@ export class EditorAttachments {
   capture(text: string): CapturedAttachments {
     const content: CapturedPart[] = []
     const consumedImages: Array<readonly [string, LocalImage]> = []
-    const consumedFiles: Array<readonly [string, FileUploadValue]> = []
+    const consumedFiles: Array<readonly [string, StagedFile]> = []
     let last = 0
     for (const match of text.matchAll(ATTACHMENT_MARKER)) {
       const marker = match[0]
@@ -162,7 +169,7 @@ export class EditorAttachments {
         this.images.delete(marker)
         consumedImages.push([marker, image])
       } else {
-        content.push({ type: 'file', receiptId: file!.receiptId })
+        content.push({ type: 'file', receiptId: file!.upload.receiptId })
         this.files.delete(marker)
         consumedFiles.push([marker, file!])
       }
@@ -173,6 +180,15 @@ export class EditorAttachments {
     let rolledBack = false
     return {
       content,
+      assertFileScope(selected) {
+        for (const [, { owner }] of consumedFiles) {
+          if (selected === undefined || owner.client !== selected.client || owner.session !== selected.session
+            || owner.ref.host !== selected.ref.host || owner.ref.sessionId !== selected.ref.sessionId
+            || owner.generation !== selected.generation) {
+            throw new Error('File attachments belong to a different Host or Session generation; attach them again')
+          }
+        }
+      },
       pending: content.flatMap((part): PendingSubmissionAttachment[] => {
         if (part.type === 'image') {
           const dimensions = this.components.imageDimensions(Buffer.from(part.data, 'base64'))
@@ -208,7 +224,9 @@ export class EditorAttachments {
     name: string | undefined,
     signal: AbortSignal,
   ): Promise<FileUploadValue> {
+    signal.throwIfAborted()
     const result = await this.upload(selected.ref.sessionId, new Uint8Array(data), name, signal)
+    signal.throwIfAborted()
     if (!result.ok) throw new Error(result.error.message)
     this.uploads.set(result.value.receiptId, result.value)
     return result.value

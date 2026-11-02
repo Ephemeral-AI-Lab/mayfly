@@ -14,12 +14,12 @@ import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { EditorDraftStore } from './utils.ts'
 import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {
-  PromptContentPart,
   QueueAction,
   RemoteResult,
   SkillEntry,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type { FileUploadValue } from '@deepseek-ai/dsh-client-file-upload/client'
+import type { CommandSubmitAttachment } from '@deepseek-ai/dsh-commands/types'
 import type { ImageAttachmentLimits, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -69,9 +69,9 @@ export interface EditorCommandDescriptor {
   readonly aliases?: readonly string[]
   readonly input?: {
     readonly hint: string
-    /** Newer dsh wire name for image/file attachments. */
+    /** Native command admission for ordered image/file attachments. */
     readonly attachments?: boolean
-    /** This alpha's wire name for image-only command attachments. */
+    /** Legacy discovery metadata retained only while reading an older catalog. */
     readonly images?: boolean
   }
 }
@@ -93,7 +93,7 @@ export interface EditorLocalCommandInvocation {
   readonly line: string
   readonly name: string
   readonly rawInput: string
-  readonly attachments: readonly PromptContentPart[]
+  readonly attachments: readonly CommandSubmitAttachment[]
   readonly session: EditorFeatureSession | undefined
   readonly signal: AbortSignal
 }
@@ -134,7 +134,7 @@ export interface EditorFeatureOptions {
   /** Create the first Host Session on submission, never merely on editor mount. */
   readonly ensureSession?: () => Promise<EditorFeatureSession>
   /** Complete startup preparation after capturing the exact admitted binding. */
-  readonly preparePrompt?: (selected: EditorFeatureSession, signal: AbortSignal) => Promise<void>
+  readonly preparePrompt?: (selected: EditorFeatureSession, signal: AbortSignal, intent?: 'plan') => Promise<void>
   /** Restore focus through the mounted editor shell, when the frontend owns one. */
   readonly focusEditor?: () => void
   /** Foundation-owned startup prelude navigation before ordinary editor actions. */
@@ -195,6 +195,5 @@ export interface EditorFeatureController {
 
 /** Host DTOs and orchestration deliberately left to the Host/domain lanes. */
 export const EDITOR_INTEGRATION_REQUIREMENTS = Object.freeze({
-  commandFileReceipts: 'This alpha accepts encoded images only; add the focused command file-receipt DTO before dispatching file-bearing commands.',
   btwFork: 'D-D/Host must fork, clean inherited queue entries, restore model and preset, select the child, then prompt.',
 } as const)
