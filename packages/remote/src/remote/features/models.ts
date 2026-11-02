@@ -143,6 +143,22 @@ export class RemoteModelsController extends RemoteFeatureController {
     } finally { operation.dispose() }
   }
 
+  /** Alt+M follows the current provider's advertised order and resets pinned effort. */
+  async cycle(): Promise<void> {
+    const target = await this.target()
+    if (target === undefined) return
+    try {
+      const models = target.catalog.groups.find(group => group.id === target.current.provider)?.models ?? []
+      if (models.length === 0) {
+        if (target.operation.valid()) this.context.notice.set(this.context.t('the current provider advertises no models'))
+        return
+      }
+      const current = models.findIndex(model => model.id === target.current.model)
+      const model = models[current < 0 ? 0 : (current + 1) % models.length]!
+      await this.commit(target, { provider: target.current.provider, model: model.id })
+    } finally { target.operation.dispose() }
+  }
+
   /** Open the reference picker or resolve one unambiguous model name. */
   async open(rawInput = '', providerFilter?: string): Promise<void> {
     const target = await this.target()

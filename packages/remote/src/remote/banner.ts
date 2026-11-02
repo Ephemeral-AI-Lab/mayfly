@@ -1,6 +1,6 @@
 /** Published Mayfly welcome banner driven by remote Session facts. @module */
 import { composeBannerLines, shortenHome } from '@ephemeral-ai/mayfly/banner'
-import { MAYFLY_VERSION } from '@ephemeral-ai/mayfly/banner-content'
+import { composeSplashLines, MAYFLY_VERSION, type SplashContent } from '@ephemeral-ai/mayfly/banner-content'
 import { GutterComponent, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
 import type { RemotePresentationFacts } from '../transcript/remote-model.ts'
 
@@ -12,6 +12,9 @@ export interface RemoteBannerOptions {
   readonly flyInAt?: () => number | undefined
   readonly colors?: () => MayflySemanticColors
   readonly components?: () => MayflyComponents
+  /** The reference launch screen replaces the compact banner before a Session exists. */
+  readonly splash?: () => SplashContent | 'pending' | undefined
+  readonly rows?: () => number
 }
 
 /** The rc.2 banner composer and one-column gutter, including its opening/closing rows. */
@@ -38,18 +41,23 @@ export class RemoteBannerComponent implements MayflyComponent {
   private compose(width: number): string[] {
     const current = this.facts()
     const components = this.options.components?.() ?? this.components
-    const rows = composeBannerLines({
+    const deps = {
       colors: this.options.colors?.() ?? this.colors,
-      strong: text => components.strong(text),
-      truncate: (text, target) => components.truncateToWidth(text, target, '…'),
-      visibleWidth: text => components.visibleWidth(text),
+      strong: (text: string) => components.strong(text),
+      truncate: (text: string, target: number) => components.truncateToWidth(text, target, '…'),
+      visibleWidth: (text: string) => components.visibleWidth(text),
       ascii: components.presentation?.glyphs === 'ascii',
-    }, {
+    }
+    const at = components.presentation?.reducedMotion === true ? undefined : this.options.flyInAt?.()
+    const splash = this.options.splash?.()
+    if (splash === 'pending') return []
+    if (splash !== undefined) return composeSplashLines(deps, splash, width, this.options.rows?.() ?? 1, at)
+    const rows = composeBannerLines(deps, {
       version: MAYFLY_VERSION,
       model: current.model ?? 'default',
       provider: current.provider ?? 'default',
       cwd: shortenHome(current.cwd || this.options.directory?.() || 'unknown', this.options.home?.() ?? ''),
-    }, width, components.presentation?.reducedMotion === true ? undefined : this.options.flyInAt?.())
+    }, width, at)
     return ['', ...rows, '']
   }
 }

@@ -148,7 +148,7 @@ const rowCount = (layout: DrawerLayout): number => layout.shown + (layout.proble
 function noteRow(paint: DrawerPaint, text: string, paintText: (text: string) => string): string {
   const { width, components: c } = paint
   const body = c.truncateToWidth(text.replace(/[\r\n]+/gu, ' ').trim(), Math.max(1, width - NAME_COLUMN - 1), '…')
-  const row = `${' '.repeat(NAME_COLUMN)}${paintText(body)}`
+  const row = c.truncateToWidth(`${' '.repeat(NAME_COLUMN)}${paintText(body)}`, width, '')
   return `${row}${' '.repeat(Math.max(0, width - c.visibleWidth(row)))}`
 }
 

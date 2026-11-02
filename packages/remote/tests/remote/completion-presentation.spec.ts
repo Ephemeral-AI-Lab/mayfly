@@ -11,7 +11,7 @@ describe('Remote completion presentation', () => {
     const hide = vi.fn()
     const requestRender = vi.fn()
     let drawer!: MayflyComponent
-    let overlay!: Parameters<MayflyScreenService['showOverlay']>[1]
+    let overlay!: NonNullable<Parameters<MayflyScreenService['showOverlay']>[1]>
     let completion: ReturnType<MayflyEditor['completion']> = {
       kind: 'commands', prefix: '/', index: 0,
       items: [{ label: '/theme', value: '/theme', detail: 'Switch the color theme' }],
@@ -33,7 +33,7 @@ describe('Remote completion presentation', () => {
     const mount = mountRemoteCompletionDrawer(ctx, screen, editor, plainColors(), components)
     expect(overlay.anchor).toBe('bottom-left')
     expect(overlay.nonCapturing).toBe(true)
-    expect(overlay.visible?.()).toBe(true)
+    expect(overlay.visible?.(columns, 24)).toBe(true)
     expect(overlay.offsetY).toBe(-4)
     expect(plain(drawer.render(columns))[0]).toContain('> /theme')
     ctx.emit('mayfly/prompt-wait-changed', 'Waiting for files…')
@@ -48,7 +48,7 @@ describe('Remote completion presentation', () => {
     ctx.emit('mayfly/prompt-wait-changed', undefined)
     expect(drawer.render(columns)).toHaveLength(1)
     completion = undefined
-    expect(overlay.visible?.()).toBe(false)
+    expect(overlay.visible?.(columns, 24)).toBe(false)
     mount.dispose()
     mount.dispose()
     expect(hide).toHaveBeenCalledOnce()
@@ -64,7 +64,7 @@ describe('Remote completion presentation', () => {
     mount.dispose()
     mount.dispose()
     const screen = { columns: 0, editorRowsFromBottom: 1, requestRender: vi.fn(), showOverlay: vi.fn(() => ({ hide: vi.fn() })) } as unknown as MayflyScreenService
-    const editor = { completion: () => ({ kind: 'commands', prefix: '/', index: 0, items: [{ label: '/theme', value: '/theme' }] }) } as MayflyEditor
+    const editor = { completion: () => ({ kind: 'commands', prefix: '/', index: 0, items: [{ label: '/theme', value: '/theme' }] }) } as unknown as MayflyEditor
     const unicode = mountRemoteCompletionDrawer(ctx, screen, editor, plainColors(), fakeMayflyComponents())
     const component = vi.mocked(screen.showOverlay).mock.calls[0]![0]
     expect(plain(component.render(40))[0]).toContain('→ /theme')

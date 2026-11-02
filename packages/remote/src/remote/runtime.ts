@@ -77,7 +77,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     await ctx.plugin(ThemeDark)
     await ctx.plugin(Core)
     ctx.effect(() => ctx.mayflyKeymap.register(INTERACTION_KEY_ACTIONS
-      .filter(action => action.id !== 'mayfly.interaction.cycle-mode')
+      .filter(action => action.id !== 'mayfly.interaction.cycle-mode' && action.id !== 'mayfly.interaction.cycle-model')
       .map(action => action.id === 'mayfly.interaction.toggle-agent-view' ? {
         ...action, handler: () => {
           if (sideViews?.back() !== true) editor?.notice.set('no other conversation is open')
@@ -241,7 +241,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     }, () => {
       const selected = sideViews?.selected()
       return selected === undefined ? undefined : { ref: selected.ref, access: selected.facts.access, binding: selected.binding, presentation: displayedFacts() }
-    }, () => commandSource?.list() ?? [])
+    }, () => commandSource?.list() ?? [], listener => sideViews!.subscribe(listener))
     apps.push(app)
     let primaryBinding = app.registry.currentReference?.binding
     ctx.effect(() => app!.subscribeTopology(() => {

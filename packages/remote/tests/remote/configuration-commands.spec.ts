@@ -1,23 +1,36 @@
 /** Reference local theme argument routing must work without Host persistence. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
+import type { MayflyKeyAction } from '@ephemeral-ai/mayfly/core'
 import { RemoteFeatureCommandRegistry } from '../../src/remote/features/commands.ts'
 import type { RemoteConfigurationMountContext } from '../../src/remote/features/configuration.ts'
 import { mountRemoteConfigurationComposition } from '../../src/remote/configuration-composition.ts'
-const mocks = vi.hoisted(() => ({ openTheme: vi.fn(), applyTheme: vi.fn(async () => {}), applyCustomTheme: vi.fn(async () => {}), applyLocale: vi.fn(async () => {}), openLocale: vi.fn(), dispose: vi.fn() }))
-vi.mock('../../src/remote/features/configuration.ts', () => ({ createRemoteConfigurationFeatures: () => ({ preferences: mocks, dispose: mocks.dispose }) }))
+const mocks = vi.hoisted(() => ({ cycle: vi.fn(async () => {}), openTheme: vi.fn(), applyTheme: vi.fn(async () => {}), applyCustomTheme: vi.fn(async () => {}), applyLocale: vi.fn(async () => {}), openLocale: vi.fn(), dispose: vi.fn() }))
+vi.mock('../../src/remote/features/configuration.ts', () => ({ createRemoteConfigurationFeatures: () => ({ preferences: mocks, models: { cycle: mocks.cycle }, dispose: mocks.dispose }) }))
 vi.mock('../../src/remote/features/configuration-account.ts', () => ({ RemoteAccountNodeIO: class { dispose = mocks.dispose } }))
 vi.mock('../../src/remote/features/configuration-host.ts', () => ({ RemoteConfigurationHost: class {} }))
 afterEach(() => { vi.clearAllMocks() })
 function fixture() {
   const client = { key: HostKey('one') } as HostClient
   const commands = new RemoteFeatureCommandRegistry()
-  const base = { commands, hosts: { current: () => undefined, active: () => client, list: () => [client] } } as unknown as RemoteConfigurationMountContext
+  const unregister = vi.fn()
+  const register = vi.fn((_actions: readonly MayflyKeyAction[]) => unregister)
+  const base = { ctx: { get: () => ({ register }) }, commands, hosts: { current: () => undefined, active: () => client, list: () => [client] } } as unknown as RemoteConfigurationMountContext
   const mounted = mountRemoteConfigurationComposition(base, { clientVersion: 'test' })
-  return { client, commands, mounted, signal: new AbortController().signal }
+  return { client, commands, mounted, register, unregister, signal: new AbortController().signal }
 }
 
 describe('local theme command arguments', () => {
+  it('routes Alt+M to model cycling and removes its exact key registration on unload', async () => {
+    const test = fixture()
+    const action = test.register.mock.calls[0]![0][0]!
+    expect(action).toMatchObject({ id: 'mayfly.interaction.cycle-model', keys: 'alt+m', scope: 'editor' })
+    action.handler!()
+    expect(mocks.cycle).toHaveBeenCalledOnce()
+    test.mounted.dispose()
+    test.mounted.dispose()
+    expect(test.unregister).toHaveBeenCalledOnce()
+  })
   it('routes builtin/auto/custom path/base and preserves the reference hint', async () => {
     const test = fixture()
     await test.commands.execute('theme', '', test.signal)

@@ -406,3 +406,57 @@ describe('RemoteModelsController reference wire UI', () => {
     test.controller.dispose()
   })
 })
+
+describe('reference Alt+M provider cycle', () => {
+  const advertised = catalog({
+    groups: [
+      { id: 'other', name: 'Other', models: [model('outside')] },
+      { id: 'deepseek', name: 'DeepSeek', models: [model('chat'), model('reasoner')] },
+    ],
+  })
+
+  it.each([
+    ['chat', 'reasoner'], ['reasoner', 'chat'], ['unlisted', 'chat'],
+  ])('cycles %s to %s in advertised provider order without carrying effort or opening a panel', async (current, next) => {
+    const test = fixture({ catalog: advertised, projection: { next: selection('deepseek', current, 'high') } })
+    try {
+      await test.controller.cycle()
+      expect(test.selectModel).toHaveBeenCalledExactlyOnceWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: next })
+      expect(test.opened).toEqual([])
+      expect(test.notice.set).toHaveBeenCalledWith(`Switched to ${next} (deepseek)`)
+    } finally { test.controller.dispose() }
+  })
+
+  it('cycles the default before a Session exists, without opening or retaining one', async () => {
+    const test = fixture({ current: false, catalog: advertised, defaultSelection: selection('deepseek', 'chat', 'high') })
+    try {
+      await test.controller.cycle()
+      expect(test.defaultModel!.select).toHaveBeenCalledWith(test.client, selection('deepseek', 'reasoner'), expect.any(AbortSignal))
+      expect(test.selectModel).not.toHaveBeenCalled()
+      expect(test.opened).toEqual([])
+    } finally { test.controller.dispose() }
+  })
+
+  it.each([{ groups: [] }, { groups: [{ id: 'other', name: 'Other', models: [model('outside')] }] }])('reports an empty current-provider catalog without switching providers', async ({ groups }) => {
+    const test = fixture({ catalog: catalog({ groups }) })
+    try {
+      await test.controller.cycle()
+      expect(test.notice.set).toHaveBeenCalledWith('the current provider advertises no models')
+      expect(test.selectModel).not.toHaveBeenCalled()
+      expect(test.opened).toEqual([])
+    } finally { test.controller.dispose() }
+  })
+
+  it('discards a catalog response from a retired selection and all keys after unload', async () => {
+    const test = fixture({ catalog: advertised })
+    const response = deferred<unknown>()
+    test.modelCatalog.mockReturnValueOnce(response.promise)
+    const cycling = test.controller.cycle()
+    test.controller.dispose()
+    response.resolve({ ok: true, value: advertised })
+    await cycling
+    await test.controller.cycle()
+    expect(test.selectModel).not.toHaveBeenCalled()
+    expect(test.notice.set).not.toHaveBeenCalled()
+  })
+})

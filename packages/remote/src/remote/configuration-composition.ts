@@ -159,12 +159,18 @@ export function mountRemoteConfigurationComposition(
       },
     }),
   ]
+  const unregisterModelKey = base.ctx.get('mayflyKeymap')?.register([{
+    id: 'mayfly.interaction.cycle-model', keys: 'alt+m', scope: 'editor',
+    description: 'Cycle the session model within the current provider (contextual)',
+    handler: () => { void features.models.cycle() },
+  }])
   let disposed = false
   return {
     commands: base.commands,
     dispose() {
       if (disposed) return
       disposed = true
+      unregisterModelKey?.()
       for (const off of unregister.splice(0).reverse()) off()
       features.dispose()
       accountIO.dispose()
