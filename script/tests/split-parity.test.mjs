@@ -75,6 +75,10 @@ test('comparison refuses a different native startup preference before inspecting
 test('only named volatile fields normalize, without removing spacing or style differences', () => {
   assert.equal(normalizeSplitGrid('cmd-0123abcd-1 12345678-1234-1234-1234-123456789abc'), 'cmd-xxxxxxxx-1 xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
   assert.equal(normalizeSplitGrid(grid), grid)
+  assert.equal(normalizeSplitGrid('|  Trace · session-01234567-1234-5678-9a…'), '|  Trace · session-xxxxxxxx-xxxx-xxxx-xx…')
+  assert.equal(normalizeSplitGrid('|  Trace · session-01234567-1234-5678-9a…').length, '|  Trace · session-01234567-1234-5678-9a…'.length)
+  assert.equal(normalizeSplitGrid('|  ordinary text 01234567-1234-5678-9a…'), '|  ordinary text 01234567-1234-5678-9a…')
+  assert.notEqual(normalizeSplitGrid('|  Trace · session-01234567-1234-5678-9a…'), normalizeSplitGrid('| Trace · session-01234567-1234-5678-9a…'))
 })
 
 test('diagnostics redact URLs and raw, encoded, form-encoded and unknown startup tokens', () => {

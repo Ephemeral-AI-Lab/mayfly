@@ -33,6 +33,7 @@ export function redactSplitOutput(text, startupUrl) {
 export function normalizeSplitGrid(grid) {
   return grid
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gu, 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
+    .replace(/^(\| {2}Trace · session-)([0-9a-f-]{8,})…([ ]*)$/gmu, (_match, prefix, id, suffix) => `${prefix}${id.replace(/[0-9a-f]/gu, 'x')}…${suffix}`)
     .replace(/\bcmd-[0-9a-f]{8}-/gu, 'cmd-xxxxxxxx-')
 }
 
