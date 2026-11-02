@@ -13,11 +13,11 @@ import type { EditorFeatureOptions, EditorFeatureSession, EditorToken, RemoteEdi
 import { EditorDraftStore } from '../../src/remote/editor/utils.ts'
 import { deferred, denied, flush, wire } from './editor-feature-fixture.ts'
 
-const native = vi.hoisted(() => ({ paste: vi.fn(), edit: vi.fn(), command: vi.fn(), copy: vi.fn(), shell: vi.fn() }))
+const native = vi.hoisted(() => ({ paste: vi.fn(), edit: vi.fn(), command: vi.fn(), copy: vi.fn(), shell: vi.fn(), retheme: vi.fn() }))
 vi.mock('../../src/remote/local/image-paste.ts', async original => ({ ...await original(), LocalImagePaste: class { constructor(backend: () => string) { backend() } read = native.paste } }))
 vi.mock('../../src/remote/local/external-editor.ts', () => ({ editLocalText: native.edit, resolveExternalEditorCommand: native.command }))
 vi.mock('../../src/remote/local/clipboard.ts', () => ({ copyLocalText: native.copy }))
-vi.mock('../../src/remote/editor/shell.ts', async original => ({ ...await original(), EditorShell: class { run = native.shell; dispose() {} } }))
+vi.mock('../../src/remote/editor/shell.ts', async original => ({ ...await original(), EditorShell: class { run = native.shell; retheme = native.retheme; dispose() {} } }))
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+afo0AAAAASUVORK5CYII=', 'base64')
 const limits: ImageAttachmentLimits = { maxImageBytes: 4096, maxMessageImageBytes: 8192, maxImagesPerMessage: 3, maxImageDimension: 100, maxImagePixels: 10_000, mediaTypes: ['image/png'] }
@@ -131,6 +131,17 @@ async function fixture(extra: Partial<EditorFeatureOptions> = {}, withSession = 
 }
 
 describe('mounted editor routes and ownership', () => {
+  it('refreshes the same shell with exact palette services and retires that route with its feature owner', async () => {
+    const f = await fixture()
+    const colors = { ...f.colors }
+    const components = new MayflyComponentsService(new Context(), { theme: { colors }, tui: { requestRender: f.requestRender } } as unknown as MayflyComponentsDeps)
+    f.controller.retheme(components, colors)
+    expect(native.retheme).toHaveBeenCalledExactlyOnceWith(components, colors)
+    f.controller.dispose()
+    f.controller.retheme(f.components, f.colors)
+    expect(native.retheme).toHaveBeenCalledOnce()
+  })
+
   it.each(['bind', 'locale'] as const)('releases the feature mount synchronously retired during %s publication', async phase => {
     const f = await fixture({}, true, true, true, phase)
     expect(f.controller.slashHint()).toBeUndefined()

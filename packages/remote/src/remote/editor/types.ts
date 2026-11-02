@@ -165,6 +165,8 @@ export interface EditorHostFileSnapshot {
 
 /** Public operations the foundation can route from conversation and panel surfaces. */
 export interface EditorFeatureController {
+  /** Refresh Remote-local shell presentation around the retained editor and process owner. */
+  retheme(components: MayflyComponents, colors: MayflySemanticColors): void
   /** Reference footer for a strict leading slash with no command matches. */
   slashHint(): string | undefined
   /** Re-read selection and invalidate every old-generation async read. */

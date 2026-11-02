@@ -361,6 +361,9 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
   }
 
   const controller: EditorFeatureController = {
+    retheme(components, colors) {
+      if (!disposed) shell.retheme(components, colors)
+    },
     slashHint: () => disposed ? undefined : autocomplete.slashHint(editor.getText()),
     selectionChanged,
     hostReconnected() {
