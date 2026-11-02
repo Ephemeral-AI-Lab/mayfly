@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import * as Frontend from '@ephemeral-ai/mayfly/frontend'
+import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
 import { mountRemoteEditor } from '../../src/remote/editor.ts'
 import type {
   MayflyComponents, MayflyEditor, MayflyFocusable, MayflyScreenService, MayflySemanticColors,
@@ -14,6 +16,7 @@ const colors = {
   border: identity,
   accent: identity,
   text: identity,
+  textStrong: identity,
   muted: identity,
   textMuted: identity,
   success: identity,
@@ -23,9 +26,18 @@ const colors = {
   logoInks: Array.from({ length: 5 }, () => identity),
 } as unknown as MayflySemanticColors
 
-function fixture() {
+const contexts: Context[] = []
+afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+
+async function fixture() {
+  const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(MayflyUiProvider)
+  await ctx.plugin(Frontend)
   const editor = {
     setPromptSymbol: vi.fn(),
+    setShellMode: vi.fn(),
+    updateColors: vi.fn(),
     setPlaceholder: vi.fn(),
     onSubmit: undefined as MayflyEditor['onSubmit'],
     onChange: undefined as MayflyEditor['onChange'],
@@ -47,23 +59,23 @@ function fixture() {
     visibleWidth: (text: string) => text.length,
     strong: (text: string) => text,
   } as unknown as MayflyComponents
-  return { editor, slot, screen, components }
+  return { ctx, editor, slot, screen, components }
 }
 
 describe('mountRemoteEditor', () => {
-  it('submits trimmed text and keeps the original entry in local history', () => {
-    const { editor, screen, components } = fixture()
+  it('submits trimmed text and keeps the original entry in local history', async () => {
+    const { ctx, editor, screen, components } = await fixture()
     const actions = { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
-    mountRemoteEditor(new Context(), screen, components, colors, actions)
+    mountRemoteEditor(ctx, screen, components, colors, actions)
     editor.onSubmit?.('  hello world  ')
     expect(actions.submit).toHaveBeenCalledWith('hello world')
     expect(editor.addToHistory).toHaveBeenCalledWith('  hello world  ')
   })
 
-  it('clears a draft before using Ctrl-C to exit', () => {
-    const { editor, screen, components } = fixture()
+  it('clears a draft before using Ctrl-C to exit', async () => {
+    const { ctx, editor, screen, components } = await fixture()
     const actions = { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
-    mountRemoteEditor(new Context(), screen, components, colors, actions)
+    mountRemoteEditor(ctx, screen, components, colors, actions)
     editor.getText = vi.fn(() => 'draft')
     expect(editor.onKey?.('\x03')).toBe(true)
     expect(editor.setText).toHaveBeenCalledWith('')
@@ -73,10 +85,10 @@ describe('mountRemoteEditor', () => {
     expect(actions.exit).toHaveBeenCalledOnce()
   })
 
-  it('uses Escape to cancel only after the draft is empty', () => {
-    const { editor, screen, components } = fixture()
+  it('uses Escape to cancel only after the draft is empty', async () => {
+    const { ctx, editor, screen, components } = await fixture()
     const actions = { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
-    mountRemoteEditor(new Context(), screen, components, colors, actions)
+    mountRemoteEditor(ctx, screen, components, colors, actions)
     editor.getText = vi.fn(() => 'draft')
     expect(editor.onKey?.('\x1b')).toBe(true)
     expect(actions.cancel).not.toHaveBeenCalled()
@@ -86,18 +98,18 @@ describe('mountRemoteEditor', () => {
   })
 
   it('routes asynchronous submit failures to the local error surface', async () => {
-    const { editor, screen, components } = fixture()
+    const { ctx, editor, screen, components } = await fixture()
     const failure = new Error('offline')
     const actions = { submit: vi.fn(async () => { throw failure }), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
-    mountRemoteEditor(new Context(), screen, components, colors, actions)
+    mountRemoteEditor(ctx, screen, components, colors, actions)
     editor.onSubmit?.('hello')
     await vi.waitFor(() => { expect(actions.onError).toHaveBeenCalledWith(failure) })
   })
 
-  it('ignores blank submissions and unhandled keys, and disposes the editor slot', () => {
-    const { editor, slot, screen, components } = fixture()
+  it('ignores blank submissions and unhandled keys, and disposes the editor slot', async () => {
+    const { ctx, editor, slot, screen, components } = await fixture()
     const actions = { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
-    const handle = mountRemoteEditor(new Context(), screen, components, colors, actions)
+    const handle = mountRemoteEditor(ctx, screen, components, colors, actions)
     editor.onSubmit?.('   ')
     expect(actions.submit).not.toHaveBeenCalled()
     expect(editor.onKey?.('x')).toBe(false)
@@ -107,27 +119,81 @@ describe('mountRemoteEditor', () => {
     expect(slot.dispose).toHaveBeenCalledOnce()
   })
 
-  it('shows bounded transient notices below the editor and clears them on edit', () => {
-    const { editor, screen, components } = fixture()
+  it('routes command feedback to the reference notification row and preserves editor focus and input', async () => {
+    const { ctx, editor, screen, components } = await fixture()
     const actions = { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
-    const handle = mountRemoteEditor(new Context(), screen, components, colors, actions)
+    const handle = mountRemoteEditor(ctx, screen, components, colors, actions)
     const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]! as MayflyFocusable
-    handle.notice.set(Array.from({ length: 10 }, (_, index) => `line ${String(index)}`).join('\n'))
-    const notices = dock.render(80).filter(row => /^line \d+$/u.test(row))
-    expect(notices).toEqual(Array.from({ length: 8 }, (_, index) => `line ${String(index)}`))
-    expect(screen.requestRender).toHaveBeenCalled()
-    editor.onChange?.('next')
-    const cleared = dock.render(80)
-    expect(cleared.some(row => row.includes('editor'))).toBe(true)
-    expect(cleared.some(row => row.includes('line 0'))).toBe(false)
+    handle.notice.set('first line\nsecond line')
+    const records = ctx.mayflyUiInteraction.notificationSnapshot()
+    expect(records).toEqual([expect.objectContaining({ message: 'first line · second line', detail: 'first line\nsecond line' })])
+    expect(dock.render(80).some(row => row.includes('first line'))).toBe(false)
     dock.focused = true
-    expect(dock.focused).toBe(true)
-    // The compiled shell applies its focus to the host editor while painting.
     dock.render(80)
     expect(editor.focused).toBe(true)
     dock.handleInput?.('x')
     expect(editor.handleInput).toHaveBeenCalledWith('x')
     dock.invalidate()
     expect(editor.invalidate).toHaveBeenCalledOnce()
+    handle.notice.set('')
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
+    handle.dispose()
+    handle.dispose()
+    handle.notice.set('late')
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
+  })
+
+  it('uses reference placeholder ladders for idle, running, side, readonly, quiet, and shell states', async () => {
+    const { ctx, editor, screen, components } = await fixture()
+    let facts: import('../../src/remote/editor.ts').RemoteEditorPresentation = {}
+    const handle = mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }, () => facts)
+    const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]! as MayflyFocusable
+    dock.render(100)
+    expect(editor.setPlaceholder).toHaveBeenLastCalledWith([
+      'Ask anything · / commands · @ files · # skills · ! shell', 'Ask anything · / commands · @ files · # skills',
+      'Ask anything · / commands · @ files', 'Ask anything · / commands', 'Ask anything',
+    ])
+    facts = { running: true }
+    handle.refresh()
+    dock.render(100)
+    expect(editor.setPlaceholder).toHaveBeenLastCalledWith(['Type a follow-up to queue it · @ files · # skills', 'Type a follow-up to queue it'])
+    facts = { view: { kind: 'btw', access: 'interactive', label: 'Side question' } }
+    handle.refresh()
+    dock.render(100)
+    expect(editor.setPlaceholder).toHaveBeenLastCalledWith(['Continue the side question · @ files · # skills', 'Continue the side question'])
+    facts = { view: { kind: 'subagent', access: 'readonly', label: 'Worker' } }
+    handle.refresh()
+    dock.render(100)
+    expect(editor.setPlaceholder).toHaveBeenLastCalledWith(['Read-only conversation'])
+    facts = { quietHints: 'off' }
+    handle.refresh()
+    dock.render(100)
+    expect(editor.setPlaceholder).toHaveBeenLastCalledWith([])
+    editor.setShellMode(true)
+    dock.render(100)
+    expect(editor.setPlaceholder).toHaveBeenLastCalledWith(['Run a shell command · Esc leaves shell mode'])
+    expect(dock.render(100).join('')).toContain('! ')
+    editor.setShellMode(false)
+    handle.dispose()
+    handle.refresh()
+  })
+
+  it('rethemes the retained editor and frame without replacing it or taking focus', async () => {
+    const { ctx, editor, slot, screen, components } = await fixture()
+    const actions = { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
+    const handle = mountRemoteEditor(ctx, screen, components, colors, actions)
+    const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]! as MayflyFocusable
+    dock.focused = false
+    const next = { ...colors, border: (text: string) => `next:${text}` }
+    const createEditor = vi.fn()
+    handle.retheme({ ...components, createEditor }, next)
+    expect(handle.editor).toBe(editor)
+    expect(editor.updateColors).toHaveBeenCalledWith(next)
+    expect(createEditor).not.toHaveBeenCalled()
+    expect(dock.focused).toBe(false)
+    expect(slot.focus).toHaveBeenCalledOnce()
+    handle.dispose()
+    handle.retheme(components, colors)
+    expect(editor.updateColors).toHaveBeenCalledOnce()
   })
 })

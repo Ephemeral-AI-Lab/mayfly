@@ -19,11 +19,15 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   second Session, Connection, or projection state machine.
 - `src/remote/` owns the standalone application, editor, local commands,
   banner, footer, plain panels, and terminal lifecycle. Session facts stay in
-  the footer; command results and operation failures use the editor's transient
-  hint. Detach releases only Client resources and never cancels remote work.
+  the footer; command results and operation failures use the reference
+  notification pane above the editor. Detach releases only Client resources and never cancels remote work.
   Attaching stays Session-independent: the first submitted prompt creates a
   Session, while `/new` and `/clear` release only the primary view. Concurrent
   initial prompts share creation; clearing or detaching fences its late result.
+  The editor uses shared readonly `Editor` and placeholder models. Theme swaps
+  call its `retheme` handle around the same native editor, preserving its draft,
+  caret, undo, history, paste, and completion state. Notification clocks and core
+  focus/tail/prompt listeners belong to that mount and stop on unload.
 - `/plugin` consumes the shared rc.2 marketplace presentation and calls the
   official selected Host plugin manager for every install, remove, and enable.
   Its catalog, installed rows, notifications, and restart chip belong to one

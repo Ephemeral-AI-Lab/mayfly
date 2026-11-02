@@ -6,7 +6,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import {
   compileMayflyEditorShellNode,
-  type MayflyComponent,
   type MayflyComponents,
   type MayflyEditor,
   type MayflyEditorShellComponent,
@@ -14,8 +13,10 @@ import {
   type MayflyScreenService,
   type MayflySemanticColors,
 } from '@ephemeral-ai/mayfly/core'
-import { ui } from '@ephemeral-ai/mayfly-ui'
+import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
+import { Editor, mountInteractionLocale, placeholderLadder, placeholderState, type PlaceholderView } from '@ephemeral-ai/mayfly/editor-presentation'
 import type { RemoteNotice } from './notice.ts'
+import { RemoteNotifications, type RemoteNotificationPresentation } from './notifications.ts'
 
 /** Local commands emitted by the small standalone remote editor. */
 export interface RemoteEditorActions {
@@ -30,52 +31,46 @@ export interface RemoteEditorHandle {
   /** Actual shared editor engine used by the composition's feature attachment. */
   readonly editor: MayflyEditor
   readonly notice: RemoteNotice
+  /** Repaint the retained native editor and frame without replacing its state. */
+  retheme(components: MayflyComponents, colors: MayflySemanticColors): void
+  /** Re-read conversation facts after projection, locale, or view selection. */
+  refresh(): void
   focus(): void
   dispose(): void
 }
 
-class RemoteHint implements MayflyComponent {
-  private text = ''
-
-  constructor(
-    private readonly components: MayflyComponents,
-    private readonly colors: MayflySemanticColors,
-  ) {}
-
-  set(text: string): void {
-    this.text = text
-  }
-
-  render(width: number): string[] {
-    if (this.text === '') return []
-    const rows = this.text.split(/\r\n?|\n/u).flatMap(line => this.components.wrapText(line.trim(), Math.max(1, width)))
-    return rows.slice(0, 8).map(row => this.colors.muted(this.components.truncateToWidth(row, width)))
-  }
-
-  invalidate(): void {}
+/** Current readonly conversation facts used by the shared reference editor. */
+export interface RemoteEditorPresentation extends RemoteNotificationPresentation {
+  readonly view?: PlaceholderView | undefined
+  readonly title?: string | undefined
 }
 
 class RemoteEditorDock implements MayflyFocusable {
   constructor(
-    private readonly shell: MayflyEditorShellComponent,
-    private readonly hint: RemoteHint,
+    private shell: MayflyEditorShellComponent,
+    private readonly sync: () => void,
   ) {}
 
   get focused(): boolean { return this.shell.focused }
   set focused(value: boolean) { this.shell.focused = value }
+
+  setShell(shell: MayflyEditorShellComponent): void {
+    shell.focused = this.shell.focused
+    this.shell = shell
+  }
 
   handleInput(data: string): void {
     this.shell.handleInput?.(data)
   }
 
   render(width: number): string[] {
+    this.sync()
     const safeWidth = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
-    return [...this.shell.render(safeWidth), ...this.hint.render(safeWidth)]
+    return this.shell.render(safeWidth)
   }
 
   invalidate(): void {
     this.shell.invalidate()
-    this.hint.invalidate()
   }
 }
 
@@ -86,14 +81,15 @@ export function mountRemoteEditor(
   components: MayflyComponents,
   colors: MayflySemanticColors,
   actions: RemoteEditorActions,
+  presentation: () => RemoteEditorPresentation = () => ({}),
 ): RemoteEditorHandle {
   const editor: MayflyEditor = components.createEditor()
-  const hint = new RemoteHint(components, colors)
-  editor.onChange = () => { hint.set('') }
+  mountInteractionLocale(ctx)
+  const t = memoizedLocaleTranslator(ctx, 'interaction').translate
+  const notifications = new RemoteNotifications(ctx, presentation)
   editor.onSubmit = (value) => {
     const text = value.trim()
     if (text.length === 0) return
-    hint.set('')
     editor.addToHistory(value)
     void Promise.resolve(actions.submit(text)).catch((error: unknown) => { actions.onError(error) })
   }
@@ -113,39 +109,66 @@ export function mountRemoteEditor(
     }
     return false
   }
-  const compiled = compileMayflyEditorShellNode(ui.surface({
-    chrome: 'surface',
-    hint: 'completions',
-    titleAlign: 'right',
-    titleCut: 'end',
-    child: ui.prompt({
-      id: 'prompt',
-      symbol: '> ',
-      placeholder: ['Ask anything · / commands', 'Ask anything'],
-    }),
-  }), {
-    editor,
-    components,
-    colors,
-    getViewport: () => screen.editorViewport,
-    screenMode: 'main',
-    keymap: ctx.mayflyKeymap,
-    emit: () => {},
-  })
-  if (!compiled.ok) throw new Error(compiled.message)
-  const shell = compiled.value.component
+  let shellMode = false
+  let frameShape = ''
+  let dock: RemoteEditorDock | undefined
+  let disposed = false
+  const compile = (): MayflyEditorShellComponent | undefined => {
+    const facts = presentation()
+    const title = (facts.title || (facts.view?.kind === 'primary' ? undefined : facts.view?.label))?.replace(/\s+/gu, ' ').trim() || undefined
+    const node = Editor({
+      ...title === undefined ? {} : { title }, shell: shellMode, parked: dock !== undefined && !dock.focused,
+      placeholder: placeholderLadder(placeholderState(facts.view, shellMode, facts.running === true), facts.quietHints === 'off', t),
+    })
+    const shape = JSON.stringify(node)
+    if (frameShape === shape) return undefined
+    const compiled = compileMayflyEditorShellNode(node, {
+      editor, components, colors, getViewport: () => screen.editorViewport,
+      screenMode: 'main', keymap: ctx.mayflyKeymap, emit: () => {},
+    })
+    if (!compiled.ok) throw new Error(compiled.message)
+    frameShape = shape
+    compiled.value.component.focusEditor()
+    return compiled.value.component
+  }
+  const sync = (): void => {
+    if (disposed) return
+    notifications.refresh()
+    const next = compile()
+    if (next !== undefined) dock?.setShell(next)
+  }
+  const shell = compile()!
   shell.focusEditor()
-  const slot = screen.mountDockSlot('editor.prompt', new RemoteEditorDock(shell, hint))
+  dock = new RemoteEditorDock(shell, sync)
+  const originalShellMode = editor.setShellMode
+  editor.setShellMode = next => {
+    originalShellMode?.call(editor, next)
+    shellMode = next
+    sync()
+    screen.requestRender()
+  }
+  const slot = screen.mountDockSlot('editor.prompt', dock)
   slot.focus()
   return {
     editor,
-    notice: {
-      set(text) {
-        hint.set(text)
-        screen.requestRender()
-      },
+    notice: notifications.notice,
+    retheme(nextComponents, nextColors) {
+      if (disposed) return
+      components = nextComponents
+      colors = nextColors
+      editor.updateColors(nextColors)
+      frameShape = ''
+      sync()
+      screen.requestRender()
     },
+    refresh() { sync(); if (!disposed) screen.requestRender() },
     focus() { slot.focus() },
-    dispose() { slot.dispose() },
+    dispose() {
+      if (disposed) return
+      disposed = true
+      editor.setShellMode = originalShellMode
+      notifications.dispose()
+      slot.dispose()
+    },
   }
 }
