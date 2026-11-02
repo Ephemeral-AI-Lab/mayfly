@@ -97,7 +97,6 @@ class RemoteAgentsController {
   }
 
   private readonly attach = (generation: number): void => {
-    if (this.disposed) return
     this.lifetime.abort()
     this.lifetime = new AbortController()
     this.browser?.close()
@@ -228,20 +227,21 @@ class RemoteAgentsController {
     if (address === undefined || address.parentSessionId !== row.parent || address.mode !== 'continuable' || !row.running) {
       return { kind: 'failed', message: this.t('Only a continuable live direct child can be drained') }
     }
+    const operation = new RemoteFeatureOperation(this.context.base, current.client, current, this.lifetime.signal)
     try {
       const result = await mayflyHostRemote(current.client).subagentDrain({
         parentSessionId: row.parent,
         childSessionId: row.id,
-      }, this.lifetime.signal)
-      if (!isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref)) return { kind: 'cancelled' }
+      }, operation.signal)
+      if (!operation.valid()) return { kind: 'cancelled' }
       if (!result.ok) return { kind: 'failed', message: result.error.message }
+      this.rows = this.rows.map(candidate => candidate.id === row.id ? { ...candidate, stopping: true } : candidate)
+      this.publish()
+      this.context.base.notice.set(this.t('Drain requested; the child counts as stopped once it settles'))
+      return { kind: 'completed' }
     } catch (error: unknown) {
-      return { kind: 'failed', message: remoteErrorMessage(error) }
-    }
-    this.rows = this.rows.map(candidate => candidate.id === row.id ? { ...candidate, stopping: true } : candidate)
-    this.publish()
-    this.context.base.notice.set(this.t('Drain requested; the child counts as stopped once it settles'))
-    return { kind: 'completed' }
+      return operation.valid() ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' }
+    } finally { operation.dispose() }
   }
 
   private async openColdView(current: RemoteFeatureSelection, row: RemoteAgentRow): Promise<MayflyUiActionReply> {
@@ -249,7 +249,6 @@ class RemoteAgentsController {
     const parent: SessionRef = { host: current.ref.host, sessionId: row.parent }
     const child: SessionRef = { host: current.ref.host, sessionId: row.id }
     try {
-      if (!operation.valid()) return { kind: 'cancelled' }
       const lease = this.context.options.btw.retainColdSubagentView(parent, child, COLD_ROLE)
       await this.context.presentSlot.adopt(child, lease, () => {
         const address = current.client.sessions.subagentAddress(row.id)
@@ -272,13 +271,15 @@ class RemoteAgentsController {
     }
     const generation = this.lifecycle.currentGeneration()
     this.editor?.cancel()
+    const isCurrent = (): boolean => this.lifecycle.owns(generation)
+      && isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref)
+      && this.selected()?.id === row.id
+    const signal = this.lifetime.signal
     this.editor = requestOverlay<PromptAnswer | undefined>(this.context.base.ctx, {
       id: 'remote.operations.agents.prompt',
       title: this.t('Prompt the subagent'),
       scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => this.lifecycle.owns(generation)
-        && isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref)
-        && this.selected()?.id === row.id,
+      isCurrent,
       subscribeLocale: this.context.base.subscribeLocale,
       dismissal: 'confirm-dirty',
       view: () => ui.stack.column([
@@ -309,19 +310,19 @@ class RemoteAgentsController {
       cancelled: () => undefined,
     })
     void this.editor.result.then(async answer => {
-      if (answer === undefined) return
-      if (!isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref)) return
+      if (answer === undefined || !isCurrent()) return
       try {
         await this.context.options.btw.promptSubagent(
           { host: current.ref.host, sessionId: row.parent },
           { host: current.ref.host, sessionId: row.id },
-          { content: [{ type: 'text', text: answer.text }], delivery: answer.delivery, signal: this.lifetime.signal },
+          { content: [{ type: 'text', text: answer.text }], delivery: answer.delivery, signal },
         )
+        if (!isCurrent()) return
         this.context.base.notice.set(answer.delivery === 'steer'
           ? this.t('Message steered into the subagent step')
           : this.t('Message queued for the subagent'))
       } catch (error: unknown) {
-        this.context.base.notice.set(remoteErrorMessage(error))
+        if (isCurrent()) this.context.base.notice.set(remoteErrorMessage(error))
       }
     }).catch(() => undefined)
   }
