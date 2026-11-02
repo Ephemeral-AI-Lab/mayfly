@@ -83,8 +83,10 @@ describe('resolveExactAgent', () => {
         const session = { id: 'stored-1', header: { origin: 'user', cwd: '/late' } }
         const agent = { id: 'stored-1', session }
         // Register it so the exact check passes on the way out.
-        ;(stored.ctx.agents as { get(k: string): unknown }).get = (key: string): unknown => key === 'stored-1' ? agent : undefined
-        ;(stored.ctx.sessions as { get(k: string): unknown }).get = (key: string): unknown => key === 'stored-1' ? session : undefined
+        const agents = stored.ctx.agents as { get(k: string): unknown }
+        const sessions = stored.ctx.sessions as { get(k: string): unknown }
+        agents.get = (key: string): unknown => key === 'stored-1' ? agent : undefined
+        sessions.get = (key: string): unknown => key === 'stored-1' ? session : undefined
         return { agent }
       },
     })
@@ -93,11 +95,12 @@ describe('resolveExactAgent', () => {
   })
 
   it('propagates the controller error verbatim instead of wrapping it', async () => {
+    const failure = Object.assign(new Error('native failure'), { code: 'fixture/native-failure', details: {} })
     const { ctx } = fixture('gone-1', { live: false,
-      resolveAgent: async (): Promise<never> => ({ error: new RemoteError('session/not-found', 'no such session', { sessionId: 'gone-1' as never }) }) as never,
+      resolveAgent: async () => ({ error: failure }),
     })
     await expect(resolveExactAgent(ctx, SessionId('gone-1'), new AbortController().signal))
-      .rejects.toMatchObject({ code: 'session/not-found' })
+      .rejects.toBe(failure)
   })
 
   it('normalizes a detached child ownership refusal without activating it', async () => {
@@ -120,7 +123,7 @@ describe('resolveExactAgent', () => {
     const controller = new AbortController()
     const { ctx } = fixture('late', { live: false, resolveAgent: async () => {
       controller.abort(new Error('cancelled resolution'))
-      return { error: new RemoteError('session/not-found', 'missing', { sessionId: SessionId('late') }) }
+      return { error: new Error('missing') }
     } })
     await expect(resolveExactAgent(ctx, SessionId('late'), controller.signal)).rejects.toThrow('cancelled resolution')
   })
