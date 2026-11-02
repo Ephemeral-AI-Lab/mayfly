@@ -309,6 +309,8 @@ model/facts and discovery catalog. Host plugin mutations remain native Remote
 calls in the independent frontend; this subpath never imports Host services.
 `./editor-presentation` also exposes the common readonly decision-card and
 activity models, native-decision presentation facts, and teaching-tip rotation.
+The resumed-session notice text is also shared; each frontend owns its own
+selection identity and notification lifetime.
 Independent frontends derive those facts from native requests/projections and
 consume these shared builders instead of maintaining another renderer model.
 The npm 0.1.4-rc.2 reference is immutable; candidate rendering comes from this

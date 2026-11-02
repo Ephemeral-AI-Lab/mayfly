@@ -1,5 +1,6 @@
 /** Projection-derived activity, exact shared row height, and native decision presentation. @module */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { compileMayflyUiNode, visibleWidth } from '@ephemeral-ai/mayfly/core'
 import { ActivityRow } from '@ephemeral-ai/mayfly/editor-presentation'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
@@ -9,9 +10,10 @@ import { plain } from './render-fixture.ts'
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const dispose of cleanups.splice(0).reverse()) await dispose(); vi.useRealTimers() })
-async function fixture(initial?: Readonly<Record<string, unknown>>) {
+async function fixture(initial?: Readonly<Record<string, unknown>>, conversation?: unknown) {
   const f = await approvalFixture()
   if (initial !== undefined) f.facts.set(initial)
+  if (conversation !== undefined) f.conversation.set(conversation)
   const dispose = mountActivityFeature(f.options)
   cleanups.push(async () => { dispose(); await f.cleanup() })
   const node = (): MayflyUiNode | null => f.ctx.mayflyPanes.list().find(pane => pane.id === 'mayfly.pane.activity')?.node ?? null
@@ -115,6 +117,33 @@ describe('Remote shared activity and approval waiting', () => {
     f.reconnect()
     expect(notices()).toHaveLength(0)
     f.reconnect(); expect(notices()).toHaveLength(0)
+  })
+  it('never announces a fresh Session again when the person returns to its completed history', async () => {
+    const f = await fixture({ active: false, phase: 'idle', turn: 0, flowDownChars: 0, inFlight: [] })
+    f.active(1); f.idle(1)
+    f.deselect(); f.selectSession(SessionId('same-session'))
+    expect(f.ctx.mayflyUiInteraction.notificationSnapshot().some(record => record.message.startsWith('Resumed session'))).toBe(false)
+  })
+  it('records the first active binding without announcing it later and distinguishes the same SessionId on another Host', async () => {
+    const f = await fixture({ active: true, phase: 'tool', turn: 1, flowDownChars: 0, inFlight: [] })
+    const notices = () => f.ctx.mayflyUiInteraction.notificationSnapshot().filter(record => record.message.startsWith('Resumed session'))
+    expect(notices()).toEqual([])
+    f.idle(1); f.rebind()
+    expect(notices()).toEqual([])
+    f.switchHost()
+    expect(notices()).toHaveLength(1)
+    expect(notices()[0]?.message).toBe('Resumed session · 1 turn')
+  })
+  it('uses the shared last-active message from the native history completion timestamp', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(600_000)
+    const f = await fixture({ active: false, phase: 'idle', turn: 3, endedAt: 300_000, flowDownChars: 0, inFlight: [] })
+    const notice = f.ctx.mayflyUiInteraction.notificationSnapshot().find(record => record.message.startsWith('Resumed session'))
+    expect(notice?.message).toBe('Resumed session · 3 turns · last active 5m ago')
+  })
+  it('can announce readonly native Conversation history when the optional Facts projection is unavailable', async () => {
+    const f = await fixture(undefined, { entries: [], turns: [{ turn: 2, startedAt: 0, endedAt: 1, outcome: 'completed' }], streaming: false })
+    const notice = f.ctx.mayflyUiInteraction.notificationSnapshot().find(record => record.message.startsWith('Resumed session'))
+    expect(notice?.message).toBe('Resumed session · 2 turns')
   })
   it('uses native thinking timestamps, the escalation ladder, writing counters, and the Session running fallback', async () => {
     vi.useFakeTimers(); vi.setSystemTime(1_000)

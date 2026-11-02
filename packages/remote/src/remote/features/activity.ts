@@ -6,7 +6,7 @@
 import type { ConversationFacts, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import type { MayflyPaneRegistration, MayflyTone, MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
-import { ACTIVITY_LOCALE, buildTipRotation, mountTranscriptLocale, STATUS_TIPS, type MayflyDecisionWait } from '@ephemeral-ai/mayfly/editor-presentation'
+import { ACTIVITY_LOCALE, buildTipRotation, mountTranscriptLocale, resumedSessionMessage, STATUS_TIPS, type MayflyDecisionWait } from '@ephemeral-ai/mayfly/editor-presentation'
 import { contextPercent } from '@ephemeral-ai/mayfly/status-context'
 import type { RemoteFeatureContext } from '../features.ts'
 import { RemoteActivityRow, type RemoteActivityPhase } from '../panels/activity-row.ts'
@@ -166,11 +166,13 @@ class RemoteActivityController {
       ]
       update()
       const key = `${current.ref.host}\0${current.ref.sessionId}`
-      if (!this.seen.has(key) && this.activity.turn > 0 && !this.activity.active) {
-        this.seen.add(key)
+      const first = !this.seen.has(key)
+      this.seen.add(key)
+      if (first && this.activity.turn > 0 && !this.activity.active) {
+        const history = facts.getSnapshot() as ConversationFacts | undefined
         this.notifications.report('resumed', { kind: 'session', sessionId: current.ref.sessionId }, {
           severity: 'info',
-          message: `${this.t('Resumed session')} · ${this.t(this.activity.turn === 1 ? '1 turn' : '{count} turns', { count: this.activity.turn })}`,
+          message: resumedSessionMessage(this.activity.turn, history?.endedAt, Date.now(), this.t),
         })
       }
     }
