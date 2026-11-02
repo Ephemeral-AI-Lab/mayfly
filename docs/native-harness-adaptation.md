@@ -1,10 +1,12 @@
 # Native-first Harness adaptation
 
-Mayfly targets Harness `0.2.1-rc.2` and follows its native contracts rather
-than carrying a compatibility layer. Native services own session lifecycle,
+Mayfly targets Harness `0.2.2-alpha.2` and follows its native contracts. The
+published Mayfly `0.1.4-rc.2` on Harness `0.2.1-rc.2` remains the immutable
+appearance, key, and workflow reference. Native services own session lifecycle,
 working directories, scheduling, subagent activations, tool execution, and
-plugin management. Mayfly supplies terminal presentation, current-Agent
-selection, and its one transcript history fold. Read
+plugin management. The Mayfly Host supplies durable presentation projections
+and focused serializable queries. The separate TUI owns Host/Session selection
+and presentation, consuming the official React-free Client. Read
 [native-capability-map.md](./native-capability-map.md) for the exact
 projections, services, keys, and command owners.
 
@@ -58,11 +60,11 @@ completion notice. There is no foreground/background mode, no
 `run_in_background` argument, and no `started subagent` acknowledgement to
 parse.
 
-Mayfly reads the parent's durable `subagentCatalog`, the child's `subagent`
-and `subagentTiming` projections, and the native `subagent/start` /
-`subagent/end` lifecycle. `/agents` and the Agents view list the exact direct
-children; `Enter` opens a local child's conversation, and `x` stops a
-continuable child through `ctx.subagents.drainChildren`. `/btw` is a native
+Remote reads the parent's durable `subagentCatalog`, the child's `subagent`
+and `subagentTiming` projections, and Host-projected presentation facts.
+`/agents` and the Agents view list the exact direct children; `Enter` opens a
+child's conversation, and `x` stops a continuable child through the Host's
+guarded native `subagents.drainChildren` operation. `/btw` is a native
 `fork` activation with its own Agent and history floor; `F7` returns to the
 previous conversation and `F8` closes the displayed one. Browsing a cold child
 reads native addressed history and never activates it; sending a reply is an
@@ -76,18 +78,19 @@ Workspace registry, and reads a Session's values through
 `migration-required` value carries cached hints and a notice, and Mayfly never
 starts migration on its own. Opening the Session is the explicit migration.
 
-The listing retains only the summary rows one controller read returned, fenced
-by controller instance and read generation. It does not enumerate
+The listing consumes official Client catalog snapshots, fenced by exact Host,
+Client and selection generation. It does not enumerate
 `sessionPersistence`, consult `sessionProjectionCache`, read a cold title log,
-or keep a second session domain store. The one durable-log read is `/save`,
-which flushes the exact Session and opens the persistence handle explicitly to
-write a Markdown export.
+or keep a second session domain store. Ordinary `/save` and `/export` consume
+the Host's whole conversation projection; `full` explicitly reads passive
+native audit pages. Exported files are created on the TUI machine. Host trace
+and statistics queries also use native passive history reads.
 
 ## Commands and surfaces
 
-- `/save [full] [path]` writes the projected transcript, or the full event
-  stream, as Markdown. The old `/export` name is not Mayfly's; it belongs to
-  the Web download command.
+- `/save` and `/export` write the projected transcript, or with `full` the
+  native audit stream, under local `mayfly-exports/`. Bare filenames stay on
+  the TUI machine; they are not Host filesystem paths or Web downloads.
 - `/permissions` is Mayfly's preset panel; the native `/permission` command
   keeps its name and argument form.
 - `/rename` writes a user-pinned title through the Session Controller.
@@ -105,7 +108,7 @@ write a Markdown export.
 
 ## Optional Agent Team
 
-Agent Team is provided by the `agent-team` marketplace entry from
+The process-local reference's Agent Team is provided by the `agent-team` marketplace entry from
 `Ephemeral-AI-Lab/dsh-plugins` (`plugins/mayfly-agent-team`). Install it through
 `/plugin install agent-team`, restart, create a new session, and select the
 `team` preset with `/preset team`. Installation does not change the default or
@@ -113,7 +116,12 @@ existing presets. Only Team-preset roots and their native teammates receive the
 Team tools, policy, `/team`, and Team UI contributions; ordinary presets retain
 upstream delegation.
 
-Ask the Lead explicitly to use Agent Team. `/team` opens members and tasks;
+Its Host-native tools and presets can be installed independently. A TUI
+contribution must also be integrated into the separate frontend's Cordis tree
+and the TUI restarted: installing a Host bundle cannot dynamically mount a
+frontend extension through the current official API. Do not claim `/team`
+parity from Host installation alone. In the reference composition, asking the
+Lead explicitly to use Agent Team makes `/team` open members and tasks;
 wide layouts show both columns, while narrow layouts use tabs with retained
 selection and search. Task details can open the owner's conversation. Closing a
 view does not stop a teammate, and Team write scopes are advisory. Missing Team
