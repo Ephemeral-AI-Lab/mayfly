@@ -167,11 +167,11 @@ export class RowStack extends HStack {
 
   /** Place the column rule in each gap between visible children, on one composited row. */
   private applyRule(row: string, columns: readonly number[], width: number): string {
-    if (this.rule === undefined || this.gap === 0) return row
+    // Both callers have a rule; a nonzero gap puts every later column strictly past column zero.
+    if (this.gap === 0) return row
     let painted = row
     for (const column of columns.slice(1)) {
-      if (column <= 0) continue
-      painted = compositeTuiLine(painted, this.rule, column - Math.ceil(this.gap / 2), 1, width)
+      painted = compositeTuiLine(painted, this.rule!, column - Math.ceil(this.gap / 2), 1, width)
     }
     return painted
   }
@@ -259,9 +259,7 @@ export class PageGroup {
   }
 
   /** The page on show painted `rows`: that is its height now. */
-  shown(page: PageHold, rows: number, key: string): void {
-    if (key === this.measuredAt) this.heights.set(page, rows)
-  }
+  shown(page: PageHold, rows: number): void { this.heights.set(page, rows) }
 }
 
 /**
@@ -278,9 +276,9 @@ export class PageHold implements Component {
     const rows = this.inner.render(width)
     const key = `${String(width)}|${this.viewport()}`
     const others = this.group.others(this, width, key)
-    this.group.shown(this, rows.length, key)
+    this.group.shown(this, rows.length)
     return holdHeight(rows, this.group.peaks, key, others)
   }
 
-  invalidate(): void { this.inner.invalidate?.() }
+  invalidate(): void { this.inner.invalidate() }
 }

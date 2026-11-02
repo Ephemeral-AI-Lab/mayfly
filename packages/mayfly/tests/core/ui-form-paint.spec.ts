@@ -1,4 +1,6 @@
-/** The form field painter: the reading of each field kind, its marks and notes, and the rows under it. */
+/** The form field painter: each field kind, its marks and notes, and the rows under it.
+ * @module @ephemeral-ai/mayfly/tests/core/ui-form-paint
+ */
 import { describe, expect, it } from 'vitest'
 import type { MayflyFormField } from '../../../ui/src/index.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
@@ -49,6 +51,13 @@ describe('form headings and shared measures', () => {
 })
 
 describe('field readings', () => {
+  it('keeps an unset nullable toggle distinct from on and off, including narrow rows', () => {
+    const field = { kind: 'toggle', id: 'nullable', label: 'Enabled', value: null } as const
+    expect(plain(paint(field, 40))).toEqual(['  Enabled: [not set]'])
+    expect(paint(field, 400, { colors: tagged })[0]).toContain('<muted>[not set]</muted>')
+    for (const width of [1, 2, 8, 20, 40]) for (const row of paint(field, width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
+  })
+
   it('aligns the value of every field after the widest label', () => {
     expect(plain(paint({ kind: 'input', id: 'a', label: 'Name', value: 'x' }, 40, { labelWidth: 9 }))).toEqual(['  Name:      x'])
     expect(plain(paint({ kind: 'toggle', id: 'a', label: 'Streaming', value: true }, 40, { labelWidth: 9 }))).toEqual(['  Streaming: [on]'])

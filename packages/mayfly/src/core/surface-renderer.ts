@@ -35,7 +35,6 @@ const EDITOR_DEFAULT_MAX_HEIGHT = '70%'
 const EDITOR_MIN_ROWS = 10
 
 interface SurfaceSnapshot {
-  readonly revision: number
   readonly panes: readonly MayflyPaneEntry[]
   readonly overlays: readonly MayflyOverlayEntry[]
 }
@@ -91,7 +90,7 @@ function compile(
       emit: options.emit,
       ...(options.onEscape === undefined ? {} : { onUnhandledEscape: options.onEscape }),
     })
-    /* the admitted constant fallback text cannot fail compilation. */
+    /* Dependency setup can fail even for constant text; retain the compiler's safe rejection component. */
     return fallback.ok ? fallback.value : { node: fallbackNode, component: fallback.errorComponent, focusTarget: null }
   }
   const compilerOptions = {
@@ -118,12 +117,16 @@ function compile(
   /* A non-capturing surface compiles once: the surface compile itself
      reports the interactive controls that disqualify it, so the old
      detection pass (a second full validate+compile) is gone. */
-  const compiled = (result as Extract<typeof result, { readonly ok: true }>).value
+  if (!result.ok) {
+    options.runtime.deactivate()
+    return { node, component: result.errorComponent, focusTarget: null }
+  }
+  const compiled = result.value
   if (!options.interactive && compiled.focusTarget !== null) {
     options.runtime.deactivate()
     const fallbackNode = safeFailureNode(kind, 'non-capturing overlays cannot contain interactive controls')
     const fallback = compileMayflyUiNode(framed(fallbackNode), compilerOptions)
-    /* the admitted constant fallback text cannot fail compilation. */
+    /* Dependency setup can fail even for constant text; retain the compiler's safe rejection component. */
     return fallback.ok ? fallback.value : { node: fallbackNode, component: fallback.errorComponent, focusTarget: null }
   }
   return compiled
@@ -323,7 +326,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   let disposed = false
   let pending: SurfaceSnapshot | undefined
   let scheduled = false
-  let appliedRevision = -1
   let navigationId: string | undefined
 
   const currentLayout = () => runtime.mode === 'main'
@@ -627,7 +629,6 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     }
     ctx.mayflyScreen.setEditorReplacement(editor?.component ?? null)
     ctx.mayflyUiInteraction.setNotificationVisibility(!occupied)
-    appliedRevision = Math.max(appliedRevision, snapshot.revision)
   }
 
   const drain = (): void => {
@@ -638,20 +639,15 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     reconcile(snapshot)
   }
   const schedule = (snapshot: SurfaceSnapshot): void => {
-    /* registryRevision is private and strictly increments for every published snapshot. */
-    if (snapshot.revision <= appliedRevision) return
     pending = snapshot
     if (!scheduled) { scheduled = true; queueMicrotask(drain) }
   }
   const navigate = (direction: -1 | 1): void => {
     if (runtime.hasCapturingOverlay()) return
     const layout = currentLayout()
-    const seen = new Set<string>()
+    // SurfaceManager owns globally unique ids, each in exactly one lane.
     const entries = [layout.header, layout.left, layout.right, layout.bottom].flatMap(lane =>
       lane === undefined ? [] : lane.entries.flatMap(entry => {
-        /* host admission and SurfaceManager both enforce global ids. */
-        if (seen.has(entry.id)) return []
-        seen.add(entry.id)
         return focusTarget(entry) === null ? [] : [{ lane, entry }]
       }),
     )
@@ -712,11 +708,9 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
     const stopWatch = stopTailWatch
     stopTailWatch = () => { stopWatch(); offTurns() }
   }
-  let registryRevision = 0
   let editorOccupied = false
   let panelOpen = false
   const publish = (): void => schedule({
-    revision: ++registryRevision,
     panes: ctx.mayflyUiInteraction.panes().toSorted((left, right) => (left.definition.priority ?? 0) - (right.definition.priority ?? 0) || left.id.localeCompare(right.id)),
     overlays: ctx.mayflyUiInteraction.overlays().toSorted((left, right) => left.order - right.order),
   })

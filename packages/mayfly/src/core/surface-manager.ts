@@ -90,7 +90,7 @@ function finiteInteger(value: number | undefined, fallback: number): number {
 
 function compareId(left: string, right: string): number {
   /* registered ids are unique, so sort never compares equal ids */
-  return left < right ? -1 : left > right ? 1 : 0
+  return left < right ? -1 : 1
 }
 
 function safeDimension(value: number): number {

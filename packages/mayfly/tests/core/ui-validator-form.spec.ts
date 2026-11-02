@@ -1,4 +1,6 @@
-/** Admission of the optional form-field properties of slice 1.6: help, group, pattern, patternMessage, and suggestions. */
+/** Form-field admission, draft reset values, help, groups, patterns, and suggestions.
+ * @module @ephemeral-ai/mayfly/tests/core/ui-validator-form
+ */
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyFormField, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
@@ -20,6 +22,27 @@ function rejected(value: unknown): string {
 }
 
 describe('help and group', () => {
+  it('admits nullable toggle drafts and rejects non-boolean values', () => {
+    const toggle = { kind: 'toggle', id: 'on', label: 'On', value: null }
+    for (const value of [null, false, true]) expect(accepted(form({ ...toggle, value }))).toMatchObject({ value })
+    for (const value of [1, 'yes']) expect(rejected(form({ ...toggle, value }))).toContain('.value must be a boolean or null')
+    expect(rejected(form({ ...toggle, value: undefined }))).toContain('.value is required')
+  })
+
+  it('admits both divider orientations and rejects an unknown direction', () => {
+    for (const orientation of ['horizontal', 'vertical']) {
+      expect(validateMayflyUiNode({ kind: 'divider', orientation })).toMatchObject({ ok: true, value: { kind: 'divider', orientation } })
+    }
+    expect(rejected({ kind: 'divider', orientation: 'diagonal' })).toContain('.orientation is invalid')
+  })
+
+  it('rejects repeated multiselect values in either the current draft or its reset value', () => {
+    const multi = { kind: 'multiselect', id: 'tags', label: 'Tags', value: ['a'], options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }
+    expect(rejected(form({ ...multi, value: ['a', 'a'] }))).toContain('.value contains duplicate values')
+    expect(rejected(form({ ...multi, resetValue: ['b', 'b'] }))).toContain('.resetValue contains duplicate values')
+    expect(accepted(form({ ...multi, resetValue: ['a', 'b'] }))).toMatchObject({ value: ['a'], resetValue: ['a', 'b'] })
+  })
+
   it('admits a line of help and a group on every field kind', () => {
     const options = [{ id: 'a', label: 'A' }]
     for (const base of [field({}), { kind: 'toggle', id: 'on', label: 'On', value: true }, { kind: 'number', id: 'n', label: 'N', value: 1 }, { kind: 'select', id: 's', label: 'S', value: 'a', options }, { kind: 'multiselect', id: 'm', label: 'M', value: [], options }]) {

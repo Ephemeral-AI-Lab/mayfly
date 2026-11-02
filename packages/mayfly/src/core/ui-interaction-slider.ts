@@ -73,7 +73,8 @@ export function sliderGrammar(model: UiSliderModel): { readonly stuckLeft: boole
 function moved(model: UiSliderModel, id: string): UiSliderModel {
   // Stepping onto the inherited level is unpinning.
   const pinned = id === model.definition.inheritedId ? null : id
-  return pinned === model.pinned ? model : { ...model, pinned, revision: model.revision + 1 }
+  // reduceSlider already rejected the current active level, so this pin necessarily changes.
+  return { ...model, pinned, revision: model.revision + 1 }
 }
 
 /** Reduce one intent; a reduction that changes nothing returns the same model and no effects. */

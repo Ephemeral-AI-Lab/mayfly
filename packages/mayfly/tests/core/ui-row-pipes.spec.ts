@@ -3,13 +3,14 @@
  * million rows costs the rows on screen, not the document. pi-tui's own access pattern is pinned: the layout reads a
  * leaf's `lines.length` for the height, runs the cursor-marker `findIndex` only when a leaf is clipped below its
  * length, and indexes the rows its clip covers — an upgrade that starts iterating rows differently fails here.
+ * @module @ephemeral-ai/mayfly/tests/core/ui-row-pipes
  */
 import { ScrollView, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { describe, expect, it } from 'vitest'
 import { clampRowsToWidth, padColumns } from '../../src/core/chrome.ts'
 import { glyphRows } from '../../src/core/glyphs.ts'
-import { ScrollRegion, type ScrollMemory } from '../../src/core/ui-scroll-region.ts'
+import { BarredScrollView, ScrollRegion, type ScrollMemory } from '../../src/core/ui-scroll-region.ts'
 import { ColumnStack, RowStack } from '../../src/core/ui-stacks.ts'
 import { isVirtualRows, materializedRows, virtualRows } from '../../src/core/ui-rows.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
@@ -28,6 +29,24 @@ function virtualLeaf(length: number): { readonly component: Component, readonly 
 
 const components = { visibleWidth, truncateToWidth } as MayflyComponents
 const colors = { primary: (text: string) => text, muted: (text: string) => text } as MayflySemanticColors
+
+describe('BarredScrollView over native component rows', () => {
+  it('contains a missing native component row as a width-bounded blank without printing undefined', () => {
+    const sparse = ['first']
+    sparse.length = 4
+    sparse[3] = 'last'
+    const view = new BarredScrollView({ render: () => sparse, invalidate() {} }, {
+      scrollbar: true, colors: () => colors, focusGated: false, repaint() {},
+    })
+    view.updateLayout(20, 3, () => {})
+    const rendered = view.render(20)
+    expect(rendered).toHaveLength(4)
+    expect(rendered[1]!.trim()).toBe('')
+    expect(rendered[2]!.trim()).toBe('')
+    expect(rendered[3]).toContain('last')
+    for (const row of rendered) { expect(row).not.toContain('undefined'); expect(visibleWidth(row)).toBeLessThanOrEqual(20) }
+  })
+})
 
 describe('pi-tui layout over a virtual leaf', () => {
   it('reads only the rows the scroll window covers', () => {

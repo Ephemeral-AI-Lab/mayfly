@@ -125,6 +125,9 @@ describe('semantic document state', () => {
     // 'abx' -> 'aXYby': 'b' sits in a kept change after an added one, 'x' in the removed tail change.
     expect(remapDocumentOffset('abx', 'aXYby', 1)).toBe(3)
     expect(remapDocumentOffset('abx', 'aXYby', 2)).toBe(4)
+    // A removed middle is skipped before the anchored kept text; a final edit prevents a suffix shortcut.
+    expect(remapDocumentOffset('abXYZcd', 'abcd!', 6)).toBe(3)
+    expect(remapDocumentOffset('abXYZcd', 'abcd!', 5)).toBe(2)
   })
 
   it('keeps admitted nodes as blocks and derives their source text on demand', () => {

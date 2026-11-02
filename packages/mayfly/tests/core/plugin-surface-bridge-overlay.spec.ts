@@ -359,6 +359,45 @@ async function settleInput(component: Component, input: string): Promise<void> {
 afterEach(() => { vi.useRealTimers() })
 
 describe('direct overlay surface renderer', () => {
+  it.each(['ordinary node', 'empty node', 'non-capturing controls'] as const)('contains a real compiler setup failure for %s and accepts a later valid publish', async kind => {
+    let unavailable = false
+    let failedReads = 0
+    let presentationSnapshots = 0
+    const faulty = new Proxy(components, { get(target, key, receiver) {
+      if (key === 'presentation' && unavailable) {
+        // The key hint and action acquire their presentation before the dependency fails for the rejection pane.
+        if (kind === 'non-capturing controls' && presentationSnapshots < 2) presentationSnapshots += 1
+        else { failedReads += 1; throw new Error('presentation unavailable') }
+      }
+      return Reflect.get(target, key, receiver)
+    } })
+    const f = await fixture(80, 24, faulty)
+    try {
+      unavailable = true
+      const action = vi.fn(() => ({ kind: 'completed' as const }))
+      const handle = f.open({
+        id: 'fallback-setup-failure', capturing: false,
+        render: () => kind === 'empty node' ? null : kind === 'ordinary node' ? ui.text('Ready') : ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }),
+        onEvent: { action },
+      })
+      await flush(8)
+      unavailable = false
+      expect(failedReads).toBeGreaterThan(0)
+      expect(f.stack()).toHaveLength(1)
+      const component = f.stack()[0]!.component
+      expect(component.render(80).join('')).toContain('Mayfly UI compilation failed safely')
+      for (const width of [1, 12, 40, 80]) for (const row of component.render(width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
+      component.handleInput?.('\r')
+      expect(action).not.toHaveBeenCalled()
+      handle.set(ui.text('Recovered'))
+      await flush(8)
+      expect(f.stack()[0]!.component.render(80).join('')).toContain('Recovered')
+      handle.close()
+      await flush(8)
+      expect(f.stack()).toEqual([])
+    } finally { unavailable = false; await f.dispose() }
+  })
+
   it('routes initial and refreshed actions, forwards focus, and bounds non-scroll content', async () => {
     const f = await fixture(80, 4)
     try {

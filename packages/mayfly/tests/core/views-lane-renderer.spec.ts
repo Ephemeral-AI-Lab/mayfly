@@ -217,6 +217,23 @@ function lanePanel(views: unknown, width: number): readonly string[] | undefined
 }
 
 describe('views lane through the direct pane renderer', () => {
+  it('allows a core-owned view to enter and leave while no Pane record owns its panel', async () => {
+    const f = await fixture()
+    try {
+      const views = f.runtime.surfaces.views
+      const handle = views.register({ id: 'core-view', summary: item('Core view') })
+      const panel: MayflyFocusable = { focused: false, render: () => ['core-owned panel'], invalidate() {} }
+      handle.setPanel(panel, panel)
+      expect(views.enter('core-view')).toBe(true)
+      await flush(8)
+      expect(lanePanel(views, 40)?.join('')).toContain('core-owned panel')
+      expect(f.root.mayflyPanes.list()).toEqual([])
+      handle.dispose()
+      expect(views.isEntered).toBe(false)
+      expect(f.runtime.focused()).toBe(f.runtime.editor)
+    } finally { await f.dispose() }
+  })
+
   it('takes a views pane into the status row and nowhere else', async () => {
     const f = await fixture()
     try {

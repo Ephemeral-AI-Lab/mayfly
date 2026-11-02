@@ -1294,11 +1294,11 @@ function selectionBounds(object: Record<string, unknown>, path: string): { reado
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'ui', viewOnly?: false): MayflyUiNode
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'ui', viewOnly: true): MayflySectionContentNode
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'status', viewOnly?: false): MayflyStatusNode
-function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'editor', viewOnly?: false, editorSlotAllowed?: boolean): MayflyEditorShellNode
-function node(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly = false, editorSlotAllowed = false): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
+function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'editor', viewOnly?: false): MayflyEditorShellNode
+function node(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly = false): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
   const cache = state.budget.cache
-  if (cache === undefined || !isWireSnapshot(value)) return admitNode(value, path, state, depth, mode, viewOnly, editorSlotAllowed)
-  const context = `${mode}:${viewOnly ? 1 : 0}:${editorSlotAllowed ? 1 : 0}:${String(depth)}:${String(state.scrollDepth)}`
+  if (cache === undefined || !isWireSnapshot(value)) return admitNode(value, path, state, depth, mode, viewOnly)
+  const context = `${mode}:${viewOnly ? 1 : 0}:${String(depth)}:${String(state.scrollDepth)}`
   const known = cache.subtrees.get(value as object)?.get(context)
   const budget = state.budget
   if (known !== undefined
@@ -1311,7 +1311,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
   // Only a subtree that added nothing but counts is memoized: a control, tab, page, action key, filter, editor slot, or
   // responsive placeholder ties the result to the rest of the tree, so those take the full path every time.
   const before = [budget.nodes, budget.chartCells, budget.images, budget.controlIds.size, budget.tabs.size, budget.pages.length, budget.actionKeys.size, budget.printableKey, budget.filterable, state.editorControls, budget.deferred] as const
-  const admitted = admitNode(value, path, state, depth, mode, viewOnly, editorSlotAllowed)
+  const admitted = admitNode(value, path, state, depth, mode, viewOnly)
   if (before[3] === budget.controlIds.size && before[4] === budget.tabs.size && before[5] === budget.pages.length && before[6] === budget.actionKeys.size
     && before[7] === budget.printableKey && before[8] === budget.filterable && before[9] === state.editorControls && before[10] === budget.deferred) {
     const memos = cache.subtrees.get(value as object) ?? new Map<string, AdmittedSubtree>()
@@ -1321,7 +1321,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
   return admitted
 }
 
-function admitNode(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly: boolean, editorSlotAllowed: boolean): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
+function admitNode(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly: boolean): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
   if (depth > MAYFLY_UI_MAX_DEPTH) limit(`Mayfly UI depth exceeds ${String(MAYFLY_UI_MAX_DEPTH)}`)
   state.budget.nodes += 1
   countWork(state.budget.counters, 'nodesValidated')
@@ -1335,7 +1335,6 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
     if (mode === 'editor' && (kind === 'form' || kind === 'list' || kind === 'tabs' || kind === 'slider' || kind === 'review')) invalid(`editor node kind "${kind}" would take focus from the editor`)
     /* The one prompt of an editor shell is the face of the host editor: its symbol and frame are the tree's, its buffer and keys the host's. */
     if (mode === 'editor' && kind === 'prompt') {
-      if (!editorSlotAllowed) invalid('the editor prompt is only valid in an editor shell slot')
       state.editorControls += 1
     }
     if (viewOnly && !['text', 'fields', 'code', 'diff', 'sections'].includes(kind)) invalid(`${path} must be section content`)
@@ -1402,7 +1401,7 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
           return { ...stack, children }
         }
         if (mode === 'editor') {
-          const children: readonly MayflyEditorChild[] = entries.map((item, index) => uiChild(item, `${path}.children[${String(index)}]`, state, depth + 1, (child, childPath, childState, childDepth) => node(child, childPath, childState, childDepth, 'editor', false, true)))
+          const children: readonly MayflyEditorChild[] = entries.map((item, index) => uiChild(item, `${path}.children[${String(index)}]`, state, depth + 1, (child, childPath, childState, childDepth) => node(child, childPath, childState, childDepth, 'editor')))
           return { ...stack, children }
         }
         const children: readonly MayflyUiChild[] = entries.map((item, index) => uiChild(
@@ -1422,8 +1421,8 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
         const footerValue = own(object, 'footer', path)
         const surface = { kind, ...optional(optionalLabel(object, 'title', path), 'title'), ...optional(optionalLabel(object, 'subtitle', path), 'subtitle'), ...optional(badgesValue === undefined ? undefined : spans(badgesValue, `${path}.badges`, state, false, true), 'badges'), ...optional(chromeValue === undefined ? undefined : enumeration(chromeValue, ['none', 'lane', 'surface', 'overlay'], `${path}.chrome`), 'chrome'), ...optional(paddingValue === undefined ? undefined : enumeration(paddingValue, [0, 1, 2] as const, `${path}.padding`), 'padding'), ...admitSurfaceFields(ADMISSION_HELPERS, object, path) } as const
         if (mode === 'editor') {
-          const child = node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'editor', false, true)
-          const footer = footerValue === undefined ? undefined : node(footerValue, `${path}.footer`, state, depth + 1, 'editor', false, true)
+          const child = node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'editor')
+          const footer = footerValue === undefined ? undefined : node(footerValue, `${path}.footer`, state, depth + 1, 'editor')
           return { ...surface, child, ...optional(footer, 'footer') }
         }
         const child = node(required(object, 'child', path), `${path}.child`, state, depth + 1, 'ui')
@@ -1714,7 +1713,7 @@ function validate<Value>(value: unknown, mode: ValidationMode, counters?: Mayfly
       ? node(value, '$', state, 0, 'ui')
       : mode === 'status'
         ? node(value, '$', state, 0, 'status')
-        : node(value, '$', state, 0, 'editor', false, true)
+        : node(value, '$', state, 0, 'editor')
     if (mode === 'editor') {
       if (state.editorControls !== 1) invalid(`editor shell must contain exactly one prompt; received ${String(state.editorControls)}`)
       assertEditorControlVisible(result as MayflyEditorShellNode)

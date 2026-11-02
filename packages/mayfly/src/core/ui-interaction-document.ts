@@ -50,7 +50,10 @@ export function remapDocumentOffset(before: string, after: string, offset: numbe
   let oldPosition = prefix, newPosition = prefix
   for (const change of changes) {
     if (change.added) { newPosition += change.value.length; continue }
-    if (position < oldPosition + change.value.length) return documentOffset(after, change.removed ? newPosition : newPosition + position - oldPosition)
+    if (position < oldPosition + change.value.length) {
+      if (!change.removed) newPosition += position - oldPosition
+      break
+    }
     oldPosition += change.value.length
     if (!change.removed) newPosition += change.value.length
   }
