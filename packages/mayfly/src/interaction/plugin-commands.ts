@@ -181,7 +181,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     // A removed entry is not a visible row until the profile carries it, but `/plugin info` and an install attempt
     // still need its refusal.
     const entry = entries().find(candidate => candidate.id === id || candidate.install.rows.some(item => item.name === id))
-    return entry === undefined ? undefined : { id: entry.id, entry, state: entry.status === 'removed' ? 'removed' : 'available', installed: false, partial: false, removable: false }
+    return entry === undefined ? undefined : { id: entry.id, entry, state: 'removed', installed: false, partial: false, removable: false }
   }
 
   /** Show the pending restart in the status footer. */
@@ -205,10 +205,10 @@ export function registerPluginCommand(ctx: Context): () => void {
    * The install call one catalog row makes. A native on-demand target names one exact released version, so it is saved
    * exactly, as the Host's other official installs are; a catalog spec keeps pnpm's own saving rule.
    */
-  function installCall(row: MarketInstallRow, bundle: BundleInfo | undefined, source: InstallSource): { readonly spec: string, readonly saveExact: boolean } | undefined {
+  function installCall(row: MarketInstallRow, bundle: BundleInfo | undefined, source: InstallSource): { readonly spec: string, readonly saveExact: boolean } {
     if (source === 'npm' && bundle?.installTarget !== undefined) return { spec: bundle.installTarget.spec, saveExact: true }
-    const spec = rowSpec(row, source)
-    return spec === undefined ? undefined : { spec, saveExact: false }
+    // runOperation admits a source only when every catalog package supplies it.
+    return { spec: rowSpec(row, source)!, saveExact: false }
   }
 
   /** Whether an installed row is deselected and needs only a native switch-on. */
@@ -237,10 +237,6 @@ export function registerPluginCommand(ctx: Context): () => void {
     for (const item of entry.install.rows) {
       const bundle = current.find(candidate => candidate.name === item.name)
       const call = installCall(item, bundle, source)
-      if (call === undefined) {
-        report({ text: t('"{name}" has no {source} install source', { name: entry.displayName, source }), tone: 'danger' })
-        return false
-      }
       const result = needsEnable(entry, item, bundle)
         ? await manager.setBundleEnabled(item.name, true)
         : await manager.installBundle(call.spec, { enabled: true, ...call.saveExact ? { saveExact: true } : {} })
@@ -291,7 +287,7 @@ export function registerPluginCommand(ctx: Context): () => void {
     if (unloaded) return false
     const entry = row.entry
     const names = entry === undefined
-      ? row.bundle === undefined ? [] : [row.bundle.name]
+      ? [row.bundle!.name]
       : entry.install.rows.map(item => item.name).filter(name => current.some(bundle => bundle.name === name && bundle.installed))
     if (names.length === 0) {
       report({ text: t('"{name}" is not installed in this profile', { name: rowName(row) }), tone: 'danger' })
@@ -332,9 +328,7 @@ export function registerPluginCommand(ctx: Context): () => void {
   }
 
   /** Run one install, update, removal, or enable through the native service, once at a time. */
-  async function operate(row: MarketRow, action: RowAction, source: InstallSource | undefined, reporter?: OperationReporter): Promise<boolean> {
-    const operationId = `plugin/${row.id}/${action}`
-    const report: OperationReporter = reporter ?? notifyInto(operationId)
+  async function operate(row: MarketRow, action: RowAction, source: InstallSource | undefined, report: OperationReporter): Promise<boolean> {
     if (operationInFlight) {
       report({ text: t('a plugin operation is already running'), tone: 'warning' })
       return false
@@ -348,16 +342,8 @@ export function registerPluginCommand(ctx: Context): () => void {
     operationInFlight = true
     try {
       if (action === 'remove') return await removeEntry(manager, row, report)
-      // `update` and `enable` use the same native installation path; the manager reports the observed application.
-      if (row.entry === undefined) {
-        report({ text: 'this bundle is not listed in the marketplace index', tone: 'danger' })
-        return false
-      }
-      if (source === undefined) {
-        report({ text: t('"{name}" has no common install source for every package', { name: row.entry.displayName }), tone: 'danger' })
-        return false
-      }
-      return await installEntry(manager, row, source, report)
+      // runOperation already admitted the listed entry and common source.
+      return await installEntry(manager, row, source!, report)
     } catch (error) {
       // ChangeResult folds expected failures; a rejected service call is unexpected and still must not escape a key.
       await refreshBundles(manager)
@@ -436,10 +422,7 @@ export function registerPluginCommand(ctx: Context): () => void {
   }
 
   /** One keyed operation of a row, with the reply that shows the result. */
-  async function rowAction(rowId: string, action: RowAction, context: MayflyUiEventContext): Promise<{ readonly ok: boolean, readonly message: string }> {
-    const row = rows().find(item => item.id === rowId)
-    /* keyed actions only carry ids from rows */
-    if (row === undefined) return { ok: false, message: t('plugin operation failed') }
+  async function rowAction(row: MarketRow, action: RowAction, context: MayflyUiEventContext): Promise<{ readonly ok: boolean, readonly message: string }> {
     let message = t('plugin operation failed')
     const ok = await runOperation(row, action, reportInto(context, text => { message = text }))
     return { ok, message }
@@ -506,7 +489,9 @@ export function registerPluginCommand(ctx: Context): () => void {
       })
     }
 
-    const publish = (): void => { if (!unloaded && !handle.closed) handle.set(node()) }
+    let handle: MayflyOverlayHandle | undefined
+    let offLocale = (): void => {}
+    const publish = (): void => { if (!unloaded && handle?.closed === false) handle.set(node()) }
 
     const refreshMarket = async (reporter: OperationReporter): Promise<boolean> => {
       if (manager === undefined) {
@@ -518,7 +503,7 @@ export function registerPluginCommand(ctx: Context): () => void {
       /* a fiber unload landing inside the refresh await is a shutdown race */
       if (unloaded) return false
       if (result.status === 'offline' || bundleError !== undefined) {
-        reporter({ text: t('refresh failed: {message}', { message: result.status === 'offline' ? result.message : bundleError ?? 'unknown error' }), tone: 'danger' })
+        reporter({ text: t('refresh failed: {message}', { message: result.status === 'offline' ? result.message : bundleError! }), tone: 'danger' })
       } else {
         reporter({ text: t('refreshed {count} entries', { count: String(result.index.entries.length) }), tone: 'success' })
       }
@@ -540,12 +525,12 @@ export function registerPluginCommand(ctx: Context): () => void {
       return { kind: 'accepted', node: node(), source: [], feedback: { severity: 'success', message: t('updated {count} plugins; restart Mayfly and start a new session to apply', { count: targets.length }) } }
     }
 
-    const activeRowId = (): string | undefined => {
+    const activeRow = (): MarketRow | undefined => {
       const ordered = groupRows(tabRows(rows(), activeTab), groupMode)
-      return ordered.find(item => item.id === focused[activeTab])?.id ?? ordered[0]?.id
+      return ordered.find(item => item.id === focused[activeTab]) ?? ordered[0]
     }
 
-    const handle: MayflyOverlayHandle = openUiOverlay(ctx, {
+    handle = openUiOverlay(ctx, {
       id: 'mayfly.plugin-market', presentation: 'editor', capturing: true, dismissal: 'discard', title: t('Plugin marketplace'),
       scope: { kind: 'app', targetId: 'plugin-market' },
       onEvent: {
@@ -584,17 +569,16 @@ export function registerPluginCommand(ctx: Context): () => void {
             case 'install':
             case 'update':
             case 'remove': {
-              const id = activeRowId()
-              if (id === undefined) return { kind: 'completed' }
-              const result = await rowAction(id, event.actionId, context)
-              if (!rows().some(item => item.id === id)) narrow = 'list'
+              const row = activeRow()
+              if (row === undefined) return { kind: 'completed' }
+              const result = await rowAction(row, event.actionId, context)
+              if (!rows().some(item => item.id === row.id)) narrow = 'list'
               return result.ok
                 ? { kind: 'accepted', node: node(), source: [], feedback: { severity: 'success', message: result.message } }
                 : { kind: 'failed', node: node(), source: [], message: result.message }
             }
             case 'source': {
-              const rowId = activeRowId()
-              const row = rowId === undefined ? undefined : rows().find(item => item.id === rowId)
+              const row = activeRow()
               if (row?.entry === undefined) return { kind: 'completed' }
               const current = sources.get(row.entry.id) ?? defaultInstallSource(row.entry)
               const next: InstallSource = current === 'npm' ? 'github' : 'npm'
@@ -625,7 +609,8 @@ export function registerPluginCommand(ctx: Context): () => void {
       offLocale()
       lifetime.abort()
     } })
-    const offLocale = observeInteractionLocale(ctx, publish)
+    if (handle.closed) return { kind: 'success' }
+    offLocale = observeInteractionLocale(ctx, publish)
     // The panel mounts immediately with the loading document when the caller
     // opened before the first load settled; swap in the data when it arrives.
     if (manager !== undefined) {
@@ -655,7 +640,7 @@ export function registerPluginCommand(ctx: Context): () => void {
         const [result] = await Promise.all([reload(true), refreshBundles(manager)])
         if (unloaded) return { kind: 'success' }
         if (result.status === 'offline' || bundleError !== undefined) {
-          return { kind: 'error', text: t('refresh failed: {message}', { message: result.status === 'offline' ? result.message : bundleError ?? 'unknown error' }) }
+          return { kind: 'error', text: t('refresh failed: {message}', { message: result.status === 'offline' ? result.message : bundleError! }) }
         }
         return { kind: 'success', text: t('refreshed {count} entries', { count: String(result.index.entries.length) }) }
       }

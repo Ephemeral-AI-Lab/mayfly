@@ -1408,6 +1408,50 @@ describe('/plugin operation lifetimes', () => {
 })
 
 describe('/plugin branch edges', () => {
+  it('opens a selected native browse row and ignores an unrelated queued control', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openMarket(world)
+    const registration = marketEntry(world)
+    const context = { surfaceId: registration.id, operationId: 'queued-market', source: registration.source, revision: registration.revision, signal: new AbortController().signal, report: vi.fn() }
+    const action = registration.definition.onEvent!.action!
+    expect(await action({ kind: 'selection-accept', pagePath: [], controlId: 'plugins-browse', selectedIds: ['loop'] }, context)).toMatchObject({ kind: 'completed' })
+    expect(JSON.stringify(world.surface()!.registration.node)).toContain('"escapeLabel":"back"')
+    expect(await action({ kind: 'token-remove', pagePath: [], controlId: 'foreign', tokenId: 'queued' }, context)).toMatchObject({ kind: 'completed' })
+    expect(await action({ kind: 'activate', pagePath: [], controlId: 'plugin-keys-browse', actionId: 'remove' }, context)).toMatchObject({ kind: 'failed', message: '"Loop" is not installed in this profile' })
+    expect(world.calls.remove).toHaveLength(0)
+    world.dispose()
+  })
+
+  it('uses its documented viewport fallback when the screen service unloads', async () => {
+    const world = await mountWorld({ index: [entry()] })
+    await openInfo(world, 'loop')
+    world.ctx.set('mayflyScreen', undefined)
+    world.locale!.setPreference('zh')
+    await vi.waitFor(() => { expect(JSON.stringify(world.surface()!.registration.node)).toContain('循环提示与闹钟。') })
+    expect(JSON.stringify(world.surface()!.registration.node)).toContain('"escapeLabel":"close"')
+    world.dispose()
+  })
+
+  it.each([false, true])('handles native initialization observations and initial close=%s', async closed => {
+    const world = await mountWorld({ index: [entry()] })
+    const off = world.ctx.mayflyOverlays.subscribe(delta => {
+      if (delta.kind !== 'upsert' || delta.entry.id !== 'mayfly.plugin-market') return
+      const entry = delta.entry
+      void entry.definition.onEvent!.observe!({ kind: 'tab-change', pagePath: [], controlId: 'plugin-tabs', tabId: 'installed' }, {
+        surfaceId: entry.id, operationId: 'initial-tab', source: entry.source, revision: entry.revision, signal: new AbortController().signal, report: vi.fn(),
+      })
+      if (closed) world.ctx.mayflyOverlays.close(entry.id)
+    })
+    expect(await world.run('/plugin')).toEqual({ kind: 'success' })
+    off()
+    await new Promise(resolve => setImmediate(resolve))
+    if (closed) {
+      expect(world.ctx.mayflyOverlays.list()).toHaveLength(0)
+      expect(world.manager.listBundles).not.toHaveBeenCalled()
+    } else expect(JSON.stringify(world.surface()!.registration.node)).toContain('"activeId":"installed"')
+    world.dispose()
+  })
+
   it('names an incompatible-version refusal that carries no package list', async () => {
     const world = await mountWorld({
       index: [entry()],
