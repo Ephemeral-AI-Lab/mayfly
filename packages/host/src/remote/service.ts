@@ -11,6 +11,8 @@ import type {} from '@deepseek-ai/dsh-session/types'
 import { Remote, RemoteError, TypertRemoteService, type RemoteStream } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from 'zod'
 import { mayflyHostCapabilities } from './capabilities.ts'
+import { btwFork } from './btw.ts'
+import type { MayflyBtwForkRequest, MayflyBtwForkValue } from '../types.ts'
 import type { MayflyAuthorizationAnswer, MayflyAuthorizationFrame, MayflyAuthorizationRequest, MayflyDefaultModelRequest, MayflyGitStatus, MayflyHostCapabilities, MayflyHostSessionRequest, MayflyMcpCatalog, MayflyMcpResourceBody, MayflyMcpResourceListRequest, MayflyMcpResourcePage, MayflyMcpResourceReadRequest, MayflyModelCatalogDetails, MayflyModelCatalogRequest, MayflyModelSelection, MayflyPermissionCatalogDetails, MayflyPermissionCatalogRequest, MayflyPresentToolsRequest, MayflyPresentToolsResponse, MayflyProviderBalance, MayflyRetractTurnRequest, MayflySettingsDocument, MayflySettingsDocumentWrite, MayflySkillCatalog, MayflySubagentDrainRequest, MayflyToolCatalog, MayflyWorkspace, MayflyWorkspaceChangesRequest, MayflyWorkspaceChangesSummaryResult, MayflyWorkspaceDiffRequest, MayflyWorkspaceFileDiffResult, MayflyWorkspacePathRequest, MayflyWorkflowFrame } from '../types.ts'
 import { authorize, cancelAuthorization } from './authorization.ts'
 import { deliveredFile, latestWorkspaceChanges } from './deliverables.ts'
@@ -76,6 +78,12 @@ export class MayflyHostService extends TypertRemoteService {
   @Remote('capabilities')
   capabilities(): MayflyHostCapabilities {
     return mayflyHostCapabilities(this.ctx)
+  }
+
+  /** Fork the exact current native tail for a side question, including an unfinished first turn. */
+  @Remote({ resources: { session: request => request.sessionId } })
+  btwFork(request: MayflyBtwForkRequest, signal: AbortSignal): Promise<MayflyBtwForkValue> {
+    return btwFork(this.ctx, request, this.signal(signal))
   }
 
   /** Present changed tool entries through each authorized exact Agent's native definitions. */

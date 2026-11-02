@@ -14,20 +14,7 @@ import type { HostActions, HostSessionForkOptions } from './host-actions.ts'
 import type { HostRegistry } from './host-registry.ts'
 import type { HostViewLease, HostViewRole } from './host-registry.ts'
 import type { RemotePresentationSelection } from './session-facts.ts'
-
-/**
- * The official fork failure, recognized structurally. The class lives in the
- * lexical Client page bundle, which this Node process may not import: the
- * handoff loader evaluates it behind a module table, so a statically imported
- * copy would also be a different class identity. Its stable `name` and
- * `rpcError` fields are the contract the Client publishes.
- */
-function forkFailureOf(error: unknown): RemoteFailure | undefined {
-  if (typeof error !== 'object' || error === null) return undefined
-  if (Reflect.get(error, 'name') !== 'SessionForkError') return undefined
-  const rpcError = Reflect.get(error, 'rpcError')
-  return typeof rpcError === 'object' && rpcError !== null ? rpcError as RemoteFailure : undefined
-}
+import { mayflyHostRemote } from './host-mount.ts'
 
 /** Input for one ordinary forked side question. */
 export interface RemoteBtwAskOptions extends Pick<HostSessionForkOptions, 'atSeq' | 'allowMigration'> {
@@ -51,8 +38,10 @@ export class RemoteBtwSupersededError extends Error {
 export class RemoteBtwPreconditionError extends Error {
   override readonly name = 'RemoteBtwPreconditionError'
 
-  constructor(readonly parent: SessionRef, readonly reason: 'model-unavailable' | 'history-floor-unavailable') {
-    super(`BTW parent "${parent.sessionId}" ${reason === 'model-unavailable' ? 'has no official model route' : 'has no official inherited history floor'}`)
+  readonly reason = 'model-unavailable'
+
+  constructor(readonly parent: SessionRef) {
+    super(`BTW parent "${parent.sessionId}" has no official model route`)
   }
 }
 
@@ -112,6 +101,7 @@ export class RemoteBtwService {
   ask(parent: SessionRef, question: string, options: RemoteBtwAskOptions = {}): Promise<RemoteResult<RemoteBtwSession>> {
     if (question.trim() === '') return Promise.reject(new Error('BTW question must not be empty'))
     if (this.disposed) return Promise.reject(new RemoteBtwSupersededError('BTW service is disposed'))
+    if (options.signal?.aborted) return Promise.reject(options.signal.reason)
     this.pending?.abort(new RemoteBtwSupersededError('BTW request was replaced'))
     const previous = this.active
     this.active = undefined
@@ -196,40 +186,43 @@ export class RemoteBtwService {
     options: RemoteBtwAskOptions,
     signal: AbortSignal,
   ): Promise<RemoteResult<RemoteBtwSession>> {
+    this.assertCurrent(signal)
     const parentLease = this.actions.retainView(parent, 'btw-parent')
     let childLease: HostViewLease | undefined
     try {
-      await parentLease.ready
-      this.assertCurrent(signal)
-      const binding = parentLease.reference.binding
+      const client = this.registry.get(parent.host)!
+      const generation = client.state.getSnapshot().generation
+      const binding = await parentLease.ready
+      const assertCurrent = (): void => {
+        this.assertCurrent(signal)
+        if (this.registry.get(parent.host) !== client || client.state.getSnapshot().generation !== generation || parentLease.reference.binding !== binding) {
+          throw new RemoteBtwSupersededError('BTW parent binding was replaced')
+        }
+      }
+      assertCurrent()
       const model = readModelSelection(binding.session.projections.faceOf('modelSelection').getSnapshot())
       const cwd = readWorkingDirectory(binding.session.projections.faceOf('workingDirectory').getSnapshot())
-        ?? this.registry.get(parent.host)?.sessions.list.getSnapshot().byId[parent.sessionId]?.cwd
+        ?? client.sessions.list.getSnapshot().byId[parent.sessionId]?.cwd
         ?? ''
-      const historyFloorSeq = options.atSeq ?? latestCompletedSeq(binding.eventSource.getSnapshot().entries)
-      if (model === undefined) throw new RemoteBtwPreconditionError(parent, 'model-unavailable')
-      let child: SessionRef
-      try {
-        child = await this.actions.fork(parent, {
-          ...(options.atSeq === undefined ? {} : { atSeq: options.atSeq }),
-          ...(options.allowMigration === undefined ? {} : { allowMigration: options.allowMigration }),
-        })
-      } catch (error) {
-        const failure = forkFailureOf(error)
-        if (failure !== undefined) return { ok: false, error: failure }
-        throw error
-      }
-      this.assertCurrent(signal)
-      if (historyFloorSeq === undefined) throw new RemoteBtwPreconditionError(parent, 'history-floor-unavailable')
+      if (model === undefined) throw new RemoteBtwPreconditionError(parent)
+      const forked = await mayflyHostRemote(client).btwFork({
+        sessionId: parent.sessionId,
+        ...(options.atSeq === undefined ? {} : { atSeq: options.atSeq }),
+        ...(options.allowMigration === undefined ? {} : { allowMigration: options.allowMigration }),
+      }, signal)
+      assertCurrent()
+      if (!forked.ok) return forked
+      const child: SessionRef = Object.freeze({ host: parent.host, sessionId: forked.value.sessionId })
+      const historyFloorSeq = forked.value.historyFloorSeq
       const selected = await this.actions.selectModel(child, model)
+      assertCurrent()
       if (!selected.ok) return selected
-      this.assertCurrent(signal)
       childLease = this.actions.retainView(child, 'btw')
       await childLease.ready
-      this.assertCurrent(signal)
-      const queueFailure = await this.clearInheritedQueue(child, childLease, () => { this.assertCurrent(signal) })
+      assertCurrent()
+      const queueFailure = await this.clearInheritedQueue(child, childLease, () => { assertCurrent() })
       if (queueFailure !== undefined) return { ok: false, error: queueFailure }
-      this.assertCurrent(signal)
+      assertCurrent()
       const prompted = await this.actions.prompt(child, {
         mode: 'queue',
         text: question,
@@ -237,8 +230,8 @@ export class RemoteBtwService {
         content: [{ type: 'text', text: question }],
         signal,
       })
+      assertCurrent()
       if (!prompted.ok) return prompted
-      this.assertCurrent(signal)
       const lease = childLease
       this.active = { parent, child, lease }
       return {
@@ -250,7 +243,7 @@ export class RemoteBtwService {
           selection: {
             ref: child,
             cwd,
-            historyFloorSeq,
+            ...(historyFloorSeq === undefined ? {} : { historyFloorSeq }),
           },
         },
       }
@@ -297,10 +290,6 @@ function readModelRoute(value: unknown): ModelSelection | undefined {
 
 function readWorkingDirectory(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined
-}
-
-function latestCompletedSeq(entries: readonly { readonly type: string, readonly event: { readonly type: string, readonly seq: number } }[]): number | undefined {
-  return entries.findLast(entry => entry.type === 'event' && entry.event.type === 'turn/end')?.event.seq
 }
 
 function readInboxIds(inbox: unknown): ReturnType<typeof MessageId>[] {

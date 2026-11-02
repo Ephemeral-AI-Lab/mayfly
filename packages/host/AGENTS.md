@@ -34,6 +34,13 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
 - Handshake versions come from the published package manifest. Raw settings
   writes are serialized by the service-owned `SettingsDocumentCoordinator`;
   stale content revisions remain conflicts, including during validation.
+- `btwFork` obtains the complete native observation cursor and passes that
+  explicit inclusive cut to `sessionController.fork`, including an open first
+  turn. Native fork composition owns synthetic closers, preset and workspace
+  policies. A genuinely empty source uses native `create` with the effective
+  Host directory and source preset, and returns no inherited history floor.
+  Caller cancellation, source/controller replacement, exact Agent replacement
+  and service unload retire results without cancelling Host-owned work.
 - `src/settings.ts` is the `mayfly` settings namespace schema; presentation
   application stays in the TUI. `cordis.patch.yml` composes the Host profile
   over `dsh-base`/`dsh-web-app`. Keep its Web services, transport, and browser

@@ -104,6 +104,13 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   builds the shared reference turn picker, and forks only after explicit
   acceptance. Busy checks and exact binding/Host/generation fences cover the
   history read, acceptance, and late fork result; the original Session stays.
+- `/btw` inherits the source's complete current tail through the authorized
+  `mayflyHost.btwFork` native command. Its returned history floor is authoritative;
+  bounded Client event pages never choose the cut. An empty source has no floor.
+  Exact Client, parent binding, connection generation and caller lifetime fence
+  every continuation before model restoration, inherited-Inbox cleanup and the
+  child prompt. A pre-aborted invocation preserves an existing or pending view.
+  Closing releases the frontend view and never cancels Host-owned Agent work.
 - `/trace` consumes the Host's complete canonical trace timeline and exact raw
   event identities through passive Session queries. Its shared rc.2 model owns
   list/detail presentation and copy documents. Native Host queries own surface

@@ -25,6 +25,7 @@ describe('mayflyHostFeatures', () => {
     const features = mayflyHostFeatures(ctx(false))
     expect(features).toContain('mayflyConversation')
     expect(features).toContain('mcpCatalog')
+    expect(features).toContain('btwFork')
     expect(features).not.toContain('mcpTransportHealth')
   })
 

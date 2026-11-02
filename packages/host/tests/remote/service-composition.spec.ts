@@ -30,7 +30,7 @@ async function host() {
     sessionQuery: {
       readSession: async () => ({ events: [{ type: 'custom/event', seq: 0, time: 1, data: { text: 'trace fact' } }] }),
       traceEvent: async () => ({ replacementChain: [], replacedEventSeqs: [], sourceEventSeqs: [], derivedEventSeqs: [] }),
-      observeSession: async () => ({ header: session.header, events: [], revision: 'one', [Symbol.dispose]: () => {} }),
+      observeSession: async () => ({ header: session.header, cursor: 37, events: [], revision: 'one', [Symbol.dispose]: () => {} }),
       listSessions: async () => [],
     },
     agents: { get: (id: string) => id === session.id ? agent : undefined },
@@ -40,7 +40,7 @@ async function host() {
     credentials: { resolve: async () => undefined },
     llm: { listProviders: () => [] },
     permissionPresets: { catalog: () => ({ options: [], defaultOptions: [], defaultPreset: 'safe' }) },
-    sessionController: { resolveAgent: async () => { throw new Error('unexpected activation') } },
+    sessionController: { resolveAgent: async () => { throw new Error('unexpected activation') }, fork: async () => ({ sessionId: SessionId('btw-child') }) },
     sessionProjections: {
       snapshot: () => ({ values: { workingDirectory: '/host', mayflyWorkflow: { sessionId: session.id, runs: [] }, mayflyDeliverables: [{ id: 'delivery', path: 'report.md' }] } }),
       onChanged: () => () => {},
@@ -97,7 +97,7 @@ describe('Host Remote composition', () => {
     const { service } = await host()
     const methods = new Map(remoteMethods(service).map(method => [method.method, method]))
     const sessionId = SessionId('authorized-session')
-    for (const name of ['followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'statsHistory', 'listMcpResources', 'readMcpResource']) {
+    for (const name of ['btwFork', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'statsHistory', 'listMcpResources', 'readMcpResource']) {
       const reader = methods.get(name)?.resources?.['session']
       expect(reader, `${name} must declare Session authorization`).toBeTypeOf('function')
       expect(reader?.({ sessionId })).toBe(sessionId)
@@ -113,6 +113,7 @@ describe('Host Remote composition', () => {
     const signal = new AbortController().signal
     const request = { sessionId: SessionId('parent') }
     expect(service.capabilities().features).toContain('presentTools')
+    await expect(service.btwFork(request, signal)).resolves.toEqual({ sessionId: SessionId('btw-child'), historyFloorSeq: 37 })
     await expect(service.presentTools({ entries: [{ ...request, callId: 'one', updatedSeq: 1, name: 'missing', arguments: '{}' }] }, signal))
       .resolves.toMatchObject({ presentations: { parent: { one: { updatedSeq: 1 } } } })
     await expect(service.mcpCatalog(request, signal)).resolves.toMatchObject({ servers: [], sessionLive: true })
@@ -184,6 +185,19 @@ describe('Host Remote composition', () => {
     expect(ctx.get('mayflyHost')).not.toBe(service)
     expect((ctx.get('mayflyHost') as HostService).capabilities().protocolVersion).toBe(1)
     await replacement.dispose()
+  })
+
+  it('retires an in-flight BTW native write on service unload without cancelling the Host-owned child', async () => {
+    const { ctx, service, unload } = await host()
+    const child = Promise.withResolvers<Awaited<ReturnType<Context['sessionController']['fork']>>>()
+    const native = vi.spyOn(ctx.sessionController, 'fork').mockReturnValue(child.promise)
+    const pending = service.btwFork({ sessionId: SessionId('parent') }, new AbortController().signal)
+    const retired = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await vi.waitFor(() => { expect(native).toHaveBeenCalledWith({ sessionId: 'parent', atSeq: 37 }) })
+    await unload()
+    child.resolve({ sessionId: SessionId('btw-child') })
+    await retired
+    expect(native).toHaveBeenCalledOnce()
   })
 })
 

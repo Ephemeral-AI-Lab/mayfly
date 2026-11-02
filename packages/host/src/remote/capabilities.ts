@@ -16,7 +16,7 @@ const MAYFLY_HOST_BASE_FEATURES: readonly MayflyHostFeature[] = [
   'mayflyConversation', 'presentTools', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog',
   'mayflySettings', 'skillCatalog', 'retractTurn', 'modelCatalogDetails', 'defaultModel', 'authorization',
   'permissionCatalogDetails', 'providerBalance', 'settingsDocument', 'subagentDrain', 'workspaceChanges',
-  'workspacePath', 'mcpResources', 'stats', 'trace', 'deliveredFiles',
+  'workspacePath', 'mcpResources', 'stats', 'trace', 'deliveredFiles', 'btwFork',
 ]
 
 /**

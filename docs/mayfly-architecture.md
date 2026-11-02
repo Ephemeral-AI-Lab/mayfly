@@ -68,6 +68,14 @@ no prompt. `/new` and `/clear` deselect without creating empty Sessions or
 stopping Host work. A detached or replaced generation cannot select a late
 creation result, reopen a panel, acknowledge a stale operation, or send input.
 
+`/btw <question>` inherits the source's whole current native tail, including an
+unfinished first turn. The authorized Host command reads the exact observation
+cursor and supplies it to native Session Controller fork; Harness balances any
+open turn. The returned inherited boundary controls the side view's transcript
+floor. A genuinely empty source uses native creation with the effective Host
+directory and source preset, so it has no inherited floor. Remote restores the
+source model and clears inherited pending Inbox rows before the child prompt.
+
 Registrations, listeners, timers, requests, and pending acknowledgements belong
 to their Cordis Fiber or explicit frontend owner. Theme/core reload preserves
 valid drafts and selection while discarding terminal handles and compiled

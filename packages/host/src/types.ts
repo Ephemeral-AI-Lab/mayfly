@@ -67,6 +67,7 @@ export type MayflyHostFeature =
   | 'stats'
   | 'trace'
   | 'deliveredFiles'
+  | 'btwFork'
 
 /** Version and feature facts a Client validates before entering its UI. */
 export interface MayflyHostCapabilities {
@@ -84,6 +85,18 @@ export interface MayflyHostCapabilityUnavailableDetails {
 /** Session identity carried by a Host-scoped request or failure. */
 export interface MayflyHostSessionRequest {
   readonly sessionId: SessionId
+}
+
+/** Capture the source's complete current tail unless an exact inclusive cut is supplied. */
+export interface MayflyBtwForkRequest extends MayflyHostSessionRequest {
+  readonly atSeq?: number
+  readonly allowMigration?: boolean
+}
+
+/** Native ordinary child identity and its exact inherited prefix; an empty source has no floor. */
+export interface MayflyBtwForkValue {
+  readonly sessionId: SessionId
+  readonly historyFloorSeq?: number
 }
 
 /** Mayfly Host domain failures carried by the standard Remote error union. */

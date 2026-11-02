@@ -5,7 +5,7 @@ import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/t
 import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { HostKey, type HostClient, type SessionRef } from '../../src/client/types.ts'
-import { RemoteBtwPreconditionError, RemoteBtwService, RemoteBtwSupersededError, RemoteColdSubagentResolutionError, RemoteSubagentAddressError } from '../../src/frontend/btw.ts'
+import { RemoteBtwService, RemoteBtwSupersededError, RemoteColdSubagentResolutionError, RemoteSubagentAddressError } from '../../src/frontend/btw.ts'
 import { HostActions } from '../../src/frontend/host-actions.ts'
 import { HostRegistry } from '../../src/frontend/host-registry.ts'
 
@@ -36,7 +36,8 @@ async function fixture() {
   const prompt = vi.fn<SessionFace['prompt']>(async () => { operations.push('prompt'); return accepted })
   const cancel = vi.fn<SessionFace['cancel']>(async () => accepted)
   const queue = vi.fn<SessionFace['updateQueue']>(async id => { operations.push(`remove:${id}`); return accepted })
-  const fork = vi.fn<ISessions['fork']>(async () => { operations.push('fork'); return childId })
+  const fork = vi.fn(async (request: { readonly sessionId: SessionId, readonly atSeq?: number, readonly allowMigration?: boolean }, _signal?: AbortSignal) => { operations.push('fork'); return { ok: true as const, value: { sessionId: childId, historyFloorSeq: request.atSeq ?? 37 } } })
+  let generation = 1
   const selectModel = vi.fn(async (..._args: unknown[]) => { operations.push('model'); return { ok: true as const, value: {} } })
   const subagentPrompt = vi.fn(async (..._args: unknown[]) => accepted)
   const address = vi.fn<ISessions['subagentAddress']>(() => undefined)
@@ -63,7 +64,8 @@ async function fixture() {
       retain, using, fork, subagentAddress: address,
       list: { getSnapshot: () => ({ ids: [parentId], byId: catalogCwd === undefined ? {} : { [parentId]: { cwd: catalogCwd } } }) },
     },
-    remote: { session: { selectModel }, subagents: { prompt: subagentPrompt } },
+    remote: { session: { selectModel }, subagents: { prompt: subagentPrompt }, mayflyHost: { btwFork: fork } },
+    state: { getSnapshot: () => ({ status: 'connected', generation }) },
     detach: vi.fn(async () => {}),
   })
   const registry = new HostRegistry(() => client)
@@ -73,6 +75,7 @@ async function fixture() {
   const btw = new RemoteBtwService(actions, registry)
   return {
     btw, actions, registry, client, references, operations, prompt, cancel, queue, fork, selectModel, address, subagentPrompt,
+    setGeneration: (value: number) => { generation = value },
     setModel: (value: unknown) => { model = value },
     setCwd: (value: unknown) => { cwd = value },
     setCatalogCwd: (value: string | undefined) => { catalogCwd = value },
@@ -90,7 +93,7 @@ describe('RemoteBtwService', () => {
     expect(result.value.child).toEqual(ref('one', childId))
     expect(result.value.selection).toEqual({ ref: ref('one', childId), cwd: '/host/workspace', historyFloorSeq: 12 })
     expect(f.operations).toEqual(['fork', 'model', 'remove:old-turn', 'remove:old-step', 'prompt'])
-    expect(f.fork).toHaveBeenCalledWith({ sessionId: parentId, atSeq: 12, allowMigration: true })
+    expect(f.fork).toHaveBeenCalledWith({ sessionId: parentId, atSeq: 12, allowMigration: true }, expect.any(AbortSignal))
     expect(f.selectModel).toHaveBeenCalledWith(expect.objectContaining({ sessionId: childId, provider: 'provider', model: 'model', reasoningEffort: 'high' }))
     expect(f.prompt).toHaveBeenCalledWith([{ type: 'text', text: 'side question' }], 'queue', expect.any(AbortSignal), expect.stringMatching(/^request-/u))
     expect(f.actions.current).toEqual(ref())
@@ -104,7 +107,7 @@ describe('RemoteBtwService', () => {
     for (const reference of f.references) expect(reference.release).toHaveBeenCalledOnce()
   })
 
-  it('uses last completed history and model fallback, and Host catalog cwd when projection data is unavailable', async () => {
+  it('uses the Host whole-tail boundary independently of incomplete Client history, with model and cwd fallbacks', async () => {
     const f = await fixture()
     f.setModel({ next: { invalid: true }, lastUsed: { provider: 'fallback', model: 'last' } })
     f.setCwd(null)
@@ -112,7 +115,7 @@ describe('RemoteBtwService', () => {
     f.setInbox({ 'next-turn': null, 'next-step': false })
     const result = await f.btw.ask(ref(), 'side question')
     expect(result.ok).toBe(true)
-    if (result.ok) expect(result.value.selection).toEqual({ ref: ref('one', childId), cwd: '/catalog/workspace', historyFloorSeq: 20 })
+    if (result.ok) expect(result.value.selection).toEqual({ ref: ref('one', childId), cwd: '/catalog/workspace', historyFloorSeq: 37 })
     expect(f.selectModel).toHaveBeenCalledWith(expect.objectContaining({ provider: 'fallback', model: 'last' }))
     expect(f.queue).not.toHaveBeenCalled()
     await f.btw.dispose()
@@ -139,27 +142,26 @@ describe('RemoteBtwService', () => {
     await f.registry.detach(HostKey('one'))
   })
 
-  it('does not prompt a child without an official inherited history floor', async () => {
+  it('accepts native empty-source creation without an invented history floor', async () => {
     const f = await fixture()
     f.setHistory([])
-    await expect(f.btw.ask(ref(), 'side')).rejects.toBeInstanceOf(RemoteBtwPreconditionError)
-    expect(f.prompt).not.toHaveBeenCalled()
-    expect(f.btw.current()).toBeUndefined()
+    f.fork.mockResolvedValueOnce({ ok: true, value: { sessionId: childId } } as never)
+    const result = await f.btw.ask(ref(), 'side')
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.selection).not.toHaveProperty('historyFloorSeq')
+    expect(f.prompt).toHaveBeenCalledOnce()
     await f.btw.dispose()
     await f.registry.detach(HostKey('one'))
   })
 
-  it('preserves structured native fork failures without requiring cross-realm class identity', async () => {
+  it('preserves structured native fork refusal and does not replay a failed mutation', async () => {
     const f = await fixture()
-    f.fork.mockRejectedValueOnce({ name: 'SessionForkError', rpcError: failure.error })
+    f.fork.mockResolvedValueOnce(failure as never)
     expect(await f.btw.ask(ref(), 'side')).toEqual(failure)
     expect(f.selectModel).not.toHaveBeenCalled()
     f.fork.mockRejectedValueOnce(new Error('ordinary fork error'))
     await expect(f.btw.ask(ref(), 'side')).rejects.toThrow('ordinary fork error')
-    f.fork.mockRejectedValueOnce({ name: 'SessionForkError', rpcError: null })
-    await expect(f.btw.ask(ref(), 'side')).rejects.toEqual({ name: 'SessionForkError', rpcError: null })
-    f.fork.mockRejectedValueOnce('native fork unavailable')
-    await expect(f.btw.ask(ref(), 'side')).rejects.toBe('native fork unavailable')
+    expect(f.fork).toHaveBeenCalledTimes(2)
     await f.btw.dispose()
     await f.registry.detach(HostKey('one'))
   })
@@ -192,13 +194,13 @@ describe('RemoteBtwService', () => {
 
   it('supersedes a pending fork without replay and releases its parent lease before starting a newer question', async () => {
     const f = await fixture()
-    const fork = deferred<SessionId>()
+    const fork = deferred<Awaited<ReturnType<typeof f.fork>>>()
     f.fork.mockImplementationOnce(() => fork.promise)
     const first = f.btw.ask(ref(), 'old question')
     const retired = expect(first).rejects.toBeInstanceOf(RemoteBtwSupersededError)
     await flush()
     const next = f.btw.ask(ref(), 'new question')
-    fork.resolve(otherId)
+    fork.resolve({ ok: true, value: { sessionId: otherId, historyFloorSeq: 37 } })
     await retired
     expect((await next).ok).toBe(true)
     expect(f.fork).toHaveBeenCalledTimes(2)
@@ -211,14 +213,14 @@ describe('RemoteBtwService', () => {
 
   it('close cancels only pending acquisition and ignores a late native fork result', async () => {
     const f = await fixture()
-    const fork = deferred<SessionId>()
+    const fork = deferred<Awaited<ReturnType<typeof f.fork>>>()
     f.fork.mockImplementationOnce(() => fork.promise)
     const asked = f.btw.ask(ref(), 'side')
     const cancelled = expect(asked).rejects.toBeInstanceOf(RemoteBtwSupersededError)
     await flush()
     expect(f.btw.close()).toBe(true)
     expect(f.btw.close()).toBe(false)
-    fork.resolve(childId)
+    fork.resolve({ ok: true, value: { sessionId: childId, historyFloorSeq: 37 } })
     await cancelled
     expect(f.prompt).not.toHaveBeenCalled()
     expect(f.actions.current).toEqual(ref())
@@ -254,6 +256,59 @@ describe('RemoteBtwService', () => {
     await aborted
     expect(f.prompt).not.toHaveBeenCalled()
     expect(f.btw.current()).toBeUndefined()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it.each(['generation', 'binding', 'detach'])('rejects a late fork after parent %s replacement without touching the child', async replacement => {
+    const f = await fixture()
+    const fork = deferred<Awaited<ReturnType<typeof f.fork>>>()
+    f.fork.mockImplementationOnce(() => fork.promise)
+    const asked = f.btw.ask(ref(), 'side')
+    const retired = expect(asked).rejects.toBeInstanceOf(RemoteBtwSupersededError)
+    await flush()
+    if (replacement === 'generation') f.setGeneration(2)
+    else if (replacement === 'binding') {
+      const parent = f.references.at(-1)!
+      Reflect.set(parent, 'binding', { ...parent.binding })
+    } else await f.registry.detach(HostKey('one'))
+    fork.resolve({ ok: true, value: { sessionId: childId, historyFloorSeq: 37 } })
+    await retired
+    expect(f.selectModel).not.toHaveBeenCalled()
+    expect(f.prompt).not.toHaveBeenCalled()
+    expect(f.cancel).not.toHaveBeenCalled()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('does not acquire a parent or call the Host for a pre-aborted invocation', async () => {
+    const f = await fixture()
+    const retained = f.references.length
+    await expect(f.btw.ask(ref(), 'side', { signal: AbortSignal.abort() })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(f.references).toHaveLength(retained)
+    expect(f.fork).not.toHaveBeenCalled()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('keeps the current view and pending question intact when a newer invocation is already aborted', async () => {
+    const f = await fixture()
+    const opened = await f.btw.ask(ref(), 'existing')
+    if (!opened.ok) throw opened.error
+    const active = opened.value.view.reference
+    await expect(f.btw.ask(ref(), 'cancelled', { signal: AbortSignal.abort() })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(f.btw.current()).toEqual({ parent: ref(), child: ref('one', childId) })
+    expect(active.release).not.toHaveBeenCalled()
+    expect(f.fork).toHaveBeenCalledOnce()
+    const fork = deferred<Awaited<ReturnType<typeof f.fork>>>()
+    f.fork.mockImplementationOnce(() => fork.promise)
+    const pending = f.btw.ask(ref(), 'pending')
+    await flush()
+    await expect(f.btw.ask(ref(), 'also cancelled', { signal: AbortSignal.abort() })).rejects.toMatchObject({ name: 'AbortError' })
+    fork.resolve({ ok: true, value: { sessionId: childId, historyFloorSeq: 37 } })
+    expect((await pending).ok).toBe(true)
+    expect(f.prompt).toHaveBeenCalledTimes(2)
+    expect(f.cancel).not.toHaveBeenCalled()
     await f.btw.dispose()
     await f.registry.detach(HostKey('one'))
   })
