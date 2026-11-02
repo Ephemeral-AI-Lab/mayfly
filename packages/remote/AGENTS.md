@@ -71,6 +71,14 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   environment-owned keys remain intact when a profile is removed. Authorization
   answers reach the Host only after the shared UI acknowledges the answer action;
   dismissal, detach, and reconnect retire outstanding prompts and discovery.
+- User questions use the shared reference wizard and plan-review card. Live
+  questions own their native waterfall and timed foreground claim; continued
+  questions read the native whole projection and queued replies before an
+  explicit native answer. Escape hides timed/continued drafts without closing
+  or settling them. Exact Host, Session binding, and connection generation
+  fence acknowledgement and late results; reconnect retires every old card
+  until a new native projection update. Native foreground claims release once,
+  including abort, detach, and replacement races.
 - Theme/language pickers, settings rail, and permission decision lane use the
   shared reference wire builders. The settings rail submits both native
   descriptor and field-projection revisions; a conflict never refreshes and

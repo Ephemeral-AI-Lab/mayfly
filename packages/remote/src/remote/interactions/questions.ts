@@ -31,6 +31,7 @@ interface QuestionCard {
   readonly client: HostClient
   readonly ref: SessionRef
   readonly binding: SessionBinding
+  readonly connectionGeneration: number
   questions: Questions
   readonly callId: QuestionCallId | undefined
   state: 'open' | 'continued'
@@ -111,11 +112,20 @@ class RemoteQuestionController {
     for (const client of attached) {
       if (this.listeners.has(client)) continue
       const controller = this
-      const dispose = client.remote.$on('user-questions/request', function (this: Context, request: QuestionRequest, next: () => Promise<QuestionAnswer>) {
+      const offRequest = client.remote.$on('user-questions/request', function (this: Context, request: QuestionRequest, next: () => Promise<QuestionAnswer>) {
         const sessionId = client.sessions.scopeOf(this)
         return controller.receive(client, sessionId, request, next)
       })
-      this.listeners.set(client, dispose)
+      let generation = client.state.getSnapshot().generation
+      const offState = client.state.subscribe(() => {
+        const next = client.state.getSnapshot().generation
+        if (next === generation) return
+        generation = next
+        // Reconnection retires old answers. Wait for the native projection
+        // baseline to publish before presenting continued questions again.
+        this.retireClient(client)
+      })
+      this.listeners.set(client, () => { offRequest(); offState() })
     }
     this.reconcileProjection()
   }
@@ -126,7 +136,7 @@ class RemoteQuestionController {
     request: QuestionRequest,
     next: () => Promise<QuestionAnswer>,
   ): Promise<QuestionAnswer> {
-    if (sessionId === undefined || request.questions.length === 0) return next()
+    if (this.disposed || sessionId === undefined || request.questions.length === 0) return next()
     const ref: SessionRef = { host: client.key, sessionId }
     const current = this.options.hosts.current()
     if (!isRemoteFeatureSelection(current, client, ref)) return next()
@@ -167,8 +177,11 @@ class RemoteQuestionController {
     waterfall.signal = signal
     let claim: OfficialQuestionWait | undefined
     let claimEnded: Promise<never> | undefined
+    let claimReleased = false
     let overlay: Overlay | undefined
     const releaseClaim = async (): Promise<void> => {
+      if (claimReleased) return
+      claimReleased = true
       waterfall.lifetime.abort()
       claim?.dispose()
       if (claimEnded !== undefined) await Promise.allSettled([claimEnded])
@@ -232,9 +245,8 @@ class RemoteQuestionController {
   }
 
   private showOverlay(card: QuestionCard, live: boolean): void {
-    if (card.removed) return
     if (card.overlay !== undefined) {
-      if (!card.hidden) card.overlay.reveal()
+      card.overlay.reveal()
       return
     }
     const single = card.questions.length === 1 ? card.questions[0] : undefined
@@ -244,7 +256,7 @@ class RemoteQuestionController {
     card.hidden = false
     card.overlay = requestOverlay<QuestionAnswer | typeof DELEGATE>(this.options.ctx, {
       id,
-      title: () => review ? single.header ?? this.options.t('Plan review') : this.options.t('Questions'),
+      title: this.options.t('Questions'),
       scope: { kind: 'session', sessionId: card.ref.sessionId },
       isCurrent: () => this.isCurrent(card),
       subscribeLocale: this.options.subscribeLocale,
@@ -270,10 +282,9 @@ class RemoteQuestionController {
     try {
       const answer = await result
       if (answer === DELEGATE || !this.isCurrent(card) || card.state !== 'continued' || this.queued(card)) return
-      const callId = card.callId
-      if (callId === undefined) return
       card.answering = true
-      const accepted = await officialUserQuestions(card.client).answer(card.ref.sessionId, callId, answer)
+      // Only a native projected row can enter the continued-answer lane.
+      const accepted = await officialUserQuestions(card.client).answer(card.ref.sessionId, card.callId!, answer)
       if (!accepted.ok) throw new Error(accepted.error.message)
       if (!accepted.value) throw new Error('The question is no longer waiting for an answer')
       if (card.waterfall !== undefined || !this.isCurrent(card)) return
@@ -298,10 +309,7 @@ class RemoteQuestionController {
     }
     previous?.stop()
     this.projected = undefined
-    for (const client of [...this.cards.keys()]) {
-      if (client !== previous?.client) this.retireClient(client)
-      else for (const card of [...(this.cards.get(client)?.values() ?? [])]) this.removeCard(card)
-    }
+    for (const client of [...this.cards.keys()]) this.retireClient(client)
     if (current === undefined) return
     const questions = current.binding.session.projections.faceOf('userQuestions')
     const inbox = current.binding.session.projections.faceOf('inbox')
@@ -358,7 +366,7 @@ class RemoteQuestionController {
   ): QuestionCard {
     const key = callId === undefined ? `anonymous:${String(++this.sequence)}` : this.cardKey(ref.sessionId, callId)
     const card: QuestionCard = {
-      key, client, ref, binding, questions: freezeWire(questions), callId,
+      key, client, ref, binding, connectionGeneration: client.state.getSnapshot().generation, questions: freezeWire(questions), callId,
       state: 'open', hidden: false, removed: false, answering: false,
     }
     const cards = this.cards.get(client) ?? new Map<string, QuestionCard>()
@@ -405,6 +413,7 @@ class RemoteQuestionController {
     const current = this.options.hosts.current()
     return !this.disposed && !card.removed
       && this.options.hosts.list().includes(card.client)
+      && card.client.state.getSnapshot().generation === card.connectionGeneration
       && isRemoteFeatureSelection(current, card.client, card.ref)
       && current.binding === card.binding
   }

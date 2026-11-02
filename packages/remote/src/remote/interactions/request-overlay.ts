@@ -18,7 +18,7 @@ export type RemoteRequestCancellation = 'dismiss' | 'abort' | 'unload' | 'stale'
 
 interface RemoteRequestOverlayOptions<Result> {
   readonly id: string
-  readonly title: string | (() => string)
+  readonly title: string
   readonly scope: MayflyUiScope
   readonly isCurrent: () => boolean
   readonly subscribeLocale: (listener: () => void) => () => void
@@ -34,7 +34,6 @@ interface RemoteRequestOverlayOptions<Result> {
   readonly view: () => MayflyUiNode
   readonly answer: (event: MayflyUiActionEvent) => Result | undefined
   readonly onAction?: (event: MayflyUiActionEvent, context: MayflyUiEventContext) => MayflyUiActionReply | undefined | Promise<MayflyUiActionReply | undefined>
-  readonly accepted?: (answer: Result) => void
   readonly cancelled: (reason: RemoteRequestCancellation) => Result
 }
 
@@ -70,7 +69,7 @@ export function requestOverlay<Result>(ctx: Context, options: RemoteRequestOverl
     if (options.signal?.aborted) { stop('abort'); return }
     if (!options.isCurrent()) { stop('stale'); return }
     const source = [{ resourceId: options.id, revision: 1 }]
-    const frame = (child: MayflyUiNode): MayflyUiNode => options.bare === true ? child : { kind: 'surface', chrome: 'overlay', padding: 1, title: typeof options.title === 'string' ? options.title : options.title(), child }
+    const frame = (child: MayflyUiNode): MayflyUiNode => options.bare === true ? child : { kind: 'surface', chrome: 'overlay', padding: 1, title: options.title, child }
     const snapshot = (): MayflyUiNode => frame(options.view())
     handle = ctx.mayflyOverlays.open({
       id: options.id,
@@ -82,13 +81,14 @@ export function requestOverlay<Result>(ctx: Context, options: RemoteRequestOverl
       ...options.contentScroll === undefined ? {} : { contentScroll: options.contentScroll },
       ...options.armMs === undefined ? {} : { armMs: options.armMs },
       onEvent: { action: async (event, context) => {
-        if (settled || context.signal.aborted) return { kind: 'cancelled' }
-        if (options.signal?.aborted || !options.isCurrent()) { stop(options.signal?.aborted ? 'abort' : 'stale'); return { kind: 'cancelled' } }
+        // The native UI endpoint invokes only live, uncancelled actions. Its
+        // generation also fences completion after an asynchronous onAction.
+        if (!options.isCurrent()) { stop('stale'); return { kind: 'cancelled' } }
         if (event.kind === 'dismiss') {
           if (options.hideOnDismiss === true) {
             handle?.hide()
             options.onHidden?.()
-            return { kind: 'cancelled' }
+            return { kind: 'cancelled', dismiss: false }
           }
           stop('dismiss')
           return { kind: 'cancelled' }
@@ -97,7 +97,7 @@ export function requestOverlay<Result>(ctx: Context, options: RemoteRequestOverl
         const value = options.answer(event)
         if (value === undefined) {
           const reply = await options.onAction?.(event, context)
-          if (reply !== undefined && 'node' in reply && reply.node !== undefined && reply.node !== null && reply.node.kind !== 'surface') return { ...reply, node: frame(reply.node) }
+          if (reply !== undefined && 'node' in reply && reply.node.kind !== 'surface') return { ...reply, node: frame(reply.node) }
           return reply ?? { kind: 'completed' }
         }
         candidate = { operationId: context.operationId, value, signal: context.signal }
@@ -105,13 +105,12 @@ export function requestOverlay<Result>(ctx: Context, options: RemoteRequestOverl
       } },
     }, snapshot())
     const offRegistry = ctx.mayflyOverlays.subscribe(delta => {
-      if (delta.kind === 'remove' && delta.id === options.id && handle?.closed) { stop(options.signal?.aborted ? 'abort' : 'unload'); return }
+      if (delta.kind === 'remove' && delta.id === options.id && handle?.closed) { stop('unload'); return }
       if (delta.kind !== 'upsert' || delta.entry.id !== options.id || delta.entry.update.reason !== 'ack' || delta.entry.update.operationId !== candidate?.operationId) return
-      if (options.signal?.aborted || !options.isCurrent()) { stop(options.signal?.aborted ? 'abort' : 'stale'); return }
+      if (!options.isCurrent()) { stop('stale'); return }
       const value = candidate.value
       finish(() => {
         if (options.signal?.aborted || !options.isCurrent()) return options.cancelled(options.signal?.aborted ? 'abort' : 'stale')
-        options.accepted?.(value)
         return value
       })
     })
@@ -130,6 +129,9 @@ export function requestOverlay<Result>(ctx: Context, options: RemoteRequestOverl
       options.signal?.removeEventListener('abort', onAbort)
       cancel()
     })
+    // A provider or locale subscriber can synchronously abort while opening;
+    // installing the listener alone would miss that already-fired event.
+    if (options.signal?.aborted) onAbort()
   })
   return { result, cancel: () => cancel(), refresh: () => refresh(), reveal: () => reveal() }
 }
