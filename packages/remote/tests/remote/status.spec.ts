@@ -133,4 +133,18 @@ describe('mountRemoteStatus', () => {
     await mounted.handle.dispose()
     await mounted.owner.dispose()
   })
+
+  it('accepts native null model routes on first Session creation and retains the advertised default effort', async () => {
+    const fallback = { ...facts(), reasoningEffort: 'max' }
+    const mounted = await mount({ presentation: fallback, values: { modelSelection: { next: null, lastUsed: null } } })
+    try {
+      expect(mounted.rows(120)[0]).toContain('deepseek/deepseek-chat Max')
+      expect(() => mounted.update({ presentation: fallback, values: { modelSelection: null } })).not.toThrow()
+      expect(mounted.rows(120)[0]).toContain('Max')
+      mounted.update({ presentation: fallback, values: { modelSelection: { next: null, lastUsed: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' } } } })
+      expect(mounted.rows(120)[0]).toContain('High')
+      mounted.update({ presentation: fallback, values: { modelSelection: { next: { provider: 'deepseek', model: 'deepseek-chat' }, lastUsed: null } } })
+      expect(mounted.rows(120)[0]).not.toContain('Max')
+    } finally { await mounted.owner.dispose() }
+  })
 })
