@@ -79,7 +79,10 @@ describe('Remote configuration composition', () => {
     expect(feature.settings.open).toHaveBeenCalledWith(undefined, f.signal)
     expect(feature.permissions.open).toHaveBeenCalledWith(f.signal)
     expect(feature.presets.open).toHaveBeenCalledWith(f.signal)
-    for (const name of ['account', 'settings', 'permissions', 'presets', 'onboarding']) await expect(f.run(name, 'unexpected')).rejects.toThrow(`Usage: /${name}`)
+    await f.run('settings', 'ignored arguments'); await f.run('permissions', 'ignored arguments')
+    expect(feature.settings.open).toHaveBeenLastCalledWith(undefined, f.signal)
+    expect(feature.permissions.open).toHaveBeenLastCalledWith(f.signal)
+    for (const name of ['account', 'presets', 'onboarding']) await expect(f.run(name, 'unexpected')).rejects.toThrow(`Usage: /${name}`)
   })
 
   it('does not dispatch any cancelled configuration picker or language write', async () => {
@@ -116,7 +119,7 @@ describe('Remote configuration composition', () => {
     await f.run('theme', 'light'); expect(feature.preferences.applyTheme).toHaveBeenCalledWith(f.current, 'light', f.signal)
     await f.run('theme', 'custom /local/palette.json'); expect(feature.preferences.applyCustomTheme).toHaveBeenCalledWith(f.current, '/local/palette.json', 'dark', f.signal)
     await f.run('theme', 'custom /local/palette.json light'); expect(feature.preferences.applyCustomTheme).toHaveBeenCalledWith(f.current, '/local/palette.json', 'light', f.signal)
-    for (const input of ['custom', 'custom /local/palette.json light extra', 'dark extra']) await expect(f.run('theme', input)).rejects.toThrow('usage: /theme')
+    for (const input of ['custom', 'custom /local/palette.json light extra', 'dark extra', 'missing', 'DARK']) await expect(f.run('theme', input)).rejects.toThrow('usage: /theme')
     await f.run('language'); expect(feature.preferences.openLocale).toHaveBeenCalledWith(undefined, f.signal)
     await f.run('language', ' zh '); expect(feature.preferences.applyLocale).toHaveBeenCalledWith(f.current, 'zh', f.signal)
     f.currentClient(undefined); f.activeClient(undefined); f.list([])

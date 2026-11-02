@@ -187,6 +187,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   provenance. An adapter-default request header never creates an explicit pin;
   the shared reference picker renders that native distinction. Newer catalog
   refreshes retire both successful and failed results of older refreshes.
+  Direct `/model` input resolves exact case-sensitive model ids, preferring the
+  current provider when ids repeat. Only the exact `/effort default` argument
+  restores provider-default provenance; effort ids and labels otherwise use
+  the native case-insensitive matching.
   A prompt already closed during mounting must acquire no later ACK observer.
   Retrying profile setup after successful sign-in reuses that exact authorization
   owner and never starts another native authorization attempt.
@@ -222,6 +226,8 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   caller's cancellation and Host generation. `/theme custom` reads its palette
   through the Frontend-local public custom-theme provider; swaps and reloads
   retire that provider exactly as they retire a builtin palette.
+  `/settings` and `/permissions` ignore command arguments as the native handlers
+  do, while `/theme` retains the reference case-sensitive theme parser.
 - Raw settings editing uses `createRemoteSettingsEditor` with core-owned
   `screen.suspend`. Editing happens locally; writes use the original Host
   document revision and reject results after cancellation or selection change.

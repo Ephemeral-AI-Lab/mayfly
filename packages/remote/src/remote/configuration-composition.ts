@@ -14,6 +14,7 @@ import {
   createRemoteConfigurationFeatures,
   type RemoteConfigurationMountContext,
 } from './features/configuration.ts'
+import { REMOTE_THEMES } from './features/presentation.ts'
 import { remoteClientVersion } from './features/version.ts'
 
 /** Options owned by the integration layer mounting this composition. */
@@ -104,16 +105,14 @@ export function mountRemoteConfigurationComposition(
     base.commands.register({
       name: 'settings', scope: 'sessionless',
       description: 'Edit user settings by namespace',
-      execute: async (rawInput, signal) => {
-        if (rawInput.trim() !== '') throw usage('settings')
+      execute: async (_rawInput, signal) => {
         await features.settings.open(undefined, signal)
       },
     }),
     base.commands.register({
       name: 'permissions', scope: 'sessionless',
       description: 'Choose the permission preset',
-      execute: async (rawInput, signal) => {
-        if (rawInput.trim() !== '') throw usage('permissions')
+      execute: async (_rawInput, signal) => {
         await features.permissions.open(signal)
       },
     }),
@@ -143,7 +142,7 @@ export function mountRemoteConfigurationComposition(
           await features.preferences.applyCustomTheme(currentClient(), path, base, signal)
           return
         }
-        if (args.length > 0) throw new Error('usage: /theme [<theme>|auto|custom <path> [<base theme>]]')
+        if (!REMOTE_THEMES.some(option => option.key === theme) || args.length > 0) throw new Error('usage: /theme [<theme>|auto|custom <path> [<base theme>]]')
         await features.preferences.applyTheme(currentClient(), theme, signal)
       },
     }),

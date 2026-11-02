@@ -153,12 +153,12 @@ export class RemoteModelsController extends RemoteFeatureController {
     try {
       const models = target.catalog.groups.find(group => group.id === target.current.provider)?.models ?? []
       if (models.length === 0) {
-        if (target.operation.valid()) this.context.notice.set(this.context.t('the current provider advertises no models'))
+        if (target.operation.valid()) this.context.notice.set(this.context.t('the current provider advertises no models'), 'warning')
         return
       }
       const current = models.findIndex(model => model.id === target.current.model)
       const model = models[current < 0 ? 0 : (current + 1) % models.length]!
-      await this.commit(target, { provider: target.current.provider, model: model.id })
+      await this.commit(target, { provider: target.current.provider, model: model.id }, 'warning')
     } finally { target.operation.dispose() }
   }
 
@@ -168,17 +168,18 @@ export class RemoteModelsController extends RemoteFeatureController {
     if (target === undefined) return
     const rows = remoteModelRows(target.catalog, target.current, target.details)
       .filter(row => providerFilter === undefined || row.provider === providerFilter)
-    const query = rawInput.trim().toLowerCase()
-    if (query !== '') {
-      const exact = rows.filter(row => `${row.provider}/${row.model.id}`.toLowerCase() === query
-        || row.model.id.toLowerCase() === query || row.model.name.toLowerCase() === query)
-      const matched = exact.length === 0 ? rows.filter(row => `${row.provider}/${row.model.id}`.toLowerCase().includes(query)) : exact
-      if (matched.length !== 1) {
-        if (target.operation.valid()) this.context.notice.set(matched.length === 0 ? `Unknown model: ${rawInput.trim()}` : `Ambiguous model: ${rawInput.trim()}`)
+    const argument = rawInput.trim()
+    if (argument !== '') {
+      const exact = rows.filter(row => row.model.id === argument)
+      const chosen = exact.length === 1 ? exact[0] : exact.find(row => row.provider === target.current.provider)
+      if (chosen === undefined) {
+        if (target.operation.valid()) this.context.notice.set(exact.length === 0
+          ? `unknown model: ${argument}`
+          : `ambiguous model id: ${argument} (${exact.map(row => `${row.provider}/${row.model.id}`).join(', ')})`, 'error')
         target.operation.dispose()
         return
       }
-      await this.commit(target, { provider: matched[0]!.provider, model: matched[0]!.model.id })
+      await this.commit(target, { provider: chosen.provider, model: chosen.model.id })
       target.operation.dispose()
       return
     }
@@ -192,18 +193,20 @@ export class RemoteModelsController extends RemoteFeatureController {
     const row = remoteModelRows(target.catalog, target.current, target.details)
       .find(candidate => candidate.provider === target.current.provider && candidate.model.id === target.current.model)
     if (row === undefined || row.efforts.length === 0) {
-      if (target.operation.valid()) this.context.notice.set('the current model exposes no reasoning efforts')
+      if (target.operation.valid()) this.context.notice.set('the current model exposes no reasoning efforts', 'error')
       target.operation.dispose()
       return
     }
-    const query = rawInput.trim().toLowerCase()
+    const argument = rawInput.trim()
+    const query = argument.toLowerCase()
+    const reset = argument === 'default'
     if (query !== '') {
-      const match = row.efforts.find(level => level.toLowerCase() === query)
-        ?? row.model.reasoning?.efforts.find(level => level.name.toLowerCase() === query)?.id
-      if (query !== 'default' && match === undefined) {
-        this.context.notice.set(`unsupported thinking effort "${rawInput.trim()}" for ${row.model.id}: available: default, ${row.efforts.join(', ')}`)
+      const match = row.efforts.find(level => level.toLowerCase() === query
+        || row.model.reasoning?.efforts.find(effort => effort.id === level)?.name.toLowerCase() === query)
+      if (!reset && match === undefined) {
+        this.context.notice.set(`unsupported thinking effort "${rawInput.trim()}" for ${row.model.id}: available: default, ${row.efforts.join(', ')}`, 'error')
       } else {
-        await this.commit(target, { provider: row.provider, model: row.model.id, ...query === 'default' ? {} : { reasoningEffort: ReasoningEffortId(String(match)) } })
+        await this.commit(target, { provider: row.provider, model: row.model.id, ...reset ? {} : { reasoningEffort: ReasoningEffortId(String(match)) } })
       }
       target.operation.dispose()
       return
@@ -257,7 +260,7 @@ export class RemoteModelsController extends RemoteFeatureController {
       this.catalogObserved?.(client, catalog)
       return { operation, selection, client, catalog, current, details }
     } catch (error) {
-      if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
+      if (operation.valid()) this.context.notice.set(remoteErrorMessage(error), 'error')
       operation.dispose()
       return undefined
     }
@@ -269,7 +272,7 @@ export class RemoteModelsController extends RemoteFeatureController {
     catch { return undefined }
   }
 
-  private async commit(target: RemoteModelTarget, next: ModelSelection): Promise<MayflyUiActionReply> {
+  private async commit(target: RemoteModelTarget, next: ModelSelection, failureSeverity: 'error' | 'warning' = 'error'): Promise<MayflyUiActionReply> {
     if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
     try {
       const previous = target.selection === undefined
@@ -286,7 +289,7 @@ export class RemoteModelsController extends RemoteFeatureController {
     } catch (error) {
       if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
       const message = remoteErrorMessage(error)
-      this.context.notice.set(message)
+      this.context.notice.set(message, failureSeverity)
       return { kind: 'failed', message }
     }
   }
@@ -321,7 +324,7 @@ export class RemoteModelsController extends RemoteFeatureController {
         currentCatalog = catalog
         rows = remoteModelRows(catalog, current, details).filter(row => providerFilter === undefined || row.provider === providerFilter)
         panel.refresh()
-      } catch (error) { if (target.operation.valid() && generation === revision) this.context.notice.set(remoteErrorMessage(error)) }
+      } catch (error) { if (target.operation.valid() && generation === revision) this.context.notice.set(remoteErrorMessage(error), 'error') }
     }
     panel = openRemoteBrowser(this.context, {
       id: 'mayfly.models', scope: this.scope(target), signal: target.operation.signal,

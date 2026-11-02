@@ -384,26 +384,35 @@ describe('RemoteModelsController reference wire UI', () => {
     test.controller.dispose()
   })
 
-  it('supports exact model names and detects missing or ambiguous queries', async () => {
-    const test = fixture({ catalog: catalog({ groups: [
-      { id: 'first', name: 'First', models: [model('chat')] },
+  it('accepts only exact model ids, resolves duplicates under the current provider, and reports exact ambiguous candidates', async () => {
+    const advertised = catalog({ groups: [
+      { id: 'first', name: 'First', models: [model('chat', { name: 'Display Chat' }), model('solo')] },
       { id: 'second', name: 'Second', models: [model('chat')] },
-    ] }) })
+    ] })
+    const test = fixture({ catalog: advertised })
     await test.controller.open('chat')
-    expect(test.notice.set).toHaveBeenCalledWith('Ambiguous model: chat')
-    await test.controller.open('missing')
-    expect(test.notice.set).toHaveBeenCalledWith('Unknown model: missing')
-    await test.controller.open('first/chat')
-    expect(test.selectModel).toHaveBeenCalledWith({ sessionId: test.ref.sessionId, provider: 'first', model: 'chat' })
+    expect(test.notice.set).toHaveBeenCalledWith('ambiguous model id: chat (first/chat, second/chat)', 'error')
+    for (const argument of ['missing', 'CHAT', 'Display Chat', 'first/chat', 'cha']) {
+      await test.controller.open(argument)
+      expect(test.notice.set).toHaveBeenCalledWith(`unknown model: ${argument}`, 'error')
+    }
+    expect(test.selectModel).not.toHaveBeenCalled()
+    await test.controller.open(' solo ')
+    expect(test.selectModel).toHaveBeenCalledWith({ sessionId: test.ref.sessionId, provider: 'first', model: 'solo' })
     expect(test.opened).toHaveLength(0)
     test.controller.dispose()
+    const duplicate = fixture({ catalog: advertised, projection: { next: selection('second', 'other', 'high') } })
+    await duplicate.controller.open('chat')
+    expect(duplicate.selectModel).toHaveBeenCalledWith({ sessionId: duplicate.ref.sessionId, provider: 'second', model: 'chat' })
+    expect(duplicate.notice.set).toHaveBeenCalledWith('Switched to chat (second)', 'success')
+    duplicate.controller.dispose()
   })
 
   it('does not create a default picker without its Host capability or an attached Host', async () => {
     const unavailable = fixture({ current: false, withDefaultModel: false })
     await unavailable.controller.open()
     expect(unavailable.opened).toHaveLength(0)
-    expect(unavailable.notice.set).toHaveBeenCalledWith('Selecting the default model requires the Host defaultModel capability.')
+    expect(unavailable.notice.set).toHaveBeenCalledWith('Selecting the default model requires the Host defaultModel capability.', 'error')
     unavailable.controller.dispose()
     const detached = fixture({ attached: false })
     await detached.controller.open()
@@ -425,8 +434,10 @@ describe('RemoteModelsController reference wire UI', () => {
     expect(test.notice.set).toHaveBeenLastCalledWith('Already using chat (deepseek)', 'success')
     await test.controller.effort('Smart')
     expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'high' })
+    await test.controller.effort('DEFAULT')
+    expect(test.notice.set).toHaveBeenCalledWith('unsupported thinking effort "DEFAULT" for chat: available: default, low, high', 'error')
     await test.controller.effort('unsupported')
-    expect(test.notice.set).toHaveBeenCalledWith(expect.stringContaining('unsupported thinking effort'))
+    expect(test.notice.set).toHaveBeenCalledWith(expect.stringContaining('unsupported thinking effort'), 'error')
     test.controller.dispose()
   })
 
@@ -434,7 +445,18 @@ describe('RemoteModelsController reference wire UI', () => {
     const test = fixture()
     await test.controller.effort()
     expect(test.opened).toHaveLength(0)
-    expect(test.notice.set).toHaveBeenCalledWith('the current model exposes no reasoning efforts')
+    expect(test.notice.set).toHaveBeenCalledWith('the current model exposes no reasoning efforts', 'error')
+    test.controller.dispose()
+  })
+
+  it('resolves overlapping effort ids and labels in advertised order and keeps uppercase default explicit when offered', async () => {
+    const test = fixture({ catalog: catalog({ groups: [{ id: 'deepseek', name: 'DeepSeek', models: [model('chat', { reasoning: { efforts: [
+      { id: 'first', name: 'Second' }, { id: 'second', name: 'Later' }, { id: 'custom', name: 'DEFAULT' },
+    ] } })] }] }) })
+    await test.controller.effort('second')
+    expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'first' })
+    await test.controller.effort('DEFAULT')
+    expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'custom' })
     test.controller.dispose()
   })
 
@@ -486,7 +508,7 @@ describe('RemoteModelsController reference wire UI', () => {
     const test = fixture({ withSource: false })
     test.modelCatalog.mockRejectedValueOnce(new Error('catalog unavailable'))
     await test.controller.open()
-    expect(test.notice.set).toHaveBeenCalledWith('catalog unavailable')
+    expect(test.notice.set).toHaveBeenCalledWith('catalog unavailable', 'error')
     expect(await test.controller.catalog(test.client)).toMatchObject({ groups: expect.any(Array) })
     expect(await test.controller.select({ ...test.ref, host: HostKey('other') }, selection('deepseek', 'chat'))).toBeUndefined()
     expect(await test.controller.select(test.ref, selection('deepseek', 'chat'))).toEqual(selection('deepseek', 'chat'))
@@ -539,7 +561,7 @@ describe('RemoteModelsController reference wire UI', () => {
     await test.act({ kind: 'dismiss' })
     test.projection.getSnapshot.mockReturnValue({ next: selection('deepseek', 'gone') })
     await test.controller.effort()
-    expect(test.notice.set).toHaveBeenCalledWith('the current model exposes no reasoning efforts')
+    expect(test.notice.set).toHaveBeenCalledWith('the current model exposes no reasoning efforts', 'error')
     test.controller.dispose()
   })
 
@@ -623,7 +645,7 @@ describe('RemoteModelsController reference wire UI', () => {
     expect(test.notice.set).not.toHaveBeenCalled()
     test.modelCatalog.mockRejectedValueOnce(new Error('current refresh failed'))
     await test.act({ kind: 'activate', actionId: 'refresh' })
-    expect(test.notice.set).toHaveBeenCalledExactlyOnceWith('current refresh failed')
+    expect(test.notice.set).toHaveBeenCalledExactlyOnceWith('current refresh failed', 'error')
     test.controller.dispose()
   })
 
@@ -714,10 +736,20 @@ describe('reference Alt+M provider cycle', () => {
     const test = fixture({ catalog: catalog({ groups }) })
     try {
       await test.controller.cycle()
-      expect(test.notice.set).toHaveBeenCalledWith('the current provider advertises no models')
+      expect(test.notice.set).toHaveBeenCalledWith('the current provider advertises no models', 'warning')
       expect(test.selectModel).not.toHaveBeenCalled()
       expect(test.opened).toEqual([])
     } finally { test.controller.dispose() }
+  })
+
+  it('keeps a failed cycle at native warning severity without opening a picker or retrying', async () => {
+    const test = fixture({ catalog: advertised })
+    test.selectModel.mockRejectedValueOnce(new Error('switch refused'))
+    await test.controller.cycle()
+    expect(test.notice.set).toHaveBeenLastCalledWith('switch refused', 'warning')
+    expect(test.selectModel).toHaveBeenCalledOnce()
+    expect(test.opened).toEqual([])
+    test.controller.dispose()
   })
 
   it('discards a catalog response from a retired selection and all keys after unload', async () => {
