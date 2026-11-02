@@ -155,7 +155,7 @@ export function apply(ctx: Context, config: Config = {}): void {
             if (generation === mine) progress = { running: false, done: 0, total: 0, skipped: 0, failed: 0, error: message }
           }).finally(() => {
             if (generation !== mine || closed) return
-            progress = progress === undefined ? undefined : { ...progress, running: false }
+            progress = { ...progress!, running: false }
             publish()
           })
         }

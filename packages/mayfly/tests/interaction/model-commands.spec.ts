@@ -835,6 +835,22 @@ describe('model-family commands', () => {
 })
 
 describe('cycleSessionModel (the Alt+M hotkey)', () => {
+  it('keeps a committed model when its advisory thinking-default lookup rejects', async () => {
+    const { ctx, writes } = await mount()
+    vi.spyOn(ctx.llm, 'resolveModelInfo').mockRejectedValueOnce(new Error('model information unavailable'))
+    await cycleSessionModel(ctx, modelListCache)
+    expect(writes).toEqual([{ provider: 'mock', model: 'mock-pro' }])
+    expect(notices).toEqual(['Switched to mock-pro (mock)'])
+  })
+
+  it('contains a consumer reporter failure after the native model commit', async () => {
+    const { ctx, writes } = await mount()
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    await cycleSessionModel(ctx, modelListCache, () => { throw new Error('reporter withdrawn') })
+    expect(writes).toEqual([{ provider: 'mock', model: 'mock-pro' }])
+    expect(warn).toHaveBeenCalledWith('model cycle commit failed: reporter withdrawn')
+  })
+
   it('cycles to the provider\'s next model through the shared commit path', async () => {
     const { ctx, writes, saveSelection } = await mount()
     await cycleSessionModel(ctx, modelListCache)

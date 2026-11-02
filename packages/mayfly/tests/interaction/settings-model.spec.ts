@@ -28,6 +28,12 @@ describe('native settings projections', () => {
     expect(fields.map(field => field.id)).not.toContain(settingsField('hidden').fieldId)
   })
 
+  it('projects an unset required boolean as false and preserves an inherited reset', () => {
+    const projection = project(Schema.object({ required: Schema.boolean().required(), optional: Schema.boolean() }), {}, { base: { optional: true } })
+    expect(projection.bindings.get(settingsField('required').fieldId)!.field).toMatchObject({ kind: 'toggle', value: false })
+    expect(projection.bindings.get(settingsField('optional').fieldId)!.field).toMatchObject({ kind: 'toggle', value: null, resetValue: true })
+  })
+
   it('appends off-list stored values as readable options instead of raw encoded ids', () => {
     const schema = Schema.object({ choice: Schema.union(['a', 'b']), many: Schema.array(Schema.union(['a', 'b'])) })
     const projection = project(schema, { choice: 'custom', many: ['a', 'deleted'] })

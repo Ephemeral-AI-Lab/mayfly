@@ -100,7 +100,7 @@ export function installRetractionService(
   const persist = (entry: PendingRetraction, endSeq: number): void => {
     queueMicrotask(() => {
       const nodes = entry.session.surface.nodes.filter(seq => seq > entry.startSeq && seq < endSeq)
-      /* a matched human surface message guarantees at least one node before turn/end */
+      /* Another native listener may replace the surface before this queued write. */
       if (nodes.length === 0) return
       try {
         // Harness forbids source citations on assistant messages (they embed

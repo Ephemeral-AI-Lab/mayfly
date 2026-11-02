@@ -235,13 +235,13 @@ export function apply(ctx: Context): void {
       ] }),
     ]) })
     const publish = (force: boolean): void => {
-      /* every publish caller is closed-fenced already; these checks only narrow the handle for the view write and fence a host-driven close race */
-      if (closed || handle === undefined || handle.closed) return
+      /* A native stop may finish after the browser's lifetime ended. */
+      if (closed) return
       const next = withLiveMetrics(ctx, listed, workflowLabels)
       if (force || !isDeepStrictEqual(next, entries)) {
         entries = next
         byId = new Map(next.map(entry => [String(entry.id), entry]))
-        handle.set(view())
+        handle!.set(view())
       }
       const live = next.some(entry => entry.kind === 'child' && entry.activity === 'running')
       if (live && timer === undefined) { timer = setInterval(() => publish(true), AGENTS_TICK_MS); timer.unref() }
@@ -275,6 +275,7 @@ export function apply(ctx: Context): void {
       } catch { /* the native stop already completed; retain the last readable tree */ }
       return { kind: 'completed', feedback: { severity: 'success', message: result.text } }
     } } }, view(), { reopen: 'replace', onClosed: teardown })
+    if (closed) return { kind: 'success' }
     disposers.push(ctx.sessionProjections.onChanged(session => {
       if (!closed && byId.has(String(session.id))) publish(false)
     }))
