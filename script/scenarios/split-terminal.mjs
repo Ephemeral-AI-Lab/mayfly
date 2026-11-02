@@ -99,6 +99,11 @@ export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, st
   } catch (error) {
     failures.push(redactSplitOutput(error instanceof Error ? error.stack ?? error.message : String(error), startupUrl))
   } finally {
+    // A failed startup may already be draining input in Core's finally block.
+    // Release the frozen presentation clock so its real exception can reach
+    // stderr before the verification process kills an otherwise stuck PTY.
+    await beforeExit()
+    if (exitCode === undefined) await Promise.race([exited, sleep(250)])
     if (exitCode === undefined) terminal.kill()
     screen.dispose()
   }
