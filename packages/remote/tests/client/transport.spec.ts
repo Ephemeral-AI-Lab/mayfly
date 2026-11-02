@@ -1,7 +1,8 @@
 /** Generation, credential, URL, and teardown behavior of the Node HTTP/WS carrier. */
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RpcFetch } from '@deepseek-ai/dsh-client-connection/client'
 import { NodeConnectionTransport } from '../../src/client/transport.ts'
+import { HostTransportError } from '../../src/client/types.ts'
 import { FakeSocket } from './fake-socket.ts'
 
 function connectResponse(cookie = 'dsh=one'): Response {
@@ -399,5 +400,174 @@ describe('NodeConnectionTransport', () => {
     await expect(transport.fetch('https://other.test/api', {})).rejects.toThrow('outside the configured origin or mount')
     await expect(transport.fetch('../outside', {})).rejects.toThrow('outside the configured origin or mount')
     await transport.detach()
+  })
+})
+
+describe('Node transport dispatch and recovery guarantees', () => {
+  const transports: NodeConnectionTransport[] = []
+  afterEach(async () => { for (const transport of transports.splice(0)) await transport.detach(); vi.restoreAllMocks() })
+  const make = (options: ConstructorParameters<typeof NodeConnectionTransport>[1]) => {
+    const transport = new NodeConnectionTransport('http://127.0.0.1:3080/?token=never-log-startup-token', options)
+    transports.push(transport)
+    return transport
+  }
+
+  it('replays a string unary envelope once after a definite pre-dispatch 401, replacing its credential and retiring the old socket', async () => {
+    let connects = 0
+    const cookies: string[] = []
+    const raw = new FakeSocket()
+    const transport = make({
+      fetch: async (input, init) => {
+        if (requestUrl(input).pathname === '/connect') return connectResponse(`dsh=${String(++connects)}`)
+        cookies.push(new Headers(init.headers).get('cookie')!)
+        return new Response('native result', { status: cookies.length === 1 ? 401 : 200 })
+      },
+      createWebSocket: () => raw,
+    })
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
+    await vi.waitFor(() => { expect(connects).toBe(1) })
+    const result = await transport.fetch('api/remote', { method: 'POST', body: '{"rpcId":"one"}' })
+    expect(await result.text()).toBe('native result')
+    expect(cookies).toEqual(['dsh=1', 'dsh=2'])
+    expect(connects).toBe(2)
+    await vi.waitFor(() => { expect(raw.readyState).toBe(3) })
+    expect(transport.state.getSnapshot().generation).toBe(1)
+  })
+
+  it('bounds consecutive pre-dispatch unary 401s to one replay even with no request body', async () => {
+    let connects = 0, calls = 0
+    const transport = make({ fetch: async input => {
+      if (requestUrl(input).pathname === '/connect') return connectResponse(`dsh=${String(++connects)}`)
+      calls++
+      return new Response('unauthorized body', { status: 401 })
+    } })
+    expect((await transport.fetch('api/remote', {})).status).toBe(401)
+    expect(calls).toBe(2)
+    expect(connects).toBe(2)
+  })
+
+  it.each(['upload', 'one-shot-unary'] as const)('never replays a %s body after a pre-dispatch 401', async kind => {
+    let connects = 0, calls = 0
+    const transport = make({ fetch: async input => {
+      if (requestUrl(input).pathname === '/connect') return connectResponse(`dsh=${String(++connects)}`)
+      calls++
+      return new Response('not dispatched', { status: 401 })
+    } })
+    const result = kind === 'upload'
+      ? await transport.upload('api/upload', { method: 'POST', body: 'a one-shot upload' })
+      : await transport.fetch('api/remote', { method: 'POST', body: new Uint8Array([1, 2, 3]) })
+    expect(result.status).toBe(401)
+    expect(connects).toBe(1)
+    expect(calls).toBe(1)
+  })
+
+  it('refuses untrusted Host authorities without leaking native response bytes', async () => {
+    const transport = make({ fetch: async input => requestUrl(input).pathname === '/connect'
+      ? connectResponse()
+      : new Response('native-secret-never-surface', { status: 403 }) })
+    const failure = await transport.fetch('api/remote', {}).catch((error: unknown) => error)
+    expect(failure).toMatchObject({ code: 'forbidden' })
+    expect(String(failure)).toContain('trustedHosts')
+    expect(String(failure)).not.toContain('native-secret')
+  })
+
+  it.each(['unary', 'upload'] as const)('reports an unknown %s outcome without replaying a failed admitted request', async kind => {
+    let calls = 0
+    const transport = make({ fetch: async input => {
+      if (requestUrl(input).pathname === '/connect') return connectResponse()
+      calls++
+      throw new Error('unsafe native transport payload never-log-startup-token')
+    } })
+    const request = kind === 'unary' ? transport.fetch('api/remote', {}) : transport.upload('api/upload', {})
+    const failure = await request.catch((error: unknown) => error)
+    expect(failure).toMatchObject({ code: 'unavailable' })
+    expect(String(failure)).toContain(kind === 'unary' ? 'business outcome is unknown' : 'storage outcome is unknown')
+    expect(String(failure)).not.toContain('never-log-startup-token')
+    expect(calls).toBe(1)
+  })
+
+  it('keeps an admitted native carrier error and classifies a caller abort independently', async () => {
+    const refused = new HostTransportError('forbidden', 'safe native failure')
+    const transport = make({ fetch: async input => {
+      if (requestUrl(input).pathname === '/connect') return connectResponse()
+      throw refused
+    } })
+    await expect(transport.fetch('api/remote', {})).rejects.toBe(refused)
+    const abort = new AbortController()
+    abort.abort()
+    await expect(transport.fetch('api/remote', { signal: abort.signal })).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('reports a late rejected response as superseded after explicit reconnect and never replays it', async () => {
+    const response = Promise.withResolvers<Response>()
+    let calls = 0, sockets = 0
+    const transport = make({
+      fetch: async input => {
+        if (requestUrl(input).pathname === '/connect') return connectResponse()
+        calls++
+        return await response.promise
+      },
+      createWebSocket: () => { sockets++; return new FakeSocket() },
+    })
+    const pending = transport.fetch('api/remote', {})
+    await vi.waitFor(() => { expect(calls).toBe(1) })
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
+    await vi.waitFor(() => { expect(sockets).toBe(1) })
+    transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
+    response.reject(new Error('old-generation failure'))
+    await expect(pending).rejects.toMatchObject({ code: 'superseded' })
+    expect(calls).toBe(1)
+  })
+
+  it('waits for a late resolved admitted request during detach and rejects its old result', async () => {
+    const response = Promise.withResolvers<Response>()
+    let calls = 0
+    const transport = make({ fetch: async input => {
+      if (requestUrl(input).pathname === '/connect') return connectResponse()
+      calls++
+      return await response.promise
+    } })
+    const pending = transport.fetch('api/remote', {})
+    await vi.waitFor(() => { expect(calls).toBe(1) })
+    const closing = transport.detach()
+    response.resolve(new Response('late admitted result'))
+    await expect(pending).rejects.toMatchObject({ code: 'detached' })
+    await closing
+  })
+
+  it('handles an already closed native socket and contains subscriber exceptions without blocking another listener', async () => {
+    const closed = new FakeSocket()
+    closed.readyState = 3
+    const transport = make({ fetch: async () => connectResponse(), createWebSocket: () => closed })
+    const socket = transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
+    const observed = vi.fn()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    socket.addEventListener('close', () => { throw new Error('listener payload never-log-startup-token') })
+    socket.addEventListener('close', observed)
+    await vi.waitFor(() => { expect(observed).toHaveBeenCalledOnce() })
+    expect(error).toHaveBeenCalledExactlyOnceWith('Host WebSocket listener failed')
+    expect(transport.state.getSnapshot().status).toBe('disconnected')
+  })
+
+  it('forwards safe socket errors and stops automatic supervision after rejected startup authentication', async () => {
+    const raw = new FakeSocket()
+    const transport = make({ fetch: async () => connectResponse(), createWebSocket: () => raw })
+    const socket = transport.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')
+    const error = vi.fn()
+    socket.addEventListener('error', error)
+    await vi.waitFor(() => { expect(raw.readyState).toBe(0) })
+    await new Promise<void>(resolve => { setImmediate(resolve) })
+    raw.emit('error', {})
+    expect(error).toHaveBeenCalledWith({ error: expect.objectContaining({ code: 'unavailable' }) })
+    const denied = make({ fetch: async () => new Response(null, { status: 401 }) })
+    const terminal = vi.fn()
+    const off = denied.onTerminal(terminal)
+    await expect(denied.fetch('api/remote', {})).rejects.toMatchObject({ code: 'authentication-required' })
+    expect(terminal).toHaveBeenCalledOnce()
+    expect(() => denied.createWebSocket('ws://127.0.0.1:3080/api/remote.mux')).toThrow('startup token was rejected')
+    const alreadyTerminal = vi.fn()
+    denied.onTerminal(alreadyTerminal)()
+    expect(alreadyTerminal).toHaveBeenCalledOnce()
+    off()
   })
 })

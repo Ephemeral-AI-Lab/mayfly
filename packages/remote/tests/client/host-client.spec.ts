@@ -4,6 +4,8 @@ import { createServer, type Server } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { WebSocketServer } from 'ws'
 import { describe, expect, it, vi } from 'vitest'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
+import { TYPERT_REMOTE } from '@ephemeral-ai/mayfly-host/remote'
 import { createHostClient } from '../../src/client/host-client.ts'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
 
@@ -17,12 +19,18 @@ interface HostFixture {
   readonly startupUrl: string
   readonly requests: RequestRecord[]
   readonly upgrades: RequestRecord[]
+  readonly uploads: Array<{ readonly sessionId: string | null, readonly name: string | null, readonly bytes: Buffer }>
+  readonly disconnect: () => void
+  readonly rejectAuthentication: () => void
   readonly close: () => Promise<void>
 }
 
 async function hostFixture(label: string): Promise<HostFixture> {
   const requests: RequestRecord[] = []
   const upgrades: RequestRecord[] = []
+  const uploads: HostFixture['uploads'] = []
+  let authentications = 0
+  let rejectToken = false
   const rawSockets = new Set<Duplex>()
   const mux = new WebSocketServer({ noServer: true })
   const server: Server = createServer((request, response) => {
@@ -30,6 +38,7 @@ async function hostFixture(label: string): Promise<HostFixture> {
     const record = { path: url.pathname, cookie: request.headers.cookie, token: url.searchParams.get('token') }
     requests.push(record)
     if (url.pathname === '/mount/connect') {
+      if (rejectToken) { response.writeHead(401); response.end(); return }
       if (url.searchParams.get('token') !== `${label}-token` || url.searchParams.get('interactions') !== 'answer') {
         response.writeHead(400)
         response.end()
@@ -37,9 +46,20 @@ async function hostFixture(label: string): Promise<HostFixture> {
       }
       response.writeHead(302, {
         location: './api/remote.mux',
-        'set-cookie': `dsh=${label}; Path=/; HttpOnly`,
+        'set-cookie': `dsh=${label}${++authentications === 1 ? '' : `-${String(authentications)}`}; Path=/; HttpOnly`,
       })
       response.end()
+      return
+    }
+    if (url.pathname === '/mount/api/session/uploadFileBinary') {
+      void (async () => {
+        const chunks: Buffer[] = []
+        for await (const chunk of request) chunks.push(Buffer.from(chunk as Uint8Array))
+        const bytes = Buffer.concat(chunks)
+        uploads.push({ sessionId: url.searchParams.get('sessionId'), name: url.searchParams.get('name'), bytes })
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ ok: true, value: { receiptId: 'upload-receipt', file: { attachmentId: 'attachment', name: 'upload.txt', bytes: bytes.length } } }))
+      })().catch(() => { response.destroy() })
       return
     }
     if (!url.pathname.startsWith('/mount/api/')) {
@@ -89,6 +109,9 @@ async function hostFixture(label: string): Promise<HostFixture> {
     startupUrl: `http://127.0.0.1:${String(address.port)}/mount/?token=${label}-token`,
     requests,
     upgrades,
+    uploads,
+    disconnect: () => { for (const peer of mux.clients) peer.terminate() },
+    rejectAuthentication: () => { rejectToken = true },
     async close() {
       for (const socket of rawSockets) socket.destroy()
       for (const peer of mux.clients) peer.terminate()
@@ -150,6 +173,72 @@ describe('createHostClient', () => {
       await first?.detach()
       await second?.detach()
       await Promise.all([firstHost.close(), secondHost.close()])
+    }
+  })
+
+  it('mounts the actual generated Host namespace and uploads one exact Blob through its authenticated Node carrier', async () => {
+    const host = await hostFixture('upload')
+    let client: HostClient | undefined
+    try {
+      client = await createHostClient({ key: HostKey('upload'), startupUrl: host.startupUrl, mayflyHost: TYPERT_REMOTE })
+      expect(client.remote.mayflyHost.capabilities).toBeTypeOf('function')
+      const bytes = new Blob(['exact upload 你好'])
+      await expect(client.fileUpload.upload(SessionId('upload-session'), bytes, 'upload.txt')).resolves.toMatchObject({ ok: true, value: { receiptId: 'upload-receipt', file: { bytes: bytes.size } } })
+      expect(host.uploads).toEqual([{ sessionId: 'upload-session', name: 'upload.txt', bytes: Buffer.from('exact upload 你好') }])
+      expect(host.requests.find(row => row.path === '/mount/api/session/uploadFileBinary')?.cookie).toBe('dsh=upload')
+    } finally {
+      await client?.detach()
+      await host.close()
+    }
+  })
+
+  it('reconnects the actual HTTP/WS Client with a new authenticated Peer and retires only its local generation on detach', async () => {
+    const host = await hostFixture('reconnect')
+    let client: HostClient | undefined
+    try {
+      client = await createHostClient({ key: HostKey('reconnect'), startupUrl: host.startupUrl })
+      await vi.waitFor(() => { expect(client?.connection.generation.getSnapshot()).toBeDefined() })
+      const first = client.connection.generation.getSnapshot()!.id
+      const statuses: string[] = []
+      const off = client.state.subscribe(() => { statuses.push(client!.state.getSnapshot().status) })
+      host.disconnect()
+      await vi.waitFor(() => { expect(statuses).toContain('disconnected') })
+      client.connection.reconnect()
+      await vi.waitFor(() => { expect(client?.connection.generation.getSnapshot()?.id).toBeGreaterThan(first) })
+      expect(host.upgrades.map(row => row.cookie)).toEqual(['dsh=reconnect', 'dsh=reconnect-2'])
+      expect(client.state.getSnapshot().status).toBe('connected')
+      await expect(client.connection.rpc.call('/api', 'probe/reconnected', {})).resolves.toEqual({ ok: true, value: 'reconnect:probe/reconnected' })
+      await client.detach()
+      expect(client.state.getSnapshot().status).toBe('detached')
+      expect(client.connection.generation.getSnapshot()).toBeUndefined()
+      const count = host.requests.length
+      client.connection.reconnect()
+      await new Promise<void>(resolve => { setImmediate(resolve) })
+      expect(host.requests).toHaveLength(count)
+      expect(host.requests.some(row => row.path.includes('cancel'))).toBe(false)
+      off()
+    } finally {
+      await client?.detach()
+      await host.close()
+    }
+  })
+
+  it('stops native retry supervision on terminal startup-token rejection and safely refuses a later start', async () => {
+    const host = await hostFixture('expired')
+    host.rejectAuthentication()
+    let client: HostClient | undefined
+    try {
+      client = await createHostClient({ key: HostKey('expired'), startupUrl: host.startupUrl })
+      await vi.waitFor(() => { expect(client?.state.getSnapshot().status).toBe('authentication-required') })
+      const stopped = client.connection.start({})
+      stopped.stop()
+      client.connection.reconnect()
+      await new Promise<void>(resolve => { setImmediate(resolve) })
+      expect(host.requests.filter(row => row.path === '/mount/connect')).toHaveLength(1)
+      expect(host.upgrades).toEqual([])
+    } finally {
+      await client?.detach()
+      await host.close()
     }
   })
 })

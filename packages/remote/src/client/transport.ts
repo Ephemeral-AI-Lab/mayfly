@@ -127,10 +127,6 @@ class AuthenticatedWebSocket implements ConnectionWebSocket {
       socket.removeEventListener('message', received)
       socket.removeEventListener('close', closed)
     }
-    if (this.closeRequested) {
-      socket.close(1000, 'Client detached')
-      return
-    }
     if (socket.readyState === 3) closed({})
   }
 
@@ -300,7 +296,7 @@ export class NodeConnectionTransport {
         throw new HostTransportError('superseded', SUPERSEDED_RESPONSE_MESSAGE)
       }
       if (response.status === 401) {
-        this.expirePeer(generation)
+        this.expirePeer()
         if (unary && !retried && (init.body == null || typeof init.body === 'string')) {
           retried = true
           await response.arrayBuffer()
@@ -347,8 +343,7 @@ export class NodeConnectionTransport {
     this.broker.socketLost(error)
   }
 
-  private expirePeer(generation: number): void {
-    if (!this.broker.isCurrent(generation)) return
+  private expirePeer(): void {
     const socket = this.activeSocket
     this.activeSocket = undefined
     this.acceptingRequests = true

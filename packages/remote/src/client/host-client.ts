@@ -135,7 +135,6 @@ function superviseConnection(
         },
       }, config)
       stopLoop = () => { loop.stop() }
-      if (transport.terminalError !== undefined) loop.stop()
       return { stop: () => { loop.stop() } }
     },
   }

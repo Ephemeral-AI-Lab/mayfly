@@ -18,13 +18,13 @@ vi.mock('../../src/client/bundle.ts', () => ({ loadClientPlugins: mocks.loadClie
 const empty = (): ClientPlugin => ({ inject: [], apply: () => {} })
 
 describe('createHostClient assembly failures', () => {
-  it.each(['connection', 'sessions', 'workspaces'] as const)('rejects and cleans up when %s is absent', async missing => {
+  it.each(['connection', 'remote', 'fileUpload', 'sessions', 'workspaces'] as const)('rejects and cleans up when %s is absent', async missing => {
     mocks.installConnection.mockImplementation((ctx: Context) => {
       if (missing !== 'connection') ctx.provide('connection', {})
     })
     mocks.loadClientPlugins.mockResolvedValue({
-      remotes: empty(),
-      fileUpload: empty(),
+      remotes: missing === 'remote' ? empty() : { inject: [], apply: (ctx: Context) => { ctx.provide('remote', {}) } },
+      fileUpload: missing === 'fileUpload' ? empty() : { inject: [], apply: (ctx: Context) => { ctx.provide('fileUpload', {}) } },
       sessions: missing === 'sessions' ? empty() : { inject: [], apply: (ctx: Context) => { ctx.provide('sessions', {}) } },
       workspaces: missing === 'workspaces' ? empty() : { inject: [], apply: (ctx: Context) => { ctx.provide('workspaces', {}) } },
     })
@@ -33,5 +33,12 @@ describe('createHostClient assembly failures', () => {
       : 'did not provide its object layer'
     await expect(createHostClient({ key: HostKey('local'), startupUrl: 'http://127.0.0.1:3080/?token=secret' }))
       .rejects.toThrow(expected)
+  })
+
+  it('rejects a Host contribution when the official Remote plugin fails to provide its mount', async () => {
+    mocks.installConnection.mockImplementation((ctx: Context) => { ctx.provide('connection', {}) })
+    mocks.loadClientPlugins.mockResolvedValue({ remotes: empty(), fileUpload: empty(), sessions: empty(), workspaces: empty() })
+    await expect(createHostClient({ key: HostKey('local'), startupUrl: 'http://127.0.0.1:3080/?token=secret', mayflyHost: {} as never }))
+      .rejects.toThrow('did not provide its Remote mount')
   })
 })
