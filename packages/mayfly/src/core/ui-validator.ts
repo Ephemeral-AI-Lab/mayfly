@@ -87,6 +87,14 @@ interface ValidationState {
   readonly budget: ValidationBudget
   /** The scope of the actions node whose items are being admitted. */
   actionScope?: readonly string[] | undefined
+  /** Reservations made by this responsive branch, with one-use leases from an identical exclusive sibling. */
+  responsiveClaims?: ResponsiveClaims
+  sharedClaims?: ResponsiveClaims | undefined
+}
+
+interface ResponsiveClaims {
+  readonly controls: Set<string>
+  readonly keys: Set<string>
 }
 
 interface ValidationBudget {
@@ -301,8 +309,10 @@ function pageControl(path: MayflyPagePath, id: string): string {
 
 function reserveControl(id: string, state: ValidationState): void {
   const key = pageControl(state.pagePath, id)
-  if (state.budget.controlIds.has(key)) invalid(`control id "${id}" is duplicated`)
+  const shared = state.sharedClaims?.controls.delete(key) === true
+  if (state.budget.controlIds.has(key) && !shared) invalid(`control id "${id}" is duplicated`)
   state.budget.controlIds.add(key)
+  state.responsiveClaims?.controls.add(key)
 }
 
 function pageSegment(value: unknown, path: string, state: ValidationState): MayflyPageSegment {
@@ -321,6 +331,11 @@ function validatePages(budget: ValidationBudget): void {
     const known = scope.pagePath.some((_, index) => budget.controlIds.has(pageControl(scope.pagePath.slice(0, index), id))) || budget.controlIds.has(pageControl(scope.pagePath, id))
     if (!known && budget.deferred === 0) invalid(`${scope.path} "${id}" names no control on this page`)
   }
+}
+
+function validateBudget(budget: ValidationBudget): void {
+  validatePages(budget)
+  if (budget.filterable && budget.printableKey !== undefined) invalid(`${budget.printableKey} would swallow typed filter text; use a modifier key, or filterMode: 'slash' on every filterable list`)
 }
 
 function enumeration<Value extends string | number>(value: unknown, values: readonly Value[], path: string): Value {
@@ -724,7 +739,10 @@ interface DeferredUiAdmission {
   readonly budget: ValidationBudget
   readonly mayHaveControls: boolean
   readonly pagePath: MayflyPagePath
+  readonly group: readonly DeferredUiAdmission[]
+  readonly when: MayflyViewportCondition
   result?: MayflyValidationResult<MayflyUiNode>
+  claims?: ResponsiveClaims
 }
 
 const deferredUiNodes = new WeakMap<MayflyUiNode, DeferredUiAdmission>()
@@ -746,11 +764,31 @@ function deferredMayHaveControls(source: unknown): boolean {
   }
 }
 
-function deferredUiNode(source: unknown, path: string, depth: number, scrollDepth: number, budget: ValidationBudget, pagePath: MayflyPagePath): MayflyUiNode {
+function deferredUiNode(source: unknown, path: string, depth: number, scrollDepth: number, budget: ValidationBudget, pagePath: MayflyPagePath, when: MayflyViewportCondition, group: DeferredUiAdmission[]): MayflyUiNode {
   const placeholder = Object.freeze({ kind: 'spacer' as const, size: 1 as const })
   budget.deferred += 1
-  deferredUiNodes.set(placeholder, { source, path, depth, scrollDepth, budget, pagePath, mayHaveControls: deferredMayHaveControls(source) })
+  const deferred = { source, path, depth, scrollDepth, budget, pagePath, when, group, mayHaveControls: deferredMayHaveControls(source) }
+  group.push(deferred)
+  deferredUiNodes.set(placeholder, deferred)
   return placeholder
+}
+
+/** Only direct siblings use the same layout viewport; unrelated stacks cannot establish exclusivity. */
+function exclusiveViewports(left: MayflyViewportCondition, right: MayflyViewportCondition): boolean {
+  return (left.maxWidth ?? Infinity) < (right.minWidth ?? 0)
+    || (right.maxWidth ?? Infinity) < (left.minWidth ?? 0)
+    || (left.maxHeight ?? Infinity) < (right.minHeight ?? 0)
+    || (right.maxHeight ?? Infinity) < (left.minHeight ?? 0)
+}
+
+function sharedResponsiveClaims(deferred: DeferredUiAdmission): ResponsiveClaims | undefined {
+  if (!isWireSnapshot(deferred.source)) return undefined
+  const siblings = deferred.group.filter(sibling => sibling !== deferred && sibling.claims !== undefined
+    && sibling.source === deferred.source
+    && pageControl(sibling.pagePath, '') === pageControl(deferred.pagePath, ''))
+  if (siblings.length === 0 || siblings.some(sibling => !exclusiveViewports(sibling.when, deferred.when))) return undefined
+  const claims = siblings[0]!.claims!
+  return { controls: new Set(claims.controls), keys: new Set(claims.keys) }
 }
 
 /** Identify a renderer-private responsive placeholder without exposing it on the wire format. */
@@ -787,13 +825,21 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     tabs: new Map(deferred.budget.tabs),
     pages: deferred.budget.pages.length,
     scopes: deferred.budget.scopes.length,
+    deferred: deferred.budget.deferred,
+    actionKeys: new Set(deferred.budget.actionKeys),
+    printableKey: deferred.budget.printableKey,
+    filterable: deferred.budget.filterable,
   }
   const state = validationState(deferred.budget)
   state.scrollDepth = deferred.scrollDepth
   state.pagePath = deferred.pagePath
+  state.responsiveClaims = { controls: new Set(), keys: new Set() }
+  state.sharedClaims = sharedResponsiveClaims(deferred)
   try {
     deferred.result = { ok: true, value: freeze(node(deferred.source, deferred.path, state, deferred.depth, 'ui')) }
-    validatePages(deferred.budget)
+    validateBudget(deferred.budget)
+    // Nested responsive children evaluate their own local viewports and own their reservations independently.
+    if (deferred.budget.deferred === checkpoint.deferred) deferred.claims = state.responsiveClaims
   } catch (error) {
     deferred.budget.nodes = checkpoint.nodes
     deferred.budget.chartCells = checkpoint.chartCells
@@ -805,6 +851,12 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
     for (const [id, items] of checkpoint.tabs) deferred.budget.tabs.set(id, items)
     deferred.budget.pages.splice(checkpoint.pages)
     deferred.budget.scopes.splice(checkpoint.scopes)
+    deferred.budget.deferred = checkpoint.deferred
+    deferred.budget.actionKeys.clear()
+    for (const key of checkpoint.actionKeys) deferred.budget.actionKeys.add(key)
+    if (checkpoint.printableKey === undefined) delete deferred.budget.printableKey
+    else deferred.budget.printableKey = checkpoint.printableKey
+    deferred.budget.filterable = checkpoint.filterable
     deferred.result = error instanceof ValidationFault
       ? { ok: false, code: error.code, message: error.message }
       : { ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'Mayfly UI validation failed safely' }
@@ -969,11 +1021,14 @@ function actionKey(value: string, path: string, state: ValidationState): string 
 function claimKey(normalized: string, label: string, state: ValidationState): void {
   const slot = pageControl(state.pagePath, normalized)
   const scope = state.actionScope ?? null
+  const reservation = JSON.stringify([slot, scope])
+  const shared = state.sharedClaims?.keys.delete(reservation) === true
   for (const claimed of state.budget.actionKeys) {
     const [claimedSlot, claimedScope] = JSON.parse(claimed) as [string, readonly string[] | null]
-    if (claimedSlot === slot && (scope === null || claimedScope === null || scope.some(id => claimedScope.includes(id)))) invalid(`${label} is already bound on this page`)
+    if (claimedSlot === slot && (scope === null || claimedScope === null || scope.some(id => claimedScope.includes(id))) && !(shared && claimed === reservation)) invalid(`${label} is already bound on this page`)
   }
-  state.budget.actionKeys.add(JSON.stringify([slot, scope]))
+  state.budget.actionKeys.add(reservation)
+  state.responsiveClaims?.keys.add(reservation)
   if (printableKey(normalized)) state.budget.printableKey ??= label
 }
 
@@ -1153,7 +1208,7 @@ function uiChild<Node>(
   state: ValidationState,
   depth: number,
   parseNode: (value: unknown, path: string, state: ValidationState, depth: number) => Node,
-  deferWhen?: (value: unknown, path: string, depth: number, scrollDepth: number, budget: ValidationBudget, pagePath: MayflyPagePath) => Node,
+  deferWhen?: (value: unknown, path: string, depth: number, scrollDepth: number, budget: ValidationBudget, pagePath: MayflyPagePath, when: MayflyViewportCondition) => Node,
 ): Omit<MayflyUiChild, 'node'> & { readonly node: Node } {
   return enter(value, path, state, object => {
     const basisValue = own(object, 'basis', path)
@@ -1181,7 +1236,7 @@ function uiChild<Node>(
     try {
       child = when === undefined || deferWhen === undefined
         ? parseNode(childValue, `${path}.node`, state, depth)
-        : deferWhen(childValue, `${path}.node`, depth, state.scrollDepth, state.budget, state.pagePath)
+        : deferWhen(childValue, `${path}.node`, depth, state.scrollDepth, state.budget, state.pagePath, when)
     } finally { state.pagePath = parentPath }
     return {
       node: child,
@@ -1297,7 +1352,7 @@ function node(value: unknown, path: string, state: ValidationState, depth: numbe
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: 'editor', viewOnly?: false): MayflyEditorShellNode
 function node(value: unknown, path: string, state: ValidationState, depth: number, mode: ValidationMode, viewOnly = false): MayflyUiNode | MayflyStatusNode | MayflyEditorShellNode {
   const cache = state.budget.cache
-  if (cache === undefined || !isWireSnapshot(value)) return admitNode(value, path, state, depth, mode, viewOnly)
+  if (cache === undefined || state.sharedClaims !== undefined || !isWireSnapshot(value)) return admitNode(value, path, state, depth, mode, viewOnly)
   const context = `${mode}:${viewOnly ? 1 : 0}:${String(depth)}:${String(state.scrollDepth)}`
   const known = cache.subtrees.get(value as object)?.get(context)
   const budget = state.budget
@@ -1404,13 +1459,15 @@ function admitNode(value: unknown, path: string, state: ValidationState, depth: 
           const children: readonly MayflyEditorChild[] = entries.map((item, index) => uiChild(item, `${path}.children[${String(index)}]`, state, depth + 1, (child, childPath, childState, childDepth) => node(child, childPath, childState, childDepth, 'editor')))
           return { ...stack, children }
         }
+        // Direct children share this stack's viewport, node depth, and scroll context; tab pages still differ.
+        const group: DeferredUiAdmission[] = []
         const children: readonly MayflyUiChild[] = entries.map((item, index) => uiChild(
           item,
           `${path}.children[${String(index)}]`,
           state,
           depth + 1,
           (child, childPath, childState, childDepth) => node(child, childPath, childState, childDepth, 'ui'),
-          (child, childPath, childDepth, scrollDepth, budget, pagePath) => deferredUiNode(child, childPath, childDepth, scrollDepth, budget, pagePath),
+          (child, childPath, childDepth, scrollDepth, budget, pagePath, when) => deferredUiNode(child, childPath, childDepth, scrollDepth, budget, pagePath, when, group),
         ))
         return { ...stack, children }
       }
@@ -1718,8 +1775,7 @@ function validate<Value>(value: unknown, mode: ValidationMode, counters?: Mayfly
       if (state.editorControls !== 1) invalid(`editor shell must contain exactly one prompt; received ${String(state.editorControls)}`)
       assertEditorControlVisible(result as MayflyEditorShellNode)
     }
-    validatePages(state.budget)
-    if (state.budget.filterable && state.budget.printableKey !== undefined) invalid(`${state.budget.printableKey} would swallow typed filter text; use a modifier key, or filterMode: 'slash' on every filterable list`)
+    validateBudget(state.budget)
     return { ok: true, value: freeze(result) as Value }
   } catch (error) {
     if (error instanceof ValidationFault) return { ok: false, code: error.code, message: error.message }

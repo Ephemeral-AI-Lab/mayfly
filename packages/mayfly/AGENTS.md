@@ -200,6 +200,14 @@ admitted whole each time. Reused leaves are static painters that read only their
 node, width, colors, and components; a new palette recompiles them. The work
 budgets in `tests/perf/budgets.json` only ratchet down.
 
+One deeply frozen wire subtree may occupy mutually exclusive responsive children
+of the same stack while keeping one control and action identity. Each child is
+fully admitted and charged its quotas independently; its reservations may reuse
+an identical sibling's reservations once only when page, depth, scroll context,
+and local viewport exclusivity agree. Mutable declarations, different stacks,
+overlapping conditions, and subtrees with further responsive children receive no
+reservation sharing. Failed deferred admission restores all budget and key state.
+
 An unchanged subtree costs nothing on republish, so a painter that paints rows is
 written once in its cacheable form and brings its budget row. `list` reads
 `selectedIds` through `listSelectedIds` (the field is optional on the wire).
