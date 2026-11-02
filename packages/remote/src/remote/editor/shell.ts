@@ -5,6 +5,7 @@
 
 import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { GutterComponent } from '@ephemeral-ai/mayfly/core'
 import type {
   MayflyComponent,
   MayflyComponents,
@@ -56,7 +57,6 @@ class ShellEcho implements MayflyComponent {
     private readonly components: MayflyComponents,
     private readonly colors: MayflySemanticColors,
     private readonly command: string,
-    private readonly cwd: string,
     private readonly result: ShellExecution,
     private readonly truncated: boolean,
     private readonly t: MayflyTranslate,
@@ -67,7 +67,6 @@ class ShellEcho implements MayflyComponent {
   render(width: number): string[] {
     const rows = [
       this.components.truncateToWidth(`${this.colors.shellMode('$ ')}${this.command}`, width),
-      this.colors.textMuted(this.components.truncateToWidth(`Local cwd: ${this.cwd}`, width)),
     ]
     const stdout = sanitizeShellOutput(this.result.stdout)
     const stderr = sanitizeShellOutput(this.result.stderr)
@@ -88,16 +87,18 @@ export class EditorShell {
   private readonly children = new Set<ReturnType<typeof exec>>()
   private readonly echoes = new Set<MayflyScreenSlot>()
   private disposed = false
+  private generation = 0
 
   constructor(
     private readonly screen: MayflyScreen,
-    private readonly components: MayflyComponents,
-    private readonly colors: MayflySemanticColors,
+    private components: MayflyComponents,
+    private colors: MayflySemanticColors,
     private readonly t: MayflyTranslate,
   ) {}
 
   run(command: string, cwd: string): void {
     if (this.disposed) return
+    const generation = this.generation
     const child = exec(command, {
       cwd,
       encoding: 'utf8',
@@ -106,20 +107,30 @@ export class EditorShell {
       killSignal: 'SIGKILL',
     }, (error, stdout, stderr) => {
       this.children.delete(child)
-      if (this.disposed) return
+      if (this.disposed || generation !== this.generation) return
       const code = error === null ? 0 : typeof error.code === 'number' ? error.code : 1
       const out = cap(stdout)
       const err = cap(stderr)
-      const echo = new ShellEcho(this.components, this.colors, command, cwd, {
+      const echo = new ShellEcho(this.components, this.colors, command, {
         code,
         stdout: out.text,
         stderr: err.text,
       }, out.truncated || err.truncated, this.t)
-      const slot = this.screen.mountContentSlot(`remote.local.shell.${randomUUID()}`, echo)
+      const slot = this.screen.mountContentSlot(`remote.local.shell.${randomUUID()}`, new GutterComponent(echo, 2))
       this.echoes.add(slot)
       this.screen.requestRender()
     })
     this.children.add(child)
+  }
+
+  /** The reference input mount withdraws old echoes on palette replacement without stopping the command. */
+  retheme(components: MayflyComponents, colors: MayflySemanticColors): void {
+    if (this.disposed || (components === this.components && colors === this.colors)) return
+    this.generation++
+    this.components = components
+    this.colors = colors
+    for (const slot of this.echoes) slot.dispose()
+    this.echoes.clear()
   }
 
   dispose(): void {

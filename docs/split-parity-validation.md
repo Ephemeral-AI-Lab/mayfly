@@ -84,6 +84,7 @@ node script/split-parity.mjs --scenario panels
 node script/split-parity.mjs --scenario transcript-search
 node script/split-parity.mjs --scenario focus-resize
 node script/split-parity.mjs --scenario editor-feedback
+node script/split-parity.mjs --scenario local-shell
 ```
 
 `smoke` covers startup, help, Unicode draft, an actual model turn and `/new`.
@@ -132,7 +133,9 @@ with `n`/`N` and arrows, resizes, and returns through an overlay with its row
 cursor retained. `focus-resize` preserves a selected theme and the editor caret
 through 40×16, 80×24 and 120×40 layouts. `editor-feedback` checks recalled
 history, an unknown slash command with and without arguments, and the empty
-prompt's `?` help route. These use production input and shared components;
+prompt's `?` help route. `local-shell` compares successful, failed and empty
+local commands, Unicode output, narrow/wide layouts, and the removal of old
+echoes on a theme swap. These use production input and shared components;
 calling a controller directly is not a substitute for their PTY evidence.
 
 Each additional case uses its own published-reference profile home. Native

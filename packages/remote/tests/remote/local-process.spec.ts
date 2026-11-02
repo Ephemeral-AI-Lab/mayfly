@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LocalProcessOwner, failureDetail, runInheritedShell, runLocalTool } from '../../src/remote/local/process.ts'
 import { EditorShell, sanitizeShellOutput } from '../../src/remote/editor/shell.ts'
+import { visibleWidth } from '../../../mayfly/src/core/width.ts'
 import type { MayflyComponent, MayflyComponents, MayflyScreen, MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
 
 const native = vi.hoisted(() => ({ execFile: vi.fn(), exec: vi.fn(), spawn: vi.fn() }))
@@ -182,7 +183,7 @@ function shellFixture() {
     const callback = native.exec.mock.calls.at(-1)![2] as (error: Error | null, stdout: string, stderr: string) => void
     return { process, callback }
   }
-  return { shell, contents, slots, screen, launch }
+  return { shell, contents, slots, screen, launch, components, colors }
 }
 
 describe('local shell transcript echo', () => {
@@ -194,9 +195,9 @@ describe('local shell transcript echo', () => {
     const f = shellFixture()
     const run = f.launch()
     run.callback(null, 'hello\n', 'warning\n')
-    expect(f.contents[0]!.render(80)).toEqual(['$ printf hello', 'Local cwd: /local', 'hello', 'warning'])
+    expect(f.contents[0]!.render(80)).toEqual(['  $ printf hello', '  hello', '  warning'])
     f.contents[0]!.invalidate?.()
-    for (const width of [1, 3, 8, 40, 80, 120]) expect(f.contents[0]!.render(width).every(row => row.length <= width)).toBe(true)
+    for (const width of [1, 3, 8, 40, 80, 120]) expect(f.contents[0]!.render(width).every(row => visibleWidth(row) <= width)).toBe(true)
     expect(f.screen.requestRender).toHaveBeenCalledOnce()
     f.shell.dispose()
     expect(f.slots[0]!.dispose).toHaveBeenCalledOnce()
@@ -205,11 +206,11 @@ describe('local shell transcript echo', () => {
   it('paints nonzero and nonnumeric failures and labels empty output', () => {
     const f = shellFixture()
     f.launch().callback(Object.assign(new Error('exit'), { code: 4 }), '', 'failed\n')
-    expect(f.contents[0]!.render(80)).toContain('error:failed')
-    expect(f.contents[0]!.render(80)).toContain('error:exit code 4')
+    expect(f.contents[0]!.render(80)).toContain('  error:failed')
+    expect(f.contents[0]!.render(80)).toContain('  error:exit code 4')
     f.launch().callback(new Error('launch failed'), '', '')
-    expect(f.contents[1]!.render(80)).toContain('(no output)')
-    expect(f.contents[1]!.render(80)).toContain('error:exit code 1')
+    expect(f.contents[1]!.render(80)).toContain('  (no output)')
+    expect(f.contents[1]!.render(80)).toContain('  error:exit code 1')
     f.shell.dispose()
   })
 
@@ -220,8 +221,8 @@ describe('local shell transcript echo', () => {
     const f = shellFixture()
     f.launch().callback(null, stdout, stderr)
     const rows = f.contents[0]!.render(80)
-    expect(rows).toContain('… output truncated')
-    expect(rows).toHaveLength(lines + 3)
+    expect(rows).toContain('  … output truncated')
+    expect(rows).toHaveLength(lines + 2)
     f.shell.dispose()
   })
 
@@ -235,5 +236,30 @@ describe('local shell transcript echo', () => {
     f.shell.run('late launch', '/local')
     expect(native.exec).toHaveBeenCalledOnce()
     expect(f.contents).toEqual([])
+  })
+
+  it('retires echoes and late output on a palette swap while commands retain their local lifetime', () => {
+    const f = shellFixture()
+    f.launch().callback(null, 'previous palette', '')
+    const pending = f.launch()
+    f.shell.retheme(f.components, f.colors)
+    expect(f.slots[0]!.dispose).not.toHaveBeenCalled()
+    const colors = { ...f.colors, textMuted: (text: string) => `new:${text}` }
+    f.shell.retheme(f.components, colors)
+    expect(f.slots[0]!.dispose).toHaveBeenCalledOnce()
+    expect(pending.process.kill).not.toHaveBeenCalled()
+    pending.callback(null, 'retired palette output', '')
+    expect(f.contents).toHaveLength(1)
+    f.launch().callback(null, 'current', '')
+    expect(f.contents[1]!.render(80)).toEqual(['  $ printf hello', '  new:current'])
+    const nextComponents = { ...f.components }
+    f.shell.retheme(nextComponents, colors)
+    expect(f.slots[1]!.dispose).toHaveBeenCalledOnce()
+    const active = f.launch()
+    f.shell.dispose()
+    f.shell.retheme(f.components, f.colors)
+    expect(active.process.kill).toHaveBeenCalledExactlyOnceWith('SIGKILL')
+    expect(f.slots[0]!.dispose).toHaveBeenCalledOnce()
+    expect(f.slots[1]!.dispose).toHaveBeenCalledOnce()
   })
 })

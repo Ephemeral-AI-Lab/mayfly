@@ -55,8 +55,22 @@ export const SPLIT_EDITOR_FEEDBACK_STEPS = Object.freeze([
   key('esc'), checkpoint('editor-help-return'),
 ])
 
+/** Execute on the frontend machine and retain the reference echo layout and theme lifetime. */
+export const SPLIT_LOCAL_SHELL_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' },
+  ...send('Say one line before a local shell command.'), { step: 'until', text: 'the model is a stub' },
+  ...send('!node -e "process.stdout.write(\'shell parity 你好 🪰\\n\')"'),
+  { step: 'until', text: 'shell parity 你好 🪰' }, checkpoint('shell-success'),
+  resize(40, 16), checkpoint('shell-success-narrow'), resize(120, 40), checkpoint('shell-success-wide'), resize(80, 24),
+  ...send('!node -e "process.stderr.write(\'shell-error\\n\');process.exitCode=7"'),
+  { step: 'until', text: 'exit code 7' }, checkpoint('shell-error'),
+  ...send('/theme tide'), checkpoint('shell-after-theme'),
+  ...send('!node -e ""'), { step: 'until', text: '(no output)' }, checkpoint('shell-empty'),
+])
+
 export const SPLIT_INPUT_CASES = Object.freeze({
   'transcript-search': { profileTag: 'input-search-v1', steps: SPLIT_TRANSCRIPT_SEARCH_STEPS },
   'focus-resize': { profileTag: 'input-focus-v1', steps: SPLIT_FOCUS_RESIZE_STEPS },
   'editor-feedback': { profileTag: 'input-feedback-v1', steps: SPLIT_EDITOR_FEEDBACK_STEPS },
+  'local-shell': { profileTag: 'input-shell-v1', steps: SPLIT_LOCAL_SHELL_STEPS },
 })
