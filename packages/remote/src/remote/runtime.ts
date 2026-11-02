@@ -29,6 +29,7 @@ import { RemotePlainPanels } from './interactions/plain-panels.ts'
 import { mountRemoteOperationsComposition, type RemoteOperationsCompositionHandle } from './operations-composition.ts'
 import { RemotePanelController } from './panels.ts'
 import { RemoteSideViews } from './side-views.ts'
+import { RemoteStartupController } from './startup.ts'
 import { mountRemoteStatus, type RemoteStatusHandle } from './status.ts'
 
 /** Inputs for one independent Mayfly Frontend process. */
@@ -58,6 +59,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
   let transcript: TranscriptController | undefined
   let status: RemoteStatusHandle | undefined
   let sessionsBrowser: RemoteSessionsBrowserController | undefined
+  let startup: RemoteStartupController | undefined
   let cancelled: { readonly ref: SessionRef, readonly text: string, readonly lane: 'turn' | 'step', readonly at: number } | undefined
   let stopped = false
   const lifetime = new AbortController()
@@ -120,6 +122,9 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         directory: () => options.cwd ?? process.cwd(),
         colors: () => ctx.mayflyTheme.colors,
         components: () => ctx.mayflyComponents,
+        flyInAt: () => startup?.flyInAt(),
+        splash: () => startup?.splash(),
+        rows: () => screen.rows,
       },
     ))
     ctx.effect(() => () => bannerSlot.dispose())
@@ -243,6 +248,20 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       return selected === undefined ? undefined : { ref: selected.ref, access: selected.facts.access, binding: selected.binding, presentation: displayedFacts() }
     }, () => commandSource?.list() ?? [], listener => sideViews!.subscribe(listener))
     apps.push(app)
+    startup = new RemoteStartupController(ctx, screen, {
+      client: () => app?.activeClient,
+      current: () => app?.registry.current,
+      directory: () => options.cwd ?? process.cwd(),
+      subscribe: listener => app!.subscribeTopology(listener),
+      resume: async (sessionId) => {
+        try {
+          await app!.selectOrCreate(sessionId, options.cwd)
+        } catch (error) {
+          if (!lifetime.signal.aborted) editor?.notice.set(error instanceof Error ? error.message : String(error))
+        }
+      },
+      autocomplete: () => editor?.editor.isShowingAutocomplete() === true,
+    })
     let primaryBinding = app.registry.currentReference?.binding
     ctx.effect(() => app!.subscribeTopology(() => {
       const next = app!.registry.currentReference?.binding
@@ -306,6 +325,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       operations.commands,
     )
     editorComposition = mountEditorComposition({
+      ctx,
       app,
       editor: editor.editor,
       screen,
@@ -319,6 +339,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       focusEditor: () => editor!.focus(),
       selection: displayedSelection,
       subscribeSelection: listener => sideViews!.subscribe(listener),
+      startupKey: (data, text) => startup!.handleInput(data, text),
     })
     status = mountRemoteStatus(ctx, () => ({
       presentation: displayedFacts(),
@@ -341,11 +362,13 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     await app.attach(options.startupUrl, options.hostId)
     if (options.sessionId !== undefined) await app.selectOrCreate(options.sessionId, options.cwd)
     if (options.task !== undefined && options.task.trim() !== '') await execute(options.task)
+    startup.start()
     await done.promise
   } finally {
     lifetime.abort()
     process.removeListener('SIGINT', sigint)
     process.removeListener('SIGTERM', sigterm)
+    startup?.dispose()
     operations?.dispose()
     sessionsBrowser?.dispose()
     configuration?.dispose()

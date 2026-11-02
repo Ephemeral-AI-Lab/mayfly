@@ -1,5 +1,13 @@
 /** Shared frontend preferences, defaults, and resolved-value readers. @module */
 import type { MayflyPaletteKey } from '../core/palettes.ts'
+import type { Context } from '@deepseek-ai/cordis'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** The consolidated renderer preference source became readable in this tree. */
+    'mayfly/settings-source-ready'(value: unknown): void
+  }
+}
 /** The user-tunable Mayfly settings (the `mayfly` settings namespace). */
 export interface MayflySettings {
   /** Whether the boot update check runs at all; `false` is the offline switch. */
@@ -103,8 +111,9 @@ export const DEFAULT_SETTINGS: MayflySettings = {
  * document, reconciled in place on every committed write.
  * @returns the resolved Mayfly settings.
  */
-export function currentMayflySettings(ctx: { readonly mayflyInteractionState: { settingsSource(): MayflySettings } }): MayflySettings {
-  return ctx.mayflyInteractionState.settingsSource()
+export function currentMayflySettings(ctx: Pick<Context, 'get'>): MayflySettings {
+  const state = ctx.get('mayflyInteractionState') as { settingsSource(): MayflySettings }
+  return state.settingsSource()
 }
 
 /** Unwrap a volatile config cell, or pass an ordinary value through. */

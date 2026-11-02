@@ -30,6 +30,18 @@ const mocks = vi.hoisted(() => ({
   restoreFocus: undefined as (() => void) | undefined,
   bannerFacts: undefined as (() => unknown) | undefined,
   statusFacts: undefined as (() => unknown) | undefined,
+  startupStart: vi.fn(),
+  startupDispose: vi.fn(),
+}))
+
+vi.mock('../../src/remote/startup.ts', () => ({
+  RemoteStartupController: class {
+    readonly start = mocks.startupStart
+    readonly dispose = mocks.startupDispose
+    readonly flyInAt = vi.fn()
+    readonly splash = vi.fn()
+    readonly handleInput = vi.fn(() => false)
+  },
 }))
 
 vi.mock('../../src/remote/app.ts', () => ({
@@ -223,6 +235,8 @@ describe('runRemoteFrontend', () => {
     expect(mocks.apps[0]!.attach).toHaveBeenCalledWith(startupUrl, undefined)
     expect(mocks.apps[0]!.selectOrCreate).not.toHaveBeenCalled()
     expect(mocks.apps[0]!.registry.detach).toHaveBeenCalledWith('local')
+    expect(mocks.startupStart).toHaveBeenCalled()
+    expect(mocks.startupDispose).toHaveBeenCalled()
   })
 
   it('invokes editor and transcript callbacks without depending on a real TTY', async () => {

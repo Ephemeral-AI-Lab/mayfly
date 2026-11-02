@@ -100,7 +100,7 @@ describe('Remote startup', () => {
     expect(f.primary.refresh).toHaveBeenCalledOnce()
     expect(f.primary.catalog.size).toBe(1)
     f.ctx.mayflyLocale.setPreference('zh')
-    expect(f.splash().labels.recent).toBe('最近会话')
+    expect(f.splash().labels.recent).toBe('最近的会话')
   })
 
   it('browses through named rebound keys, resumes once, and releases the cursor for typing/autocomplete/empty list', async () => {

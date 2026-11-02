@@ -46,13 +46,6 @@ function cell(value: unknown): unknown {
   return typeof (value as { get?: unknown } | null | undefined)?.get === 'function' ? (value as { get(): unknown }).get() : value
 }
 
-declare module '@deepseek-ai/cordis' {
-  interface Events {
-    /** The consolidated Mayfly settings source became readable in this tree. */
-    'mayfly/settings-source-ready'(value: unknown): void
-  }
-}
-
 /** User token prices by `provider/model` (a dict, typed by hand so the declaration stays portable). */
 const PRICES: z<Record<string, { input: number, output: number, cacheRead?: number, cacheWrite?: number, currency: 'USD' | 'CNY' }>> = z.dict(z.object({
   input: z.number().min(0).required(), output: z.number().min(0).required(), cacheRead: z.number().min(0), cacheWrite: z.number().min(0),
