@@ -1,7 +1,9 @@
+/** Standalone editor admission, reference chrome, focus, and terminal-slot lifecycle. @module mayfly-remote/tests/editor */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import * as Frontend from '@ephemeral-ai/mayfly/frontend'
 import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
+import * as Core from '@ephemeral-ai/mayfly/core'
 import { mountRemoteEditor } from '../../src/remote/editor.ts'
 import type {
   MayflyComponents, MayflyEditor, MayflyFocusable, MayflyScreenService, MayflySemanticColors,
@@ -27,7 +29,7 @@ const colors = {
 } as unknown as MayflySemanticColors
 
 const contexts: Context[] = []
-afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+afterEach(async () => { vi.restoreAllMocks(); for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 
 async function fixture() {
   const ctx = new Context()
@@ -63,6 +65,16 @@ async function fixture() {
 }
 
 describe('mountRemoteEditor', () => {
+  it('propagates a shared compiler failure before acquiring a terminal slot', async () => {
+    const { ctx, screen, components } = await fixture()
+    vi.spyOn(Core, 'compileMayflyEditorShellNode').mockReturnValueOnce({
+      ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'renderer unavailable',
+      errorComponent: { render: () => ['renderer unavailable'], invalidate: vi.fn() },
+    })
+    expect(() => mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() })).toThrow('renderer unavailable')
+    expect(screen.mountDockSlot).not.toHaveBeenCalled()
+  })
+
   it('submits trimmed text and keeps the original entry in local history', async () => {
     const { ctx, editor, screen, components } = await fixture()
     const actions = { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
@@ -124,6 +136,7 @@ describe('mountRemoteEditor', () => {
     const actions = { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
     const handle = mountRemoteEditor(ctx, screen, components, colors, actions)
     const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]! as MayflyFocusable
+    expect(() => dock.render(Number.NaN)).not.toThrow()
     handle.notice.set('first line\nsecond line')
     const records = ctx.mayflyUiInteraction.notificationSnapshot()
     expect(records).toEqual([expect.objectContaining({ message: 'first line · second line', detail: 'first line\nsecond line' })])
@@ -153,6 +166,9 @@ describe('mountRemoteEditor', () => {
       'Ask anything · / commands · @ files · # skills · ! shell', 'Ask anything · / commands · @ files · # skills',
       'Ask anything · / commands · @ files', 'Ask anything · / commands', 'Ask anything',
     ])
+    facts = { view: { kind: 'primary', access: 'interactive', label: 'Primary conversation' } }
+    handle.refresh()
+    expect(dock.render(100).join('')).not.toContain('Primary conversation')
     facts = { running: true }
     handle.refresh()
     dock.render(100)

@@ -30,6 +30,7 @@ async function fixture() {
   const operations: string[] = []
   let model: unknown = { next: { provider: 'provider', model: 'model', reasoningEffort: 'high' } }
   let cwd: unknown = '/host/workspace'
+  let catalogCwd: string | undefined = '/catalog/workspace'
   let history: Array<{ type: string, event: { type: string, seq: number } }> = [{ type: 'event', event: { type: 'turn/end', seq: 20 } }]
   let inbox: unknown = { 'next-turn': [{ id: 'old-turn' }], 'next-step': [{ id: 'old-step' }] }
   const prompt = vi.fn<SessionFace['prompt']>(async () => { operations.push('prompt'); return accepted })
@@ -60,7 +61,7 @@ async function fixture() {
     key: HostKey('one'),
     sessions: {
       retain, using, fork, subagentAddress: address,
-      list: { getSnapshot: () => ({ ids: [parentId], byId: { [parentId]: { cwd: '/catalog/workspace' } } }) },
+      list: { getSnapshot: () => ({ ids: [parentId], byId: catalogCwd === undefined ? {} : { [parentId]: { cwd: catalogCwd } } }) },
     },
     remote: { session: { selectModel }, subagents: { prompt: subagentPrompt } },
     detach: vi.fn(async () => {}),
@@ -74,6 +75,7 @@ async function fixture() {
     btw, actions, registry, client, references, operations, prompt, cancel, queue, fork, selectModel, address, subagentPrompt,
     setModel: (value: unknown) => { model = value },
     setCwd: (value: unknown) => { cwd = value },
+    setCatalogCwd: (value: string | undefined) => { catalogCwd = value },
     setHistory: (value: typeof history) => { history = value },
     setInbox: (value: unknown) => { inbox = value },
   }
@@ -125,6 +127,17 @@ describe('RemoteBtwService', () => {
     await f.registry.detach(HostKey('one'))
   })
 
+  it('keeps an absent cwd explicit when neither native projection nor catalog supplies one', async () => {
+    const f = await fixture()
+    f.setCwd(undefined)
+    f.setCatalogCwd(undefined)
+    const result = await f.btw.ask(ref(), 'side question')
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.selection.cwd).toBe('')
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
   it('does not prompt a child without an official inherited history floor', async () => {
     const f = await fixture()
     f.setHistory([])
@@ -144,6 +157,8 @@ describe('RemoteBtwService', () => {
     await expect(f.btw.ask(ref(), 'side')).rejects.toThrow('ordinary fork error')
     f.fork.mockRejectedValueOnce({ name: 'SessionForkError', rpcError: null })
     await expect(f.btw.ask(ref(), 'side')).rejects.toEqual({ name: 'SessionForkError', rpcError: null })
+    f.fork.mockRejectedValueOnce('native fork unavailable')
+    await expect(f.btw.ask(ref(), 'side')).rejects.toBe('native fork unavailable')
     await f.btw.dispose()
     await f.registry.detach(HostKey('one'))
   })

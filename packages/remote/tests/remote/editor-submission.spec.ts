@@ -1,9 +1,49 @@
 /** Submission admission, draft recovery, and exact-selection cancellation decisions. @module mayfly-remote/tests/editor-submission */
 import { describe, expect, it, vi } from 'vitest'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
-import { accepted, denied, deferred, flush, submissionFixture, wire } from './editor-feature-fixture.ts'
+import { EditorSubmit } from '../../src/remote/editor/submit.ts'
+import { accepted, denied, deferred, flush, submissionFixture, translate, wire } from './editor-feature-fixture.ts'
 
 describe('editor submission through the real core editor', () => {
+  it('supports an editor without optional draft-capture and restoration extensions', async () => {
+    const host = wire()
+    const f = submissionFixture(host.selected)
+    f.submit.dispose()
+    const optionalExtensions = new Set<PropertyKey>(['restoreSubmittedDraft', 'consumeSubmittedDraft', 'captureDraft'])
+    // The public editor contract allows these extensions to be absent; all ordinary editor methods remain native.
+    const basic = new Proxy(f.editor, { get(target, key) {
+      if (optionalExtensions.has(key)) return undefined
+      const value: unknown = Reflect.get(target, key)
+      return typeof value === 'function' ? value.bind(target) : value
+    } })
+    const submit = new EditorSubmit({
+      editor: basic, screen: f.screen, session: () => host.selected, commands: f.commands, skills: f.skills,
+      attachments: f.attachments, draft: f.draft, notice: { set: text => { f.notices.push(text) } }, t: translate, exit: f.exit,
+    })
+    try {
+      f.draft.stashDraft({ raw: 'saved basic draft', pastes: new Map() })
+      submit.restoreEditor()
+      expect(f.editor.getText()).toBe('saved basic draft')
+      submit.stashDraft()
+      expect(f.draft.currentDraft().raw).toBe('saved basic draft')
+      f.editor.setText('')
+      host.prompt.mockResolvedValueOnce(denied('queue refused'))
+      submit.requeue('queued original', 'turn')
+      await flush()
+      expect(f.editor.getText()).toBe('queued original')
+      host.prompt.mockResolvedValueOnce(denied('steer refused'))
+      expect(submit.steer()).toBe(true)
+      await flush()
+      expect(f.editor.getText()).toBe('queued original')
+      f.editor.onSubmit = text => { submit.submit(text) }
+      host.prompt.mockResolvedValueOnce(denied('prompt refused'))
+      f.enter('basic prompt')
+      await flush()
+      expect(f.editor.getText()).toBe('basic prompt')
+      expect(host.prompt).toHaveBeenCalledTimes(3)
+    } finally { submit.dispose() }
+  })
+
   it('uses one request identity for the selected Host prompt and preserves native history', async () => {
     const host = wire()
     const f = submissionFixture(host.selected)
@@ -130,6 +170,21 @@ describe('editor submission through the real core editor', () => {
     await flush()
     expect(f.editor.getText()).toBe('')
     expect(f.notices).toEqual([])
+    expect(host.prompt).toHaveBeenCalledOnce()
+  })
+
+  it.each(['selection', 'dispose'] as const)('ignores a late native prompt refusal after %s', async transition => {
+    const host = wire()
+    const response = deferred<Awaited<ReturnType<typeof host.prompt>>>()
+    host.prompt.mockReturnValueOnce(response.promise)
+    const f = submissionFixture(host.selected)
+    f.enter('retired native prompt')
+    if (transition === 'selection') f.select(wire('other').selected)
+    else f.submit.dispose()
+    response.resolve(denied('retired native refusal'))
+    await flush()
+    expect(f.notices).toEqual([])
+    expect(f.editor.getText()).toBe('')
     expect(host.prompt).toHaveBeenCalledOnce()
   })
 
@@ -303,6 +358,36 @@ describe('editor submission through the real core editor', () => {
     await flush()
     expect(f.attachments.capture(marker).content).toEqual([{ type: 'text', text: marker }])
     expect(host.prompt).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a failed native echo recoverable until the refused submission returns its receipt', async () => {
+    const host = wire()
+    const response = deferred<Awaited<ReturnType<typeof host.prompt>>>()
+    host.prompt.mockReturnValueOnce(response.promise)
+    const f = submissionFixture(host.selected)
+    const marker = f.file()
+    f.enter(`unsent ${marker}`)
+    host.begin[0]!.onRetire?.({ reason: 'failed' })
+    response.resolve(denied('native prompt refused'))
+    await flush()
+    expect(f.editor.getText()).toBe(`unsent ${marker}`)
+    expect(f.attachments.capture(marker).content).toEqual([{ type: 'file', receiptId: 'receipt-1' }])
+  })
+
+  it.each(['cancel', 'queue'] as const)('suppresses a late %s refusal or transport failure after disposal', async kind => {
+    for (const fails of [false, true]) {
+      const host = wire()
+      const response = deferred<Awaited<ReturnType<typeof host.cancel>>>()
+      const f = submissionFixture(host.selected)
+      let pending: Promise<boolean>
+      if (kind === 'cancel') { host.cancel.mockReturnValueOnce(response.promise); pending = f.submit.cancel() }
+      else { host.updateQueue.mockReturnValueOnce(response.promise); pending = f.submit.updateQueue('item' as MessageId, { kind: 'remove' }) }
+      f.submit.dispose()
+      if (fails) response.reject(new Error('retired transport failure'))
+      else response.resolve(denied('retired native refusal'))
+      expect(await pending).toBe(false)
+      expect(f.notices).toEqual([])
+    }
   })
 
   it.each(['other Host', 'new client', 'reconnect', 'detach'] as const)('never leaks a late cancellation notice after %s', async transition => {

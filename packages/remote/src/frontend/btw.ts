@@ -92,7 +92,6 @@ interface ActiveBtw {
 export class RemoteBtwService {
   private active: ActiveBtw | undefined
   private pending: AbortController | undefined
-  private generation = 0
   private tail: Promise<unknown> = Promise.resolve()
   private disposed = false
 
@@ -113,7 +112,6 @@ export class RemoteBtwService {
   ask(parent: SessionRef, question: string, options: RemoteBtwAskOptions = {}): Promise<RemoteResult<RemoteBtwSession>> {
     if (question.trim() === '') return Promise.reject(new Error('BTW question must not be empty'))
     if (this.disposed) return Promise.reject(new RemoteBtwSupersededError('BTW service is disposed'))
-    const generation = ++this.generation
     this.pending?.abort(new RemoteBtwSupersededError('BTW request was replaced'))
     const previous = this.active
     this.active = undefined
@@ -121,7 +119,7 @@ export class RemoteBtwService {
     const controller = new AbortController()
     this.pending = controller
     const signal = options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal])
-    const operation = this.tail.then(() => this.execute(parent, question, options, signal, generation))
+    const operation = this.tail.then(() => this.execute(parent, question, options, signal))
     this.tail = operation.catch(() => undefined)
     const settled = (): void => {
       if (this.pending === controller) this.pending = undefined
@@ -172,7 +170,6 @@ export class RemoteBtwService {
 
   /** Close only the displayed BTW lease; the Host Session and its work remain untouched. */
   close(): void {
-    this.generation += 1
     this.pending?.abort(new RemoteBtwSupersededError('BTW view was closed'))
     this.pending = undefined
     const active = this.active
@@ -196,13 +193,12 @@ export class RemoteBtwService {
     question: string,
     options: RemoteBtwAskOptions,
     signal: AbortSignal,
-    generation: number,
   ): Promise<RemoteResult<RemoteBtwSession>> {
     const parentLease = this.actions.retainView(parent, 'btw-parent')
     let childLease: HostViewLease | undefined
     try {
       await parentLease.ready
-      this.assertCurrent(generation, signal)
+      this.assertCurrent(signal)
       const binding = parentLease.reference.binding
       const model = readModelSelection(binding.session.projections.faceOf('modelSelection').getSnapshot())
       const cwd = readWorkingDirectory(binding.session.projections.faceOf('workingDirectory').getSnapshot())
@@ -221,17 +217,17 @@ export class RemoteBtwService {
         if (failure !== undefined) return { ok: false, error: failure }
         throw error
       }
-      this.assertCurrent(generation, signal)
+      this.assertCurrent(signal)
       if (historyFloorSeq === undefined) throw new RemoteBtwPreconditionError(parent, 'history-floor-unavailable')
       const selected = await this.actions.selectModel(child, model)
       if (!selected.ok) return selected
-      this.assertCurrent(generation, signal)
+      this.assertCurrent(signal)
       childLease = this.actions.retainView(child, 'btw')
       await childLease.ready
-      this.assertCurrent(generation, signal)
-      const queueFailure = await this.clearInheritedQueue(child, childLease, () => { this.assertCurrent(generation, signal) })
+      this.assertCurrent(signal)
+      const queueFailure = await this.clearInheritedQueue(child, childLease, () => { this.assertCurrent(signal) })
       if (queueFailure !== undefined) return { ok: false, error: queueFailure }
-      this.assertCurrent(generation, signal)
+      this.assertCurrent(signal)
       const prompted = await this.actions.prompt(child, {
         mode: 'queue',
         text: question,
@@ -240,7 +236,7 @@ export class RemoteBtwService {
         signal,
       })
       if (!prompted.ok) return prompted
-      this.assertCurrent(generation, signal)
+      this.assertCurrent(signal)
       const lease = childLease
       this.active = { parent, child, lease }
       return {
@@ -252,7 +248,7 @@ export class RemoteBtwService {
           selection: {
             ref: child,
             cwd,
-            ...(historyFloorSeq === undefined ? {} : { historyFloorSeq }),
+            historyFloorSeq,
           },
         },
       }
@@ -277,9 +273,9 @@ export class RemoteBtwService {
     return undefined
   }
 
-  private assertCurrent(generation: number, signal: AbortSignal): void {
+  private assertCurrent(signal: AbortSignal): void {
+    // Replacement, close, and disposal abort the exact pending owner before any continuation resumes.
     signal.throwIfAborted()
-    if (this.disposed || generation !== this.generation) throw new RemoteBtwSupersededError('BTW request was replaced')
   }
 }
 

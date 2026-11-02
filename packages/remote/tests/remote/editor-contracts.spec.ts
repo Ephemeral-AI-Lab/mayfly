@@ -102,6 +102,19 @@ describe('command discovery and invocation', () => {
     expect(f.notices).toEqual([])
     expect(host.executeCommand).toHaveBeenCalledOnce()
   })
+
+  it('suppresses a late unknown-command result after caller cancellation', async () => {
+    const host = wire()
+    const response = deferred<Awaited<ReturnType<typeof host.executeCommand>>>()
+    host.executeCommand.mockReturnValueOnce(response.promise)
+    const f = submissionFixture(host.selected)
+    const abort = new AbortController()
+    const command = f.commands.execute('/unknown', [], abort.signal)
+    abort.abort()
+    response.resolve({ ok: true, value: undefined } as never)
+    expect(await command).toEqual({ handled: true, exit: false, accepted: false })
+    expect(f.notices).toEqual([])
+  })
 })
 
 describe('editor command and draft data contracts', () => {
@@ -129,6 +142,7 @@ describe('editor command and draft data contracts', () => {
     expect(matched.map(editorCommandLabel)).toContain('/commit (save)')
     expect(filterEditorCommands(commands, 'unrelated missing', f.components)).toEqual([])
     expect(editorCommandLabel({ command: commands[1]!, viaAlias: false })).toBe('/save')
+    expect(editorCommandLabel({ command: commands[1]!, viaAlias: true })).toBe('/save ()')
   })
 
   it('bounds multiline feedback and preserves independent history, mode and paste tables across remounts', () => {
@@ -178,6 +192,7 @@ describe('Host mention completion and file preview contracts', () => {
 
   it('applies a file completion without a duplicate quote and keeps directory caret inside its quote', () => {
     const file = mentionItem({ kind: 'file', path: 'my file.ts' }, true)!
+    expect(applyMention([], 0, 0, file, '')).toEqual({ lines: [], cursorLine: 0, cursorCol: file.value.length + 1 })
     expect(applyMention(['read @"my" after'], 0, 9, file, '@"my')).toEqual({ lines: ['read @"my file.ts"  after'], cursorLine: 0, cursorCol: 19 })
     const directory = mentionItem({ kind: 'directory', path: 'my files' }, true)!
     const entered = applyMention(['@"my', 'second line'], 0, 4, directory, '@"my')

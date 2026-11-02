@@ -95,7 +95,7 @@ function fixture(options: { withoutCopy?: boolean } = {}) {
     options: { localCwd: '/work', copy: options.withoutCopy === true ? undefined : copy },
     presentSlot: {} as unknown as RemotePresentSlot,
   } as unknown as RemoteOperationsContext
-  const run = (): Promise<boolean> => commands.execute('copy', '', new AbortController().signal)
+  const run = (input = '', signal = new AbortController().signal): Promise<boolean> => commands.execute('copy', input, signal)
   const setSelection = (next: RemoteFeatureSelection | undefined): void => { current = next }
   return { context, notice, commands, copy, journal, client, run, setSelection }
 }
@@ -184,5 +184,89 @@ describe('mountRemoteCopyOperations', () => {
     mountRemoteCopyOperations(context)
     await expect(run()).resolves.toBe(true)
     expect(notice.set).toHaveBeenCalledWith('Could not copy: clipboard closed')
+  })
+
+  it('ignores aborted calls, rejects arguments, and retires a retained dispatcher after unload', async () => {
+    const f = fixture()
+    const dispose = mountRemoteCopyOperations(f.context)
+    const command = f.commands.list()[0]!
+    const abort = new AbortController()
+    abort.abort()
+    await f.run('', abort.signal)
+    expect(f.journal).not.toHaveBeenCalled()
+    await expect(f.run('extra')).rejects.toThrow('Usage: /copy')
+    dispose()
+    await command.execute('', new AbortController().signal)
+    expect(f.journal).not.toHaveBeenCalled()
+  })
+
+  it('skips malformed native message content and non-text blocks', async () => {
+    const f = fixture()
+    f.journal.mockResolvedValue([
+      { type: 'assistant/message', data: null },
+      { type: 'assistant/message', data: { message: false } },
+      { type: 'assistant/message', data: { message: { content: 'unavailable' } } },
+      assistant(4, [null, { type: 'text', text: 123 }, { type: 'text', text: 'valid text' }]),
+    ] as unknown as SessionWireEvent[])
+    mountRemoteCopyOperations(f.context)
+    await f.run()
+    expect(f.copy).toHaveBeenCalledWith('valid text')
+    f.copy.mockClear()
+    f.journal.mockResolvedValue([
+      { type: 'assistant/message', data: null },
+      { type: 'assistant/message', data: { message: false } },
+      { type: 'assistant/message', data: { message: { content: 'unavailable' } } },
+    ] as unknown as SessionWireEvent[])
+    await f.run()
+    expect(f.copy).not.toHaveBeenCalled()
+    expect(f.notice.set).toHaveBeenLastCalledWith('No assistant reply to copy yet')
+  })
+
+  it.each(['abort', 'selection', 'binding', 'dispose'] as const)('does not copy a late native read after %s retirement', async retirement => {
+    const f = fixture()
+    const dispose = mountRemoteCopyOperations(f.context)
+    const pending = Promise.withResolvers<SessionWireEvent[]>()
+    f.journal.mockReturnValueOnce(pending.promise)
+    const abort = new AbortController()
+    const copying = f.run('', abort.signal)
+    if (retirement === 'abort') abort.abort()
+    else if (retirement === 'dispose') dispose()
+    else f.setSelection(selection(f.client, retirement === 'selection' ? 'other-session' : 'session-1'))
+    pending.resolve([assistant(1, [{ type: 'text', text: 'old reply' }])])
+    await copying
+    expect(f.copy).not.toHaveBeenCalled()
+    expect(f.notice.set).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it.each(['success', 'failure'] as const)('does not publish late clipboard %s after caller cancellation', async settlement => {
+    const f = fixture()
+    const dispose = mountRemoteCopyOperations(f.context)
+    f.journal.mockResolvedValue([assistant(1, [{ type: 'text', text: 'reply' }])])
+    const pending = Promise.withResolvers<void>()
+    f.copy.mockReturnValueOnce(pending.promise)
+    const abort = new AbortController()
+    const copying = f.run('', abort.signal)
+    await vi.waitFor(() => { expect(f.copy).toHaveBeenCalledOnce() })
+    abort.abort()
+    if (settlement === 'success') pending.resolve()
+    else pending.reject(new Error('obsolete clipboard error'))
+    await copying
+    expect(f.notice.set).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('propagates a current native read failure and suppresses one that settles after unload', async () => {
+    const f = fixture()
+    const dispose = mountRemoteCopyOperations(f.context)
+    f.journal.mockRejectedValueOnce(new Error('native history offline'))
+    await expect(f.run()).rejects.toThrow('native history offline')
+    const pending = Promise.withResolvers<SessionWireEvent[]>()
+    f.journal.mockReturnValueOnce(pending.promise)
+    const copying = f.run()
+    dispose()
+    pending.reject(new Error('obsolete native read failure'))
+    await copying
+    expect(f.notice.set).not.toHaveBeenCalled()
   })
 })

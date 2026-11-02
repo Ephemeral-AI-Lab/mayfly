@@ -131,7 +131,7 @@ export function mountRemoteEditor(
     if (frameShape === shape) return undefined
     const compiled = compileMayflyEditorShellNode(node, {
       editor, components, colors, getViewport: () => screen.editorViewport,
-      screenMode: 'main', keymap: ctx.mayflyKeymap, emit: () => {},
+      screenMode: 'main', keymap: ctx.mayflyKeymap, emit: screen.requestRender.bind(screen),
     })
     if (!compiled.ok) throw new Error(compiled.message)
     frameShape = shape

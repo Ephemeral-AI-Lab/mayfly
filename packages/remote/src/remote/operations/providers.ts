@@ -25,7 +25,7 @@ export function mountRemoteProviderOperations(context: RemoteOperationsContext):
       if (disposed || signal.aborted) return
       const input = rawInput.trim()
       const words = input.split(/\s+/u)
-      const verb = words[0]?.toLowerCase() ?? ''
+      const verb = words[0]!.toLowerCase()
       const name = words.slice(1).join(' ')
       let route: string
       if (input === '' || verb === 'list' || verb === 'switch' && name === '') route = ''

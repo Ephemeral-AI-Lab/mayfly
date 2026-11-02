@@ -7,7 +7,7 @@
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import type { SessionWireEvent } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
-import { remoteErrorMessage } from '../features/official.ts'
+import { RemoteFeatureController, remoteErrorMessage } from '../features/official.ts'
 import {
   collectRemoteSessionEvents, isRemoteRecord, registerRemoteOperationsLocale,
   type RemoteOperationsContext,
@@ -51,19 +51,19 @@ function assistantText(event: SessionWireEvent): string | undefined {
 /** The newest assistant reply with text in seq order, or undefined when the window holds none. */
 function latestAssistantText(events: readonly SessionWireEvent[]): string | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]
-    if (event === undefined) continue
+    const event = events[index]!
     const text = assistantText(event)
     if (text !== undefined) return text
   }
   return undefined
 }
 
-class RemoteCopyCommand {
+class RemoteCopyCommand extends RemoteFeatureController<RemoteOperationsContext['base']> {
   private readonly t: MayflyTranslate
 
-  constructor(private readonly context: RemoteOperationsContext) {
-    const { base } = context
+  constructor(private readonly copyContext: RemoteOperationsContext) {
+    super(copyContext.base)
+    const { base } = copyContext
     this.t = memoizedLocaleTranslator(base.ctx, 'remote-operations-copy').translate
     registerRemoteOperationsLocale(base, 'remote-operations-copy', zh)
   }
@@ -71,42 +71,46 @@ class RemoteCopyCommand {
   readonly execute = async (rawInput: string, signal: AbortSignal): Promise<void> => {
     if (signal.aborted) return
     if (rawInput.trim() !== '') throw new Error(this.t('Usage: /copy'))
-    const current = this.context.base.hosts.current()
+    const current = this.copyContext.base.hosts.current()
     // A missing selection is an ordinary state, not a failed command: throwing
     // here would surface as 'Submission was not confirmed; no retry was sent',
     // which reads like a transport fault. Every other Remote command notices.
     if (current === undefined) {
-      this.context.base.notice.set(this.t('No current session'))
+      this.copyContext.base.notice.set(this.t('No current session'))
       return undefined
     }
-    const copy = this.context.options.copy
+    const copy = this.copyContext.options.copy
     if (copy === undefined) {
-      this.context.base.notice.set(this.t('Clipboard is unavailable in this frontend'))
+      this.copyContext.base.notice.set(this.t('Clipboard is unavailable in this frontend'))
       return
     }
-    const events = await collectRemoteSessionEvents(current.client, {
-      address: { kind: 'session', sessionId: current.ref.sessionId },
-      maxMessages: COPY_PAGE_MESSAGES,
-      maxPages: COPY_MAX_PAGES,
-      signal,
-    })
-    if (signal.aborted) return
-    const text = latestAssistantText(events)
-    if (text === undefined) {
-      this.context.base.notice.set(this.t('No assistant reply to copy yet'))
-      return
-    }
+    const operation = this.sessionOperation(current, signal)
+    if (operation === undefined) return
     try {
-      await copy(text)
+      const events = await collectRemoteSessionEvents(current.client, {
+        address: { kind: 'session', sessionId: current.ref.sessionId },
+        maxMessages: COPY_PAGE_MESSAGES,
+        maxPages: COPY_MAX_PAGES,
+        signal: operation.signal,
+      })
+      if (!operation.valid()) return
+      const text = latestAssistantText(events)
+      if (text === undefined) {
+        this.copyContext.base.notice.set(this.t('No assistant reply to copy yet'))
+        return
+      }
+      try {
+        await copy(text)
+      } catch (error: unknown) {
+        // Clipboard refusal is an outcome; it must still belong to the displayed Session.
+        if (operation.valid()) this.copyContext.base.notice.set(this.t('Could not copy: {message}', { message: remoteErrorMessage(error) }))
+        return
+      }
+      if (!operation.valid()) return
+      this.copyContext.base.notice.set(this.t('Copied {count} characters', { count: text.length }))
     } catch (error: unknown) {
-      // A clipboard that refuses is an outcome, not a failed command: throwing
-      // would surface as 'Submission was not confirmed', which reads like a
-      // transport fault and hides the real reason.
-      this.context.base.notice.set(this.t('Could not copy: {message}', { message: remoteErrorMessage(error) }))
-      return
-    }
-    if (signal.aborted) return
-    this.context.base.notice.set(this.t('Copied {count} characters', { count: text.length }))
+      if (operation.valid()) throw error
+    } finally { operation.dispose() }
   }
 }
 
@@ -118,5 +122,5 @@ export function mountRemoteCopyOperations(context: RemoteOperationsContext): () 
     description: 'Copy the last assistant reply to the clipboard',
     execute: command.execute,
   })
-  return () => { unregister() }
+  return () => { unregister(); command.dispose() }
 }

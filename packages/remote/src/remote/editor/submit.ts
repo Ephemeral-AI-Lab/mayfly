@@ -252,10 +252,7 @@ export class EditorSubmit {
       const content = captured.content.map((part): PromptContentPart => part.type === 'text'
         ? { ...part, text: this.options.skills.rewrite(part.text) }
         : part)
-      if (!content.some(part => part.type !== 'text' || part.text.trim().length > 0)) {
-        this.fail(record, false)
-        return
-      }
+      // begin() admits nonempty source; marker capture replaces it with parts and skill rewriting never erases text.
       const text = content.filter(part => part.type === 'text').map(part => part.text).join('')
       const submission = selected.session.beginSubmission({
         mode,
