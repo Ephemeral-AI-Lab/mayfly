@@ -111,11 +111,10 @@ export function apply(ctx: Context): void {
     if (reason === 'aborted' || reason === 'error') parked.add(id)
   })
   const offStatus = ctx.on('agent/status', ({ agent, status }) => {
-    if (status === 'idle' && agent != null) schedule(agent)
+    if (status === 'idle') schedule(agent)
   })
   // A resumed Agent is published idle with whatever its durable inbox still holds; the crash or quit parked it.
   const offCreated = ctx.on('agent/created', ({ agent, source }) => {
-    if (agent == null) return
     if (source === 'resume') parked.add(String(agent.id))
     schedule(agent)
   })

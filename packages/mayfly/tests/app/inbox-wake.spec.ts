@@ -2,6 +2,7 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as inboxWake from '../../src/app/inbox-wake.ts'
 import { INBOX_WAKE_COOLDOWN_MS } from '../../src/app/inbox-wake.ts'
@@ -9,6 +10,7 @@ import { INBOX_WAKE_COOLDOWN_MS } from '../../src/app/inbox-wake.ts'
 interface Pending {
   readonly id: string
 }
+const contexts: Context[] = []
 
 /** One live Agent with the two inbox lanes the nudge reads and the two wake calls it makes. */
 function fakeAgent() {
@@ -41,11 +43,12 @@ function fakeAgent() {
 async function bench() {
   const parts = fakeAgent()
   const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(SessionStore)
+  parts.agent.session = ctx.sessions.create(SessionId(parts.agent.id))
   ctx.provide('agents', { get: (id: string) => id === parts.agent.id ? parts.agent : undefined } as never)
   const fiber = ctx.plugin(inboxWake)
-  // Cordis applies an injected plugin off the current job; let it register its listeners and timers first.
-  await Promise.resolve()
-  await Promise.resolve()
+  await fiber
   return { ...parts, ctx, fiber }
 }
 
@@ -55,11 +58,11 @@ const emitStatus = (ctx: Context, agent: ReturnType<typeof fakeAgent>['agent'], 
 
 /** The turn the nudge exists for: it ended aborted with the queue kept, so its driver parked the inbox. */
 const park = (ctx: Context, id = 'agent-1', reason: 'aborted' | 'error' = 'aborted'): void => {
-  ctx.emit('session/event', { id } as never, { type: 'turn/end', data: { reason: { kind: reason } } } as never)
+  ctx.sessions.get(SessionId(id))!.append('turn/end', { turn: 1, reason: reason === 'aborted' ? { kind: 'aborted', reason: { kind: 'user' } } : { kind: 'error', error: { code: 'UNKNOWN', message: 'Provider transport failed' } } })
 }
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] }) })
-afterEach(() => { vi.useRealTimers() })
+afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose(); vi.restoreAllMocks(); vi.useRealTimers() })
 
 describe('the parked-inbox nudge', () => {
   it('re-submits the oldest queued turn and leaves the rest in the inbox', async () => {
@@ -101,7 +104,7 @@ describe('the parked-inbox nudge', () => {
     expect(followed).toEqual([])
     // A settled abort parks it, but the next turn start (a normal boundary took the queue) retires the mark.
     park(ctx)
-    ctx.emit('session/event', { id: 'agent-1' } as never, { type: 'turn/start' } as never)
+    ctx.sessions.get(SessionId('agent-1'))!.append('turn/start', { turn: 1 })
     emitStatus(ctx, agent, 'idle')
     vi.advanceTimersByTime(INBOX_WAKE_COOLDOWN_MS)
     expect(followed).toEqual([])
@@ -162,5 +165,58 @@ describe('the parked-inbox nudge', () => {
     vi.advanceTimersByTime(INBOX_WAKE_COOLDOWN_MS)
     expect(followed).toEqual(['turn-1', 'turn-2'])
     await fiber.dispose()
+  })
+
+  it('retires a scheduled wake if a native turn starts before its timer runs', async () => {
+    const f = await bench()
+    park(f.ctx)
+    emitStatus(f.ctx, f.agent, 'idle')
+    f.ctx.sessions.get(SessionId(f.agent.id))!.append('turn/start', { turn: 2 })
+    vi.advanceTimersByTime(INBOX_WAKE_COOLDOWN_MS)
+    expect(f.followed).toEqual([])
+  })
+
+  it('clears a parked empty inbox and refuses an Agent whose registry identity has changed', async () => {
+    const empty = await bench()
+    empty.nextTurn.length = 0
+    park(empty.ctx, empty.agent.id, 'error')
+    emitStatus(empty.ctx, empty.agent, 'idle')
+    vi.advanceTimersByTime(INBOX_WAKE_COOLDOWN_MS)
+    expect(empty.followed).toEqual([])
+    emitStatus(empty.ctx, empty.agent, 'idle')
+    expect(vi.getTimerCount()).toBe(0)
+    const replaced = await bench()
+    park(replaced.ctx)
+    emitStatus(replaced.ctx, replaced.agent, 'idle')
+    vi.spyOn(replaced.ctx.agents, 'get').mockReturnValue({ ...replaced.agent } as never)
+    vi.advanceTimersByTime(INBOX_WAKE_COOLDOWN_MS)
+    expect(replaced.followed).toEqual([])
+  })
+
+  it('ignores unrelated or completed native facts and new-Agent/running lifecycle events', async () => {
+    const f = await bench()
+    const session = f.ctx.sessions.get(SessionId(f.agent.id))!
+    session.append('assistant/attempt', { turn: 1, step: 0, stream: [] })
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    emitStatus(f.ctx, f.agent, 'running')
+    f.ctx.emit('agent/created', { agent: f.agent as unknown as Agent, source: 'startup' })
+    emitStatus(f.ctx, f.agent, 'idle')
+    vi.advanceTimersByTime(INBOX_WAKE_COOLDOWN_MS)
+    expect(f.followed).toEqual([])
+  })
+
+  it('cancels a disposed Agent timer, accepts disposal without a timer, and clears pending timers on consumer unload', async () => {
+    const f = await bench()
+    park(f.ctx)
+    emitStatus(f.ctx, f.agent, 'idle')
+    f.ctx.emit('agent/disposed', { agent: f.agent as unknown as Agent })
+    f.ctx.emit('agent/disposed', { agent: f.agent as unknown as Agent })
+    vi.advanceTimersByTime(INBOX_WAKE_COOLDOWN_MS)
+    expect(f.followed).toEqual([])
+    park(f.ctx)
+    emitStatus(f.ctx, f.agent, 'idle')
+    expect(vi.getTimerCount()).toBe(1)
+    await f.fiber.dispose()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

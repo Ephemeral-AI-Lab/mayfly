@@ -37,7 +37,7 @@ export function toolDetailBody(schema: ToolSchema, t: MayflyTranslate): MayflyUi
     ui.divider({ label: t('Description') }),
     schema.description.length === 0 ? ui.text(t('(no description)'), { tone: 'muted' }) : ui.markdown(schema.description),
     ui.divider({ label: t('Parameters') }),
-    schema.parameters === undefined ? ui.text(t('(no parameters)'), { tone: 'muted' }) : ui.code(JSON.stringify(schema.parameters, null, 2), { language: 'json' }),
+    ui.code(JSON.stringify(schema.parameters, null, 2), { language: 'json' }),
   ]), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })])
 }
 

@@ -40,8 +40,7 @@ describe('native tool presentation facts', () => {
     const body = JSON.stringify(toolDetailBody(schema('zeta'), key => key))
     expect(body).toContain('More detail.')
     expect(body).toContain('path')
-    expect(JSON.stringify(toolDetailBody({ name: 'bare', description: '' } as ToolSchema, key => key))).toContain('(no description)')
-    expect(JSON.stringify(toolDetailBody({ name: 'bare', description: '' } as ToolSchema, key => key))).toContain('(no parameters)')
+    expect(JSON.stringify(toolDetailBody({ name: 'bare', description: '', parameters: {} }, key => key))).toContain('(no description)')
   })
 })
 
