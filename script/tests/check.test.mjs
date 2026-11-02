@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { parseCheckArgs, perfFailures, scenarioFailures } from '../check.mjs'
+import { parseCheckArgs, perfFailures, scenarioFailures, splitFailures } from '../check.mjs'
 import { ROOT } from '../package-contract.mjs'
 import { addedLines, uncoveredChangedLines } from '../verify/coverage-diff.mjs'
 import { renderSummary, vitestFailures } from '../verify/report.mjs'
@@ -20,8 +20,8 @@ test('a leaf edit in the round tier lints, builds, and runs the specs and scenar
   const steps = stepsFor(classifyChanges(['packages/mayfly/src/transcript/status-context.ts', 'packages/mayfly/AGENTS.md']), 'round', { root: ROOT })
   // An AGENTS.md edit also reaches the repository-workflow tests that own the
   // agent-doc contract, so the round tier runs them before its specs.
-  assert.deepEqual(names(steps).map(name => name.replace(/ \(\d+\)$/u, '')), ['lint', 'build', 'typecheck', 'workflow tests', 'specs', 'scenarios'])
-  assert.deepEqual(commandOf(steps, 'scenarios').args.slice(0, 4), ['script/scenarios.mjs', '--png', '--sizes', 'first'])
+  assert.deepEqual(names(steps).map(name => name.replace(/ \(\d+\)$/u, '')), ['lint', 'build', 'typecheck', 'workflow tests', 'specs', 'split Host/Remote smoke'])
+  assert.deepEqual(commandOf(steps, 'split Host/Remote smoke').args.slice(0, 4), ['script/split-parity.mjs', '--scenario', 'smoke', '--smoke-only'])
   const specs = commandOf(steps, 'specs')
   assert.ok(specs.args.includes('packages/mayfly/tests/transcript/width-scan.spec.ts'))
   assert.ok(!specs.args.includes('--coverage'))
@@ -45,24 +45,26 @@ test('the pr tier adds the checks the change claims, builds before packing, and 
   assert.ok(advised.args.includes('--coverage.thresholds.lines=0'))
 })
 
-test('the full tier runs everything once: one vitest run with coverage, the scenarios, the smoke, and the perf ceilings on its own build', () => {
+test('the full tier runs one vitest coverage/work-budget pass and actual split parity/recovery on its build', () => {
   const steps = stepsFor(classifyChanges(['website/index.md']), 'full', { root: ROOT })
   const scripts = scriptsOf(steps)
-  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'check:agent-docs', 'check:examples', 'smoke:happy', 'smoke:pty:output']) assert.ok(scripts.includes(name), name)
-  assert.deepEqual(commandOf(steps, 'perf ceilings').args, ['script/perf.mjs', '--assert'])
+  for (const name of ['test:repo-workflow', 'typecheck', 'lint', 'diagrams:check', 'build', 'check:lib', 'check:agent-docs', 'check:examples']) assert.ok(scripts.includes(name), name)
+  assert.ok(!steps.some(step => step.args.includes('script/perf.mjs') || step.args.includes('script/scenarios.mjs')))
+  assert.ok(!scripts.includes('smoke:happy') && !scripts.includes('smoke:pty:output'))
   assert.ok(!scripts.includes('check:pack'))
   assert.ok(!scripts.includes('website:build') && !scripts.includes('shots:check'), 'a release checks the Website, not the gate')
   const vitest = steps.filter(step => step.args.includes('vitest'))
   assert.equal(vitest.length, 1)
-  assert.deepEqual(commandOf(steps, 'scenarios').args, ['script/scenarios.mjs'])
+  assert.deepEqual(steps.find(step => step.kind === 'split').args, ['script/split-parity.mjs', '--scenario', 'all', '--results', '.artifacts/verify/split.json'])
   assert.ok(vitest[0].args.includes('--coverage'))
-  assert.ok(scripts.indexOf('build') < scripts.indexOf('smoke:happy'))
+  assert.ok(steps.findIndex(step => step.name === 'build') < steps.findIndex(step => step.kind === 'split'))
 })
 
 test('a global input or a shipped skill runs the full tier whatever tier was asked', () => {
   for (const file of ['vitest.config.ts', 'packages/mayfly/presets/mayfly-cordis/skills/mayfly-plugin-development/SKILL.md']) {
     const scripts = scriptsOf(stepsFor(classifyChanges([file]), 'round', { root: ROOT }))
-    assert.ok(scripts.includes('smoke:happy') && scripts.includes('check:agent-docs'), file)
+    assert.ok(scripts.includes('check:agent-docs'), file)
+    assert.ok(stepsFor(classifyChanges([file]), 'round', { root: ROOT }).some(step => step.kind === 'split'), file)
   }
   assert.ok(scriptsOf(stepsFor(classifyChanges(['packages/mayfly/presets/mayfly-cordis.patch.yml']), 'round', { root: ROOT })).includes('check:pack'))
 })
@@ -167,7 +169,7 @@ test('a golden runs its scenario, a covered source the scenarios that cover it, 
   }
   // The driver resolves the Harness's session package through the Mayfly manifest to build a side conversation's fork seed, so that manifest is machinery.
   assert.deepEqual(classifyChanges(['packages/mayfly/package.json']).tests.scenarios, [...GOLDEN_SCENARIOS].sort())
-  assert.equal(stepsFor(classifyChanges(['packages/mayfly/src/transcript/stream-facts.ts']), 'pr', { root: ROOT }).find(step => step.kind === 'scenarios').args[3], 'all')
+  assert.equal(stepsFor(classifyChanges(['packages/mayfly/src/transcript/stream-facts.ts']), 'pr', { root: ROOT }).find(step => step.kind === 'split').args[2], 'all')
 })
 
 test('a scenario report names the checkpoint, size, and rows that differ, a missing golden, a broken run, and an orphan', () => {
@@ -188,11 +190,13 @@ test('a scenario report names the checkpoint, size, and rows that differ, a miss
   assert.equal(failures[0].message, 'row 3\n- |a\n+ |b')
 })
 
-test('the pr tier measures the perf scenarios a frame-path change reaches, A/B, and the report lists their verdicts', () => {
+test('frame-path acceptance uses split parity and keeps deterministic renderer work budgets', () => {
   const plan = classifyChanges(['packages/mayfly/src/core/keymap.ts'])
   assert.ok(plan.tests.perf.includes('perf-focus'))
-  const perf = stepsFor(plan, 'pr', { root: ROOT }).find(step => step.kind === 'perf')
-  assert.deepEqual(perf.args.slice(0, 1), ['script/perf.mjs'])
+  const steps = stepsFor(plan, 'pr', { root: ROOT })
+  assert.ok(steps.some(step => step.kind === 'split'))
+  assert.ok(steps.some(step => step.args.includes('--project=perf') || step.args.some(arg => arg.startsWith('packages/mayfly/tests/perf/'))))
+  assert.ok(!steps.some(step => step.kind === 'perf'))
   assert.equal(stepsFor(plan, 'round', { root: ROOT }).some(step => step.kind === 'perf'), false)
   const summary = renderSummary({
     tier: 'pr', base: 'origin/main', verdict: 'pass', durationMs: 1000, files: [], reasons: [], manualAcceptance: [], steps: [], failures: [], uncovered: [], rerun: [],
@@ -206,5 +210,17 @@ test('the pr tier measures the perf scenarios a frame-path change reaches, A/B, 
   assert.deepEqual(perfFailures({ scenarios: [{ name: 'perf-focus', breaches: [{ span: 'idle', metric: 'cpuPct', value: 31, ceiling: 30 }] }], failures: ['perf-focus idle cpuPct 31 is past its ceiling 30', 'perf-gallery (head run 1): the screen did not settle'] }).map(failure => [failure.file, failure.test, failure.message]), [
     ['perf perf-focus', 'idle cpuPct', '31 is past its ceiling 30'],
     [undefined, undefined, 'perf-gallery (head run 1): the screen did not settle'],
+  ])
+})
+
+
+test('split failures distinguish immutable visual differences and real reconnect without accepting goldens', () => {
+  assert.deepEqual(splitFailures({ results: [
+    { scenario: 'smoke', failures: ['startup: row 2 differs'] },
+    { scenario: 'network', failures: ['Host exited'] },
+    { scenario: 'tools', failures: [] },
+  ] }), [
+    { kind: 'split', file: 'split smoke', test: 'published rc.2 parity', message: 'startup: row 2 differs' },
+    { kind: 'split', file: 'split network', test: 'real network recovery', message: 'Host exited' },
   ])
 })

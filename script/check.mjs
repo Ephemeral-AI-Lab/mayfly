@@ -20,7 +20,7 @@ import { collectChangedFiles, defaultBase } from './change-files.mjs'
 import { changedLines, uncoveredChangedLines } from './verify/coverage-diff.mjs'
 import { vitestFailures, writeReport } from './verify/report.mjs'
 import { classifyChanges, promoteToFull, repositoryGraph } from './verify/select.mjs'
-import { OUTPUT, PERF_RESULTS, SCENARIO_RESULTS, TIERS, VITEST_RESULTS, stepsFor } from './verify/steps.mjs'
+import { OUTPUT, PERF_RESULTS, SCENARIO_RESULTS, SPLIT_RESULTS, TIERS, VITEST_RESULTS, stepsFor } from './verify/steps.mjs'
 
 /**
  * Parse the command line.
@@ -79,6 +79,11 @@ export function scenarioFailures(results) {
   return failures
 }
 
+/** Strict reference differences and real split failures; these can never be accepted as candidate goldens. */
+export function splitFailures(results) {
+  return (results.results ?? []).flatMap(result => (result.failures ?? []).map(message => ({ kind: 'split', file: `split ${result.scenario}`, test: result.scenario === 'network' ? 'real network recovery' : 'published rc.2 parity', message })))
+}
+
 /** The failures of a perf run: a ceiling broken, or a run that broke. */
 export function perfFailures(results) {
   return [
@@ -122,7 +127,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const vitestResults = join(root, VITEST_RESULTS)
       const scenarioResults = join(root, SCENARIO_RESULTS)
       const perfResults = join(root, PERF_RESULTS)
-      if (step.kind !== undefined) { rmSync(vitestResults, { force: true }); rmSync(scenarioResults, { force: true }); rmSync(perfResults, { force: true }) }
+      const splitResults = join(root, SPLIT_RESULTS)
+      if (step.kind !== undefined) { rmSync(vitestResults, { force: true }); rmSync(scenarioResults, { force: true }); rmSync(perfResults, { force: true }); rmSync(splitResults, { force: true }) }
       const begin = performance.now()
       const code = await runStep(step, { root, log, verbose: options.verbose })
       const durationMs = Math.round(performance.now() - begin)
@@ -134,7 +140,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       }
       process.stdout.write(`${status === 'pass' ? '✓' : '✗'} ${step.name} (${seconds(durationMs)})${status === 'fail' ? ` — ${relative(root, log)}` : ''}\n`)
       if (status === 'pass') continue
-      const specFailures = step.kind === 'perf'
+      const specFailures = step.kind === 'split'
+        ? existsSync(splitResults) ? splitFailures(JSON.parse(readFileSync(splitResults, 'utf8'))) : []
+        : step.kind === 'perf'
         ? existsSync(perfResults) ? perfFailures(JSON.parse(readFileSync(perfResults, 'utf8'))) : []
         : step.kind === 'scenarios'
         ? existsSync(scenarioResults) ? scenarioFailures(JSON.parse(readFileSync(scenarioResults, 'utf8'))) : []
@@ -148,7 +156,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const uncovered = advised ? uncoveredChangedLines(JSON.parse(readFileSync(coverageFile, 'utf8')), changedLines(root, base, plan.files.filter(file => existsSync(join(root, file)))), root) : []
     const failedSpecs = [...new Set(failures.flatMap(failure => failure.kind === 'spec' ? [failure.file] : []))]
     const failedScenarios = [...new Set(failures.flatMap(failure => failure.kind === 'scenario' && failure.file.startsWith('scenario ') ? [failure.file.slice('scenario '.length)] : []))]
+    const failedSplit = [...new Set(failures.flatMap(failure => failure.kind === 'split' ? [failure.file.slice('split '.length)] : []))]
     const rerun = [
+      ...failedSplit.map(scenario => `node script/split-parity.mjs --scenario ${scenario}`),
       ...failedSpecs.length > 0 ? [`pnpm exec vitest run ${failedSpecs.join(' ')}`] : [],
       ...failedScenarios.length > 0 ? [`pnpm run scenarios -- ${failedScenarios.join(' ')}`, `pnpm run frame <scenario>   # look at a checkpoint (.grid, .txt, .svg)`, `pnpm run scenarios -- --update ${failedScenarios.join(' ')}   # accept what the product paints now`] : [],
       ...failures.some(failure => failure.kind === 'scenario' && !failure.file.startsWith('scenario ')) ? ['pnpm run scenarios -- --update'] : [],
