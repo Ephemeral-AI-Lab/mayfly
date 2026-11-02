@@ -14,6 +14,7 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) awai
 async function fixture() {
   const f = await taskFixture()
   const entry = { id: 'alpha', displayName: 'Native Alpha', description: 'Reads project files.', source: 'community', author: { name: 'Example' }, category: 'tools', status: 'stable', surfaces: { server: {} }, install: { rows: [{ name: '@scope/alpha', npm: { spec: '@scope/alpha@2.0.0' } }] } }
+  mocks.catalog.mockReset()
   mocks.catalog.mockResolvedValue({ status: 'fresh', index: { schemaVersion: 1, entries: [entry] } })
   const nativeBundle = { name: '@scope/alpha', version: '2.0.0', enabled: true, installed: true, removable: true, official: false, availability: 'profile', optional: false, updatable: true, rows: [], overrides: [] }
   let installed = false
@@ -40,6 +41,29 @@ async function fixture() {
 }
 
 describe('real marketplace command and ordinary overlay boundary', () => {
+  it.each(['remove', 'abort'] as const)('retires a marketplace closed during its initial publication without starting later reads: %s', async reason => {
+    const f = await fixture()
+    const abort = new AbortController()
+    const off = f.ctx.mayflyOverlays.subscribe(delta => {
+      if (delta.kind !== 'upsert' || delta.entry.id !== 'mayfly.plugin-market') return
+      if (reason === 'remove') f.ctx.mayflyOverlays.close(delta.entry.id)
+      else abort.abort()
+    })
+    try {
+      await expect(f.run('plugin', '', abort.signal)).resolves.toBe(true)
+      await tick()
+      expect(f.ctx.mayflyOverlays.list()).toEqual([])
+      expect(f.manager.listBundles).not.toHaveBeenCalled()
+      expect(mocks.catalog).not.toHaveBeenCalled()
+      expect(f.options.notice.set).not.toHaveBeenCalled()
+    } finally { off() }
+    // The closed mount cannot retain an owner that interferes with the next command.
+    await f.open()
+    expect(JSON.stringify(f.panel().node)).toContain('Native Alpha')
+    expect(f.manager.listBundles).toHaveBeenCalledOnce()
+    expect(mocks.catalog).toHaveBeenCalledOnce()
+  })
+
   it('replaces the rc.2 browser on repeated commands, drops its old action endpoint, and preserves native restart feedback', async () => {
     const f = await fixture()
     const old = await f.open()

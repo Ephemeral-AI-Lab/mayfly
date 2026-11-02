@@ -498,7 +498,8 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
       })
     }
 
-    const publish = (): void => { if (!unloaded && !handle.closed) handle.refresh() }
+    let handle: RemoteBrowserPanel | undefined
+    const publish = (): void => { if (!unloaded && handle?.closed === false) handle.refresh() }
 
     const refreshMarket = async (reporter: OperationReporter, signal: AbortSignal): Promise<boolean> => {
       if (manager === undefined) {
@@ -537,7 +538,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
       return ordered.find(item => item.id === focused[activeTab])?.id ?? ordered[0]?.id
     }
 
-    const handle: RemoteBrowserPanel = openRemoteBrowser(context.base, {
+    handle = openRemoteBrowser(context.base, {
       id: 'mayfly.plugin-market',
       scope: { kind: 'app', targetId: 'plugin-market' },
       signal: panelSignal,
@@ -624,8 +625,9 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
               return { kind: 'completed' }
           }
         },
-      onClosed: () => { lifetime.abort(); panels.delete(handle) },
+      onClosed: () => { lifetime.abort(); if (handle !== undefined) panels.delete(handle) },
     })
+    if (handle.closed) return { kind: 'success' }
     panels.add(handle)
     // The panel mounts immediately with the loading document when the caller
     // opened before the first load settled; swap in the data when it arrives.
