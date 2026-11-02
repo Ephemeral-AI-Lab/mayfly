@@ -6,7 +6,7 @@
       config:
         id: mayfly-cordis
         name: Mayfly Cordis
-        description: Mayfly 创造模式：检查和扩展 Host 原生能力，编写分体式 Mayfly 组件与用户组合。
+        description: TUI 热挂载 API 暂缺；Mayfly 创造模式支持 Host 扩展与用户组合，前端扩展需源码集成并重启。
         order: 5
         plugins:
           # The persona and skills describe the actual split process boundaries;

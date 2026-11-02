@@ -22,6 +22,7 @@ interface Row {
   readonly config?: {
     readonly id?: string
     readonly name?: string
+    readonly description?: string
     readonly order?: number
     readonly plugins?: readonly Row[]
     readonly prefix?: string
@@ -47,6 +48,9 @@ describe('Host creative preset composition', () => {
     expect(ordinary(declaration.config!.plugins!)).toEqual(ordinary(native.config!.plugins!))
     expect(declaration.config!.plugins!.map(row => row.id)).toEqual(native.config!.plugins!.map(row => row.id))
     const persona = declaration.config!.plugins!.find(row => row.id === 'persona')!.config!.prefix!
+    // The roster truncates long descriptions: expose the current API gap first.
+    expect(declaration.config!.description).toMatch(/^TUI 热挂载 API 暂缺；/u)
+    expect(declaration.config!.description).toContain('前端扩展需源码集成并重启')
     expect(persona).toContain('independent @ephemeral-ai/mayfly-remote')
     expect(persona).toContain('no public Remote UI hot-load or external frontend plugin installation entry')
     expect(persona).toContain('Current Harness model tools cannot create or run dynamic definitions')
