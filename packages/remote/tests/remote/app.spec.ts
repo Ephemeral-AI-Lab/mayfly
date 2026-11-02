@@ -24,11 +24,16 @@ function clientFixture(key: HostKey) {
     subscribe: () => () => {},
   } satisfies SessionBinding['eventSource']
   const requestId = 'request-1' as SessionRequestId
+  const projectionValues = new Map<string, unknown>()
+  const sessionListeners = new Set<() => void>()
   const session = {
     beginSubmission: vi.fn(() => ({ requestId, abandon: vi.fn() })),
     prompt: vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } })),
     cancel: vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } })),
     command: vi.fn(async () => ({ ok: true as const, value: { matched: false } })),
+    getSnapshot: vi.fn(() => ({ running: false })),
+    subscribe: (listener: () => void) => { sessionListeners.add(listener); return () => { sessionListeners.delete(listener) } },
+    projections: { faceOf: (key: string) => ({ getSnapshot: () => projectionValues.get(key), subscribe: (listener: () => void) => { sessionListeners.add(listener); return () => { sessionListeners.delete(listener) } } }) },
   }
   const binding = { sessionId, eventSource, session, ctx: {} as never } as unknown as SessionBinding
   const reference: SessionReference = {
@@ -56,6 +61,7 @@ function clientFixture(key: HostKey) {
           value: { default: { model: 'deepseek-chat', provider: 'deepseek' } },
         })),
       },
+      pluginManager: { listBundles: vi.fn(async () => ({ ok: true as const, value: [{ name: '@deepseek-ai/dsh-base', version: '0.2.2-alpha.2' }] })) },
     } as never,
     fileUpload: {} as never,
     origin: 'http://127.0.0.1:3080',
@@ -70,7 +76,7 @@ function clientFixture(key: HostKey) {
     } as never,
     detach: vi.fn(async () => {}),
   }
-  return { client, session, reference, sessionId, listSnapshot }
+  return { client, session, reference, sessionId, listSnapshot, projectionValues, sessionListeners }
 }
 
 function appFixture() {
@@ -83,6 +89,7 @@ function appFixture() {
   const panels: RemoteAppPanels = {
     showHelp: vi.fn(),
     showStatus: vi.fn(),
+    showContext: vi.fn(),
     showVersion: vi.fn(),
   }
   return { conversation, status, panels, browser: { open: vi.fn() } }
@@ -333,7 +340,7 @@ describe('RemoteApp', () => {
       expect.objectContaining({ name: 'quit' }),
       expect.objectContaining({ name: 'compact', description: 'Compact history' }),
     ]))
-    await app.execute('/status')
+    await app.execute('/host-status')
     expect(panels.showStatus).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/workspace' }))
     await app.execute('/version')
     expect(panels.showVersion).toHaveBeenCalledOnce()
@@ -586,5 +593,75 @@ describe('RemoteApp', () => {
     settle({ ok: true, value: { matched: true } })
     await expect(pending).rejects.toThrow('superseded')
     expect(fixture.session.prompt).not.toHaveBeenCalled()
+  })
+
+  it('keeps native /status routing and advertises local diagnostics under /host-status', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    await app.selectOrCreate()
+    fixture.session.command.mockResolvedValue({ ok: true, value: { matched: true } })
+    await app.execute('/status')
+    expect(fixture.session.command).toHaveBeenCalledWith('/status')
+    expect(panels.showStatus).not.toHaveBeenCalled()
+    await app.execute('/host-status')
+    expect(panels.showStatus).toHaveBeenCalledOnce()
+    await app.execute('/new')
+    expect(app.registry.current).toBeUndefined()
+    expect(status.set).toHaveBeenLastCalledWith('starting a new session')
+  })
+
+  it('reads Harness version from actual Host bundle inventory without creating a Session', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    await app.execute('/version')
+    expect(fixture.client.remote.pluginManager.listBundles).toHaveBeenCalledOnce()
+    expect(panels.showVersion).toHaveBeenCalledWith('0.2.2-alpha.2')
+    expect(fixture.client.sessions.create).not.toHaveBeenCalled()
+    expect(fixture.client.sessions.retain).not.toHaveBeenCalled()
+    vi.mocked(fixture.client.remote.pluginManager.listBundles).mockResolvedValue({ ok: true, value: [] })
+    await app.execute('/version')
+    expect(panels.showVersion).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('fences native version inventory after reconnect and preserves current read failures', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    let generation = 1
+    fixture.client.state.getSnapshot = () => ({ status: 'connected', generation })
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    let settle!: (value: unknown) => void
+    fixture.client.remote.pluginManager.listBundles = vi.fn(() => new Promise(resolve => { settle = resolve })) as never
+    const pending = app.execute('/version')
+    generation += 1
+    settle({ ok: true, value: [{ name: '@deepseek-ai/dsh-base', version: 'retired' }] })
+    await pending
+    expect(panels.showVersion).not.toHaveBeenCalled()
+    fixture.client.remote.pluginManager.listBundles = vi.fn(async () => ({ ok: false, error: { message: 'Host inventory denied' } })) as never
+    await expect(app.execute('/version')).rejects.toThrow('Host inventory denied')
+  })
+
+  it('provides a live exact-binding context source and retires it on primary selection change', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await app.attach('http://host/')
+    await app.selectOrCreate()
+    fixture.projectionValues.set('contextPressure', { projectedTokens: 1024, contextWindow: 2048 })
+    await app.execute('/context')
+    const source = vi.mocked(panels.showContext).mock.calls[0]![0]
+    expect(source.read()).toMatchObject({ usage: { context: { used: 1024, window: 2048 } } })
+    const listener = vi.fn()
+    const off = source.subscribe(listener)
+    for (const changed of fixture.sessionListeners) changed()
+    expect(listener).toHaveBeenCalled()
+    app.clearSession()
+    expect(source.read()).toBeUndefined()
+    off()
+    expect(fixture.sessionListeners.size).toBe(0)
   })
 })

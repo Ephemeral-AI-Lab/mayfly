@@ -1,11 +1,12 @@
 /** Shared wire command panels for the standalone frontend. @module remote/interactions/plain-panels */
 import type { Context } from '@deepseek-ai/cordis'
 import { MAYFLY_VERSION } from '@ephemeral-ai/mayfly/banner-content'
-import { helpNode, displayKey, SHARED_KEY_REFERENCE, interactionTranslator, mountInteractionLocale, observeInteractionLocale } from '@ephemeral-ai/mayfly/command-panels'
+import { helpNode, displayKey, SHARED_KEY_REFERENCE, interactionTranslator, mountInteractionLocale, observeInteractionLocale, versionNode, usageNode } from '@ephemeral-ai/mayfly/command-panels'
 import { contextPercent, formatTokens } from '@ephemeral-ai/mayfly/status-context'
 import { panel, ui, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { RemotePresentationFacts } from '../../transcript/remote-model.ts'
 import type { RemoteCommandDescriptor } from '../command-catalog.ts'
+import type { RemoteContextPanelSource } from '../session-information.ts'
 
 export type { RemoteCommandDescriptor } from '../command-catalog.ts'
 
@@ -13,13 +14,15 @@ export type { RemoteCommandDescriptor } from '../command-catalog.ts'
 export interface RemoteAppPanels {
   showHelp(commands: readonly RemoteCommandDescriptor[]): void
   showStatus(facts: RemotePresentationFacts): void
-  showVersion(): void
+  showContext(source: RemoteContextPanelSource): void
+  showVersion(harness?: string): void
 }
 
 /** Wire overlays retain focus and drafts in the shared frontend across renderer reload. */
 export class RemotePlainPanels implements RemoteAppPanels {
   private active: MayflyOverlayHandle | undefined
   private offLocale: (() => void) | undefined
+  private offSource: (() => void) | undefined
   private generation = 0
   private readonly t
 
@@ -63,14 +66,35 @@ export class RemotePlainPanels implements RemoteAppPanels {
     ].join('\n')) }))
   }
 
-  showVersion(): void {
-    this.open('version', () => panel({ title: this.t('Version'), escapeLabel: 'back', body: ui.text(`Mayfly v${MAYFLY_VERSION}`) }))
+  showContext(source: RemoteContextPanelSource): void {
+    const view = (): MayflyUiNode => {
+      const facts = source.read()
+      return panel({ title: this.t('Context'), escapeLabel: 'back',
+        body: ui.stack.column([ui.child(ui.scroll(facts === undefined
+          ? ui.text(this.t('Session information unavailable'), { tone: 'danger' })
+          : usageNode(facts, this.t), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]),
+        footer: ui.actions({ id: 'information-actions', items: [{ id: 'refresh', label: this.t('Refresh'), hintLabel: this.t('refresh'), semantic: 'refresh', hidden: true }] }),
+      })
+    }
+    this.open('context', view)
+    const generation = this.generation
+    this.offSource = source.subscribe(() => {
+      if (generation !== this.generation) return
+      if (source.read() === undefined) this.dispose()
+      else this.active?.set(view())
+    })
+  }
+
+  showVersion(harness?: string): void {
+    this.open('version', () => panel({ title: this.t('Version'), escapeLabel: 'back', body: versionNode({ mayfly: MAYFLY_VERSION, harness: harness ?? this.t('not advertised by the Host') }) }))
   }
 
   dispose(): void {
     this.generation += 1
     this.offLocale?.()
     this.offLocale = undefined
+    this.offSource?.()
+    this.offSource = undefined
     this.active?.close()
     this.active = undefined
   }
@@ -83,6 +107,7 @@ export class RemotePlainPanels implements RemoteAppPanels {
       onEvent: { action: event => {
         if (generation !== this.generation) return { kind: 'cancelled' }
         if (event.kind === 'dismiss') { this.dispose(); return { kind: 'cancelled' } }
+        if (event.kind === 'activate' && event.actionId === 'refresh') this.active?.set(view())
         return { kind: 'completed' }
       } },
     }, view())

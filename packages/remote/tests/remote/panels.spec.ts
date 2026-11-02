@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import * as Provider from '@ephemeral-ai/mayfly-ui/provider'
 import * as Frontend from '@ephemeral-ai/mayfly/frontend'
+import { compileMayflyUiNode, MayflyComponentsService, visibleWidth, type MayflyComponentsDeps, type MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey } from '../../src/client/types.ts'
 import { RemotePlainPanels } from '../../src/remote/interactions/plain-panels.ts'
 import type { RemotePresentationFacts } from '../../src/transcript/remote-model.ts'
+import type { RemoteSessionUsageFacts } from '../../src/remote/session-information.ts'
 
 async function fixture() {
   const ctx = new Context()
@@ -35,7 +37,7 @@ describe('shared wire command panels', () => {
       expect(ctx.mayflyOverlays.list()[0]!.definition.presentation).toBe('editor')
       panels.showVersion()
       expect(ctx.mayflyOverlays.list()).toHaveLength(1)
-      expect(text()).toContain('Mayfly v')
+      expect(text()).toContain('Harness')
       panels.dispose()
       panels.dispose()
       expect(ctx.mayflyOverlays.list()).toEqual([])
@@ -67,7 +69,7 @@ describe('shared wire command panels', () => {
       const event = { kind: 'dismiss' as const, pagePath: [] }
       const eventContext = { surfaceId: previous.id, source: [], signal: new AbortController().signal, revision: previous.revision, operationId: 'dismiss', report: vi.fn() }
       await previous.events.prepare(event, eventContext)
-      expect(text()).toContain('Mayfly v')
+      expect(text()).toContain('Harness')
       await current.events.prepare(event, { ...eventContext, surfaceId: current.id, revision: current.revision })
       expect(ctx.mayflyOverlays.list()).toEqual([])
       const registry = ctx.mayflyOverlays
@@ -104,6 +106,78 @@ describe('shared wire command panels', () => {
       ctx.mayflyLocale.setPreference('zh')
       await vi.waitFor(() => { expect(text()).toContain('退出 Mayfly') })
       panels.dispose()
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('uses shared version fields and marks an unadvertised Host version', async () => {
+    const { ctx, panels, text } = await fixture()
+    try {
+      panels.showVersion('0.2.2-alpha.2')
+      expect(text()).toContain('Mayfly')
+      expect(text()).toContain('Harness')
+      expect(text()).toContain('0.2.2-alpha.2')
+      panels.showVersion()
+      expect(text()).toContain('not advertised by the Host')
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('keeps shared context usage current and closes it when its native selection retires', async () => {
+    const { ctx, panels, text } = await fixture()
+    let current: RemoteSessionUsageFacts | undefined = {
+      model: { model: 'native-model', provider: 'native-provider' },
+      usage: { buckets: { input: 100, cacheRead: 100, cacheWrite: 0, output: 50 }, context: { used: 1024, window: 2048 } },
+      composition: { system: 100, tools: 200, messages: 724 },
+    }
+    const listeners = new Set<() => void>()
+    try {
+      panels.showContext({ read: () => current, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener) } } })
+      expect(text()).toContain('Context window')
+      expect(text()).toContain('1k / 2k (50%)')
+      expect(text()).toContain('Session usage')
+      expect(text()).toContain('Cache hit rate')
+      expect(text()).toContain('Estimated usage by category')
+      const old = [...listeners][0]!
+      current = { usage: { buckets: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }, context: {} } }
+      old()
+      expect(text()).toContain('no provider usage recorded yet')
+      const overlay = ctx.mayflyOverlays.list()[0]!
+      await overlay.events.prepare({ kind: 'activate', controlId: 'information-actions', actionId: 'refresh', pagePath: [] }, {
+        surfaceId: overlay.id, source: [], signal: new AbortController().signal, revision: overlay.revision, operationId: 'refresh', report: vi.fn(),
+      })
+      current = undefined
+      old()
+      expect(ctx.mayflyOverlays.list()).toEqual([])
+      expect(listeners.size).toBe(0)
+      old()
+      expect(ctx.mayflyOverlays.list()).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('paints help, version, diagnostics and shared usage within narrow and wide native viewports', async () => {
+    const { ctx, panels } = await fixture()
+    const colors = new Proxy({}, { get: () => (text: string) => text }) as MayflySemanticColors
+    const components = new MayflyComponentsService(ctx, { theme: { colors }, tui: { requestRender: () => {} } } as unknown as MayflyComponentsDeps)
+    const context: RemoteSessionUsageFacts = {
+      model: { model: '长模型😀'.repeat(8), provider: 'native-provider' },
+      usage: { buckets: { input: 100, cacheRead: 50, cacheWrite: 10, output: 200 }, context: { used: 1500, window: 2048 } },
+      composition: { system: 100, tools: 200, messages: 1200 },
+    }
+    try {
+      const show = [
+        () => { panels.showHelp([{ name: 'sessions', description: '会话😀'.repeat(30), aliases: ['resume'] }, { name: 'attach', description: 'Connect a Host URL', group: 'remote' }]) },
+        () => { panels.showVersion('0.2.2-alpha.2') },
+        () => { panels.showStatus(facts) },
+        () => { panels.showContext({ read: () => context, subscribe: () => () => {} }) },
+      ]
+      for (const open of show) {
+        open()
+        const node = ctx.mayflyOverlays.list()[0]!.node!
+        for (const width of [1, 8, 20, 40, 80, 160]) {
+          const compiled = compileMayflyUiNode(node, { emit: () => {}, components, colors, getViewport: () => ({ columns: width, rows: 40 }), screenMode: 'alternate' })
+          if (!compiled.ok) throw new Error(compiled.message)
+          for (const line of compiled.value.component.render(width)) expect(visibleWidth(line)).toBeLessThanOrEqual(width)
+        }
+      }
     } finally { await ctx.fiber.dispose() }
   })
 })

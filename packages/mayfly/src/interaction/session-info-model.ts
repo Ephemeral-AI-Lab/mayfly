@@ -57,7 +57,7 @@ function contextWindowField(facts: UsageFacts['context'], t: MayflyTranslate): M
   return field(t('Context window'), `${formatTokens(used)} / ${formatTokens(window)} (${usagePercent(used, window)}%)`, severity === 'danger' ? 'danger' : severity === 'warn' ? 'warning' : 'success')
 }
 
-export function usageNode(facts: SessionInfoFacts, t: MayflyTranslate): MayflyUiNode {
+export function usageNode(facts: Pick<SessionInfoFacts, 'model' | 'usage' | 'composition'>, t: MayflyTranslate): MayflyUiNode {
   const { buckets, context } = facts.usage
   const total = totalTokens(buckets)
   const promptTokens = buckets.input + buckets.cacheRead + buckets.cacheWrite

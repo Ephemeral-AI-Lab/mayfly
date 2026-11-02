@@ -1,4 +1,5 @@
 import { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import { HostKey, type SessionRef } from '../client/types.ts'
 import type { HostClient } from '../client/types.ts'
 import { HostActions } from '../frontend/host-actions.ts'
@@ -10,6 +11,7 @@ import type { RemoteAppPanels } from './interactions/plain-panels.ts'
 import type { RemoteSessionsBrowser } from './features/sessions.ts'
 import type { RemoteFeatureCommandDefinition } from './features/commands.ts'
 import { remoteCommandCatalog } from './command-catalog.ts'
+import { remoteSessionInformation, REMOTE_SESSION_INFO_KEYS } from './session-information.ts'
 
 export { FRONTEND_COMMANDS } from './command-catalog.ts'
 
@@ -18,6 +20,7 @@ export interface RemoteAppView {
   readonly ref: SessionRef
   readonly access: 'interactive' | 'resumable' | 'readonly'
   readonly presentation: RemotePresentationFacts
+  readonly binding?: SessionBinding
 }
 
 /** A displayed native side selection supplied by the presentation owner. */
@@ -103,6 +106,7 @@ export class RemoteApp {
     private readonly sessionsBrowser?: RemoteSessionsBrowser,
     private readonly displayedView?: () => RemoteAppView | undefined,
     private readonly featureCommands: () => readonly RemoteFeatureCommandDefinition[] = () => [],
+    private readonly subscribeDisplayedView?: (listener: () => void) => () => void,
   ) {
     this.registry = new HostRegistry(async (key) => {
       const startupUrl = this.endpoints.get(key)
@@ -251,6 +255,7 @@ export class RemoteApp {
     if (name === 'quit' || name === 'q' || name === 'exit') return { exit: true }
     if (name === 'new' || name === 'clear') {
       this.clearSession()
+      this.notice.set('starting a new session')
       return { exit: false }
     }
     if (name === 'sessions' || name === 'resume') {
@@ -389,12 +394,50 @@ export class RemoteApp {
       if (isCurrent()) this.panels.showHelp(remoteCommandCatalog(writable, this.featureCommands(), commands))
       return { exit: false }
     }
-    if (name === 'status') {
+    if (name === 'host-status') {
       this.panels.showStatus(this.displayedView?.()?.presentation ?? this.conversation.presentation())
       return { exit: false }
     }
+    if (name === 'context') {
+      const ref = this.requireSelection()
+      const view = this.displayedView?.()
+      const binding = view === undefined ? this.registry.currentReference?.binding : view.binding
+      if (binding === undefined) throw new Error('The selected conversation has no native Client binding')
+      const client = this.registry.get(ref.host)!
+      const generation = this.selectionGeneration
+      const connection = client.state.getSnapshot().generation
+      const isCurrent = (): boolean => {
+        const currentView = this.displayedView?.()
+        const current = currentView?.ref ?? this.registry.current
+        const currentBinding = currentView === undefined ? this.registry.currentReference?.binding : currentView.binding
+        return this.selectionGeneration === generation && this.registry.get(ref.host) === client
+          && client.state.getSnapshot().generation === connection && binding === currentBinding
+          && current?.host === ref.host && current.sessionId === ref.sessionId
+      }
+      this.panels.showContext({
+        read: () => isCurrent() ? remoteSessionInformation(binding, this.displayedView?.()?.presentation ?? this.conversation.presentation()) : undefined,
+        subscribe: listener => {
+          const disposers = [this.subscribeTopology(listener), client.state.subscribe(listener), binding.session.subscribe(listener),
+            ...REMOTE_SESSION_INFO_KEYS.map(key => binding.session.projections.faceOf(key).subscribe(listener))]
+          const offDisplayed = this.subscribeDisplayedView?.(listener)
+          if (offDisplayed !== undefined) disposers.push(offDisplayed)
+          return () => { for (const dispose of disposers) dispose() }
+        },
+      })
+      return { exit: false }
+    }
     if (name === 'version') {
-      this.panels.showVersion()
+      const client = this.activeClient
+      const generation = client?.state.getSnapshot().generation
+      const isCurrent = (): boolean => this.activeClient === client && generation === client?.state.getSnapshot().generation
+      const result = await client?.remote.pluginManager.listBundles().catch(error => {
+        if (isCurrent()) throw error
+        return undefined
+      })
+      if (!isCurrent()) return { exit: false }
+      if (result !== undefined && !result.ok) throw new Error(result.error.message)
+      const harness = result?.value.find(bundle => bundle.name === '@deepseek-ai/dsh-base')?.version
+      this.panels.showVersion(harness)
       return { exit: false }
     }
 
