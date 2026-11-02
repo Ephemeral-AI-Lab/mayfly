@@ -40,11 +40,11 @@ function sanitizeEndpoint(endpoint: string | null): string | null {
 function schemaDtos(schemas: readonly ToolSchema[]): readonly MayflyToolSchema[] {
   return schemas.map((schema): MayflyToolSchema => {
     const parameters = jsonSnapshot(schema.parameters as Record<string, ConversationJson>)
-    if (parameters === undefined) throw new Error(`tool "${schema.name}" parameters are not lossless JSON`)
+    if (schema.parameters !== undefined && parameters === undefined) throw new Error(`tool "${schema.name}" parameters are not lossless JSON`)
     return frozen({
       name: schema.name,
       description: schema.description,
-      parameters,
+      ...parameters === undefined ? {} : { parameters },
       ...schema.deferLoading === true ? { deferLoading: true } : {},
     })
   }).toSorted((left, right) => left.name.localeCompare(right.name))

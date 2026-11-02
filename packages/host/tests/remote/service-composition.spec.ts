@@ -47,7 +47,7 @@ async function host() {
     },
     settings: { writable: true, prepareDocument: async () => settingsFile },
     skills: { snapshot: async () => ({ complete: true, skills: [] }) },
-    subagents: { listDescendants: async () => [] },
+    subagents: { listDescendants: async () => [], drainChildren: async () => {} },
     tools: { schemas: () => [], get: () => undefined, execute: async () => ({ results: [{ result: { isError: false, value: { resources: [], contents: [] } } }] }) },
     workspaceChanges: { summary: () => undefined, diff: async () => undefined },
     workspaceRegistry: { resolveByPath: async () => undefined },
@@ -93,11 +93,11 @@ describe('Host Remote composition', () => {
     for await (const frame of receiver.authorize({ key: credentialKey('fixture', 'account') }, signal)) frames.push(frame)
     expect(frames).toMatchObject([{ type: 'started' }, { type: 'settled', status: 'authorized' }])
   })
-  it('declares every addressed Session to native Gateway authorization, including both child drain identities', async () => {
+  it('declares every addressed Session to native Gateway authorization, including root and stopped descendant identities', async () => {
     const { service } = await host()
     const methods = new Map(remoteMethods(service).map(method => [method.method, method]))
     const sessionId = SessionId('authorized-session')
-    for (const name of ['btwFork', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'statsHistory', 'listMcpResources', 'readMcpResource']) {
+    for (const name of ['btwFork', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'statsHistory', 'listMcpResources', 'readMcpResource', 'subagentTree']) {
       const reader = methods.get(name)?.resources?.['session']
       expect(reader, `${name} must declare Session authorization`).toBeTypeOf('function')
       expect(reader?.({ sessionId })).toBe(sessionId)
@@ -105,7 +105,7 @@ describe('Host Remote composition', () => {
     const presentations = methods.get('presentTools')?.resources?.['session']
     expect(presentations?.({ entries: [] })).toBeUndefined()
     expect(presentations?.({ entries: [{ sessionId }, { sessionId }, { sessionId: 'second' }] })).toEqual([sessionId, 'second'])
-    expect(methods.get('subagentDrain')?.resources?.['session']?.({ parentSessionId: sessionId, childSessionId: 'child' })).toEqual([sessionId, 'child'])
+    expect(methods.get('subagentStop')?.resources?.['session']?.({ sessionId, childSessionId: 'child' })).toEqual([sessionId, 'child'])
   })
 
   it('routes every capability through the service installed by Cordis', async () => {
@@ -113,6 +113,8 @@ describe('Host Remote composition', () => {
     const signal = new AbortController().signal
     const request = { sessionId: SessionId('parent') }
     expect(service.capabilities().features).toContain('presentTools')
+    expect(service.capabilities().features).toEqual(expect.arrayContaining(['subagentTree', 'subagentStop']))
+    expect(service.capabilities().features).not.toContain('subagentDrain')
     await expect(service.btwFork(request, signal)).resolves.toEqual({ sessionId: SessionId('btw-child'), historyFloorSeq: 37 })
     await expect(service.presentTools({ entries: [{ ...request, callId: 'one', updatedSeq: 1, name: 'missing', arguments: '{}' }] }, signal))
       .resolves.toMatchObject({ presentations: { parent: { one: { updatedSeq: 1 } } } })
@@ -126,7 +128,8 @@ describe('Host Remote composition', () => {
     await expect(service.providerBalance(signal)).resolves.toEqual({ status: 'unavailable', reason: 'no-key' })
     const document = await service.readSettingsDocument(signal)
     await expect(service.writeSettingsDocument({ content: '{"ok":true}', expectedRevision: document.revision }, signal)).resolves.toMatchObject({ content: '{"ok":true}' })
-    await expect(service.subagentDrain({ parentSessionId: request.sessionId, childSessionId: SessionId('missing') }, signal)).rejects.toMatchObject({ code: 'mayflyHost/subagent-drain-unavailable' })
+    await expect(service.subagentTree(request, signal)).resolves.toEqual([])
+    await expect(service.subagentStop({ sessionId: request.sessionId, childSessionId: SessionId('missing') }, signal)).rejects.toMatchObject({ code: 'mayflyHost/subagent-stop-unavailable' })
     await expect(service.deliveredFile({ ...request, deliveryId: 'delivery', preview: true }, signal)).resolves.toEqual({ path: '/host/report.md', displayPath: '~/host/report.md', fileType: 'file', size: 6, preview: 'report' })
     expect(service.latestWorkspaceChanges(request, signal)).toBeNull()
     await expect(service.traceCatalog(request, signal)).resolves.toMatchObject([{ eventSeqs: [0] }])
@@ -196,6 +199,39 @@ describe('Host Remote composition', () => {
     await vi.waitFor(() => { expect(native).toHaveBeenCalledWith({ sessionId: 'parent', atSeq: 37 }) })
     await unload()
     child.resolve({ sessionId: SessionId('btw-child') })
+    await retired
+    expect(native).toHaveBeenCalledOnce()
+  })
+
+  it('retires passive native tree discovery when the actual service Fiber unloads', async () => {
+    const { ctx, service, unload } = await host()
+    const listed = Promise.withResolvers<Awaited<ReturnType<Context['subagents']['listDescendants']>>>()
+    let received: AbortSignal | undefined
+    vi.spyOn(ctx.subagents, 'listDescendants').mockImplementation((_sessionId, signal) => { received = signal; return listed.promise })
+    const pending = service.subagentTree({ sessionId: SessionId('parent') }, new AbortController().signal)
+    const retired = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await vi.waitFor(() => { expect(received).toBeDefined() })
+    await unload()
+    expect(received?.aborted).toBe(true)
+    listed.resolve([])
+    await retired
+  })
+
+  it('waits for sent native descendant teardown but retires its reply on actual service Fiber unload', async () => {
+    const { ctx, service, unload } = await host()
+    const parent = ctx.agents.get(SessionId('parent'))!
+    const childSession = { ...parent.session, id: SessionId('leaf') }
+    const child = { ...parent, id: childSession.id, session: childSession }
+    vi.spyOn(ctx.agents, 'get').mockImplementation(id => id === child.id ? child : id === parent.id ? parent : undefined)
+    vi.spyOn(ctx.sessions, 'get').mockImplementation(id => id === child.id ? childSession : id === parent.id ? parent.session : undefined)
+    vi.spyOn(ctx.subagents, 'listDescendants').mockResolvedValue([{ kind: 'child', id: child.id, parentId: parent.id, depth: 1, mode: 'continuable', label: 'leaf', activity: 'inactive', hasChildren: false }])
+    const drained = Promise.withResolvers<void>()
+    const native = vi.spyOn(ctx.subagents, 'drainChildren').mockReturnValue(drained.promise)
+    const pending = service.subagentStop({ sessionId: parent.id, childSessionId: child.id }, new AbortController().signal)
+    const retired = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await vi.waitFor(() => { expect(native).toHaveBeenCalledWith(parent, [child.id]) })
+    await unload()
+    drained.resolve()
     await retired
     expect(native).toHaveBeenCalledOnce()
   })

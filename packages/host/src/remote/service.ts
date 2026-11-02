@@ -12,8 +12,8 @@ import { Remote, RemoteError, TypertRemoteService, type RemoteStream } from '@de
 import type {} from 'zod'
 import { mayflyHostCapabilities } from './capabilities.ts'
 import { btwFork } from './btw.ts'
-import type { MayflyBtwForkRequest, MayflyBtwForkValue } from '../types.ts'
-import type { MayflyAuthorizationAnswer, MayflyAuthorizationFrame, MayflyAuthorizationRequest, MayflyDefaultModelRequest, MayflyGitStatus, MayflyHostCapabilities, MayflyHostSessionRequest, MayflyMcpCatalog, MayflyMcpResourceBody, MayflyMcpResourceListRequest, MayflyMcpResourcePage, MayflyMcpResourceReadRequest, MayflyModelCatalogDetails, MayflyModelCatalogRequest, MayflyModelSelection, MayflyPermissionCatalogDetails, MayflyPermissionCatalogRequest, MayflyPresentToolsRequest, MayflyPresentToolsResponse, MayflyProviderBalance, MayflyRetractTurnRequest, MayflySettingsDocument, MayflySettingsDocumentWrite, MayflySkillCatalog, MayflySubagentDrainRequest, MayflyToolCatalog, MayflyWorkspace, MayflyWorkspaceChangesRequest, MayflyWorkspaceChangesSummaryResult, MayflyWorkspaceDiffRequest, MayflyWorkspaceFileDiffResult, MayflyWorkspacePathRequest, MayflyWorkflowFrame } from '../types.ts'
+import type { MayflyBtwForkRequest, MayflyBtwForkValue, MayflySubagentStopRequest, MayflySubagentStopValue, MayflySubagentTreeEntry } from '../types.ts'
+import type { MayflyAuthorizationAnswer, MayflyAuthorizationFrame, MayflyAuthorizationRequest, MayflyDefaultModelRequest, MayflyGitStatus, MayflyHostCapabilities, MayflyHostSessionRequest, MayflyMcpCatalog, MayflyMcpResourceBody, MayflyMcpResourceListRequest, MayflyMcpResourcePage, MayflyMcpResourceReadRequest, MayflyModelCatalogDetails, MayflyModelCatalogRequest, MayflyModelSelection, MayflyPermissionCatalogDetails, MayflyPermissionCatalogRequest, MayflyPresentToolsRequest, MayflyPresentToolsResponse, MayflyProviderBalance, MayflyRetractTurnRequest, MayflySettingsDocument, MayflySettingsDocumentWrite, MayflySkillCatalog, MayflyToolCatalog, MayflyWorkspace, MayflyWorkspaceChangesRequest, MayflyWorkspaceChangesSummaryResult, MayflyWorkspaceDiffRequest, MayflyWorkspaceFileDiffResult, MayflyWorkspacePathRequest, MayflyWorkflowFrame } from '../types.ts'
 import { authorize, cancelAuthorization } from './authorization.ts'
 import { deliveredFile, latestWorkspaceChanges } from './deliverables.ts'
 import type { MayflyDeliveredFileRequest, MayflyDeliveredFileDetail, MayflyLatestWorkspaceChanges } from '../types.ts'
@@ -30,7 +30,7 @@ import { presentTools } from './presentation.ts'
 import { RetractionCoordinator, retractTurn } from './retraction.ts'
 import { readSettingsDocument, SettingsDocumentCoordinator } from './settings-document.ts'
 import { requireExactAgent, resolveExactAgent, sessionDirectory } from './session.ts'
-import { subagentDrain } from './subagent.ts'
+import { subagentTree, subagentStop } from './subagent.ts'
 import { followWorkflow, WorkflowLiveCatalog } from './workflow.ts'
 import { workspaceChangesDiff, workspaceChangesSummary, workspacePath } from './workspace.ts'
 
@@ -225,10 +225,16 @@ export class MayflyHostService extends TypertRemoteService {
     return this.settingsDocuments.write(this.ctx, request, this.signal(signal))
   }
 
-  /** Drain one continuable child through its exact direct parent. */
-  @Remote({ resources: { session: request => [request.parentSessionId, request.childSessionId] } })
-  subagentDrain(request: MayflySubagentDrainRequest, signal: AbortSignal): Promise<void> {
-    return subagentDrain(this.ctx, request, this.signal(signal))
+  /** Read the authorized root's complete native descendant tree and live readonly metrics. */
+  @Remote({ resources: { session: request => request.sessionId } })
+  subagentTree(request: MayflyHostSessionRequest, signal: AbortSignal): Promise<readonly MayflySubagentTreeEntry[]> {
+    return subagentTree(this.ctx, request, this.signal(signal), this.workflows)
+  }
+
+  /** Wait for a continuable descendant's native teardown through its actual direct parent. */
+  @Remote({ resources: { session: request => [request.sessionId, request.childSessionId] } })
+  subagentStop(request: MayflySubagentStopRequest, signal: AbortSignal): Promise<MayflySubagentStopValue> {
+    return subagentStop(this.ctx, request, this.signal(signal))
   }
 
   /** Read a native per-turn workspace change summary. */

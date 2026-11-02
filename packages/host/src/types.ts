@@ -8,6 +8,7 @@ import type { ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm/types'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials/types'
 import type { AuthorizationNotice } from '@deepseek-ai/dsh-authorization/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import type { SessionProjectionSummaryExcluded } from '@deepseek-ai/dsh-session-projection/types'
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools/presentation'
 import type { TypertResource } from '@deepseek-ai/dsh-typert-protocol'
@@ -59,7 +60,8 @@ export type MayflyHostFeature =
   | 'permissionCatalogDetails'
   | 'providerBalance'
   | 'settingsDocument'
-  | 'subagentDrain'
+  | 'subagentTree'
+  | 'subagentStop'
   | 'workspaceChanges'
   | 'workspacePath'
   | 'mcpResources'
@@ -111,8 +113,9 @@ export type MayflyHostErrorCode =
   | 'mayflyHost/settings-conflict'
   | 'mayflyHost/settings-read-only'
   | 'mayflyHost/settings-document-unavailable'
-  | 'mayflyHost/subagent-drain-unavailable'
-  | 'mayflyHost/subagent-drain-unauthorized'
+  | 'mayflyHost/subagent-tree-unavailable'
+  | 'mayflyHost/subagent-stop-unavailable'
+  | 'mayflyHost/subagent-stop-unauthorized'
   | 'mayflyHost/mcp-resource-failed'
   | 'mayflyHost/delivery-unavailable'
 
@@ -143,10 +146,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'mayflyHost/settings-read-only': Record<string, never>
     /** The settings document could not be read or prepared. */
     'mayflyHost/settings-document-unavailable': Record<string, never>
-    /** A requested subagent drain failed its current native catalog/liveness guards. */
-    'mayflyHost/subagent-drain-unavailable': { readonly childId: string, readonly reason: string }
+    /** A passive native descendant or live opening read could not complete. */
+    'mayflyHost/subagent-tree-unavailable': MayflyHostSessionRequest & { readonly reason: string }
+    /** A requested subagent stop failed its current native catalog/liveness guards. */
+    'mayflyHost/subagent-stop-unavailable': { readonly childId: string, readonly reason: string }
     /** The exact direct parent no longer owns the resident child activation. */
-    'mayflyHost/subagent-drain-unauthorized': { readonly childId: string }
+    'mayflyHost/subagent-stop-unauthorized': { readonly childId: string }
     /** A requested delivery is absent from the exact Session's recorded projection. */
     'mayflyHost/delivery-unavailable': MayflyDeliveredFileRequest
     /** A native MCP resource operation returned an error result. */
@@ -226,7 +231,7 @@ export interface MayflyMcpServerConfig {
 
 /** Model-facing tool schema with lossless-JSON parameters and no callbacks. */
 export type MayflyToolSchema = Omit<ToolSchema, 'parameters'> & {
-  readonly parameters: Readonly<Record<string, ConversationJson>>
+  readonly parameters?: Readonly<Record<string, ConversationJson>>
 }
 
 /** Tool availability is unknown until a configured server is connected. */
@@ -423,10 +428,30 @@ export interface MayflySettingsDocumentWrite {
   readonly expectedRevision: string
 }
 
-/** Exact direct-parent child drain request. */
-export interface MayflySubagentDrainRequest {
-  readonly parentSessionId: SessionId
+/** Native refusal rendered by the shared reference Agents tree before confirmation. */
+export type MayflySubagentStopBlocked = 'not-continuable' | 'not-live' | 'live-descendants' | 'parent-not-live'
+
+/** Native complete descendant row and readonly current live measurements. */
+export type MayflySubagentTreeEntry = SubagentDescendantListEntry & {
+  readonly live?: boolean
+  readonly tokens?: number
+  readonly toolCount?: number
+  readonly liveChars?: number
+  readonly settledMs?: number
+  readonly activeSince?: number
+  readonly streamPhase?: 'thinking' | 'composing'
+  readonly stopBlocked?: MayflySubagentStopBlocked
+}
+
+/** Stop a selected descendant of the authorized root, through its actual direct parent. */
+export interface MayflySubagentStopRequest extends MayflyHostSessionRequest {
   readonly childSessionId: SessionId
+}
+
+/** Sent only after native teardown finishes; the stored child conversation remains. */
+export interface MayflySubagentStopValue {
+  readonly kind: 'success'
+  readonly text: string
 }
 
 /** One recorded per-turn summary identity. */

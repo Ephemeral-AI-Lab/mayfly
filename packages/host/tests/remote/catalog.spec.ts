@@ -35,6 +35,16 @@ function ctx(overrides: Partial<{
 }
 
 describe('collectMcpCatalog', () => {
+  it('preserves a genuinely absent native parameter declaration in both catalog shapes', () => {
+    const { parameters: _parameters, ...withoutParameters } = schema('mcp__docs__status')
+    const source = ctx({ global: [withoutParameters as ToolSchema] })
+    const tools = collectToolCatalog(source.ctx, source.agent).tools
+    const mcp = collectMcpCatalog(source.ctx, source.agent).servers[0]!.toolsVisible
+    expect(tools[0]).toEqual({ name: 'mcp__docs__status', description: 'mcp__docs__status description' })
+    expect(mcp[0]).toEqual(tools[0])
+    expect(tools[0]).not.toHaveProperty('parameters')
+    expect(Object.isFrozen(tools[0])).toBe(true)
+  })
   it('ignores ordinary tools and malformed visible MCP names', () => {
     const { ctx: context, agent } = ctx({ global: [schema('bash'), schema('mcp__broken!')], visible: [schema('bash'), schema('mcp__broken!')] })
     expect(collectMcpCatalog(context, agent)).toEqual({ servers: [], orphanCount: 1, sessionLive: true })

@@ -26,6 +26,13 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
   than resuming the child or failing other Sessions in the batch. Every error
   carries a public domain code with a client-safe message. Payloads contain no functions,
   AbortSignals, tool definitions, credentials, or raw connection errors.
+- `subagentTree` preserves the native complete descendant preorder and diagnostics.
+  Activity, token/tool/timing metrics and workflow labels come from exact resident
+  native owners; transient stream facts use a passive opening follow snapshot,
+  released after the read. It never activates a cold root or child. `subagentStop`
+  re-reads the authorized root's descendants and drains only a continuable live
+  leaf through its exact live direct parent. Wait for native completion; caller
+  cancellation or unload retires results without cancelling sent teardown.
 - The MCP catalog reads the optional native resource runtime through the narrow
   structural face in `src/remote/mcp-catalog-face.ts`. A composition without
   that runtime keeps the tool-derived catalog, leaves `config` unresolved, and
