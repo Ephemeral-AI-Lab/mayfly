@@ -147,7 +147,7 @@ function completionContext(
   const before = line.slice(0, cursorCol)
   const slash = /^\/(\S*)$/u.exec(before)
   /* the mandatory capture exists for every successful match. */
-  if (slash !== null) return { request: { trigger: '/', query: slash[1] ?? '' }, prefix: before }
+  if (slash !== null) return { request: { trigger: '/', query: slash[1]! }, prefix: before }
   let start = 0
   for (let index = before.length - 1; index >= 0; index -= 1) {
     if (TOKEN_DELIMITERS.has(before.charAt(index))) { start = index + 1; break }
@@ -422,9 +422,8 @@ export class EditorExtensionRuntime implements MayflyFocusable {
     for (const [entryIndex, entry] of this.entries.entries()) {
       const rows: MayflyUiNode[] = []
       if (typeof entry.hint === 'string') {
-        const admitted = validateMayflyUiNode({ kind: 'text', content: entry.hint, tone: 'muted' })
-        if (admitted.ok) rows.push(admitted.value)
-        else this.report('definition', admitted.message.slice(0, MAX_NOTICE_TEXT))
+        /* Fixed text chrome is admitted with the whole shell below. */
+        rows.push({ kind: 'text', content: entry.hint, tone: 'muted' })
       }
       if (Array.isArray(entry.diagnostics)) for (const diagnostic of entry.diagnostics) {
         try {
@@ -598,8 +597,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
             if (outcome.kind === 'timeout') { failures.push({ id, headline: 'completion timed out', reason: 'it did not answer in time' }); continue }
             if (outcome.kind === 'rejected') { failures.push({ id, headline: 'completion failed', reason: boundedMessage(outcome.error, 'completion failed') }); continue }
             /* an aborted entry necessarily sets the shared signal tested above. */
-            if (outcome.kind !== 'value') return null
-            const result = completionItems(outcome.value)
+            const result = completionItems((outcome as Extract<typeof outcome, { readonly kind: 'value' }>).value)
             if (!result.ok) { failures.push({ id, headline: 'completion failed', reason: result.message }); continue }
             for (const candidate of result.value) {
               if (output.length >= MAX_COMPLETIONS) break
@@ -675,8 +673,7 @@ export class EditorExtensionRuntime implements MayflyFocusable {
           return
         }
         /* an aborted transform necessarily aborts the controller tested above. */
-        if (outcome.kind !== 'value') return
-        const result = submitValue(outcome.value)
+        const result = submitValue((outcome as Extract<typeof outcome, { readonly kind: 'value' }>).value)
         if (!result.ok) {
           this.report('submit-transform', result.message)
           if (result.message.includes('exceeds')) {
