@@ -78,7 +78,7 @@ const wiring = vi.hoisted(() => ({
   selectOrCreate: vi.fn(async () => {}), sessionsOpen: vi.fn(),
   suspend: vi.fn(async (run: () => Promise<unknown>) => run()),
   settingsSuspend: undefined as ((run: () => Promise<unknown>) => Promise<unknown>) | undefined,
-  focus: vi.fn(), handleInput: vi.fn(() => false), autocomplete: vi.fn(() => false),
+  focus: vi.fn(), setText: vi.fn(), leaveViews: vi.fn(), handleInput: vi.fn(() => false), autocomplete: vi.fn(() => false),
   early: undefined as (() => void) | undefined,
   onEditorMount: undefined as ((ctx: Context) => void) | undefined,
 }))
@@ -118,7 +118,7 @@ vi.mock('../../src/transcript/context-source.ts', () => ({ RemoteTranscriptConte
 vi.mock('../../src/remote/editor.ts', () => ({ mountRemoteEditor: vi.fn((_ctx, _screen, _components, _colors, actions, state) => {
   wiring.actions = actions; wiring.editorState = state
   wiring.onEditorMount?.(_ctx)
-  return { notice: { set: wiring.notice }, editor: { isShowingAutocomplete: wiring.autocomplete }, extensions: {}, focus: wiring.focus, refresh: wiring.refreshEditor, retheme: wiring.rethemeEditor, dispose: vi.fn() }
+  return { notice: { set: wiring.notice }, editor: { isShowingAutocomplete: wiring.autocomplete, setText: wiring.setText }, extensions: {}, focus: wiring.focus, refresh: wiring.refreshEditor, retheme: wiring.rethemeEditor, dispose: vi.fn() }
 }) }))
 vi.mock('../../src/remote/side-views.ts', () => ({ RemoteSideViews: class {
   constructor(_transcript: unknown, _tools: unknown, _screen: unknown, _notice: unknown, options: RemoteSideViewOptions) { wiring.sideOptions = options }
@@ -200,7 +200,7 @@ vi.mock('@ephemeral-ai/mayfly/transcript', () => ({
 } }))
 vi.mock('@ephemeral-ai/mayfly/core', () => ({ name: 'core', Config: undefined, inject: [], apply(ctx: Context) {
   wiring.ctx = ctx
-  ctx.provide('mayflyScreen', { rows: 30, editorRowsFromBottom: 4, mountContentSlot: () => ({ dispose() {} }), requestRender: wiring.requestRender, suspend: wiring.suspend } as never)
+  ctx.provide('mayflyScreen', { rows: 30, editorRowsFromBottom: 4, mountContentSlot: () => ({ dispose() {} }), requestRender: wiring.requestRender, suspend: wiring.suspend, leaveViews: wiring.leaveViews } as never)
   ctx.provide('mayflyComponents', {} as never)
   ctx.provide('mayflyKeymap', {
     register(actions: MayflyKeyAction[]) {
@@ -266,6 +266,26 @@ describe('standalone Remote runtime wiring', () => {
     expect(wiring.rethemeEditor).toHaveBeenCalledWith(wiring.ctx!.mayflyComponents, wiring.ctx!.mayflyTheme.colors)
     expect(wiring.controller.retheme).toHaveBeenCalledWith(wiring.ctx!.mayflyComponents, wiring.ctx!.mayflyTheme.colors)
     expect(wiring.rethemeEditor.mock.invocationCallOrder[0]).toBeLessThan(wiring.controller.retheme.mock.invocationCallOrder[0]!)
+  })
+
+  it('restores native status edits to the prompt only while their exact owner remains current', async () => {
+    await start()
+    const edit = wiring.features!.editPrompt!
+    expect(edit('/goal edit retired', () => false)).toBe(false)
+    expect(wiring.leaveViews).not.toHaveBeenCalled()
+    const current = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false)
+    expect(edit('/goal edit replaced', current)).toBe(false)
+    expect(wiring.leaveViews).toHaveBeenCalledOnce()
+    expect(wiring.setText).not.toHaveBeenCalled()
+    expect(edit('/goal edit native objective', () => true)).toBe(true)
+    expect(wiring.setText).toHaveBeenCalledExactlyOnceWith('/goal edit native objective')
+    expect(wiring.focus).toHaveBeenCalledOnce()
+    wiring.actions!.exit()
+    await running
+    expect(edit('/goal edit after unload', () => true)).toBe(false)
+    wiring.actions!.onError(new Error('late input failure'))
+    expect(wiring.setText).toHaveBeenCalledOnce()
+    expect(wiring.notice).not.toHaveBeenCalled()
   })
 
   it('borrows exact displayed facts and Host for transcript context and retires before its sources', async () => {
@@ -351,11 +371,11 @@ describe('standalone Remote runtime wiring', () => {
     wiring.execute.mockRejectedValueOnce(new Error('help unavailable'))
     help()
     await flush()
-    expect(wiring.notice).toHaveBeenLastCalledWith('help unavailable')
+    expect(wiring.notice).toHaveBeenLastCalledWith('help unavailable', 'error')
     wiring.execute.mockRejectedValueOnce('help refused')
     help()
     await flush()
-    expect(wiring.notice).toHaveBeenLastCalledWith('help refused')
+    expect(wiring.notice).toHaveBeenLastCalledWith('help refused', 'error')
     let reject!: (error: Error) => void
     wiring.execute.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail }))
     help()
@@ -478,7 +498,7 @@ describe('standalone Remote runtime wiring', () => {
     wiring.controller.copyText.mockResolvedValueOnce('osc52'); rows.copy!('hello', 'text'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('zh:Copied 5 characters (unverified)', 'success')
     for (const error of [new Error('clipboard failed'), 'clipboard refused']) { wiring.controller.copyText.mockRejectedValueOnce(error); rows.copy!('a', 'text'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('zh:Could not copy', 'error', error instanceof Error ? error.message : error) }
     rows.open!('native detail'); await flush(); expect(wiring.controller.openText).toHaveBeenCalledWith('native detail')
-    for (const error of [new Error('open failed'), 'open refused']) { wiring.controller.openText.mockRejectedValueOnce(error); rows.open!('x'); await flush(); expect(wiring.notice).toHaveBeenCalledWith(error instanceof Error ? error.message : error) }
+    for (const error of [new Error('open failed'), 'open refused']) { wiring.controller.openText.mockRejectedValueOnce(error); rows.open!('x'); await flush(); expect(wiring.notice).toHaveBeenCalledWith(error instanceof Error ? error.message : error, 'error') }
     const facts = wiring.defaultFacts as unknown as { ref: SessionRef | undefined, queue: Array<{ id: string, text: string, lane: 'turn' | 'step' }> }
     facts.queue = [{ id: 'queued-native', text: 'queued draft', lane: 'step' }]
     expect(wiring.transcript!.queued()).toEqual(facts.queue)
@@ -492,9 +512,9 @@ describe('standalone Remote runtime wiring', () => {
     rows.queued!('cancel', 'queued-native'); await flush(); vi.setSystemTime(10000); rows.queued!('undo', undefined); await flush(); expect(wiring.controller.requeue).toHaveBeenCalledOnce()
     vi.setSystemTime(11000); rows.queued!('cancel', 'queued-native'); await flush(); facts.ref = child; rows.queued!('undo', undefined); await flush(); expect(wiring.controller.requeue).toHaveBeenCalledOnce()
     facts.ref = undefined; rows.queued!('undo', undefined); await flush()
-    rows.queued!('cancel', 'queued-native'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('The selected Session changed before the queue mutation')
+    rows.queued!('cancel', 'queued-native'); await flush(); expect(wiring.notice).toHaveBeenCalledWith('The selected Session changed before the queue mutation', 'error')
     facts.ref = ref
-    for (const error of [new Error('queue failed'), 'queue refused']) { wiring.controller.updateQueue.mockRejectedValueOnce(error); rows.queued!('cancel', 'queued-native'); await flush(); expect(wiring.notice).toHaveBeenCalledWith(error instanceof Error ? error.message : error) }
+    for (const error of [new Error('queue failed'), 'queue refused']) { wiring.controller.updateQueue.mockRejectedValueOnce(error); rows.queued!('cancel', 'queued-native'); await flush(); expect(wiring.notice).toHaveBeenCalledWith(error instanceof Error ? error.message : error, 'error') }
     wiring.ctx!.emit('mayfly/decision-requests-changed', 'approval', [{ type: 'approval', toolName: 'bash' }])
     wiring.ctx!.emit('mayfly/decision-requests-changed', 'plan', [{ type: 'plan', toolName: 'plan' }])
     expect(wiring.transcript!.requests!()).toEqual([{ type: 'approval', toolName: 'bash' }, { type: 'plan', toolName: 'plan' }]); expect(wiring.republish).toHaveBeenCalledTimes(2)
@@ -520,6 +540,41 @@ describe('standalone Remote runtime wiring', () => {
     if (retirement === 'shutdown') {
       rows.copy!('captured after unload', 'text')
       expect(wiring.controller.copyText).toHaveBeenCalledTimes(2)
+    }
+  })
+
+  it.each(['binding', 'generation', 'shutdown'] as const)('retires open and queue continuations after %s replacement', async retirement => {
+    await start()
+    const rows = wiring.transcript!.rows!
+    const opened = Promise.withResolvers<void>()
+    const failed = Promise.withResolvers<boolean>()
+    const edited = Promise.withResolvers<boolean>()
+    const cancelled = Promise.withResolvers<boolean>()
+    wiring.defaultFacts = { ...wiring.defaultFacts, queue: [{ id: 'queued-native', text: 'old draft', lane: 'turn' }] } as unknown as RemotePresentationFacts
+    wiring.controller.openText.mockReturnValueOnce(opened.promise)
+    wiring.controller.updateQueue.mockReturnValueOnce(failed.promise).mockReturnValueOnce(edited.promise).mockReturnValueOnce(cancelled.promise)
+    rows.open!('old detail')
+    rows.queued!('steer', 'queued-native')
+    rows.queued!('edit', 'queued-native')
+    rows.queued!('cancel', 'queued-native')
+    if (retirement === 'binding') wiring.binding = { ...binding }
+    if (retirement === 'generation') wiring.generation += 1
+    if (retirement === 'shutdown') { wiring.actions!.exit(); await running }
+    wiring.notice.mockClear()
+    opened.reject(new Error('late open failed'))
+    failed.reject(new Error('late queue failed'))
+    edited.resolve(true)
+    cancelled.resolve(true)
+    await flush()
+    expect(wiring.notice).not.toHaveBeenCalled()
+    expect(wiring.controller.restoreQueued).not.toHaveBeenCalled()
+    rows.queued!('undo', undefined)
+    expect(wiring.controller.requeue).not.toHaveBeenCalled()
+    if (retirement === 'shutdown') {
+      rows.open!('after unload')
+      rows.queued!('cancel', 'queued-native')
+      expect(wiring.controller.openText).toHaveBeenCalledOnce()
+      expect(wiring.controller.updateQueue).toHaveBeenCalledTimes(3)
     }
   })
 

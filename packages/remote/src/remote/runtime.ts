@@ -108,6 +108,15 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       return ref === undefined || binding === undefined || client === undefined ? undefined
         : { ref, binding, client, access: side?.facts.access ?? 'interactive' as const }
     }
+    const presentationOwner = (): (() => boolean) => {
+      const selection = displayedSelection()
+      const generation = selection?.client.state.getSnapshot().generation
+      return () => {
+        const next = displayedSelection()
+        return !lifetime.signal.aborted && next?.client === selection?.client && next?.binding === selection?.binding
+          && (selection === undefined || selection.client.state.getSnapshot().generation === generation)
+      }
+    }
     // Presentation requests require an attached native Session; the App is
     // constructed before any source can receive that Session binding.
     toolPresentations = new RemoteToolPresentationCache(ref => resolveMayflyToolPresentation(() => app!.registry.list(), ref))
@@ -139,7 +148,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     ))
     ctx.effect(() => () => bannerSlot.dispose())
     const imageRefs = new Map<string, { readonly attachmentId: string, readonly mediaType: string }>()
-    const queueAction = async (action: QueueAction, id: string | undefined): Promise<void> => {
+    const queueAction = async (action: QueueAction, id: string | undefined, owns: () => boolean): Promise<void> => {
       const controller = editorComposition?.controller
       if (controller === undefined) return
       const current = displayedFacts()
@@ -155,14 +164,14 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         return
       }
       if (action === 'edit') {
-        if (await controller.updateQueue(MessageId(item.id), { kind: 'remove' })) controller.restoreQueued(item.text)
+        if (await controller.updateQueue(MessageId(item.id), { kind: 'remove' }) && owns()) controller.restoreQueued(item.text)
         return
       }
       if (action === 'steer') {
         await controller.updateQueue(MessageId(item.id), { kind: 'steer' })
         return
       }
-      if (await controller.updateQueue(MessageId(item.id), { kind: 'remove' })) {
+      if (await controller.updateQueue(MessageId(item.id), { kind: 'remove' }) && owns()) {
         cancelled = { ref: selectedRef(current.ref), text: item.text, lane: item.lane, at: Date.now() }
         editor?.notice.set('Cancelled · u undo')
       }
@@ -191,25 +200,23 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       rows: {
         copy: (text, mode) => {
           if (lifetime.signal.aborted) return
-          const selection = displayedSelection()
-          const generation = selection?.client.state.getSnapshot().generation
-          const current = (): boolean => {
-            const next = displayedSelection()
-            return !lifetime.signal.aborted && next?.client === selection?.client && next?.binding === selection?.binding
-              && (selection === undefined || selection.client.state.getSnapshot().generation === generation)
-          }
+          const current = presentationOwner()
           void editorComposition?.controller.copyText(text).then(method => {
             if (current()) editor?.notice.set(t(mode === 'raw' ? (method === 'native' ? 'Copied {count} characters of JSON' : 'Copied {count} characters of JSON (unverified)') : (method === 'native' ? 'Copied {count} characters' : 'Copied {count} characters (unverified)'), { count: text.length }), 'success')
           }).catch((error: unknown) => { if (current()) editor?.notice.set(t('Could not copy'), 'error', error instanceof Error ? error.message : String(error)) })
         },
         open: (text) => {
+          if (lifetime.signal.aborted) return
+          const current = presentationOwner()
           void editorComposition?.controller.openText(text).catch((error: unknown) => {
-            editor?.notice.set(error instanceof Error ? error.message : String(error))
+            if (current()) editor?.notice.set(error instanceof Error ? error.message : String(error), 'error')
           })
         },
         queued: (action, id) => {
-          void queueAction(action, id).catch((error: unknown) => {
-            editor?.notice.set(error instanceof Error ? error.message : String(error))
+          if (lifetime.signal.aborted) return
+          const current = presentationOwner()
+          void queueAction(action, id, current).catch((error: unknown) => {
+            if (current()) editor?.notice.set(error instanceof Error ? error.message : String(error), 'error')
           })
         },
       },
@@ -249,7 +256,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     }
     editor = mountRemoteEditor(ctx, screen, ctx.mayflyComponents, ctx.mayflyTheme.colors, {
       submit: execute,
-      onError: (error) => { editor?.notice.set(error instanceof Error ? error.message : String(error)) },
+      onError: (error) => { if (!lifetime.signal.aborted) editor?.notice.set(error instanceof Error ? error.message : String(error), 'error') },
       cancel: () => app!.cancel(),
       exit: stop,
     }, () => {
@@ -276,7 +283,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     ctx.effect(() => ctx.on('mayfly/request-help', () => {
       if (lifetime.signal.aborted) return
       void execute('/help').catch((error: unknown) => {
-        if (!lifetime.signal.aborted) editor!.notice.set(error instanceof Error ? error.message : String(error))
+        if (!lifetime.signal.aborted) editor!.notice.set(error instanceof Error ? error.message : String(error), 'error')
       })
     }))
     completionDrawer = mountRemoteCompletionDrawer(ctx, screen, editor.editor, ctx.mayflyTheme.colors, ctx.mayflyComponents)
@@ -355,6 +362,14 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       overlays: panels,
       notice: editor.notice,
       startupPlan: app.startupPlan,
+      editPrompt: (text, current) => {
+        if (lifetime.signal.aborted || !current()) return false
+        screen.leaveViews()
+        if (!current()) return false
+        editor!.editor.setText(text)
+        editor!.focus()
+        return true
+      },
       hosts: {
         active: () => app!.activeClient,
         list: () => app!.registry.list(),

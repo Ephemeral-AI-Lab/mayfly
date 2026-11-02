@@ -5,7 +5,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { isDeepStrictEqual } from 'node:util'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-commands'
 import { ui, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { openAgentOverlay } from './agent-overlay.ts'
@@ -15,7 +14,7 @@ export const name = 'mayfly-tools-command'
 export const inject = ['commands', 'tools', 'mayflyCurrentAgent', 'mayflyOverlays']
 
 export { firstSentence, toolItems, toolDetailBody, toolDetailNode } from './catalog-model.ts'
-import { sortedSchemas, detailActions, toolDetailNode, toolsBrowserNode } from './catalog-model.ts'
+import { sortedSchemas, detailActions, toolDetailNode, toolsBrowserNode, type ToolSchemaFacts } from './catalog-model.ts'
 
 /** The parent consumer Fiber owns this read-only exact-Agent child view. */
 export async function openToolDetail(ctx: Context, agent: Agent, options: { readonly id: string, readonly name: string, readonly signal: AbortSignal }): Promise<boolean> {
@@ -70,7 +69,7 @@ export function apply(ctx: Context): void {
     let focused: string | undefined
     let detailMode = false
     let available = true
-    const snapshot = (): readonly ToolSchema[] => {
+    const snapshot = (): readonly ToolSchemaFacts[] => {
       try {
         available = true
         return sortedSchemas(tools.schemas(agent))
