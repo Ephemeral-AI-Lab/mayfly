@@ -1,4 +1,4 @@
-/** Validate exact, evidence-linked human decisions without changing strict parity results. @module script/scenarios/split-native-review */
+/** Validate exact, evidence-linked review decisions without changing strict parity results. @module script/scenarios/split-native-review */
 
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
@@ -144,7 +144,7 @@ function checkFactStyles(change) {
 }
 
 /**
- * A review is an explicit human decision tied to immutable bytes and source facts.
+ * A review is an explicit recorded decision tied to immutable bytes and source facts.
  * It is never a wildcard ignore list: recaptures need a fresh reviewed plan. Raw
  * failures, grids, style runs, cursor and dimensions are never rewritten.
  */

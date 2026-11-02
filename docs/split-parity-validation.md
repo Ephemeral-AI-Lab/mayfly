@@ -166,7 +166,7 @@ node script/split-native-review.mjs \
   --results /path/to/native-differences-review.json
 ```
 
-The plan records a human assessment of the relation between native facts and
+The plan records the reviewer's assessment of the relation between native facts and
 the changed field. It binds the original strict report, frozen reference
 manifest, each differing reference/candidate grid, and every evidence file by
 SHA-256. Native facts use checked JSON pointers or an exact native journal
@@ -188,7 +188,8 @@ The result separates `exactCheckpoints` from `reviewedDifferences`. Its status
 is `strict-exact`, `reviewed-native-differences`, or `rejected`; the original
 `strictStatus`, `strictParityVerified` and `strictFailures` remain visible.
 The strict parity CLI and full code gate keep their original failure exit
-semantics. A successful review neither rewrites raw artifacts nor upgrades
+semantics. Automated or agent review does not replace the owner's final human
+acceptance. A successful review neither rewrites raw artifacts nor upgrades
 native differences to exact parity. New captures need new reviewed hashes.
 
 New candidate reports include before/after hashes of emitted runtime JavaScript
