@@ -69,10 +69,12 @@ describe('RemotePresentSlot', () => {
     expect(first.release).not.toHaveBeenCalled()
     expect(second.release).not.toHaveBeenCalled()
     const nextBtw = { ...btw, sessionId: SessionId('btw-next') }
-    slot.present(nextBtw, binding, { kind: 'btw', access: 'interactive' })
+    const nextLease = lease()
+    await slot.adopt(nextBtw, nextLease, () => ({ kind: 'btw', access: 'interactive' }))
     expect(closePresent).toHaveBeenLastCalledWith(btw)
     slot.closeBtw()
     expect(closePresent).toHaveBeenLastCalledWith(nextBtw)
+    expect(nextLease.release).toHaveBeenCalledOnce()
     slot.closeBtw()
     slot.close(otherHost)
     expect(second.release).toHaveBeenCalledOnce()

@@ -206,12 +206,14 @@ export async function collectRemoteSessionEvents(
   const events: SessionWireEvent[] = []
   let beforeSeq: number | undefined
   for (let page = 0; page < maxPages; page += 1) {
+    query.signal?.throwIfAborted()
     const request: SessionPageRequest = {
       address: query.address,
       ...(query.maxMessages === undefined ? {} : { maxMessages: query.maxMessages }),
       ...(beforeSeq === undefined ? {} : { beforeSeq }),
     }
     const result = await remoteValue(client.remote.session.events(request, query.signal))
+    query.signal?.throwIfAborted()
     const records = result.records.flatMap(record => (record.type === 'event' ? [record.event] : []))
     events.push(...records)
     if (!result.hasMore || records.length === 0) break
