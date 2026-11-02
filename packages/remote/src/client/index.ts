@@ -1,4 +1,6 @@
 /** Remote dsh Host Client assembly, transport, shared contracts, and headless smoke. */
+// oxlint-disable-next-line typescript/no-useless-empty-export -- This edge preserves official namespace augmentations in published declarations.
+export type {} from '@deepseek-ai/dsh-api-remotes/client'
 export {
   createHostClient,
   type CreateHostClientOptions,

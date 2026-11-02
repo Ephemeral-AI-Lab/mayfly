@@ -94,9 +94,15 @@ function validateManifest(name, manifest, root, relativeDir) {
   }
 }
 
-function verifyExternalUiKit(uiTarball) {
+function verifyExternalConsumers(packageTarballs) {
+  const uiTarball = packageTarballs.get('@ephemeral-ai/mayfly-ui')
+  const remoteTarball = packageTarballs.get('@ephemeral-ai/mayfly-remote')
   if (uiTarball === undefined) {
     fail('external UI kit fixture requires the packed UI tarball')
+    return
+  }
+  if (remoteTarball === undefined) {
+    fail('external Client fixture requires the packed Remote tarball')
     return
   }
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'mayfly-ui-kit-pack-'))
@@ -140,12 +146,21 @@ export declare const metric: MayflyComponentFactory<MetricProps>
     writeFileSync(join(consumerRoot, 'package.json'), `${JSON.stringify({
       private: true,
       type: 'module',
+      packageManager: readManifest('.').packageManager,
       dependencies: {
         '@ephemeral-ai/mayfly-ui': `file:${uiTarball}`,
+        '@ephemeral-ai/mayfly-remote': `file:${remoteTarball}`,
         '@mayfly-pack-fixture/user-kit': `file:${kitTarball}`,
       },
+      devDependencies: {
+        '@types/node': readManifest('packages/remote').devDependencies['@types/node'],
+        '@types/ws': readManifest('packages/remote').devDependencies['@types/ws'],
+      },
     }, null, 2)}\n`)
-    execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: consumerRoot, stdio: 'ignore' })
+    // The candidate shares rc.2's version until release. Resolve every Mayfly
+    // dependency from these tarballs instead of mixing in the published TUI.
+    writeFileSync(join(consumerRoot, 'pnpm-workspace.yaml'), `packages: []\nallowBuilds: {}\noverrides:\n${[...packageTarballs].map(([name, tarball]) => `  ${JSON.stringify(name)}: ${JSON.stringify(`file:${tarball}`)}\n`).join('')}`)
+    execFileSync('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], { cwd: consumerRoot, stdio: 'ignore' })
     writeFileSync(join(consumerRoot, 'verify.mjs'), `
 import { metric } from '@mayfly-pack-fixture/user-kit'
 const node = metric.render({ label: 'Context', value: 42 })
@@ -165,18 +180,26 @@ for (const value of [node, node.children, node.children[0], node.children[1], te
     writeFileSync(join(consumerRoot, 'verify.ts'), `
 import { metric, type MetricProps } from '@mayfly-pack-fixture/user-kit'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { createHostClient, HostKey, type HostClient } from '@ephemeral-ai/mayfly-remote/client'
 const props: MetricProps = { label: 'Context', value: 42 }
 const node: MayflyUiNode = metric.render(props)
+const options: Parameters<typeof createHostClient>[0] = {
+  key: HostKey('pack-fixture'),
+  startupUrl: 'http://host.invalid/connect',
+}
+declare const host: HostClient
+void [host.remote.session, host.remote.workspace, host.remote.skills, host.remote.commands]
+void options
 void node
 `)
     writeFileSync(join(consumerRoot, 'tsconfig.json'), `${JSON.stringify({
-      compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2024', strict: true, noEmit: true },
+      compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2024', strict: true, noEmit: true, skipLibCheck: false, types: ['node'] },
       include: ['verify.ts'],
     }, null, 2)}\n`)
     execFileSync(join(ROOT, 'node_modules', '.bin', 'tsc'), ['-p', '.'], { cwd: consumerRoot, stdio: 'inherit' })
-    console.log('external UI kit: packed install, runtime, and types passed')
+    console.log('external UI kit and Host Client: packed install, runtime, and types passed')
   } catch (error) {
-    fail(`external UI kit fixture failed: ${error instanceof Error ? error.message : String(error)}`)
+    fail(`external consumer fixture failed: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
     rmSync(fixtureRoot, { recursive: true, force: true })
   }
@@ -245,7 +268,7 @@ for (const relativeDir of PACKAGE_DIRS) {
   records.push({ name: manifest.name, version: manifest.version, filename: basename(tarball), files: files.length, bytes: files.reduce((sum, file) => sum + file.size, 0) })
 }
 
-verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
+verifyExternalConsumers(tarballs)
 
 // The consolidated runtime and UI declarations currently occupy about 2.09 MB
 // (the terminal DeepSeek account sign-in panel and its remote-callback
