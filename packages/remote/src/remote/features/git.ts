@@ -15,7 +15,6 @@ import { hasMayflyHostFeature, unavailableCapability } from './capabilities.ts'
 import { RemoteFeatureLifecycle } from './lifecycle.ts'
 
 class RemoteGitController {
-  private readonly options: RemoteFeatureContext
   private readonly t: MayflyTranslate
   private readonly lifecycle: RemoteFeatureLifecycle
   private readonly poller: RemoteGitPoller<MayflyGitStatus | null>
@@ -29,7 +28,6 @@ class RemoteGitController {
   private disposed = false
 
   constructor(options: RemoteFeatureContext) {
-    this.options = options
     this.t = memoizedLocaleTranslator(options.ctx, 'remote-git').translate
     this.lifecycle = new RemoteFeatureLifecycle(options, this.attach)
     this.poller = new RemoteGitPoller((ref, signal) => {
@@ -54,13 +52,10 @@ class RemoteGitController {
     this.stopDirectory = undefined
     this.offPoller()
     this.status.dispose()
-    void this.poller.dispose().catch((error: unknown) => {
-      this.options.notice.set(error instanceof Error ? error.message : String(error))
-    })
+    void this.poller.dispose()
   }
 
   private readonly attach = (generation: number): void => {
-    if (this.disposed) return
     this.ticket += 1
     this.operationLifetime.abort()
     this.operationLifetime = new AbortController()
@@ -90,6 +85,7 @@ class RemoteGitController {
     const ticket = ++this.ticket
     const signal = this.operationLifetime.signal
     this.capabilityError = undefined
+    this.poller.attach(null)
     try {
       const capable = await hasMayflyHostFeature(current.client, 'gitStatus', signal)
       if (!this.lifecycle.owns(generation) || ticket !== this.ticket || cwd !== this.cwd) return
@@ -108,7 +104,6 @@ class RemoteGitController {
   }
 
   private readonly publish = (): void => {
-    if (this.disposed) return
     if (this.capabilityError !== undefined) {
       this.status.set({ kind: 'text', content: this.capabilityError, tone: 'warning' })
       return

@@ -60,6 +60,7 @@ export class RemoteGitPoller<Value> {
 
   /** Select one Session, aborting the prior selection's poll and late publication. */
   attach(ref: SessionRef | null): void {
+    if (this.disposed) return
     const generation = ++this.generation
     this.ref = ref ?? undefined
     this.timer !== undefined && clearTimeout(this.timer)
@@ -69,7 +70,7 @@ export class RemoteGitPoller<Value> {
     this.run = undefined
     this.current = { ref: this.ref, generation, pending: false, result: undefined }
     this.publish()
-    if (!this.disposed && ref !== null) void this.refresh()
+    if (ref !== null) void this.refresh()
   }
 
   /** Start one read, sharing only an in-flight read from the same selection generation. */
@@ -98,8 +99,8 @@ export class RemoteGitPoller<Value> {
     ).finally(() => {
       this.runs.delete(promise)
       if (!this.owns(ref, generation)) return
-      if (this.run?.promise === promise) this.run = undefined
-      if (this.controller === controller) this.controller = undefined
+      this.run = undefined
+      this.controller = undefined
       this.timer = setTimeout(() => {
         this.timer = undefined
         if (this.owns(ref, generation)) void this.refresh()
