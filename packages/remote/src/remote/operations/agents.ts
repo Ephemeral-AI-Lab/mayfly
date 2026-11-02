@@ -29,7 +29,6 @@ interface PromptAnswer {
 }
 
 const zh: Readonly<Record<string, string>> = {
-  'Show the current session descendant subagent tree': '显示当前会话的后代子代理树',
   'Subagents': '子代理',
   'No subagent descendants': '没有子代理后代',
   'Select a subagent to see its actions': '选择一个子代理查看可用操作',
@@ -342,7 +341,7 @@ export function mountRemoteAgentsOperations(context: RemoteOperationsContext): (
   const controller = new RemoteAgentsController(context)
   const unregister = context.base.commands.register({
     name: 'agents',
-    description: 'Show the current session descendant subagent tree',
+    description: 'Browse this session\'s subagents, view one, or stop a continuable child',
     input: { hint: '[<filter>]|close' },
     execute: controller.execute,
   })

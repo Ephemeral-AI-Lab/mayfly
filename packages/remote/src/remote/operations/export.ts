@@ -141,7 +141,7 @@ export function mountRemoteExportOperations(context: RemoteOperationsContext): (
     }),
     context.base.commands.register({
       name: 'save',
-      description: 'Save the current session as Markdown (/export)',
+      description: 'Save the current session as a Markdown file',
       input: { hint: '[full] [name]' },
       execute: command.execute,
     }),

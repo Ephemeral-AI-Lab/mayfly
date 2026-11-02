@@ -105,7 +105,7 @@ describe('mountRemoteCopyOperations', () => {
     const { context, commands } = fixture()
     const dispose = mountRemoteCopyOperations(context)
     expect(commands.list().map(command => command.name)).toEqual(['copy'])
-    expect(commands.list()[0]?.description).toBe('Copy the last assistant reply to the clipboard')
+    expect(commands.list()[0]?.description).toBe('Copy the last assistant message to the clipboard')
     dispose()
     expect(commands.list()).toEqual([])
     mountRemoteCopyOperations(context)

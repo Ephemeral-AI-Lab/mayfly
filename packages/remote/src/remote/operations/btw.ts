@@ -10,7 +10,6 @@ import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
 import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
 
 const zh: Readonly<Record<string, string>> = {
-  'Ask a side question in a forked session': '在派生会话中提出一个旁路问题',
   'Usage: /btw <question> | /btw close': '用法：/btw <问题> | /btw close',
   'No current session': '当前没有会话',
   'BTW view closed; the side session keeps running': 'BTW 视图已关闭；旁路会话仍在运行',
@@ -82,7 +81,7 @@ export function mountRemoteBtwOperations(context: RemoteOperationsContext): () =
   const command = new RemoteBtwCommand(context)
   const unregister = context.base.commands.register({
     name: 'btw',
-    description: 'Ask a side question in a forked session',
+    description: 'Ask a side question in a temporary Agent session',
     input: { hint: '<question>|close' },
     execute: command.execute,
   })

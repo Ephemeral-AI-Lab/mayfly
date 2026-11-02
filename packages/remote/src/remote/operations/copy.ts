@@ -20,7 +20,6 @@ const COPY_PAGE_MESSAGES = 500
 const COPY_MAX_PAGES = 4
 
 const zh: Readonly<Record<string, string>> = {
-  'Copy the last assistant reply to the clipboard': '复制最后一条助手回复到剪贴板',
   'Copied {count} characters': '已复制 {count} 个字符',
   'No assistant reply to copy yet': '还没有可复制的助手回复',
   'Clipboard is unavailable in this frontend': '当前前端不支持剪贴板',
@@ -119,7 +118,7 @@ export function mountRemoteCopyOperations(context: RemoteOperationsContext): () 
   const command = new RemoteCopyCommand(context)
   const unregister = context.base.commands.register({
     name: 'copy',
-    description: 'Copy the last assistant reply to the clipboard',
+    description: 'Copy the last assistant message to the clipboard',
     execute: command.execute,
   })
   return () => { unregister(); command.dispose() }

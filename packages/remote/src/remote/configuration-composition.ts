@@ -102,7 +102,7 @@ export function mountRemoteConfigurationComposition(
     }),
     base.commands.register({
       name: 'settings', scope: 'sessionless',
-      description: 'Browse settings namespaces and edit the settings document',
+      description: 'Edit user settings by namespace',
       execute: async rawInput => {
         if (rawInput.trim() !== '') throw usage('settings')
         await features.settings.open()
