@@ -37,6 +37,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Its catalog, installed rows, notifications, and restart chip belong to one
   feature generation. A Host/selection/reconnection change retires that owner;
   late writes are never retried or presented under another Host.
+  Reopening the browser replaces its local overlay. Caller cancellation and
+  panel close retire reads and acknowledgements, and stop later install units;
+  a sent native mutation keeps its Host-owned lifetime. A post-write list read
+  must still belong to that owner before it can publish restart state.
 - `/update` owns one explicit coordinated Host/frontend transaction. The shared
   reference confirmation and progress models remain renderer-neutral. Frontend
   npm staging verifies actual CLI/Remote/shared versions, imports the candidate,

@@ -23,7 +23,7 @@ import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts
 import type { RemoteOperationsContext } from './support.ts'
 
 interface MarketplaceController {
-  execute(rawInput: string): Promise<CommandOutcome>
+  execute(rawInput: string, signal: AbortSignal): Promise<CommandOutcome>
   dispose(): void
 }
 
@@ -92,11 +92,16 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
   const t = interactionTranslator(ctx)
   const notifications = ctx.get('mayflyUiInteraction')?.createNotificationOwner('mayfly.remote.market')
   let unloaded = false
+  const owner = new AbortController()
+  const generation = client.state.getSnapshot().generation
+  const isCurrent = (signal: AbortSignal): boolean => !unloaded && !signal.aborted
+    && client.state.getSnapshot().generation === generation
+    && (context.base.hosts.current()?.client ?? context.base.hosts.active?.() ?? context.base.hosts.list()[0]) === client
   let chip: MayflyStatusRegistration | undefined
   const panels = new Set<RemoteBrowserPanel>()
   const dispose = (): void => {
-    if (unloaded) return
     unloaded = true
+    owner.abort()
     chip?.dispose()
     chip = undefined
     notifications?.dispose()
@@ -123,10 +128,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
 
   /** The active UI locale, for entry descriptions that ship both languages. */
   const locale = (): 'zh' | 'en' => {
-    const service = ctx.get('mayflyLocale')
-    /* panels render only where the frontend ships the locale service */
-    if (service === undefined) return 'en'
-    return service.snapshot.locale
+    return ctx.mayflyLocale.snapshot.locale
   }
   const env = (): FactsEnv => ({ t, locale: locale() })
 
@@ -134,26 +136,26 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
   const indexUrl = (): string => DEFAULT_MARKET_INDEX_URL
 
   /** Load (or force-reload) the read-only catalog. */
-  const reload = (force: boolean): Promise<CatalogResult> => {
+  const reload = (force: boolean, signal: AbortSignal): Promise<CatalogResult> => {
     const generation = ++reloadGeneration
     return loadMarketCatalog(indexUrl(), force).then(result => {
-      if (unloaded || generation !== reloadGeneration) return result
+      if (!isCurrent(signal) || generation !== reloadGeneration) return result
       catalog = result
       return result
     })
   }
 
   /** Read the native bundle list; the panel never derives installed state from the profile itself. */
-  const refreshBundles = async (manager: ClientPluginManager): Promise<boolean> => {
+  const refreshBundles = async (manager: ClientPluginManager, signal: AbortSignal): Promise<boolean> => {
     const generation = ++bundleGeneration
     try {
       const loaded = await remoteValue(manager.listBundles())
-      if (unloaded || generation !== bundleGeneration) return false
+      if (!isCurrent(signal) || generation !== bundleGeneration) return false
       bundles = loaded
       bundleError = undefined
       return true
     } catch (error) {
-      if (unloaded || generation !== bundleGeneration) return false
+      if (!isCurrent(signal) || generation !== bundleGeneration) return false
       bundleError = error instanceof Error ? error.message : String(error)
       return false
     }
@@ -166,7 +168,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
     return catalog.index.entries
   }
 
-  const rows = (): readonly MarketRow[] => buildRows(entries(), bundles ?? [])
+  const rows = (): readonly MarketRow[] => buildRows(entries(), bundles!)
 
   /** Find a row by marketplace id, by one of its row package names, or by an unlisted bundle name. */
   const findRow = (id: string): MarketRow | undefined => {
@@ -175,7 +177,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
     // A removed entry is not a visible row until the profile carries it, but `/plugin info` and an install attempt
     // still need its refusal.
     const entry = entries().find(candidate => candidate.id === id || candidate.install.rows.some(item => item.name === id))
-    return entry === undefined ? undefined : { id: entry.id, entry, state: entry.status === 'removed' ? 'removed' : 'available', installed: false, partial: false, removable: false }
+    return entry === undefined ? undefined : { id: entry.id, entry, state: 'removed', installed: false, partial: false, removable: false }
   }
 
   /** Show the pending restart in the status footer. */
@@ -189,8 +191,8 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
   const offLocale = observeInteractionLocale(ctx, syncChip)
 
   /** Report an operation to the notification area, keyed by what it changes. */
-  const notifyInto = (operationId: string): OperationReporter => status => {
-    if (unloaded) return
+  const notifyInto = (operationId: string, signal: AbortSignal): OperationReporter => status => {
+    if (!isCurrent(signal)) return
     notifications?.report(operationId, { kind: 'app', targetId: 'plugin-market' }, {
       message: status.text,
       severity: status.tone === 'danger' ? 'error' : status.tone === 'muted' ? 'info' : status.tone,
@@ -202,10 +204,9 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
    * The install call one catalog row makes. A native on-demand target names one exact released version, so it is saved
    * exactly, as the Host's other official installs are; a catalog spec keeps pnpm's own saving rule.
    */
-  function installCall(row: MarketInstallRow, bundle: BundleInfo | undefined, source: InstallSource): { readonly spec: string, readonly saveExact: boolean } | undefined {
+  function installCall(row: MarketInstallRow, bundle: BundleInfo | undefined, source: InstallSource): { readonly spec: string, readonly saveExact: boolean } {
     if (source === 'npm' && bundle?.installTarget !== undefined) return { spec: bundle.installTarget.spec, saveExact: true }
-    const spec = rowSpec(row, source)
-    return spec === undefined ? undefined : { spec, saveExact: false }
+    return { spec: rowSpec(row, source)!, saveExact: false }
   }
 
   /** Whether an installed row is deselected and needs only a native switch-on. */
@@ -221,10 +222,11 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
     row: MarketRow,
     source: InstallSource,
     report: OperationReporter,
+    signal: AbortSignal,
   ): Promise<boolean> {
     const entry = row.entry!
     const current = await remoteValue(manager.listBundles())
-    if (unloaded) return false
+    if (!isCurrent(signal)) return false
     const updating = entry.install.rows.some(item => current.some(bundle => bundle.name === item.name && bundle.installed))
     report({
       text: t(updating ? 'updating "{name}" via {source}...' : 'installing "{name}" via {source}...', { name: entry.displayName, source }),
@@ -234,16 +236,12 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
     for (const item of entry.install.rows) {
       const bundle = current.find(candidate => candidate.name === item.name)
       const call = installCall(item, bundle, source)
-      if (call === undefined) {
-        report({ text: t('"{name}" has no {source} install source', { name: entry.displayName, source }), tone: 'danger' })
-        return false
-      }
       const result = needsEnable(entry, item, bundle)
         ? await remoteValue(manager.setBundleEnabled(item.name, true))
         : await remoteValue(manager.installBundle(call.spec, { enabled: true, ...call.saveExact ? { saveExact: true } : {} }))
-      if (unloaded) return false
+      if (!isCurrent(signal)) return false
       if (result.application === 'failed') {
-        await refreshBundles(manager)
+        await refreshBundles(manager, signal)
         report({
           text: t(updating ? 'update failed: {message}' : 'install failed: {message}', {
             message: shorten(`${entry.install.rows.length > 1 ? `${item.name}: ` : ''}${failureText(result)}`),
@@ -253,18 +251,19 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
         return false
       }
       if (result.application === 'cancelled') {
-        await refreshBundles(manager)
+        await refreshBundles(manager, signal)
         report({ text: 'installation cancelled', tone: 'warning' })
         return false
       }
       if (result.application === 'overridden') {
-        await refreshBundles(manager)
+        await refreshBundles(manager, signal)
         report({ text: 'change saved but overridden by the composition', tone: 'warning' })
         return false
       }
       if (result.application === 'restart-required') restart = true
     }
-    await refreshBundles(manager)
+    await refreshBundles(manager, signal)
+    if (!isCurrent(signal)) return false
     if (restart) {
       pendingChanges += 1
       syncChip()
@@ -283,12 +282,13 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
     manager: ClientPluginManager,
     row: MarketRow,
     report: OperationReporter,
+    signal: AbortSignal,
   ): Promise<boolean> {
     const current = await remoteValue(manager.listBundles())
-    if (unloaded) return false
+    if (!isCurrent(signal)) return false
     const entry = row.entry
     const names = entry === undefined
-      ? row.bundle === undefined ? [] : [row.bundle.name]
+      ? [row.bundle!.name]
       : entry.install.rows.map(item => item.name).filter(name => current.some(bundle => bundle.name === name && bundle.installed))
     if (names.length === 0) {
       report({ text: t('"{name}" is not installed in this profile', { name: rowName(row) }), tone: 'danger' })
@@ -306,20 +306,21 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
     let restart = false
     for (const name of names) {
       const result = await remoteValue(manager.removeBundle(name))
-      if (unloaded) return false
+      if (!isCurrent(signal)) return false
       if (result.application === 'failed') {
-        await refreshBundles(manager)
+        await refreshBundles(manager, signal)
         report({ text: t('uninstall failed: {message}', { message: shorten(failureText(result)) }), tone: 'danger' })
         return false
       }
       if (result.application === 'cancelled') {
-        await refreshBundles(manager)
+        await refreshBundles(manager, signal)
         report({ text: 'removal cancelled', tone: 'warning' })
         return false
       }
       if (result.application === 'restart-required') restart = true
     }
-    await refreshBundles(manager)
+    await refreshBundles(manager, signal)
+    if (!isCurrent(signal)) return false
     if (restart) {
       pendingChanges += 1
       syncChip()
@@ -329,9 +330,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
   }
 
   /** Run one install, update, removal, or enable through the native service, once at a time. */
-  async function operate(row: MarketRow, action: RowAction, source: InstallSource | undefined, reporter?: OperationReporter): Promise<boolean> {
-    const operationId = `plugin/${row.id}/${action}`
-    const report: OperationReporter = reporter ?? notifyInto(operationId)
+  async function operate(row: MarketRow, action: RowAction, source: InstallSource | undefined, report: OperationReporter, signal: AbortSignal): Promise<boolean> {
     if (operationInFlight) {
       report({ text: t('a plugin operation is already running'), tone: 'warning' })
       return false
@@ -344,21 +343,14 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
     // Claim before the first await so overlapping keypresses cannot both run.
     operationInFlight = true
     try {
-      if (action === 'remove') return await removeEntry(manager, row, report)
+      if (action === 'remove') return await removeEntry(manager, row, report, signal)
       // `update` and `enable` use the same native installation path; the manager reports the observed application.
-      if (row.entry === undefined) {
-        report({ text: 'this bundle is not listed in the marketplace index', tone: 'danger' })
-        return false
-      }
-      if (source === undefined) {
-        report({ text: t('"{name}" has no common install source for every package', { name: row.entry.displayName }), tone: 'danger' })
-        return false
-      }
-      return await installEntry(manager, row, source, report)
+      return await installEntry(manager, row, source!, report, signal)
     } catch (error) {
-      if (unloaded) return false
+      if (!isCurrent(signal)) return false
       // ChangeResult folds expected failures; a rejected service call is unexpected and still must not escape a key.
-      await refreshBundles(manager)
+      await refreshBundles(manager, signal)
+      if (!isCurrent(signal)) return false
       const message = shorten(error instanceof Error ? error.message : String(error))
       report({
         text: t(action === 'remove' ? 'uninstall failed: {message}' : action === 'update' ? 'update failed: {message}' : 'install failed: {message}', { message }),
@@ -374,8 +366,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
    * Install, update, remove, or enable one row after the guards every entry point shares: installed state, install
    * blocks, the up-to-date short-circuit, web-only warnings, native removal availability, and the source.
    */
-  async function runOperation(row: MarketRow, action: RowAction, reporter: OperationReporter, requestedSource?: InstallSource): Promise<boolean> {
-    if (unloaded) return false
+  async function runOperation(row: MarketRow, action: RowAction, reporter: OperationReporter, signal: AbortSignal, requestedSource?: InstallSource): Promise<boolean> {
     if (action === 'remove') {
       if (!row.installed) {
         reporter({ text: t('"{name}" is not installed in this profile', { name: rowName(row) }), tone: 'danger' })
@@ -385,7 +376,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
         reporter({ text: 'the plugin manager does not allow removing this bundle', tone: 'danger' })
         return false
       }
-      return operate(row, 'remove', undefined, reporter)
+      return operate(row, 'remove', undefined, reporter, signal)
     }
     const entry = row.entry
     if (entry === undefined) {
@@ -413,13 +404,13 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
       reporter({ text: t('"{name}" has no {source} install source', { name: entry.displayName, source }), tone: 'danger' })
       return false
     }
-    return operate(row, action, source, reporter)
+    return operate(row, action, source, reporter, signal)
   }
 
   /** Report an operation into an open surface. */
-  const reportInto = (context: MayflyUiEventContext, remember?: (text: string) => void): OperationReporter => status => {
-    if (unloaded || context.signal.aborted) return
-    remember?.(status.text)
+  const reportInto = (context: MayflyUiEventContext, remember: (text: string) => void): OperationReporter => status => {
+    if (!isCurrent(context.signal)) return
+    remember(status.text)
     context.report({
       message: status.text,
       severity: status.tone === 'danger' ? 'error' : status.tone === 'warning' ? 'warning' : status.tone === 'success' ? 'success' : 'info',
@@ -437,19 +428,20 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
 
   /** One keyed operation of a row, with the reply that shows the result. */
   async function rowAction(rowId: string, action: RowAction, context: MayflyUiEventContext): Promise<{ readonly ok: boolean, readonly message: string }> {
-    const row = rows().find(item => item.id === rowId)
-    /* keyed actions only carry ids from rows */
-    if (row === undefined) return { ok: false, message: t('plugin operation failed') }
+    const row = rows().find(item => item.id === rowId)!
     let message = t('plugin operation failed')
-    const ok = await runOperation(row, action, reportInto(context, text => { message = text }))
+    const ok = await runOperation(row, action, reportInto(context, text => { message = text }), context.signal)
     return { ok, message }
   }
 
   /** Open the marketplace panel on a tab, optionally on one row's detail page. */
-  function openBrowse(initialTab: MarketTab, options: { readonly focusId?: string, readonly detail?: boolean } = {}): CommandOutcome {
+  function openBrowse(initialTab: MarketTab, signal: AbortSignal, options: { readonly focusId?: string, readonly detail?: boolean } = {}): CommandOutcome {
     if (ctx.get('mayflyOverlays') === undefined) return { kind: 'error', text: t('plugin browser is unavailable: the Mayfly UI registry is not mounted') }
     const manager = client.remote.pluginManager
+    for (const panel of panels) panel.close()
+    panels.clear()
     const lifetime = new AbortController()
+    const panelSignal = AbortSignal.any([signal, owner.signal, lifetime.signal])
     let activeTab: MarketTab = initialTab
     let groupMode: GroupMode = 'category'
     const focused: Partial<Record<MarketTab, string>> = {}
@@ -508,17 +500,17 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
 
     const publish = (): void => { if (!unloaded && !handle.closed) handle.refresh() }
 
-    const refreshMarket = async (reporter: OperationReporter): Promise<boolean> => {
+    const refreshMarket = async (reporter: OperationReporter, signal: AbortSignal): Promise<boolean> => {
       if (manager === undefined) {
         reporter({ text: 'plugin manager is unavailable: the native plugin service is not mounted', tone: 'danger' })
         return false
       }
       reporter({ text: t('refreshing plugin catalog...'), tone: 'muted' })
-      const [result] = await Promise.all([reload(true), refreshBundles(manager)])
+      const [result] = await Promise.all([reload(true, signal), refreshBundles(manager, signal)])
       /* a fiber unload landing inside the refresh await is a shutdown race */
-      if (unloaded) return false
+      if (!isCurrent(signal)) return false
       if (result.status === 'offline' || bundleError !== undefined) {
-        reporter({ text: t('refresh failed: {message}', { message: result.status === 'offline' ? result.message : bundleError ?? 'unknown error' }), tone: 'danger' })
+        reporter({ text: t('refresh failed: {message}', { message: result.status === 'offline' ? result.message : bundleError! }), tone: 'danger' })
       } else {
         reporter({ text: t('refreshed {count} entries', { count: String(result.index.entries.length) }), tone: 'success' })
       }
@@ -533,8 +525,8 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
         const prefix = t('{index} of {count}', { index: index + 1, count: targets.length })
         let message = t('plugin operation failed')
         const report = reportInto(context, text => { message = text })
-        const ok = await runOperation(row, 'install', status => report({ ...status, text: status.tone === 'muted' ? `${prefix} · ${status.text}` : status.text }))
-        if (unloaded) return { kind: 'cancelled' }
+        const ok = await runOperation(row, 'install', status => report({ ...status, text: status.tone === 'muted' ? `${prefix} · ${status.text}` : status.text }), context.signal)
+        if (!isCurrent(context.signal)) return { kind: 'cancelled' }
         if (!ok) return { kind: 'failed', node: node(), source: [], message: t('update all stopped at "{name}": {message}', { name: rowName(row), message }) }
       }
       return { kind: 'accepted', node: node(), source: [], feedback: { severity: 'success', message: t('updated {count} plugins; restart Mayfly and start a new session to apply', { count: targets.length }) } }
@@ -548,7 +540,8 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
     const handle: RemoteBrowserPanel = openRemoteBrowser(context.base, {
       id: 'mayfly.plugin-market',
       scope: { kind: 'app', targetId: 'plugin-market' },
-      isCurrent: () => !unloaded,
+      signal: panelSignal,
+      isCurrent: () => isCurrent(panelSignal),
       view: node,
       back: () => {
         if (narrow !== 'detail' || columns() >= MARKET_BREAKPOINT) return false
@@ -568,7 +561,9 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
             }
           }
         },
-      action: async (event: MayflyUiActionEvent, context): Promise<MayflyUiActionReply> => {
+      action: async (event: MayflyUiActionEvent, eventContext): Promise<MayflyUiActionReply> => {
+          const context = { ...eventContext, signal: AbortSignal.any([eventContext.signal, panelSignal]) }
+          if (!isCurrent(context.signal)) return { kind: 'cancelled' }
           if (event.kind === 'dismiss') {
             if (narrow === 'detail' && columns() < MARKET_BREAKPOINT) {
               narrow = 'list'
@@ -594,6 +589,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
               const id = activeRowId()
               if (id === undefined) return { kind: 'completed' }
               const result = await rowAction(id, event.actionId, context)
+              if (!isCurrent(context.signal)) return { kind: 'cancelled' }
               if (!rows().some(item => item.id === id)) narrow = 'list'
               return result.ok
                 ? { kind: 'accepted', node: node(), source: [], feedback: { severity: 'success', message: result.message } }
@@ -618,7 +614,8 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
               return updateAll(context)
             case 'refresh': {
               let message = t('refresh failed')
-              const ok = await refreshMarket(reportInto(context, text => { message = text }))
+              const ok = await refreshMarket(reportInto(context, text => { message = text }), context.signal)
+              if (!isCurrent(context.signal)) return { kind: 'cancelled' }
               return ok
                 ? { kind: 'accepted', node: node(), source: [], feedback: { severity: 'success', message } }
                 : { kind: 'failed', node: node(), source: [], message }
@@ -633,10 +630,10 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
     // The panel mounts immediately with the loading document when the caller
     // opened before the first load settled; swap in the data when it arrives.
     if (manager !== undefined) {
-      if (bundles === undefined) void refreshBundles(manager).then(() => { publish() })
+      if (bundles === undefined) void refreshBundles(manager, panelSignal).then(() => { publish() })
     }
     if (catalog === undefined) {
-      void reload(false).then(() => { publish() })
+      void reload(false, panelSignal).then(() => { publish() })
     }
     return { kind: 'success' }
   }
@@ -645,11 +642,10 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
     name: 'plugin', scope: 'sessionless',
     description: 'Browse, install, and remove plugins',
     input: { hint: '[install <id> [--source npm|github>] | uninstall <id> | info <id> | list | updates | refresh]' },
-    handler: async (rawInput: string): Promise<CommandOutcome> => {
-      if (unloaded) return { kind: 'success' }
+    handler: async (rawInput: string, signal: AbortSignal): Promise<CommandOutcome> => {
       const raw = rawInput.trim()
       if (raw === '') {
-        return openBrowse('browse')
+        return openBrowse('browse', signal)
       }
       const tokens = raw.split(/\s+/)
       const verb = tokens[0]!
@@ -657,31 +653,32 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
       if (verb === 'refresh') {
         const manager = client.remote.pluginManager
         if (manager === undefined) return { kind: 'error', text: 'plugin manager is unavailable: the native plugin service is not mounted' }
-        const [result] = await Promise.all([reload(true), refreshBundles(manager)])
-        if (unloaded) return { kind: 'success' }
+        const [result] = await Promise.all([reload(true, signal), refreshBundles(manager, signal)])
+        if (!isCurrent(signal)) return { kind: 'success' }
         if (result.status === 'offline' || bundleError !== undefined) {
-          return { kind: 'error', text: t('refresh failed: {message}', { message: result.status === 'offline' ? result.message : bundleError ?? 'unknown error' }) }
+          return { kind: 'error', text: t('refresh failed: {message}', { message: result.status === 'offline' ? result.message : bundleError! }) }
         }
         return { kind: 'success', text: t('refreshed {count} entries', { count: String(result.index.entries.length) }) }
       }
       if (verb === 'list') {
-        return openBrowse('installed')
+        return openBrowse('installed', signal)
       }
       if (verb === 'updates') {
-        return openBrowse('updates')
+        return openBrowse('updates', signal)
       }
       if (verb === 'info') {
         if (id === undefined) return { kind: 'error', text: t('usage: /plugin info <id>') }
         if (ctx.get('mayflyOverlays') === undefined) return { kind: 'error', text: t('plugin browser is unavailable: the Mayfly UI registry is not mounted') }
         const manager = client.remote.pluginManager
         if (manager === undefined) return { kind: 'error', text: 'plugin manager is unavailable: the native plugin service is not mounted' }
-        if (catalog === undefined) await reload(false)
-        if (bundles === undefined) await refreshBundles(manager)
-        if (unloaded) return { kind: 'success' }
+        if (catalog === undefined) await reload(false, signal)
+        if (!isCurrent(signal)) return { kind: 'success' }
+        if (bundles === undefined) await refreshBundles(manager, signal)
+        if (!isCurrent(signal)) return { kind: 'success' }
         const row = findRow(id)
         if (row === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
         const tab = MARKET_TABS.find(candidate => tabRows(rows(), candidate).some(item => item.id === row.id)) ?? 'browse'
-        return openBrowse(tab, { focusId: row.id, detail: true })
+        return openBrowse(tab, signal, { focusId: row.id, detail: true })
       }
       if (verb === 'install' || verb === 'uninstall') {
         if (id === undefined) {
@@ -694,9 +691,10 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
         }
         const manager = client.remote.pluginManager
         if (manager === undefined) return { kind: 'error', text: 'plugin manager is unavailable: the native plugin service is not mounted' }
-        if (catalog === undefined) await reload(false)
-        if (bundles === undefined) await refreshBundles(manager)
-        if (unloaded) return { kind: 'success' }
+        if (catalog === undefined) await reload(false, signal)
+        if (!isCurrent(signal)) return { kind: 'success' }
+        if (bundles === undefined) await refreshBundles(manager, signal)
+        if (!isCurrent(signal)) return { kind: 'success' }
         const row = findRow(id)
         if (row === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
         if (verb === 'uninstall' && !row.installed) {
@@ -711,7 +709,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
           }
         }
         const action = verb === 'uninstall' ? 'remove' : 'install'
-        await runOperation(row, action, notifyInto(`plugin/${row.id}/${action}`), requestedSource === 'npm' || requestedSource === 'github' ? requestedSource : undefined)
+        await runOperation(row, action, notifyInto(`plugin/${row.id}/${action}`, signal), signal, requestedSource === 'npm' || requestedSource === 'github' ? requestedSource : undefined)
         return { kind: 'success' }
       }
       return { kind: 'error', text: t('usage: /plugin [install <id> | uninstall <id> | info <id> | list | updates | refresh]') }
@@ -725,6 +723,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
 /** Mount the reference marketplace with one exact Host client per feature generation. */
 export function mountRemoteMarketplace(context: RemoteOperationsContext): () => void {
   mountInteractionLocale(context.base.ctx)
+  let disposed = false
   let current: { readonly client: HostClient, readonly controller: MarketplaceController } | undefined
   const lifecycle = new RemoteFeatureLifecycle(context.base, () => {
     current?.controller.dispose()
@@ -745,11 +744,13 @@ export function mountRemoteMarketplace(context: RemoteOperationsContext): () => 
       }
       const controller = current.controller
       const generation = lifecycle.currentGeneration()
-      const outcome = await controller.execute(rawInput)
+      const outcome = await controller.execute(rawInput, signal)
       if (!signal.aborted && lifecycle.owns(generation) && outcome.text !== undefined) context.base.notice.set(outcome.text)
     },
   })
   return () => {
+    if (disposed) return
+    disposed = true
     unregister()
     lifecycle.dispose()
     current?.controller.dispose()
