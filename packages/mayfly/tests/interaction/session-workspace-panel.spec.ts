@@ -7,6 +7,7 @@ import type { SessionListValue, SessionProjectionsValue, SessionProjectionValues
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
+import type { MayflyUiActionEvent } from '../../../ui/src/index.ts'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createSessionListCache, refreshSessionList } from '../../src/interaction/session-list-reads.ts'
 import { openSessionsPanel, type SessionWorkspaceScope } from '../../src/interaction/session-workspace-panel.ts'
@@ -17,7 +18,7 @@ import { informationFixture } from './information-fixture.ts'
 import { nativeAction, select as selection } from './native-action-fixture.ts'
 
 const contexts: Context[] = []
-afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+afterEach(async () => { vi.restoreAllMocks(); for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 
 const now = Date.now()
 
@@ -500,5 +501,160 @@ it('contains an initial catalog failure after the opening signal aborted', async
   expect(panel.handle).toBeDefined()
   signal.abort()
   await flushRequests()
+})
+
+function callbacks(bench: Awaited<ReturnType<typeof setup>>) {
+  const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.sessions')!
+  const context = (signal = new AbortController().signal) => ({ surfaceId: entry.id, source: entry.source, revision: entry.revision, operationId: 'workspace-queued', signal, report: vi.fn() })
+  const action = (event: MayflyUiActionEvent, signal?: AbortSignal) => entry.definition.onEvent!.action!(event, context(signal))
+  const activate = (actionId: string, signal?: AbortSignal) => action({ kind: 'activate', pagePath: [], controlId: 'session-actions', actionId }, signal)
+  const search = (signal?: AbortSignal) => action({ kind: 'activate', pagePath: [], controlId: 'session-search', actionId: 'search', inputs: {
+    actionId: 'search', source: entry.source, draftRevision: 0,
+    forms: [{ pagePath: [], formId: 'content-search', draftRevision: 0, fields: [{ id: 'query', change: 'set', value: 'native match' }] }],
+  } }, signal)
+  return { entry, context, action, activate, search }
+}
+
+it('ignores unrelated rail observations and queued actions, and clears details removed by a native refresh', async () => {
+  const bench = await setup()
+  await bench.open()
+  const f = callbacks(bench)
+  await f.entry.definition.onEvent!.observe!({ kind: 'focus-change', pagePath: [], controlId: 'session-rail' }, f.context())
+  await f.entry.definition.onEvent!.observe!({ kind: 'tab-change', pagePath: [], controlId: 'foreign', tabId: 'search:all' }, f.context())
+  await f.entry.definition.onEvent!.observe!({ kind: 'tab-change', pagePath: [], controlId: 'session-rail', tabId: 'workspace:missing' }, f.context())
+  expect(await f.action({ kind: 'token-remove', pagePath: [], controlId: 'foreign', tokenId: 'queued' })).toMatchObject({ kind: 'completed' })
+  await bench.chooseSession('current')
+  expect(await f.activate('unrelated')).toMatchObject({ kind: 'completed' })
+  bench.summaries.splice(bench.summaries.findIndex(item => item.sessionId === 'current'), 1)
+  expect(await f.activate('reload')).toMatchObject({ kind: 'completed' })
+  expect(bench.text()).not.toContain('3 turns · 5 steps')
+  expect(bench.text()).not.toContain('"id":"current"')
+})
+
+it('uses the native empty workspace title path and keeps global search through reload', async () => {
+  const bench = await setup()
+  bench.workspaces[0] = workspace('alpha', '/repo/current', '')
+  openSessionsPanel(bench.ctx, new AbortController().signal, bench.t, bench.cache)
+  await flushRequests()
+  expect(bench.text()).toContain('"title":"/repo/current"')
+  const f = callbacks(bench)
+  await f.activate('search-all')
+  await f.activate('reload')
+  expect(bench.text()).toContain('Enter text to search all workspaces')
+})
+
+it.each(['count', 'first', 'empty', 'other removed'] as const)('chooses a valid remaining rail after %s', async kind => {
+  const bench = await setup()
+  if (kind === 'other removed') {
+    await bench.open({ kind: 'other' })
+    bench.summaries.splice(0, bench.summaries.length, summary({ sessionId: SessionId('other'), cwd: '/repo/other' }))
+    await callbacks(bench).activate('reload')
+    expect(bench.text()).toContain('"activeId":"workspace:alpha"')
+    return
+  }
+  vi.spyOn(bench.ctx.mayflyConversations, 'primary').mockReturnValue(null)
+  bench.registry.resolveByPath.mockResolvedValue(undefined)
+  bench.summaries.splice(0, bench.summaries.length, ...(kind === 'count' ? [summary({ cwd: '/repo/other' })] : []))
+  if (kind === 'empty') bench.workspaces.splice(0)
+  const panel = openSessionsPanel(bench.ctx, new AbortController().signal, bench.t, bench.cache)
+  await flushRequests()
+  expect(panel.handle.closed).toBe(false)
+  expect(bench.text()).toContain(kind === 'count' ? '"activeId":"workspace:beta"' : kind === 'first' ? '"activeId":"workspace:alpha"' : 'Enter text to search all workspaces')
+})
+
+it.each(['/repo/bare', '/repo/current'])('fences both placement adoption boundaries at %s', async path => {
+  for (const ended of ['generation', 'caller', 'closure'] as const) {
+    const bench = await setup()
+    const { panel } = await bench.open()
+    const original = bench.registry.resolveByPath.getMockImplementation()!
+    const gate = Promise.withResolvers<Workspace | undefined>()
+    let held = false
+    bench.registry.resolveByPath.mockImplementation(async value => {
+      if (!held && value === path) { held = true; return gate.promise }
+      return original(value)
+    })
+    const f = callbacks(bench)
+    const caller = new AbortController()
+    const pending = f.activate('refresh', caller.signal)
+    await vi.waitFor(() => expect(held).toBe(true))
+    if (ended === 'generation') {
+      bench.summaries.splice(0, 1, summary({ values: { title: 'New catalog generation' } }))
+      await f.activate('refresh')
+    } else if (ended === 'caller') caller.abort()
+    else panel.handle.close()
+    gate.resolve(bench.workspaces.find(item => item.path === path))
+    expect(await pending).toMatchObject({ kind: ended === 'generation' ? 'completed' : 'cancelled' })
+    if (ended === 'generation') expect(bench.text()).toContain('New catalog generation')
+    if (ended === 'closure') expect(bench.model()).toBeUndefined()
+  }
+})
+
+it('contains reminder refusals after the panel closes and tolerates a failed current-workspace resolution', async () => {
+  const bench = await setup()
+  const gate = Promise.withResolvers<Awaited<ReturnType<typeof bench.schedule.catalog>>>()
+  bench.schedule.catalog.mockReturnValueOnce(gate.promise)
+  bench.registry.resolveByPath.mockRejectedValue(new Error('canonical path unavailable'))
+  const warn = vi.spyOn(bench.ctx.logger, 'warn').mockImplementation(() => {})
+  const { panel } = await bench.open()
+  panel.handle.close()
+  gate.reject(new Error('late reminder catalog refusal'))
+  await flushRequests()
+  expect(warn).not.toHaveBeenCalled()
+})
+
+it('admits an initial native tab observation before its overlay handle is returned', async () => {
+  const bench = await setup()
+  let observed = false
+  const off = bench.ctx.mayflyOverlays.subscribe(delta => {
+    if (observed || delta.kind !== 'upsert' || delta.entry.id !== 'mayfly.sessions') return
+    observed = true
+    void delta.entry.definition.onEvent!.observe!({ kind: 'tab-change', pagePath: [], controlId: 'session-rail', tabId: 'search:all' }, {
+      surfaceId: delta.entry.id, source: delta.entry.source, revision: delta.entry.revision, operationId: 'initial-tab', signal: new AbortController().signal, report: vi.fn(),
+    })
+  })
+  const panel = openSessionsPanel(bench.ctx, new AbortController().signal, bench.t, bench.cache)
+  off()
+  await flushRequests()
+  expect(panel.handle.closed).toBe(false)
+  expect(bench.text()).toContain('Enter text to search all workspaces')
+})
+
+it('refreshes newly discovered native search matches and filters missing search rows through the new catalog', async () => {
+  const bench = await setup()
+  await bench.open({ kind: 'search' })
+  bench.summaries.push(summary({ sessionId: SessionId('found'), values: { title: 'Newly indexed conversation' } }))
+  bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: SessionId('found'), snippet: 'new native match' }, { sessionId: SessionId('gone'), snippet: 'removed native match' }], hasMore: false })
+  expect(await callbacks(bench).search()).toMatchObject({ kind: 'completed' })
+  expect(bench.text()).toContain('Newly indexed conversation')
+  expect(bench.text()).toContain('new native match')
+  expect(bench.text()).not.toContain('removed native match')
+})
+
+it.each(['search', 'search refresh', 'reload', 'archive refresh'] as const)('retires a cancelled %s continuation', async kind => {
+  const bench = await setup()
+  await bench.open()
+  const f = callbacks(bench)
+  const caller = new AbortController()
+  let pending: ReturnType<typeof f.action>
+  const settle: (() => void)[] = []
+  if (kind === 'search') {
+    const gate = Promise.withResolvers<SessionSearchValue>()
+    bench.controller.search.mockReturnValueOnce(gate.promise)
+    pending = f.search(caller.signal)
+    settle.push(() => gate.resolve({ items: [], hasMore: false }))
+  } else {
+    if (kind === 'archive refresh') await bench.chooseSession('current')
+    const gate = Promise.withResolvers<SessionListValue>()
+    bench.controller.list.mockReturnValueOnce(gate.promise)
+    if (kind === 'search refresh') {
+      bench.controller.search.mockResolvedValueOnce({ items: [{ sessionId: SessionId('new'), snippet: 'late match' }], hasMore: false })
+      pending = f.search(caller.signal)
+    } else pending = f.activate(kind === 'reload' ? 'reload' : 'archive', caller.signal)
+    await vi.waitFor(() => expect(bench.controller.list).toHaveBeenCalledTimes(3))
+    settle.push(() => gate.resolve({ items: [...bench.summaries] }))
+  }
+  caller.abort()
+  for (const resolve of settle) resolve()
+  expect(await pending).toMatchObject({ kind: 'cancelled' })
 })
 

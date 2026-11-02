@@ -126,7 +126,8 @@ export function openSessionsPanel(ctx: Context, signal: AbortSignal, t: MayflyTr
   }
   const workspaceScope = (workspace: SessionWorkspace): SessionWorkspaceScope => workspace.workspaceId === undefined
     ? { kind: 'other' }
-    : { kind: 'workspace', workspaceId: workspace.workspaceId, path: workspace.cwd ?? '', title: workspace.title ?? workspace.cwd ?? '' }
+    // Registered rows always carry the native Workspace's required path/title.
+    : { kind: 'workspace', workspaceId: workspace.workspaceId, path: workspace.cwd!, title: workspace.title! }
   const chooseScope = (workspace: SessionWorkspace): void => {
     scope = workspaceScope(workspace)
     detailId = undefined
@@ -196,9 +197,10 @@ export function openSessionsPanel(ctx: Context, signal: AbortSignal, t: MayflyTr
       const { parentId, ...item } = sessionListItem(factsOf(summary, undefined, archived, current), now, home, t, scope?.kind !== 'workspace')
       return parentId !== undefined && byId.has(parentId) ? { ...item, parentId } : item
     }) : searchItems.map(item => {
-      const summary = byId.get(String(item.sessionId))
-      const row: MayflyListItem = summary === undefined ? { id: item.sessionId, label: item.sessionId } : sessionListItem(factsOf(summary, undefined, archived, current), now, home, t, scope?.kind !== 'workspace')
-      return { ...row, detail: item.snippet, searchText: `${row.label} ${item.sessionId} ${summary?.cwd ?? ''} ${item.snippet}` }
+      // adoptRows filters search matches through the same catalog as byId.
+      const summary = byId.get(String(item.sessionId))!
+      const row = sessionListItem(factsOf(summary, undefined, archived, current), now, home, t, scope?.kind !== 'workspace')
+      return { ...row, detail: item.snippet, searchText: `${row.label} ${item.sessionId} ${summary.cwd ?? ''} ${item.snippet}` }
     })
   }
   const listTitle = (): string => {
@@ -213,15 +215,14 @@ export function openSessionsPanel(ctx: Context, signal: AbortSignal, t: MayflyTr
   ]
   const activeRailId = (): string => {
     if (scope?.kind === 'workspace') return `workspace:${String(scope.workspaceId)}`
-    if (scope?.kind === 'other') return groups.find(workspace => workspace.workspaceId === undefined)?.id ?? SEARCH_ROW_ID
+    if (scope?.kind === 'other') return 'workspace:unregistered'
     return SEARCH_ROW_ID
   }
   const node = (): MayflyUiNode => {
     const summary = detailId === undefined ? undefined : byId.get(detailId)
     const tabs = railItems()
-    const active = tabs.some(item => item.id === activeRailId()) ? activeRailId() : tabs[0]!.id
     return SessionBrowser({
-      title: listTitle(), tabs, activeTab: active, items: rows(), now,
+      title: listTitle(), tabs, activeTab: activeRailId(), items: rows(), now,
       globalSearch: scope?.kind === 'search', awaitingSearch: searchItems === undefined,
       busy: loading || resolving, loading: loading || resolving || loadingReminders, message,
       ...summary === undefined ? {} : { detail: {
