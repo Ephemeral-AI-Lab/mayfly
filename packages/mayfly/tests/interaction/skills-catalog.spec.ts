@@ -166,14 +166,18 @@ describe('skills catalog settle', () => {
   })
 
   it('rejects a snapshot when the current Agent changes without an invalidation event', async () => {
-    const fake = hangingSkills(['stale-agent'])
+    const fake = hangingSkills(['stale-agent', 'fresh-agent'])
     const { ctx } = await mount({ skills: fake.service })
     const pending = refresh(ctx)
     const state = ctx.get('testSession') as { current: { id: string, session: unknown, status: string } }
-    state.current = { id: 'skills-catalog-silent-next', session: state.current.session, status: 'idle' }
+    state.current = { ...state.current }
     fake.release()
     await pending
     expect(userInvocableSkills(ctx)).toEqual([])
+    const fresh = refresh(ctx)
+    fake.release()
+    await fresh
+    expect(userInvocableSkills(ctx).map(entry => entry.name)).toEqual(['fresh-agent'])
   })
 })
 

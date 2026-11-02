@@ -14,6 +14,11 @@ import { FakeMayflyComponents } from './fakes.ts'
 const components = new FakeMayflyComponents()
 
 describe('slash-filter alias matching', () => {
+  it('preserves registered order with a blank query and no alias hit', () => {
+    const commands = [{ name: 'help', aliases: ['h'] }, { name: 'quit' }]
+    expect(filterSlashCommands(commands, ' \t ', components)).toEqual(commands.map(command => ({ command, viaAlias: false })))
+  })
+
   it('replaces the best alias score when a later alias scores better', () => {
     // `aq` scores -1 (the q sits behind a gap), `q` scores -2 (contiguous):
     // the second alias wins, exercising the score-improvement branch.

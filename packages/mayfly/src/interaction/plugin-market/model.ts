@@ -251,7 +251,9 @@ export function groupRows(rows: readonly MarketRow[], mode: GroupMode): readonly
     const kb = groupKey(b, mode)
     const byRank = groupRank(ka, mode) - groupRank(kb, mode)
     if (byRank !== 0) return byRank
-    if (ka !== kb) return (ka ?? '') < (kb ?? '') ? -1 : 1
+    // An absent group key only occurs in `none`; a different key there is
+    // the unlisted group, whose distinct rank was handled above.
+    if (ka !== kb) return ka! < kb! ? -1 : 1
     return rowName(a).localeCompare(rowName(b))
   })
 }

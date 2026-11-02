@@ -136,6 +136,12 @@ describe('listMcpResources', () => {
 })
 
 describe('readMcpResource', () => {
+  it.each([null, false, 'not a resource body', {}, { contents: 'not an array' }])('returns no text for an invalid external MCP body %j', async value => {
+    const { ctx, agent, execute } = setup()
+    execute.mockResolvedValueOnce(success(value))
+    await expect(readMcpResource(ctx, agent, 'docs', 'test://document', signal())).resolves.toBe('')
+  })
+
   it('calls the native read tool for the exact Agent and joins text contents', async () => {
     const { ctx, agent, other, execute, schemas } = setup()
     const readSignal = signal()

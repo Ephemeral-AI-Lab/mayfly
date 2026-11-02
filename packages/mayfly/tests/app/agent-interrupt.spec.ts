@@ -59,6 +59,16 @@ describe('interruptAgent', () => {
 
     expect(interruptAgent(harness(), root, primaryView(root))).toEqual({ requested: true, failures: ['current Agent: root refused'] })
   })
+
+  it('preserves a non-Error refusal from a native authority boundary', () => {
+    const child = fakeAgent('child', { status: 'running' })
+    const ctx = harness(vi.fn(() => { throw 'authority withdrawn' }))
+    const view: MayflyConversationView = {
+      kind: 'subagent', id: 'session:child', sessionId: 'child', parentSessionId: 'parent', label: 'worker',
+      mode: 'continuable', access: 'interactive', residency: 'displayed',
+    }
+    expect(interruptAgent(ctx, child, view)).toEqual({ requested: true, failures: ['current Agent: authority withdrawn'] })
+  })
 })
 
 describe('isAgentRunning', () => {

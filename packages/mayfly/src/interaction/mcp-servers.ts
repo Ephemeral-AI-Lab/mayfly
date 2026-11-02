@@ -111,10 +111,10 @@ export async function collectMcpServers(ctx: Context, agent: Agent | null = ctx.
     visible.set(parsed.serverName, list)
   }
 
-  const servers = [...new Set([...registered.keys(), ...visible.keys()])]
+  const servers = [...registered.keys()]
     .toSorted((left, right) => left.localeCompare(right))
     .map((serverName): McpServerView => {
-      const registeredCount = registered.get(serverName) ?? 0
+      const registeredCount = registered.get(serverName)!
       const toolsVisible = visible.get(serverName) ?? []
       return {
         entryId: serverName,

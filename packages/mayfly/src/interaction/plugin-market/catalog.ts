@@ -111,7 +111,7 @@ export async function loadMarketCatalog(indexUrl: string, force = false): Promis
     return { status: 'fresh', index }
   } catch (error) {
     /* both fetch legs and the parser throw Error instances */
-    const message = error instanceof Error ? error.message : String(error)
+    const message = (error as Error).message
     if (cached !== undefined) {
       return { status: 'stale', index: cached.index, message }
     }
