@@ -34,12 +34,12 @@ const RESUMED = 'notice/resumed'
 const GOAL = 'notice/goal'
 const TRANSPORT = 'notice/transport'
 
-/** The provider-neutral failure code of a live provider error, when it carries the normalized facts. */
-function failureCode(error: unknown): string | undefined {
-  if (error === null || typeof error !== 'object') return undefined
+/** Narrow a live provider failure before reading its optional cause chain. */
+function isTransportFailure(error: unknown): error is { readonly cause?: unknown } {
+  if (error === null || typeof error !== 'object') return false
   const failure = (error as { readonly failure?: { readonly code?: unknown } }).failure
   const code = failure?.code ?? (error as { readonly code?: unknown }).code
-  return typeof code === 'string' ? code : undefined
+  return code === 'TRANSPORT'
 }
 
 /**
@@ -48,10 +48,10 @@ function failureCode(error: unknown): string | undefined {
  * @param error - the live error from `agent/error`.
  * @returns the sanitized chain, or `undefined` when the failure carries none.
  */
-function causeDetail(error: unknown): string | undefined {
+function causeDetail(error: { readonly cause?: unknown }): string | undefined {
   const parts: string[] = []
   const seen = new Set<unknown>()
-  let cause = error !== null && typeof error === 'object' ? (error as { readonly cause?: unknown }).cause : undefined
+  let cause = error.cause
   while (cause !== undefined && parts.length < 3 && !seen.has(cause)) {
     seen.add(cause)
     if (cause instanceof Error) {
@@ -175,7 +175,7 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
   })
   // A transport failure is the one error whose cause never reaches the durable record: report the chain while it is live.
   const offTransport = ctx.on('agent/error', ({ agent, error }) => {
-    if (agent !== factsService.currentAgent || failureCode(error) !== 'TRANSPORT') return
+    if (agent !== factsService.currentAgent || !isTransportFailure(error)) return
     const detail = causeDetail(error)
     owner.report(TRANSPORT, {
       severity: 'error',
