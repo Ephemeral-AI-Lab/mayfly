@@ -6,6 +6,7 @@
 import type { ConversationFacts, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import type { MayflyPaneRegistration, MayflyTone, MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
+import { ACTIVITY_LOCALE, buildTipRotation, mountTranscriptLocale, STATUS_TIPS, type MayflyDecisionWait } from '@ephemeral-ai/mayfly/editor-presentation'
 import { contextPercent } from '@ephemeral-ai/mayfly/status-context'
 import type { RemoteFeatureContext } from '../features.ts'
 import { RemoteActivityRow } from '../panels/activity-row.ts'
@@ -20,7 +21,6 @@ import {
 import { RemoteFeatureLifecycle } from './lifecycle.ts'
 
 const EMPTY_ACTIVITY: RemoteActivitySnapshot = { active: false, phase: 'idle', turn: 0, flowDownChars: 0, inFlight: [] }
-const TIPS = ['Esc to interrupt the turn', '/help: show commands', 'type / to browse commands; matching is fuzzy'] as const
 const CONTEXT_THRESHOLDS = [92, 95, 98] as const
 const THINKING_STAGES: readonly { readonly from: number, readonly label: string, readonly tone: MayflyTone, readonly strong: boolean }[] = [
   { from: 0, label: 'Pondering', tone: 'muted', strong: false },
@@ -49,10 +49,17 @@ class RemoteActivityController {
   private readonly activityPane: MayflyPaneRegistration
   private readonly notifications: ReturnType<RemoteFeatureContext['ctx']['mayflyUiInteraction']['createNotificationOwner']>
   private readonly offLocale: () => void
+  private readonly offDecision: () => void
+  private readonly offPanel: () => void
+  private readonly rotation = buildTipRotation(STATUS_TIPS)
   private readonly seen = new Set<string>()
   private subscriptions: readonly (() => void)[] = []
   private activity = EMPTY_ACTIVITY
   private waiting = false
+  private decision: MayflyDecisionWait | undefined
+  private dialog = false
+  private live = false
+  private turn = 0
   private waitingSince: number | undefined
   private phaseSeenAt: number | undefined
   private tip = ''
@@ -67,7 +74,8 @@ class RemoteActivityController {
 
   constructor(options: RemoteFeatureContext) {
     this.options = options
-    this.t = memoizedLocaleTranslator(options.ctx, 'remote-activity').translate
+    mountTranscriptLocale(options.ctx, 'transcript.activity', ACTIVITY_LOCALE)
+    this.t = memoizedLocaleTranslator(options.ctx, 'transcript.activity').translate
     this.tr = memoizedLocaleTranslator(options.ctx, 'remote-activity-retry').translate
     this.lifecycle = new RemoteFeatureLifecycle(options, this.attach)
     this.activityPane = options.ctx.mayflyPanes.register({ id: 'mayfly.pane.activity', placement: 'bottom', priority: 10, narrow: 'bottom' }, null)
@@ -81,11 +89,22 @@ class RemoteActivityController {
       this.publishRetry()
       this.publishNotifications()
     })
+    this.offDecision = options.ctx.on('mayfly/decision-wait-changed', decision => {
+      this.decision = decision
+      this.syncWaiting()
+      this.publishActivity()
+    })
+    this.offPanel = options.ctx.on('mayfly/panel-open-changed', open => {
+      this.dialog = open
+      this.publishActivity()
+    })
     this.lifecycle.start()
     this.timer = setInterval(() => {
       this.now = Date.now()
-      this.ticks += 1
-      if (this.ticks % 15 === 0) this.nextTip()
+      if (this.live) {
+        this.ticks += 1
+        if (this.ticks % 15 === 0) this.nextTip()
+      }
       this.publishActivity()
       this.publishRetry()
     }, 1_000)
@@ -97,6 +116,8 @@ class RemoteActivityController {
     this.disposed = true
     this.lifecycle.dispose()
     this.offLocale()
+    this.offDecision()
+    this.offPanel()
     for (const dispose of this.subscriptions) dispose()
     this.subscriptions = []
     if (this.timer !== undefined) clearInterval(this.timer)
@@ -111,6 +132,8 @@ class RemoteActivityController {
     this.subscriptions = []
     this.activity = EMPTY_ACTIVITY
     this.waiting = false
+    this.decision = undefined
+    this.live = false
     this.waitingSince = undefined
     this.phaseSeenAt = undefined
     this.pressure = undefined
@@ -130,8 +153,7 @@ class RemoteActivityController {
         this.retrying = factsValue?.retrying
         const projectedQuestions = questions.getSnapshot() as { readonly active?: readonly unknown[] } | undefined
         this.waiting = (projectedQuestions?.active?.length ?? 0) > 0
-        if (this.waiting && this.waitingSince === undefined) this.waitingSince = Date.now()
-        if (!this.waiting) this.waitingSince = undefined
+        this.syncWaiting()
         this.pressure = pressure.getSnapshot() as ContextPressure | undefined
         this.publishActivity()
         this.publishRetry()
@@ -160,21 +182,31 @@ class RemoteActivityController {
   }
 
   private nextTip(): void {
-    this.tip = TIPS[this.tipIndex % TIPS.length]!
+    this.tip = this.rotation[this.tipIndex % this.rotation.length]!.text
     this.tipIndex += 1
+  }
+
+  private syncWaiting(): void {
+    this.now = Date.now()
+    if (this.waiting || this.decision !== undefined) this.waitingSince ??= this.now
+    else this.waitingSince = undefined
   }
 
   private publishActivity(): void {
     if (this.disposed) return
-    if (!this.activity.active && !this.waiting) {
+    const waiting = this.waiting || this.decision !== undefined
+    if ((!this.activity.active && !waiting) || (this.dialog && this.decision === undefined && !this.waiting)) {
+      this.live = false
       this.activityPane.set(null)
       return
     }
-    const phase = this.waiting ? 'waiting' : this.activity.phase === 'idle' ? 'diving' : this.activity.phase
+    if (!this.live || this.activity.turn !== this.turn) this.nextTip()
+    this.live = true
+    this.turn = this.activity.turn
+    const phase = waiting ? 'waiting' : this.activity.phase === 'idle' ? 'diving' : this.activity.phase
     if (phase === 'thinking' && this.phaseSeenAt === undefined) this.phaseSeenAt = this.now
     if (phase !== 'thinking') this.phaseSeenAt = undefined
-    if (this.tip === '') this.nextTip()
-    const flight = phase === 'tool' ? remoteFlightLabel(this.activity.inFlight) : { key: phase === 'waiting' ? 'Waiting for your answer' : phase === 'writing' ? 'Writing' : 'Deep diving' }
+    const flight = phase === 'tool' ? remoteFlightLabel(this.activity.inFlight) : { key: phase === 'waiting' ? this.decision?.kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer' : phase === 'writing' ? 'Writing' : 'Deep diving' }
     const stage = phase === 'thinking'
       ? THINKING_STAGES.findLast(candidate => this.now - (this.activity.outputProgress?.startedAt ?? this.phaseSeenAt ?? this.now) >= candidate.from) ?? THINKING_STAGES[0]!
       : undefined
@@ -182,7 +214,7 @@ class RemoteActivityController {
     const elapsed = since === undefined ? '' : remoteCompactElapsedMs(Math.max(0, this.now - since))
     const tail = phase === 'tool' ? [] : [elapsed, phase === 'waiting' ? '' : remoteOutputCounter(this.activity.flowDownChars), phase === 'waiting' ? '' : remoteOutputRate(this.activity.outputProgress, this.now)].filter(text => text !== '')
     const details = phase === 'tool'
-      ? [...new Set(this.activity.inFlight.flatMap(call => call.detail === undefined || call.detail === '' ? [] : [call.detail]))]
+      ? [...new Set(this.activity.inFlight.flatMap(call => call.preparing === true || call.detail === undefined || call.detail === '' ? [] : [call.detail]))]
       : []
     const info = details.length === 0 ? undefined : `${details.slice(0, 3).join(' · ')}${details.length > 3 ? ` ${this.t('+{count} more', { count: details.length - 3 })}` : ''}`
     this.activityPane.set(RemoteActivityRow({
@@ -191,7 +223,7 @@ class RemoteActivityController {
       ...stage === undefined ? {} : { labelTone: stage.tone, labelStrong: stage.strong },
       tail,
       ...info === undefined ? {} : { info },
-      ...info === undefined && phase !== 'tool' ? { tip: `${this.t('Tip: ')}${this.t(this.tip)}` } : {},
+      ...info === undefined ? { tip: `${this.t('Tip: ')}${this.t(this.tip)}` } : {},
     }))
   }
 

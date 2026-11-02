@@ -389,6 +389,10 @@ Mayfly UI services, without special manifests, author CLIs, or private hosts.
 `./plugin-marketplace` exposes the shared marketplace component, readonly
 model/facts and discovery catalog. Host plugin mutations remain native Remote
 calls in the independent frontend; this subpath never imports Host services.
+`./editor-presentation` also exposes the common readonly decision-card and
+activity models, native-decision presentation facts, and teaching-tip rotation.
+Independent frontends derive those facts from native requests/projections and
+consume these shared builders instead of maintaining another renderer model.
 The npm 0.1.4-rc.2 reference is immutable; candidate rendering comes from this
 checkout's built package. The approved split workflow develops and tests in
 parallel, overriding the historical tests-last round references above.

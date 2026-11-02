@@ -9,6 +9,12 @@ import { memoizedLocaleTranslator, mountCommonLocale } from '@ephemeral-ai/mayfl
 
 const zh: Readonly<Record<string, string>> = {
   'Allow once': '仅允许一次',
+  'Open diff': '打开差异',
+  'Open command': '打开命令',
+  'open diff': '打开差异',
+  'open command': '打开命令',
+  'no editor configured ($VISUAL/$EDITOR)': '未配置编辑器（$VISUAL/$EDITOR）',
+  'The editor could not be opened': '无法打开编辑器',
   'Allow {tool} for this session': '本会话允许 {tool}',
   'Reject': '拒绝',
   'Approve {tool}?': '是否批准 {tool}？',
