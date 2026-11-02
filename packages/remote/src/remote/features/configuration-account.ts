@@ -14,7 +14,7 @@ const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]']
 const OPEN_GRACE_MS = 1_500
 const CALLBACK_TIMEOUT_MS = 30_000
 
-function openerFor(platform: NodeJS.Platform, url: string): readonly [string, readonly string[]] | undefined {
+function openerFor(platform: NodeJS.Platform, url: string): readonly [string, readonly string[]] {
   if (platform === 'darwin') return ['open', [url]]
   if (platform === 'win32') return ['cmd', ['/c', 'start', '', url]]
   return ['xdg-open', [url]]
@@ -32,9 +32,10 @@ export class RemoteAccountNodeIO implements RemoteAccountLocalIO {
     let url: URL
     try { url = new URL(client.origin) } catch { return undefined }
     if (url.protocol !== 'http:' || !LOOPBACK_HOSTS.includes(url.hostname)) return undefined
-    const port = Number(url.port)
-    if (!Number.isInteger(port) || port <= 0 || port > 65_535) return undefined
-    return `http://localhost:${port}`
+    // URL already rejects malformed and out-of-range ports. An omitted or
+    // default HTTP port is not the explicit loopback callback listener.
+    if (url.port === '' || url.port === '0') return undefined
+    return `http://localhost:${url.port}`
   }
 
   /** Open the system browser detached; success is judged within the grace window. */
@@ -43,7 +44,6 @@ export class RemoteAccountNodeIO implements RemoteAccountLocalIO {
     if (process.platform !== 'darwin' && process.platform !== 'win32'
       && process.env.DISPLAY === undefined && process.env.WAYLAND_DISPLAY === undefined) return Promise.resolve(false)
     const opener = openerFor(process.platform, url)
-    if (opener === undefined) return Promise.resolve(false)
     return new Promise(resolve => {
       let settled = false
       let child: ChildProcess | undefined
