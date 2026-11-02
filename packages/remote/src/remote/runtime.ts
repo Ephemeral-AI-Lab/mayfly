@@ -124,7 +124,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         components: () => ctx.mayflyComponents,
         flyInAt: () => startup?.flyInAt(),
         splash: () => startup?.splash(),
-        rows: () => screen.rows,
+        rows: () => Math.max(1, screen.rows - screen.editorRowsFromBottom),
       },
     ))
     ctx.effect(() => () => bannerSlot.dispose())
@@ -254,10 +254,12 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       directory: () => options.cwd ?? process.cwd(),
       subscribe: listener => app!.subscribeTopology(listener),
       resume: async (sessionId) => {
+        const client = app?.activeClient
+        const generation = client?.state.getSnapshot().generation
         try {
           await app!.selectOrCreate(sessionId, options.cwd)
         } catch (error) {
-          if (!lifetime.signal.aborted) editor?.notice.set(error instanceof Error ? error.message : String(error))
+          if (!lifetime.signal.aborted && client !== undefined && app?.activeClient === client && client.state.getSnapshot().generation === generation) editor?.notice.set(error instanceof Error ? error.message : String(error))
         }
       },
       autocomplete: () => editor?.editor.isShowingAutocomplete() === true,
@@ -311,6 +313,9 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     configuration = mountRemoteConfigurationComposition(featureContext, {
       clientVersion: remoteClientVersion(),
       edit: createRemoteSettingsEditor({ suspend: run => screen.suspend(run) }),
+      onDefaultModelSelected: (client, selected) => {
+        if (!lifetime.signal.aborted && app?.activeClient === client) conversation!.setDefaultModel(selected)
+      },
     })
     operations = mountRemoteOperationsComposition(featureContext, {
       localCwd: options.cwd ?? process.cwd(),

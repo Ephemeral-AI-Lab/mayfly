@@ -32,10 +32,16 @@ const mocks = vi.hoisted(() => ({
   statusFacts: undefined as (() => unknown) | undefined,
   startupStart: vi.fn(),
   startupDispose: vi.fn(),
+  startupOptions: undefined as { resume: (sessionId: string) => Promise<void> } | undefined,
+  bannerOptions: undefined as { rows: () => number } | undefined,
+  defaultModelSelected: undefined as ((client: unknown, selected: unknown) => void) | undefined,
+  setDefaultModel: vi.fn(),
+  activeClient: { state: { getSnapshot: () => ({ generation: 1 }) } },
 }))
 
 vi.mock('../../src/remote/startup.ts', () => ({
   RemoteStartupController: class {
+    constructor(_ctx: unknown, _screen: unknown, options: typeof mocks.startupOptions) { mocks.startupOptions = options }
     readonly start = mocks.startupStart
     readonly dispose = mocks.startupDispose
     readonly flyInAt = vi.fn()
@@ -62,6 +68,7 @@ vi.mock('../../src/remote/app.ts', () => ({
         execute: vi.fn(async (text: string) => ({ exit: text === '/quit' })),
         cancel: vi.fn(async () => {}),
         registry: this.registry,
+        activeClient: mocks.activeClient,
         subscribeTopology: vi.fn(() => () => {}),
       }
       mocks.apps.push(app)
@@ -79,7 +86,7 @@ vi.mock('../../src/remote/editor.ts', () => ({
 
 vi.mock('../../src/remote/banner.ts', () => ({
   RemoteBannerComponent: class {
-    constructor(_colors: unknown, _components: unknown, facts: () => unknown) { mocks.bannerFacts = facts }
+    constructor(_colors: unknown, _components: unknown, facts: () => unknown, options: typeof mocks.bannerOptions) { mocks.bannerFacts = facts; mocks.bannerOptions = options }
   },
 }))
 
@@ -104,6 +111,7 @@ vi.mock('../../src/transcript/remote-model.ts', () => ({
     readonly presentation = vi.fn(() => ({}))
     readonly sessionFacts = vi.fn(() => ({ values: {} }))
     readonly dispose = vi.fn()
+    readonly setDefaultModel = mocks.setDefaultModel
 
     constructor(_tools: { get: () => undefined }, refresh: () => void, options: {
       onPresentation: () => void
@@ -152,7 +160,10 @@ vi.mock('../../src/remote/features/commands.ts', () => ({
 }))
 
 vi.mock('../../src/remote/configuration-composition.ts', () => ({
-  mountRemoteConfigurationComposition: vi.fn(() => ({ commands: [], dispose: mocks.panelDispose })),
+  mountRemoteConfigurationComposition: vi.fn((_base: unknown, options: { onDefaultModelSelected: typeof mocks.defaultModelSelected }) => {
+    mocks.defaultModelSelected = options.onDefaultModelSelected
+    return { commands: [], dispose: mocks.panelDispose }
+  }),
   remoteClientVersion: vi.fn(() => '0.1.4-rc.2'),
 }))
 
@@ -203,6 +214,8 @@ vi.mock('@ephemeral-ai/mayfly/core', () => ({
   apply: (ctx: any) => {
     if (mocks.coreError !== undefined) throw mocks.coreError
     ctx.provide('mayflyScreen', {
+      rows: 30,
+      editorRowsFromBottom: 4,
       mountDockSlot: vi.fn(() => ({ dispose: vi.fn(), focus: vi.fn() })),
       mountContentSlot: vi.fn(() => ({ dispose: vi.fn() })),
       requestRender: vi.fn(),
@@ -237,6 +250,23 @@ describe('runRemoteFrontend', () => {
     expect(mocks.apps[0]!.registry.detach).toHaveBeenCalledWith('local')
     expect(mocks.startupStart).toHaveBeenCalled()
     expect(mocks.startupDispose).toHaveBeenCalled()
+  })
+
+  it('uses the prompt viewport for startup and applies only active confirmed default selections', async () => {
+    mocks.editorActions = undefined
+    mocks.setDefaultModel.mockClear()
+    const running = runRemoteFrontend({ startupUrl })
+    await vi.waitFor(() => { expect(mocks.editorActions).toBeDefined() })
+    expect(mocks.bannerOptions!.rows()).toBe(26)
+    const selected = { provider: 'deepseek', model: 'pro' }
+    mocks.defaultModelSelected!({}, selected)
+    expect(mocks.setDefaultModel).not.toHaveBeenCalled()
+    mocks.defaultModelSelected!(mocks.activeClient, selected)
+    expect(mocks.setDefaultModel).toHaveBeenCalledExactlyOnceWith(selected)
+    mocks.editorActions!.exit()
+    await running
+    mocks.defaultModelSelected!(mocks.activeClient, selected)
+    expect(mocks.setDefaultModel).toHaveBeenCalledOnce()
   })
 
   it('invokes editor and transcript callbacks without depending on a real TTY', async () => {

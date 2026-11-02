@@ -506,6 +506,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
   editor.onChange = text => {
     previousChange?.(text)
     if (disposed) return
+    options.notice.set('')
     detectSelection()
     autocomplete.invalidate()
     if (mode === 'prompt' && text === '!') {

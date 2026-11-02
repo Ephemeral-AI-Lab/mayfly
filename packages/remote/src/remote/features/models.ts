@@ -20,7 +20,7 @@ import {
   remoteProperty,
   remoteValue,
 } from './official.ts'
-import { EffortPicker, ModelPicker, formatContextWindow } from '@ephemeral-ai/mayfly/model-picker'
+import { EffortPicker, ModelPicker, formatContextWindow, modelSwitchNotice, sameModelSelection } from '@ephemeral-ai/mayfly/model-picker'
 import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
 import type { MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
 
@@ -266,11 +266,16 @@ export class RemoteModelsController extends RemoteFeatureController {
   private async commit(target: RemoteModelTarget, next: ModelSelection): Promise<MayflyUiActionReply> {
     if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
     try {
-      const selected = target.selection === undefined
+      const previous = target.selection === undefined
+        ? await this.defaultModel!.read(target.client, target.operation.signal)
+        : currentRemoteModelSelection(target.selection.binding.session.projections.faceOf('modelSelection').getSnapshot(), target.catalog)
+      if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
+      const selected = sameModelSelection(previous, next) ? previous : target.selection === undefined
         ? await this.defaultModel!.select(target.client, next, target.operation.signal)
         : (await remoteValue(target.client.remote.session.selectModel({ sessionId: target.selection.ref.sessionId, ...next }))).selected
       if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
-      this.context.notice.set(this.context.t('Switched to {model} ({provider})', { model: selected.model, provider: selected.provider }))
+      const row = remoteModelRows(target.catalog, selected, target.details).find(row => row.current)
+      this.context.notice.set(this.context.t(modelSwitchNotice(previous, selected, row?.defaultEffort)), 'success')
       return { kind: 'completed', dismiss: true }
     } catch (error) {
       if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }

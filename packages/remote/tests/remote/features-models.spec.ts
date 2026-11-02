@@ -261,7 +261,7 @@ describe('RemoteModelsController reference wire UI', () => {
     const result = await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])], segmentId: 'high' })
     expect(test.selectModel).toHaveBeenCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'high' })
     expect(result).toEqual({ kind: 'completed', dismiss: true })
-    expect(test.notice.set).toHaveBeenCalledWith('Switched to chat (deepseek)')
+    expect(test.notice.set).toHaveBeenCalledWith('Thinking set to high', 'success')
     test.controller.dispose()
   })
 
@@ -272,12 +272,13 @@ describe('RemoteModelsController reference wire UI', () => {
     expect(await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])], segmentId: 'unsupported' })).toMatchObject({ kind: 'failed' })
     expect(test.selectModel).not.toHaveBeenCalled()
     await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })
-    expect(test.selectModel).toHaveBeenCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat' })
+    expect(test.selectModel).not.toHaveBeenCalled()
+    expect(test.notice.set).toHaveBeenCalledWith('Already using chat (deepseek)', 'success')
     test.controller.dispose()
   })
 
   it('keeps failed writes visible and never retries an unknown outcome', async () => {
-    const test = fixture()
+    const test = fixture({ projection: { next: selection('deepseek', 'previous') } })
     test.selectModel.mockRejectedValueOnce(new Error('connection ended'))
     await test.controller.open()
     const result = await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })
@@ -292,7 +293,8 @@ describe('RemoteModelsController reference wire UI', () => {
     await test.controller.open()
     expect(test.browser().scope).toEqual({ kind: 'app', targetId: 'model-selection' })
     await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })
-    expect(test.defaultModel!.select).toHaveBeenCalledWith(test.client, { provider: 'deepseek', model: 'chat' }, expect.any(AbortSignal))
+    expect(test.defaultModel!.select).not.toHaveBeenCalled()
+    expect(test.notice.set).toHaveBeenCalledWith('Already using chat (deepseek)', 'success')
     expect(test.selectModel).not.toHaveBeenCalled()
     test.controller.dispose()
   })
@@ -335,7 +337,7 @@ describe('RemoteModelsController reference wire UI', () => {
     expect(await test.act({ kind: 'slider-accept', controlId: 'effort', value: 'high' })).toEqual({ kind: 'completed', dismiss: true })
     expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'high' })
     await test.controller.effort('default')
-    expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat' })
+    expect(test.notice.set).toHaveBeenLastCalledWith('Already using chat (deepseek)', 'success')
     await test.controller.effort('Smart')
     expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'high' })
     await test.controller.effort('unsupported')
@@ -362,7 +364,7 @@ describe('RemoteModelsController reference wire UI', () => {
     expect(test.opened).toHaveLength(0)
     test.controller.dispose()
 
-    const late = fixture()
+    const late = fixture({ projection: { next: selection('deepseek', 'previous') } })
     await late.controller.open()
     const response = deferred<unknown>()
     late.selectModel.mockReturnValueOnce(response.promise)
@@ -423,7 +425,7 @@ describe('reference Alt+M provider cycle', () => {
       await test.controller.cycle()
       expect(test.selectModel).toHaveBeenCalledExactlyOnceWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: next })
       expect(test.opened).toEqual([])
-      expect(test.notice.set).toHaveBeenCalledWith(`Switched to ${next} (deepseek)`)
+      expect(test.notice.set).toHaveBeenCalledWith(`Switched to ${next} (deepseek)`, 'success')
     } finally { test.controller.dispose() }
   })
 
@@ -435,6 +437,20 @@ describe('reference Alt+M provider cycle', () => {
       expect(test.selectModel).not.toHaveBeenCalled()
       expect(test.opened).toEqual([])
     } finally { test.controller.dispose() }
+  })
+
+  it('reports the effective provider effort after a confirmed cycle and never writes an unchanged single-model route', async () => {
+    const test = fixture({ catalog: advertised, details: detailsOf({ 'deepseek/reasoner': { defaultEffort: 'high' } }) })
+    try {
+      await test.controller.cycle()
+      expect(test.notice.set).toHaveBeenLastCalledWith('Switched to reasoner (deepseek) · thinking high', 'success')
+    } finally { test.controller.dispose() }
+    const single = fixture()
+    try {
+      await single.controller.cycle()
+      expect(single.selectModel).not.toHaveBeenCalled()
+      expect(single.notice.set).toHaveBeenLastCalledWith('Already using chat (deepseek)', 'success')
+    } finally { single.controller.dispose() }
   })
 
   it.each([{ groups: [] }, { groups: [{ id: 'other', name: 'Other', models: [model('outside')] }] }])('reports an empty current-provider catalog without switching providers', async ({ groups }) => {

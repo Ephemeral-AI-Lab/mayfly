@@ -23,6 +23,19 @@ async function fixture() {
 }
 
 describe('Remote notification row', () => {
+  it('renders success feedback and clears only its own command notice while retaining session activity', async () => {
+    const test = await fixture()
+    const activity = test.ctx.mayflyUiInteraction.createNotificationOwner('activity')
+    activity.report('activity', { kind: 'session', sessionId: 'one' }, { severity: 'info', message: 'Session resumed' })
+    test.notifications.notice.set('Switched to pro (deepseek) · thinking high', 'success')
+    expect(test.node()).toContain('Switched to pro')
+    expect(test.ctx.mayflyUiInteraction.notificationSnapshot()).toContainEqual(expect.objectContaining({ severity: 'success' }))
+    test.notifications.notice.set('')
+    expect(test.node()).not.toContain('Switched to pro')
+    expect(test.node()).toContain('Session resumed')
+    activity.dispose()
+  })
+
   it('keeps the exact reference idle hint, scopes notices to the displayed Session, and hides behind panels', async () => {
     const test = await fixture()
     expect(test.node()).toContain('Alt+↑ conversation · Alt+↓ view')

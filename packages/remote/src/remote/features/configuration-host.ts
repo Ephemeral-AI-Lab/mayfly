@@ -42,7 +42,10 @@ export class RemoteConfigurationHost implements
   RemoteProviderAuthorization,
   RemoteProviderBalanceSource {
   /** @param hosts - attached-Host accessor used to fence every operation scope. */
-  constructor(private readonly hosts: RemoteFeatureHosts) {}
+  constructor(
+    private readonly hosts: RemoteFeatureHosts,
+    private readonly onDefaultModelSelected?: (client: HostClient, selected: ModelSelection) => void,
+  ) {}
 
   private scope(client: HostClient, parent?: AbortSignal): RemoteFeatureOperation | undefined {
     if (!this.hosts.list().includes(client)) return undefined
@@ -94,7 +97,9 @@ export class RemoteConfigurationHost implements
         ...next.reasoningEffort === undefined ? {} : { reasoningEffort: next.reasoningEffort },
       }, operation.signal))
       if (!operation.valid()) throw new Error('Host is no longer attached')
-      return modelSelection(selected)
+      const confirmed = modelSelection(selected)
+      this.onDefaultModelSelected?.(client, confirmed)
+      return confirmed
     } finally { operation.dispose() }
   }
 

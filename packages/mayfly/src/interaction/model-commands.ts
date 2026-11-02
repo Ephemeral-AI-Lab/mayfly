@@ -27,6 +27,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { MayflyOverlayHandle, MayflyUiActionReply, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { EffortPicker, formatContextWindow, ModelPicker, type ModelPickerRow } from '../components/model-picker.ts'
+import { modelSwitchNotice, sameModelSelection } from '../components/model-selection.ts'
 import type { ModelPickerItem } from './model-picker-model.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
@@ -70,46 +71,6 @@ function currentModelSelection(ctx: Context): MayflySessionModelSelection | unde
 }
 
 /**
- * Whether two selections agree on every field.
- * @param a - one selection.
- * @param b - the other selection.
- * @returns `true` when provider, model, and effort all match.
- */
-function sameSelection(a: MayflySessionModelSelection, b: MayflySessionModelSelection): boolean {
-  return a.provider === b.provider && a.model === b.model && a.reasoningEffort === b.reasoningEffort
-}
-
-/**
- * The model-switch notice family (the kimi five-state wording, folded to
- * Mayfly's notice channel): what changed. The persisted-default write rides
- * the Host's own background save inside `selectModel`, so the notice stays
- * silent about it.
- * @param previous - the selection before the switch.
- * @param next - the selection after the switch.
- * @param defaultEffort - the model's provider default level, when known: an unpinned selection names it.
- * @returns the single-line notice text.
- */
-function modelSwitchNotice(
-  previous: MayflySessionModelSelection,
-  next: MayflySessionModelSelection,
-  defaultEffort?: string,
-): string {
-  const modelChanged = previous.provider !== next.provider || previous.model !== next.model
-  const effortChanged = previous.reasoningEffort !== next.reasoningEffort
-  /* The level that runs: the pinned one, else the provider default when the model advertises it. */
-  const effective = next.reasoningEffort === undefined ? defaultEffort : String(next.reasoningEffort)
-  if (modelChanged) {
-    const base = `Switched to ${next.model} (${next.provider})`
-    return effective === undefined ? base : `${base} · thinking ${effective}`
-  }
-  if (effortChanged) {
-    if (next.reasoningEffort !== undefined) return `Thinking set to ${String(next.reasoningEffort)}`
-    return defaultEffort === undefined ? 'Thinking set to provider default' : `Thinking set to provider default (${defaultEffort})`
-  }
-  return `Already using ${next.model} (${next.provider})`
-}
-
-/**
  * Commit one selection through the app-owned action; the Host validates the
  * catalog (`session/model-unavailable` rejects) and persists the default in
  * the background.
@@ -135,7 +96,7 @@ async function commitModelSelection(
   if ('error' in previous) return { text: previous.error, ok: false }
   let selected: MayflySessionModelSelection
   try {
-    if (sameSelection(previous.read, next)) selected = previous.read
+    if (sameModelSelection(previous.read, next)) selected = previous.read
     else if (agent === null) {
       /* No session exists yet: the pick is the default the first session takes. */
       await defaults!.saveSelection({ provider: next.provider, model: next.model, ...next.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(String(next.reasoningEffort)) } })

@@ -6,6 +6,7 @@
  */
 
 import type { HostClient } from '../client/types.ts'
+import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import type { RemoteFeatureCommandSource } from './features/commands.ts'
 import { RemoteAccountNodeIO } from './features/configuration-account.ts'
 import { RemoteConfigurationHost } from './features/configuration-host.ts'
@@ -27,6 +28,8 @@ export interface RemoteConfigurationCompositionOptions {
   readonly edit?: (client: HostClient, content: string, signal: AbortSignal) => Promise<string | undefined>
   /** Optional clipboard hook preferred over the Remote process's own tools. */
   readonly copy?: (text: string) => Promise<void>
+  /** Publish the native confirmed default route to the active Host's footer. */
+  readonly onDefaultModelSelected?: (client: HostClient, selected: ModelSelection) => void
 }
 
 /** Mounted configuration composition plus its lifetime. */
@@ -45,7 +48,7 @@ export function mountRemoteConfigurationComposition(
 ): RemoteConfigurationCompositionHandle {
   if (options.clientVersion.trim() === '') throw new Error('clientVersion must not be empty')
   const accountIO = new RemoteAccountNodeIO(options.copy)
-  const host = new RemoteConfigurationHost(base.hosts)
+  const host = new RemoteConfigurationHost(base.hosts, options.onDefaultModelSelected)
   const features = createRemoteConfigurationFeatures(base, {
     accountIO,
     clientVersion: options.clientVersion,
