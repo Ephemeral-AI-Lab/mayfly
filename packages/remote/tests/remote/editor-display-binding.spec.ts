@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import { MayflyComponentsService, type MayflyComponentsDeps, type MayflyKeymap, type MayflyScreen, type MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
+import { MayflyLocaleService } from '@ephemeral-ai/mayfly/frontend'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { HostClient } from '../../src/client/types.ts'
 import type { RemoteApp } from '../../src/remote/app.ts'
@@ -45,6 +46,7 @@ function fixture(initialAccess: Displayed['access'] = 'resumable', featureComman
   const child = host('one')
   const otherHost = host('two')
   const ctx = new Context()
+  new MayflyLocaleService(ctx)
   const requestRender = vi.fn()
   const colors = new Proxy({}, { get: () => (text: string) => text }) as MayflySemanticColors
   const components = new MayflyComponentsService(ctx, { theme: { colors }, tui: { requestRender } } as unknown as MayflyComponentsDeps)

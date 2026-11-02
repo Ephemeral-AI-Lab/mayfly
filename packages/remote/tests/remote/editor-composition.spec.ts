@@ -41,15 +41,16 @@ async function fixture(injected = false, contributed = false) {
   }
   const commands = { list: vi.fn(() => [{ name: 'local-fixture', description: 'Feature fixture', scope: 'sessionless' as const, execute() {} }]), execute: vi.fn(async () => true) }
   const focusEditor = vi.fn(), startupKey = vi.fn(() => false), exit = vi.fn()
+  const extensionRuntime = {} as NonNullable<EditorFeatureOptions['extensionRuntime']>
   const handle = mountEditorComposition({ ctx, app: app as never, editor: {} as never, screen: {} as never, components: {} as never, colors: {} as never, keymap: {} as never, notice: { set() {} }, localCwd: '/frontend/workspace', exit,
-    ...injected ? { selection: () => selection, subscribeSelection: (listener: () => void) => { side.add(listener); return () => side.delete(listener) }, focusEditor, startupKey } : {},
+    ...injected ? { selection: () => selection, subscribeSelection: (listener: () => void) => { side.add(listener); return () => side.delete(listener) }, focusEditor, startupKey, extensionRuntime } : {},
     ...contributed ? { featureCommands: commands } : {},
   })
   cleanups.push(async () => { handle.dispose(); await ctx.fiber.dispose() })
   return { ctx, options: captured.options!, handle, app, client, ref, binding, session, native, upload, topology, states, side, commands, focusEditor, startupKey, exit,
     clearRef: () => { currentRef = undefined }, clearBinding: () => { reference = undefined }, restore: () => { currentRef = ref; reference = { binding }; available = client },
     available: (value: HostClient | undefined) => { available = value }, attached: (value: HostClient[]) => { attached = value },
-    select: (value: typeof selection) => { selection = value }, generation: () => { generation += 1 },
+    select: (value: typeof selection) => { selection = value }, generation: () => { generation += 1 }, extensionRuntime,
   }
 }
 function invocation(name: string, extra: Partial<EditorLocalCommandInvocation> = {}): EditorLocalCommandInvocation {
@@ -91,6 +92,7 @@ describe('Remote editor composition', () => {
 
   it('uses injected side selection and preserves access across native reconnect and selection generations', async () => {
     const f = await fixture(true)
+    expect(f.options.extensionRuntime).toBe(f.extensionRuntime)
     expect(f.options.focusEditor).toBe(f.focusEditor); expect(f.options.startupKey).toBe(f.startupKey)
     expect(f.options.session()).toMatchObject({ ref: f.ref, access: 'readonly', generation: 0 })
     expect(f.options.local.list().some(command => command.name === 'rename')).toBe(false)

@@ -26,6 +26,14 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Context } from '@deepseek-ai/cordis'
 import type { HostClient, SessionRef } from '../../client/types.ts'
 import type { RemoteNotice } from '../notice.ts'
+import type { EditorExtensionRuntime } from '@ephemeral-ai/mayfly/editor-presentation'
+import type { CapturedAttachments } from './attachments.ts'
+
+/** An admitted transform owns only the original draft's exact attachment identities. */
+export interface RemoteEditorPrepared {
+  readonly text: string
+  readonly captured: CapturedAttachments
+}
 
 /** Publicly inferable token span; the installed Mayfly core does not re-export its named type. */
 export type EditorTokenSpan = ReturnType<NonNullable<Parameters<MayflyEditor['setTokenSource']>[0]>>[number]
@@ -137,6 +145,8 @@ export interface EditorFeatureOptions {
   readonly focusEditor?: () => void
   /** Foundation-owned startup prelude navigation before ordinary editor actions. */
   readonly startupKey?: (data: string, text: string) => boolean
+  /** The base editor's single shared shell, autocomplete multiplexer and submit barrier owner. */
+  readonly extensionRuntime?: EditorExtensionRuntime<RemoteEditorPrepared>
   readonly notice: RemoteNotice
   readonly upload: EditorUpload
   readonly files: EditorHostFiles
@@ -155,6 +165,8 @@ export interface EditorHostFileSnapshot {
 
 /** Public operations the foundation can route from conversation and panel surfaces. */
 export interface EditorFeatureController {
+  /** Reference footer for a strict leading slash with no command matches. */
+  slashHint(): string | undefined
   /** Re-read selection and invalidate every old-generation async read. */
   selectionChanged(): void
   /** Invalidate old Host reads and refresh selection-scoped catalogs after reconnect. */

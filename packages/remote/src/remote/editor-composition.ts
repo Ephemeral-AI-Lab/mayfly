@@ -22,10 +22,12 @@ import type {
   EditorFeatureSession,
   EditorHostFiles,
   EditorLocalAdapter,
+  RemoteEditorPrepared,
 } from './editor/types.ts'
 import type { RemoteFeatureCommandSource } from './features/commands.ts'
 import type { RemoteNotice } from './notice.ts'
 import type { RemoteFeatureSelection } from './features/contracts.ts'
+import type { EditorExtensionRuntime } from '@ephemeral-ai/mayfly/editor-presentation'
 
 /** Generic ownership of the attached editor features and their lifecycle subscriptions. */
 export interface EditorCompositionHandle {
@@ -47,6 +49,7 @@ interface EditorCompositionOptions {
   /** Restore focus through the owning dock so its frame and status remain visible. */
   readonly focusEditor?: () => void
   readonly startupKey?: (data: string, text: string) => boolean
+  readonly extensionRuntime?: EditorExtensionRuntime<RemoteEditorPrepared>
   /** Feature-owned slash-command contributions routed before Host command dispatch. */
   readonly featureCommands?: RemoteFeatureCommandSource | undefined
   /** Borrow the exact displayed binding; native SessionFace performs addressed child routing. */
@@ -114,6 +117,7 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     keymap: options.keymap,
     ...options.focusEditor === undefined ? {} : { focusEditor: options.focusEditor },
     ...options.startupKey === undefined ? {} : { startupKey: options.startupKey },
+    ...options.extensionRuntime === undefined ? {} : { extensionRuntime: options.extensionRuntime },
     session,
     async ensureSession() {
       await options.app.ensureSession(options.localCwd)

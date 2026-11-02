@@ -23,7 +23,7 @@ import { EditorShell } from './shell.ts'
 import { EditorSkills } from './skills.ts'
 import { EditorSkillsPanel } from './skills-panel.ts'
 import { EditorSubmit } from './submit.ts'
-import { EditorDraftStore, errorMessage } from './utils.ts'
+import { EditorDraftStore, errorMessage, parseEditorCommand } from './utils.ts'
 import { copyLocalText } from '../local/clipboard.ts'
 import { editLocalText, resolveExternalEditorCommand } from '../local/external-editor.ts'
 import { clipboardFailureNotice, LocalImagePaste } from '../local/image-paste.ts'
@@ -103,6 +103,8 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
   let pasteRunning = false
   let externalRunning = false
   let lastInterruptAt = 0
+  let unbindExtensions: (() => void) | undefined
+  let offLocale: (() => void) | undefined
   const processes = new LocalProcessOwner()
   const commands = new EditorCommands({ session: options.session, local: options.local, notice: options.notice, t })
   const skills = new EditorSkills(options.session)
@@ -135,6 +137,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     focusEditor,
     t,
     exit: options.local.exit,
+    ...options.extensionRuntime === undefined ? {} : { prepared: source => options.extensionRuntime!.takePrepared(source) },
   })
   const panel = new EditorSkillsPanel({
     ctx: options.ctx,
@@ -162,6 +165,23 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     options.screen.requestRender()
   }
 
+  const refreshPresentation = (): void => {
+    syncGhosts()
+    options.extensionRuntime?.refreshPresentation()
+  }
+
+  const refreshCommands = async (): Promise<void> => {
+    const lifetime = routeLifetime
+    await commands.refresh()
+    if (!disposed && !lifetime.signal.aborted) refreshPresentation()
+  }
+
+  const refreshSkills = async (): Promise<void> => {
+    const lifetime = routeLifetime
+    await skills.refresh()
+    if (!disposed && !lifetime.signal.aborted) refreshPresentation()
+  }
+
   const setMode = (next: 'prompt' | 'bash'): void => {
     mode = next
     draft.stashMode(next)
@@ -176,12 +196,13 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     offPreset = undefined
     const selected = options.session()
     if (selected === undefined) return
+    const signal = routeLifetime.signal
     offCommands = selected.client.remote.$on('commands/change', () => {
-      if (!disposed && options.session()?.client === selected.client) void commands.refresh()
+      if (!disposed && !signal.aborted && options.session()?.client === selected.client) void refreshCommands()
     })
     offPreset = onAgentPresetSelected(selected.client, (sessionId) => {
       const current = options.session()
-      if (!disposed && current?.client === selected.client && current.ref.sessionId === sessionId) controller.presetChanged()
+      if (!disposed && !signal.aborted && current?.client === selected.client && current.ref.sessionId === sessionId) controller.presetChanged()
     })
   }
 
@@ -190,15 +211,16 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     routeKey = selectionKey(options.session())
     routeLifetime.abort()
     routeLifetime = new AbortController()
+    options.extensionRuntime?.invalidateRoute()
     autocomplete.invalidate()
     commands.syncSelection()
     skills.syncSelection()
     panel.close()
     closePreview()
     bindHost()
-    void commands.refresh()
-    void skills.refresh()
-    syncGhosts()
+    void refreshCommands()
+    void refreshSkills()
+    refreshPresentation()
   }
 
   const detectSelection = (): void => {
@@ -339,6 +361,7 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
   }
 
   const controller: EditorFeatureController = {
+    slashHint: () => disposed ? undefined : autocomplete.slashHint(editor.getText()),
     selectionChanged,
     hostReconnected() {
       selectionChanged()
@@ -346,19 +369,16 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     presetChanged() {
       if (disposed) return
       autocomplete.invalidate()
-      void commands.refresh()
-      void skills.refresh().then(() => {
-        if (!disposed && panel.open) options.screen.requestRender()
-      })
+      void refreshCommands()
+      void refreshSkills()
     },
     async refreshCommands() {
       detectSelection()
-      await commands.refresh()
+      await refreshCommands()
     },
     async refreshSkills() {
       detectSelection()
-      await skills.refresh()
-      if (!disposed) options.screen.requestRender()
+      await refreshSkills()
     },
     async openSkills() {
       detectSelection()
@@ -470,6 +490,8 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
       if (disposed) return
       disposed = true
       feedback.dispose()
+      unbindExtensions?.()
+      offLocale?.()
       offCommands?.()
       offPreset?.()
       offCommands = undefined
@@ -489,9 +511,9 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
       editor.onSubmit = previousSubmit
       editor.onKey = previousKey
       editor.onTokenChange = previousTokenChange
-      editor.setAutocompleteProvider(EMPTY_PROVIDER)
+      if (options.extensionRuntime === undefined) editor.setAutocompleteProvider(EMPTY_PROVIDER)
       editor.setTokenSource(undefined)
-      editor.setSubmitBarrier(undefined)
+      if (options.extensionRuntime === undefined) editor.setSubmitBarrier(undefined)
       editor.setGhostHint(undefined)
       editor.setShellMode(false)
     },
@@ -503,8 +525,16 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     scope: 'editor',
     description: t('Paste a clipboard image into the prompt'),
   }])
+  options.ctx.effect(() => () => { controller.dispose() }, 'Remote editor features')
 
-  editor.setAutocompleteProvider(autocomplete.source())
+  unbindExtensions = options.extensionRuntime?.bind({
+    autocomplete: { sources: () => [autocomplete.source()], subscribe: () => () => {} },
+    beginWait: (message, signal) => feedback.beginWait(message, signal),
+    captureSubmit: source => attachments.describe(source),
+    shouldTransformSubmit: text => mode === 'prompt' && parseEditorCommand(text.trim()) === undefined,
+  })
+  if (disposed) { unbindExtensions?.(); return controller }
+  if (options.extensionRuntime === undefined) editor.setAutocompleteProvider(autocomplete.source())
   editor.setTokenSource(line => [...attachments.tokenSpans(line), ...autocomplete.tokenSpans(line)]
     .toSorted((left, right) => left.start - right.start))
   editor.onTokenChange = token => {
@@ -528,7 +558,8 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
     }
     submit.stashDraft()
     editor.setGhostHint(autocomplete.ghost(text))
-    if (/(?:^|\s)#/u.test(text)) void skills.refresh()
+    options.extensionRuntime?.refreshPresentation()
+    if (/(?:^|\s)#/u.test(text)) void refreshSkills()
   }
   editor.onSubmit = value => {
     if (disposed) return
@@ -624,8 +655,16 @@ export function attachEditorFeatures(options: EditorFeatureOptions): EditorFeatu
   submit.restoreEditor()
   setMode(mode)
   bindHost()
-  void commands.refresh()
-  void skills.refresh()
-  options.ctx.effect(() => () => { controller.dispose() })
+  void refreshCommands()
+  void refreshSkills()
+  offLocale = options.ctx.mayflyLocale.subscribe(() => {
+    // Locale memo observers may follow this subscriber; read only after the whole snapshot publication.
+    queueMicrotask(() => {
+      if (disposed) return
+      feedback.token(editor.activeToken())
+      refreshPresentation()
+    })
+  })
+  if (disposed) offLocale()
   return controller
 }

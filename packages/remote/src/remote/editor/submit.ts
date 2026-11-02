@@ -17,7 +17,7 @@ import type { EditorCommands } from './commands.ts'
 import type { EditorSkills } from './skills.ts'
 import type { EditorDraftStore } from './utils.ts'
 import { errorMessage, parseEditorCommand } from './utils.ts'
-import type { EditorFeatureSession } from './types.ts'
+import type { EditorFeatureSession, RemoteEditorPrepared } from './types.ts'
 
 interface SubmitOptions {
   readonly editor: MayflyEditor
@@ -35,6 +35,8 @@ interface SubmitOptions {
   readonly notice: RemoteNotice
   readonly t: MayflyTranslate
   readonly exit: () => void | Promise<void>
+  /** Consume an extension result while retaining the native source's history and draft snapshot. */
+  readonly prepared?: (source: string) => RemoteEditorPrepared | undefined
 }
 
 interface SubmissionRecord {
@@ -99,13 +101,14 @@ export class EditorSubmit {
   /** Native Enter path; the editor has captured the draft and cleared its buffer already. */
   submit(value: string): void {
     const line = value.trim()
+    const prepared = this.options.prepared?.(value)
     const submitted = this.options.editor.consumeSubmittedDraft?.() ?? emptyDraft(value)
     this.options.draft.clearDraft()
     if (line.length === 0) return
     const historyText = submitted.raw.trim()
     this.options.editor.addToHistory(historyText, submitted.pastes)
     this.stashHistory()
-    this.begin(line, 'queue', submitted, historyText)
+    this.begin(line, 'queue', submitted, historyText, prepared?.captured)
   }
 
   /** Ctrl+Enter path; unlike Enter it bypasses the native funnel but uses the same transforms and request identity. */
@@ -190,9 +193,10 @@ export class EditorSubmit {
     mode: 'queue' | 'steer',
     submitted: MayflySubmittedDraft,
     historyText?: string,
+    prepared?: CapturedAttachments,
   ): void {
     const selected = this.options.session()
-    const captured = this.options.attachments.capture(source)
+    const captured = prepared ?? this.options.attachments.capture(source)
     const record: SubmissionRecord = {
       id: ++this.sequence,
       selected,

@@ -85,6 +85,58 @@ describe('image marker policy and bytes', () => {
 })
 
 describe('reversible structured submission attachments', () => {
+  it('describes readonly original metadata and admits the exact original attachments without parsing transformed markers', async () => {
+    const f = fixture()
+    await f.attachments.stageFile(f.host.selected, png, 'report].txt', new AbortController().signal)
+    const image = f.attachments.addImage(f.host.selected, png, 'image/png', 'original.png')
+    const file = f.attachments.addFile(receipt, f.host.selected)
+    const extraImage = f.attachments.addImage(f.host.selected, png, 'image/png', 'not-described.png')
+    const extraFile = f.attachments.addFile({ ...receipt, receiptId: 'not-described' } as FileUploadValue, f.host.selected)
+    const described = f.attachments.describe(`${file} source ${image} [image #999 unknown]`)
+    expect(described.text).toBe('source  [image #999 unknown]')
+    expect(described.attachments).toEqual([
+      { id: receipt.receiptId, label: receipt.file.name, size: receipt.file.bytes },
+      { id: image, label: 'original.png', mediaType: 'image/png', size: png.byteLength },
+    ])
+    expect(Object.isFrozen(described.attachments)).toBe(true)
+    expect(described.attachments.every(Object.isFrozen)).toBe(true)
+    expect(f.attachments.image(image)).toBeDefined()
+    const literal = `/quit ${extraImage} ${extraFile}`
+    const prepared = described.prepare(literal)
+    expect(prepared.text).toBe(literal)
+    expect(prepared.captured.content).toEqual([
+      { type: 'text', text: literal }, { type: 'file', receiptId: receipt.receiptId },
+      { type: 'image', mediaType: 'image/png', name: 'original.png', data: Buffer.from(png).toString('base64') },
+    ])
+    expect(prepared.captured.pending.map(part => part.type)).toEqual(['file', 'image'])
+    prepared.captured.assertFileScope(f.host.selected)
+    expect(() => prepared.captured.assertFileScope(undefined)).toThrow('different Host or Session')
+    expect(f.attachments.image(image)).toBeUndefined()
+    expect(f.attachments.image(extraImage)?.name).toBe('not-described.png')
+    expect(f.attachments.capture(extraFile).content).toEqual([{ type: 'file', receiptId: 'not-described' }])
+    prepared.captured.rollback()
+    prepared.captured.rollback()
+    expect(f.attachments.image(image)?.name).toBe('original.png')
+    expect(f.attachments.capture(file).content).toEqual([{ type: 'file', receiptId: receipt.receiptId }])
+  })
+
+  it('skips original identities already consumed or unloaded and never resurrects a retired capture on late rollback', () => {
+    const f = fixture()
+    const image = f.attachments.addImage(f.host.selected, png, 'image/png')
+    const file = f.attachments.addFile(receipt, f.host.selected)
+    const described = f.attachments.describe(`${image}${file}`)
+    const earlier = f.attachments.capture(`${image}${file}`)
+    expect(described.prepare(`${image}${file}`).captured.content).toEqual([{ type: 'text', text: `${image}${file}` }])
+    earlier.rollback()
+    const empty = described.prepare('')
+    expect(empty.captured.content.map(part => part.type)).toEqual(['image', 'file'])
+    f.attachments.dispose()
+    empty.captured.rollback()
+    expect(f.attachments.image(image)).toBeUndefined()
+    expect(described.prepare('after unload').captured).toMatchObject({ content: [{ type: 'text', text: 'after unload' }], pending: [] })
+    expect(f.attachments.capture(file).content).toEqual([{ type: 'text', text: file }])
+  })
+
   it('splits only owned markers into native parts and restores each consumed draft once', () => {
     const f = fixture()
     const marker = f.attachments.addImage(f.host.selected, png, 'image/png', 'photo.png')

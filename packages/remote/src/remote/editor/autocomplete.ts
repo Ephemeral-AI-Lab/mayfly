@@ -15,7 +15,7 @@ import type { EditorCommands } from './commands.ts'
 import type { EditorSkills } from './skills.ts'
 import type { EditorFeatureSession, EditorTokenSpan } from './types.ts'
 import { activeMention, applyMention, mentionItem } from './mentions.ts'
-import { editorCommandLabel, filterEditorCommands } from './utils.ts'
+import { editorCommandLabel, filterEditorCommands, parseEditorCommand } from './utils.ts'
 import { extractSkillPrefix } from './skills.ts'
 
 const MENTION = /(?<=^|[\s"'=])@(?:"[^"]*"|'[^']*'|[^\s"'=]+)(?=\s|$)/gu
@@ -91,9 +91,9 @@ export class EditorAutocomplete {
   /** Explain an unmatched strict slash line in the editor hint. */
   slashHint(text: string): string | undefined {
     if (!text.startsWith('/')) return undefined
-    const match = /^\/(\S*)$/u.exec(text)
-    if (match?.[1] === undefined) return undefined
-    const query = match[1]
+    const parsed = parseEditorCommand(text)
+    if (parsed === undefined && text !== '/') return undefined
+    const query = parsed?.name ?? ''
     if (filterEditorCommands(this.options.commands.list(), query, this.options.components).length > 0) return undefined
     return this.options.t('no matching command: /{command}', { command: query })
   }

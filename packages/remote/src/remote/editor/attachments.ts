@@ -12,7 +12,8 @@ import type { PendingSubmissionAttachment } from '@deepseek-ai/dsh-api-session-c
 import type { PromptContentPart } from '@deepseek-ai/dsh-api-remotes/client'
 import type { FileUploadValue } from '@deepseek-ai/dsh-client-file-upload/client'
 import type { MayflyComponents } from '@ephemeral-ai/mayfly/core'
-import type { EditorFeatureSession, EditorTokenSpan, EditorUpload } from './types.ts'
+import type { EditorFeatureSession, EditorTokenSpan, EditorUpload, RemoteEditorPrepared } from './types.ts'
+import type { EditorExtensionSubmitCapture } from '@ephemeral-ai/mayfly/editor-presentation'
 
 export const IMAGE_MARKER = /\[image #\d+ [^\]]+\]/gu
 export const FILE_MARKER = /\[file #\d+ [^\]]+\]/gu
@@ -35,6 +36,12 @@ export interface CapturedAttachments {
 interface StagedFile {
   readonly upload: FileUploadValue
   readonly owner: EditorFeatureSession
+}
+
+interface AttachmentBinding {
+  readonly marker: string
+  readonly image?: LocalImage
+  readonly file?: StagedFile
 }
 
 /** Every image created by this owner has an explicit local/default name. */
@@ -79,6 +86,7 @@ export class EditorAttachments {
   private readonly files = new Map<string, StagedFile>()
   private readonly uploads = new Map<string, FileUploadValue>()
   private serial = 0
+  private disposed = false
 
   constructor(
     private readonly components: MayflyComponents,
@@ -146,6 +154,43 @@ export class EditorAttachments {
     return marker
   }
 
+  /** Describe without consuming bytes; admit only the exact original identities after an extension awaits. */
+  describe(source: string): EditorExtensionSubmitCapture<RemoteEditorPrepared> {
+    const retained: AttachmentBinding[] = []
+    const attachments: Array<{ readonly id: string, readonly label: string, readonly mediaType?: string, readonly size: number }> = []
+    const text = source.replace(ATTACHMENT_MARKER, marker => {
+      const image = this.images.get(marker)
+      const file = this.files.get(marker)
+      if (image === undefined && file === undefined) return marker
+      retained.push({ marker, ...image === undefined ? {} : { image }, ...file === undefined ? {} : { file } })
+      attachments.push(Object.freeze(image === undefined
+        ? { id: file!.upload.receiptId, label: file!.upload.file.name, size: file!.upload.file.bytes }
+        : { id: marker, label: image.name, mediaType: image.mediaType, size: image.data.byteLength }))
+      return ''
+    }).trim()
+    return {
+      text,
+      attachments: Object.freeze(attachments),
+      prepare: transformed => {
+        const content: CapturedPart[] = transformed.length === 0 ? [] : [{ type: 'text', text: transformed }]
+        const consumedImages: Array<readonly [string, LocalImage]> = []
+        const consumedFiles: Array<readonly [string, StagedFile]> = []
+        for (const { marker, image, file } of retained) {
+          if (image !== undefined && this.images.get(marker) === image) {
+            content.push(this.imagePart(image))
+            this.images.delete(marker)
+            consumedImages.push([marker, image])
+          } else if (file !== undefined && this.files.get(marker) === file) {
+            content.push({ type: 'file', receiptId: file.upload.receiptId })
+            this.files.delete(marker)
+            consumedFiles.push([marker, file])
+          }
+        }
+        return { text: transformed, captured: this.captured(content, consumedImages, consumedFiles) }
+      },
+    }
+  }
+
   /** Split known markers into official image/file parts and retain rollback until admission settles. */
   capture(text: string): CapturedAttachments {
     const content: CapturedPart[] = []
@@ -160,12 +205,7 @@ export class EditorAttachments {
       const run = text.slice(last, match.index)
       if (run.length > 0) content.push({ type: 'text', text: run })
       if (image !== undefined) {
-        content.push({
-          type: 'image',
-          mediaType: image.mediaType,
-          data: Buffer.from(image.data).toString('base64'),
-          name: image.name,
-        })
+        content.push(this.imagePart(image))
         this.images.delete(marker)
         consumedImages.push([marker, image])
       } else {
@@ -177,6 +217,18 @@ export class EditorAttachments {
     }
     const tail = text.slice(last)
     if (tail.length > 0 || content.length === 0) content.push({ type: 'text', text: tail })
+    return this.captured(content, consumedImages, consumedFiles)
+  }
+
+  private imagePart(image: LocalImage): Extract<CapturedPart, { readonly type: 'image' }> {
+    return { type: 'image', mediaType: image.mediaType, data: Buffer.from(image.data).toString('base64'), name: image.name }
+  }
+
+  private captured(
+    content: CapturedPart[],
+    consumedImages: ReadonlyArray<readonly [string, LocalImage]>,
+    consumedFiles: ReadonlyArray<readonly [string, StagedFile]>,
+  ): CapturedAttachments {
     let rolledBack = false
     return {
       content,
@@ -208,7 +260,7 @@ export class EditorAttachments {
         return []
       }),
       rollback: () => {
-        if (rolledBack) return
+        if (rolledBack || this.disposed) return
         rolledBack = true
         // Serials are never reused; only this one-shot rollback restores these markers.
         for (const [marker, image] of consumedImages) this.images.set(marker, image)
@@ -240,6 +292,7 @@ export class EditorAttachments {
   }
 
   dispose(): void {
+    this.disposed = true
     this.images.clear()
     this.files.clear()
     this.uploads.clear()

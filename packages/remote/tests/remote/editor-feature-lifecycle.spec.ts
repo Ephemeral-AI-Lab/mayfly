@@ -6,9 +6,11 @@ import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import { MayflyComponentsService, type MayflyComponent, type MayflyComponentsDeps, type MayflyFocusable, type MayflyKeymap, type MayflyScreen, type MayflySemanticColors } from '@ephemeral-ai/mayfly/core'
 import * as Provider from '@ephemeral-ai/mayfly-ui/provider'
 import * as Frontend from '@ephemeral-ai/mayfly/frontend'
+import { Editor } from '@ephemeral-ai/mayfly/editor-presentation'
+import { EditorExtensionRuntime } from '../../../mayfly/src/frontend/editor-extension-runtime.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { attachEditorFeatures } from '../../src/remote/editor/index.ts'
-import type { EditorFeatureOptions, EditorFeatureSession, EditorToken } from '../../src/remote/editor/types.ts'
+import type { EditorFeatureOptions, EditorFeatureSession, EditorToken, RemoteEditorPrepared } from '../../src/remote/editor/types.ts'
 import { EditorDraftStore } from '../../src/remote/editor/utils.ts'
 import { deferred, denied, flush, wire } from './editor-feature-fixture.ts'
 
@@ -24,7 +26,7 @@ const uploadValue = { receiptId: 'uploaded-file', file: { attachmentId: 'local-f
 const owners: Array<() => Promise<void>> = []
 afterEach(async () => { for (const dispose of owners.splice(0)) await dispose(); vi.restoreAllMocks(); vi.resetAllMocks(); vi.useRealTimers() })
 
-async function fixture(extra: Partial<EditorFeatureOptions> = {}, withSession = true, withPrevious = true) {
+async function fixture(extra: Partial<EditorFeatureOptions> = {}, withSession = true, withPrevious = true, withExtensions = false, retireDuring?: 'bind' | 'locale') {
   const ctx = new Context()
   await ctx.plugin(Provider)
   await ctx.plugin(Frontend)
@@ -55,7 +57,7 @@ async function fixture(extra: Partial<EditorFeatureOptions> = {}, withSession = 
     mountContentSlot: vi.fn(() => ({ dispose: vi.fn() })),
   } as unknown as MayflyScreen
   const offKeys = vi.fn()
-  const keymap = { register: vi.fn(() => offKeys), matches: (data: string, id: string) => data === id } as unknown as MayflyKeymap
+  const keymap = { register: vi.fn(() => offKeys), list: () => [], matches: (data: string, id: string) => data === id } as unknown as MayflyKeymap
   const notice = { set: vi.fn() }
   const upload = vi.fn(async () => ({ ok: true as const, value: uploadValue }))
   const files = {
@@ -76,12 +78,47 @@ async function fixture(extra: Partial<EditorFeatureOptions> = {}, withSession = 
   native.paste.mockResolvedValue({ kind: 'image', data: png, mediaType: 'image/png' })
   native.copy.mockResolvedValue('native')
   native.shell.mockResolvedValue(0)
-  const options: EditorFeatureOptions = { ctx, editor, screen, components, colors, keymap, session: () => selected, notice, upload, files, local, ...extra }
-  const controller = attachEditorFeatures(options)
-  const dispose = async () => { controller.dispose(); await ctx.fiber.dispose() }
+  ctx.provide('mayflyScreen', screen)
+  ctx.provide('mayflyKeymap', keymap)
+  let controller!: ReturnType<typeof attachEditorFeatures>
+  const extensions = withExtensions ? new EditorExtensionRuntime<RemoteEditorPrepared>({
+    ctx, editor, report: (_id, feedback) => { notice.set(feedback.message) }, components: () => components, colors: () => colors,
+    frame: ({ parked }) => Editor({ shell: false, parked }),
+    footer: () => { const hint = controller?.slashHint(); return hint === undefined ? undefined : { kind: 'text', content: hint } },
+  }) : undefined
+  ctx.effect(() => () => { extensions?.dispose() })
+  const localeListeners: Array<Parameters<typeof ctx.mayflyLocale.subscribe>[0]> = []
+  if (withExtensions) {
+    let releaseFeature!: () => unknown
+    let bound = false
+    const effect = ctx.effect.bind(ctx)
+    vi.spyOn(ctx, 'effect').mockImplementation((execute, label) => {
+      const off = effect(execute, label)
+      if (label === 'Remote editor features') releaseFeature = off
+      return off
+    })
+    const bind = extensions!.bind.bind(extensions)
+    vi.spyOn(extensions!, 'bind').mockImplementation(bindings => {
+      const off = bind(bindings)
+      bound = true
+      if (retireDuring === 'bind') releaseFeature()
+      return off
+    })
+    const subscribe = ctx.mayflyLocale.subscribe.bind(ctx.mayflyLocale)
+    vi.spyOn(ctx.mayflyLocale, 'subscribe').mockImplementation(listener => {
+      localeListeners.push(listener)
+      const off = subscribe(listener)
+      if (bound && retireDuring === 'locale') releaseFeature()
+      return off
+    })
+  }
+  const options: EditorFeatureOptions = { ctx, editor, screen, components, colors, keymap, session: () => selected, notice, upload, files, local, ...extensions === undefined ? {} : { extensionRuntime: extensions }, ...extra }
+  controller = attachEditorFeatures(options)
+  const localeListener = localeListeners.at(-1)
+  const dispose = async () => { controller.dispose(); extensions?.dispose(); await ctx.fiber.dispose() }
   owners.push(dispose)
   await flush()
-  return { ctx, host, colors, components, editor, screen, hide, notice, upload, files, local, previous, controller, offKeys, readAttachment, requestRender, options, dispose, providers, tokenSources,
+  return { ctx, host, colors, components, editor, screen, hide, notice, upload, files, local, previous, controller, offKeys, readAttachment, requestRender, options, dispose, providers, tokenSources, extensions, localeListener,
     key: (id: string) => editor.onKey?.(id),
     selected: () => selected,
     select(next: EditorFeatureSession | undefined) { selected = next; controller.selectionChanged() },
@@ -95,6 +132,212 @@ async function fixture(extra: Partial<EditorFeatureOptions> = {}, withSession = 
 }
 
 describe('mounted editor routes and ownership', () => {
+  it.each(['bind', 'locale'] as const)('releases the feature mount synchronously retired during %s publication', async phase => {
+    const f = await fixture({}, true, true, true, phase)
+    expect(f.controller.slashHint()).toBeUndefined()
+    expect(f.editor.onSubmit).toBe(f.previous.submit)
+    expect(f.listenerCount()).toBe(0)
+    expect(f.offKeys).toHaveBeenCalledOnce()
+    f.editor.onSubmit?.('unloaded')
+    await flush()
+    expect(f.host.prompt).not.toHaveBeenCalled()
+  })
+
+  it('multiplexes real native skill and external completions through the mounted provider and unified wait owner', async () => {
+    const f = await fixture({}, true, true, true)
+    await f.controller.refreshSkills()
+    const pending = deferred<readonly { readonly id: string, readonly label: string, readonly insertText: string }[]>()
+    const complete = vi.fn(() => pending.promise)
+    f.ctx.mayflyEditorExtensions.register({ id: 'remote.complete', complete })
+    const wait = vi.fn()
+    f.ctx.on('mayfly/prompt-wait-changed', wait)
+    vi.useFakeTimers()
+    const provider = f.providers.mock.calls.at(-1)![0]!
+    const reading = provider.getSuggestions(['#review'], 0, 7, { signal: new AbortController().signal })
+    await vi.waitFor(() => { expect(complete).toHaveBeenCalledOnce() })
+    vi.advanceTimersByTime(150)
+    expect(wait).toHaveBeenLastCalledWith('Waiting for remote.complete…')
+    pending.resolve([{ id: 'external', label: 'External result', insertText: 'extension result' }])
+    const result = await reading
+    expect(result!.items.map(item => item.label)).toEqual(['#review', 'External result'])
+    const item = result!.items[1]!
+    expect(provider.applyCompletion(['#review'], 0, 7, item, result!.prefix)).toEqual({ lines: ['extension result'], cursorLine: 0, cursorCol: 16 })
+    expect(wait).toHaveBeenLastCalledWith(undefined)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('submits transformed text with only the original immutable image/file metadata and leaves added markers literal', async () => {
+    const f = await fixture({}, true, true, true)
+    f.key('mayfly.image.paste')
+    await flush()
+    const image = f.editor.getText()
+    await f.controller.stageFile(new Uint8Array([1, 2, 3]), 'notes.txt')
+    const file = f.editor.getText().slice(image.length)
+    const extraReceipt = { ...uploadValue, receiptId: 'unlisted-receipt', file: { ...uploadValue.file, name: 'other.txt' } } as FileUploadValue
+    f.upload.mockResolvedValueOnce({ ok: true, value: extraReceipt })
+    f.editor.setText('')
+    await f.controller.stageFile(new Uint8Array([4, 5, 6]), 'other.txt')
+    const unlisted = f.editor.getText()
+    const transform = vi.fn((request: { readonly text: string, readonly attachments: readonly unknown[] }) => {
+      expect(Object.isFrozen(request)).toBe(true)
+      expect(Object.isFrozen(request.attachments)).toBe(true)
+      expect(request.attachments.every(Object.isFrozen)).toBe(true)
+      return { text: `/quit ${unlisted}` }
+    })
+    const registration = f.ctx.mayflyEditorExtensions.register({ id: 'remote.real-transform', transformSubmit: transform }, { before: { kind: 'text', content: 'External prelude' }, after: { kind: 'text', content: 'External epilogue' } })
+    expect(f.extensions!.render(40).join('\n')).toContain('External prelude')
+    expect(f.extensions!.render(120).join('\n')).toContain('External epilogue')
+    const source = `draft${image}${file}`
+    f.editor.setText(source)
+    f.editor.handleInput?.('\r')
+    await flush()
+    expect(transform).toHaveBeenCalledOnce()
+    expect(transform.mock.calls[0]![0]).toEqual({ text: 'draft', attachments: [
+      { id: image, label: 'pasted-image.png', mediaType: 'image/png', size: png.byteLength },
+      { id: uploadValue.receiptId, label: 'notes.txt', size: 3 },
+    ] })
+    expect(f.host.prompt.mock.calls[0]![0]).toEqual([
+      { type: 'text', text: `/quit ${unlisted}` },
+      { type: 'image', mediaType: 'image/png', data: png.toString('base64'), name: 'pasted-image.png' },
+      { type: 'file', receiptId: uploadValue.receiptId },
+    ])
+    expect(f.host.begin[0]!.attachments?.map(part => part.type)).toEqual(['image', 'file'])
+    expect(f.host.executeCommand).not.toHaveBeenCalled()
+    expect(f.local.exit).not.toHaveBeenCalled()
+    expect(f.editor.getHistory()).toContain(source)
+    registration.dispose()
+    f.editor.setText(unlisted)
+    f.editor.handleInput?.('\r')
+    await flush()
+    expect(f.host.prompt.mock.calls[1]![0]).toEqual([{ type: 'file', receiptId: extraReceipt.receiptId }])
+  })
+
+  it('transforms a first prompt and invalid slash literal before creating its first Session', async () => {
+    let f!: Awaited<ReturnType<typeof fixture>>
+    const ensureSession = vi.fn(async () => { f.replace(f.host.selected); return f.host.selected })
+    f = await fixture({ ensureSession }, false, true, true)
+    const transform = vi.fn(() => ({ text: '/plan ordinary prompt text' }))
+    f.ctx.mayflyEditorExtensions.register({ id: 'first-prompt', transformSubmit: transform })
+    expect(ensureSession).not.toHaveBeenCalled()
+    f.editor.setText('/123')
+    f.editor.handleInput?.('\r')
+    await flush()
+    expect(transform).toHaveBeenCalledOnce()
+    expect(ensureSession).toHaveBeenCalledOnce()
+    expect(f.host.prompt.mock.calls[0]![0]).toEqual([{ type: 'text', text: '/plan ordinary prompt text' }])
+    expect(f.host.executeCommand).not.toHaveBeenCalled()
+  })
+
+  it('routes actual commands and shell input from the original source without extension transforms', async () => {
+    const f = await fixture({}, true, true, true)
+    const transform = vi.fn(() => ({ text: 'must not replace commands or shell input' }))
+    f.ctx.mayflyEditorExtensions.register({ id: 'command-skip', transformSubmit: transform })
+    f.editor.setText('/host-only argument')
+    f.editor.handleInput?.('\r')
+    await flush()
+    expect(f.host.executeCommand).toHaveBeenCalledWith(f.host.selected.ref.sessionId, '/host-only argument', [], expect.any(AbortSignal))
+    f.editor.setText('!')
+    f.editor.setText('echo shell')
+    f.editor.handleInput?.('\r')
+    await flush()
+    expect(native.shell).toHaveBeenCalledWith('echo shell', '/remote/local')
+    expect(transform).not.toHaveBeenCalled()
+    expect(f.host.prompt).not.toHaveBeenCalled()
+  })
+
+  it.each(['selection', 'remove', 'dispose', 'edit'] as const)('fences a late extension transform after %s', async retirement => {
+    const f = await fixture({}, true, true, true)
+    const pending = deferred<{ readonly text: string }>()
+    let signal!: AbortSignal
+    const transform = vi.fn((_request, lifecycle) => { signal = lifecycle.signal; return pending.promise })
+    const registration = f.ctx.mayflyEditorExtensions.register({ id: 'late-transform', transformSubmit: transform })
+    f.editor.setText('original native draft')
+    f.editor.handleInput?.('\r')
+    await flush()
+    if (retirement === 'selection') f.select(undefined)
+    if (retirement === 'remove') registration.dispose()
+    if (retirement === 'dispose') f.controller.dispose()
+    if (retirement === 'edit') f.editor.setText('new native draft')
+    expect(signal.aborted).toBe(true)
+    pending.resolve({ text: 'stale result' })
+    await flush()
+    expect(f.host.prompt).not.toHaveBeenCalled()
+    expect(f.host.executeCommand).not.toHaveBeenCalled()
+    expect(f.editor.getText()).toBe(retirement === 'edit' ? 'new native draft' : 'original native draft')
+  })
+
+  it.each(['empty', 'newer'] as const)('keeps the native folded draft and attachment rollback after a transformed prompt refuses with %s editor', async nextDraft => {
+    const f = await fixture({}, true, true, true)
+    await f.controller.stageFile(new Uint8Array([1, 2, 3]), 'notes.txt')
+    const marker = f.editor.getText()
+    const payload = 'folded payload\n'.repeat(100)
+    const text = `original\n${payload}${marker}`
+    f.editor.setTextFolding(text, [payload])
+    const original = f.editor.captureDraft!()
+    expect(original.pastes.size).toBeGreaterThan(0)
+    const pending = deferred<Awaited<ReturnType<typeof f.host.prompt>>>()
+    f.host.prompt.mockReturnValueOnce(pending.promise)
+    const registration = f.ctx.mayflyEditorExtensions.register({ id: 'folded-transform', transformSubmit: () => ({ text: '/quit' }) })
+    f.editor.handleInput?.('\r')
+    await flush()
+    expect(f.host.prompt.mock.calls[0]![0]).toEqual([{ type: 'text', text: '/quit' }, { type: 'file', receiptId: uploadValue.receiptId }])
+    if (nextDraft === 'newer') f.editor.setText('new draft must stay')
+    pending.resolve(denied('native refusal'))
+    await flush()
+    if (nextDraft === 'empty') {
+      expect(f.editor.captureDraft!()).toEqual(original)
+      expect(f.editor.getHistory()).not.toContain(original.raw.trim())
+    } else expect(f.editor.getText()).toBe('new draft must stay')
+    expect(f.host.executeCommand).not.toHaveBeenCalled()
+    registration.dispose()
+    f.editor.setText(marker)
+    f.editor.handleInput?.('\r')
+    await flush()
+    expect(f.host.prompt.mock.calls[1]![0]).toEqual([{ type: 'file', receiptId: uploadValue.receiptId }])
+  })
+
+  it('refreshes the real slash footer after an asynchronous catalog, locale change and reconnect without another keystroke', async () => {
+    const f = await fixture({}, true, true, true)
+    f.editor.setText('/zzzzz with arguments')
+    expect(f.extensions!.render(80).join('\n')).toContain('no matching command: /zzzzz')
+    f.ctx.mayflyLocale.setPreference('zh')
+    expect(f.extensions!.render(80).join('\n')).toContain('no matching command: /zzzzz')
+    const pending = deferred<Awaited<ReturnType<typeof f.host.listCommands>>>()
+    f.host.listCommands.mockReturnValueOnce(pending.promise)
+    f.emit('commands/change')
+    pending.resolve({ ok: true, value: [{ name: 'zzzzz', description: 'Arrived later', input: { hint: '<value>' } }] })
+    await flush()
+    expect(f.extensions!.render(80).join('\n')).not.toContain('no matching command: /zzzzz')
+    f.host.listCommands.mockResolvedValueOnce({ ok: true, value: [] })
+    f.controller.hostReconnected()
+    await flush()
+    expect(f.extensions!.render(80).join('\n')).toContain('no matching command: /zzzzz')
+  })
+
+  it('rereads the actual active image token on locale change and ignores a queued locale observer after unload', async () => {
+    const f = await fixture({}, true, true, true)
+    const queued = f.localeListener!
+    f.extensions!.focused = true
+    f.extensions!.render(80)
+    expect(f.editor.focused).toBe(true)
+    const hint = vi.fn()
+    f.ctx.on('mayfly/prompt-hint-changed', hint)
+    f.key('mayfly.image.paste')
+    await flush()
+    f.key('mayfly.interaction.backspace')
+    expect(f.editor.activeToken()?.kind).toBe('image')
+    expect(hint).toHaveBeenLastCalledWith('Ctrl+G shows it · Backspace removes')
+    f.ctx.mayflyLocale.setPreference('zh')
+    await flush()
+    expect(hint).toHaveBeenLastCalledWith('Ctrl+G 查看 · Backspace 删除')
+    const snapshot = f.ctx.mayflyLocale.snapshot
+    await f.dispose()
+    const renders = f.requestRender.mock.calls.length
+    queued(snapshot)
+    await flush()
+    expect(f.requestRender).toHaveBeenCalledTimes(renders)
+  })
+
   it('publishes actual recalled history and active token teaching facts through the mounted hooks', async () => {
     const f = await fixture()
     const recall = vi.fn()
