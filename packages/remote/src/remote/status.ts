@@ -37,7 +37,7 @@ export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot
     const { presentation: facts, values } = read()
     const projected = values['modelSelection'] as { readonly next?: { readonly reasoningEffort?: string }, readonly lastUsed?: { readonly reasoningEffort?: string } } | undefined
     const selected = projected?.next ?? projected?.lastUsed
-    const effort = selected === undefined ? (facts as RemotePresentationFacts & { readonly reasoningEffort?: string }).reasoningEffort : selected.reasoningEffort
+    const effort = selected === undefined ? facts.reasoningEffort : selected.reasoningEffort
     const nodes: readonly (MayflyStatusNode | null)[] = [
       buildModelStatusNode({
         model: facts.model ?? (facts.ref === undefined ? '' : 'no model'),

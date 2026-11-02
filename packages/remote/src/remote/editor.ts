@@ -46,17 +46,24 @@ export interface RemoteEditorPresentation extends RemoteNotificationPresentation
 }
 
 class RemoteEditorDock implements MayflyFocusable {
+  private ownFocused = false
   constructor(
     private shell: MayflyEditorShellComponent,
     private readonly sync: () => void,
   ) {}
 
-  get focused(): boolean { return this.shell.focused }
-  set focused(value: boolean) { this.shell.focused = value }
+  get focused(): boolean { return this.ownFocused }
+  set focused(value: boolean) {
+    const changed = value !== this.ownFocused
+    this.ownFocused = value
+    this.shell.focused = value
+    if (changed) this.sync()
+  }
 
   setShell(shell: MayflyEditorShellComponent): void {
-    shell.focused = this.shell.focused
+    this.shell.focused = false
     this.shell = shell
+    shell.focused = this.ownFocused
   }
 
   handleInput(data: string): void {

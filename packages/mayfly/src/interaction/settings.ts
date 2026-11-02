@@ -222,6 +222,11 @@ function pick(value: unknown): Partial<MayflySettings> {
   }
   return out
 }
+
+/** Read the declared fields of an already resolved native settings value. */
+export function resolveMayflySettings(value: unknown): MayflySettings {
+  return { ...DEFAULT_SETTINGS, ...pick(value) }
+}
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
 /**

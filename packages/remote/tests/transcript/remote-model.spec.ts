@@ -468,6 +468,23 @@ describe('RemoteConversationModelSource', () => {
     source.dispose()
   })
 
+  it('keeps startup directory and default effort until exact Session projections replace them', () => {
+    const source = new RemoteConversationModelSource(tools, vi.fn(), { defaultCwd: '/host/startup' })
+    source.setDefaultModel({ provider: 'provider', model: 'model', reasoningEffort: 'high' })
+    expect(source.presentation()).toMatchObject({ cwd: '/host/startup', reasoningEffort: 'high' })
+    source.setDefaultModel({ provider: 'provider', model: 'model', reasoningEffort: 'low' })
+    expect(source.presentation().reasoningEffort).toBe('low')
+    const events = new TestEventSource()
+    const selected = projection<unknown>({ next: { provider: 'provider', model: 'other', reasoningEffort: 'medium' } })
+    source.attach(events.binding({ modelSelection: selected }), { ref: { host: HostKey('host'), sessionId: SessionId('session-1') }, cwd: '/host/session' })
+    expect(source.presentation()).toMatchObject({ cwd: '/host/session', model: 'other', reasoningEffort: 'medium' })
+    selected.set({ next: { provider: 'provider', model: 'plain' } })
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    source.attach(null)
+    expect(source.presentation()).toMatchObject({ cwd: '/host/startup', model: 'model', reasoningEffort: 'low' })
+    source.dispose()
+  })
+
   it('ignores stale projection callbacks after selecting another Session', () => {
     const events = new TestEventSource()
     let staleTitle!: () => void

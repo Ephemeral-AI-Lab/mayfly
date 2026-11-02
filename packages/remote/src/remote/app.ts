@@ -4,7 +4,7 @@ import type { HostClient } from '../client/types.ts'
 import { HostActions } from '../frontend/host-actions.ts'
 import { RemoteBtwService } from '../frontend/btw.ts'
 import { HostRegistry } from '../frontend/host-registry.ts'
-import type { RemoteConversationModelSource } from '../transcript/remote-model.ts'
+import type { RemoteConversationModelSource, RemotePresentationFacts } from '../transcript/remote-model.ts'
 import type { RemoteNotice } from './notice.ts'
 import type { RemoteAppPanels, RemoteCommandDescriptor } from './interactions/plain-panels.ts'
 import type { RemoteSessionsBrowser } from './features/sessions.ts'
@@ -25,6 +25,13 @@ export const FRONTEND_COMMANDS = [
   { name: 'version', description: 'Show the Mayfly version' },
   { name: 'init', description: 'Analyze the codebase and write AGENTS.md' },
 ] satisfies readonly RemoteCommandDescriptor[]
+
+/** A displayed native side selection supplied by the presentation owner. */
+export interface RemoteAppView {
+  readonly ref: SessionRef
+  readonly access: 'interactive' | 'resumable' | 'readonly'
+  readonly presentation: RemotePresentationFacts
+}
 
 /**
  * The one prompt `/init` sends. It asks for the same four findings and the same
@@ -78,6 +85,7 @@ export class RemoteApp {
     attach?: (key: HostKey, startupUrl: string) => HostClient | Promise<HostClient>,
     private readonly cwd = process.cwd(),
     private readonly sessionsBrowser?: RemoteSessionsBrowser,
+    private readonly displayedView?: () => RemoteAppView | undefined,
   ) {
     this.registry = new HostRegistry(async (key) => {
       const startupUrl = this.endpoints.get(key)
@@ -98,7 +106,7 @@ export class RemoteApp {
 
   /** Selected Host for Session-independent configuration and the empty start view. */
   get activeClient(): HostClient | undefined {
-    const key = this.registry.current?.host ?? this.activeHost ?? this.registry.list()[0]?.key
+    const key = this.displayedView?.()?.ref.host ?? this.registry.current?.host ?? this.activeHost ?? this.registry.list()[0]?.key
     return key === undefined ? undefined : this.registry.get(key)
   }
 
@@ -139,6 +147,11 @@ export class RemoteApp {
 
   /** Admit the first prompt into one shared creation, leaving startup sessionless. */
   ensureSession(cwd = this.cwd): Promise<SessionRef> {
+    const displayed = this.displayedView?.()
+    if (displayed !== undefined) {
+      if (displayed.access === 'readonly') return Promise.reject(new Error('This conversation is read-only'))
+      return Promise.resolve(displayed.ref)
+    }
     const current = this.registry.current
     if (current !== undefined) return Promise.resolve(current)
     if (this.creating !== undefined) return this.creating
@@ -296,13 +309,13 @@ export class RemoteApp {
       return { exit: false }
     }
     if (name === 'help') {
-      const current = this.registry.current
+      const current = this.displayedView?.()?.ref ?? this.registry.current
       const commands = current === undefined ? [] : await this.actions.listCommands(current)
       this.panels.showHelp([...FRONTEND_COMMANDS, ...commands])
       return { exit: false }
     }
     if (name === 'status') {
-      this.panels.showStatus(this.conversation.presentation())
+      this.panels.showStatus(this.displayedView?.()?.presentation ?? this.conversation.presentation())
       return { exit: false }
     }
     if (name === 'version') {
@@ -317,7 +330,9 @@ export class RemoteApp {
   }
 
   async cancel(): Promise<void> {
-    const ref = this.registry.current
+    const view = this.displayedView?.()
+    if (view?.access === 'readonly') return
+    const ref = view?.ref ?? this.registry.current
     if (ref === undefined) return
     const result = await this.actions.cancel(ref)
     if (!result.ok) this.notice.set(result.error.message)
@@ -330,7 +345,9 @@ export class RemoteApp {
   }
 
   private requireSelection(): SessionRef {
-    const current = this.registry.current
+    const view = this.displayedView?.()
+    if (view?.access === 'readonly') throw new Error('This conversation is read-only')
+    const current = view?.ref ?? this.registry.current
     if (current === undefined) throw new Error('Select or create a Session before prompting')
     return current
   }

@@ -17,12 +17,7 @@
 
 English | [中文](README.zh.md)
 
-Mayfly is an interactive terminal UI for
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) —
-an out-of-tree Cordis bundle over `dsh-base`, built against Harness
-`0.2.1-rc.2`. Mayfly `0.1.4-rc.2` deliberately uses the same plugin model
-as dsh Web: plugins are ordinary Cordis siblings and consume native dsh
-services directly.
+Mayfly is a terminal frontend for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). This development branch separates the native dsh Host from an independent HTTP/WebSocket TUI process. The TUI uses candidate UI packages built from this checkout; the published `0.1.4-rc.2` is an immutable compatibility reference. The split runtime targets official Harness `0.2.2-alpha.2`.
 
 - **Terminal-native rendering**: Markdown tables, closed Mermaid fences in
   assistant messages, and renderer-neutral line, point, bar, sparkline, and
@@ -115,22 +110,23 @@ lifecycle.
 
 ## Install
 
-Prerequisites are Node `^22.19 || >=24` and pnpm 11.
+This branch needs Node `>=24.9.0` and pinned pnpm 11.7.0. Build and install a dedicated development Host profile using an already installed official dsh `0.2.2-alpha.2`; the installer never changes global packages.
 
 ```sh
-npm i -g @deepseek-ai/dsh
-dsh plugin --profile mayfly add @ephemeral-ai/mayfly
-dsh --profile mayfly
+pnpm install --frozen-lockfile
+DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-host-dev.sh
 ```
 
-Or install the standalone launcher, which includes the tested dsh runtime:
+Start the Host in one terminal, then hand its authenticated URL to the TUI through the environment in another:
 
 ```sh
-npm -g install @ephemeral-ai/mayfly-cli
-mayfly
+/path/to/dsh --profile mayfly-split-accept
+MAYFLY_DSH_STARTUP_URL='<URL printed by Host>' script/mayfly-remote.sh
 ```
 
-Set `DEEPSEEK_API_KEY` before first run.
+Set model credentials on the Host. Exiting the TUI detaches its Client and leaves Host work running. Rebuild after source changes; rebuild also refreshes the isolated candidate UI dependencies. These unreleased Host/Remote packages must be installed from the checkout or verified release tarballs, not assumed available from npm.
+
+`pnpm run verify:changed -- --plan` shows selected checks; `pnpm run verify:full` runs the complete gate. [Split validation](docs/split-parity-validation.md) describes the immutable reference and real two-process tests. A smoke pass does not establish visual parity.
 
 ## Usage
 
@@ -146,8 +142,10 @@ interrupts every running continuable descendant without closing those Agents.
 
 ## Architecture
 
-The public npm surface is deliberately limited to three packages:
+The split release contains five packages:
 
+- `@ephemeral-ai/mayfly-host`: native Host projections, generated Remote services, and Host composition.
+- `@ephemeral-ai/mayfly-remote`: independent TUI, official Client transport, and frontend composition.
 - `@ephemeral-ai/mayfly-ui`: renderer-neutral contracts, builders, and the four UI services/provider.
 - `@ephemeral-ai/mayfly`: all runtime areas, public runtime subpaths, composition, and presets.
 - `@ephemeral-ai/mayfly-cli`: the dependency-free global launcher.

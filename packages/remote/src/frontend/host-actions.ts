@@ -247,7 +247,7 @@ export class HostActions {
   }
 
   /** Read the Host-advertised model route used before a Session has its own selection. */
-  async defaultModel(host: HostKey): Promise<{ readonly provider: string, readonly model: string }> {
+  async defaultModel(host: HostKey): Promise<{ readonly provider: string, readonly model: string, readonly reasoningEffort?: string }> {
     const result = await this.modelCatalog(host)
     if (!result.ok) throw result.error
     return result.value.default

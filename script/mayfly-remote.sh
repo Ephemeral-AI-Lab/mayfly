@@ -7,7 +7,7 @@
 # it travels only in the environment — never in argv, where `ps` would expose it.
 #
 # Usage:
-#   script/mayfly-remote.sh '<host url>' [--resume <sessionId>] [--cwd <dir>]
+#   MAYFLY_DSH_STARTUP_URL='<host url>' script/mayfly-remote.sh [--resume <sessionId>]
 #   MAYFLY_DSH_STARTUP_URL='<host url>' script/mayfly-remote.sh [args...]
 set -euo pipefail
 
@@ -21,10 +21,8 @@ fi
 
 case "${1:-}" in
   http://*|https://*)
-    # Keep the token out of argv and out of shell history for the child.
-    MAYFLY_DSH_STARTUP_URL="$1"
-    export MAYFLY_DSH_STARTUP_URL
-    shift
+    printf 'error: pass authenticated Host URLs through MAYFLY_DSH_STARTUP_URL, never argv\n' >&2
+    exit 1
     ;;
 esac
 
@@ -35,8 +33,8 @@ error: no Host URL.
   Start the Host first:   dsh --profile mayfly-host
   It prints:              mayfly host: http://127.0.0.1:3080/?token=...
 
-  Then either:            script/mayfly-remote.sh '<that url>'
-  or:                     export MAYFLY_DSH_STARTUP_URL='<that url>'
+  Then:                   export MAYFLY_DSH_STARTUP_URL='<that url>'
+                          script/mayfly-remote.sh
 EOF
   exit 1
 fi

@@ -120,17 +120,21 @@ export function mountRemoteConfigurationComposition(
     base.commands.register({
       name: 'theme',
       description: 'Choose the interface theme',
-      execute: rawInput => {
-        if (rawInput.trim() !== '') throw usage('theme')
-        features.preferences.openTheme()
+      input: { hint: '[theme]' },
+      execute: async rawInput => {
+        const theme = rawInput.trim()
+        if (theme === '') { features.preferences.openTheme(); return }
+        await features.preferences.applyTheme(currentClient(), theme)
       },
     }),
     base.commands.register({
       name: 'language',
       description: 'Choose the interface language',
-      execute: rawInput => {
-        if (rawInput.trim() !== '') throw usage('language')
-        features.preferences.openLocale()
+      input: { hint: '[en|zh]' },
+      execute: async rawInput => {
+        const locale = rawInput.trim()
+        if (locale === '') { features.preferences.openLocale(); return }
+        await features.preferences.applyLocale(currentClient(), locale)
       },
     }),
     base.commands.register({

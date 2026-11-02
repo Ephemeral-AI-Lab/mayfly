@@ -77,7 +77,9 @@ export class EditorCommands {
     const promise = (async () => {
       try {
         const result = await selected.client.remote.commands.list(selected.ref.sessionId)
-        if (ticket !== this.epoch || key !== this.key || !result.ok) return
+        if (ticket !== this.epoch || key !== this.key || !result.ok
+          || this.options.session()?.client !== selected.client
+          || selectionKey(this.options.session()) !== key) return
         this.host = result.value.map(command => ({
           name: command.name,
           description: command.description,
@@ -107,6 +109,12 @@ export class EditorCommands {
       return { handled: true, exit: false, accepted: false }
     }
     const selected = this.options.session()
+    const isCurrent = (): boolean => {
+      const current = this.options.session()
+      if (signal.aborted) return false
+      if (selected === undefined || current === undefined) return selected === current
+      return current.client === selected.client && selectionKey(current) === selectionKey(selected)
+    }
     const local = canonicalLocalCommand(this.options.local.list(), parsed.name)
     if (local !== undefined) {
       const canonical = canonicalCommandLine(local, parsed.rawInput)
@@ -119,11 +127,10 @@ export class EditorCommands {
         signal,
       })
       if (result.kind !== 'unhandled') {
-        if (result.kind === 'error') this.options.notice.set(result.text)
-        else if (result.text !== undefined) this.options.notice.set(result.text)
+        if (isCurrent() && result.text !== undefined) this.options.notice.set(result.text)
         return {
           handled: true,
-          exit: result.kind === 'success' && result.exit === true,
+          exit: isCurrent() && result.kind === 'success' && result.exit === true,
           accepted: result.kind === 'success',
         }
       }
@@ -132,15 +139,18 @@ export class EditorCommands {
       this.options.notice.set(this.options.t('Send a message first: /{command} needs a session', { command: parsed.name }))
       return { handled: true, exit: false, accepted: false }
     }
+    if (selected.access === 'readonly') {
+      this.options.notice.set(this.options.t('This conversation is read-only'))
+      return { handled: true, exit: false, accepted: false }
+    }
     const result = await selected.client.remote.commands.execute(selected.ref.sessionId, line, attachments, signal)
     if (!result.ok) throw new Error(result.error.message)
     if (result.value === undefined) {
-      this.options.notice.set(this.options.t('unknown command: {command}', { command: line }))
+      if (isCurrent()) this.options.notice.set(this.options.t('unknown command: {command}', { command: line }))
       return { handled: true, exit: false, accepted: false }
     }
     const outcome = result.value.result
-    if (outcome.kind === 'error') this.options.notice.set(outcome.text)
-    else if (outcome.text !== undefined) this.options.notice.set(outcome.text)
+    if (isCurrent() && outcome.text !== undefined) this.options.notice.set(outcome.text)
     return { handled: true, exit: false, accepted: outcome.kind === 'success' }
   }
 

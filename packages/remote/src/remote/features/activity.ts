@@ -9,7 +9,6 @@ import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import { contextPercent } from '@ephemeral-ai/mayfly/status-context'
 import type { RemoteFeatureContext } from '../features.ts'
 import { RemoteActivityRow } from '../panels/activity-row.ts'
-import { RemoteNotificationLine, selectRemoteNotification } from '../panels/notification-line.ts'
 import {
   deriveRemoteActivity,
   remoteCompactElapsedMs,
@@ -48,10 +47,8 @@ class RemoteActivityController {
   private readonly tr: MayflyTranslate
   private readonly lifecycle: RemoteFeatureLifecycle
   private readonly activityPane: MayflyPaneRegistration
-  private readonly notificationPane: MayflyPaneRegistration
   private readonly notifications: ReturnType<RemoteFeatureContext['ctx']['mayflyUiInteraction']['createNotificationOwner']>
   private readonly offLocale: () => void
-  private readonly offInteraction: () => void
   private readonly seen = new Set<string>()
   private subscriptions: readonly (() => void)[] = []
   private activity = EMPTY_ACTIVITY
@@ -74,9 +71,7 @@ class RemoteActivityController {
     this.tr = memoizedLocaleTranslator(options.ctx, 'remote-activity-retry').translate
     this.lifecycle = new RemoteFeatureLifecycle(options, this.attach)
     this.activityPane = options.ctx.mayflyPanes.register({ id: 'mayfly.pane.activity', placement: 'bottom', priority: 10, narrow: 'bottom' }, null)
-    this.notificationPane = options.ctx.mayflyPanes.register({ id: 'mayfly.pane.notification', placement: 'bottom', priority: 9, narrow: 'bottom' }, RemoteNotificationLine(undefined))
     this.notifications = options.ctx.mayflyUiInteraction.createNotificationOwner('remote.activity')
-    this.offInteraction = options.ctx.mayflyUiInteraction.subscribe(this.publishNotifications)
     options.ctx.effect(() => options.ctx.mayflyLocale.register('remote-activity-retry', {
       en: Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key]))),
       zh,
@@ -101,7 +96,6 @@ class RemoteActivityController {
     if (this.disposed) return
     this.disposed = true
     this.lifecycle.dispose()
-    this.offInteraction()
     this.offLocale()
     for (const dispose of this.subscriptions) dispose()
     this.subscriptions = []
@@ -109,7 +103,6 @@ class RemoteActivityController {
     this.timer = undefined
     this.notifications.dispose()
     this.activityPane.dispose()
-    this.notificationPane.dispose()
   }
 
   private readonly attach = (generation: number): void => {
@@ -243,8 +236,6 @@ class RemoteActivityController {
         message: this.t('Context {percent}% full · /compact now', { percent }),
       })
     }
-    const notice = selectRemoteNotification(this.options.ctx.mayflyUiInteraction.notificationSnapshot(), current?.ref.sessionId)
-    this.notificationPane.set(RemoteNotificationLine(notice === undefined ? undefined : { notice }))
   }
 }
 

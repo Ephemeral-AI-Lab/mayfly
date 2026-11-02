@@ -22,6 +22,7 @@ import {
   type OnboardingConnectChoice, type OnboardingFacts, type OnboardingLabels, type OnboardingPresetRow, type OnboardingStepId,
 } from '../components/onboarding-wizard.ts'
 import { deriveKeyRef } from './provider-profile.ts'
+import { onboardingLabels } from '../components/onboarding-labels.ts'
 import { accountRoute } from './provider-account.ts'
 import { providerDescriptor, providerDirectory, providerProfileAt } from './provider-store.ts'
 import { startSignIn, type SignInEnd, type SignInFlow, type SignInSnapshot } from './account-sign-in.ts'
@@ -116,53 +117,7 @@ export function apply(ctx: Context): void {
     const order: readonly OnboardingStepId[] = [ONBOARDING_PREFERENCES, ONBOARDING_CONNECT, ONBOARDING_READY]
     const after = (step: OnboardingStepId): OnboardingStepId => order[order.indexOf(step) + 1] ?? ONBOARDING_READY
 
-    const labels = (): OnboardingLabels => ({
-      title: t('Connect to DeepSeek'),
-      steps: { preferences: t('Preferences'), connect: t('Connect'), ready: t('Welcome') },
-      preferencesIntro: t('Set up how Mayfly looks and what it may do. You can change all of it later in /settings.'),
-      language: t('Language'),
-      permissions: t('Permissions'),
-      theme: t('Theme'),
-      startup: t('On start'),
-      connectIntro: t('Mayfly needs a DeepSeek connection to start.'),
-      signIn: {
-        starting: t('Getting your sign-in link…'),
-        opening: t('Opening your browser…'),
-        waiting: t('Waiting for you to sign in in your browser'),
-        noBrowser: t('Couldn’t open a browser. Copy the link below and open it yourself, then paste the address it ends on (the page may fail to load).'),
-        otherMachine: t('Open the link below in a browser on another machine, then paste the address it ends on (the page may fail to load).'),
-        finishing: t('Signing you in…'),
-        connected: t('Signed in'),
-        expires: (time: string) => t('expires in {time}', { time }),
-        callbackLabel: t('Callback URL'),
-        callbackPlaceholder: `http://localhost:${String(state.signInSnap?.callbackPort ?? '')}/oauth/callback?…`,
-        retry: t('Try again'),
-        copyLink: t('Copy link'),
-        newLink: t('New link'),
-        otherMachineKey: t('Other machine'),
-        deliver: t('Deliver callback'),
-      },
-      account: t('Sign in with a DeepSeek account'),
-      accountDetail: t('browser sign-in, no API key to manage'),
-      key: t('Enter a DeepSeek API key'),
-      keyDetail: t('paste a key from platform.deepseek.com'),
-      keyNote: t('Your key is saved as a credential, not as a setting.'),
-      keyField: DEEPSEEK_KEY,
-      keyPlaceholder: t('paste your key'),
-      skip: t('Skip for now'),
-      skipDetail: t('connect later with /provider'),
-      recommended: t('recommended'),
-      readyIntro: t('Welcome to Mayfly — you are all set.'),
-      tryHeading: t('Things to try'),
-      tryItems: [
-        { keys: '/', text: t('run a command, such as /model or /sessions') },
-        { keys: '@', text: t('mention a file to attach it to your message') },
-        { keys: '#', text: t('select a skill (a saved playbook) to guide the agent') },
-        { keys: '!', text: t('run a shell command and share its output') },
-        { keys: 'Shift+Tab', text: t('let the agent plan first; you approve before it acts') },
-      ],
-      start: t('Start chatting'),
-    })
+    const labels = (): OnboardingLabels => onboardingLabels(t, state.signInSnap?.callbackPort)
 
     const presetRows = (): readonly OnboardingPresetRow[] | undefined => {
       if (presets === undefined) return undefined

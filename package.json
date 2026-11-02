@@ -9,8 +9,7 @@
     "node": ">=24.9.0"
   },
   "scripts": {
-    "postinstall": "pnpm --dir packages/remote install --ignore-scripts",
-    "build": "node script/clean-lib.mjs && pnpm --filter @ephemeral-ai/mayfly-host bundle && tsc -b tsconfig.json --force && node script/prune-types.mjs && tsdown",
+    "build": "node script/build-split.mjs",
     "test": "vitest run",
     "test:repo-workflow": "node --test script/tests/*.test.mjs",
     "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.tests.json && tsc -p packages/remote/tsconfig.tests.json",
@@ -38,7 +37,10 @@
     "perf": "node script/perf.mjs",
     "website:dev": "pnpm --filter @ephemeral-ai/mayfly-website run dev",
     "website:build": "pnpm --filter @ephemeral-ai/mayfly-website run build",
-    "website:preview": "pnpm --filter @ephemeral-ai/mayfly-website run preview"
+    "website:preview": "pnpm --filter @ephemeral-ai/mayfly-website run preview",
+    "verify:changed": "node script/check.mjs --tier pr",
+    "verify:full": "node script/check.mjs --tier full",
+    "postinstall": "pnpm --dir packages/remote install --ignore-scripts"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-llm-mock-server": "0.2.1-rc.2",

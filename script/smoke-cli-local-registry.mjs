@@ -119,6 +119,7 @@ const server = createServer(async (request, response) => {
     const upstream = await fetch(new URL(request.url ?? '/', 'https://registry.npmjs.org'), {
       method: request.method,
       headers: request.headers.accept === undefined ? {} : { accept: request.headers.accept },
+      signal: AbortSignal.timeout(30_000),
     })
     const headers = {}
     for (const name of ['content-type', 'content-length', 'cache-control', 'etag']) {
@@ -140,13 +141,14 @@ function run(command, args, env) {
     const child = spawn(command, args, { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
-    const timer = setTimeout(() => child.kill('SIGKILL'), 300_000)
+    let timedOut = false
+    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL') }, 300_000)
     child.stdout.on('data', chunk => { stdout += String(chunk) })
     child.stderr.on('data', chunk => { stderr += String(chunk) })
-    child.on('error', reject)
+    child.on('error', error => { clearTimeout(timer); reject(error) })
     child.on('exit', (code, signal) => {
       clearTimeout(timer)
-      resolve({ code, signal, stdout, stderr })
+      resolve({ code, signal, timedOut, stdout, stderr })
     })
   })
 }
@@ -180,7 +182,7 @@ try {
   const install = await run('npm', [
     'install', '--prefix', cliRoot, '--ignore-scripts', '--no-audit', '--no-fund', cliTarball,
   ], env)
-  if (install.code !== 0) throw new Error(`packed CLI install failed:\n${install.stderr}\n${install.stdout}`)
+  if (install.code !== 0) throw new Error(`packed CLI install failed${install.timedOut ? ' (300s timeout)' : ''}:\n${install.stderr.slice(-20_000)}\n${install.stdout.slice(-5000)}`)
 
   for (const name of ['@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui']) {
     if (!requested.has(name)) throw new Error(`packed CLI install never requested ${name}`)
@@ -209,6 +211,7 @@ try {
 
   console.log(`CLI_LOCAL_REGISTRY_SMOKE_PASS mayfly=${version} remote=${version} hostProcesses=0`)
 } finally {
+  server.closeAllConnections()
   await new Promise(resolve => server.close(resolve))
   rmSync(fixtureRoot, { recursive: true, force: true })
 }

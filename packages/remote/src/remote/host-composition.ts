@@ -3,19 +3,25 @@
  * @module @ephemeral-ai/mayfly/remote/host-composition
  */
 
+import { createRequire } from 'node:module'
 import { TYPERT_REMOTE } from '@ephemeral-ai/mayfly-host/remote'
 import type { MayflyHostCapabilities } from '@ephemeral-ai/mayfly-host/types'
 import { createHostClient } from '../client/host-client.ts'
 import type { HostClient, HostKey, SessionRef } from '../client/types.ts'
 import { mountMayflyHostRemote } from '../frontend/host-mount.ts'
-import type { RemoteToolPresentationGeneration } from '../frontend/tool-presentations.ts'
+import { createMayflyToolPresentationResolver, type RemoteToolPresentationGeneration, type RemoteToolPresentationResolver } from '../frontend/tool-presentations.ts'
 import { mayflyHostRemote } from '../frontend/host-mount.ts'
 
 const PROTOCOL_VERSION = 1
-const HOST_VERSION = '0.1.4-rc.2'
-const DSH_VERSION = '0.2.2-alpha.2'
+const manifest = createRequire(import.meta.url)('@ephemeral-ai/mayfly-remote/package.json') as {
+  readonly version: string
+  readonly dependencies: Readonly<Record<string, string>>
+}
+const HOST_VERSION = manifest.version
+const DSH_VERSION = manifest.dependencies['@deepseek-ai/dsh-agent']!
 const REQUIRED_FEATURES = ['mayflyConversation', 'presentTools'] as const
-const capabilities = new WeakMap<HostClient, MayflyHostCapabilities>()
+const PRESENTER = Symbol('mayfly.validatedPresenter')
+interface ValidatedHostClient extends HostClient { readonly [PRESENTER]: RemoteToolPresentationResolver }
 
 /** Mount only the generated client-safe Host artifact and validate this composition's required base. */
 export async function attachMayflyHostClient(key: HostKey, startupUrl: string): Promise<HostClient> {
@@ -25,7 +31,9 @@ export async function attachMayflyHostClient(key: HostKey, startupUrl: string): 
     const result = await mayflyHostRemote(client).capabilities()
     if (!result.ok) throw new Error(`Mayfly Host capabilities request failed: ${result.error.message}`)
     validateCapabilities(result.value)
-    capabilities.set(client, result.value)
+    Object.defineProperty(client, PRESENTER, { value: createMayflyToolPresentationResolver(client,
+      `${String(result.value.protocolVersion)}:${result.value.hostVersion}:${result.value.requiredDshVersion}`,
+    ) })
     return client
   } catch (error) {
     await client.detach()
@@ -40,12 +48,9 @@ export function resolveMayflyToolPresentation(
 ): RemoteToolPresentationGeneration {
   const client = clients().find(candidate => candidate.key === ref.host)
   if (client === undefined) throw new Error(`Mayfly Host "${ref.host}" is not attached for tool presentation`)
-  const capability = capabilities.get(client)
-  if (capability === undefined) throw new Error(`Mayfly Host "${ref.host}" has no validated capabilities`)
-  return {
-    presentationRevision: `${String(capability.protocolVersion)}:${capability.hostVersion}:${capability.requiredDshVersion}`,
-    present: (request, signal) => mayflyHostRemote(client).presentTools(request, signal),
-  }
+  const resolver = (client as Partial<ValidatedHostClient>)[PRESENTER]
+  if (resolver === undefined) throw new Error(`Mayfly Host "${ref.host}" has no validated capabilities`)
+  return resolver(ref)
 }
 
 function validateCapabilities(value: MayflyHostCapabilities): void {

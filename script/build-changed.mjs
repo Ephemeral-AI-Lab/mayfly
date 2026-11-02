@@ -59,3 +59,8 @@ run('node', ['script/prune-types.mjs'])
 const names = packages.map(packageDir => readManifest(packageDir).name)
 process.stdout.write(`build:changed: bundling ${names.join(', ')}\n`)
 run('pnpm', ['exec', 'tsdown'], { MAYFLY_BUILD_PACKAGES: packages.join(',') })
+
+// The isolated consumer must observe new candidate chunks and declarations.
+if (packages.some(dir => dir === 'packages/ui' || dir === 'packages/mayfly')) {
+  run(process.execPath, ['script/refresh-remote.mjs'])
+}

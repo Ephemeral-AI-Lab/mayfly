@@ -57,6 +57,8 @@ export interface EditorFeatureSession {
   readonly session: SessionFace
   /** Foundation-owned selection and Host revision token. */
   readonly generation: number
+  /** Native one-shot/unknown child views preserve drafts and reject writes. */
+  readonly access?: 'interactive' | 'resumable' | 'readonly'
 }
 
 /** Command metadata used by both local routing and Host discovery. */

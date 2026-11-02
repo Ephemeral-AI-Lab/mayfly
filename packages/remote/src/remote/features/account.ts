@@ -16,7 +16,9 @@ import {
   remoteErrorMessage,
   remoteValue,
 } from './official.ts'
-import { openRemoteFeaturePanel, type RemoteMountedPanel, type RemotePanelModel } from './panel.ts'
+import { buildAccountPanel } from '@ephemeral-ai/mayfly/configuration-panels'
+import type { MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
+import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
 
 type OfficialValue<T> = T extends Promise<RemoteResult<infer Value>> ? Value : never
 
@@ -36,10 +38,10 @@ export interface RemoteSignInSnapshot {
   readonly browser: 'pending' | 'opened' | 'failed'
   readonly manual: boolean
   readonly delivering: boolean
-  readonly callbackOrigin?: string
-  readonly callbackPort?: number
+  readonly callbackOrigin?: string | undefined
+  readonly callbackPort?: number | undefined
   readonly transport: 'loopback' | 'forwarded'
-  readonly error?: string
+  readonly error?: string | undefined
 }
 
 /** Validate the exact loopback HTTP origin accepted by the official account service. */
@@ -58,7 +60,8 @@ export function remoteAccountCallbackOrigin(value: string | undefined): { readon
 export function remoteAccountCallbackLocation(raw: string, origin: string): URL | undefined {
   let url: URL
   try { url = new URL(raw.trim()) } catch { return undefined }
-  if (url.origin !== origin || url.pathname !== '/oauth/callback' || url.username || url.password) return undefined
+  const expected = remoteAccountCallbackOrigin(origin)
+  if (expected === undefined || url.origin !== new URL(expected.origin).origin || url.pathname !== '/oauth/callback' || url.username || url.password) return undefined
   return url
 }
 
@@ -97,13 +100,15 @@ export class RemoteAccountSignInFlow {
     initial: RemoteAccountView,
     private readonly changed: () => void,
   ) {
+    const callback = remoteAccountCallbackOrigin(io.callbackOrigin(operation.client))
     this.snapshotValue = {
       view: initial,
       stage: initial.status === 'credential-stored' ? 'connected' : 'idle',
-      browser: 'pending',
+      browser: initial.attempt?.authorizeUrl === undefined ? 'pending' : 'opened',
       manual: false,
       delivering: false,
       transport: operation.client.remote.$host.isLoopback ? 'loopback' : 'forwarded',
+      ...callback === undefined ? {} : { callbackOrigin: callback.origin, callbackPort: callback.port },
     }
     this.connected = new Promise<boolean>(resolve => { this.settleConnected = resolve })
     operation.onDispose(() => {
@@ -124,6 +129,7 @@ export class RemoteAccountSignInFlow {
 
   /** Start or join an attempt with the configured loopback/SSH-forwarded origin. */
   async start(): Promise<void> {
+    if (!this.operation.valid()) return
     const callback = remoteAccountCallbackOrigin(this.io.callbackOrigin(this.operation.client))
     if (callback === undefined) {
       const error = 'Account sign-in requires a browser-accessible HTTP loopback callback origin with an explicit port (use an SSH local forward for a remote Host).'
@@ -148,6 +154,7 @@ export class RemoteAccountSignInFlow {
 
   /** Explicitly cancel the displayed live attempt; panel close never calls this. */
   async cancel(): Promise<void> {
+    if (!this.operation.valid()) return
     const attempt = this.snapshot.view.attempt
     if (attempt === null || remoteAccountAttemptTerminal(attempt)) return
     const view = await remoteValue(this.operation.client.remote.account.cancelSignIn(attempt.id))
@@ -157,12 +164,14 @@ export class RemoteAccountSignInFlow {
   /** Explicitly retire the current attempt and request a fresh link. */
   async restart(): Promise<void> {
     await this.cancel()
+    if (!this.operation.valid()) return
     this.ownedAttempt = undefined
     await this.start()
   }
 
   /** Copy the current authorize URL through the local adapter. */
   async copy(): Promise<void> {
+    if (!this.operation.valid()) return
     const url = this.snapshot.view.attempt?.authorizeUrl
     if (url === undefined) throw new Error('No sign-in link is available')
     await this.io.copy(url)
@@ -170,14 +179,20 @@ export class RemoteAccountSignInFlow {
 
   /** Deliver a pasted callback only to the exact configured origin. */
   async deliver(raw: string): Promise<'delivered' | 'invalid' | 'rejected'> {
+    if (!this.operation.valid()) return 'rejected'
     const origin = this.snapshot.callbackOrigin
     const location = origin === undefined ? undefined : remoteAccountCallbackLocation(raw, origin)
     if (location === undefined) return 'invalid'
     this.patch({ delivering: true })
-    const response = await this.io.deliverCallback(location, this.operation.signal)
-    if (!this.operation.valid()) return 'rejected'
-    this.patch({ delivering: response.status >= 400 })
-    return response.status >= 400 ? 'rejected' : 'delivered'
+    try {
+      const response = await this.io.deliverCallback(location, this.operation.signal)
+      if (!this.operation.valid()) return 'rejected'
+      this.patch({ delivering: response.status < 400 })
+      return response.status >= 400 ? 'rejected' : 'delivered'
+    } catch (error) {
+      if (this.operation.valid()) this.patch({ delivering: false })
+      throw error
+    }
   }
 
   /** Stop local work without cancelling the Host attempt. */
@@ -197,8 +212,8 @@ export class RemoteAccountSignInFlow {
 
   private get url(): string | undefined { return this.snapshot.view.attempt?.authorizeUrl }
 
-  private patch(next: { readonly [Key in keyof RemoteSignInSnapshot]?: RemoteSignInSnapshot[Key] | undefined }): void {
-    this.snapshotValue = Object.assign(this.snapshotValue, next)
+  private patch(next: Partial<RemoteSignInSnapshot>): void {
+    this.snapshotValue = { ...this.snapshotValue, ...next }
     if (this.operation.valid()) this.changed()
   }
 
@@ -273,110 +288,69 @@ export class RemoteAccountController extends RemoteFeatureController {
     }
   }
 
-  /** Open account state, profile, Platform balance, and sign-in controls. */
+  /** Open the exact shared account panel over one native watch and local browser handoff. */
   async open(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): Promise<void> {
     if (client === undefined) return
-    let flow: RemoteAccountSignInFlow | undefined
-    let mounted: RemoteMountedPanel | undefined
-    let profile: RemoteAccountProfile = null
-    let balance: RemoteAccountBalance = null
-    let detailSequence = 0
-    let timer: ReturnType<typeof setInterval> | undefined
-    const refreshDetails = async (): Promise<void> => {
-      if (flow === undefined) return
-      const generation = ++detailSequence
-      if (flow.snapshot.view.status !== 'credential-stored') { profile = null; balance = null; return }
-      try {
-        const metadata = remoteAccountMetadata(this.context, this.clientVersion)
-        const [nextProfile, nextBalance] = await Promise.all([
-          remoteValue(client.remote.account.getProfile(metadata)),
-          remoteValue(client.remote.account.getBalance(metadata)),
-        ])
-        if (generation !== detailSequence || mounted === undefined || flow.snapshot.view.status !== 'credential-stored') return
-        profile = nextProfile
-        balance = nextBalance
-        mounted.panel.update(view())
-      } catch (error) {
-        if (flow !== undefined && generation === detailSequence) this.context.notice.set(remoteErrorMessage(error))
-      }
-    }
-    const view = (): RemotePanelModel => {
-      const snapshot = flow?.snapshot
-      const account = snapshot?.view
-      const attempt = account?.attempt
-      const rows: RemotePanelModel['rows'] = [
-        { text: account?.status === 'credential-stored' ? this.context.t('Signed in') : this.context.t('Not signed in'), current: account?.status === 'credential-stored' },
-        ...profile?.status === 'ready' ? [{ text: profile.value.name ?? profile.value.contact ?? this.context.t('Account') }] : [],
-        ...balance?.status === 'ready' ? balance.value.map((wallet: { readonly balance: string, readonly currency: string }) => ({ text: `${this.context.t('Balance')}: ${wallet.balance} ${wallet.currency}` })) : [],
-        ...account === undefined ? [] : account.status === 'credential-stored'
-          ? [{ id: 'sign-out', text: this.context.t('Sign out') }]
-          : snapshot?.stage === 'waiting' || snapshot?.stage === 'finishing'
-            ? [
-              { id: 'copy-link', text: this.context.t('Copy link') },
-              { id: 'manual', text: this.context.t('Other machine') },
-              { id: 'restart-sign-in', text: this.context.t('New link') },
-              { id: 'cancel-sign-in', text: this.context.t('Cancel') },
-            ]
-            : [{ id: 'sign-in', text: this.context.t('Sign in') }],
-      ]
-      const remaining = attempt?.expiresAt === undefined ? undefined : Math.max(0, attempt.expiresAt - Date.now())
-      return {
-        title: this.context.t('DeepSeek Account'),
-        subtitle: snapshot?.transport === 'forwarded' ? 'SSH-forwarded Host callback' : 'Local Host callback',
-        rows,
-        footer: [
-          snapshot?.error,
-          attempt?.authorizeUrl !== undefined && (snapshot?.manual || snapshot?.browser === 'failed') ? attempt.authorizeUrl : undefined,
-          remaining === undefined ? undefined : this.context.t('expires in {time}', { time: `${Math.ceil(remaining / 1000)}s` }),
-          snapshot?.delivering === true ? this.context.t('Signing you in…') : undefined,
-          snapshot?.manual || snapshot?.browser === 'failed' ? 'Paste callback with the “callback” field on the next screen (Ctrl+R).' : undefined,
-        ].filter((part): part is string => part !== undefined).join('\n'),
-        fields: snapshot?.manual || snapshot?.browser === 'failed' ? [{ id: 'callback', label: this.context.t('Callback URL'), kind: 'input', placeholder: 'http://localhost:…/oauth/callback?…' }] : undefined,
-        hint: snapshot?.manual || snapshot?.browser === 'failed' ? 'Enter callback · Ctrl+R deliver · Esc close' : '↑↓ select · Enter action · p paste mode · Esc close',
-      }
-    }
-    const run = async (action: () => Promise<void>): Promise<void> => {
-      try { await action() }
-      catch (error) {
-        if (flow !== undefined) this.context.notice.set(remoteErrorMessage(error))
-      }
-      if (mounted !== undefined && flow !== undefined) mounted.panel.update(view())
-    }
-    flow = await this.createSignInFlow(client, () => {
-      if (mounted === undefined) return
-      mounted.panel.update(view())
-      void refreshDetails()
-    })
+    let panel: RemoteBrowserPanel | undefined
+    let expiryAttempt: string | undefined
+    let expiryTotalMs: number | undefined
+    const flow = await this.createSignInFlow(client, () => { panel?.refresh() })
     if (flow === undefined) return
-    mounted = openRemoteFeaturePanel(this.context, view(), (action, id, values) => {
-      if (flow === undefined) return
-      if (action === 'accept' && id === 'sign-in') void run(() => flow!.start())
-      else if (action === 'accept' && id === 'restart-sign-in') void run(() => flow!.restart())
-      else if (action === 'accept' && id === 'cancel-sign-in') void run(() => flow!.cancel())
-      else if (action === 'accept' && id === 'copy-link' || action === 'copy') void run(async () => { await flow!.copy(); this.context.notice.set(this.context.t('Sign-in link copied')) })
-      else if (action === 'accept' && id === 'manual' || action === 'manual') { flow!.setManual(true); mounted?.panel.update(view()) }
-      else if (action === 'accept' && id === 'sign-out') void run(async () => {
-        const view = await remoteValue(client.remote.account.signOut(remoteAccountMetadata(this.context, this.clientVersion)))
-        flow!.applyExternal(view)
+    const id = 'mayfly.provider-account.deepseek-account'
+    const source = [{ resourceId: id, revision: 1 }]
+    const view = () => {
+      const snapshot = flow.snapshot
+      const attempt = snapshot.view.attempt
+      if (attempt?.expiresAt !== undefined && attempt.id !== expiryAttempt) {
+        expiryAttempt = attempt.id
+        expiryTotalMs = Math.max(0, attempt.expiresAt - Date.now())
+      }
+      return buildAccountPanel(snapshot.view, this.context.t, remoteAccountCallbackOrigin(this.io.callbackOrigin(client)) !== undefined, snapshot.callbackPort, {
+        now: Date.now(), launching: snapshot.browser === 'pending',
+        focusPaste: snapshot.browser === 'failed', pasteOpen: snapshot.manual,
+        delivering: snapshot.delivering,
+        ...expiryTotalMs === undefined ? {} : { expiryTotalMs },
       })
-      else if ((action === 'submit' || action === 'refresh') && (snapshotNeedsCallback(flow.snapshot))) void run(async () => {
-        const result = await flow!.deliver(values.callback ?? '')
-        if (result === 'invalid') throw new Error(this.context.t('Paste the full callback address from the browser address bar'))
-        if (result === 'rejected') throw new Error(this.context.t('The callback could not be delivered'))
-      })
-      else if (action === 'refresh') void refreshDetails()
-    }, () => {
-      if (timer !== undefined) clearInterval(timer)
-      flow?.dispose()
+    }
+    panel = openRemoteBrowser(this.context, {
+      id, scope: { kind: 'app', targetId: 'account/deepseek-account' },
+      isCurrent: () => flow.valid(), view,
+      action: async (event, context): Promise<MayflyUiActionReply> => {
+        if (context.signal.aborted) return { kind: 'cancelled' }
+        try {
+          if (event.kind === 'activate') {
+            if (event.actionId === 'copy-link') {
+              await flow.copy()
+              return flow.valid() ? { kind: 'completed', feedback: { severity: 'success', message: this.context.t('Sign-in link copied') } } : { kind: 'cancelled' }
+            }
+            if (event.actionId === 'show-paste') flow.setManual(true)
+            else if (event.actionId === 'sign-in') await flow.start()
+            else if (event.actionId === 'restart-sign-in') await flow.restart()
+            else if (event.actionId === 'sign-out') {
+              const next = await remoteValue(client.remote.account.signOut(remoteAccountMetadata(this.context, this.clientVersion)))
+              if (flow.valid()) flow.applyExternal(next)
+            }
+          } else if (event.kind === 'submit' && event.submission.actionId === 'deliver-callback') {
+            const raw = event.submission.forms.find(form => form.formId === 'callback-paste')?.fields.find(field => field.id === 'callback-url')?.value
+            const delivered = await flow.deliver(typeof raw === 'string' ? raw : '')
+            if (!flow.valid()) return { kind: 'cancelled' }
+            if (delivered === 'invalid') return { kind: 'invalid', errors: [{ pagePath: [], formId: 'callback-paste', fieldId: 'callback-url', message: this.context.t('Paste the full callback address from the browser address bar') }] }
+            if (delivered === 'rejected') return { kind: 'failed', message: this.context.t('The pasted link was not accepted — copy the full address bar URL and try again') }
+            return { kind: 'accepted', node: view(), source, feedback: { severity: 'success', message: this.context.t('Callback delivered — finishing sign-in') } }
+          }
+          if (!flow.valid()) return { kind: 'cancelled' }
+          panel?.refresh()
+          return { kind: 'completed' }
+        } catch (error) {
+          return flow.valid() ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' }
+        }
+      },
+      onClosed: () => flow.dispose(),
     })
-    timer = setInterval(() => {
-      if (flow?.snapshot.stage === 'waiting') mounted?.panel.update(view())
+    flow.onDispose(() => { panel?.close() })
+    const timer = setInterval(() => {
+      if (flow.valid() && flow.snapshot.stage === 'waiting') panel?.refresh()
     }, 1000)
-    flow.onDispose(() => { if (timer !== undefined) clearInterval(timer) })
-    await refreshDetails()
+    flow.onDispose(() => { clearInterval(timer) })
   }
-}
-
-function snapshotNeedsCallback(snapshot: RemoteSignInSnapshot): boolean {
-  return snapshot.manual || snapshot.browser === 'failed'
 }

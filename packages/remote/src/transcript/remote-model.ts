@@ -29,6 +29,7 @@ export interface RemotePresentationFacts {
   readonly title: string | undefined
   readonly model: string | undefined
   readonly provider: string | undefined
+  readonly reasoningEffort?: string
   readonly mode: unknown
   readonly status: SessionSnapshot | undefined
   readonly contextTokens: number
@@ -40,6 +41,7 @@ export interface RemotePresentationFacts {
 
 /** Presentation callbacks owned by the standalone Frontend. */
 export interface RemoteConversationOptions {
+  readonly defaultCwd?: string
   readonly onPresentation?: () => void
   readonly onCommandResult?: (result: { readonly kind: 'success' | 'error', readonly text?: string }) => void
 }
@@ -48,6 +50,7 @@ export interface RemoteConversationOptions {
 export interface RemoteModelSelection {
   readonly model: string
   readonly provider: string
+  readonly reasoningEffort?: string
 }
 
 const EMPTY_CONVERSATION: ConversationProjection = {
@@ -75,6 +78,9 @@ export class RemoteConversationModelSource {
   private toolsRevision = 0
   private attaching = false
   private disposed = false
+  private visible = true
+  private unread = false
+  private replacedWhileHidden = false
   private off: (() => void) | undefined
   private readonly offTools: (() => void) | undefined
 
@@ -90,6 +96,22 @@ export class RemoteConversationModelSource {
   /** Return the latest mapped Transcript model. */
   snapshot(): TranscriptModel {
     return this.model
+  }
+
+  /** Defer hidden transcript conversion until the view is displayed again. */
+  setVisible(visible: boolean): void {
+    if (this.disposed || this.visible === visible) return
+    this.visible = visible
+    if (!visible || !this.unread) return
+    this.unread = false
+    if (this.replacedWhileHidden) this.generation += 1
+    this.replacedWhileHidden = false
+    this.updateDurable()
+    const window = this.source?.getSnapshot()
+    this.live = window === undefined ? undefined : projectLiveConversation(window.entries)
+    this.revision = window?.revision ?? -1
+    this.rebuildModel()
+    this.publishModel()
   }
 
   /** Return the selected Session's official lifecycle and standard projection values. */
@@ -112,7 +134,7 @@ export class RemoteConversationModelSource {
   /** Set the Host-advertised fallback used before a Session records a model route. */
   setDefaultModel(selection: RemoteModelSelection | undefined): void {
     if (this.disposed) return
-    if (selection?.model === this.defaultModel?.model && selection?.provider === this.defaultModel?.provider) return
+    if (selection?.model === this.defaultModel?.model && selection?.provider === this.defaultModel?.provider && selection?.reasoningEffort === this.defaultModel?.reasoningEffort) return
     this.defaultModel = selection
     this.options.onPresentation?.()
   }
@@ -128,10 +150,11 @@ export class RemoteConversationModelSource {
     const title = snapshot.values['title']
     return {
       ref: this.selection?.ref ?? snapshot.ref,
-      cwd: snapshot.cwd !== '' ? snapshot.cwd : this.selection?.cwd ?? '',
+      cwd: snapshot.cwd !== '' ? snapshot.cwd : this.selection?.cwd ?? this.options.defaultCwd ?? '',
       title: typeof title === 'string' ? title : undefined,
       model: selectedModel?.model ?? this.defaultModel?.model,
       provider: selectedModel?.provider ?? this.defaultModel?.provider,
+      ...((selectedModel ?? this.defaultModel)?.reasoningEffort === undefined ? {} : { reasoningEffort: (selectedModel ?? this.defaultModel)!.reasoningEffort! }),
       mode: snapshot.values['permissions'],
       status: snapshot.session,
       contextTokens: context.contextTokens,
@@ -160,30 +183,40 @@ export class RemoteConversationModelSource {
     this.durable = EMPTY_CONVERSATION
     this.durableValue = undefined
     this.live = undefined
+    this.unread = false
+    this.replacedWhileHidden = false
     this.attaching = true
     this.facts.attach(binding, selection)
     this.attaching = false
-    this.updateDurable()
+    if (this.visible) this.updateDurable()
     if (source === null) {
       this.model = createTranscriptModel('official-conversation', [], false, generation)
       this.publishModel()
       return
     }
     const snapshot = source.getSnapshot()
-    this.live = projectLiveConversation(snapshot.entries)
     this.revision = snapshot.revision
-    this.rebuildModel()
-    this.publishModel()
+    if (this.visible) {
+      this.live = projectLiveConversation(snapshot.entries)
+      this.rebuildModel()
+      this.publishModel()
+    } else this.unread = true
     this.off = source.subscribe(() => {
       if (this.disposed || this.source !== source || attachmentGeneration !== this.attachmentGeneration) return
       const window = source.getSnapshot()
       if (window.revision <= this.revision) return
-      if (window.change.kind === 'append' && window.revision === this.revision + 1) {
+      if (this.visible && window.change.kind === 'append' && window.revision === this.revision + 1) {
         for (const entry of window.change.entries) {
           if (entry.type !== 'event' || entry.event.type !== 'command/done') continue
           const { kind, text } = entry.event.data
           this.options.onCommandResult?.({ kind, ...(text === undefined ? {} : { text }) })
         }
+      }
+      if (!this.visible) {
+        this.unread = true
+        this.replacedWhileHidden ||= window.change.kind === 'replace'
+        this.revision = window.revision
+        return
       }
       if (window.change.kind === 'replace') this.generation += 1
       this.live = projectLiveConversation(window.entries)
@@ -215,6 +248,7 @@ export class RemoteConversationModelSource {
 
   private onFacts(): void {
     if (this.disposed || this.attaching) return
+    if (!this.visible) { this.unread = true; return }
     if (this.updateDurable()) {
       this.rebuildModel()
       this.publishModel()
@@ -237,6 +271,7 @@ export class RemoteConversationModelSource {
   private refreshTools(): void {
     if (this.disposed) return
     this.toolsRevision += 1
+    if (!this.visible) { this.unread = true; return }
     this.rebuildModel()
     this.publishModel()
   }
@@ -346,7 +381,7 @@ function readModelSelection(value: unknown): RemoteModelSelection | undefined {
 function readModelRoute(value: unknown): RemoteModelSelection | undefined {
   if (!isRecord(value)) return undefined
   return typeof value['model'] === 'string' && typeof value['provider'] === 'string'
-    ? { model: value['model'], provider: value['provider'] }
+    ? { model: value['model'], provider: value['provider'], ...typeof value['reasoningEffort'] === 'string' ? { reasoningEffort: value['reasoningEffort'] } : {} }
     : undefined
 }
 

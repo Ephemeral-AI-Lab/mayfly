@@ -17,11 +17,7 @@
 
 [English](README.md) | 中文
 
-Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
-（`dsh`）的交互式终端界面——叠加在 `dsh-base` 上的树外 Cordis
-bundle，针对 Harness `0.2.1-rc.2` 构建。Mayfly `0.1.4-rc.2`
-刻意与 dsh Web 使用同一种插件模型：插件是普通 Cordis sibling，直接消费
-dsh 原生服务。
+Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的终端前端。本开发分支把原生 dsh Host 与独立 HTTP/WebSocket TUI 进程分开。TUI 使用当前源码构建的 UI 包，已发布的 `0.1.4-rc.2` 仅作为不可变兼容性基线；分体运行时面向官方 Harness `0.2.2-alpha.2`。
 
 - **终端原生渲染**：Markdown 表格、assistant 消息中的闭合 Mermaid fence，
   以及 renderer-neutral 的 line、point、bar、sparkline 与 heatmap 节点；
@@ -100,22 +96,23 @@ export function apply(ctx: Context): void {
 
 ## 安装
 
-前置条件为 Node `^22.19 || >=24` 与 pnpm 11。
+本分支需要 Node `>=24.9.0` 和固定的 pnpm 11.7.0。使用已安装的官方 dsh `0.2.2-alpha.2` 构建并安装独立开发 Host profile；安装脚本不会更改全局软件包。
 
 ```sh
-npm i -g @deepseek-ai/dsh
-dsh plugin --profile mayfly add @ephemeral-ai/mayfly
-dsh --profile mayfly
+pnpm install --frozen-lockfile
+DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-host-dev.sh
 ```
 
-也可以安装包含已测试 dsh runtime 的独立启动器：
+在一个终端启动 Host，在另一个终端通过环境变量把认证 URL 交给 TUI：
 
 ```sh
-npm -g install @ephemeral-ai/mayfly-cli
-mayfly
+/path/to/dsh --profile mayfly-split-accept
+MAYFLY_DSH_STARTUP_URL='<Host 输出的 URL>' script/mayfly-remote.sh
 ```
 
-首次运行前设置 `DEEPSEEK_API_KEY`。
+模型凭据配置在 Host。退出 TUI 只断开 Client，Host 中的任务继续运行。修改源码后重新构建，构建也会刷新隔离安装的候选 UI 依赖。尚未发布的 Host/Remote 包应从当前源码或验证过的发布 tarball 安装，不应假定 npm 已提供。
+
+`pnpm run verify:changed -- --plan` 展示所选检查，`pnpm run verify:full` 执行完整门禁。[分体验证说明](docs/split-parity-validation.md) 描述不可变参考版与真实双进程测试；smoke 通过不代表视觉一致性通过。
 
 ## 用法
 
@@ -128,8 +125,10 @@ mayfly
 
 ## 架构
 
-公开 npm surface 明确收敛为三个包：
+分体发布集包含五个包：
 
+- `@ephemeral-ai/mayfly-host`：原生 Host projections、生成的 Remote 服务和 Host composition。
+- `@ephemeral-ai/mayfly-remote`：独立 TUI、官方 Client transport 与前端 composition。
 - `@ephemeral-ai/mayfly-ui`：renderer-neutral contract、builder 与四个 UI service/provider。
 - `@ephemeral-ai/mayfly`：全部运行时区域、公开 subpath、composition 与 presets。
 - `@ephemeral-ai/mayfly-cli`：无运行时依赖的全局启动器。

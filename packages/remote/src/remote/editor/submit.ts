@@ -133,16 +133,17 @@ export class EditorSubmit {
   async cancel(): Promise<boolean> {
     const selected = this.options.session()
     if (selected === undefined) return false
+    if (selected.access === 'readonly') return false
     try {
       const result = await selected.session.cancel()
       if (!result.ok) {
-        if (!this.disposed) this.options.notice.set(result.error.message)
+        if (!this.disposed && this.isCurrent(selected)) this.options.notice.set(result.error.message)
         return false
       }
-      if (!this.disposed) this.options.notice.set(this.options.t('interrupt requested'))
+      if (!this.disposed && this.isCurrent(selected)) this.options.notice.set(this.options.t('interrupt requested'))
       return true
     } catch (error) {
-      if (!this.disposed) this.options.notice.set(errorMessage(error, 'interrupt failed'))
+      if (!this.disposed && this.isCurrent(selected)) this.options.notice.set(errorMessage(error, 'interrupt failed'))
       return false
     }
   }
@@ -154,15 +155,16 @@ export class EditorSubmit {
       this.options.notice.set(this.options.t('no active session'))
       return false
     }
+    if (selected.access === 'readonly') return false
     try {
       const result = await selected.session.updateQueue(itemId, action)
       if (!result.ok) {
-        if (!this.disposed) this.options.notice.set(result.error.message)
+        if (!this.disposed && this.isCurrent(selected)) this.options.notice.set(result.error.message)
         return false
       }
-      return true
+      return !this.disposed && this.isCurrent(selected)
     } catch (error) {
-      if (!this.disposed) this.options.notice.set(errorMessage(error, 'queue update failed'))
+      if (!this.disposed && this.isCurrent(selected)) this.options.notice.set(errorMessage(error, 'queue update failed'))
       return false
     }
   }
@@ -171,7 +173,9 @@ export class EditorSubmit {
     this.disposed = true
     for (const controller of this.operations) controller.abort()
     this.operations.clear()
-    for (const record of this.records.values()) record.rollback()
+    for (const record of this.records.values()) {
+      if (!record.accepted) record.rollback()
+    }
     this.records.clear()
   }
 
@@ -229,6 +233,11 @@ export class EditorSubmit {
       record.selected = selected
       if (selected === undefined) {
         this.options.notice.set(this.options.t('Select or create a Session before prompting'))
+        this.fail(record, false)
+        return
+      }
+      if (selected.access === 'readonly') {
+        this.options.notice.set(this.options.t('This conversation is read-only'))
         this.fail(record, false)
         return
       }

@@ -4,6 +4,8 @@ packages:
 linkWorkspacePackages: false
 
 overrides:
+  '@ephemeral-ai/mayfly': 'file:../mayfly'
+  '@ephemeral-ai/mayfly-ui': 'file:../ui'
   # Resolve the same-version, not-yet-published client-safe Host artifact locally without changing the published manifest.
   '@ephemeral-ai/mayfly-host': 'link:../host'
   # The published TUI pins its peers to the 0.1.x line; this process composes it

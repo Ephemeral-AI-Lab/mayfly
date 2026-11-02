@@ -31,7 +31,8 @@ export default defineConfig({
     // coverage collapse, and the full tier measures it.
     coverage: {
       provider: 'v8',
-      include: ['packages/*/src/**/*.ts', 'examples/*/src/**/*.ts'],
+      excludeAfterRemap: true,
+      include: ['packages/*/src/**/*.ts', 'examples/*/src/**/*.ts', 'packages/host/lib/index.js'],
       // Types-only files carry no executable code.
       exclude: ['packages/*/src/types.ts', 'examples/*/src/types.ts'],
       reportsDirectory: '.artifacts/coverage',

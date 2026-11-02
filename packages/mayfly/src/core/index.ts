@@ -24,6 +24,8 @@ import { ThemeModelService } from '../frontend/theme.ts'
 
 export { MayflyComponentsService, type MayflyComponentsDeps } from './components.ts'
 export { GutterComponent } from './gutter.ts'
+export { CompletionDrawer } from './completion-drawer.ts'
+export type { CompletionDrawerSource } from './completion-drawer.ts'
 export { MayflyKeymapError, MayflyKeymapService, type MayflyKeymapErrorCode } from './keymap.ts'
 export { MayflyScreenService } from './screen.ts'
 export {

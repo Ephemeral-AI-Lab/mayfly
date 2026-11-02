@@ -1,0 +1,9 @@
+/** Shared readonly editor presentation for independent frontends. @module @ephemeral-ai/mayfly/editor-presentation */
+export { placeholderState, placeholderLadder } from './interaction/placeholder.ts'
+export type { PlaceholderState, PlaceholderView } from './interaction/placeholder.ts'
+export { Editor } from './components/editor.ts'
+export type { EditorFacts } from './components/editor.ts'
+export { NotificationLine } from './components/notification-line.ts'
+export type { NotificationRowFacts, NotificationFacts, NotificationKeyPart } from './components/notification-line.ts'
+export { mountInteractionLocale, interactionTranslator } from './interaction/locale.ts'
+export { ACTIVITY_LOCALE, mountTranscriptLocale } from './transcript/locale.ts'

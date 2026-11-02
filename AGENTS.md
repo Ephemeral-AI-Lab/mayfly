@@ -41,198 +41,37 @@ History and release notes do not define current behavior.
   gallery, shipped skills, the Website reference) and deletes the code it
   replaces, with no alias, shim, deprecation, or fallback path.
 
-## Round workflow
+## Parallel implementation and verification
 
-Progress comes first. A round (one component or one slice of a phase) goes
-through these steps in order, and tests come last:
+The split-parity implementation is authorized to develop and test in parallel.
+The immutable npm 0.1.4-rc.2 release defines UI, keys, themes, and workflows.
+Do not rewrite reference goldens from candidate output. Only documented native
+Harness API gaps may be delivered as explicitly labelled partial behavior.
 
-1. **Design.** Analyze the round and write the solution design, in plan mode
-   when the owner starts one. Read the owning package's instructions, the spec
-   section, and the code first; the design names the contracts, files, states,
-   keys, and scenarios, with a recommendation for each open choice.
-2. **Confirm the effect.** Before any code, ask the owner questions about every
-   choice that changes the visible result or the API (look, keys, widths,
-   states, copy), and agree the final effect. Do not start development on
-   guesses; do not ask about what the design can decide.
-3. **Develop.** Implement the agreed design, with the incremental build the
-   workbench runs as the only mechanical feedback. Run no check tier, no specs,
-   no scenario goldens, and do not chase coverage, perf, or lint beyond what a
-   failed build shows.
-4. **Scenario code.** Write **one scenario per round**: a single long
-   conversation (a replay with `mark()`s and one catalog script) that strings
-   all of the round's effects together, including a narrow width and a
-   lifecycle case, paced so a person can operate each state in the live
-   `pnpm run scenario` (long `pause()`s; what ends a state writes the events the
-   product would). An independent-process integration may instead use one
-   `manual` catalog scenario over an owner-supplied external service; it has no
-   replay or golden, and `frame` refuses it. Do not add a scenario per state,
-   and do not point the owner at older scenarios to see the round. Do not run
-   it against goldens and do not write goldens.
-5. **Hand over.** Give the owner that one scenario: its name, the command that
-   opens it (`pnpm run scenario <name>` or `dsh --profile mayfly-<tag>`), the
-   order in which it shows the effects, and what to try. Then stop and tell the
-   owner; do not test.
-6. **Owner review.** The owner runs the scenarios and the live profile, and
-   the agent adjusts the effect until the owner calls it final. Repeat steps
-   3 to 5 as needed; an adjustment is not a reason to run tests.
-7. **Test and finalize.** Only after the owner finalizes the effect: add the
-   decision tests, accept the goldens (`pnpm run scenarios -- --update
-   <scenario>`), delete the code the change replaces, and run the tier below.
+The integrator owns package contracts, manifests, locks, public entries, and
+runtime composition. Host, Remote, and independent validation workers use
+separate worktrees and commit scoped changes. Each implementation includes
+meaningful local tests; the independent verifier owns reference artifacts and
+real HTTP/WebSocket plus PTY evidence. Validate the combined integration commit.
 
-Never test the Website in a round, a component finalization, a phase gate, or
-CI: no `website:build`, no preview, no screenshot freshness. The Website
-(pages, reference, shots) is built, previewed, and accepted once, when a new
-version is released (`docs/package-release.md`). Until then it may lag the
-product, and a change updates its text without checking it.
+Start with `pnpm run verify:changed -- --plan`, iterate with
+`pnpm run verify:changed`, and run `pnpm run verify:full` for final architectural
+acceptance. These delegate to `pnpm run check -- --tier pr|full`, the existing
+change-aware verification planner.
+Tests and builds are permitted throughout development. Executable package
+source requires per-file 100% coverage; do not lower thresholds or exclude
+uncovered runtime code to pass. Type-only files have no executable coverage.
 
-## Verification
+Tests import source relatively; package imports resolve built `lib/`, so fresh
+worktrees need one full build. Width scans must cover every content renderer.
+Use tracked temporary-directory fixtures for profiles/sessions. Every listener,
+timer, registration, and continuation needs unload and stale-generation tests.
 
-The tiers below run at step 7 of a round, never during steps 1 to 6. Verify with `pnpm run check -- --tier round|pr|full` (default `pr`). `round`
-is for every edit (the incremental build, lint, the specs and workflow tests
-the change reaches, and its scenarios at their first size), `pr` for finalizing
-a change (round plus the checks it claims: agent docs, diagrams, lib exports,
-examples, pack; scenarios at every size),
-and `full` for broad, release, architecture, composition, or workflow changes
-and the end of a phase. The change set is `origin/main...HEAD` plus staged,
-unstaged, and untracked files (not generated `.artifacts/`); use `--base <ref>`
-when needed. `--plan` prints the plan and steps without running them, and
-`--why` adds the chain from a changed file to each selected test. Each step
-prints one line and logs to `.artifacts/verify/steps/`; read
-`.artifacts/verify/summary.md` after a run: the verdict, the first failure of
-each failing spec with why it ran, owed manual acceptance, and how to rerun.
-Fix and run the tier again until it passes. Selection
-follows the static import graph (`script/verify/graph.mjs`: imports, literal
-data reads, built entries mapped to their sources, patch rows); what it cannot
-see is declared in `script/verify/inputs.mjs`, and `script/verify/select.mjs`
-plans the checks. A new file must be claimed: parsed by the graph, read through
-a literal path, or named in the inputs (`script/tests/claimed-files.test.mjs`).
-A global input runs the full tier whatever tier was asked.
-
-CI runs the pr tier on a pull request (with advice on changed source lines no
-selected spec ran) and the full tier on `main` and nightly. The full tier
-includes one vitest run (the suites with the stale-row
-check on, the work budgets, and the coverage floor), the happy smoke and the
-perf scenarios against their ceilings (`perf --assert`) on the tier's own build,
-and every scenario against its goldens; it never builds or checks the Website
-or its screenshots. Do not precede it with redundant plain tests. `pnpm run scenarios
-[-- <name>...]` compares the catalog scenarios' checkpoints with
-`script/scenarios/golden/` (selected by their `covers` globs, their goldens,
-the scenario machinery, and a smoke set for other product code); after
-reviewing a difference with `pnpm run frame <name>`, `pnpm run scenarios --
---update <name>` accepts it, and the summary names both. Distribution changes selected by the planner also run
-`check:pack`; a plain full tier does not pack. Release
-publication additionally requires `pnpm release:preflight <version>`, verified
-tarballs, and the human acceptance described below. Instruction and
-shipped-skill changes run `check:agent-docs`.
-
-UI component work follows the tiers of the
-[roadmap](docs/design/implementation-roadmap.md) §7. Review rounds with the
-owner run no tier (`pnpm run dev --check`, which runs the round tier after each
-rebuild, is for the end of a round, not for every edit); finalizing a component
-runs the pr tier with its decision tests (accepted frames, keys and writes,
-lifecycle, width, budgets); a phase ends with the full tier; CI runs the full tier on `main`. Tests record
-decisions; do not add tests only to reach a line.
-
-- Vitest uses fork workers and two projects: `suite` runs every spec with
-  `MAYFLY_UI_VERIFY_MEMO=1` (each retained-row hit paints again and a
-  difference fails), `perf` runs the work budgets without it. Coverage is a
-  report with a repository-wide floor (`vitest.config.ts`) that the full gate
-  measures; a local changed run does not. Type-only `src/types.ts` files are
-  excluded. Specs import the tested source relatively, but package-name
-  imports resolve workspace `lib/`; fresh worktrees need a full build baseline.
-  `tsconfig.tests.json` typechecks every test file against the package sources,
-  and `pnpm run typecheck` runs it with `tsc -b`.
-- Every component row must fit `render(width)`. Add content renderers to the
-  owning `width-scan.spec.ts`. Runtime width helpers flow through
-  `mayflyComponents`; tests use `packages/mayfly/src/core/width.ts`. The frame
-  clamp is a diagnostic backstop.
-- Profile/session fixtures use `mkdtempTracked()` and
-  `registerTempDirCleanup()` from `packages/mayfly/tests/core/temp-dir.ts`.
-- `packages/mayfly/tests/e2e.spec.ts` proves whole-tree native service access,
-  direct UI contributions, exact Agent scope, Fiber cleanup, and core reload.
-- `script/package-contract.mjs` derives build entries from manifests and owns
-  release/example package sets. Subpath changes update exports, source, types,
-  and `files`; verify with `pnpm run check:lib`. Structural build changes need
-  `pnpm run build`; ordinary emission can use `pnpm run build:changed`.
-- Screenshots are a release task: `pnpm run shots:sync` after build repaints
-  them, and `pnpm run shots:check` (run by the release workflow, not the tiers)
-  checks them for staleness.
-- Frame cost is measured where a frame is painted. `tests/perf/frame-workloads.ts`
-  counts one frame through the alternate layout and the surface renderer (the
-  deterministic gate), and `pnpm run perf` measures the perf scenarios of the
-  catalog on the real CLI under a PTY (idle CPU, key-to-paint for keys and wheel
-  notches, CPU per key, frames, memory) A/B against the merge base, each metric
-  judged `regressed`, `same`, `improved`, or `inconclusive` (more `--runs`
-  decide it); `--prof` lists the functions with the most self time. The pr tier
-  runs it for a change the perf scenarios cover and reports without gating;
-  report it with a change to the frame path. A compiled component's own render
-  count is not a frame.
-
-## Review loop
-
-Component work (Phases 3 to 6) follows
-[docs/design/component-development-spec.md](docs/design/component-development-spec.md): parts that each end in a
-scenario demo with a brief (implemented effects, effects to focus on), the original prototype `.mjs` read first,
-and terminal-only demos and questions to the owner.
-
-Review rounds use the workbench instead of a gate run (Round workflow, steps 3 to 6). `pnpm run dev --profile
-mayfly-<tag>` watches `packages/*/src` and `examples/*/src`, runs the
-incremental build for the changed files, and restarts the profile's `dsh` on the
-same persisted session; a failed build is not applied (output in
-`.artifacts/dev/build.log`), and the production `mayfly` profile is refused.
-`pnpm run scenario <name>` opens the product on a scenario of the catalog
-(`script/scenarios/catalog.mjs`; `--list`, `--width`, `--height`, `--no-color`,
-`--ascii`, `--speed N`): most are a conversation written as a chronological
-timeline (`script/scenarios/replays.mjs`, builders in `timeline.mjs`) and played
-into the live session by a driver plugin loaded with `dsh --patch`. The driver appends the session events and streamed frames the
-agent loop would have written, creates child sessions (continuable ones with a
-live Agent) and a `/btw` side conversation with its own Agent, drives the real
-goal and job services, writes compactions, failed provider attempts with their
-retry records, inbox messages (the queued rows of the stream), and notification-pane notices, and
-puts approval, question, and plan-review prompts to you, so reviewing a state
-needs no model, no quota, and no tools. The catalog is kept small, since every
-scenario's goldens are maintained by hand: two long conversations (`mergeDock`,
-`mergeConversations`: the stream, the editor, the notification row, and the
-status row with its views), the `perf-*` scenarios, and the `app-*` scenes of
-the Website's app shots. A finished job wakes the agent,
-which answers with the stub notice at real time. Replay events must keep a
-stored session loadable (for example `request/header` inside an open turn, one
-`retryId` per retry chain), so check that a new replay resumes with
-`dsh --resume`; a later effect (a job line, a notice cleared) is an action of
-its own, never a timer in the driver. A stub model endpoint answers the
-product's own requests. `pnpm run dev --replay <name>` runs the same replay in
-the dev loop; a restart resumes the session, and the driver skips a session
-that already has turns. A component draft adds the scenario that shows its
-states: a replay with `mark()`s and a catalog script of `play`, keys, mouse,
-resizes, and named checkpoints. `.artifacts/replay/driver.log` records each
-action and any failure.
-
-`pnpm run frame <scenario>` runs the scenario without a person: the runner
-(`script/scenarios/runner.mjs`) boots the real `dsh` under a PTY with the
-driver on a control socket, the scenario clock, reduced motion, and no generated
-title, plays the script, and writes each checkpoint to
-`.artifacts/frames/<scenario>-<cols>x<rows>/` as a cell grid, its text, and an
-SVG (`--width`, `--height`, `--keys enter,down,ctrl+c`); `--png` also renders
-the real look in xterm.js (WebGL, the pinned JetBrains Mono) in headless Chrome,
-with keys and the mouse sent as browser events, and writes `<checkpoint>.png`,
-which you can open as an image. `pnpm run scenarios -- --png` (the round and pr
-tiers pass it) renders each checkpoint that differs or has no golden beside the
-merge base's into `.artifacts/verify/shots/` with a contact sheet; pictures
-gate nothing, the grid does. A step settles when
-the screen content stands still with no frame open and no stub request in
-flight; every run fails on a wrapped row, the overflow or crash log, a failed
-driver action, or a refused exit. Runs give identical grids, also side by side
-(boots take turns). Each run has a home, a session store, and storages of its
-own (the workspace is `~/workspace`), and a replay `seed`s stored sessions
-there. The Website's app shots are the goldens of the `app-*` scenarios painted
-as SVG (`script/shots/app.mjs`): the release repaints them.
-Reduced motion is a saved setting: change it in `/settings`.
-
-Code edits apply by restart. Cordis `restart()` re-runs `apply` but the loader's
-plain `import()` returns Node's cached module; Node's internal loader cache
-(`ctx.loader.internal.loadCache`) can be invalidated per module URL, which an
-in-place reload needs but the workbench does not yet use. Theme and
-presentation changes reload in place through `reloadTheme` and keep drafts.
+Public entry changes update exports, source entries, types and files together.
+`script/package-contract.mjs` owns the release set. Run `check:lib`, `check:pack`,
+`check:examples` and `check:agent-docs` for architecture/composition changes.
+Keep English and Chinese READMEs synchronized. Website changes require a strict
+build, LAN preview and human acceptance under the user's current instructions.
 
 ## Worktree and acceptance
 

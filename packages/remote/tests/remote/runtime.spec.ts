@@ -50,6 +50,7 @@ vi.mock('../../src/remote/app.ts', () => ({
         execute: vi.fn(async (text: string) => ({ exit: text === '/quit' })),
         cancel: vi.fn(async () => {}),
         registry: this.registry,
+        subscribeTopology: vi.fn(() => () => {}),
       }
       mocks.apps.push(app)
       return app
@@ -60,7 +61,7 @@ vi.mock('../../src/remote/app.ts', () => ({
 vi.mock('../../src/remote/editor.ts', () => ({
   mountRemoteEditor: vi.fn((_ctx, _screen, _components, _colors, actions) => {
     mocks.editorActions = actions
-    return { notice: { set: mocks.noticeSet }, focus: mocks.editorFocus, dispose: mocks.editorDispose }
+    return { notice: { set: mocks.noticeSet }, focus: mocks.editorFocus, dispose: mocks.editorDispose, refresh: vi.fn(), retheme: vi.fn() }
   }),
 }))
 
@@ -78,9 +79,10 @@ vi.mock('../../src/remote/panels.ts', () => ({
 }))
 
 vi.mock('../../src/remote/status.ts', () => ({
-  RemoteStatusComponent: class {
-    constructor(_components: unknown, _colors: unknown, facts: () => unknown) { mocks.statusFacts = facts }
-  },
+  mountRemoteStatus: vi.fn((_ctx, facts: () => unknown) => {
+    mocks.statusFacts = facts
+    return { refresh: vi.fn(), dispose: vi.fn(async () => {}) }
+  }),
 }))
 
 vi.mock('../../src/transcript/remote-model.ts', () => ({
@@ -88,6 +90,7 @@ vi.mock('../../src/transcript/remote-model.ts', () => ({
     readonly attach = vi.fn()
     readonly snapshot = vi.fn()
     readonly presentation = vi.fn(() => ({}))
+    readonly sessionFacts = vi.fn(() => ({ values: {} }))
     readonly dispose = vi.fn()
 
     constructor(_tools: { get: () => undefined }, refresh: () => void, options: {
@@ -105,6 +108,20 @@ vi.mock('../../src/remote/side-views.ts', () => ({
   RemoteSideViews: class {
     readonly present = vi.fn()
     readonly close = vi.fn()
+    readonly dispose = vi.fn()
+    readonly presentation = vi.fn()
+    readonly selected = vi.fn()
+    readonly current = vi.fn()
+    readonly references = vi.fn(() => [])
+    readonly sessionFacts = vi.fn()
+    readonly navigation = vi.fn()
+    readonly subscribe = vi.fn(() => () => {})
+  },
+}))
+
+vi.mock('../../src/remote/features/sessions.ts', () => ({
+  RemoteSessionsBrowserController: class {
+    readonly open = vi.fn()
     readonly dispose = vi.fn()
   },
 }))
@@ -178,6 +195,7 @@ vi.mock('@ephemeral-ai/mayfly/core', () => ({
       requestRender: vi.fn(),
     })
     ctx.provide('mayflyComponents', {})
+    ctx.provide('mayflyKeymap', { register: vi.fn(() => vi.fn()) })
     ctx.provide('mayflyTheme', { colors: {} })
     ctx.provide('mayflyUiImages', { provide: vi.fn(() => vi.fn()) })
   },
@@ -194,7 +212,7 @@ import { runRemoteFrontend } from '../../src/remote/runtime.ts'
 const startupUrl = 'http://127.0.0.1:3080/?token=secret'
 
 describe('runRemoteFrontend', () => {
-  it('starts, attaches, selects, and tears down through the editor exit action', async () => {
+  it('starts sessionless, attaches, and tears down through the editor exit action', async () => {
     mocks.apps.length = 0
     mocks.editorActions = undefined
     const running = runRemoteFrontend({ startupUrl })
@@ -202,7 +220,7 @@ describe('runRemoteFrontend', () => {
     mocks.editorActions!.exit()
     await running
     expect(mocks.apps[0]!.attach).toHaveBeenCalledWith(startupUrl, undefined)
-    expect(mocks.apps[0]!.selectOrCreate).toHaveBeenCalledOnce()
+    expect(mocks.apps[0]!.selectOrCreate).not.toHaveBeenCalled()
     expect(mocks.apps[0]!.registry.detach).toHaveBeenCalledWith('local')
   })
 
@@ -226,7 +244,7 @@ describe('runRemoteFrontend', () => {
     mocks.conversationOptions!.onCommandResult({ kind: 'error', text: 'command failed' })
     expect(mocks.noticeSet).toHaveBeenCalledWith('command failed')
     expect(mocks.bannerFacts!()).toEqual({})
-    expect(mocks.statusFacts!()).toEqual({})
+    expect(mocks.statusFacts!()).toEqual({ presentation: {}, values: {} })
     expect(mocks.transcriptOptions).toBeDefined()
     expect(mocks.transcriptOptions!.t).toBeDefined()
     mocks.transcriptOptions!.queued()

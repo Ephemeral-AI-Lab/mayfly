@@ -383,3 +383,12 @@ retired `./pane-btw` or `./attach-view` aliases.
 The three shipped skills teach process-local Cordis prototyping, durable external
 plugins, and user-owned composition. They use native dsh services and the four
 Mayfly UI services, without special manifests, author CLIs, or private hosts.
+
+## Split frontend consumers
+
+`./plugin-marketplace` exposes the shared marketplace component, readonly
+model/facts and discovery catalog. Host plugin mutations remain native Remote
+calls in the independent frontend; this subpath never imports Host services.
+The npm 0.1.4-rc.2 reference is immutable; candidate rendering comes from this
+checkout's built package. The approved split workflow develops and tests in
+parallel, overriding the historical tests-last round references above.

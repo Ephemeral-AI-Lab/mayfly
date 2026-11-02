@@ -25,6 +25,7 @@ import type {
 } from './editor/types.ts'
 import type { RemoteFeatureCommandSource } from './features/commands.ts'
 import type { RemoteNotice } from './notice.ts'
+import type { RemoteFeatureSelection } from './features/contracts.ts'
 
 /** Generic ownership of the attached editor features and their lifecycle subscriptions. */
 export interface EditorCompositionHandle {
@@ -44,6 +45,9 @@ interface EditorCompositionOptions {
   readonly exit: () => void | Promise<void>
   /** Feature-owned slash-command contributions routed before Host command dispatch. */
   readonly featureCommands?: RemoteFeatureCommandSource | undefined
+  /** Borrow the exact displayed binding; native SessionFace performs addressed child routing. */
+  readonly selection?: () => (RemoteFeatureSelection & { readonly access: 'interactive' | 'resumable' | 'readonly' }) | undefined
+  readonly subscribeSelection?: (listener: () => void) => () => void
 }
 
 const ALIASES: Readonly<Record<string, readonly string[]>> = {
@@ -56,6 +60,10 @@ const ALIASES: Readonly<Record<string, readonly string[]>> = {
 export function mountEditorComposition(options: EditorCompositionOptions): EditorCompositionHandle {
   let generation = 0
   const session = (): EditorFeatureSession | undefined => {
+    if (options.selection !== undefined) {
+      const current = options.selection()
+      return current === undefined ? undefined : { ref: current.ref, client: current.client, session: current.binding.session, generation, access: current.access }
+    }
     const ref = options.app.registry.current
     const reference = options.app.registry.currentReference
     if (ref === undefined || reference === undefined) return undefined
@@ -63,10 +71,17 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     if (client === undefined) return undefined
     return { ref, client, session: reference.binding.session, generation }
   }
+  const fileClient = (sessionId: SessionId, signal: AbortSignal): HostClient => {
+    signal.throwIfAborted()
+    return requireSession(session(), sessionId)
+  }
   const files: EditorHostFiles = {
-    stat: (sessionId, path, signal) => workspaceFiles(requireSession(session(), sessionId)).stat(sessionId, path, signal),
-    readBytes: (sessionId, path, signal) => workspaceFiles(requireSession(session(), sessionId)).readBytes(sessionId, path, {}, signal),
-    openWorkspacePath: (path, signal) => openWorkspacePath(requireSelection(session()).session, path, signal),
+    stat: (sessionId, path, signal) => workspaceFiles(fileClient(sessionId, signal)).stat(sessionId, path, signal),
+    readBytes: (sessionId, path, signal) => workspaceFiles(fileClient(sessionId, signal)).readBytes(sessionId, path, {}, signal),
+    openWorkspacePath: (path, signal) => {
+      signal.throwIfAborted()
+      return openWorkspacePath(requireSelection(session()).session, path, signal)
+    },
   }
   const local: EditorLocalAdapter = {
     cwd: () => options.localCwd,
@@ -111,7 +126,7 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
       return requireSelection(session())
     },
     notice: options.notice,
-    upload: (sessionId, data, name, signal) => requireSession(session(), sessionId).fileUpload.upload(sessionId, data, name, signal),
+    upload: (sessionId, data, name, signal) => fileClient(sessionId, signal).fileUpload.upload(sessionId, data, name, signal),
     files,
     local,
   }
@@ -143,11 +158,16 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     syncConnections()
     controller.selectionChanged()
   })
+  const offSelection = options.subscribeSelection?.(() => {
+    generation += 1
+    controller.selectionChanged()
+  })
   syncConnections()
   return {
     controller,
     dispose() {
       offTopology()
+      offSelection?.()
       for (const dispose of connectionListeners.values()) dispose()
       connectionListeners.clear()
       connectionGenerations.clear()

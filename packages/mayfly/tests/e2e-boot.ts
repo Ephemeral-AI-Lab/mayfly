@@ -18,6 +18,7 @@ import type {
 } from '../../ui/src/contracts.ts'
 import * as appPlugin from '../src/app/index.ts'
 import * as frontendPlugin from '../src/frontend/index.ts'
+import * as nativeFrontend from '../src/interaction/native-frontend.ts'
 import * as transcriptPlugin from '../src/transcript/index.ts'
 import { initialConversationFacts } from '../src/conversation/facts.ts'
 import type { ConversationProjection } from '../src/conversation/types.ts'
@@ -151,7 +152,10 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
 
   const hooks: DirectHooks = {
     uiProviderApply: uiProviderPlugin.apply,
-    frontendApply: frontendPlugin.apply,
+    frontendApply(ctx) {
+      frontendPlugin.apply(ctx)
+      ctx.plugin(nativeFrontend)
+    },
     themeApply: themeDarkPlugin.apply,
     appApply: appPlugin.apply,
     appInject: appPlugin.inject,

@@ -36,9 +36,9 @@
     "node": ">=24.9.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.5",
-    "@deepseek-ai/cordis-plugin-include": "^1.0.10",
-    "@deepseek-ai/cordis-plugin-loader": "^1.0.6"
+    "@deepseek-ai/cordis": "~4.0.6-alpha.1",
+    "@deepseek-ai/cordis-plugin-include": "~1.0.11-alpha.1",
+    "@deepseek-ai/cordis-plugin-loader": "~1.0.7-alpha.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",

@@ -7,8 +7,6 @@ import z from '@deepseek-ai/schemastery'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
-import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
-import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { DEEPSEEK_KEY } from '../../src/interaction/provider-onboarding.ts'
 import { ONBOARDING_PERMISSION_FIELD, ONBOARDING_PREFERENCES_FORM, ONBOARDING_SIGN_IN, ONBOARDING_STARTUP_FIELD } from '../../src/components/onboarding-wizard.ts'
@@ -43,7 +41,6 @@ afterEach(async () => {
 async function setup(profiles: Record<string, unknown> = {}, configured = false, llm?: unknown) {
   const ctx = new Context()
   contexts.push(ctx)
-  new InteractionStateService(ctx, DEFAULT_SETTINGS)
   const bench = await providerFixture(ctx, profiles, llm, { onboarding: true })
   if (configured) bench.credentials.values.set(DEEPSEEK_KEY, 'configured')
   const agent = { id: 'root', session: {} } as Agent

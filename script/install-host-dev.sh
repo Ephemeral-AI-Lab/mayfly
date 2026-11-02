@@ -14,20 +14,23 @@
 #
 # Environment overrides:
 #   DSH_BIN     dsh executable to use            (default: dsh from PATH)
-#   PROFILE     target Host profile name         (default: mayfly-host)
+#   PROFILE     target Host profile name         (default: mayfly-split-accept)
 #   DSH_HOME    dsh home directory               (default: dsh's own resolution)
 #   DSH_VERSION dsh line to install              (default: the Host manifest's)
 #   MAYFLY_SKIP_BUILD=1  link the existing lib/ build instead of building first
 #
 # After it finishes:
 #   terminal 1:  dsh --profile <PROFILE>            # prints "mayfly host: <url>"
-#   terminal 2:  <REPO>/script/mayfly-remote.sh '<url>'
+#   terminal 2:  MAYFLY_DSH_STARTUP_URL='<url>' <REPO>/script/mayfly-remote.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DSH_BIN="${DSH_BIN:-dsh}"
-PROFILE="${PROFILE:-mayfly-host}"
+PROFILE="${PROFILE:-mayfly-split-accept}"
 PROFILE_DIR="${DSH_HOME:-$HOME/.dsh}/profiles/$PROFILE"
+case "$PROFILE" in
+  mayfly|default) printf 'error: use a dedicated mayfly-<tag> profile\n' >&2; exit 1 ;;
+esac
 HOST_PKG="$REPO_ROOT/packages/host"
 REMOTE_BIN="$REPO_ROOT/packages/remote/lib/remote-bin.js"
 
@@ -46,11 +49,7 @@ DSH_VERSION="${DSH_VERSION:-$(node -e "
 RUNNING="$("$DSH_BIN" --version 2>/dev/null | tr -d '[:space:]')"
 if [ "$RUNNING" != "$DSH_VERSION" ]; then
   say "dsh $RUNNING does not match the Host's pinned line $DSH_VERSION"
-  say "installing @deepseek-ai/dsh@$DSH_VERSION globally"
-  npm install -g "@deepseek-ai/dsh@$DSH_VERSION" >/dev/null \
-    || die "installing dsh $DSH_VERSION failed"
-  RUNNING="$("$DSH_BIN" --version 2>/dev/null | tr -d '[:space:]')"
-  [ "$RUNNING" = "$DSH_VERSION" ] || die "dsh still reports $RUNNING after install"
+  die "use an isolated dsh $DSH_VERSION executable and set DSH_BIN; this installer never changes global packages"
 fi
 
 if [ "${MAYFLY_SKIP_BUILD:-}" = "1" ]; then
@@ -119,7 +118,7 @@ Done. The split Mayfly is installed as profile '$PROFILE'.
   terminal 1 (Host):   $DSH_BIN --profile $PROFILE
                        it prints:  mayfly host: http://127.0.0.1:3080/?token=...
 
-  terminal 2 (TUI):    $REPO_ROOT/script/mayfly-remote.sh '<that url>'
+  terminal 2 (TUI):    MAYFLY_DSH_STARTUP_URL='<that url>' $REPO_ROOT/script/mayfly-remote.sh
 
   or export it once:   export MAYFLY_DSH_STARTUP_URL='<that url>'
                        $REPO_ROOT/script/mayfly-remote.sh
