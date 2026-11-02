@@ -48,6 +48,12 @@ export interface RemoteFeatureHosts {
   subscribe(listener: () => void): () => void
 }
 
+/** App-owned next-Session intent, applied before the first prompt is admitted. */
+export interface RemoteStartupPlan {
+  pending(): boolean | undefined
+  set(active: boolean): void
+}
+
 /** Shared composition available to every focused Remote feature module. */
 export interface RemoteFeatureMountContext {
   readonly ctx: Context
@@ -56,6 +62,7 @@ export interface RemoteFeatureMountContext {
   readonly colors: MayflySemanticColors
   readonly overlays: RemoteOverlayHost
   readonly hosts: RemoteFeatureHosts
+  readonly startupPlan?: RemoteStartupPlan
   readonly notice: RemoteNotice
 }
 

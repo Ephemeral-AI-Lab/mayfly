@@ -18,9 +18,9 @@ const zh = {
   'plan': '计划',
   'plan…': '计划…',
   'plan mode is unavailable': '计划模式不可用',
-  'Plan mode on for the next session': '已为下个会话开启计划模式',
-  'Plan mode off for the next session': '已为下个会话关闭计划模式',
-  'Send a message first: /plan with a message needs a session': '请先发送消息：带消息的 /plan 需要会话',
+  'Plan mode on for the next session': '下一个会话将进入计划模式',
+  'Plan mode off for the next session': '下一个会话将退出计划模式',
+  'Send a message first: /plan with a message needs a session': '请先发送消息：带内容的 /plan 需要会话',
   'Toggle plan mode': '切换计划模式',
   'Enter or leave plan mode': '进入或离开计划模式',
 } as const
@@ -32,7 +32,6 @@ class RemotePlanController {
   private readonly status: MayflyStatusRegistration
   private readonly unregisterKey: () => void
   private plan: PlanProjection | undefined
-  private nextPlan: boolean | undefined
   private stopProjection: (() => void) | undefined
   private commandLifetime = new AbortController()
   private disposed = false
@@ -84,56 +83,53 @@ class RemotePlanController {
       }
       this.stopProjection = projection.subscribe(update)
       update()
-      const pending = this.nextPlan
-      if (pending !== undefined) {
-        this.nextPlan = undefined
-        void this.executeNative(current, pending ? '/plan' : '/plan off', generation)
-      }
     }
     this.publish()
   }
 
   private publish(): void {
-    const pending = this.nextPlan !== undefined || this.plan?.pending === true
-    const active = this.nextPlan === true || this.plan?.active === true || this.plan?.pending === true
+    const nextPlan = this.options.hosts.current() === undefined ? this.options.startupPlan?.pending() : undefined
+    const pending = nextPlan !== undefined || this.plan?.pending === true
+    const active = nextPlan === true || this.plan?.active === true || this.plan?.pending === true
     this.status.set(active ? { kind: 'text', content: this.t(pending ? 'plan…' : 'plan'), tone: 'accent' } : null)
   }
 
-  private async cycle(): Promise<void> {
+  private async cycle(parent?: AbortSignal): Promise<void> {
     const current = this.options.hosts.current()
     if (current === undefined) {
-      this.setNextPlan(!(this.nextPlan ?? false))
+      this.setNextPlan(!(this.options.startupPlan?.pending() ?? false))
       return
     }
     if (this.plan === undefined) {
       this.options.notice.set(this.t('plan mode is unavailable'))
       return
     }
-    await this.executeNative(current, this.plan.active !== this.plan.pending ? '/plan off' : '/plan', this.lifecycle.currentGeneration())
+    await this.executeNative(current, this.plan.active !== this.plan.pending ? '/plan off' : '/plan', this.lifecycle.currentGeneration(), parent)
   }
 
   private setNextPlan(active: boolean): void {
-    this.nextPlan = active
+    if (this.options.startupPlan === undefined) { this.options.notice.set(this.t('plan mode is unavailable')); return }
+    this.options.startupPlan.set(active)
     this.plan = undefined
     this.publish()
     this.options.notice.set(this.t(active ? 'Plan mode on for the next session' : 'Plan mode off for the next session'))
   }
 
-  private async executeNative(current: RemoteFeatureSelection, line: string, generation: number): Promise<void> {
-    const signal = this.commandLifetime.signal
+  private async executeNative(current: RemoteFeatureSelection, line: string, generation: number, parent?: AbortSignal): Promise<void> {
+    const signal = parent === undefined ? this.commandLifetime.signal : AbortSignal.any([this.commandLifetime.signal, parent])
     if (signal.aborted) return
     try {
-      const result = await current.client.remote.commands.execute(current.ref.sessionId, line, [], signal)
+      const result = await current.binding.session.command(line)
       if (!this.lifecycle.owns(generation) || signal.aborted) return
       if (!result.ok) this.options.notice.set(result.error.message)
-      else if (result.value === undefined) this.options.notice.set(this.t('plan mode is unavailable'))
-      else if (result.value.result.text !== undefined) this.options.notice.set(result.value.result.text)
+      else if (!result.value.matched) this.options.notice.set(this.t('plan mode is unavailable'))
     } catch (error) {
       if (this.lifecycle.owns(generation) && !signal.aborted) this.options.notice.set(error instanceof Error ? error.message : String(error))
     }
   }
 
-  readonly execute = async (rawInput: string): Promise<void> => {
+  readonly execute = async (rawInput: string, signal?: AbortSignal): Promise<void> => {
+    if (this.disposed || signal?.aborted === true) return
     const current = this.options.hosts.current()
     const input = rawInput.trim()
     if (current === undefined) {
@@ -141,38 +137,35 @@ class RemotePlanController {
         this.options.notice.set(this.t('Send a message first: /plan with a message needs a session'))
         return
       }
-      // A bare `/plan` toggles, exactly like Shift+Tab; only `/plan on`/`off`
-      // name a direction. Assigning true unconditionally made a second
-      // `/plan` re-enable what it was meant to leave.
-      this.setNextPlan(input === '' ? !(this.nextPlan ?? false) : input !== 'off')
-      return
-    }
-    if (input === '') {
-      await this.cycle()
+      this.setNextPlan(input !== 'off')
       return
     }
     if (!isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) return
-    await this.executeNative(current, `/plan ${input}`, this.lifecycle.currentGeneration())
+    await this.executeNative(current, input === '' ? '/plan' : `/plan ${input}`, this.lifecycle.currentGeneration(), signal)
+  }
+
+  readonly executeMode = async (_rawInput: string, signal?: AbortSignal): Promise<void> => {
+    if (this.disposed || signal?.aborted === true) return
+    await this.cycle(signal)
   }
 }
 
 /** Mount native plan behavior, pending next-Session application, and its badge/key action. */
 export function mountPlanFeature(options: RemoteFeatureContext): () => void {
   const controller = new RemotePlanController(options)
-  // `/mode` is the name the in-process TUI also answers to; the local command
-  // registry has no alias table, so the same executor is registered twice.
   const unregister = [
     options.commands.register({
       name: 'plan',
+      scope: 'sessionless',
       description: 'Enter or leave plan mode',
       input: { hint: '[off]' },
       execute: controller.execute,
     }),
     options.commands.register({
       name: 'mode',
-      description: 'Toggle plan mode (same as /plan or Shift+Tab)',
-      input: { hint: '[off]' },
-      execute: controller.execute,
+      scope: 'sessionless',
+      description: 'Toggle plan mode (same as Shift+Tab)',
+      execute: controller.executeMode,
     }),
   ]
   let disposed = false

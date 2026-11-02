@@ -18,7 +18,7 @@ export function mountRemoteProviderOperations(context: RemoteOperationsContext):
   const t = memoizedLocaleTranslator(context.base.ctx, 'remote-provider').translate
   let disposed = false
   const unregister = context.base.commands.register({
-    name: 'provider',
+    name: 'provider', scope: 'sessionless',
     description: t('Configure providers or choose their models'),
     input: { hint: '[list | edit <provider> | switch <provider> | add]' },
     execute: async (rawInput, signal) => {

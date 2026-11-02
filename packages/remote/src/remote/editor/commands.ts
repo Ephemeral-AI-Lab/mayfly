@@ -29,7 +29,7 @@ interface CommandCatalogOptions {
 }
 
 function selectionKey(selected: EditorFeatureSession | undefined): string {
-  return selected === undefined ? '' : `${selected.ref.host}\0${selected.ref.sessionId}\0${String(selected.generation)}`
+  return selected === undefined ? '' : `${selected.ref.host}\0${selected.ref.sessionId}\0${String(selected.generation)}\0${selected.access ?? 'interactive'}`
 }
 
 /** Owns one current command view and executes each command at most once. */
@@ -71,7 +71,7 @@ export class EditorCommands {
     this.syncSelection()
     if (this.flight !== undefined) return this.flight
     const selected = this.options.session()
-    if (selected === undefined) return Promise.resolve()
+    if (selected === undefined || selected.access === 'readonly') return Promise.resolve()
     const ticket = ++this.epoch
     const key = this.key
     const promise = (async () => {

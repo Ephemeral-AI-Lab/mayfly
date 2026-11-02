@@ -5,16 +5,12 @@ import type { HostClient } from '../../src/client/types.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
 import { mountPlanFeature } from '../../src/remote/features/plan.ts'
 
-interface PlanProjectionState {
-  readonly active: boolean
-  readonly pending: boolean
-}
-
 interface CommandDefinition {
   readonly name: string
   readonly description: string
+  readonly scope?: 'sessionless' | 'session'
   readonly input?: { readonly hint?: string }
-  execute(rawInput: string): Promise<void>
+  execute(rawInput: string, signal?: AbortSignal): Promise<void>
 }
 
 interface KeymapBinding {
@@ -40,10 +36,7 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
     getSnapshot: vi.fn(() => snapshot),
     subscribe: subscribeProjection,
   }
-  const executeNative = vi.fn(async (_session: unknown, _line: string, _args: unknown, _signal: AbortSignal): Promise<unknown> => ({
-    ok: true,
-    value: { result: { text: 'Plan mode is on' } },
-  }))
+  const executeNative = vi.fn(async (_line: string): Promise<unknown> => ({ ok: true, value: { matched: true } }))
   const client = {
     key: HostKey('local'),
     state: { getSnapshot: () => ({ generation: 1 }), subscribe: vi.fn(() => () => {}) },
@@ -52,7 +45,7 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
   const selection: RemoteFeatureSelection = {
     ref: { host: HostKey('local'), sessionId: SessionId('session-1') },
     client,
-    binding: { session: { projections: { faceOf: vi.fn(() => projection) } } },
+    binding: { session: { command: executeNative, projections: { faceOf: vi.fn(() => projection) } } },
   } as unknown as RemoteFeatureSelection
   let selected: RemoteFeatureSelection | undefined = options.session === false ? undefined : selection
   let topology: (() => void) | undefined
@@ -97,7 +90,10 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
     mayflyStatus: { register: registerStatus },
     mayflyKeymap: { register: registerKeymap },
   }
+  let pendingPlan: boolean | undefined = false
+  const startupPlan = { pending: () => pendingPlan, set: vi.fn((active: boolean) => { pendingPlan = active; topology?.() }) }
   const context = {
+    startupPlan,
     ctx,
     hosts,
     notice,
@@ -116,7 +112,7 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
   /** Publish a new plan snapshot through the projection subscription. */
   const emitPlan = (next: unknown): void => {
     snapshot = next
-    for (const listener of [...projectionListeners]) listener()
+    for (const listener of projectionListeners) listener()
   }
   /** Detach the selected Session, leaving the Host attached. */
   const detach = (): void => {
@@ -131,6 +127,8 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
   const keymapBinding = (): KeymapBinding => registerKeymap.mock.calls[0]![0][0]!
   return {
     context,
+    startupPlan,
+    clearPending: () => { pendingPlan = undefined; topology?.() },
     command,
     keymapBinding,
     executeNative,
@@ -159,201 +157,166 @@ beforeEach(() => {
 })
 
 describe('mountPlanFeature', () => {
-  it('registers exactly /plan and /mode, one shift+tab keymap entry, one status row, and the locale catalog', () => {
+  it('registers reference sessionless command metadata and one shared key/status owner', () => {
     const f = fixture()
     const dispose = mountPlanFeature(f.context)
-
-    expect(f.registerCommand).toHaveBeenCalledTimes(2)
     expect([...f.entries.keys()]).toEqual(['plan', 'mode'])
-    expect(f.command('plan').description).toBe('Enter or leave plan mode')
-    expect(f.command('mode').description).toBe('Toggle plan mode (same as /plan or Shift+Tab)')
-    expect(f.command('plan').input).toEqual({ hint: '[off]' })
-    expect(f.command('mode').input).toEqual({ hint: '[off]' })
-
+    expect(f.command('plan')).toMatchObject({ description: 'Enter or leave plan mode', scope: 'sessionless', input: { hint: '[off]' } })
+    expect(f.command('mode')).toMatchObject({ description: 'Toggle plan mode (same as Shift+Tab)', scope: 'sessionless' })
+    expect(f.command('mode').input).toBeUndefined()
     expect(f.registerKeymap).toHaveBeenCalledOnce()
-    expect(f.keymapBinding()).toMatchObject({
-      id: 'mayfly.interaction.cycle-mode',
-      keys: ['shift+tab'],
-      scope: 'editor',
-      description: 'Toggle plan mode',
-    })
-    expect(typeof f.keymapBinding().handler).toBe('function')
-
+    expect(f.keymapBinding()).toMatchObject({ id: 'mayfly.interaction.cycle-mode', keys: ['shift+tab'], scope: 'editor', description: 'Toggle plan mode' })
     expect(f.registerStatus).toHaveBeenCalledExactlyOnceWith({ id: 'mayfly.status.mode', priority: 2 }, null)
-
-    expect(f.locale.register).toHaveBeenCalledOnce()
-    const [namespace, catalog] = f.locale.register.mock.calls[0] as unknown as [
-      string,
-      { readonly en: Readonly<Record<string, string>>, readonly zh: Readonly<Record<string, string>> },
-    ]
+    const [namespace, catalog] = f.locale.register.mock.calls[0] as unknown as [string, { readonly en: Readonly<Record<string, string>>, readonly zh: Readonly<Record<string, string>> }]
     expect(namespace).toBe('remote-plan')
     expect(Object.keys(catalog.en).sort()).toEqual(Object.keys(catalog.zh).sort())
-    expect(catalog.zh['Plan mode on for the next session']).toBe('已为下个会话开启计划模式')
-
-    dispose()
+    expect(catalog.zh['Plan mode on for the next session']).toBe('下一个会话将进入计划模式')
+    dispose(); dispose()
     expect(f.entries.size).toBe(0)
     expect(f.unregisterCommand).toHaveBeenCalledTimes(2)
     expect(f.unregisterKey).toHaveBeenCalledOnce()
     expect(f.status.dispose).toHaveBeenCalledOnce()
-    expect(f.subscribeProjection).toHaveBeenCalledOnce()
     expect(f.unsubscribeProjection).toHaveBeenCalledOnce()
   })
 
-  it('executes the Host native /plan, and /plan off when the plan is active but not pending', async () => {
-    const f = fixture({ plan: { active: false, pending: false } satisfies PlanProjectionState })
+  it('admits /plan idempotently and /plan off explicitly through the exact native Session', async () => {
+    const f = fixture({ plan: { active: true, pending: false } })
     const dispose = mountPlanFeature(f.context)
-
     await f.command('plan').execute('')
-    expect(f.executeNative).toHaveBeenCalledOnce()
-    expect(f.executeNative.mock.calls[0]![0]).toEqual(SessionId('session-1'))
-    expect(f.executeNative.mock.calls[0]![1]).toBe('/plan')
-    expect(f.executeNative.mock.calls[0]![2]).toEqual([])
-    expect(f.executeNative.mock.calls[0]![3]).toBeInstanceOf(AbortSignal)
-    // The Host's own answer is the feedback, not a locally invented sentence.
-    expect(f.notice.set).toHaveBeenCalledWith('Plan mode is on')
-
-    // An active, settled plan is left by asking the Host for `/plan off`; the
-    // projection's own state decides the direction.
-    f.emitPlan({ active: true, pending: false } satisfies PlanProjectionState)
-    f.executeNative.mockClear()
-    await f.command('plan').execute('')
-    // A projection publish may itself resync through the Host, so only the
-    // most recent native line is this command's own decision.
-    expect(f.executeNative.mock.calls.at(-1)![1]).toBe('/plan off')
+    await f.command('plan').execute('off')
+    await f.command('plan').execute('focus on the parser')
+    expect(f.executeNative.mock.calls).toEqual([['/plan'], ['/plan off'], ['/plan focus on the parser']])
+    expect(f.notice.set).not.toHaveBeenCalled()
     dispose()
   })
 
-  it('forwards a plan argument verbatim and sends Shift+Tab through the same cycle path', async () => {
-    const f = fixture({ plan: { active: false, pending: false } satisfies PlanProjectionState })
+  it('cycles only /mode and Shift+Tab from native active/pending facts', async () => {
+    const f = fixture({ plan: { active: true, pending: false } })
     const dispose = mountPlanFeature(f.context)
-
-    await f.command('mode').execute('  focus on the parser  ')
-    expect(f.executeNative).toHaveBeenCalledOnce()
-    expect(f.executeNative.mock.calls[0]![1]).toBe('/plan focus on the parser')
-
-    f.executeNative.mockClear()
+    await f.command('mode').execute('')
+    f.emitPlan({ active: true, pending: true })
+    await f.command('mode').execute('')
+    f.emitPlan({ active: false, pending: false })
     f.keymapBinding().handler()
-    await vi.waitFor(() => { expect(f.executeNative).toHaveBeenCalledOnce() })
-    expect(f.executeNative.mock.calls[0]![1]).toBe('/plan')
+    await vi.waitFor(() => { expect(f.executeNative).toHaveBeenCalledTimes(3) })
+    expect(f.executeNative.mock.calls).toEqual([['/plan off'], ['/plan'], ['/plan']])
     dispose()
   })
 
-  it('tears down idempotently, running each registration disposer once', async () => {
-    const f = fixture()
-    const dispose = mountPlanFeature(f.context)
-    dispose()
-    dispose()
-    // A second teardown must not re-run registration disposers or the status row.
-    expect(f.unregisterKey).toHaveBeenCalledOnce()
-    expect(f.status.dispose).toHaveBeenCalledOnce()
-  })
-
-  it('sets the pending next-session flag without a Host and notices each state', async () => {
+  it('stores startup selection only in the App seam and keeps repeated /plan enabled', async () => {
     const f = fixture({ session: false })
     const dispose = mountPlanFeature(f.context)
-
     await f.command('plan').execute('')
-    expect(f.notice.set).toHaveBeenLastCalledWith('Plan mode on for the next session')
+    await f.command('plan').execute('')
+    expect(f.startupPlan.pending()).toBe(true)
     expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'text', content: 'plan…', tone: 'accent' })
-    expect(f.executeNative).not.toHaveBeenCalled()
-
-    // A bare second `/plan` toggles back off, the same way Shift+Tab does; the
-    // two entry points must not disagree about what "toggle" means.
-    await f.command('plan').execute('')
-    expect(f.notice.set).toHaveBeenLastCalledWith('Plan mode off for the next session')
+    expect(f.notice.set).toHaveBeenLastCalledWith('Plan mode on for the next session')
+    await f.command('mode').execute('')
+    expect(f.startupPlan.pending()).toBe(false)
     expect(f.status.set).toHaveBeenLastCalledWith(null)
-
-    // `/plan off` stays available as the explicit direction.
+    f.keymapBinding().handler()
+    expect(f.startupPlan.pending()).toBe(true)
     await f.command('plan').execute('off')
+    expect(f.startupPlan.pending()).toBe(false)
     expect(f.notice.set).toHaveBeenLastCalledWith('Plan mode off for the next session')
-    expect(f.status.set).toHaveBeenLastCalledWith(null)
-
-    // Text cannot be queued for a Session that does not exist; the notice says so
-    // and no Host command is sent.
-    await f.command('plan').execute('tighten the parser')
+    await f.command('plan').execute('a task')
     expect(f.notice.set).toHaveBeenLastCalledWith('Send a message first: /plan with a message needs a session')
     expect(f.executeNative).not.toHaveBeenCalled()
     dispose()
   })
 
-  it('applies the pending flag to the next selected session exactly once', async () => {
-    const f = fixture({ session: false, plan: { active: false, pending: false } satisfies PlanProjectionState })
+  it('leaves startup admission to App preparePrompt and never races selection with an async write', async () => {
+    const f = fixture({ session: false, plan: { active: false, pending: false } })
     const dispose = mountPlanFeature(f.context)
-
     await f.command('plan').execute('')
+    f.attach(); f.fireTopology()
     expect(f.executeNative).not.toHaveBeenCalled()
-
-    f.attach()
-    expect(f.executeNative).toHaveBeenCalledOnce()
-    expect(f.executeNative.mock.calls[0]![1]).toBe('/plan')
-
-    // The flag is consumed, so a later re-attach does not repeat the write.
-    f.fireTopology()
-    expect(f.executeNative).toHaveBeenCalledOnce()
+    expect(f.startupPlan.pending()).toBe(true)
+    f.clearPending()
+    f.emitPlan({ active: true, pending: false })
+    expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'text', content: 'plan', tone: 'accent' })
     dispose()
   })
 
-  it('notices plan mode is unavailable when the projection exposes no state and calls no Host', async () => {
-    const f = fixture({ plan: undefined })
+  it('reports absent startup coordination and absent native projection without writing', async () => {
+    const startup = fixture({ session: false })
+    const context = { ...startup.context }; delete context.startupPlan
+    const releaseStartup = mountPlanFeature(context)
+    await startup.command('plan').execute('')
+    expect(startup.notice.set).toHaveBeenLastCalledWith('plan mode is unavailable')
+    releaseStartup()
+    const f = fixture()
     const dispose = mountPlanFeature(f.context)
-    expect(f.status.set).toHaveBeenLastCalledWith(null)
-
-    await f.command('plan').execute('')
-
+    await f.command('mode').execute('')
     expect(f.notice.set).toHaveBeenCalledWith('plan mode is unavailable')
     expect(f.executeNative).not.toHaveBeenCalled()
     dispose()
   })
 
-  it('publishes the plan badge while active, a pending ellipsis while pending, and null otherwise', async () => {
-    const f = fixture({ plan: { active: true, pending: false } satisfies PlanProjectionState })
+  it('publishes settled/pending native plan badges and clears them on detach', () => {
+    const f = fixture({ plan: { active: true, pending: false } })
     const dispose = mountPlanFeature(f.context)
-
     expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'text', content: 'plan', tone: 'accent' })
-
-    f.emitPlan({ active: true, pending: true } satisfies PlanProjectionState)
+    f.emitPlan({ active: true, pending: true })
     expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'text', content: 'plan…', tone: 'accent' })
-
-    f.emitPlan({ active: false, pending: false } satisfies PlanProjectionState)
+    f.emitPlan({ active: false, pending: false })
     expect(f.status.set).toHaveBeenLastCalledWith(null)
-
-    f.emitPlan({ active: true, pending: false } satisfies PlanProjectionState)
-    expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'text', content: 'plan', tone: 'accent' })
     f.detach()
     expect(f.status.set).toHaveBeenLastCalledWith(null)
     dispose()
   })
 
-  it('aborts the attach signal on the next generation and drops the stale Host answer', async () => {
-    const f = fixture({ plan: { active: false, pending: false } satisfies PlanProjectionState })
+  it('reports native failure/unmatched admissions without replaying command result text', async () => {
+    const f = fixture({ plan: { active: false, pending: false } })
+    const dispose = mountPlanFeature(f.context)
+    f.executeNative.mockResolvedValueOnce({ ok: false, error: { message: 'Host refused' } })
+    await f.command('plan').execute('')
+    expect(f.notice.set).toHaveBeenLastCalledWith('Host refused')
+    f.executeNative.mockResolvedValueOnce({ ok: true, value: { matched: false } })
+    await f.command('plan').execute('')
+    expect(f.notice.set).toHaveBeenLastCalledWith('plan mode is unavailable')
+    f.executeNative.mockRejectedValueOnce(new Error('offline'))
+    await f.command('plan').execute('')
+    expect(f.notice.set).toHaveBeenLastCalledWith('offline')
+    dispose()
+  })
+
+  it('fences late native failures after Host selection retirement or caller cancellation', async () => {
+    const f = fixture({ plan: { active: false, pending: false } })
     let release!: (result: unknown) => void
-    f.executeNative.mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
+    f.executeNative.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
     const dispose = mountPlanFeature(f.context)
-
-    const run = f.command('plan').execute('')
-    const signal = f.executeNative.mock.calls[0]![3] as AbortSignal
-    expect(signal.aborted).toBe(false)
-
-    // A selection change re-attaches, which must cancel the previous generation's
-    // command instead of letting its answer paint the new one.
-    f.emitPlan({ active: true, pending: false } satisfies PlanProjectionState)
+    const pending = f.command('plan').execute('')
     f.detach()
-    expect(signal.aborted).toBe(true)
-    release({ ok: true, value: { result: { text: 'Plan mode is on' } } })
-    await run
+    release({ ok: false, error: { message: 'old Host' } })
+    await pending
     expect(f.notice.set).not.toHaveBeenCalled()
+    f.attach()
+    f.executeNative.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+    const abort = new AbortController()
+    const cancelled = f.command('plan').execute('', abort.signal)
+    abort.abort()
+    release({ ok: false, error: { message: 'cancelled Host' } })
+    await cancelled
+    expect(f.notice.set).not.toHaveBeenCalled()
+    const count = f.executeNative.mock.calls.length
+    await f.command('mode').execute('', abort.signal)
+    expect(f.executeNative).toHaveBeenCalledTimes(count)
     dispose()
   })
 
-  it('aborts the in-flight command when the feature is disposed', async () => {
-    const f = fixture({ plan: { active: false, pending: false } satisfies PlanProjectionState })
-    f.executeNative.mockImplementationOnce(() => new Promise(() => {}))
+  it('ignores held commands and native completions after unload', async () => {
+    const f = fixture({ plan: { active: false, pending: false } })
+    let release!: (result: unknown) => void
+    f.executeNative.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
     const dispose = mountPlanFeature(f.context)
-
-    void f.command('plan').execute('')
-    const signal = f.executeNative.mock.calls[0]![3] as AbortSignal
-    expect(signal.aborted).toBe(false)
+    const command = f.command('plan')
+    const pending = command.execute('')
     dispose()
-    expect(signal.aborted).toBe(true)
+    release({ ok: false, error: { message: 'unloaded' } })
+    await pending
+    await command.execute('')
+    expect(f.executeNative).toHaveBeenCalledOnce()
+    expect(f.notice.set).not.toHaveBeenCalled()
   })
 })

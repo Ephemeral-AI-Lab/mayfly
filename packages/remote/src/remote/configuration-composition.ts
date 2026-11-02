@@ -57,7 +57,7 @@ export function mountRemoteConfigurationComposition(
   const usage = (name: string): Error => new Error(`Usage: /${name}`)
   const unregister = [
     base.commands.register({
-      name: 'model',
+      name: 'model', scope: 'sessionless',
       description: 'Switch the model (no argument opens the picker)',
       input: { hint: '[name]' },
       execute: async rawInput => {
@@ -65,12 +65,12 @@ export function mountRemoteConfigurationComposition(
       },
     }),
     base.commands.register({
-      name: 'effort', aliases: ['thinking'],
+      name: 'effort', scope: 'sessionless', aliases: ['thinking'],
       description: 'Switch the thinking effort of the current model', input: { hint: '[level]' },
       execute: async rawInput => { await features.models.effort(rawInput) },
     }),
     base.commands.register({
-      name: 'providers',
+      name: 'providers', scope: 'sessionless',
       hidden: true,
       description: 'Configure model providers, OAuth sign-in, and credentials',
       execute: async (rawInput, signal) => {
@@ -86,7 +86,7 @@ export function mountRemoteConfigurationComposition(
       },
     }),
     base.commands.register({
-      name: 'account',
+      name: 'account', scope: 'sessionless', group: 'remote',
       description: 'Open the DeepSeek account panel',
       execute: async rawInput => {
         if (rawInput.trim() !== '') throw usage('account')
@@ -95,7 +95,7 @@ export function mountRemoteConfigurationComposition(
       },
     }),
     base.commands.register({
-      name: 'settings',
+      name: 'settings', scope: 'sessionless',
       description: 'Browse settings namespaces and edit the settings document',
       execute: async rawInput => {
         if (rawInput.trim() !== '') throw usage('settings')
@@ -103,7 +103,7 @@ export function mountRemoteConfigurationComposition(
       },
     }),
     base.commands.register({
-      name: 'permissions',
+      name: 'permissions', scope: 'sessionless',
       description: 'Switch the permission preset for the session or by default',
       execute: async rawInput => {
         if (rawInput.trim() !== '') throw usage('permissions')
@@ -111,7 +111,7 @@ export function mountRemoteConfigurationComposition(
       },
     }),
     base.commands.register({
-      name: 'presets',
+      name: 'presets', scope: 'sessionless',
       hidden: true,
       description: 'Switch the agent preset for the session or by default',
       execute: async rawInput => {
@@ -120,8 +120,8 @@ export function mountRemoteConfigurationComposition(
       },
     }),
     base.commands.register({
-      name: 'theme',
-      description: 'Choose the interface theme',
+      name: 'theme', scope: 'sessionless',
+      description: 'Switch the color theme',
       input: { hint: '[theme]' },
       execute: async rawInput => {
         const theme = rawInput.trim()
@@ -130,7 +130,7 @@ export function mountRemoteConfigurationComposition(
       },
     }),
     base.commands.register({
-      name: 'language',
+      name: 'language', scope: 'sessionless', group: 'remote',
       description: 'Choose the interface language',
       input: { hint: '[en|zh]' },
       execute: async rawInput => {
@@ -140,7 +140,7 @@ export function mountRemoteConfigurationComposition(
       },
     }),
     base.commands.register({
-      name: 'onboarding',
+      name: 'onboarding', scope: 'sessionless', group: 'remote',
       description: 'Run the first-run setup guide',
       execute: rawInput => {
         if (rawInput.trim() !== '') throw usage('onboarding')

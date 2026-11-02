@@ -24,6 +24,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Attaching stays Session-independent: the first submitted prompt creates a
   Session, while `/new` and `/clear` release only the primary view. Concurrent
   initial prompts share creation; clearing or detaching fences its late result.
+  App owns startup plan intent through `startupPlan`; the plan feature only
+  reads/writes that intent. Prompt preparation awaits native plan admission
+  before admitting the first prompt. Selection listeners never apply it in the
+  background. Native Session command outcomes render from their durable events.
   The editor uses shared readonly `Editor` and placeholder models. Theme swaps
   call its `retheme` handle around the same native editor, preserving its draft,
   caret, undo, history, paste, and completion state. Notification clocks and core
