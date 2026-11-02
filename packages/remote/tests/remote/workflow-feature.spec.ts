@@ -287,7 +287,7 @@ describe('Host Workflow DTO presentation', () => {
   it('accepts Client phase metadata and passes the canonical renderer the phase titles it presents', async () => {
     const f = await fixture()
     const data = run({ currentPhase: 'Check', phasesSeen: ['Inspect', 'Check'], phases: [
-      { title: 'Inspect', detail: undefined, provider: undefined, model: undefined },
+      { title: 'Inspect' },
       { title: 'Check', detail: 'Validate the code', provider: 'native-provider', model: 'native-model' },
     ] })
     const titles = { ...data, phases: data.phases!.map(phase => ({ title: phase.title })) }

@@ -104,7 +104,7 @@ describe('RemoteBannerComponent', () => {
   it('reserves no pending splash rows and paints the shared recent-session launch screen at narrow and wide sizes', () => {
     let splash: SplashContent | 'pending' = 'pending'
     let rows = 24
-    const banner = new RemoteBannerComponent(colors, components, () => facts(undefined), {
+    const banner = new RemoteBannerComponent(plainColors(), components, () => facts(undefined), {
       splash: () => splash,
       rows: () => rows,
     })
@@ -122,7 +122,7 @@ describe('RemoteBannerComponent', () => {
     expect(plain(banner.render(100)).join('\n')).toContain('最近的会话很长')
     rows = 12
     expect(plain(banner.render(100)).join('\n')).toContain('↵ resume')
-    const noViewport = new RemoteBannerComponent(colors, components, () => facts(undefined), { splash: () => splash })
+    const noViewport = new RemoteBannerComponent(plainColors(), components, () => facts(undefined), { splash: () => splash })
     expect(noViewport.render(80).length).toBeGreaterThan(0)
   })
 })

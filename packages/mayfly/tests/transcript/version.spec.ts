@@ -96,7 +96,7 @@ describe('the Mayfly release line', () => {
       for (const table of ['dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies'] as const) {
         for (const [name, spec] of Object.entries(pkg[table] ?? {})) {
           if (!name.startsWith('@ephemeral-ai/') || name === pkg.name || !releaseNames.has(name)) continue
-          expect(spec, `${pkg.name} ${table} ${name}`).toBe(pkg.name === '@ephemeral-ai/mayfly-remote' ? RELEASE_VERSION : 'workspace:*')
+          expect(spec, `${pkg.name} ${table} ${name}`).toBe(pkg.name === '@ephemeral-ai/mayfly-remote' || name === '@ephemeral-ai/mayfly-remote' ? RELEASE_VERSION : 'workspace:*')
         }
       }
     }
