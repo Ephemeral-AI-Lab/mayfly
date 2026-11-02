@@ -54,7 +54,8 @@ export async function readCopiedImage(
     handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW)
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
-    return { kind: 'file-failed', detail: `${name} could not be opened (${String(code)})` }
+    const reason = code === 'ELOOP' ? 'symbolic links are not accepted' : `could not be opened (${String(code)})`
+    return { kind: 'file-failed', detail: `${name} ${reason}` }
   }
   try {
     const stat = await handle.stat()
@@ -67,6 +68,8 @@ export async function readCopiedImage(
       return { kind: 'file-failed', detail: `${name} is not a supported PNG, JPEG, WebP, or GIF image` }
     }
     return { data: new Uint8Array(data), mediaType, name }
+  } catch (error) {
+    return { kind: 'file-failed', detail: `${name} could not be read (${String((error as NodeJS.ErrnoException).code)})` }
   } finally {
     await handle.close()
   }

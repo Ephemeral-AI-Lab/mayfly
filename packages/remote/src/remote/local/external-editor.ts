@@ -32,8 +32,8 @@ export async function editLocalText(
 ): Promise<string | undefined> {
   const directory = await mkdtemp(join(tmpdir(), 'mayfly-remote-edit-'))
   const file = join(directory, 'prompt.md')
-  await writeFile(file, initialText, 'utf8')
   try {
+    await writeFile(file, initialText, 'utf8')
     const code = await runInheritedShell(`${command} ${quoteLocalShellArg(file)}`, signal)
     if (code !== 0 || signal.aborted) return undefined
     return await readFile(file, 'utf8')

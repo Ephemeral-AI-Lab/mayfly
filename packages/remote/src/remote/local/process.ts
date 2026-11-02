@@ -119,7 +119,7 @@ export class LocalProcessOwner {
   /** Link one operation to feature teardown and return its independent signal. */
   operation(parent?: AbortSignal): { readonly signal: AbortSignal, readonly done: () => void } {
     const controller = new AbortController()
-    if (this.disposed) controller.abort()
+    if (this.disposed || parent?.aborted === true) controller.abort()
     this.controllers.add(controller)
     const abort = (): void => { controller.abort() }
     parent?.addEventListener('abort', abort, { once: true })
