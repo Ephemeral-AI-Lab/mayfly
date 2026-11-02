@@ -103,7 +103,10 @@ export class RemotePresentSlot {
     const key = viewKey(ref)
     this.owned.get(key)?.release()
     this.owned.set(key, lease)
-    this.options.present?.(ref, binding, facts())
+    const metadata = facts()
+    const previousBtw = this.registerBtw(ref, metadata)
+    this.options.present?.(ref, binding, metadata)
+    if (previousBtw !== undefined) this.close(previousBtw)
   }
 
   /** Present a binding owned elsewhere, for example the live BTW service lease. */
@@ -113,11 +116,20 @@ export class RemotePresentSlot {
     const key = viewKey(ref)
     this.owned.get(key)?.release()
     this.owned.delete(key)
-    if (facts.kind === 'btw') {
-      if (this.btw !== undefined && viewKey(this.btw) !== key) this.close(this.btw)
-      this.btw = ref
-    }
+    const previousBtw = this.registerBtw(ref, facts)
     this.options.present?.(ref, binding, facts)
+    if (previousBtw !== undefined) this.close(previousBtw)
+  }
+
+  /** Listed conversations keep only descriptors; native bindings belong to displayed/F7 residents. */
+  retainOnly(refs: readonly SessionRef[]): void {
+    const retained = new Set(refs.map(viewKey))
+    if (this.pending !== undefined && !retained.has(viewKey(this.pending.ref))) this.releasePending()
+    for (const [key, lease] of this.owned) {
+      if (retained.has(key)) continue
+      this.owned.delete(key)
+      lease.release()
+    }
   }
 
   /** Close one exact view, or all views at composition unload; Host work keeps running. */
@@ -157,6 +169,13 @@ export class RemotePresentSlot {
     if (candidate.released) return
     candidate.released = true
     candidate.lease.release()
+  }
+
+  private registerBtw(ref: SessionRef, facts: RemotePresentedViewFacts): SessionRef | undefined {
+    if (facts.kind !== 'btw') return undefined
+    const previous = this.btw
+    this.btw = ref
+    return previous !== undefined && viewKey(previous) !== viewKey(ref) ? previous : undefined
   }
 }
 

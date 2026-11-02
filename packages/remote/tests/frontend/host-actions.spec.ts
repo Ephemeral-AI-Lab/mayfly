@@ -7,6 +7,7 @@ import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { HostKey, type HostClient, type SessionRef } from '../../src/client/types.ts'
 import { HostActions, type HostPromptInput } from '../../src/frontend/host-actions.ts'
 import { HostNotAttachedError, HostRegistry } from '../../src/frontend/host-registry.ts'
+import { RemoteBtwService } from '../../src/frontend/btw.ts'
 
 function sessionId(value: string): SessionId {
   return value as SessionId
@@ -117,6 +118,32 @@ function makeActionHost(key: HostKey, session: SessionFace): {
 }
 
 describe('HostActions', () => {
+  it('reacquires listed BTW forks as independent native ordinary Session references', async () => {
+    const host = HostKey('btw-residency')
+    const client = makeActionHost(host, makeSession(sessionId('shared')).session)
+    const registry = new HostRegistry(() => client.client)
+    const actions = new HostActions(registry)
+    const btw = new RemoteBtwService(actions, registry)
+    await registry.attach(host)
+    await registry.select(sessionRef(host))
+    const selected = registry.currentReference
+    const child = { host, sessionId: sessionId('fork') }
+    const first = btw.retainBtwView(child)
+    await first.ready
+    expect(client.retain).toHaveBeenLastCalledWith('fork', expect.any(Object))
+    expect(registry.currentReference).toBe(selected)
+    first.release()
+    const reference = client.references.at(-1)!
+    expect(reference.release).toHaveBeenCalledOnce()
+    const restored = btw.retainBtwView(child, 'remote-btw-retained')
+    await restored.ready
+    expect(client.references.at(-1)).not.toBe(reference)
+    expect(registry.current).toEqual(sessionRef(host))
+    restored.release()
+    await btw.dispose()
+    await registry.detach(host)
+  })
+
   it('routes equal SessionIds through their owning Hosts with stable request identities', async () => {
     const hostA = HostKey('actions-a')
     const hostB = HostKey('actions-b')

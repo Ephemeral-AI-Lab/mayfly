@@ -38,6 +38,8 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   archive actions. Listing and detail reads never retain a Session. Child
   conversations use the operations composition's shared presented-view slot;
   readonly native access metadata and BTW history floors accompany bindings.
+  Only displayed and F7 counterpart views retain native bindings. Listed child
+  and BTW descriptors reacquire through this same owner when displayed again.
 - Theme/language pickers, settings rail, and permission decision lane use the
   shared reference wire builders. The settings rail submits both native
   descriptor and field-projection revisions; a conflict never refreshes and

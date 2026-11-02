@@ -20,6 +20,41 @@ function lease(ready = Promise.resolve(binding)) {
 }
 
 describe('RemotePresentSlot', () => {
+  it('releases listed bindings without removing descriptors and reacquires BTW through the same owner', async () => {
+    const present = vi.fn()
+    const closePresent = vi.fn()
+    const slot = new RemotePresentSlot({ present, closePresent })
+    const child = { ...ref, sessionId: SessionId('other') }
+    const first = lease()
+    const second = lease()
+    await slot.adopt(ref, first, () => readonlyFacts)
+    await slot.adopt(child, second, () => readonlyFacts)
+    slot.retainOnly([child])
+    expect(first.release).toHaveBeenCalledOnce()
+    expect(second.release).not.toHaveBeenCalled()
+    expect(closePresent).not.toHaveBeenCalled()
+    const restored = lease()
+    await slot.adopt(ref, restored, () => readonlyFacts)
+    const btw = { ...ref, sessionId: SessionId('btw') }
+    const btwLease = lease()
+    await slot.adopt(btw, btwLease, () => ({ kind: 'btw', access: 'interactive', historyFloorSeq: 5 }))
+    slot.retainOnly([ref])
+    expect(btwLease.release).toHaveBeenCalledOnce()
+    expect(restored.release).not.toHaveBeenCalled()
+    slot.closeBtw()
+    expect(closePresent).toHaveBeenLastCalledWith(btw)
+    const pending = deferred<SessionBinding>()
+    const listed = lease(pending.promise)
+    const opening = slot.adopt(child, listed, () => readonlyFacts)
+    slot.retainOnly([ref])
+    expect(listed.release).toHaveBeenCalledOnce()
+    pending.resolve(binding)
+    await opening
+    expect(present).toHaveBeenCalledTimes(4)
+    slot.dispose()
+    expect(restored.release).toHaveBeenCalledOnce()
+  })
+
   it('retains different children and Hosts independently while replacing only the single BTW view', async () => {
     const present = vi.fn()
     const closePresent = vi.fn()

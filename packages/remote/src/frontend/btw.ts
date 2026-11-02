@@ -165,6 +165,11 @@ export class RemoteBtwService {
     return this.actions.retainView(child, role, address)
   }
 
+  /** Reacquire a listed ordinary BTW fork without retaining its former display or changing the primary. */
+  retainBtwView(child: SessionRef, role: HostViewRole = 'btw-retained'): HostViewLease {
+    return this.actions.retainView(child, role)
+  }
+
   /** Close only the displayed BTW lease; the Host Session and its work remain untouched. */
   close(): void {
     this.generation += 1

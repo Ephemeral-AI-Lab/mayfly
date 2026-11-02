@@ -8,7 +8,7 @@
  */
 
 import type { RemoteFeatureCommandSource } from './features/commands.ts'
-import type { RemoteFeatureContext } from './features.ts'
+import type { RemoteFeatureContext, RemoteFeatureSelection } from './features.ts'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type { HostClient, SessionRef } from '../client/types.ts'
 import { RemoteFeatureOperation } from './features/official.ts'
@@ -29,6 +29,7 @@ import {
   RemotePresentSlot,
   type RemoteOperationsContext,
   type RemoteOperationsOptions,
+  type RemotePresentedViewFacts,
 } from './operations/support.ts'
 
 /** Options owned by the integration layer mounting this composition. */
@@ -50,6 +51,10 @@ export interface RemoteOperationsCompositionHandle {
   readonly commands: RemoteFeatureCommandSource
   /** Open a listed native child through the same owned side-view slot as `/agents`. */
   openChild(client: HostClient, address: SubagentAddress, signal: AbortSignal): Promise<void>
+  /** Reacquire a listed ordinary BTW fork through this same side-view lease owner. */
+  openBtw(client: HostClient, ref: SessionRef, facts: RemotePresentedViewFacts, signal: AbortSignal): Promise<void>
+  /** Release native bindings of listed descriptors without removing any conversation. */
+  retainOnly(refs: readonly SessionRef[]): void
   /** Release one exact retained side view, including the BTW service lease when applicable. */
   closeChild(ref: SessionRef): void
   dispose(): void
@@ -92,13 +97,22 @@ export function mountRemoteOperationsComposition(
     presentSlot,
   }
   const disposers: Array<() => void> = []
+  const lifetime = new AbortController()
   let disposed = false
   const dispose = (): void => {
     if (disposed) return
     disposed = true
+    lifetime.abort()
     presentSlot.close()
     presentSlot.dispose()
     for (const disposer of disposers.splice(0).reverse()) disposer()
+  }
+  const beginViewRead = (client: HostClient, current: RemoteFeatureSelection, signal: AbortSignal): RemoteFeatureOperation => {
+    const operation = new RemoteFeatureOperation(base, client, current, AbortSignal.any([signal, lifetime.signal]))
+    const invalidate = (): void => { if (!operation.valid()) operation.dispose() }
+    operation.onDispose(base.hosts.subscribe(invalidate))
+    operation.onDispose(client.state.subscribe(invalidate))
+    return operation
   }
   try {
     for (const mount of MOUNTS) disposers.push(mount(context))
@@ -113,10 +127,27 @@ export function mountRemoteOperationsComposition(
       if (btw?.host === ref.host && btw.sessionId === ref.sessionId) options.btw.close()
       presentSlot.close(ref)
     },
+    retainOnly(refs) {
+      presentSlot.retainOnly(refs)
+      const btw = options.btw.current()?.child
+      if (btw !== undefined && !refs.some(ref => ref.host === btw.host && ref.sessionId === btw.sessionId)) options.btw.close()
+    },
+    async openBtw(client, ref, facts, signal) {
+      const current = base.hosts.current()
+      if (disposed || signal.aborted || current?.client !== client || ref.host !== client.key) return
+      const operation = beginViewRead(client, current, signal)
+      try {
+        if (!operation.valid()) return
+        const lease = options.btw.retainBtwView(ref, 'remote-btw-retained')
+        await presentSlot.adopt(ref, lease, () => ({ ...facts, kind: 'btw', access: 'interactive' }), { signal: operation.signal, isCurrent: () => operation.valid() })
+      } catch (error) {
+        if (operation.valid()) throw error
+      } finally { operation.dispose() }
+    },
     async openChild(client, address, signal) {
       const current = base.hosts.current()
       if (disposed || signal.aborted || current?.client !== client) return
-      const operation = new RemoteFeatureOperation(base, client, current, signal)
+      const operation = beginViewRead(client, current, signal)
       try {
         if (!operation.valid()) return
         if (address.mode === 'unknown') await client.sessions.refreshProjections(address.parentSessionId)
@@ -130,6 +161,8 @@ export function mountRemoteOperationsComposition(
           const summary = client.sessions.list.getSnapshot().byId[child.sessionId]
           return { kind: 'subagent', access: resolved.mode === 'continuable' ? 'resumable' : 'readonly', address: resolved, ...summary?.displayTitle === undefined ? {} : { label: summary.displayTitle }, ...summary?.cwd === undefined ? {} : { cwd: summary.cwd } }
         }, { signal: operation.signal, isCurrent: () => operation.valid() })
+      } catch (error) {
+        if (operation.valid()) throw error
       } finally { operation.dispose() }
     },
     dispose,

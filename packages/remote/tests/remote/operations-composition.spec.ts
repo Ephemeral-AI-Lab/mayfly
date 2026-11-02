@@ -36,13 +36,16 @@ function fixture(options: { readonly empty?: boolean, readonly noCallbacks?: boo
   const ref = { host: HostKey('one'), sessionId: SessionId('lead') }
   const address: SubagentAddress = { parentSessionId: ref.sessionId, childSessionId: SessionId('child'), mode: 'continuable' }
   const binding = {} as SessionBinding
+  const topology = new Set<() => void>()
+  const connection = new Set<() => void>()
+  const subscribe = (listeners: Set<() => void>) => (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } }
   let generation = 1
   const subagentAddress = vi.fn((_id: ReturnType<typeof SessionId>): SubagentAddress | undefined => address)
   const refreshProjections = vi.fn(async (_id: ReturnType<typeof SessionId>) => {})
-  const client = { key: ref.host, state: { getSnapshot: () => ({ generation }) }, sessions: { subagentAddress, refreshProjections, list: { getSnapshot: () => ({ byId: options.empty ? {} : { child: { displayTitle: 'Worker', cwd: '/host/repo' } } }) } } } as unknown as HostClient
+  const client = { key: ref.host, state: { getSnapshot: () => ({ generation }), subscribe: subscribe(connection) }, sessions: { subagentAddress, refreshProjections, list: { getSnapshot: () => ({ byId: options.empty ? {} : { child: { displayTitle: 'Worker', cwd: '/host/repo' } } }) } } } as unknown as HostClient
   let current: RemoteFeatureSelection | undefined = { client, ref, binding }
   let attached: readonly HostClient[] = [client]
-  const base = { hosts: { current: () => current, list: () => attached }, commands: {} } as unknown as RemoteFeatureContext
+  const base = { hosts: { current: () => current, list: () => attached, subscribe: subscribe(topology) }, commands: {} } as unknown as RemoteFeatureContext
   const leases: Array<{ ready: Promise<SessionBinding>, release: ReturnType<typeof vi.fn> }> = []
   const retain = vi.fn(() => {
     const lease = { ready: Promise.resolve(binding), release: vi.fn() }
@@ -50,20 +53,99 @@ function fixture(options: { readonly empty?: boolean, readonly noCallbacks?: boo
     return lease
   })
   const activeBtw = vi.fn(() => undefined as { readonly child: typeof ref } | undefined)
+  const retainBtw = vi.fn(retain)
   const closeBtw = vi.fn()
   const present = vi.fn()
   const closePresent = vi.fn()
   const copy = vi.fn(async () => {})
-  const handle = mountRemoteOperationsComposition(base, { localCwd: '/local', btw: { retainColdSubagentView: retain, current: activeBtw, close: closeBtw } as never, ...options.noCallbacks ? {} : { present, closePresent, copy } })
+  const handle = mountRemoteOperationsComposition(base, { localCwd: '/local', btw: { retainColdSubagentView: retain, retainBtwView: retainBtw, current: activeBtw, close: closeBtw } as never, ...options.noCallbacks ? {} : { present, closePresent, copy } })
   const contexts = mounts.mount.mock.calls.map(call => call[0] as RemoteOperationsContext)
-  return { base, ref, address, binding, client, subagentAddress, refreshProjections, retain, leases, activeBtw, closeBtw, present, closePresent, copy, handle, contexts,
-    reconnect() { generation += 1 },
-    select(next: typeof current) { current = next },
-    detach() { attached = [] },
+  return { base, ref, address, binding, client, subagentAddress, refreshProjections, retain, retainBtw, leases, activeBtw, closeBtw, present, closePresent, copy, handle, contexts,
+    topology, connection,
+    reconnect() { generation += 1; for (const listener of connection) listener() },
+    select(next: typeof current) { current = next; for (const listener of topology) listener() },
+    detach() { attached = []; for (const listener of topology) listener() },
   }
 }
 
 describe('retained child operation composition', () => {
+  it('admits a replacement BTW before its old descriptor removal triggers residency updates', () => {
+    const f = fixture()
+    let retained: readonly typeof f.ref[] = []
+    f.present.mockImplementation(ref => { retained = [ref]; f.handle.retainOnly(retained) })
+    f.closePresent.mockImplementation(ref => { retained = retained.filter(item => item.sessionId !== ref?.sessionId); f.handle.retainOnly(retained) })
+    const first = { ...f.ref, sessionId: SessionId('btw-first') }
+    const next = { ...f.ref, sessionId: SessionId('btw-next') }
+    const facts = { kind: 'btw' as const, access: 'interactive' as const }
+    f.activeBtw.mockReturnValue({ child: first })
+    f.contexts[0]!.presentSlot.present(first, f.binding, facts)
+    f.activeBtw.mockReturnValue({ child: next })
+    f.contexts[0]!.presentSlot.present(next, f.binding, facts)
+    expect(f.closeBtw).not.toHaveBeenCalled()
+    expect(retained).toEqual([next])
+    f.activeBtw.mockReturnValue(undefined)
+    f.handle.dispose()
+  })
+
+  it('parks listed child and BTW bindings, preserving descriptors and reacquiring the ordinary fork', async () => {
+    const f = fixture()
+    await f.handle.openChild(f.client, f.address, new AbortController().signal)
+    const child = { host: f.ref.host, sessionId: f.address.childSessionId }
+    const btw = { ...child, sessionId: SessionId('btw') }
+    const facts = { kind: 'btw' as const, access: 'interactive' as const, label: 'side question', historyFloorSeq: 8 }
+    f.contexts[0]!.presentSlot.present(btw, f.binding, facts)
+    f.activeBtw.mockReturnValue({ child: btw })
+    f.handle.retainOnly([child, btw])
+    expect(f.closeBtw).not.toHaveBeenCalled()
+    expect(f.leases[0]!.release).not.toHaveBeenCalled()
+    f.handle.retainOnly([child])
+    expect(f.closeBtw).toHaveBeenCalledOnce()
+    expect(f.closePresent).not.toHaveBeenCalled()
+    await f.handle.openBtw(f.client, btw, facts, new AbortController().signal)
+    expect(f.retainBtw).toHaveBeenCalledWith(btw, 'remote-btw-retained')
+    expect(f.present).toHaveBeenLastCalledWith(btw, f.binding, facts)
+    f.handle.retainOnly([btw])
+    expect(f.leases[0]!.release).toHaveBeenCalledOnce()
+    expect(f.leases[1]!.release).not.toHaveBeenCalled()
+    f.handle.dispose()
+    expect(f.leases[1]!.release).toHaveBeenCalledOnce()
+  })
+
+  it('fences ordinary BTW reacquisition against cancellation, other Hosts, lost selection, and unload', async () => {
+    const f = fixture()
+    const btw = { ...f.ref, sessionId: SessionId('btw') }
+    const facts = { kind: 'btw' as const, access: 'interactive' as const }
+    const aborted = new AbortController(); aborted.abort()
+    await f.handle.openBtw(f.client, btw, facts, aborted.signal)
+    await f.handle.openBtw({ ...f.client }, btw, facts, new AbortController().signal)
+    await f.handle.openBtw(f.client, { ...btw, host: HostKey('other') }, facts, new AbortController().signal)
+    f.detach()
+    await f.handle.openBtw(f.client, btw, facts, new AbortController().signal)
+    expect(f.retainBtw).not.toHaveBeenCalled()
+    f.handle.dispose()
+    await f.handle.openBtw(f.client, btw, facts, new AbortController().signal)
+    expect(f.retainBtw).not.toHaveBeenCalled()
+  })
+
+  it('immediately releases in-flight BTW leases on reconnection, selection, detach, or composition unload', async () => {
+    for (const retire of ['reconnect', 'select', 'detach', 'dispose'] as const) {
+      const f = fixture()
+      const ready = deferred<SessionBinding>()
+      const release = vi.fn()
+      f.retainBtw.mockReturnValueOnce({ ready: ready.promise, release })
+      const pending = f.handle.openBtw(f.client, { ...f.ref, sessionId: SessionId('btw') }, { kind: 'btw', access: 'interactive' }, new AbortController().signal)
+      if (retire === 'dispose') f.handle.dispose()
+      else if (retire === 'select') f.select(undefined)
+      else f[retire]()
+      expect(release, retire).toHaveBeenCalledOnce()
+      ready.reject(new Error('released native binding'))
+      await expect(pending).resolves.toBeUndefined()
+      expect(f.present).not.toHaveBeenCalled()
+      expect(f.topology.size + f.connection.size).toBe(0)
+      f.handle.dispose()
+    }
+  })
+
   it('uses the shared owner, resolves unknown native mode, and retains different children independently', async () => {
     const f = fixture()
     expect(f.contexts).toHaveLength(13)
