@@ -33,6 +33,7 @@ async function fixture() {
   let catalogCwd: string | undefined = '/catalog/workspace'
   let history: Array<{ type: string, event: { type: string, seq: number } }> = [{ type: 'event', event: { type: 'turn/end', seq: 20 } }]
   let inbox: unknown = { 'next-turn': [{ id: 'old-turn' }], 'next-step': [{ id: 'old-step' }] }
+  let childCatalogued = false
   const prompt = vi.fn<SessionFace['prompt']>(async () => { operations.push('prompt'); return accepted })
   const cancel = vi.fn<SessionFace['cancel']>(async () => accepted)
   const queue = vi.fn<SessionFace['updateQueue']>(async id => { operations.push(`remove:${id}`); return accepted })
@@ -42,8 +43,10 @@ async function fixture() {
   const selectModel = vi.fn(async (..._args: unknown[]) => { operations.push('model'); return { ok: true as const, value: {} } })
   const subagentPrompt = vi.fn(async (..._args: unknown[]) => accepted)
   const address = vi.fn<ISessions['subagentAddress']>(() => undefined)
+  const refresh = vi.fn<ISessions['refresh']>(async () => { operations.push('catalog'); childCatalogued = true })
   const retain: ISessions['retain'] = (target: SessionTarget): SessionReference => {
     const id = typeof target === 'string' ? target : target.childSessionId
+    if (id === childId && !childCatalogued && typeof target === 'string') throw new Error('sessions.retain: unknown session child')
     const session = Object.assign({} as SessionFace, {
       sessionId: id,
       beginSubmission: () => ({ requestId: `request-${references.length}` as SessionRequestId, abandon: vi.fn() }),
@@ -62,8 +65,8 @@ async function fixture() {
   const client = Object.assign({} as HostClient, {
     key: HostKey('one'),
     sessions: {
-      retain, using, fork, subagentAddress: address,
-      list: { getSnapshot: () => ({ ids: [parentId], byId: catalogCwd === undefined ? {} : { [parentId]: { cwd: catalogCwd } } }) },
+      retain, using, fork, refresh, subagentAddress: address,
+      list: { getSnapshot: () => ({ ids: [parentId, ...childCatalogued ? [childId] : []], byId: { ...catalogCwd === undefined ? {} : { [parentId]: { cwd: catalogCwd } }, ...childCatalogued ? { [childId]: {} } : {} } }) },
     },
     remote: { session: { selectModel }, subagents: { prompt: subagentPrompt }, mayflyHost: { btwFork: fork, defaultModel } },
     state: { getSnapshot: () => ({ status: 'connected', generation }) },
@@ -75,7 +78,8 @@ async function fixture() {
   await actions.select(ref())
   const btw = new RemoteBtwService(actions, registry)
   return {
-    btw, actions, registry, client, references, operations, prompt, cancel, queue, fork, defaultModel, selectModel, address, subagentPrompt,
+    btw, actions, registry, client, references, operations, prompt, cancel, queue, fork, refresh, defaultModel, selectModel, address, subagentPrompt,
+    setChildCatalogued: (value: boolean) => { childCatalogued = value },
     setGeneration: (value: number) => { generation = value },
     setModel: (value: unknown) => { model = value },
     setCwd: (value: unknown) => { cwd = value },
@@ -93,7 +97,7 @@ describe('RemoteBtwService', () => {
     if (!result.ok) throw result.error
     expect(result.value.child).toEqual(ref('one', childId))
     expect(result.value.selection).toEqual({ ref: ref('one', childId), cwd: '/host/workspace', historyFloorSeq: 12 })
-    expect(f.operations).toEqual(['fork', 'model', 'remove:old-turn', 'remove:old-step', 'prompt'])
+    expect(f.operations).toEqual(['fork', 'catalog', 'model', 'remove:old-turn', 'remove:old-step', 'prompt'])
     expect(f.fork).toHaveBeenCalledWith({ sessionId: parentId, atSeq: 12, allowMigration: true }, expect.any(AbortSignal))
     expect(f.selectModel).toHaveBeenCalledWith(expect.objectContaining({ sessionId: childId, provider: 'provider', model: 'model', reasoningEffort: 'high' }))
     expect(f.defaultModel).not.toHaveBeenCalled()
@@ -120,6 +124,74 @@ describe('RemoteBtwService', () => {
     if (result.ok) expect(result.value.selection).toEqual({ ref: ref('one', childId), cwd: '/catalog/workspace', historyFloorSeq: 37 })
     expect(f.selectModel).toHaveBeenCalledWith(expect.objectContaining({ provider: 'fallback', model: 'last' }))
     expect(f.queue).not.toHaveBeenCalled()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('discovers the focused Host fork through the official catalog before retaining or changing the child', async () => {
+    const f = await fixture()
+    const catalog = deferred<void>()
+    f.refresh.mockImplementationOnce(() => catalog.promise)
+    const asked = f.btw.ask(ref(), 'side')
+    await flush()
+    expect(f.fork).toHaveBeenCalledOnce()
+    expect(f.selectModel).not.toHaveBeenCalled()
+    expect(f.references.some(reference => reference.sessionId === childId)).toBe(false)
+    f.setChildCatalogued(true)
+    catalog.resolve()
+    expect((await asked).ok).toBe(true)
+    expect(f.refresh).toHaveBeenCalledOnce()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('performs one fresh catalog read after joining a pull that predates the fork, without repeating the fork', async () => {
+    const f = await fixture()
+    f.refresh.mockResolvedValueOnce(undefined)
+    expect((await f.btw.ask(ref(), 'side')).ok).toBe(true)
+    expect(f.refresh).toHaveBeenCalledTimes(2)
+    expect(f.fork).toHaveBeenCalledOnce()
+    expect(f.selectModel).toHaveBeenCalledOnce()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('refuses a still-absent child or a failed catalog read before model and prompt admission', async () => {
+    const f = await fixture()
+    f.refresh.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined)
+    await expect(f.btw.ask(ref(), 'side')).rejects.toThrow('BTW child "child" is absent from the official Session catalog')
+    expect(f.refresh).toHaveBeenCalledTimes(2)
+    f.refresh.mockRejectedValueOnce(new Error('catalog unavailable'))
+    await expect(f.btw.ask(ref(), 'side again')).rejects.toThrow('catalog unavailable')
+    expect(f.fork).toHaveBeenCalledTimes(2)
+    expect(f.selectModel).not.toHaveBeenCalled()
+    expect(f.prompt).not.toHaveBeenCalled()
+    expect(f.btw.current()).toBeUndefined()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it.each(['generation', 'binding', 'detach', 'abort', 'retry'])('retires catalog discovery after %s before any child write', async replacement => {
+    const f = await fixture()
+    const catalog = deferred<void>()
+    if (replacement === 'retry') f.refresh.mockResolvedValueOnce(undefined)
+    f.refresh.mockImplementationOnce(() => catalog.promise)
+    const owner = new AbortController()
+    const asked = f.btw.ask(ref(), 'side', { signal: owner.signal })
+    const retired = expect(asked).rejects.toBeInstanceOf(replacement === 'abort' ? DOMException : RemoteBtwSupersededError)
+    await flush()
+    if (replacement === 'generation' || replacement === 'retry') f.setGeneration(2)
+    else if (replacement === 'binding') {
+      const parent = f.references.at(-1)!
+      Reflect.set(parent, 'binding', { ...parent.binding })
+    } else if (replacement === 'detach') await f.registry.detach(HostKey('one'))
+    else owner.abort()
+    f.setChildCatalogued(true)
+    catalog.resolve()
+    await retired
+    expect(f.selectModel).not.toHaveBeenCalled()
+    expect(f.prompt).not.toHaveBeenCalled()
+    expect(f.cancel).not.toHaveBeenCalled()
     await f.btw.dispose()
     await f.registry.detach(HostKey('one'))
   })

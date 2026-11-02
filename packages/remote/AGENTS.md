@@ -142,6 +142,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   bounded Client event pages never choose the cut. An empty source has no floor.
   Before a recorded model route exists, read the native Host default without
   recording a parent selection or turning its default effort into an explicit pin.
+  A focused Host fork refreshes the official Client catalog before retaining or
+  writing its child. A joined list pull may predate that fork, so one fresh read
+  may follow; an undiscovered child admits no model write or prompt.
   Exact Client, parent binding, connection generation and caller lifetime fence
   every continuation before model restoration, inherited-Inbox cleanup and the
   child prompt. A pre-aborted invocation preserves an existing or pending view.

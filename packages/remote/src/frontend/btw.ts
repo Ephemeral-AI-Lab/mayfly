@@ -220,6 +220,18 @@ export class RemoteBtwService {
       if (!forked.ok) return forked
       const child: SessionRef = Object.freeze({ host: parent.host, sessionId: forked.value.sessionId })
       const historyFloorSeq = forked.value.historyFloorSeq
+      // Focused Host methods do not publish ClientSessions' local create/fork
+      // placeholder. A refresh may join a pull started before the Host fork;
+      // in that case one subsequent pull must discover the actual child.
+      await this.actions.refresh(parent.host)
+      assertCurrent()
+      if (client.sessions.list.getSnapshot().byId[child.sessionId] === undefined) {
+        await this.actions.refresh(parent.host)
+        assertCurrent()
+      }
+      if (client.sessions.list.getSnapshot().byId[child.sessionId] === undefined) {
+        throw new Error(`BTW child "${child.sessionId}" is absent from the official Session catalog`)
+      }
       const selected = await this.actions.selectModel(child, model)
       assertCurrent()
       if (!selected.ok) return selected
