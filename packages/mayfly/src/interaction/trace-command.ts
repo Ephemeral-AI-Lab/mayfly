@@ -87,7 +87,6 @@ export function registerTraceCommand(ctx: Context): () => void {
           if (narrow === 'detail' && columns() < TRACE_BREAKPOINT) { narrow = 'list'; publish(); return { kind: 'completed', dismiss: false } }
           return { kind: 'completed' }
         }
-        if (context.signal.aborted || !current(agent, context.signal)) return { kind: 'cancelled', dismiss: true }
         if (event.kind === 'activate' && event.actionId === 'copy-all') return copyReply(undefined, context.signal)
         if (event.kind === 'activate' && event.actionId === 'copy') return copyReply(selected, context.signal)
         if (event.kind !== 'selection-accept' || event.controlId !== 'trace-events') return { kind: 'completed' }
