@@ -33,6 +33,11 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Its catalog, installed rows, notifications, and restart chip belong to one
   feature generation. A Host/selection/reconnection change retires that owner;
   late writes are never retried or presented under another Host.
+- `/sessions` consumes the shared reference workspace/session browser and the
+  native Client catalog, workspace membership, projection reads, search, and
+  archive actions. Listing and detail reads never retain a Session. Child
+  conversations use the operations composition's shared presented-view slot;
+  readonly native access metadata and BTW history floors accompany bindings.
 - Raw settings editing uses `createRemoteSettingsEditor` with core-owned
   `screen.suspend`. Editing happens locally; writes use the original Host
   document revision and reject results after cancellation or selection change.

@@ -1,11 +1,12 @@
 /**
  * Shared seams for the operations composition: narrow mount options, one
- * presented side view, and backwards event pagination over the official
+ * retained side views, and backwards event pagination over the official
  * session journal.
  * @module @ephemeral-ai/mayfly/remote/operations/support
  */
 
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type {
   SessionAddress, SessionPageRequest, SessionWireEvent,
 } from '@deepseek-ai/dsh-api-session-controller/types'
@@ -15,6 +16,16 @@ import type { HostViewLease } from '../../frontend/host-registry.ts'
 import { remoteValue } from '../features/official.ts'
 import type { RemoteFeatureContext } from '../features.ts'
 
+/** Native child authority and display metadata for one independently presented conversation. */
+export interface RemotePresentedViewFacts {
+  readonly kind: 'btw' | 'subagent'
+  readonly access: 'interactive' | 'resumable' | 'readonly'
+  readonly label?: string
+  readonly cwd?: string
+  readonly historyFloorSeq?: number
+  readonly address?: SubagentAddress
+}
+
 /** Narrow integrator seam the operations composition is mounted with. */
 export interface RemoteOperationsOptions {
   /** Local directory owning `/export` output; writes resolve inside its `mayfly-exports/` child only. */
@@ -22,9 +33,9 @@ export interface RemoteOperationsOptions {
   /** BTW orchestration over the integrator's HostActions/HostRegistry pair. */
   readonly btw: RemoteBtwService
   /** Show one independent side view for a forked or cold child binding. */
-  readonly present?: (ref: SessionRef, binding: SessionBinding) => void
+  readonly present?: (ref: SessionRef, binding: SessionBinding, facts: RemotePresentedViewFacts) => void
   /** Close the side view; it never touches the Host Session behind it. */
-  readonly closePresent?: () => void
+  readonly closePresent?: (ref?: SessionRef) => void
   /** Copy text through the integrator's clipboard path. */
   readonly copy?: (text: string) => Promise<void>
 }
@@ -33,7 +44,7 @@ export interface RemoteOperationsOptions {
 export interface RemoteOperationsContext {
   readonly base: RemoteFeatureContext
   readonly options: RemoteOperationsOptions
-  /** The composition's single presented side view, shared by `/agents` and `/btw`. */
+  /** One lease owner for retained children and the externally owned BTW view. */
   readonly presentSlot: RemotePresentSlot
 }
 
@@ -49,56 +60,103 @@ export function registerRemoteOperationsLocale(
   }))
 }
 
-/** One presented side view; owns at most the lease it adopted itself. */
+interface PendingPresentedView {
+  readonly ref: SessionRef
+  readonly lease: HostViewLease
+  released: boolean
+}
+
+const viewKey = (ref: SessionRef): string => JSON.stringify([ref.host, ref.sessionId])
+
+/** One side-view lease owner: retained children plus one externally owned BTW view. */
 export class RemotePresentSlot {
-  private owned: HostViewLease | undefined
-  private generation = 0
+  private readonly owned = new Map<string, HostViewLease>()
+  private pending: PendingPresentedView | undefined
+  private btw: SessionRef | undefined
+  private disposed = false
 
   constructor(private readonly options: Pick<RemoteOperationsOptions, 'present' | 'closePresent'>) {}
 
-  /** Adopt one owned cold-view lease and present its binding, releasing any previous view. */
-  async adopt(ref: SessionRef, lease: HostViewLease): Promise<void> {
-    const generation = ++this.generation
+  /** Retain one child independently; a later child does not release previous completed reads. */
+  async adopt(ref: SessionRef, lease: HostViewLease, facts: () => RemotePresentedViewFacts, options: { readonly signal?: AbortSignal, readonly isCurrent?: () => boolean } = {}): Promise<void> {
+    this.releasePending()
+    const candidate = { ref, lease, released: false }
+    this.pending = candidate
+    const cancel = (): void => { this.releasePending(candidate) }
+    const cancelled = (): boolean => options.signal?.aborted === true
+    if (this.disposed || cancelled()) { cancel(); return }
+    options.signal?.addEventListener('abort', cancel, { once: true })
     let binding: SessionBinding
     try {
       binding = await lease.ready
     } catch (error) {
-      lease.release()
+      cancel()
       throw error
+    } finally {
+      options.signal?.removeEventListener('abort', cancel)
     }
-    if (generation !== this.generation) {
-      lease.release()
+    if (this.pending !== candidate || cancelled() || options.isCurrent?.() === false) {
+      cancel()
       return
     }
-    this.dropOwned()
-    this.owned = lease
-    this.options.present?.(ref, binding)
+    this.pending = undefined
+    const key = viewKey(ref)
+    this.owned.get(key)?.release()
+    this.owned.set(key, lease)
+    this.options.present?.(ref, binding, facts())
   }
 
   /** Present a binding owned elsewhere, for example the live BTW service lease. */
-  present(ref: SessionRef, binding: SessionBinding): void {
-    this.generation += 1
-    this.dropOwned()
-    this.options.present?.(ref, binding)
+  present(ref: SessionRef, binding: SessionBinding, facts: RemotePresentedViewFacts): void {
+    if (this.disposed) return
+    this.releasePending()
+    const key = viewKey(ref)
+    this.owned.get(key)?.release()
+    this.owned.delete(key)
+    if (facts.kind === 'btw') {
+      if (this.btw !== undefined && viewKey(this.btw) !== key) this.close(this.btw)
+      this.btw = ref
+    }
+    this.options.present?.(ref, binding, facts)
   }
 
-  /** Close the presented view and release the lease this slot owns. */
-  close(): void {
-    this.generation += 1
-    this.dropOwned()
-    this.options.closePresent?.()
+  /** Close one exact view, or all views at composition unload; Host work keeps running. */
+  close(ref?: SessionRef): void {
+    if (ref === undefined) {
+      this.releasePending()
+      for (const lease of this.owned.values()) lease.release()
+      this.owned.clear()
+      this.btw = undefined
+    } else {
+      const key = viewKey(ref)
+      if (this.pending !== undefined && viewKey(this.pending.ref) === key) this.releasePending()
+      this.owned.get(key)?.release()
+      this.owned.delete(key)
+      if (this.btw !== undefined && viewKey(this.btw) === key) this.btw = undefined
+    }
+    this.options.closePresent?.(ref)
   }
 
-  /** Release an owned lease without asking the integrator to close its view. */
+  /** Close only the external BTW presentation, preserving every retained child. */
+  closeBtw(): void {
+    if (this.btw !== undefined) this.close(this.btw)
+  }
+
+  /** Release every owned lease without asking the integrator to close its views. */
   dispose(): void {
-    this.generation += 1
-    this.dropOwned()
+    this.disposed = true
+    this.releasePending()
+    for (const lease of this.owned.values()) lease.release()
+    this.owned.clear()
+    this.btw = undefined
   }
 
-  private dropOwned(): void {
-    const lease = this.owned
-    this.owned = undefined
-    lease?.release()
+  private releasePending(candidate = this.pending): void {
+    if (candidate === undefined) return
+    if (this.pending === candidate) this.pending = undefined
+    if (candidate.released) return
+    candidate.released = true
+    candidate.lease.release()
   }
 }
 

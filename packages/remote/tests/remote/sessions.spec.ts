@@ -1,0 +1,255 @@
+/** Native catalog browsing and exact Host-generation lifetime through real UI registries. @module */
+import { Context } from '@deepseek-ai/cordis'
+import type { SessionListState, SessionSummary, SessionProjectionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/types'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
+import { MayflyOverlayService } from '@ephemeral-ai/mayfly-ui/provider'
+import type { MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
+import { MayflyLocaleService } from '@ephemeral-ai/mayfly/frontend'
+import { compileMayflyUiNode } from '@ephemeral-ai/mayfly/core'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { HostKey, type HostClient } from '../../src/client/types.ts'
+import type { RemoteFeatureSelection } from '../../src/remote/features.ts'
+import { RemoteSessionsBrowserController, remoteSessionListFacts } from '../../src/remote/features/sessions.ts'
+import { fakeMayflyComponents, plainColors } from './render-fixture.ts'
+
+const contexts: Context[] = []
+afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+const select = (id: string): MayflyUiEvent => ({ kind: 'selection-accept', pagePath: [], controlId: 'sessions', selectedIds: [id] })
+const action = (id: string): MayflyUiEvent => ({ kind: 'activate', pagePath: [], controlId: 'session-actions', actionId: id })
+const tab = (id: string): MayflyUiEvent => ({ kind: 'tab-change', pagePath: [], controlId: 'session-rail', tabId: id })
+const search = (query: string): MayflyUiEvent => ({ kind: 'activate', pagePath: [], controlId: 'session-actions', actionId: 'search', inputs: { actionId: 'search', draftRevision: 0, source: [], forms: [{ pagePath: [], formId: 'content-search', draftRevision: 0, fields: [{ id: 'query', change: 'set', value: query }] }] } })
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail })
+  return { promise, resolve, reject }
+}
+
+function summary(id: string, overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return { id: SessionId(id), displayTitle: id, title: id, cwd: '/host/repo', running: false, retainedBy: {}, blank: false, updatedAt: 1000, ...overrides }
+}
+
+async function fixture(options: { sessionless?: boolean, noPaths?: boolean, noOpenChild?: boolean } = {}) {
+  const ctx = new Context(); contexts.push(ctx)
+  const overlays = new MayflyOverlayService(ctx)
+  const locale = new MayflyLocaleService(ctx as never, { preference: 'en' })
+  const sessionListeners = new Set<() => void>()
+  const workspaceListeners = new Set<() => void>()
+  const connectionListeners = new Set<() => void>()
+  const topologyListeners = new Set<() => void>()
+  const subscribe = (listeners: Set<() => void>) => (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } }
+  const currentId = SessionId('current')
+  const ref = { host: HostKey('one'), sessionId: currentId }
+  let rows = [summary('current', { projectionValues: { sessionListMetadata: { blank: false, lastPromptAt: 1000 }, title: 'Current' } as never }), summary('child', { parentId: currentId, origin: 'subagent' }), summary('other', { cwd: '/host/elsewhere' })]
+  let workspaceRows: readonly WorkspaceView[] = [{ workspaceId: 'repo' as WorkspaceView['workspaceId'], path: '/host/repo', title: 'Repo', sessionIds: [currentId, SessionId('child')], createdAt: '', updatedAt: '' }]
+  let archived: readonly ReturnType<typeof SessionId>[] = []
+  let projections: Readonly<Record<string, SessionProjectionSnapshot>> = {}
+  let generation = 1
+  const snapshot = (): SessionListState => ({ ids: rows.map(row => row.id), byId: Object.fromEntries(rows.map(row => [row.id, row])), phase: 'ready', projectionsBySession: projections })
+  const sessions = {
+    list: { getSnapshot: snapshot, subscribe: subscribe(sessionListeners) },
+    refresh: vi.fn(async () => {}),
+    refreshProjections: vi.fn(async (_id: ReturnType<typeof SessionId>) => {}),
+    retain: vi.fn(),
+    search: vi.fn(async (_query: string, _signal: AbortSignal) => ({ ok: true as const, value: { items: [] as { sessionId: ReturnType<typeof SessionId>, snippet: string }[], hasMore: false } })),
+    subagentAddress: vi.fn((id: ReturnType<typeof SessionId>) => id === 'child' ? { parentSessionId: currentId, childSessionId: id, mode: 'continuable' as const } : undefined),
+  }
+  const workspaces = {
+    list: { getSnapshot: () => ({ items: workspaceRows, archivedSessionIds: archived, pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null }), subscribe: subscribe(workspaceListeners) },
+    archiveSession: vi.fn(async (id: ReturnType<typeof SessionId>, _options?: { stopActivity?: boolean }) => { archived = [...archived, id] }),
+    unarchiveSession: vi.fn(async (id: ReturnType<typeof SessionId>) => { archived = archived.filter(item => item !== id) }),
+  }
+  const reminderCatalog = vi.fn(async () => ({ ok: true as const, value: [{ sessionId: currentId, status: 'active' }] }))
+  const client = { key: ref.host, sessions, workspaces, state: { getSnapshot: () => ({ status: 'connected', generation }), subscribe: subscribe(connectionListeners) }, remote: { schedule: { catalog: reminderCatalog } } } as unknown as HostClient
+  let current: RemoteFeatureSelection | undefined = options.sessionless ? undefined : { ref, client, binding: {} as never }
+  let active: HostClient | undefined = client
+  let attached = [client]
+  const hosts = { current: () => current, active: () => active, list: () => attached, subscribe: subscribe(topologyListeners) }
+  const openChild = vi.fn(async (_client: HostClient, _address: unknown, _signal: AbortSignal) => {})
+  const notice = { set: vi.fn() }
+  let controller!: RemoteSessionsBrowserController
+  const owner = await ctx.plugin({ name: 'sessions-browser-owner', apply(owner: Context) {
+    controller = new RemoteSessionsBrowserController({ ctx: owner, hosts, notice, subscribeLocale: listener => locale.subscribe(listener) }, {
+      ...options.noPaths ? {} : { home: () => '/host', directory: () => '/host/repo' },
+      ...options.noOpenChild ? {} : { openChild },
+    })
+    owner.effect(() => () => { controller.dispose() })
+  } })
+  const onSelect = vi.fn()
+  const open = () => { controller.open(client, current?.ref, onSelect) }
+  const latest = () => overlays.list().find(entry => entry.id === 'mayfly.sessions')!
+  const text = () => JSON.stringify(latest()?.node)
+  const event = async (event: MayflyUiEvent, signal = new AbortController().signal) => {
+    const entry = latest()
+    const prepared = await entry.events.prepare(event, { surfaceId: entry.id, source: entry.source, revision: entry.revision, operationId: 'sessions-test', signal, report: vi.fn() })
+    prepared.publish()
+    return prepared.reply
+  }
+  const flush = async () => { for (let index = 0; index < 5; index += 1) await new Promise<void>(resolve => { setImmediate(resolve) }) }
+  const emit = (listeners: Set<() => void>) => { for (const listener of listeners) listener() }
+  return { ctx, owner, overlays, locale, client, hosts, controller, sessions, workspaces, reminderCatalog, onSelect, openChild, open, latest, text, event, flush, sessionListeners, workspaceListeners, connectionListeners, topologyListeners,
+    setRows(next: SessionSummary[]) { rows = next; emit(sessionListeners) },
+    setProjections(next: typeof projections) { projections = next; emit(sessionListeners) },
+    setWorkspaces(next: readonly WorkspaceView[]) { workspaceRows = next; emit(workspaceListeners) },
+    setArchived(next: typeof archived) { archived = next; emit(workspaceListeners) },
+    reconnect() { generation += 1; emit(connectionListeners) },
+    changeSelection(next: RemoteFeatureSelection | undefined) { current = next; emit(topologyListeners) },
+    detach() { attached = []; active = undefined; current = undefined; emit(topologyListeners) },
+  }
+}
+
+describe('RemoteSessionsBrowserController', () => {
+  it('uses the rc.2 workspace rail, scoped catalog, native detail values, locale, and width renderer', async () => {
+    const f = await fixture()
+    f.open(); await f.flush()
+    expect(f.text()).toContain('session-rail')
+    expect(f.text()).toContain('Repo')
+    expect(f.text()).toContain('Other sessions')
+    expect(f.text()).toContain('Current')
+    expect(f.text()).toContain('reminders')
+    expect(f.text()).not.toContain('elsewhere')
+    f.setProjections({ current: { state: 'ready', error: null, values: { title: 'Exact title', tokenUsage: { uncachedInputTokens: 100, cacheReadTokens: 50, cacheWriteTokens: 0, outputTokens: 20 } } as never } })
+    expect(await f.event(select('current'))).toEqual({ kind: 'completed' })
+    expect(f.sessions.refreshProjections).toHaveBeenCalledWith('current')
+    expect(f.text()).toContain('Exact title')
+    expect(f.text()).toContain('170')
+    expect(f.text()).toContain('Archive this session?')
+    const components = fakeMayflyComponents()
+    for (const width of [1, 2, 8, 12, 30, 60, 100, 160]) {
+      const compiled = compileMayflyUiNode(f.latest().node, { components, colors: plainColors(), getViewport: () => ({ columns: width, rows: 30 }), screenMode: 'alternate', emit() {} })
+      expect(compiled.ok).toBe(true)
+      const rendered = (compiled.ok ? compiled.value.component : compiled.errorComponent).render(width)
+      for (const row of rendered) expect(components.visibleWidth(row), `${width}: ${row}`).toBeLessThanOrEqual(width)
+    }
+    f.locale.setPreference('zh')
+    expect(f.text()).toContain('名称')
+    await f.event({ kind: 'dismiss', pagePath: [] })
+    expect(f.text()).toContain('content-search')
+    await f.event({ kind: 'dismiss', pagePath: [] })
+    expect(f.overlays.list()).toEqual([])
+    expect(f.sessionListeners.size + f.workspaceListeners.size + f.connectionListeners.size).toBe(0)
+    expect(f.sessions.retain).not.toHaveBeenCalled()
+  })
+
+  it('searches workspace contents, switches to global search, and handles missing catalog rows and failures', async () => {
+    const f = await fixture()
+    f.open(); await f.flush()
+    expect(await f.event(search(' '))).toMatchObject({ kind: 'failed', message: 'Enter search text' })
+    f.sessions.search.mockResolvedValueOnce({ ok: true, value: { items: [{ sessionId: SessionId('other'), snippet: 'match outside workspace' }, { sessionId: SessionId('current'), snippet: 'exact phrase' }], hasMore: true } })
+    await f.event(search(' phrase '))
+    expect(f.text()).toContain('exact phrase')
+    expect(f.text()).not.toContain('match outside workspace')
+    expect(f.text()).toContain('More matches exist')
+    await f.event(action('search-all'))
+    expect(f.text()).toContain('Enter text to search all workspaces')
+    f.sessions.search.mockResolvedValueOnce({ ok: true, value: { items: [{ sessionId: SessionId('other'), snippet: 'global match' }, { sessionId: SessionId('unknown'), snippet: 'unknown' }], hasMore: false } })
+    await f.event(search('global'))
+    expect(f.text()).toContain('global match')
+    expect(f.sessions.refresh).toHaveBeenCalledTimes(2)
+    f.sessions.search.mockResolvedValueOnce({ ok: false, error: { code: 'offline', message: 'offline' } } as never)
+    expect(await f.event(search('global'))).toMatchObject({ kind: 'failed', message: 'offline' })
+    await f.event(tab('workspace:unregistered'))
+    expect(f.text()).toContain('other')
+    await f.event(action('refresh'))
+    expect(f.text()).not.toContain('global match')
+  })
+
+  it('shows migration-safe details and applies archive, active-work confirmation, forced archive, and restore', async () => {
+    const f = await fixture()
+    f.open(); await f.flush()
+    f.setProjections({ current: { state: 'migration-required', values: { title: 'Old title' } as never, error: null } })
+    await f.event(select('current'))
+    expect(f.text()).toContain('older saved format')
+    const active = { rpcError: { code: 'workspace/session-active', details: { activity: [{ kind: 'jobs', items: ['build'] }, { kind: 'agent' }] } } }
+    f.workspaces.archiveSession.mockRejectedValueOnce(active)
+    expect(await f.event(action('archive'))).toMatchObject({ kind: 'accepted' })
+    expect(f.text()).toContain('Stop activity and archive')
+    expect(f.text()).toContain('build')
+    await f.event(action('stop-archive'))
+    expect(f.workspaces.archiveSession).toHaveBeenLastCalledWith('current', { stopActivity: true })
+    await f.event(select('current'))
+    expect(await f.event(action('open'))).toMatchObject({ kind: 'failed', message: 'Restore the session first' })
+    await f.event(action('restore'))
+    expect(f.workspaces.unarchiveSession).toHaveBeenCalledWith('current')
+    await f.event(select('current'))
+    await f.event(action('open'))
+    expect(f.onSelect).toHaveBeenCalledWith('current')
+    expect(f.overlays.list()).toEqual([])
+  })
+
+  it('fences late detail/search results, connection replacement, same-id selection, and owner unload', async () => {
+    const f = await fixture()
+    f.open(); await f.flush()
+    const detail = deferred<void>()
+    f.sessions.refreshProjections.mockReturnValueOnce(detail.promise)
+    const pendingDetail = f.event(select('current'))
+    await f.flush()
+    await f.event(tab('workspace:unregistered'))
+    detail.resolve()
+    expect(await pendingDetail).toMatchObject({ kind: 'cancelled' })
+    expect(f.text()).not.toContain('session-detail-actions')
+    const result = deferred<Awaited<ReturnType<typeof f.sessions.search>>>()
+    f.sessions.search.mockReturnValueOnce(result.promise)
+    const pendingSearch = f.event(search('late'))
+    await f.flush()
+    f.reconnect()
+    expect(f.overlays.list()).toEqual([])
+    result.resolve({ ok: true, value: { items: [{ sessionId: SessionId('other'), snippet: 'late match' }], hasMore: false } })
+    await pendingSearch
+    f.open(); await f.flush()
+    f.changeSelection({ client: { ...f.client }, ref: { host: f.client.key, sessionId: SessionId('current') }, binding: {} as never })
+    expect(f.overlays.list()).toEqual([])
+    f.changeSelection(undefined)
+    f.open(); await f.flush()
+    await f.owner.dispose()
+    expect(f.overlays.list()).toEqual([])
+    expect(f.sessionListeners.size + f.workspaceListeners.size + f.connectionListeners.size + f.topologyListeners.size).toBe(0)
+    f.controller.dispose()
+    f.open()
+    expect(f.overlays.list()).toEqual([])
+  })
+
+  it('opens native addressed children without changing the primary and rejects unrelated children', async () => {
+    const f = await fixture()
+    f.open(); await f.flush()
+    await f.event(select('child'))
+    await f.event(action('open'))
+    expect(f.openChild).toHaveBeenCalledWith(f.client, { parentSessionId: 'current', childSessionId: 'child', mode: 'continuable' }, expect.any(AbortSignal))
+    expect(f.onSelect).not.toHaveBeenCalled()
+    f.setRows([summary('current'), summary('child', { origin: 'subagent', parentId: SessionId('unrelated') })])
+    f.open(); await f.flush()
+    await f.event(select('child'))
+    expect(await f.event(action('open'))).toMatchObject({ kind: 'failed', message: 'Open this child’s lead session first' })
+  })
+
+  it('supports a sessionless empty Host and failure recovery without inventing a Session', async () => {
+    const f = await fixture({ sessionless: true, noPaths: true })
+    f.setRows([]); f.setWorkspaces([])
+    f.reminderCatalog.mockRejectedValueOnce(new Error('not composed'))
+    f.sessions.refresh.mockRejectedValueOnce(new Error('offline'))
+    f.open(); await f.flush()
+    expect(f.text()).toContain('All workspaces')
+    expect(f.text()).toContain('Could not load workspaces')
+    expect(await f.event(select('missing'))).toMatchObject({ kind: 'failed' })
+    await f.event(action('reload'))
+    expect(f.text()).not.toContain('offline')
+    f.detach()
+    expect(f.overlays.list()).toEqual([])
+    f.open()
+    expect(f.overlays.list()).toEqual([])
+  })
+})
+
+describe('remoteSessionListFacts', () => {
+  it('pairs the listing model/effort and age fallbacks while preserving missing metadata', () => {
+    const { title: _title, cwd: _cwd, ...row } = summary('bare', { running: true })
+    expect(remoteSessionListFacts(row, { current: false, archived: false, reminders: new Set(), now: 5000 })).toMatchObject({ id: 'bare', lastActiveAt: 5000 })
+    const facts = remoteSessionListFacts({ ...row, running: false }, { current: false, archived: true, reminders: new Set(['bare']), now: 5000, values: {
+      title: '  ', agentPreset: 'coder', sessionStats: { turns: 1 }, modelSelection: { next: { provider: 'p', model: 'm', reasoningEffort: 'max' } },
+    } })
+    expect(facts).toMatchObject({ lastActiveAt: 1000, preset: 'coder', reminders: true, archived: true, model: { provider: 'p', model: 'm', reasoningEffort: 'max' } })
+    expect(facts.title).toBeUndefined()
+  })
+})

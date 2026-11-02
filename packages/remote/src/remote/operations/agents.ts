@@ -17,7 +17,7 @@ import {
 import { requestOverlay, type RemoteRequestOverlay } from '../interactions/request-overlay.ts'
 import { isRemoteFeatureSelection } from '../interactions/selection.ts'
 import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
-import { remoteErrorMessage } from '../features/official.ts'
+import { RemoteFeatureOperation, remoteErrorMessage } from '../features/official.ts'
 import { mayflyHostRemote } from '../../frontend/host-mount.ts'
 import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
 
@@ -245,22 +245,23 @@ class RemoteAgentsController {
   }
 
   private async openColdView(current: RemoteFeatureSelection, row: RemoteAgentRow): Promise<MayflyUiActionReply> {
+    const operation = new RemoteFeatureOperation(this.context.base, current.client, current, this.lifetime.signal)
     const parent: SessionRef = { host: current.ref.host, sessionId: row.parent }
     const child: SessionRef = { host: current.ref.host, sessionId: row.id }
-    let lease: ReturnType<typeof this.context.options.btw.retainColdSubagentView>
     try {
-      lease = this.context.options.btw.retainColdSubagentView(parent, child, COLD_ROLE)
+      if (!operation.valid()) return { kind: 'cancelled' }
+      const lease = this.context.options.btw.retainColdSubagentView(parent, child, COLD_ROLE)
+      await this.context.presentSlot.adopt(child, lease, () => {
+        const address = current.client.sessions.subagentAddress(row.id)
+        const cwd = current.client.sessions.list.getSnapshot().byId[row.id]?.cwd
+        return { kind: 'subagent', access: address?.mode === 'continuable' ? 'resumable' : 'readonly', label: row.label, ...address === undefined ? {} : { address }, ...cwd === undefined ? {} : { cwd } }
+      }, { signal: operation.signal, isCurrent: () => operation.valid() })
+      if (!operation.valid()) return { kind: 'cancelled' }
+      this.context.base.notice.set(this.t('Cold view opened'))
+      return { kind: 'completed' }
     } catch (error: unknown) {
-      return { kind: 'failed', message: remoteErrorMessage(error) }
-    }
-    try {
-      await this.context.presentSlot.adopt(child, lease)
-    } catch (error: unknown) {
-      return { kind: 'failed', message: remoteErrorMessage(error) }
-    }
-    if (!isRemoteFeatureSelection(this.context.base.hosts.current(), current.client, current.ref)) return { kind: 'cancelled' }
-    this.context.base.notice.set(this.t('Cold view opened'))
-    return { kind: 'completed' }
+      return operation.valid() ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' }
+    } finally { operation.dispose() }
   }
 
   private prompt(current: RemoteFeatureSelection, row: RemoteAgentRow): void {

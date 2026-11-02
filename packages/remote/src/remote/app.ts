@@ -7,6 +7,7 @@ import { HostRegistry } from '../frontend/host-registry.ts'
 import type { RemoteConversationModelSource } from '../transcript/remote-model.ts'
 import type { RemoteNotice } from './notice.ts'
 import type { RemoteAppPanels, RemoteCommandDescriptor } from './interactions/plain-panels.ts'
+import type { RemoteSessionsBrowser } from './features/sessions.ts'
 
 export const FRONTEND_COMMANDS = [
   { name: 'quit', description: 'Exit Mayfly (/q, /exit)' },
@@ -75,6 +76,8 @@ export class RemoteApp {
     private readonly notice: RemoteNotice,
     private readonly panels: RemoteAppPanels,
     attach?: (key: HostKey, startupUrl: string) => HostClient | Promise<HostClient>,
+    private readonly cwd = process.cwd(),
+    private readonly sessionsBrowser?: RemoteSessionsBrowser,
   ) {
     this.registry = new HostRegistry(async (key) => {
       const startupUrl = this.endpoints.get(key)
@@ -116,7 +119,7 @@ export class RemoteApp {
     return client
   }
 
-  async selectOrCreate(sessionId?: string, cwd = process.cwd()): Promise<SessionRef> {
+  async selectOrCreate(sessionId?: string, cwd = this.cwd): Promise<SessionRef> {
     const generation = ++this.selectionGeneration
     const host = this.requireHost()
     const ref = sessionId === undefined
@@ -135,7 +138,7 @@ export class RemoteApp {
   }
 
   /** Admit the first prompt into one shared creation, leaving startup sessionless. */
-  ensureSession(cwd = process.cwd()): Promise<SessionRef> {
+  ensureSession(cwd = this.cwd): Promise<SessionRef> {
     const current = this.registry.current
     if (current !== undefined) return Promise.resolve(current)
     if (this.creating !== undefined) return this.creating
@@ -186,15 +189,23 @@ export class RemoteApp {
         this.notice.set(`Resuming Session ${input}`)
         await this.selectOrCreate(input)
       } else {
+        if (this.sessionsBrowser === undefined) {
+          this.notice.set('Session browsing is unavailable in this composition')
+          return { exit: false }
+        }
         const host = this.requireHost()
-        const catalog = this.actions.sessionList(host).getSnapshot()
-        const sessions = catalog.ids.flatMap((id) => {
-          const summary = catalog.byId[id]
-          return summary === undefined ? [] : [summary]
-        })
-        this.panels.showSessions(sessions, this.registry.current, (sessionId) => {
+        const client = this.registry.get(host)!
+        const connection = client.state.getSnapshot().generation
+        const selected = this.registry.current
+        const isCurrent = (): boolean => {
+          const current = this.registry.current
+          return this.activeClient === client && client.state.getSnapshot().generation === connection
+            && selected?.host === current?.host && selected?.sessionId === current?.sessionId
+        }
+        this.sessionsBrowser.open(client, this.registry.current, (sessionId) => {
+          if (!isCurrent()) return
           void this.selectOrCreate(sessionId).catch((error: unknown) => {
-            this.notice.set(error instanceof Error ? error.message : String(error))
+            if (isCurrent()) this.notice.set(error instanceof Error ? error.message : String(error))
           })
         })
       }

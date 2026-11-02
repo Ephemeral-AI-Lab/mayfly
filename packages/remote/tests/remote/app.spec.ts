@@ -59,7 +59,7 @@ function clientFixture(key: HostKey) {
     } as never,
     fileUpload: {} as never,
     origin: 'http://127.0.0.1:3080',
-    state: {} as never,
+    state: { getSnapshot: () => ({ status: 'connected', generation: 1 }), subscribe: () => () => {} } as never,
     workspaces: {} as never,
     sessions: {
       refresh: vi.fn(async () => {}),
@@ -84,9 +84,8 @@ function appFixture() {
     showHelp: vi.fn(),
     showStatus: vi.fn(),
     showVersion: vi.fn(),
-    showSessions: vi.fn(),
   }
-  return { conversation, status, panels }
+  return { conversation, status, panels, browser: { open: vi.fn() } }
 }
 
 describe('RemoteApp', () => {
@@ -323,8 +322,8 @@ describe('RemoteApp', () => {
 
   it('shows live Host commands, Session facts, version, and the official Session catalog', async () => {
     const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
-    const { conversation, status, panels } = appFixture()
-    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    const { conversation, status, panels, browser } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client, '/workspace', browser)
     await app.attach('http://127.0.0.1:3080/?token=secret')
     await app.selectOrCreate()
 
@@ -339,11 +338,9 @@ describe('RemoteApp', () => {
     await app.execute('/version')
     expect(panels.showVersion).toHaveBeenCalledOnce()
     await app.execute('/sessions')
-    expect(panels.showSessions).toHaveBeenCalledWith([
-      expect.objectContaining({ id: fixture.sessionId, displayTitle: 'Shared Session' }),
-    ], expect.objectContaining({ sessionId: fixture.sessionId }), expect.any(Function))
+    expect(browser.open).toHaveBeenCalledWith(fixture.client, expect.objectContaining({ sessionId: fixture.sessionId }), expect.any(Function))
 
-    const select = vi.mocked(panels.showSessions).mock.calls[0]![2]
+    const select = vi.mocked(browser.open).mock.calls[0]![2]
     select('shared-session')
     await vi.waitFor(() => {
       expect(conversation.attach).toHaveBeenCalledWith(fixture.reference.binding, expect.objectContaining({ cwd: '/workspace' }))
@@ -362,6 +359,29 @@ describe('RemoteApp', () => {
     await expect(app.execute('/attach')).rejects.toThrow('Usage: /attach <host-url>')
   })
 
+  it('reports unavailable browsing in incomplete compositions and fences callbacks after reconnect or selection change', async () => {
+    const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
+    const { conversation, status, panels, browser } = appFixture()
+    const incomplete = new RemoteApp(conversation, status, panels, () => fixture.client)
+    await incomplete.execute('/sessions')
+    expect(status.set).toHaveBeenCalledWith('Session browsing is unavailable in this composition')
+    let generation = 1
+    fixture.client.state.getSnapshot = () => ({ status: 'connected', generation })
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client, '/workspace', browser)
+    await app.attach('http://127.0.0.1:3080/')
+    await app.execute('/sessions')
+    const staleConnection = browser.open.mock.calls[0]![2] as (id: string) => void
+    generation += 1
+    staleConnection('shared-session')
+    expect(fixture.client.sessions.retain).not.toHaveBeenCalled()
+    await app.execute('/sessions')
+    const staleSelection = browser.open.mock.calls[1]![2] as (id: string) => void
+    await app.selectOrCreate()
+    const calls = vi.mocked(fixture.client.sessions.retain).mock.calls.length
+    staleSelection('other-session')
+    expect(fixture.client.sessions.retain).toHaveBeenCalledTimes(calls)
+  })
+
   it('keeps successful Host commands quiet and surfaces command transport failures', async () => {
     const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     const { conversation, status, panels } = appFixture()
@@ -378,15 +398,15 @@ describe('RemoteApp', () => {
 
   it('reports asynchronous Session selection failures from the catalog panel', async () => {
     const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
-    const { conversation, status, panels } = appFixture()
-    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    const { conversation, status, panels, browser } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client, '/workspace', browser)
     await app.attach('http://127.0.0.1:3080/?token=secret')
     await app.selectOrCreate()
     fixture.client.sessions.retain = vi.fn()
       .mockImplementationOnce(() => { throw new Error('missing Session') })
       .mockImplementationOnce(() => { throw 'missing Session' })
     await app.execute('/sessions')
-    const select = vi.mocked(panels.showSessions).mock.calls[0]![2]
+    const select = vi.mocked(browser.open).mock.calls[0]![2]
     select('missing')
     await vi.waitFor(() => { expect(status.set).toHaveBeenCalledWith('missing Session') })
     select('missing')
@@ -396,15 +416,15 @@ describe('RemoteApp', () => {
   it('falls back when catalog cwd and rows are absent', async () => {
     const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     fixture.listSnapshot.mockReturnValue({ ids: [SessionId('missing')], byId: {}, phase: 'ready', projectionsBySession: {} })
-    const { conversation, status, panels } = appFixture()
-    const app = new RemoteApp(conversation, status, panels, () => fixture.client)
+    const { conversation, status, panels, browser } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client, '/workspace', browser)
     await app.attach('http://127.0.0.1:3080/?token=secret')
     await app.selectOrCreate(undefined, '/new-workspace')
     expect(conversation.attach).toHaveBeenCalledWith(fixture.reference.binding, expect.objectContaining({ cwd: '/new-workspace' }))
     await app.selectOrCreate('other-session')
     expect(conversation.attach).toHaveBeenCalledWith(fixture.reference.binding, expect.objectContaining({ cwd: '' }))
     await app.execute('/sessions')
-    expect(panels.showSessions).toHaveBeenCalledWith([], expect.objectContaining({ sessionId: SessionId('other-session') }), expect.any(Function))
+    expect(browser.open).toHaveBeenCalledWith(fixture.client, expect.objectContaining({ sessionId: SessionId('other-session') }), expect.any(Function))
   })
 
   it('ignores stale default-model responses and clears the fallback on detach', async () => {

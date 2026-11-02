@@ -9,6 +9,9 @@
 
 import type { RemoteFeatureCommandSource } from './features/commands.ts'
 import type { RemoteFeatureContext } from './features.ts'
+import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
+import type { HostClient, SessionRef } from '../client/types.ts'
+import { RemoteFeatureOperation } from './features/official.ts'
 import { mountRemoteAgentsOperations } from './operations/agents.ts'
 import { mountRemoteBtwOperations } from './operations/btw.ts'
 import { mountRemoteChangesOperations } from './operations/changes.ts'
@@ -45,6 +48,10 @@ export interface RemoteOperationsCompositionOptions {
 /** Mounted operations composition plus its lifetime. */
 export interface RemoteOperationsCompositionHandle {
   readonly commands: RemoteFeatureCommandSource
+  /** Open a listed native child through the same owned side-view slot as `/agents`. */
+  openChild(client: HostClient, address: SubagentAddress, signal: AbortSignal): Promise<void>
+  /** Release one exact retained side view, including the BTW service lease when applicable. */
+  closeChild(ref: SessionRef): void
   dispose(): void
 }
 
@@ -64,7 +71,7 @@ const MOUNTS = [
   mountRemoteTitleOperations,
 ] as const
 
-/** Mount every operations module over one shared presented-view slot. */
+/** Mount every operations module over one shared retained-view lease owner. */
 export function mountRemoteOperationsComposition(
   base: RemoteFeatureContext,
   options: RemoteOperationsCompositionOptions,
@@ -78,8 +85,8 @@ export function mountRemoteOperationsComposition(
     options: {
       localCwd: options.localCwd,
       btw: options.btw,
-      present: (ref, binding) => { presentSlot.present(ref, binding) },
-      closePresent: () => { presentSlot.close() },
+      present: (ref, binding, facts) => { presentSlot.present(ref, binding, facts) },
+      closePresent: ref => { presentSlot.close(ref) },
       ...options.copy === undefined ? {} : { copy: options.copy },
     },
     presentSlot,
@@ -90,6 +97,7 @@ export function mountRemoteOperationsComposition(
     if (disposed) return
     disposed = true
     presentSlot.close()
+    presentSlot.dispose()
     for (const disposer of disposers.splice(0).reverse()) disposer()
   }
   try {
@@ -98,5 +106,32 @@ export function mountRemoteOperationsComposition(
     dispose()
     throw error
   }
-  return { commands: base.commands, dispose }
+  return {
+    commands: base.commands,
+    closeChild(ref) {
+      const btw = options.btw.current()?.child
+      if (btw?.host === ref.host && btw.sessionId === ref.sessionId) options.btw.close()
+      presentSlot.close(ref)
+    },
+    async openChild(client, address, signal) {
+      const current = base.hosts.current()
+      if (disposed || signal.aborted || current?.client !== client) return
+      const operation = new RemoteFeatureOperation(base, client, current, signal)
+      try {
+        if (!operation.valid()) return
+        if (address.mode === 'unknown') await client.sessions.refreshProjections(address.parentSessionId)
+        if (!operation.valid()) return
+        const native = client.sessions.subagentAddress(address.childSessionId) ?? address
+        const parent = { host: client.key, sessionId: native.parentSessionId }
+        const child = { host: client.key, sessionId: native.childSessionId }
+        const lease = options.btw.retainColdSubagentView(parent, child, 'remote-agents-cold')
+        await presentSlot.adopt(child, lease, () => {
+          const resolved = client.sessions.subagentAddress(child.sessionId) ?? native
+          const summary = client.sessions.list.getSnapshot().byId[child.sessionId]
+          return { kind: 'subagent', access: resolved.mode === 'continuable' ? 'resumable' : 'readonly', address: resolved, ...summary?.displayTitle === undefined ? {} : { label: summary.displayTitle }, ...summary?.cwd === undefined ? {} : { cwd: summary.cwd } }
+        }, { signal: operation.signal, isCurrent: () => operation.valid() })
+      } finally { operation.dispose() }
+    },
+    dispose,
+  }
 }
