@@ -36,7 +36,7 @@ interface ApprovalEntry {
   readonly binding: SessionBinding
   readonly generation: number
   overlay?: RemoteRequestOverlay<ApprovalAnswer | typeof DELEGATE>
-  onAbort?: () => void
+  readonly onAbort: () => void
   settled: boolean
 }
 
@@ -143,7 +143,7 @@ class RemoteApprovalController {
     request: ApprovalRequest,
     next: () => Promise<ApprovalOutcome>,
   ): Promise<ApprovalOutcome> {
-    if (sessionId === undefined || request.toolName.trim() === '') return next()
+    if (this.disposed || sessionId === undefined || request.toolName.trim() === '') return next()
     const ref: SessionRef = { host: client.key, sessionId }
     const current = this.options.hosts.current()
     if (!isRemoteFeatureSelection(current, client, ref)) return next()
@@ -160,9 +160,9 @@ class RemoteApprovalController {
       const entry: ApprovalEntry = {
         client, ref, request, next, binding: current.binding, generation: client.state.getSnapshot().generation,
         ...requestKey === undefined ? {} : { requestKey }, resolve, reject, settled: false,
+        onAbort: () => this.settle(entry, 'cancelled'),
       }
       this.entries.push(entry)
-      entry.onAbort = () => this.settle(entry, 'cancelled')
       request.signal?.addEventListener('abort', entry.onAbort, { once: true })
       this.publish()
       this.startNext()
@@ -172,14 +172,13 @@ class RemoteApprovalController {
   private startNext(): void {
     if (this.disposed || this.active !== undefined) return
     const entry = this.entries[0]
-    if (entry === undefined || entry.settled) return
-    if (!this.isCurrent(entry) || entry.request.signal?.aborted) {
-      this.settle(entry, entry.request.signal?.aborted ? 'cancelled' : DELEGATE)
+    if (entry === undefined) return
+    if (!this.isCurrent(entry)) {
+      this.settle(entry, DELEGATE)
       return
     }
-    const current = this.options.hosts.current()
-    if (!isRemoteFeatureSelection(current, entry.client, entry.ref)) {
-      this.settle(entry, DELEGATE)
+    if (this.allowed(entry.client, entry.ref.sessionId, entry.request.toolName)) {
+      this.settle(entry, 'allowed-once')
       return
     }
     this.active = entry
@@ -187,7 +186,7 @@ class RemoteApprovalController {
     const id = `remote.approval.${String(++this.sequence)}`
     entry.overlay = requestOverlay<ApprovalAnswer | typeof DELEGATE>(this.options.ctx, {
       id,
-      title: () => this.options.t('Approve {tool}?', { tool: entry.request.toolName }),
+      title: this.options.t('Approve {tool}?', { tool: entry.request.toolName }),
       scope: { kind: 'session', sessionId: entry.ref.sessionId },
       isCurrent: () => this.isCurrent(entry),
       subscribeLocale: this.options.subscribeLocale,
@@ -195,23 +194,20 @@ class RemoteApprovalController {
       bare: true,
       contentScroll: true,
       armMs: decisionArmMs,
-      ...entry.request.signal === undefined ? {} : { signal: entry.request.signal },
       view: () => card(entry.request, this.entries.length > 1 ? this.options.t('{index} of {total} waiting', { index: 1, total: this.entries.length }) : undefined, this.options.t),
       answer,
       onAction: (event, context) => event.kind === 'activate' && event.actionId === 'open' ? this.openDocument(entry, context.signal) : undefined,
-      accepted: result => {
-        if (result === DELEGATE) return
-        if (result.session === true) this.allow(entry.client, entry.ref.sessionId, entry.request.toolName)
-        if (result.reason !== undefined) this.steer(entry, result.reason)
-      },
-      cancelled: reason => {
-        if (reason === 'dismiss') return { outcome: 'rejected' as const }
-        if (reason === 'abort') return { outcome: 'cancelled' as const }
-        return DELEGATE
-      },
+      cancelled: reason => reason === 'dismiss' ? { outcome: 'rejected' as const } : DELEGATE,
     })
     void entry.overlay.result.then(
-      result => this.settle(entry, result === DELEGATE ? DELEGATE : result.outcome),
+      result => {
+        if (entry.settled) return
+        if (result !== DELEGATE) {
+          if (result.session === true) this.allow(entry.client, entry.ref.sessionId, entry.request.toolName)
+          if (result.reason !== undefined) this.steer(entry, result.reason)
+        }
+        this.settle(entry, result === DELEGATE ? DELEGATE : result.outcome)
+      },
       () => this.settle(entry, 'unavailable'),
     )
   }
@@ -219,14 +215,13 @@ class RemoteApprovalController {
   private settle(entry: ApprovalEntry, outcome: ApprovalOutcome | typeof DELEGATE): void {
     if (entry.settled) return
     entry.settled = true
-    const index = this.entries.indexOf(entry)
-    if (index >= 0) this.entries.splice(index, 1)
+    this.entries.splice(this.entries.indexOf(entry), 1)
     if (this.active === entry) {
       this.active = undefined
       this.options.ctx.emit('mayfly/decision-wait-changed', undefined)
     }
     if (entry.requestKey !== undefined) this.requestKeys.get(entry.client)?.delete(entry.requestKey)
-    if (entry.onAbort !== undefined) entry.request.signal?.removeEventListener('abort', entry.onAbort)
+    entry.request.signal?.removeEventListener('abort', entry.onAbort)
     entry.overlay?.cancel()
     this.publish()
     try {

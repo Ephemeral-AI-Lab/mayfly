@@ -87,9 +87,12 @@ export async function approvalFixture() {
   const notify = (): void => { for (const fn of listeners) fn() }
   return {
     ctx, options, client, binding, facts, conversation, questions, pressure, session, screen, prompt,
-    state, stateListeners, localeListeners, offRequest, next, request, model, rosters, waits, dispose,
+    state, stateListeners, localeListeners, topologyListeners: listeners, offRequest, next, request, model, rosters, waits, dispose,
     setEvents: (next: readonly SessionEventLikeEntry[]) => { events = next },
     scope: (id: SessionId | undefined) => { scopeId = id },
+    selectSession: (id: SessionId) => { scopeId = id; selection = { ref: { host: client.key, sessionId: id }, client, binding }; notify() },
+    notify,
+    stopFrontend: () => front.dispose(),
     locale: (locale: 'zh' | 'en') => { ctx.mayflyLocale.setPreference(locale); for (const fn of localeListeners) fn() },
     reconnect: () => { state.generation += 1; for (const fn of stateListeners) fn() },
     rebind: () => { selection = { ...selection!, binding: { ...binding } }; notify() },

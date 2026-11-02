@@ -124,7 +124,10 @@ describe('Remote approval common card and native ownership', () => {
     ['{"command":"printf safe"}', 'printf safe'],
     ['{"file_path":"a.ts","old_string":"before","new_string":"after"}', 'a.ts\n\n--- old\nbefore\n\n+++ new\nafter\n'],
     ['{"path":"a.ts","content":"next"}', 'a.ts\n\nnext\n'],
-    ['{"value":3}', '{\n  "value": 3\n}'], ['{bad json', '{bad json'], ['null', 'null'],
+    ['{"value":3}', '{\n  "value": 3\n}'], ['{bad json', '{bad json'], ['null', 'null'], ['3', '3'], ['[]', '[]'],
+    ['{"old_string":"before"}', '\n\n--- old\nbefore\n\n+++ new\n\n'],
+    ['{"new_string":"after"}', '\n\n--- old\n\n\n+++ new\nafter\n'],
+    ['{"content":"only content"}', '\n\nonly content\n'],
   ])('opens only the exact native call document %s and keeps the request pending', async (raw, expected) => {
     vi.stubEnv('VISUAL', 'fixture-editor')
     const f = await fixture(); f.setEvents(call(raw))
@@ -151,6 +154,163 @@ describe('Remote approval common card and native ownership', () => {
     expect(editLocalText).not.toHaveBeenCalled()
     expect(JSON.stringify(f.model().feedbackSnapshot())).toContain('no editor configured')
     f.model().requestClose(); await pending
+  })
+  it('applies a new session allowance to already queued requests of the same tool', async () => {
+    const f = await fixture()
+    const first = f.request()
+    const second = f.request()
+    f.model().emit({ kind: 'selection-accept', ...options, selectedIds: ['allow-session'] })
+    await expect(first).resolves.toBe('allowed-once')
+    await expect(second).resolves.toBe('allowed-once')
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    const other = f.request({ toolName: 'write' })
+    f.model().emit({ kind: 'selection-accept', ...options, selectedIds: ['allow-session'] })
+    await expect(other).resolves.toBe('allowed-once')
+    f.selectSession(SessionId('another-session'))
+    const next = f.request()
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+    f.model().requestClose(); await expect(next).resolves.toBe('rejected')
+  })
+  it('passes an off-selection native request to the next waterfall listener', async () => {
+    const f = await fixture(); f.scope(SessionId('another-session'))
+    await expect(f.request()).resolves.toBe('unavailable')
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    expect(f.rosters).toEqual([])
+  })
+  it('keeps an unchanged topology and connection snapshot from retiring a pending native request', async () => {
+    const f = await fixture(); const pending = f.request()
+    const model = f.model()
+    f.notify(); for (const listener of f.stateListeners) listener()
+    expect(f.model()).toBe(model)
+    expect(f.next).not.toHaveBeenCalled()
+    f.model().requestClose(); await pending
+  })
+  it('rejects a refusal without a note and delegates callbacks queued after local controller unload', async () => {
+    const f = await fixture(); const pending = f.request()
+    f.model().emit({ kind: 'selection-accept', ...options, selectedIds: ['reject'] })
+    await expect(pending).resolves.toBe('rejected')
+    const queuedTopology = [...f.topologyListeners]
+    f.dispose(); for (const callback of queuedTopology) callback()
+    await expect(f.request()).resolves.toBe('unavailable')
+    expect(f.prompt).not.toHaveBeenCalled()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+  it('rechecks the selected native scope before starting an already queued request', async () => {
+    const f = await fixture(); const abort = new AbortController()
+    const first = f.request({ signal: abort.signal }); const second = f.request()
+    vi.spyOn(f.options.hosts, 'current').mockReturnValue(undefined)
+    abort.abort()
+    await expect(first).resolves.toBe('cancelled')
+    await expect(second).resolves.toBe('unavailable')
+    expect(f.next).toHaveBeenCalledOnce()
+    expect(f.rosters.at(-1)).toEqual([])
+  })
+  it('lets the request overlay delegate an interaction that discovers a stale native selection', async () => {
+    const f = await fixture(); const pending = f.request(); const model = f.model()
+    vi.spyOn(f.options.hosts, 'current').mockReturnValue(undefined)
+    model.invoke('open')
+    await expect(pending).resolves.toBe('unavailable')
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    expect(editLocalText).not.toHaveBeenCalled()
+  })
+  it('settles unavailable when the shared card cannot be constructed', async () => {
+    const f = await fixture()
+    vi.spyOn(f.options, 't').mockImplementation(key => { if (key === 'Decide') throw new Error('locale unavailable'); return key })
+    await expect(f.request()).resolves.toBe('unavailable')
+    expect(f.rosters.at(-1)).toEqual([])
+  })
+  it('settles once when a native abort races a rejected overlay construction', async () => {
+    const f = await fixture(); const abort = new AbortController()
+    vi.spyOn(f.options, 't').mockImplementation(key => { if (key === 'Decide') throw new Error('locale unavailable'); return key })
+    const pending = f.request({ signal: abort.signal }); abort.abort()
+    await expect(pending).resolves.toBe('cancelled'); await flushApproval()
+    expect(f.next).not.toHaveBeenCalled()
+    expect(f.rosters.at(-1)).toEqual([])
+  })
+  it('falls back cleanly through a frontend locale/settings provider gap', async () => {
+    vi.stubEnv('VISUAL', 'fixture-editor')
+    const f = await fixture(); await f.stopFrontend()
+    const abort = new AbortController()
+    const pending = f.request({ signal: abort.signal, displayReason: { en: 'Native fallback after frontend unload' } })
+    expect(f.rosters.at(-1)?.[0]?.reason).toBe('Native fallback after frontend unload')
+    const entry = f.ctx.mayflyOverlays.list()[0]!
+    const prepared = await entry.events.prepare({ kind: 'activate', actionId: 'open', controlId: 'decision.keys', pagePath: [] }, {
+      surfaceId: entry.id, revision: entry.revision, source: entry.source, operationId: 'provider-gap', signal: abort.signal, report: vi.fn(),
+    })
+    prepared.publish()
+    expect(editLocalText).toHaveBeenCalledWith('ParityProbe', 'fixture-editor', expect.any(AbortSignal))
+    abort.abort(); await expect(pending).resolves.toBe('cancelled')
+  })
+  it('propagates an actual waterfall fallback rejection during local detach', async () => {
+    const f = await fixture()
+    const failure = new Error('native listener unavailable')
+    const pending = f.request({}, vi.fn(() => { throw failure }))
+    f.detach()
+    await expect(pending).rejects.toBe(failure)
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    expect(f.rosters.at(-1)).toEqual([])
+  })
+  it('falls back to the request tool name while ignoring unrelated native event-window entries', async () => {
+    vi.stubEnv('VISUAL', 'fixture-editor')
+    const f = await fixture()
+    f.setEvents([{ type: 'assistant-settlement' }, { type: 'event', event: { type: 'user/message', data: {} } }, { type: 'event', event: { type: 'tool/call', data: { callId: 'other-call', arguments: '{"command":"wrong"}' } } }] as unknown as readonly SessionEventLikeEntry[])
+    const pending = f.request({ callId: ToolCallId('missing-call') })
+    f.model().invoke('open')
+    await vi.waitFor(() => { expect(editLocalText).toHaveBeenCalledWith('ParityProbe', 'fixture-editor', expect.any(AbortSignal)) })
+    f.model().requestClose(); await pending
+  })
+  it('uses the English display reason when the native request has no current-locale translation', async () => {
+    const f = await fixture(); f.locale('zh')
+    const pending = f.request({ displayReason: { en: 'Native English fallback' } })
+    expect(f.rosters.at(-1)?.[0]?.reason).toBe('Native English fallback')
+    f.model().requestClose(); await pending
+  })
+  it('reports local editor failure and leaves the native request undecided', async () => {
+    vi.stubEnv('VISUAL', 'fixture-editor'); vi.mocked(editLocalText).mockRejectedValueOnce(new Error('editor failed'))
+    const f = await fixture(); const pending = f.request()
+    f.model().invoke('open'); await flushApproval()
+    expect(JSON.stringify(f.model().feedbackSnapshot())).toContain('The editor could not be opened')
+    f.model().requestClose(); await expect(pending).resolves.toBe('rejected')
+  })
+  it('ignores a late local editor failure after the exact native binding was replaced', async () => {
+    vi.stubEnv('VISUAL', 'fixture-editor')
+    const done = Promise.withResolvers<string | undefined>(); vi.mocked(editLocalText).mockReturnValueOnce(done.promise)
+    const f = await fixture(); const pending = f.request()
+    f.model().invoke('open'); await vi.waitFor(() => { expect(editLocalText).toHaveBeenCalledOnce() })
+    f.rebind(); await expect(pending).resolves.toBe('unavailable')
+    done.reject(new Error('late failure')); await flushApproval()
+    expect(f.options.notice.set).not.toHaveBeenCalled()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+  it('does not begin local editor work when a deferred terminal suspension resumes after detach', async () => {
+    vi.stubEnv('VISUAL', 'fixture-editor')
+    const f = await fixture(); const done = Promise.withResolvers<void>()
+    f.screen.suspend.mockImplementationOnce(async run => { await done.promise; return await run() })
+    const pending = f.request(); f.model().invoke('open')
+    await vi.waitFor(() => { expect(f.screen.suspend).toHaveBeenCalledOnce() })
+    f.detach(); await pending
+    done.resolve(); await flushApproval()
+    expect(editLocalText).not.toHaveBeenCalled()
+  })
+  it.each([new Error('steer transport failed'), 'steer failed'])('reports a failed native rejection steer %s under its original selection', async error => {
+    const f = await fixture(); f.prompt.mockRejectedValueOnce(error)
+    const pending = f.request(); f.model().edit(note, 'unsafe'); f.model().invoke('send-note')
+    await expect(pending).resolves.toBe('rejected'); await flushApproval()
+    expect(f.options.notice.set).toHaveBeenCalledWith(error instanceof Error ? error.message : error)
+  })
+  it('presents a failed native steer result and ignores its late failure after selection replacement', async () => {
+    const f = await fixture()
+    f.prompt.mockResolvedValueOnce({ ok: false, error: { message: 'Native steer unavailable' } } as never)
+    const first = f.request(); f.model().edit(note, 'unsafe'); f.model().invoke('send-note')
+    await first; await flushApproval()
+    expect(f.options.notice.set).toHaveBeenCalledWith('Native steer unavailable')
+    vi.mocked(f.options.notice.set).mockClear()
+    const done = Promise.withResolvers<Awaited<ReturnType<typeof f.prompt>>>()
+    f.prompt.mockReturnValueOnce(done.promise)
+    const second = f.request(); f.model().edit(note, 'unsafe'); f.model().invoke('send-note')
+    await second; f.deselect()
+    done.reject('late native failure'); await flushApproval()
+    expect(f.options.notice.set).not.toHaveBeenCalled()
   })
   it('ignores late editor success after native abort and releases the card', async () => {
     vi.stubEnv('VISUAL', 'fixture-editor')

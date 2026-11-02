@@ -55,6 +55,7 @@ class RemoteActivityController {
   private readonly seen = new Set<string>()
   private subscriptions: readonly (() => void)[] = []
   private activity = EMPTY_ACTIVITY
+  private statusActive = false
   private waiting = false
   private decision: MayflyDecisionWait | undefined
   private dialog = false
@@ -69,7 +70,7 @@ class RemoteActivityController {
   private pressure: ContextPressure | undefined
   private reportedContext = 0
   private retrying: ConversationFacts['retrying'] | undefined
-  private timer: ReturnType<typeof setInterval> | undefined
+  private readonly timer: ReturnType<typeof setInterval>
   private disposed = false
 
   constructor(options: RemoteFeatureContext) {
@@ -120,17 +121,16 @@ class RemoteActivityController {
     this.offPanel()
     for (const dispose of this.subscriptions) dispose()
     this.subscriptions = []
-    if (this.timer !== undefined) clearInterval(this.timer)
-    this.timer = undefined
+    clearInterval(this.timer)
     this.notifications.dispose()
     this.activityPane.dispose()
   }
 
   private readonly attach = (generation: number): void => {
-    if (this.disposed) return
     for (const dispose of this.subscriptions) dispose()
     this.subscriptions = []
     this.activity = EMPTY_ACTIVITY
+    this.statusActive = false
     this.waiting = false
     this.decision = undefined
     this.live = false
@@ -142,6 +142,7 @@ class RemoteActivityController {
     this.notifications.clearAll()
     const current = this.lifecycle.selection(generation)
     if (current !== undefined) {
+      this.statusActive = current.binding.session.getSnapshot().running
       const conversation = current.binding.session.projections.faceOf('mayflyConversation')
       const facts = current.binding.session.projections.faceOf('mayflyConversationFacts')
       const questions = current.binding.session.projections.faceOf('userQuestions')
@@ -161,10 +162,19 @@ class RemoteActivityController {
       }
       this.subscriptions = [
         conversation.subscribe(update),
-        facts.subscribe(update),
+        facts.subscribe(() => {
+          if (!this.lifecycle.owns(generation)) return
+          const next = facts.getSnapshot() as ConversationFacts | undefined
+          if (next !== undefined && !next.active && next.turn > 0) this.statusActive = false
+          update()
+        }),
         questions.subscribe(update),
         pressure.subscribe(update),
-        current.binding.session.subscribe(update),
+        current.binding.session.subscribe(() => {
+          if (!this.lifecycle.owns(generation)) return
+          this.statusActive = current.binding.session.getSnapshot().running
+          update()
+        }),
       ]
       update()
       const key = `${current.ref.host}\0${current.ref.sessionId}`
@@ -195,7 +205,7 @@ class RemoteActivityController {
   private publishActivity(): void {
     if (this.disposed) return
     const waiting = this.waiting || this.decision !== undefined
-    if ((!this.activity.active && !waiting) || (this.dialog && this.decision === undefined && !this.waiting)) {
+    if ((!this.activity.active && !this.statusActive && !waiting) || (this.dialog && this.decision === undefined && !this.waiting)) {
       this.live = false
       this.activityPane.set(null)
       return
@@ -204,12 +214,13 @@ class RemoteActivityController {
     this.live = true
     this.turn = this.activity.turn
     const phase = waiting ? 'waiting' : this.activity.phase === 'idle' ? 'diving' : this.activity.phase
-    if (phase === 'thinking' && this.phaseSeenAt === undefined) this.phaseSeenAt = this.now
-    if (phase !== 'thinking') this.phaseSeenAt = undefined
+    let stage: (typeof THINKING_STAGES)[number] | undefined
+    if (phase === 'thinking') {
+      this.phaseSeenAt ??= this.now
+      const since = this.activity.outputProgress?.startedAt ?? this.phaseSeenAt
+      stage = THINKING_STAGES.findLast(candidate => this.now - since >= candidate.from) ?? THINKING_STAGES[0]!
+    } else this.phaseSeenAt = undefined
     const flight = phase === 'tool' ? remoteFlightLabel(this.activity.inFlight) : { key: phase === 'waiting' ? this.decision?.kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer' : phase === 'writing' ? 'Writing' : 'Deep diving' }
-    const stage = phase === 'thinking'
-      ? THINKING_STAGES.findLast(candidate => this.now - (this.activity.outputProgress?.startedAt ?? this.phaseSeenAt ?? this.now) >= candidate.from) ?? THINKING_STAGES[0]!
-      : undefined
     const since = phase === 'waiting' ? this.waitingSince : phase === 'thinking' ? this.activity.outputProgress?.startedAt ?? this.phaseSeenAt : this.activity.turnStartedAt
     const elapsed = since === undefined ? '' : remoteCompactElapsedMs(Math.max(0, this.now - since))
     const tail = phase === 'tool' ? [] : [elapsed, phase === 'waiting' ? '' : remoteOutputCounter(this.activity.flowDownChars), phase === 'waiting' ? '' : remoteOutputRate(this.activity.outputProgress, this.now)].filter(text => text !== '')

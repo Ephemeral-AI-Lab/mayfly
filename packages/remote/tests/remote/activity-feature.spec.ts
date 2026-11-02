@@ -9,8 +9,9 @@ import { plain } from './render-fixture.ts'
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const dispose of cleanups.splice(0).reverse()) await dispose(); vi.useRealTimers() })
-async function fixture() {
+async function fixture(initial?: Readonly<Record<string, unknown>>) {
   const f = await approvalFixture()
+  if (initial !== undefined) f.facts.set(initial)
   const dispose = mountActivityFeature(f.options)
   cleanups.push(async () => { dispose(); await f.cleanup() })
   const node = (): MayflyUiNode | null => f.ctx.mayflyPanes.list().find(pane => pane.id === 'mayfly.pane.activity')?.node ?? null
@@ -105,6 +106,99 @@ describe('Remote shared activity and approval waiting', () => {
     const pending = f.request()
     expect(f.rows()[1]).toContain('等待你的批准')
     f.model().requestClose(); await pending
+  })
+  it.each([1, 3])('reports native resumed history once for %s completed turns', async turn => {
+    const f = await fixture({ active: false, phase: 'idle', turn, flowDownChars: 0, inFlight: [] })
+    const notices = () => f.ctx.mayflyUiInteraction.notificationSnapshot().filter(record => record.message.startsWith('Resumed session'))
+    expect(notices()).toHaveLength(1)
+    expect(notices()[0]?.message).toBe(`Resumed session · ${String(turn)} ${turn === 1 ? 'turn' : 'turns'}`)
+    f.reconnect()
+    expect(notices()).toHaveLength(0)
+    f.reconnect(); expect(notices()).toHaveLength(0)
+  })
+  it('uses native thinking timestamps, the escalation ladder, writing counters, and the Session running fallback', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(1_000)
+    const f = await fixture()
+    f.active(1, { phase: 'thinking', inFlight: [], outputProgress: { startedAt: 1_000, chars: 80 } })
+    expect(f.rows()[1]).toContain('Pondering')
+    await vi.advanceTimersByTimeAsync(5_000); expect(f.rows()[1]).toContain('Mulling')
+    await vi.advanceTimersByTimeAsync(10_000); expect(f.rows()[1]).toContain('DeepThinking')
+    await vi.advanceTimersByTimeAsync(30_000); expect(f.rows()[1]).toContain('Fathoming')
+    f.active(1, { phase: 'composing', inFlight: [], turnStartedAt: 1_000, flowDownChars: 200 })
+    expect(f.rows()[1]).toContain('Writing')
+    expect(f.rows()[1]).toContain('45s')
+    expect(f.rows()[1]).toContain('↓50')
+    f.active(1, { phase: 'thinking', inFlight: [], outputProgress: undefined })
+    expect(f.rows()[1]).toContain('Pondering')
+    await vi.advanceTimersByTimeAsync(1_000); expect(f.rows()[1]).toContain('1s')
+    f.facts.set(undefined); f.session.set({ running: true })
+    expect(f.rows()[1]).toContain('Deep diving')
+    f.session.set({ running: false }); expect(f.rows()).toEqual([])
+  })
+  it('presents the native running status before the next turn facts arrive, matching the reference tip walk', async () => {
+    const f = await fixture(); f.active(1); f.idle(1)
+    f.session.set({ running: true })
+    expect(f.rows()[1]).toContain('Deep diving')
+    expect(f.rows()[2]).toContain('Ctrl+O to expand tool details')
+    f.active(2)
+    expect(f.rows()[2]).toContain('/plugin to browse and install plugins')
+    f.idle(2)
+    expect(f.rows()).toEqual([])
+  })
+  it('keeps the first thinking stage when a native timestamp is slightly ahead of the local clock', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(1_000)
+    const f = await fixture(); f.active(1, { phase: 'thinking', inFlight: [], outputProgress: { startedAt: 2_000, chars: 0 } })
+    expect(f.rows()[1]).toContain('Pondering')
+    expect(f.rows()[1]).toContain('0s')
+  })
+  it('ignores locale callbacks queued before the activity owner was unloaded', async () => {
+    const f = await fixture(); f.active()
+    const callbacks = [...f.localeListeners]
+    f.disposeActivity()
+    for (const callback of callbacks) callback()
+    expect(f.ctx.mayflyPanes.list()).toEqual([])
+    expect(f.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
+  })
+  it('bounds in-flight tool details, drops empty values, and summarizes additional calls', async () => {
+    const f = await fixture()
+    f.active(1, { inFlight: ['one', 'two', 'three', 'four', '', 'one'].map((detail, index) => ({ callId: String(index), name: index % 2 === 0 ? 'bash' : 'read', detail })) })
+    expect(f.rows()[1]).toContain('Running 6 tools')
+    expect(f.rows()[2]).toContain('one · two · three +1 more')
+    expect(f.rows()[2]).not.toContain('four')
+  })
+  it.each([
+    [{ status: 429, reason: 'temporary pressure' }, 'rate limited · temporary pressure · retrying in 4s · 1/3'],
+    [{ status: 503, reason: '' }, 'HTTP 503 · retrying in 4s · 1/3'],
+    [{}, 'retrying in 4s · 1/3'],
+  ])('reports the native retry countdown %j and withdraws it on settlement', async (extra, expected) => {
+    vi.useFakeTimers(); vi.setSystemTime(10_000)
+    const f = await fixture()
+    f.active(1, { retrying: { at: 10_000, delayMs: 4_000, retry: 1, maxRetries: 3, ...extra } })
+    const retry = () => f.ctx.mayflyUiInteraction.notificationSnapshot().find(record => record.tail === '1/3')
+    expect(retry()?.message).toBe(expected)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(retry()?.message).toContain('retrying in 3s')
+    f.locale('zh'); expect(retry()?.message).toContain('3 秒后重试')
+    f.active(1); expect(retry()).toBeUndefined()
+  })
+  it('raises native context warnings only at threshold escalation and resets below the threshold', async () => {
+    const f = await fixture()
+    const context = () => f.ctx.mayflyUiInteraction.notificationSnapshot().find(record => record.message.includes('Context'))
+    f.pressure.set({ pressureTokens: 91, contextWindow: 100 }); expect(context()).toBeUndefined()
+    f.pressure.set({ pressureTokens: 92, contextWindow: 100 }); expect(context()?.message).toContain('92% full')
+    f.pressure.set({ projectedTokens: 94, pressureTokens: 99, contextWindow: 100 }); expect(context()?.message).toContain('92% full')
+    f.pressure.set({ projectedTokens: 95, contextWindow: 100 }); expect(context()?.message).toContain('95% full')
+    f.pressure.set({ projectedTokens: 98, contextWindow: 100 }); expect(context()?.message).toContain('98% full')
+    f.pressure.set({ contextWindow: 100 }); expect(context()).toBeUndefined()
+    f.pressure.set({ projectedTokens: 92 }); expect(context()).toBeUndefined()
+    f.pressure.set({ projectedTokens: 92, contextWindow: 100 }); expect(context()?.message).toContain('92% full')
+  })
+  it('ignores a queued projection callback after a new connection generation retires it', async () => {
+    const f = await fixture(); f.active()
+    const stale = [...f.facts.listeners, ...f.conversation.listeners, ...f.session.listeners]
+    f.deselect(); for (const callback of stale) callback()
+    expect(f.rows()).toEqual([])
+    expect(f.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
   })
   it('drops projection listeners and activity on detach, ignoring late native facts', async () => {
     const f = await fixture(); f.active()
