@@ -1,17 +1,22 @@
 /** Readonly rc.2 tool and MCP catalog presentation shared by native and Remote owners.
  * @module @ephemeral-ai/mayfly/interaction/catalog-model
  */
-import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import { browser, panel, ui, type MayflyActionItem, type MayflyField, type MayflyListItem, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 
+/** Renderer-neutral native tool schema, including an actually absent parameters field. */
+export interface ToolSchemaFacts {
+  readonly name: string
+  readonly description: string
+  readonly parameters?: unknown
+}
 /** Readonly public MCP server facts; native owners retain their service objects. */
 export interface McpServerFacts {
   readonly entryId: string
   readonly serverName: string
   readonly status: 'no-tools' | 'restricted' | 'synced' | 'unknown'
   readonly registeredCount: number
-  readonly toolsVisible: readonly ToolSchema[]
+  readonly toolsVisible: readonly ToolSchemaFacts[]
 }
 /** One whole MCP catalog supplied by its exact Session owner. */
 export interface McpCatalogFacts {
@@ -25,16 +30,16 @@ export function firstSentence(description: string): string {
   return end === null ? line : line.slice(0, end.index)
 }
 
-export function sortedSchemas(schemas: readonly ToolSchema[]): readonly ToolSchema[] {
+export function sortedSchemas(schemas: readonly ToolSchemaFacts[]): readonly ToolSchemaFacts[] {
   return schemas.toSorted((left, right) => left.name.localeCompare(right.name))
 }
 
-export function toolItems(schemas: readonly ToolSchema[]): readonly MayflyListItem[] {
+export function toolItems(schemas: readonly ToolSchemaFacts[]): readonly MayflyListItem[] {
   return sortedSchemas(schemas).map(schema => ({ id: schema.name, label: schema.name, detail: firstSentence(schema.description) }))
 }
 
 /** The schema body without a surface, shared by the browser and the standalone detail view. */
-export function toolDetailBody(schema: ToolSchema, t: MayflyTranslate): MayflyUiNode {
+export function toolDetailBody(schema: ToolSchemaFacts, t: MayflyTranslate): MayflyUiNode {
   return ui.stack.column([ui.child(ui.scroll(ui.stack.column([
     ui.fields([{ label: t('Name'), value: [{ text: schema.name }] }]),
     ui.divider({ label: t('Description') }),
@@ -47,7 +52,7 @@ export function toolDetailBody(schema: ToolSchema, t: MayflyTranslate): MayflyUi
 export const detailActions = (t: MayflyTranslate) => ui.actions({ id: 'tool-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] })
 
 /** Preserve the full description and JSON Schema; core alone wraps their text. */
-export function toolDetailNode(schema: ToolSchema, t: MayflyTranslate): MayflyUiNode {
+export function toolDetailNode(schema: ToolSchemaFacts, t: MayflyTranslate): MayflyUiNode {
   return ui.surface({ title: schema.name, chrome: 'overlay', padding: 1, child: ui.stack.column([toolDetailBody(schema, t), detailActions(t)]) })
 }
 
@@ -154,7 +159,7 @@ export function serverPage(server: McpServerFacts, tab: ServerTab, resources: Re
   ]) })
 }
 
-export function toolPanel(server: McpServerFacts, schema: ToolSchema, t: MayflyTranslate): MayflyUiNode {
+export function toolPanel(server: McpServerFacts, schema: ToolSchemaFacts, t: MayflyTranslate): MayflyUiNode {
   return panel({ title: schema.name, subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([
     ui.child(ui.scroll(ui.stack.column([
       ui.fields([{ label: t('Name'), value: [{ text: schema.name }] }]),
@@ -199,7 +204,7 @@ export function resourceItems(items: readonly Record<string, unknown>[]): readon
 }
 
 /** The immutable responsive tool browser, parameterized by the owner's current facts. */
-export function toolsBrowserNode(schemas: readonly ToolSchema[], focused: string | undefined, detailMode: boolean, available: boolean, t: MayflyTranslate): MayflyUiNode {
+export function toolsBrowserNode(schemas: readonly ToolSchemaFacts[], focused: string | undefined, detailMode: boolean, available: boolean, t: MayflyTranslate): MayflyUiNode {
   const items = schemas.map(schema => ({ id: schema.name, label: schema.name, detail: firstSentence(schema.description) }))
   const selected = schemas.find(schema => schema.name === focused) ?? schemas[0]
   const detailOpen = detailMode && selected !== undefined
