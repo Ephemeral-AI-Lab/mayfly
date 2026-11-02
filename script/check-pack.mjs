@@ -97,12 +97,17 @@ function validateManifest(name, manifest, root, relativeDir) {
 function verifyExternalConsumers(packageTarballs) {
   const uiTarball = packageTarballs.get('@ephemeral-ai/mayfly-ui')
   const remoteTarball = packageTarballs.get('@ephemeral-ai/mayfly-remote')
+  const sharedTarball = packageTarballs.get('@ephemeral-ai/mayfly')
   if (uiTarball === undefined) {
     fail('external UI kit fixture requires the packed UI tarball')
     return
   }
   if (remoteTarball === undefined) {
     fail('external Client fixture requires the packed Remote tarball')
+    return
+  }
+  if (sharedTarball === undefined) {
+    fail('external editor fixture requires the packed shared tarball')
     return
   }
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'mayfly-ui-kit-pack-'))
@@ -149,6 +154,7 @@ export declare const metric: MayflyComponentFactory<MetricProps>
       packageManager: readManifest('.').packageManager,
       dependencies: {
         '@ephemeral-ai/mayfly-ui': `file:${uiTarball}`,
+        '@ephemeral-ai/mayfly': `file:${sharedTarball}`,
         '@ephemeral-ai/mayfly-remote': `file:${remoteTarball}`,
         '@mayfly-pack-fixture/user-kit': `file:${kitTarball}`,
       },
@@ -163,6 +169,8 @@ export declare const metric: MayflyComponentFactory<MetricProps>
     execFileSync('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], { cwd: consumerRoot, stdio: 'ignore' })
     writeFileSync(join(consumerRoot, 'verify.mjs'), `
 import { metric } from '@mayfly-pack-fixture/user-kit'
+import { EditorExtensionRuntime } from '@ephemeral-ai/mayfly/editor-presentation'
+if (typeof EditorExtensionRuntime !== 'function') throw new Error('external editor extension runtime export is unavailable')
 const node = metric.render({ label: 'Context', value: 42 })
 const text = node.children?.[0]?.node
 const progress = node.children?.[1]?.node
@@ -181,6 +189,7 @@ for (const value of [node, node.children, node.children[0], node.children[1], te
 import { metric, type MetricProps } from '@mayfly-pack-fixture/user-kit'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { createHostClient, HostKey, type HostClient } from '@ephemeral-ai/mayfly-remote/client'
+import { EditorExtensionRuntime, type EditorExtensionRuntimeOptions } from '@ephemeral-ai/mayfly/editor-presentation'
 const props: MetricProps = { label: 'Context', value: 42 }
 const node: MayflyUiNode = metric.render(props)
 const options: Parameters<typeof createHostClient>[0] = {
@@ -191,13 +200,18 @@ declare const host: HostClient
 void [host.remote.session, host.remote.workspace, host.remote.skills, host.remote.commands]
 void options
 void node
+export function mountInput(options: EditorExtensionRuntimeOptions<{ readonly text: string, readonly receipt: number }>) {
+  const runtime = new EditorExtensionRuntime(options)
+  const prepared: { readonly text: string, readonly receipt: number } | undefined = runtime.takePrepared('source')
+  return { runtime, prepared }
+}
 `)
     writeFileSync(join(consumerRoot, 'tsconfig.json'), `${JSON.stringify({
       compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2024', strict: true, noEmit: true, skipLibCheck: false, types: ['node'] },
       include: ['verify.ts'],
     }, null, 2)}\n`)
     execFileSync(join(ROOT, 'node_modules', '.bin', 'tsc'), ['-p', '.'], { cwd: consumerRoot, stdio: 'inherit' })
-    console.log('external UI kit and Host Client: packed install, runtime, and types passed')
+    console.log('external UI kit, editor extensions and Host Client: packed install, runtime, and types passed')
   } catch (error) {
     fail(`external consumer fixture failed: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
