@@ -36,9 +36,8 @@ export function mountRemoteProviderAuthorization(
     const text = notice?.[target]
     if (text === undefined) return { kind: 'failed', message: t('Authorization instructions are no longer available') }
     if (localIO === undefined) return { kind: 'failed', message: t('The link could not be copied — select it in the panel instead') }
-    if (!operation.valid() || signal.aborted) return { kind: 'cancelled' }
     try { await localIO.copy(text); return !operation.valid() || signal.aborted ? { kind: 'cancelled' } : { kind: 'completed' } }
-    catch { return { kind: 'failed', message: t('The link could not be copied — select it in the panel instead') } }
+    catch { return !operation.valid() || signal.aborted ? { kind: 'cancelled' } : { kind: 'failed', message: t('The link could not be copied — select it in the panel instead') } }
   }
   const view = () => panel({ title: t('Authorize {route}', { route }), escapeLabel: 'cancel', body: ui.stack.column([
     instructions(), copyActions(), ...running ? [ui.loader({ message: t('Waiting for authorization') })] : [],
@@ -76,11 +75,13 @@ export function mountRemoteProviderAuthorization(
       },
       onClosed: () => settle(operation.valid() && !signal.aborted ? { type: 'decline' } : undefined),
     })
+    // Mounting may synchronously close the child. Do not register a new ACK
+    // observer after its onClosed callback has already retired the prompt.
+    if (child.closed) { settle(undefined); return }
     prompt = { panel: child, refresh: () => { child?.refresh() }, settle }
     offRegistry = context.ctx.mayflyOverlays.subscribe(delta => {
       if (answer !== undefined && delta.kind === 'upsert' && delta.entry.id === promptId && delta.entry.update.reason === 'ack' && delta.entry.update.operationId === answer?.operationId) settle({ type: 'answer', value: answer.value })
     })
-    if (child.closed) settle(undefined)
   })
   mounted = openRemoteBrowser(context, {
     id, scope: { kind: 'app', targetId: `authorization/${route}` }, signal: operation.signal, isCurrent: () => operation.valid(), view,

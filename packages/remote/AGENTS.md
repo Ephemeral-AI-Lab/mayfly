@@ -91,6 +91,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   environment-owned keys remain intact when a profile is removed. Authorization
   answers reach the Host only after the shared UI acknowledges the answer action;
   dismissal, detach, and reconnect retire outstanding prompts and discovery.
+  A prompt already closed during mounting must acquire no later ACK observer.
+  Retrying profile setup after successful sign-in reuses that exact authorization
+  owner and never starts another native authorization attempt.
 - User questions use the shared reference wizard and plan-review card. Live
   questions own their native waterfall and timed foreground claim; continued
   questions read the native whole projection and queued replies before an

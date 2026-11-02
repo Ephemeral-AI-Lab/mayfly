@@ -315,8 +315,9 @@ export class RemoteProvidersController extends RemoteFeatureController {
       const ownedBy = (entry: LlmConfigurableProvider) => entry.settingsNs === container.ns && JSON.stringify(entry.settingsPath.slice(0, -1)) === JSON.stringify(container.path)
       const openPicker = (kind: 'known' | 'oauth') => {
         const rows = directory.configurable.filter(entry => ownedBy(entry) && !active.has(entry.provider) && (kind === 'known' || entry.nativeAuth?.oauth === true))
-        const childOperation = this.hostOperation(client, operation.signal)
-        if (childOperation === undefined) return
+        // Only the admitted chooser action calls this, without yielding after
+        // its exact-Host check. The new child keeps its own panel lifetime.
+        const childOperation = this.hostOperation(client, operation.signal)!
         const child = openRemoteBrowser(this.context, {
           id: `mayfly.provider.add.${kind}`, scope: { kind: 'app', targetId: 'provider-creation' }, signal: childOperation.signal, isCurrent: () => childOperation.valid(),
           view: () => panel({ title: this.context.t(kind === 'oauth' ? 'OAuth provider' : 'Known provider'), escapeLabel: 'close', body: ui.list({ id: 'providers', role: 'browse', selectedIds: [], items: rows.map(entry => ({ id: entry.provider, label: entry.displayName })), filterable: true, empty: ui.empty({ title: this.context.t('No providers available') }) }) }),
@@ -349,8 +350,8 @@ export class RemoteProvidersController extends RemoteFeatureController {
   }
 
   private async openEndpoint(client: HostClient, known?: string): Promise<void> {
-    const operation = this.hostOperation(client)
-    if (operation === undefined) return
+    // Both callers are admitted chooser actions with no intervening await.
+    const operation = this.hostOperation(client)!
     try {
       const [configurable, settings] = await Promise.all([remoteValue(client.remote.llm.listConfigurableProviders()), remoteValue(client.remote.settings.describe())])
       if (!operation.valid()) { operation.dispose(); return }
@@ -368,27 +369,23 @@ export class RemoteProvidersController extends RemoteFeatureController {
     const operation = this.hostOperation(client)
     if (operation === undefined) return
     mountRemoteProviderAuthorization(this.context, operation, route, this.authorization, async () => {
-      await this.ensureAuthorizedProfile(client, route, operation.signal)
+      await this.ensureAuthorizedProfile(operation, route)
       if (operation.valid()) await this.onCreated?.(route)
     }, this.localIO)
   }
 
-  private async ensureAuthorizedProfile(client: HostClient, route: string, parent?: AbortSignal): Promise<void> {
-    const operation = this.hostOperation(client, parent)
-    if (operation === undefined) return
-    try {
-      const [configurable, settings] = await Promise.all([remoteValue(client.remote.llm.listConfigurableProviders()), remoteValue(client.remote.settings.describe())])
-      if (!operation.valid()) return
-      const address = remoteProviderAddress(configurable, route)
-      const descriptor = settings.namespaces.find(candidate => candidate.ns === address?.ns)
-      if (address === undefined || address.path.length === 0 || descriptor === undefined) throw new Error(this.context.t('The provider has no editable configuration'))
-      if (remoteProviderProfileAt(descriptor.value, address.path) !== undefined) return
-      await remoteValue(client.remote.settings.mutate(address.ns, [{ op: 'set', path: [...address.path], value: {} }], descriptor.revision))
-    } finally { operation.dispose() }
+  private async ensureAuthorizedProfile(operation: RemoteFeatureOperation, route: string): Promise<void> {
+    const { client } = operation
+    const [configurable, settings] = await Promise.all([remoteValue(client.remote.llm.listConfigurableProviders()), remoteValue(client.remote.settings.describe())])
+    if (!operation.valid()) return
+    const address = remoteProviderAddress(configurable, route)
+    const descriptor = settings.namespaces.find(candidate => candidate.ns === address?.ns)
+    if (address === undefined || address.path.length === 0 || descriptor === undefined) throw new Error(this.context.t('The provider has no editable configuration'))
+    if (remoteProviderProfileAt(descriptor.value, address.path) !== undefined) return
+    await remoteValue(client.remote.settings.mutate(address.ns, [{ op: 'set', path: [...address.path], value: {} }], descriptor.revision))
   }
 
   private async discoverInOperation(operation: RemoteFeatureOperation, settingsNs: string, request: LlmModelDiscoveryRequest): Promise<readonly LlmDiscoveredModel[]> {
-    if (!operation.valid()) return []
     const models = await remoteValue(operation.client.remote.llm.discoverModels(settingsNs, request, operation.signal))
     return operation.valid() ? models : []
   }

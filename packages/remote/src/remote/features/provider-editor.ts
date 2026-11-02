@@ -99,17 +99,15 @@ export function mountRemoteProviderEditor(context: RemoteFeatureContext, options
     const signal = AbortSignal.any([operation.signal, controller.signal])
     const generation = ++discoveryGeneration
     discoveryState = 'running'; mounted?.refresh()
-    try {
-      const bases = profile.baseURL === undefined ? [undefined] : remoteProviderDiscoveryBases(profile.baseURL)
-      let found: readonly LlmDiscoveredModel[] = []
-      for (const base of bases) {
-        try { found = await remoteValue(client.remote.llm.discoverModels(ns, { provider: route, api: 'openai-completions', ...base === undefined ? {} : { baseURL: base } }, signal)) }
-        catch { if (signal.aborted) return }
-        if (found.length > 0) break
-      }
-      if (signal.aborted || !operation.valid() || generation !== discoveryGeneration) return
-      discovered = found; discoveryState = found.length === 0 ? 'failed' : 'done'; mounted?.refresh()
-    } catch { if (!signal.aborted && operation.valid() && generation === discoveryGeneration) { discoveryState = 'failed'; mounted?.refresh() } }
+    const bases = profile.baseURL === undefined ? [undefined] : remoteProviderDiscoveryBases(profile.baseURL)
+    let found: readonly LlmDiscoveredModel[] = []
+    for (const base of bases) {
+      try { found = await remoteValue(client.remote.llm.discoverModels(ns, { provider: route, api: 'openai-completions', ...base === undefined ? {} : { baseURL: base } }, signal)) }
+      catch { if (signal.aborted) return }
+      if (found.length > 0) break
+    }
+    if (signal.aborted || !operation.valid() || generation !== discoveryGeneration) return
+    discovered = found; discoveryState = found.length === 0 ? 'failed' : 'done'; mounted?.refresh()
   }
   mounted = openRemoteBrowser(context, {
     id: `mayfly.provider.${Buffer.from(route).toString('hex')}`, scope: { kind: 'app', targetId: `${ns}/${route}` }, signal: operation.signal, dismissal: 'confirm-dirty', isCurrent: () => operation.valid(), view: node, source,

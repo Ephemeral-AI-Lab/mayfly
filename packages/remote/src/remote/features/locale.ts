@@ -20,6 +20,7 @@ const zh: Readonly<Record<string, string>> = {
   'Base URL': '基础地址',
   'Default thinking effort': '默认推理强度',
   'Models': '模型',
+  'Model discovery failed': '模型发现失败',
   'API key': 'API 密钥',
   'Configured; leave unchanged': '已配置，留空保持不变',
   'Not configured': '未配置',

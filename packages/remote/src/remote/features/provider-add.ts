@@ -102,7 +102,7 @@ export function mountRemoteProviderSetup(context: RemoteFeatureContext, options:
       if (found !== undefined) break
     }
     if (!operation.valid() || signal.aborted || generation !== discoveryGeneration) return
-    if (found === undefined) { discoveryState = 'failed'; discoveryError = remoteErrorMessage(failure, [input.key], 'Model discovery failed') }
+    if (found === undefined) { discoveryState = 'failed'; discoveryError = failure === undefined ? t('Model discovery failed') : remoteErrorMessage(failure, [input.key], 'Model discovery failed') }
     else {
       const catalog = await loadModelsDevIndex(context.ctx, signal)
       if (!operation.valid() || signal.aborted || generation !== discoveryGeneration) return
@@ -113,7 +113,8 @@ export function mountRemoteProviderSetup(context: RemoteFeatureContext, options:
     mounted?.refresh()
   }
   const handler = async (submission: MayflySubmission, action: 'discover' | 'save', signal: AbortSignal): Promise<MayflyUiActionReply> => {
-    if (!operation.valid() || signal.aborted) return { kind: 'cancelled' }
+    // The action owner admitted this synchronous handoff; every native await
+    // below rechecks both that owner and the action signal before continuing.
     const connection = values(submission, 'connection')
     const route = known ?? String(connection.route ?? '').trim()
     const key = String(connection.key ?? '')
