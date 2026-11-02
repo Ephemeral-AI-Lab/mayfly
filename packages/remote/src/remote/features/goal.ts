@@ -132,7 +132,6 @@ class RemoteGoalController {
   }
 
   private readonly attach = (generation: number): void => {
-    if (this.disposed) return
     this.refreshTicket += 1
     this.stopProjection?.()
     this.stopProjection = undefined
@@ -172,11 +171,10 @@ class RemoteGoalController {
       this.options.notice.set(result.error.message)
       return
     }
-    this.accept(result.value, generation)
+    this.accept(result.value)
   }
 
-  private accept(goal: GoalResult, generation: number): void {
-    if (!this.lifecycle.owns(generation)) return
+  private accept(goal: GoalResult): void {
     if (this.doneTimer !== undefined) clearTimeout(this.doneTimer)
     this.doneTimer = undefined
     if (goal?.phase === 'complete') {
@@ -241,8 +239,8 @@ class RemoteGoalController {
     current: RemoteFeatureSelection,
     goal: RemoteGoalView,
     verb: Exclude<RemoteGoalVerb, 'edit'>,
+    signal?: AbortSignal,
   ): Promise<string | undefined> {
-    if (!isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) return this.t('The goal changed; open it again')
     const generation = this.lifecycle.currentGeneration()
     const ref = { id: goal.id, revision: goal.revision }
     const result = verb === 'pause'
@@ -252,6 +250,7 @@ class RemoteGoalController {
         : verb === 'complete'
           ? await current.client.remote.goals.complete(current.ref.sessionId, ref)
           : await current.client.remote.goals.clear(current.ref.sessionId, ref)
+    if (signal !== undefined && signal.aborted) return undefined
     if (!this.lifecycle.owns(generation) || !isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) return undefined
     if (!result.ok) return result.error.message
     const notice = verb === 'pause' ? 'Goal paused' : verb === 'resume' ? 'Goal resumed' : verb === 'complete' ? 'Goal complete' : 'Goal cleared'
@@ -263,13 +262,14 @@ class RemoteGoalController {
   private openEditor(current: RemoteFeatureSelection, goal: RemoteGoalView): void {
     this.editor?.cancel()
     const generation = this.lifecycle.currentGeneration()
+    const isCurrent = (): boolean => this.lifecycle.owns(generation)
+      && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)
+      && this.goal?.id === goal.id && this.goal.revision === goal.revision
     this.editor = requestOverlay<GoalEditorResult | undefined>(this.options.ctx, {
       id: 'remote.goal.edit',
       title: this.t('Edit goal'),
       scope: { kind: 'session', sessionId: current.ref.sessionId },
-      isCurrent: () => this.lifecycle.owns(generation)
-        && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)
-        && this.goal?.id === goal.id && this.goal.revision === goal.revision,
+      isCurrent,
       subscribeLocale: this.options.subscribeLocale,
       dismissal: 'confirm-dirty',
       view: () => ui.stack.column([
@@ -292,7 +292,7 @@ class RemoteGoalController {
       cancelled: () => undefined,
     })
     void this.editor.result.then(async edit => {
-      if (edit === undefined || !isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) return
+      if (edit === undefined || !isCurrent()) return
       const result = await current.client.remote.goals.edit(current.ref.sessionId, { id: goal.id, revision: goal.revision }, {
         objective: edit.objective,
         ...edit.maxGoalRounds === undefined ? {} : { maxGoalRounds: edit.maxGoalRounds },
@@ -304,7 +304,7 @@ class RemoteGoalController {
         await this.refresh(generation)
       }
     }).catch((error: unknown) => {
-      if (!this.disposed) this.options.notice.set(error instanceof Error ? error.message : String(error))
+      if (this.lifecycle.owns(generation) && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) this.options.notice.set(error instanceof Error ? error.message : String(error))
     })
   }
 
@@ -345,10 +345,9 @@ class RemoteGoalController {
         : input === 'pause' || input === 'resume' || input === 'complete' || input === 'clear'
           ? [input, ''] as const
           : ['create', input] as const
-    if ((verb === 'create' || verb === 'edit') && rest === '') throw new Error(USAGE)
     if (verb === 'create') {
       const result = await current.client.remote.goals.create(current.ref.sessionId, { objective: rest })
-      if (!this.lifecycle.owns(generation) || !isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) return
+      if (signal.aborted || !this.lifecycle.owns(generation) || !isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) return
       if (!result.ok) throw result.error
       this.options.notice.set(this.t('Goal created'))
       await this.refresh(generation)
@@ -364,13 +363,13 @@ class RemoteGoalController {
     }
     if (verb === 'edit') {
       const result = await current.client.remote.goals.edit(current.ref.sessionId, { id: goal.id, revision: goal.revision }, { objective: rest })
-      if (!this.lifecycle.owns(generation) || !isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) return
+      if (signal.aborted || !this.lifecycle.owns(generation) || !isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref)) return
       if (!result.ok) throw result.error
       this.options.notice.set(this.t('Goal updated'))
       await this.refresh(generation)
       return
     }
-    const error = await this.mutate(current, goal, verb)
+    const error = await this.mutate(current, goal, verb, signal)
     if (error !== undefined) throw new Error(error)
   }
 }
