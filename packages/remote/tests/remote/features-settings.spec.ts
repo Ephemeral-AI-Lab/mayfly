@@ -26,6 +26,30 @@ function fixture(options: Parameters<typeof configurationFixture>[1] & { readonl
 }
 
 describe('Remote exact reference settings rail', () => {
+  it('honors caller cancellation before discovery, during discovery, and throughout the mounted settings rail', async () => {
+    const test = fixture()
+    const cancelled = new AbortController(); cancelled.abort()
+    await test.controller.open(test.client, cancelled.signal)
+    expect(test.describe).not.toHaveBeenCalled()
+    const pending = deferred<unknown>()
+    test.describe.mockReturnValueOnce(pending.promise)
+    const reading = new AbortController()
+    const opening = test.controller.open(test.client, reading.signal)
+    reading.abort()
+    pending.resolve({ ok: true, value: { writable: true, hasDocument: true, namespaces: [namespace()] } })
+    await opening
+    expect(test.opened).toHaveLength(0)
+    expect(test.notice.set).not.toHaveBeenCalled()
+    const mounted = new AbortController()
+    await test.controller.open(test.client, mounted.signal)
+    mounted.abort()
+    expect(test.opened[0]!.panel.closed).toBe(true)
+    expect(test.events.get('settings/document-updated')?.size).toBe(0)
+    expect(await test.act({ kind: 'activate', actionId: 'open-file' })).toMatchObject({ kind: 'cancelled' })
+    expect(test.readDocument).not.toHaveBeenCalled()
+    expect(test.mutate).not.toHaveBeenCalled()
+  })
+
   it('projects the shared rail, forms, source revisions, and external-editor action', async () => {
     const test = fixture({ namespaces: [namespace(), namespace('shell', { schema: schemaJson(Schema.object({ timeoutMs: Schema.number().default(100) })), value: { timeoutMs: 100 } })] })
     await test.controller.open()

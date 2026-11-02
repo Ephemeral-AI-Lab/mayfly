@@ -168,6 +168,64 @@ function fixture(options: FixtureOptions = {}) {
 }
 
 describe('remoteModelRows', () => {
+  it('retires cancelled command catalog reads before opening a picker or writing a Session or Host default', async () => {
+    for (const current of [true, false]) {
+      for (const name of ['model-picker', 'model-name', 'effort-picker', 'effort-name']) {
+        const test = fixture({ current, observeCatalog: true })
+        const pending = deferred<unknown>()
+        test.modelCatalog.mockReturnValueOnce(pending.promise)
+        const abort = new AbortController()
+        const opening = name.startsWith('model')
+          ? test.controller.open(name.endsWith('name') ? 'chat' : '', undefined, abort.signal)
+          : test.controller.effort(name.endsWith('name') ? 'high' : '', abort.signal)
+        abort.abort()
+        pending.resolve({ ok: true, value: catalog() })
+        await opening
+        expect(test.opened).toHaveLength(0)
+        expect(test.selectModel).not.toHaveBeenCalled()
+        expect(test.defaultModel!.read).not.toHaveBeenCalled()
+        expect(test.defaultModel!.select).not.toHaveBeenCalled()
+        expect(test.catalogObserved).not.toHaveBeenCalled()
+        expect(test.notice.set).not.toHaveBeenCalled()
+        test.controller.dispose()
+      }
+    }
+  })
+
+  it('does no command I/O when already aborted and closes an accepted picker on caller cancellation', async () => {
+    const test = fixture()
+    const cancelled = new AbortController(); cancelled.abort()
+    await test.controller.open('', undefined, cancelled.signal)
+    await test.controller.effort('high', cancelled.signal)
+    expect(test.modelCatalog).not.toHaveBeenCalled()
+    const active = new AbortController()
+    await test.controller.open('', undefined, active.signal)
+    expect(test.opened).toHaveLength(1)
+    active.abort()
+    expect(test.opened[0]!.lease.close).toHaveBeenCalledOnce()
+    expect(await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })).toMatchObject({ kind: 'cancelled' })
+    expect(test.selectModel).not.toHaveBeenCalled()
+    expect(test.listeners.size).toBe(0)
+    test.controller.dispose()
+  })
+
+  it('does not write after cancellation while the sessionless default route is being resolved', async () => {
+    const test = fixture({ current: false, observeCatalog: true })
+    const pending = deferred<ModelSelection>()
+    test.defaultModel!.read.mockReturnValueOnce(pending.promise)
+    const abort = new AbortController()
+    const selecting = test.controller.open('chat', undefined, abort.signal)
+    await vi.waitFor(() => { expect(test.defaultModel!.read).toHaveBeenCalledOnce() })
+    abort.abort()
+    pending.resolve(selection('deepseek', 'chat'))
+    await selecting
+    expect(test.defaultModel!.select).not.toHaveBeenCalled()
+    expect(test.catalogObserved).not.toHaveBeenCalled()
+    expect(test.opened).toHaveLength(0)
+    expect(test.notice.set).not.toHaveBeenCalled()
+    test.controller.dispose()
+  })
+
   it('flattens provider groups and prefers Host-merged metadata over the model own', () => {
     const merged = catalog({
       groups: [

@@ -163,8 +163,8 @@ export class RemoteModelsController extends RemoteFeatureController {
   }
 
   /** Open the reference picker or resolve one unambiguous model name. */
-  async open(rawInput = '', providerFilter?: string): Promise<void> {
-    const target = await this.target()
+  async open(rawInput = '', providerFilter?: string, parent?: AbortSignal): Promise<void> {
+    const target = await this.target(parent)
     if (target === undefined) return
     const rows = remoteModelRows(target.catalog, target.current, target.details)
       .filter(row => providerFilter === undefined || row.provider === providerFilter)
@@ -186,8 +186,8 @@ export class RemoteModelsController extends RemoteFeatureController {
   }
 
   /** Open the reference effort slider or explicitly pin/reset one offered level. */
-  async effort(rawInput = ''): Promise<void> {
-    const target = await this.target()
+  async effort(rawInput = '', parent?: AbortSignal): Promise<void> {
+    const target = await this.target(parent)
     if (target === undefined) return
     const row = remoteModelRows(target.catalog, target.current, target.details)
       .find(candidate => candidate.provider === target.current.provider && candidate.model.id === target.current.model)
@@ -236,11 +236,12 @@ export class RemoteModelsController extends RemoteFeatureController {
       : { kind: 'session', sessionId: target.selection.ref.sessionId }
   }
 
-  private async target(): Promise<RemoteModelTarget | undefined> {
+  private async target(parent?: AbortSignal): Promise<RemoteModelTarget | undefined> {
+    if (parent?.aborted) return undefined
     const selection = this.context.hosts.current()
     const client = selection?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]
     if (client === undefined) return undefined
-    const operation = selection === undefined ? this.hostOperation(client) : this.sessionOperation(selection)
+    const operation = selection === undefined ? this.hostOperation(client, parent) : this.sessionOperation(selection, parent)
     if (operation === undefined) return undefined
     try {
       if (selection === undefined && this.defaultModel === undefined) throw new Error(this.context.t('Selecting the default model requires the Host defaultModel capability.'))
@@ -248,6 +249,7 @@ export class RemoteModelsController extends RemoteFeatureController {
         remoteValue(client.remote.session.modelCatalog()),
         this.loadDetails(operation, client),
       ])
+      if (!operation.valid()) { operation.dispose(); return undefined }
       const current = selection === undefined
         ? await this.defaultModel!.read(client, operation.signal)
         : currentRemoteModelSelection(selection.binding.session.projections.faceOf('modelSelection').getSnapshot(), catalog)

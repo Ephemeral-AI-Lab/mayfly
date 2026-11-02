@@ -60,8 +60,8 @@ describe('Remote configuration composition', () => {
 
   it('routes model and effort aliases without changing raw native selections and works without a keymap', async () => {
     const f = await fixture(false)
-    await f.run('model', ' native-model '); expect(feature.models.open).toHaveBeenCalledWith(' native-model ')
-    await f.run('thinking', 'high'); expect(feature.models.effort).toHaveBeenCalledWith('high')
+    await f.run('model', ' native-model '); expect(feature.models.open).toHaveBeenCalledWith(' native-model ', undefined, f.signal)
+    await f.run('thinking', 'high'); expect(feature.models.effort).toHaveBeenCalledWith('high', f.signal)
     expect(f.commands.list().some(command => command.name === 'providers' || command.name === 'presets')).toBe(false)
     f.handle.dispose(); expect(feature.ioDispose).toHaveBeenCalledOnce()
   })
@@ -76,6 +76,8 @@ describe('Remote configuration composition', () => {
     await f.run('account'); await f.run('onboarding'); expect(feature.account.open).not.toHaveBeenCalled(); expect(feature.onboarding.open).not.toHaveBeenCalled()
     await f.run('settings'); await f.run('permissions'); await f.run('presets')
     expect(feature.settings.open).toHaveBeenCalledOnce(); expect(feature.permissions.open).toHaveBeenCalledOnce(); expect(feature.presets.open).toHaveBeenCalledOnce()
+    expect(feature.settings.open).toHaveBeenCalledWith(undefined, f.signal)
+    expect(feature.permissions.open).toHaveBeenCalledWith(f.signal)
     for (const name of ['account', 'settings', 'permissions', 'presets', 'onboarding']) await expect(f.run(name, 'unexpected')).rejects.toThrow(`Usage: /${name}`)
   })
 

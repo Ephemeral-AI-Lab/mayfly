@@ -130,6 +130,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   A prompt already closed during mounting must acquire no later ACK observer.
   Retrying profile setup after successful sign-in reuses that exact authorization
   owner and never starts another native authorization attempt.
+  Model, effort, permissions and settings commands retain their invocation's
+  abort signal through discovery and the mounted panel. A cancelled catalog or
+  default-route read cannot open a late picker, start a write or publish feedback.
 - User questions use the shared reference wizard and plan-review card. Live
   questions own their native waterfall and timed foreground claim; continued
   questions read the native whole projection and queued replies before an

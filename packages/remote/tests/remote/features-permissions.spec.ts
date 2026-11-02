@@ -24,6 +24,29 @@ function fixture(options: Parameters<typeof configurationFixture>[1] & { readonl
 }
 
 describe('Remote permission reference UI', () => {
+  it('retires the command caller across catalog discovery and mounted permission actions', async () => {
+    const test = fixture()
+    const cancelled = new AbortController(); cancelled.abort()
+    await test.controller.open(cancelled.signal)
+    expect(test.catalog).not.toHaveBeenCalled()
+    const pending = deferred<unknown>()
+    test.catalog.mockReturnValueOnce(pending.promise)
+    const reading = new AbortController()
+    const opening = test.controller.open(reading.signal)
+    reading.abort()
+    pending.resolve({ ok: true, value: permissionCatalog() })
+    await opening
+    expect(test.opened).toHaveLength(0)
+    expect(test.notice.set).not.toHaveBeenCalled()
+    const mounted = new AbortController()
+    await test.controller.open(mounted.signal)
+    mounted.abort()
+    expect(test.opened[0]!.panel.closed).toBe(true)
+    expect(test.projectionListeners.size).toBe(0)
+    expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['review'] })).toMatchObject({ kind: 'cancelled' })
+    expect(test.command).not.toHaveBeenCalled()
+  })
+
   it('reads only native string selection and catalogs an attached Host without a Session', async () => {
     expect(remotePermissionSelection({ currentValue: 'safe' })).toBe('safe')
     for (const value of [undefined, null, {}, { currentValue: 42 }, 'safe']) expect(remotePermissionSelection(value)).toBeUndefined()

@@ -59,11 +59,12 @@ export class RemotePermissionsController extends RemoteFeatureController {
   }
 
   /** Open Session switching, or default selection when no Session is active. */
-  async open(): Promise<void> {
+  async open(parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted) return
     const selection = this.context.hosts.current()
     const client = selection?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]
     if (client === undefined) return
-    const operation = selection === undefined ? this.hostOperation(client) : this.sessionOperation(selection)
+    const operation = selection === undefined ? this.hostOperation(client, parent) : this.sessionOperation(selection, parent)
     if (operation === undefined) return
     try {
       const current = selection === undefined ? undefined : remotePermissionSelection(selection.binding.session.projections.faceOf('permissions').getSnapshot())

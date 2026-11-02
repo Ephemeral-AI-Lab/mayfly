@@ -117,8 +117,8 @@ export class RemoteSettingsController extends RemoteFeatureController {
   }
 
   /** Open the exact shared settings rail; repeated opens focus its existing forms. */
-  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): Promise<void> {
-    if (client !== undefined) await this.openRail(client)
+  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0], parent?: AbortSignal): Promise<void> {
+    if (client !== undefined) await this.openRail(client, undefined, parent)
   }
 
   /** Focus the settings rail on a namespace without replacing unsaved drafts. */
@@ -136,14 +136,15 @@ export class RemoteSettingsController extends RemoteFeatureController {
     } finally { operation.dispose() }
   }
 
-  private async openRail(client: HostClient, initialNs?: string): Promise<void> {
+  private async openRail(client: HostClient, initialNs?: string, parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted) return
     if (this.rail?.client === client && this.rail.operation.valid() && !this.rail.panel.closed) {
       this.context.ctx.mayflyOverlays.focus(ROOT_ID)
       if (initialNs !== undefined) this.context.ctx.get('mayflyUiInteraction')?.get('overlay', ROOT_ID)?.emit({ kind: 'tab-change', pagePath: [], controlId: RAIL_ID, tabId: initialNs })
       return
     }
     const sequence = ++this.openSequence
-    const operation = this.hostOperation(client)
+    const operation = this.hostOperation(client, parent)
     if (operation === undefined) return
     const t = this.translate
     try {

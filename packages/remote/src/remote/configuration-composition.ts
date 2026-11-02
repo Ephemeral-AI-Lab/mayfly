@@ -66,14 +66,14 @@ export function mountRemoteConfigurationComposition(
       name: 'model', scope: 'sessionless',
       description: 'Switch the model (no argument opens the picker)',
       input: { hint: '[name]' },
-      execute: async rawInput => {
-        await features.models.open(rawInput)
+      execute: async (rawInput, signal) => {
+        await features.models.open(rawInput, undefined, signal)
       },
     }),
     base.commands.register({
       name: 'effort', scope: 'sessionless', aliases: ['thinking'],
       description: 'Switch the thinking effort of the current model', input: { hint: '[level]' },
-      execute: async rawInput => { await features.models.effort(rawInput) },
+      execute: async (rawInput, signal) => { await features.models.effort(rawInput, signal) },
     }),
     base.commands.register({
       name: 'providers', scope: 'sessionless',
@@ -103,17 +103,17 @@ export function mountRemoteConfigurationComposition(
     base.commands.register({
       name: 'settings', scope: 'sessionless',
       description: 'Edit user settings by namespace',
-      execute: async rawInput => {
+      execute: async (rawInput, signal) => {
         if (rawInput.trim() !== '') throw usage('settings')
-        await features.settings.open()
+        await features.settings.open(undefined, signal)
       },
     }),
     base.commands.register({
       name: 'permissions', scope: 'sessionless',
       description: 'Choose the permission preset',
-      execute: async rawInput => {
+      execute: async (rawInput, signal) => {
         if (rawInput.trim() !== '') throw usage('permissions')
-        await features.permissions.open()
+        await features.permissions.open(signal)
       },
     }),
     base.commands.register({
