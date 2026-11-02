@@ -316,6 +316,9 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       onDefaultModelSelected: (client, selected) => {
         if (!lifetime.signal.aborted && app?.activeClient === client) conversation!.setDefaultModel(selected)
       },
+      onModelCatalogObserved: (client, catalog) => {
+        if (!lifetime.signal.aborted && app?.registry.get(client.key) === client) conversation!.setModelCatalog(client.key, catalog)
+      },
     })
     operations = mountRemoteOperationsComposition(featureContext, {
       localCwd: options.cwd ?? process.cwd(),

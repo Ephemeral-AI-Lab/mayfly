@@ -35,7 +35,9 @@ const mocks = vi.hoisted(() => ({
   startupOptions: undefined as { resume: (sessionId: string) => Promise<void> } | undefined,
   bannerOptions: undefined as { rows: () => number } | undefined,
   defaultModelSelected: undefined as ((client: unknown, selected: unknown) => void) | undefined,
+  modelCatalogObserved: undefined as ((client: unknown, catalog: unknown) => void) | undefined,
   setDefaultModel: vi.fn(),
+  setModelCatalog: vi.fn(),
   activeClient: { state: { getSnapshot: () => ({ generation: 1 }) } },
 }))
 
@@ -52,11 +54,12 @@ vi.mock('../../src/remote/startup.ts', () => ({
 
 vi.mock('../../src/remote/app.ts', () => ({
   RemoteApp: class {
-    readonly registry: { list: () => unknown[], detach: ReturnType<typeof vi.fn> }
+    readonly registry: { list: () => unknown[], get: (key: unknown) => unknown, detach: ReturnType<typeof vi.fn> }
 
     constructor() {
       this.registry = {
         list: () => [{ key: 'local' }],
+        get: (key: unknown) => key === 'local' ? mocks.activeClient : undefined,
         detach: vi.fn(async () => {}),
       }
       const app = {
@@ -112,6 +115,7 @@ vi.mock('../../src/transcript/remote-model.ts', () => ({
     readonly sessionFacts = vi.fn(() => ({ values: {} }))
     readonly dispose = vi.fn()
     readonly setDefaultModel = mocks.setDefaultModel
+    readonly setModelCatalog = mocks.setModelCatalog
 
     constructor(_tools: { get: () => undefined }, refresh: () => void, options: {
       onPresentation: () => void
@@ -160,8 +164,9 @@ vi.mock('../../src/remote/features/commands.ts', () => ({
 }))
 
 vi.mock('../../src/remote/configuration-composition.ts', () => ({
-  mountRemoteConfigurationComposition: vi.fn((_base: unknown, options: { onDefaultModelSelected: typeof mocks.defaultModelSelected }) => {
+  mountRemoteConfigurationComposition: vi.fn((_base: unknown, options: { onDefaultModelSelected: typeof mocks.defaultModelSelected, onModelCatalogObserved: typeof mocks.modelCatalogObserved }) => {
     mocks.defaultModelSelected = options.onDefaultModelSelected
+    mocks.modelCatalogObserved = options.onModelCatalogObserved
     return { commands: [], dispose: mocks.panelDispose }
   }),
   remoteClientVersion: vi.fn(() => '0.1.4-rc.2'),
@@ -263,10 +268,19 @@ describe('runRemoteFrontend', () => {
     expect(mocks.setDefaultModel).not.toHaveBeenCalled()
     mocks.defaultModelSelected!(mocks.activeClient, selected)
     expect(mocks.setDefaultModel).toHaveBeenCalledExactlyOnceWith(selected)
+    mocks.setModelCatalog.mockClear()
+    const client = Object.assign(mocks.activeClient, { key: 'local' })
+    const catalog = { groups: [], default: selected }
+    mocks.modelCatalogObserved!({}, catalog)
+    expect(mocks.setModelCatalog).not.toHaveBeenCalled()
+    mocks.modelCatalogObserved!(client, catalog)
+    expect(mocks.setModelCatalog).toHaveBeenCalledExactlyOnceWith('local', catalog)
     mocks.editorActions!.exit()
     await running
     mocks.defaultModelSelected!(mocks.activeClient, selected)
     expect(mocks.setDefaultModel).toHaveBeenCalledOnce()
+    mocks.modelCatalogObserved!(client, catalog)
+    expect(mocks.setModelCatalog).toHaveBeenCalledOnce()
   })
 
   it('invokes editor and transcript callbacks without depending on a real TTY', async () => {
