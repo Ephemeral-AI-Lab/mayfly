@@ -177,7 +177,10 @@ reads and acknowledgements. Closing releases observers and never stops Host work
 `/stats` consumes `./stats-presentation` for all four reference tabs. Native
 projection faces provide current Session facts and Host statistics methods
 provide creation metadata and complete usage digests; the frontend never folds
-the journal for statistics. Date ranges, workspace scope, copy feedback,
+the journal for statistics. The Session tab reads effective native reasoning
+even on its first mount, borrowing the conversation owner's current exact Host
+catalog when the admitted header is outside the tail. Pending model or effort
+choices never inherit a previous request's level. Date ranges, workspace scope, copy feedback,
 coalesced progress, price discovery and five-minute account caching belong to
 one panel lifetime. Host/selection/connection replacement retires its native
 reads, streams, timers and cached account identity. Account facts use only

@@ -1,6 +1,6 @@
 /**
  * Single composition mount for the operations feature family: agent/tree
- * browsing, BTW, explicit retraction, per-turn changes with deliverables,
+ * browsing, BTW, explicit retraction, recorded files and native comparisons,
  * export, trace, stats, plugins, update checks, and the terminal title. Every
  * module registers its own slash commands into the foundation registry and
  * owns its listeners under this mount's lifetime.
@@ -14,7 +14,6 @@ import type { HostClient, SessionRef } from '../client/types.ts'
 import { RemoteFeatureOperation } from './features/official.ts'
 import { mountRemoteAgentsOperations } from './operations/agents.ts'
 import { mountRemoteBtwOperations } from './operations/btw.ts'
-import { mountRemoteChangesOperations } from './operations/changes.ts'
 import { mountRemoteExportOperations } from './operations/export.ts'
 import { mountRemoteRetractOperations } from './operations/retract.ts'
 import { mountRemoteCopyOperations } from './operations/copy.ts'
@@ -44,6 +43,8 @@ export interface RemoteOperationsCompositionOptions {
   readonly closePresent?: RemoteOperationsOptions['closePresent']
   /** Copy text through the integrator's clipboard path. */
   readonly copy?: RemoteOperationsOptions['copy']
+  /** Read native model metadata from the primary owner's current exact Host catalog. */
+  readonly modelCatalog?: RemoteOperationsOptions['modelCatalog']
 }
 
 /** Mounted operations composition plus its lifetime. */
@@ -64,7 +65,6 @@ const MOUNTS = [
   mountRemoteAgentsOperations,
   mountRemoteBtwOperations,
   mountRemoteRetractOperations,
-  mountRemoteChangesOperations,
   mountRemoteExportOperations,
   mountRemoteTraceOperations,
   mountRemoteStatsOperations,
@@ -93,6 +93,7 @@ export function mountRemoteOperationsComposition(
       present: (ref, binding, facts) => { presentSlot.present(ref, binding, facts) },
       closePresent: ref => { presentSlot.close(ref) },
       ...options.copy === undefined ? {} : { copy: options.copy },
+      ...options.modelCatalog === undefined ? {} : { modelCatalog: options.modelCatalog },
     },
     presentSlot,
   }

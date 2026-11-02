@@ -29,7 +29,7 @@ describe('Host Git badge owner', () => {
     const f = await fixture(); await vi.advanceTimersByTimeAsync(0); expect(f.text()).toContain('main')
     expect(f.gitStatus).toHaveBeenCalledWith({ sessionId: 'session' }, expect.any(AbortSignal))
     f.gitStatus.mockResolvedValueOnce(good(null)); f.directory.set('/other'); await vi.advanceTimersByTimeAsync(0); expect(f.text()).toBe('null')
-    f.gitStatus.mockResolvedValueOnce(bad('native refused')); f.directory.set('/third'); await vi.advanceTimersByTimeAsync(0); expect(f.text()).toContain('gitStatus failed')
+    f.gitStatus.mockResolvedValueOnce(bad('native refused') as unknown as RemoteResult<MayflyGitStatus | null>); f.directory.set('/third'); await vi.advanceTimersByTimeAsync(0); expect(f.text()).toContain('gitStatus failed')
     f.stop(); f.stop(); expect(f.ctx.mayflyStatus.list()).toEqual([])
   })
 

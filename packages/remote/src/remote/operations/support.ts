@@ -6,11 +6,12 @@
  */
 
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type {
   SessionAddress, SessionPageRequest, SessionWireEvent,
 } from '@deepseek-ai/dsh-api-session-controller/types'
-import type { HostClient, SessionRef } from '../../client/types.ts'
+import type { HostClient, HostKey, SessionRef } from '../../client/types.ts'
 import type { RemoteBtwService } from '../../frontend/btw.ts'
 import type { HostViewLease } from '../../frontend/host-registry.ts'
 import { remoteValue } from '../features/official.ts'
@@ -38,6 +39,8 @@ export interface RemoteOperationsOptions {
   readonly closePresent?: (ref?: SessionRef) => void
   /** Copy text through the integrator's clipboard path. */
   readonly copy?: (text: string) => Promise<'native' | 'osc52' | void>
+  /** Borrow the primary conversation owner's exact Host metadata without another cache. */
+  readonly modelCatalog?: (host: HostKey) => ModelCatalog | undefined
 }
 
 /** One operations module mount over the shared feature context, options, and presented view. */
@@ -220,11 +223,6 @@ export async function collectRemoteSessionEvents(
   return events.toSorted((left, right) => left.seq - right.seq)
 }
 
-/** Latest durable event seq currently visible through one binding, when the journal is non-empty. */
-export function remoteLatestDurableSeq(binding: SessionBinding): number | undefined {
-  return binding.eventSource.getSnapshot().entries.findLast(entry => entry.type === 'event')?.event.seq
-}
-
 /** Structural record test shared by every defensive projection and wire reader. */
 export function isRemoteRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -240,42 +238,4 @@ export function remoteReadString(value: unknown, key: string): string | undefine
 export function remoteReadNumber(value: unknown, key: string): number | undefined {
   const nested = isRemoteRecord(value) ? value[key] : undefined
   return typeof nested === 'number' && Number.isFinite(nested) ? nested : undefined
-}
-
-/** Collect each row's first matching string field out of `container[containerKey]`. */
-export function readOnlyPaths(
-  value: unknown,
-  keys: readonly string[],
-  containerKey = 'files',
-): readonly string[] {
-  if (!isRemoteRecord(value)) return []
-  const rows = value[containerKey]
-  if (!Array.isArray(rows)) return []
-  const paths: string[] = []
-  for (const row of rows) {
-    if (!isRemoteRecord(row)) continue
-    for (const key of keys) {
-      const candidate = row[key]
-      if (typeof candidate === 'string' && candidate !== '') {
-        paths.push(candidate)
-        break
-      }
-    }
-  }
-  return paths
-}
-
-const SECRET_KEY_PATTERN = /token|secret|password|passphrase|authorization|cookie|credential|api[-_]?key/iu
-
-/** Deep-copy one wire value with every secret-named field replaced by a marker. */
-export function redactRemoteSecrets<T>(value: T): T {
-  if (Array.isArray(value)) return value.map(redactRemoteSecrets) as T
-  if (isRemoteRecord(value)) {
-    const copy: Record<string, unknown> = {}
-    for (const [key, nested] of Object.entries(value)) {
-      copy[key] = SECRET_KEY_PATTERN.test(key) ? '[redacted]' : redactRemoteSecrets(nested)
-    }
-    return copy as T
-  }
-  return value
 }

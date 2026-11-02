@@ -8,11 +8,10 @@ import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/rem
 import { mountRemoteOperationsComposition } from '../../src/remote/operations-composition.ts'
 import type { RemoteOperationsContext } from '../../src/remote/operations/support.ts'
 
-const mounts = vi.hoisted(() => ({ mount: vi.fn(), disposers: Array.from({ length: 13 }, () => vi.fn()) }))
+const mounts = vi.hoisted(() => ({ mount: vi.fn(), disposers: Array.from({ length: 12 }, () => vi.fn()) }))
 vi.mock('../../src/remote/operations/agents.ts', () => ({ mountRemoteAgentsOperations: mounts.mount }))
 vi.mock('../../src/remote/operations/btw.ts', () => ({ mountRemoteBtwOperations: mounts.mount }))
 vi.mock('../../src/remote/operations/retract.ts', () => ({ mountRemoteRetractOperations: mounts.mount }))
-vi.mock('../../src/remote/operations/changes.ts', () => ({ mountRemoteChangesOperations: mounts.mount }))
 vi.mock('../../src/remote/operations/export.ts', () => ({ mountRemoteExportOperations: mounts.mount }))
 vi.mock('../../src/remote/operations/trace.ts', () => ({ mountRemoteTraceOperations: mounts.mount }))
 vi.mock('../../src/remote/operations/stats.ts', () => ({ mountRemoteStatsOperations: mounts.mount }))
@@ -23,7 +22,7 @@ vi.mock('../../src/remote/operations/presets.ts', () => ({ mountRemotePresetOper
 vi.mock('../../src/remote/operations/providers.ts', () => ({ mountRemoteProviderOperations: mounts.mount }))
 vi.mock('../../src/remote/operations/title.ts', () => ({ mountRemoteTitleOperations: mounts.mount }))
 
-beforeEach(() => { mounts.mount.mockReset(); for (const dispose of mounts.disposers) dispose.mockClear(); mounts.mount.mockImplementation(() => mounts.disposers[(mounts.mount.mock.calls.length - 1) % 13]) })
+beforeEach(() => { mounts.mount.mockReset(); for (const dispose of mounts.disposers) dispose.mockClear(); mounts.mount.mockImplementation(() => mounts.disposers[(mounts.mount.mock.calls.length - 1) % 12]) })
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -58,9 +57,10 @@ function fixture(options: { readonly empty?: boolean, readonly noCallbacks?: boo
   const present = vi.fn()
   const closePresent = vi.fn()
   const copy = vi.fn(async () => {})
-  const handle = mountRemoteOperationsComposition(base, { localCwd: '/local', btw: { retainColdSubagentView: retain, retainBtwView: retainBtw, current: activeBtw, close: closeBtw } as never, ...options.noCallbacks ? {} : { present, closePresent, copy } })
+  const modelCatalog = vi.fn(() => undefined)
+  const handle = mountRemoteOperationsComposition(base, { localCwd: '/local', btw: { retainColdSubagentView: retain, retainBtwView: retainBtw, current: activeBtw, close: closeBtw } as never, ...options.noCallbacks ? {} : { present, closePresent, copy, modelCatalog } })
   const contexts = mounts.mount.mock.calls.map(call => call[0] as RemoteOperationsContext)
-  return { base, ref, address, binding, client, subagentAddress, refreshProjections, retain, retainBtw, leases, activeBtw, closeBtw, present, closePresent, copy, handle, contexts,
+  return { base, ref, address, binding, client, subagentAddress, refreshProjections, retain, retainBtw, leases, activeBtw, closeBtw, present, closePresent, copy, modelCatalog, handle, contexts,
     topology, connection,
     reconnect() { generation += 1; for (const listener of connection) listener() },
     select(next: typeof current) { current = next; for (const listener of topology) listener() },
@@ -148,7 +148,7 @@ describe('retained child operation composition', () => {
 
   it('uses the shared owner, resolves unknown native mode, and retains different children independently', async () => {
     const f = fixture()
-    expect(f.contexts).toHaveLength(13)
+    expect(f.contexts).toHaveLength(12)
     expect(f.contexts.every(context => context === f.contexts[0])).toBe(true)
     await f.handle.openChild(f.client, { ...f.address, mode: 'unknown' }, new AbortController().signal)
     expect(f.refreshProjections).toHaveBeenCalledWith('lead')
@@ -213,6 +213,27 @@ describe('retained child operation composition', () => {
     f.retain.mockReturnValueOnce({ ready: Promise.reject(new Error('read failed')), release })
     await expect(f.handle.openChild(f.client, f.address, new AbortController().signal)).rejects.toThrow('read failed')
     expect(release).toHaveBeenCalledOnce()
+    f.handle.dispose()
+  })
+
+  it('shares the readonly model catalog and preserves failures of a current BTW admission', async () => {
+    const f = fixture()
+    expect(f.contexts[0]!.options.modelCatalog).toBe(f.modelCatalog)
+    const ready = deferred<SessionBinding>()
+    const release = vi.fn()
+    f.retainBtw.mockReturnValueOnce({ ready: ready.promise, release })
+    const pending = f.handle.openBtw(f.client, { ...f.ref, sessionId: SessionId('btw') }, { kind: 'btw', access: 'interactive' }, new AbortController().signal)
+    // A native connection notification with the same generation keeps this admission alive.
+    for (const listener of f.connection) listener()
+    ready.reject(new Error('native binding refused'))
+    await expect(pending).rejects.toThrow('native binding refused')
+    expect(release).toHaveBeenCalledOnce()
+    const child = deferred<SessionBinding>()
+    f.retain.mockReturnValueOnce({ ready: child.promise, release: vi.fn() })
+    const old = f.handle.openChild(f.client, f.address, new AbortController().signal)
+    f.reconnect()
+    child.reject(new Error('retired native binding'))
+    await expect(old).resolves.toBeUndefined()
     f.handle.dispose()
   })
 

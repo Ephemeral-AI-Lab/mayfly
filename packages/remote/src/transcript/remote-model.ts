@@ -411,6 +411,14 @@ function readRecordedModelSelection(value: unknown): RemoteModelSelection | unde
   return isRecord(value) ? readModelRoute(value['lastUsed']) : undefined
 }
 
+/** Resolve the effective native level for information panels, including their first mount. */
+export function remoteEffectiveReasoningEffort(binding: SessionBinding, catalog: ModelCatalog | undefined): string | undefined {
+  const value = binding.session.projections.faceOf('modelSelection').getSnapshot()
+  const selected = readModelSelection(value)
+  if (selected === undefined) return undefined
+  return selected.reasoningEffort ?? recordedEffort(binding.eventSource.getSnapshot().entries, selected, readRecordedModelSelection(value), catalog)
+}
+
 /** Read an admitted request's effective level without inheriting it into a new model/effort choice. */
 function recordedEffort(
   entries: readonly SessionEventLikeEntry[] | undefined,

@@ -325,6 +325,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     operations = mountRemoteOperationsComposition(featureContext, {
       localCwd: options.cwd ?? process.cwd(),
       btw: app.btw,
+      modelCatalog: host => conversation!.getModelCatalog(host),
       present: (ref, binding, facts) => { sideViews!.present(binding, { ref, cwd: facts.cwd ?? '' }, facts) },
       closePresent: ref => { sideViews!.close(ref) },
       copy: (text) => editorComposition!.controller.copyText(text),

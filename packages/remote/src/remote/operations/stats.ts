@@ -9,6 +9,7 @@ import { interactionTranslator, mountInteractionLocale } from '@ephemeral-ai/may
 import type { MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyStatsDigest, MayflyStatsSession } from '@ephemeral-ai/mayfly-host/types'
 import { mayflyHostRemote } from '../../frontend/host-mount.ts'
+import { remoteEffectiveReasoningEffort } from '../../transcript/remote-model.ts'
 import type { RemoteFeatureSelection } from '../features.ts'
 import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
 import { remoteValue, remoteErrorMessage } from '../features/official.ts'
@@ -86,7 +87,12 @@ class RemoteStatsController {
     let sessionDirty = false
     const offs: Array<() => void> = []
     const version = { mayfly: remoteClientVersion(), harness: '' }
-    const usage = () => remoteSessionInformation(current.binding, { model: undefined, provider: undefined })
+    const usage = () => {
+      const facts = remoteSessionInformation(current.binding, { model: undefined, provider: undefined })
+      if (facts.model === undefined) return facts
+      const reasoningEffort = remoteEffectiveReasoningEffort(current.binding, this.context.options.modelCatalog?.(current.ref.host))
+      return { ...facts, model: { ...facts.model, ...reasoningEffort === undefined ? {} : { reasoningEffort } } }
+    }
     const route = () => usage().model?.provider
     const locale = (): 'zh' | 'en' => base.ctx.mayflyLocale.locale === 'zh' ? 'zh' : 'en'
     const facts = () => {

@@ -1,6 +1,7 @@
 /** Reference statistics tabs, Host snapshots, refresh scopes and late-result fences. @module */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MayflyStatsDigest, MayflyStatsHistory, MayflyStatsSession } from '@ephemeral-ai/mayfly-host/types'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflyUiActionEvent, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
 import { mountRemoteStatsOperations, remoteStatsDigest } from '../../src/remote/operations/stats.ts'
 import { RemotePresentSlot, type RemoteOperationsContext } from '../../src/remote/operations/support.ts'
@@ -30,7 +31,10 @@ async function fixture(selected = true, injectedCopy = true) {
   }
   const listeners = new Set<() => void>()
   const current = f.options.hosts.current()
-  if (current !== undefined) Object.assign(current.binding.session, { projections: { faceOf: (key: string) => values[key] }, subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } } })
+  if (current !== undefined) {
+    Object.assign(current.binding.session, { projections: { faceOf: (key: string) => values[key] }, subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } } })
+    Object.assign(current.binding, { eventSource: { getSnapshot: () => ({ entries: [] }) } })
+  }
   const read = vi.fn(async (..._args: unknown[]): Promise<unknown> => good(initial))
   const streamDispose = vi.fn()
   const history = vi.fn((..._args: unknown[]) => Object.assign((async function* () { yield frame() })(), { dispose: streamDispose }))
@@ -39,7 +43,8 @@ async function fixture(selected = true, injectedCopy = true) {
   seams.prices.mockResolvedValue(undefined)
   seams.copy.mockResolvedValue('native')
   const copy = vi.fn(async (..._args: unknown[]) => 'native' as 'native' | 'osc52')
-  const options = { localCwd: '/local', btw: {}, ...injectedCopy ? { copy } : {} } as unknown as RemoteOperationsContext['options']
+  const modelCatalog = vi.fn<NonNullable<RemoteOperationsContext['options']['modelCatalog']>>(() => undefined)
+  const options = { localCwd: '/local', btw: {}, ...injectedCopy ? { copy, modelCatalog } : {} } as unknown as RemoteOperationsContext['options']
   const panels: Array<{ options: RemoteBrowserOptions, refresh: ReturnType<typeof vi.fn<() => void>>, close: ReturnType<typeof vi.fn<() => void>>, closed: boolean }> = []
   seams.browser.mockImplementation((_base, options: RemoteBrowserOptions) => {
     const panel = { options, refresh: vi.fn(), close: vi.fn(() => { if (panel.closed) return; panel.closed = true; options.onClosed?.() }), closed: false }
@@ -53,7 +58,7 @@ async function fixture(selected = true, injectedCopy = true) {
   const tab = (tabId: string) => panel().options.observe!({ kind: 'tab-change', controlId: 'stats-tabs', tabId, pagePath: [] })
   const act = (actionId: string, context = eventContext()) => panel().options.action!(activated(actionId), context)
   const text = () => JSON.stringify(panel().options.view())
-  return { ...f, values, listeners, current, read, history, streamDispose, copy, panels, panel, open, tab, act, text, stop }
+  return { ...f, values, listeners, current, read, history, streamDispose, copy, modelCatalog, panels, panel, open, tab, act, text, stop }
 }
 
 describe('rc.2 Remote statistics', () => {
@@ -82,6 +87,20 @@ describe('rc.2 Remote statistics', () => {
     const selected = await fixture(); await selected.open()
     const focus = vi.spyOn(selected.ctx.mayflyOverlays, 'focus').mockReturnValue(true)
     await selected.run('stats'); expect(selected.panels).toHaveLength(1); focus.mockRestore()
+  })
+
+  it('shows effective native reasoning on its first mount and never inherits it into a pending route', async () => {
+    const f = await fixture()
+    f.modelCatalog.mockReturnValue({ groups: [{ id: 'p', models: [{ id: 'm', reasoning: { defaultEffort: 'high' } }] }] } as unknown as ModelCatalog)
+    const used = { provider: 'p', model: 'm' }
+    f.values['modelSelection']!.set({ next: used, lastUsed: used })
+    await f.open()
+    expect(f.text()).toContain('thinking high')
+    expect(f.modelCatalog).toHaveBeenCalledWith(f.current!.ref.host)
+    f.values['modelSelection']!.set({ next: { provider: 'q', model: 'pending' }, lastUsed: used })
+    expect(f.text()).not.toContain('thinking high')
+    f.values['modelSelection']!.set({ next: { ...used, reasoningEffort: 'max' }, lastUsed: used })
+    expect(f.text()).toContain('thinking max')
   })
 
   it('cycles date ranges and workspace scans and copies the currently shown reference summary', async () => {

@@ -9,6 +9,15 @@ import { entry, events, exportedAt, projection, wire } from './export-fixture.ts
 const facts = { sessionId: 'sess-12345678', workDir: '/tmp/spec', exportedAt }
 
 describe('frozen rc.2 export samples', () => {
+  it('retains the immutable reference source identity beside the generated documents', () => {
+    expect(JSON.parse(readFileSync(new URL('./fixtures/export-rc2-provenance.json', import.meta.url), 'utf8'))).toMatchObject({
+      commit: 'f148e7045cc22a66e62c0cd5203f8eeca1368081',
+      source: 'packages/mayfly/src/interaction/session-export.ts',
+      blob: '98a1527d45478a3e9aa7347c086d7bc3e2b03d3d',
+      facts: '../export-fixture.ts',
+    })
+  })
+
   it('byte-matches the actual frozen readable projection export, including raw tool JSON and paired results', () => {
     const markdown = buildRemoteExportMarkdown({ ...facts, items: remoteExportItems(projection) })
     expect(markdown).toBe(JSON.parse(readFileSync(new URL('./fixtures/export-readable-rc2.json', import.meta.url), 'utf8')))

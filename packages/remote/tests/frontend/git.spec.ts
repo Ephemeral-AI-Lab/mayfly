@@ -1,6 +1,7 @@
 /** Host-only Git polling, bounded cadence, exact identities and retirement. @module */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import { RemoteGitPoller, createMayflyGitRead } from '../../src/frontend/git.ts'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
 
@@ -41,7 +42,7 @@ describe('native Host Git polling', () => {
 
   it('contains native refusal and thrown errors and refreshes manually without a second scheduled timer', async () => {
     vi.useFakeTimers()
-    const read = vi.fn(async (): Promise<{ ok: true, value: string } | { ok: false, error: { code: string, message: string } }> => ({ ok: false, error: { code: 'git-failed', message: 'no repository' } }))
+    const read = vi.fn(async (): Promise<RemoteResult<string>> => ({ ok: false, error: { code: 'git-failed', message: 'no repository' } }) as unknown as RemoteResult<string>)
     const poller = new RemoteGitPoller(read, 5000); poller.attach(ref()); await poller.refresh()
     expect(poller.snapshot().result).toEqual({ ok: false, error: { code: 'git-failed', message: 'no repository' } })
     read.mockRejectedValueOnce(new Error('offline')); await poller.refresh()

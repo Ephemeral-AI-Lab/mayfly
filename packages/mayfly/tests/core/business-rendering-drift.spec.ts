@@ -39,7 +39,7 @@ const approvedPresentation = new Set([
   "border:packages/mayfly/src/components/transcript-view.ts:const guide = span(last ? '      ' : '  \u2502   ', 'muted')",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:export function agentTreeBranch(last: boolean): '\u2514\u2500' | '\u251c\u2500' {",
   "border:packages/mayfly/src/transcript/agent-presentation.ts:return last ? '\u2514\u2500' : '\u251c\u2500'",
-  "padding:packages/mayfly/src/interaction/stats-account.ts:const total = BigInt(leftWhole + leftFraction.padEnd(scale, '0')) + BigInt(rightWhole + rightFraction.padEnd(scale, '0'))",
+  "padding:packages/mayfly/src/interaction/stats-account-model.ts:const total = BigInt(leftWhole + leftFraction.padEnd(scale, '0')) + BigInt(rightWhole + rightFraction.padEnd(scale, '0'))",
   "padding:packages/mayfly/src/transcript/splash.ts:' '.repeat(Math.max(0, Math.floor((width - deps.visibleWidth(text)) / 2))) + text",
   "padding:packages/mayfly/src/transcript/splash.ts:const age = ' '.repeat(Math.max(0, AGE_WIDTH - deps.visibleWidth(session.age))) + (session.live ? colors.success : colors.textMuted)(session.age)",
   "padding:packages/mayfly/src/transcript/splash.ts:const lead = ' '.repeat(Math.max(0, Math.floor((width - listWidth) / 2)))",

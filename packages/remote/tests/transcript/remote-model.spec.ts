@@ -12,7 +12,7 @@ import type { LlmAttemptId } from '@deepseek-ai/dsh-llm/brand'
 import type { ConversationProjection } from '@ephemeral-ai/mayfly/conversation'
 import { foldConversationProjection, initialConversationState } from '../../../host/src/conversation/projection.ts'
 import { HostKey } from '../../src/client/types.ts'
-import { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
+import { RemoteConversationModelSource, remoteEffectiveReasoningEffort } from '../../src/transcript/remote-model.ts'
 import type { ToolPresentationSource } from '@ephemeral-ai/mayfly/transcript'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 
@@ -520,6 +520,23 @@ describe('RemoteConversationModelSource', () => {
     source.dispose()
   })
 
+  it('resolves information-panel effort on the first mount while fencing pending selections', () => {
+    const events = new TestEventSource()
+    const native = { provider: 'provider', model: 'model' }
+    const selected = projection<unknown>(undefined)
+    const binding = events.binding({ modelSelection: selected })
+    expect(remoteEffectiveReasoningEffort(binding, nativeCatalog())).toBeUndefined()
+    selected.set({ next: { ...native, reasoningEffort: 'max' } })
+    expect(remoteEffectiveReasoningEffort(binding, nativeCatalog())).toBe('max')
+    selected.set({ next: native, lastUsed: native })
+    events.replace([requestHeader()], false)
+    expect(remoteEffectiveReasoningEffort(binding, undefined)).toBe('high')
+    events.replace([], true)
+    expect(remoteEffectiveReasoningEffort(binding, nativeCatalog('low'))).toBe('low')
+    selected.set({ next: { ...native, model: 'pending' }, lastUsed: native })
+    expect(remoteEffectiveReasoningEffort(binding, nativeCatalog())).toBeUndefined()
+  })
+
   it('never carries an old header or catalog level into a pending route or default-effort choice', () => {
     const events = new TestEventSource()
     events.replace([requestHeader('provider', 'model', 'max')], false)
@@ -549,6 +566,7 @@ describe('RemoteConversationModelSource', () => {
     const source = new RemoteConversationModelSource(tools, vi.fn(), { onPresentation: changed })
     const catalog = nativeCatalog()
     source.setModelCatalog(HostKey('first'), catalog)
+    expect(source.getModelCatalog(HostKey('first'))).toBe(catalog)
     const revision = changed.mock.calls.length
     source.setModelCatalog(HostKey('first'), catalog)
     expect(changed).toHaveBeenCalledTimes(revision)
@@ -563,6 +581,7 @@ describe('RemoteConversationModelSource', () => {
     source.setModelCatalog(HostKey('second'), nativeCatalog('low'))
     expect(source.presentation().reasoningEffort).toBe('low')
     source.setModelCatalog(HostKey('second'), undefined)
+    expect(source.getModelCatalog(HostKey('second'))).toBeUndefined()
     expect(source.presentation().reasoningEffort).toBeUndefined()
     source.attach(null)
     expect(source.presentation().reasoningEffort).toBeUndefined()
