@@ -246,7 +246,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     }, () => {
       const selected = sideViews?.selected()
       return selected === undefined ? undefined : { ref: selected.ref, access: selected.facts.access, binding: selected.binding, presentation: displayedFacts() }
-    }, () => commandSource?.list() ?? [], listener => sideViews!.subscribe(listener))
+    }, () => commandSource?.list() ?? [], listener => sideViews!.subscribe(listener), () => { sideViews!.showPrimary() })
     apps.push(app)
     startup = new RemoteStartupController(ctx, screen, {
       client: () => app?.activeClient,

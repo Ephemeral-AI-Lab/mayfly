@@ -1,3 +1,5 @@
+import { rewindCandidates } from '@ephemeral-ai/mayfly/command-panels'
+import { collectRemoteSessionEvents } from './operations/support.ts'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import { HostKey, type SessionRef } from '../client/types.ts'
@@ -107,6 +109,7 @@ export class RemoteApp {
     private readonly displayedView?: () => RemoteAppView | undefined,
     private readonly featureCommands: () => readonly RemoteFeatureCommandDefinition[] = () => [],
     private readonly subscribeDisplayedView?: (listener: () => void) => () => void,
+    private readonly displayPrimary?: () => void,
   ) {
     this.registry = new HostRegistry(async (key) => {
       const startupUrl = this.endpoints.get(key)
@@ -312,21 +315,7 @@ export class RemoteApp {
       return { exit: false }
     }
     if (name === 'rewind') {
-      const ref = this.requireSelection()
-      if (input === '') {
-        this.notice.set('/rewind <seq> forks this Session at that event and switches to the child')
-        return { exit: false }
-      }
-      const atSeq = Number(input)
-      if (!Number.isSafeInteger(atSeq) || atSeq < 0) throw new Error('Usage: /rewind <seq>')
-      const child = await this.actions.fork(ref, { atSeq })
-        .catch((error: unknown) => {
-          this.notice.set(describeSessionSplitFailure(error))
-          return undefined
-        })
-      if (child === undefined) return { exit: false }
-      this.notice.set(`Rewound into ${child.sessionId} at ${input}`)
-      await this.selectOrCreate(child.sessionId)
+      await this.rewind(input)
       return { exit: false }
     }
     if (name === 'init') {
@@ -460,6 +449,54 @@ export class RemoteApp {
     const current = this.activeHost ?? this.registry.current?.host ?? this.registry.list()[0]?.key
     if (current === undefined) throw new Error('Attach a Host before selecting a Session')
     return current
+  }
+
+  private async rewind(input: string): Promise<void> {
+    const ref = this.registry.current
+    const binding = this.registry.currentReference?.binding
+    if (ref === undefined || binding === undefined) throw new Error('no active session')
+    this.displayPrimary?.()
+    const client = this.registry.get(ref.host)!
+    const connection = client.state.getSnapshot().generation
+    const generation = this.selectionGeneration
+    const current = (): boolean => generation === this.selectionGeneration
+      && this.registry.currentReference?.binding === binding
+      && this.registry.get(ref.host) === client && client.state.getSnapshot().generation === connection
+    const choose = async (atSeq: number): Promise<void> => {
+      if (!current()) return
+      if (binding.session.getSnapshot().running) { this.notice.set('cannot rewind while the agent is running'); return }
+      const child = await this.actions.fork(ref, { atSeq }).catch((error: unknown) => {
+        if (current()) this.notice.set(describeSessionSplitFailure(error))
+        return undefined
+      })
+      if (child === undefined || !current()) return
+      this.notice.set(`Rewound into ${child.sessionId} at ${String(atSeq)}`)
+      await this.selectOrCreate(child.sessionId)
+    }
+    if (binding.session.getSnapshot().running) { this.notice.set('cannot rewind while the agent is running'); return }
+    if (input !== '') {
+      const atSeq = Number(input)
+      if (!Number.isSafeInteger(atSeq) || atSeq < 0) throw new Error('Usage: /rewind [seq]')
+      await choose(atSeq)
+      return
+    }
+    const lifetime = new AbortController()
+    const invalidate = (): void => { if (!current()) lifetime.abort() }
+    const offApp = this.subscribeTopology(invalidate)
+    const offConnection = client.state.subscribe(invalidate)
+    try {
+      const events = await collectRemoteSessionEvents(client, { address: { kind: 'session', sessionId: ref.sessionId }, signal: lifetime.signal })
+      if (!current()) return
+      const candidates = rewindCandidates(events)
+      if (candidates.length === 0) { this.notice.set('no user turns to rewind'); return }
+      this.panels.showRewind?.(candidates, choose, current, invalidatePanel => {
+        const off = this.subscribeTopology(invalidatePanel)
+        const offState = client.state.subscribe(invalidatePanel)
+        return () => { off(); offState() }
+      })
+    } catch (error) {
+      if (current()) throw error
+    } finally { offApp(); offConnection() }
   }
 
   private requireSelection(): SessionRef {

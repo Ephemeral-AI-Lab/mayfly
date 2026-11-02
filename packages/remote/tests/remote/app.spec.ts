@@ -91,6 +91,7 @@ function appFixture() {
     showStatus: vi.fn(),
     showContext: vi.fn(),
     showVersion: vi.fn(),
+    showRewind: vi.fn(),
   }
   return { conversation, status, panels, browser: { open: vi.fn() } }
 }
@@ -663,5 +664,101 @@ describe('RemoteApp', () => {
     expect(source.read()).toBeUndefined()
     off()
     expect(fixture.sessionListeners.size).toBe(0)
+  })
+})
+
+
+describe('RemoteApp rewind', () => {
+  function rewindFixture() {
+    const host = clientFixture(HostKey('http://one.test/'))
+    const fixture = appFixture()
+    const events = vi.fn(async () => ({ ok: true as const, value: { records: [
+      { type: 'event', event: { type: 'turn/start', seq: 1, data: { turn: 1 } } },
+      { type: 'event', event: { type: 'user/message', seq: 2, data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Earlier prompt' }] } } },
+      { type: 'event', event: { type: 'assistant/message', seq: 3, data: { message: { content: [{ type: 'text', text: 'Earlier answer' }] } } } },
+    ], hasMore: false } }))
+    Object.assign(host.client.remote.session, { events })
+    const fork = vi.fn(async () => SessionId('child'))
+    Object.assign(host.client.sessions, { fork })
+    const showPrimary = vi.fn()
+    const app = new RemoteApp(fixture.conversation, fixture.status, fixture.panels, () => host.client, '/workspace', undefined, undefined, undefined, undefined, showPrimary)
+    return { ...fixture, ...host, app, events, fork, showPrimary }
+  }
+
+  it('reads passive native history and opens the reference picker; acceptance forks exact primary and keeps source', async () => {
+    const test = rewindFixture()
+    await test.app.attach('http://one.test/')
+    await test.app.selectOrCreate('shared-session')
+    await test.app.execute('/rewind')
+    expect(test.showPrimary).toHaveBeenCalledOnce()
+    expect(test.events).toHaveBeenCalledWith({ address: { kind: 'session', sessionId: 'shared-session' } }, expect.any(AbortSignal))
+    const [candidates, choose, current, subscribe] = vi.mocked(test.panels.showRewind!).mock.calls[0]!
+    expect(candidates).toEqual([{ turn: 1, boundarySeq: 1, prompt: 'Earlier prompt', response: 'Earlier answer', discarded: 2 }])
+    expect(current()).toBe(true)
+    const listener = vi.fn()
+    const off = subscribe(listener)
+    await choose(1)
+    expect(test.fork).toHaveBeenCalledWith({ sessionId: 'shared-session', atSeq: 1 })
+    expect(test.app.registry.current?.sessionId).toBe('child')
+    expect(test.client.sessions.create).not.toHaveBeenCalled()
+    expect(listener).toHaveBeenCalled()
+    off()
+    expect(current()).toBe(false)
+    await choose(1)
+    expect(test.fork).toHaveBeenCalledOnce()
+  })
+
+  it('preserves explicit sequence support and reports invalid, empty, busy and failed branches', async () => {
+    const test = rewindFixture()
+    await expect(test.app.execute('/rewind')).rejects.toThrow('no active session')
+    await test.app.attach('http://one.test/')
+    await test.app.selectOrCreate('shared-session')
+    await expect(test.app.execute('/rewind invalid')).rejects.toThrow('Usage: /rewind [seq]')
+    test.session.getSnapshot.mockReturnValueOnce({ running: true })
+    await test.app.execute('/rewind')
+    expect(test.status.set).toHaveBeenCalledWith('cannot rewind while the agent is running')
+    test.events.mockResolvedValueOnce({ ok: true, value: { records: [], hasMore: false } })
+    await test.app.execute('/rewind')
+    expect(test.status.set).toHaveBeenCalledWith('no user turns to rewind')
+    test.fork.mockRejectedValueOnce(new Error('fork-unavailable'))
+    await test.app.execute('/rewind 0')
+    expect(test.status.set).toHaveBeenCalledWith(expect.stringContaining('Nothing to fork yet'))
+    await test.app.execute('/rewind')
+    const choose = vi.mocked(test.panels.showRewind!).mock.calls[0]![1]
+    test.session.getSnapshot.mockReturnValueOnce({ running: true })
+    await choose(1)
+    expect(test.fork).toHaveBeenCalledTimes(1)
+    await test.app.execute('/rewind 1')
+    expect(test.app.registry.current?.sessionId).toBe('child')
+  })
+
+  it('fences history and branch results after clear, connection replacement, and read failure', async () => {
+    const test = rewindFixture()
+    await test.app.attach('http://one.test/')
+    await test.app.selectOrCreate('shared-session')
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof test.events>>>()
+    test.events.mockReturnValueOnce(pending.promise)
+    const opening = test.app.execute('/rewind')
+    test.app.clearSession()
+    pending.resolve({ ok: true, value: { records: [], hasMore: false } })
+    await opening
+    expect(test.panels.showRewind).not.toHaveBeenCalled()
+    await test.app.selectOrCreate('shared-session')
+    test.events.mockRejectedValueOnce(new Error('read failed'))
+    await expect(test.app.execute('/rewind')).rejects.toThrow('read failed')
+    const lateFailure = Promise.withResolvers<Awaited<ReturnType<typeof test.events>>>()
+    test.events.mockReturnValueOnce(lateFailure.promise)
+    const stale = test.app.execute('/rewind')
+    test.app.clearSession()
+    lateFailure.reject(new Error('late failed'))
+    await stale
+    await test.app.selectOrCreate('shared-session')
+    const fork = Promise.withResolvers<SessionId>()
+    test.fork.mockReturnValueOnce(fork.promise)
+    const branching = test.app.execute('/rewind 1')
+    test.app.clearSession()
+    fork.resolve(SessionId('late-child'))
+    await branching
+    expect(test.app.registry.current).toBeUndefined()
   })
 })

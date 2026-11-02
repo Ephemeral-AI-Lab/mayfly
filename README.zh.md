@@ -62,7 +62,7 @@ script/mayfly-remote.sh --cwd /path/on/host '运行相关检查'
 
 | 工作流 | 命令与行为 |
 | --- | --- |
-| Session 导航 | `/sessions`（`/resume`）打开 workspace/session 浏览器，带 id 时直接恢复。`/rename <title>` 重命名所选 Session；`/fork [atSeq]` 创建并切换到分支。 |
+| Session 导航 | `/sessions`（`/resume`）打开 workspace/session 浏览器，带 id 时直接恢复。`/rename <title>` 重命名所选 Session；`/fork [atSeq]` 创建并切换到分支；`/rewind` 打开参照中的早期轮次选择器，显示 prompt/response 预览，创建并切换到分支，保留原 Session。 |
 | 模型与配置 | `/model [name]`、`/effort [level]`（`/thinking`）、`/provider`、`/preset [name]`、`/permissions` 与 `/settings` 使用 Host 原生目录与写入。Session 尚不存在时，模型和 preset 选择设置 Host 默认值。 |
 | 计划模式 | `/plan` 进入，`/plan off` 退出，`/mode` 或 Shift+Tab 切换。启动界面的选择会在第一条 prompt 前完成原生接纳；接纳失败不会发送 prompt。Alt+M 在当前 provider 内循环切换模型。 |
 | 信息查看 | `/context`、`/stats`、`/skills`、`/tools`、`/mcp`、`/files`、`/changes [seq]`、`/trace [filter]` 与 `/version` 查看原生状态或只读 Host 投影。 |
@@ -74,7 +74,7 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 
 ## 部分实现与上游限制
 
-前三项是官方 API 限制；`/update` 和 `/rewind` 属于尚待完成的实现工作，必须在一致性验收前补齐：
+前三项是官方 API 限制；`/update` 属于尚待完成的实现工作，必须在一致性验收前补齐：
 
 | 范围 | 已实现行为与剩余边界 |
 | --- | --- |
@@ -82,7 +82,6 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 | `/mcp` 连接信息 | 官方 alpha.2 没有已配置服务器或传输健康状态的公共目录。面板只能列出通过工具 schema 发现的服务器，连接状态显示未知，transport/endpoint 缺省。资源、模板和明确的资源读取走原生工具；提供可选脱敏目录的组合可补充连接信息。 |
 | 冷子会话工具卡片与控制 | 原生历史和投影可被动读取。没有活跃子 Agent 时，自定义 presenter 降级为通用持久工具卡片，依赖 Agent 的控制报告不可用。浏览不会激活子 Agent 或借用父 Agent；明确的 continuable 子会话回复走原生寻址路径。 |
 | `/update` | 当前只查询已发布 Remote 的 `latest` 版本，尚未实现 Host/TUI 联合升级的应用与回滚，需要分别显式升级。这是实现范围，不是缺少 settings 或 plugin API。 |
-| `/rewind` | 当前必须使用 `/rewind <seq>`，通过原生 Session API 在该事件创建分支并切换；尚未实现参照中的交互式回退选择器。 |
 
 `/plugin` 已通过原生 plugin manager 安装、更新、移除和启停 Host bundle；`/settings` 已支持绑定 revision 的表单写入，以及用本地外部编辑器修改实际 Host settings 文档。这些功能具有原生 API，已实现。插件修改会说明重启边界；取消或过期写入不会静默重试。`/schedule` 等可选功能会说明所需 Host 服务是否缺失。
 

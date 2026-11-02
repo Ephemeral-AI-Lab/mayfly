@@ -62,7 +62,7 @@ The shared layout contains the conversation, activity and notification rows, edi
 
 | Workflow | Commands and behavior |
 | --- | --- |
-| Session navigation | `/sessions` (`/resume`) opens the workspace/session browser; an id resumes directly. `/rename <title>` renames the selected Session. `/fork [atSeq]` creates and selects a branch. |
+| Session navigation | `/sessions` (`/resume`) opens the workspace/session browser; an id resumes directly. `/rename <title>` renames the selected Session. `/fork [atSeq]` creates and selects a branch; `/rewind` opens the reference earlier-turn picker with prompt/response previews and creates a selected branch while preserving the original Session. |
 | Models and configuration | `/model [name]`, `/effort [level]` (`/thinking`), `/provider`, `/preset [name]`, `/permissions`, and `/settings` use native Host catalogs and writes. Before a Session exists, model and preset choices set Host defaults. |
 | Plan mode | `/plan` enters plan mode, `/plan off` leaves it, and `/mode` or Shift+Tab toggles it. A sessionless choice is admitted before the first prompt; a failed admission sends no prompt. Alt+M cycles models within the current provider. |
 | Information | `/context`, `/stats`, `/skills`, `/tools`, `/mcp`, `/files`, `/changes [seq]`, `/trace [filter]`, and `/version` inspect native state or readonly Host projections. |
@@ -74,7 +74,7 @@ Enter queues a prompt and Ctrl+Enter steers it through the official Client. Read
 
 ## Partial behavior and upstream limits
 
-The first three rows describe official API limits. `/update` and `/rewind` are unfinished implementation work that must be completed before parity acceptance:
+The first three rows describe official API limits. `/update` remains implementation work to complete before parity acceptance:
 
 | Area | Implemented behavior and remaining boundary |
 | --- | --- |
@@ -82,7 +82,6 @@ The first three rows describe official API limits. `/update` and `/rewind` are u
 | `/mcp` connection details | Official alpha.2 exposes no public configured-server/transport-health catalog. The panel lists servers discoverable from tool schemas and shows unknown connection state and absent transport/endpoint values. Resources/templates and explicit resource reads use native tools. A composition providing the optional sanitized catalog can add connection details. |
 | Cold child tool cards and controls | Passive native history and projections work. Without a live child Agent, custom presenters use generic durable tool cards and Agent-scoped controls report unavailable. Browsing never activates a child or borrows its parent's Agent. An explicit continuable-child reply uses the native addressed path. |
 | `/update` | Currently checks the published Remote `latest` version only. Applying and rolling back a coordinated Host/TUI upgrade is not implemented; upgrade the two installations explicitly. This is an implementation boundary, not a missing settings or plugin API. |
-| `/rewind` | Currently requires `/rewind <seq>`, forks at that event through native Session APIs, and selects the branch. The reference's interactive rewind picker is not implemented. |
 
 `/plugin` installs, updates, removes, and enables Host bundles through the native plugin manager. `/settings` supports revision-bound form changes and a local external editor for the actual Host settings document. These features have native APIs and are implemented. Plugin changes report their restart boundary; a cancelled or stale write is never silently retried. `/schedule` and other optional features state when their Host service is absent.
 

@@ -17,7 +17,7 @@ export const FRONTEND_COMMANDS: readonly (RemoteCommandDescriptor & Pick<RemoteF
   { name: 'sessions', description: 'List persisted sessions and switch to one (an id resumes directly)', aliases: ['resume'], input: { hint: '[<session-id>]' }, scope: 'sessionless' },
   { name: 'rename', description: 'Rename the current session: /rename <title>', input: { hint: '<title>' } },
   { name: 'fork', description: 'Fork the current session into a new one', input: { hint: '[atSeq]' } },
-  { name: 'rewind', description: 'Create a branch at an event sequence: /rewind <seq>', input: { hint: '<seq>' } },
+  { name: 'rewind', description: 'Create a branch from an earlier user turn', input: { hint: '[seq]' } },
   { name: 'host', description: 'List attached Hosts', scope: 'sessionless', group: 'remote' },
   { name: 'attach', description: 'Attach a Host URL', scope: 'sessionless', group: 'remote', input: { hint: '<host-url>' } },
   { name: 'detach', description: 'Detach the current Host without stopping it', scope: 'sessionless', group: 'remote' },

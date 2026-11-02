@@ -61,3 +61,20 @@ describe('rewindCandidates', () => {
     ])).toEqual([{ turn: 1, boundarySeq: 0, prompt: '(empty prompt)', discarded: 1 }])
   })
 })
+
+describe('rewindNode', () => {
+  it('uses the reference picker, newest selected row, previews, counts, and immutable-history hint', async () => {
+    const { rewindNode } = await import('../../src/interaction/rewind.ts')
+    const node = JSON.stringify(rewindNode([
+      { turn: 2, boundarySeq: 10, prompt: 'Second prompt', response: 'Second response', discarded: 2 },
+      { turn: 1, boundarySeq: 0, prompt: 'First prompt', discarded: 1 },
+    ]))
+    expect(node).toContain('Rewind current session')
+    expect(node).toContain('Turn 2 · Second prompt')
+    expect(node).toContain('↳ Second response · rewinds 2 messages')
+    expect(node).toContain('rewinds 1 message')
+    expect(node).toContain('The original session stays available in /sessions.')
+    expect(node).toContain('"selectedIds":["10"]')
+    expect(JSON.stringify(rewindNode([]))).toContain('"selectedIds":[]')
+  })
+})

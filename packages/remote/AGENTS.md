@@ -37,6 +37,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Its catalog, installed rows, notifications, and restart chip belong to one
   feature generation. A Host/selection/reconnection change retires that owner;
   late writes are never retried or presented under another Host.
+- `/rewind` reads the primary Session through passive native journal pages,
+  builds the shared reference turn picker, and forks only after explicit
+  acceptance. Busy checks and exact binding/Host/generation fences cover the
+  history read, acceptance, and late fork result; the original Session stays.
 - `/sessions` consumes the shared reference workspace/session browser and the
   native Client catalog, workspace membership, projection reads, search, and
   archive actions. Listing and detail reads never retain a Session. Child

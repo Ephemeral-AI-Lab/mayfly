@@ -182,3 +182,38 @@ describe('shared wire command panels', () => {
     } finally { await ctx.fiber.dispose() }
   })
 })
+
+it('shows the shared rewind picker, fences replaced choices and retires it with its exact source', async () => {
+  const { ctx, panels, text } = await fixture()
+  let current = true
+  let changed: (() => void) | undefined
+  const off = vi.fn()
+  const choose = vi.fn(async () => {})
+  const candidates = [{ turn: 1, boundarySeq: 2, prompt: 'Earlier prompt', response: 'Earlier answer', discarded: 2 }]
+  const open = () => { panels.showRewind(candidates, choose, () => current, listener => { changed = listener; return off }) }
+  try {
+    open()
+    expect(text()).toContain('Rewind current session')
+    expect(text()).toContain('Earlier prompt')
+    const entry = ctx.mayflyOverlays.list()[0]!
+    const context = { surfaceId: entry.id, source: [], signal: new AbortController().signal, revision: entry.revision, operationId: 'choose', report: vi.fn() }
+    await entry.events.prepare({ kind: 'activate', controlId: 'rewind-candidates', actionId: 'other', pagePath: [] }, context)
+    await entry.events.prepare({ kind: 'selection-accept', controlId: 'rewind-candidates', selectedIds: ['missing'], pagePath: [] }, context)
+    expect(choose).not.toHaveBeenCalled()
+    await entry.events.prepare({ kind: 'selection-accept', controlId: 'rewind-candidates', selectedIds: ['2'], pagePath: [] }, context)
+    expect(choose).toHaveBeenCalledWith(2)
+    open()
+    current = false
+    const stale = ctx.mayflyOverlays.list()[0]!
+    await stale.events.prepare({ kind: 'selection-accept', controlId: 'rewind-candidates', selectedIds: ['2'], pagePath: [] }, { ...context, surfaceId: stale.id, revision: stale.revision })
+    expect(choose).toHaveBeenCalledOnce()
+    current = true
+    open()
+    changed?.()
+    expect(ctx.mayflyOverlays.list()).toHaveLength(1)
+    current = false
+    changed?.()
+    expect(ctx.mayflyOverlays.list()).toHaveLength(0)
+    expect(off).toHaveBeenCalled()
+  } finally { panels.dispose(); await ctx.fiber.dispose() }
+})

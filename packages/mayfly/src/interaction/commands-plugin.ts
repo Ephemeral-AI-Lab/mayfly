@@ -15,7 +15,6 @@ import type { CommandResult } from '@deepseek-ai/dsh-commands'
 // merges and the `'mayfly/request-*'` Events merges this plugin emits.
 import type {} from '../app/index.ts'
 import { conversationId } from '../app/conversation-views.ts'
-import { panel, ui } from '@ephemeral-ai/mayfly-ui'
 import type { HelpSection } from './help.ts'
 import { helpNode } from './help.ts'
 import { cycleMode, registerSessionlessPlan } from './mode-commands.ts'
@@ -34,7 +33,7 @@ declare module '@deepseek-ai/cordis' {
     'mayfly/request-help'(): void
   }
 }
-import { rewindCandidates } from './rewind.ts'
+import { rewindCandidates, rewindNode } from './rewind.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
 import { displayKey } from '../core/key-actions.ts'
@@ -87,7 +86,6 @@ export function apply(ctx: Context): void {
     if (active.status !== 'idle') return { kind: 'error', text: t('cannot rewind while the agent is running') }
     const candidates = rewindCandidates(active.session.snapshotEvents())
     if (candidates.length === 0) return { kind: 'success', text: t('no user turns to rewind') }
-    const first = candidates[0]!
     const id = 'mayfly.rewind'
     openUiOverlay(ctx, { id, presentation: 'editor', capturing: true, dismissal: 'discard', scope: { kind: 'session', sessionId: active.id }, onEvent: { action: event => {
       if (event.kind === 'selection-accept' && event.selectedIds[0] !== undefined) {
@@ -95,10 +93,7 @@ export function apply(ctx: Context): void {
         return { kind: 'completed' as const, dismiss: true }
       }
       return { kind: 'completed' as const }
-    } } }, panel({ title: t('Rewind current session'), escapeLabel: 'close', body: ui.stack.column([
-      ui.list({ id: 'rewind-candidates', role: 'choose', selectedIds: [String(first.boundarySeq)], filterable: true, items: candidates.map(candidate => ({ id: String(candidate.boundarySeq), label: t('Turn {turn} · {prompt}', { turn: candidate.turn, prompt: candidate.prompt }), detail: `${candidate.response === undefined ? '' : `↳ ${candidate.response} · `}${t('rewinds')} ${t(candidate.discarded === 1 ? '{count} message' : '{count} messages', { count: candidate.discarded })}` })) }),
-      ui.text(t('The original session stays available in /sessions.'), { tone: 'muted' }),
-    ]) }), { reopen: 'focus' })
+    } } }, rewindNode(candidates, t), { reopen: 'focus' })
     return { kind: 'success' }
   }
 

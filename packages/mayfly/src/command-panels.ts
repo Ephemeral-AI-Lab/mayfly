@@ -7,3 +7,4 @@ export { interactionTranslator, mountInteractionLocale, observeInteractionLocale
 export { buildConversationStatus } from './components/conversation-status.ts'
 export { versionNode, usageNode, type SessionInfoFacts } from './interaction/session-info-model.ts'
 export { skillGroup, skillsNode, type SkillPresentationFacts, type SkillsViewState } from './interaction/skills-model.ts'
+export { rewindCandidates, rewindNode, type RewindCandidate, type RewindEvent } from './interaction/rewind.ts'

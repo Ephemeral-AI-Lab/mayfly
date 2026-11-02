@@ -21,6 +21,7 @@ import { accountPanelNode } from '../../src/interaction/provider-account.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
+import { rewindNode } from '../../src/interaction/rewind.ts'
 import { jobDetailsNode, jobItems, jobOutputNode } from '../../src/interaction/jobs.ts'
 import { sessionWorkspaceItem } from '../../src/interaction/session-workspaces-model.ts'
 import { sessionDetailNode as sessionListDetailNode, sessionListItem } from '../../src/interaction/session-list-model.ts'
@@ -80,6 +81,23 @@ describe('interaction width-scan', () => {
             const rows = renderer.component.render(width)
             expectLinesFit(`shared-${kind}/${name}/${height}`, rows, width)
             expect(rows.length).toBeLessThanOrEqual(height)
+          }
+        } finally { renderer.runtime.dispose() }
+      } finally { await bench.ctx.fiber.dispose() }
+    })
+
+    it(`Rewind picker survives ${name}`, async () => {
+      const bench = await requestFixture()
+      try {
+        bench.ctx.mayflyOverlays.open({ id: 'rewind-width', capturing: true }, rewindNode([{ turn: 1, boundarySeq: 1, prompt: text, response: text, discarded: 100 }]))
+        const model = bench.ctx.mayflyUiInteraction.get('overlay', 'rewind-width')!
+        const viewport = { columns: 80, rows: 20 }
+        const renderer = renderRequest(model, viewport)
+        try {
+          for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+            viewport.columns = width
+            viewport.rows = height
+            expectLinesFit(`rewind/${name}/${height}`, renderer.component.render(width), width)
           }
         } finally { renderer.runtime.dispose() }
       } finally { await bench.ctx.fiber.dispose() }
