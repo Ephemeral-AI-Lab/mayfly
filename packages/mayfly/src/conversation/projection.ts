@@ -359,8 +359,8 @@ function settleCompaction(
   updatedSeq: number,
   replace: (entry: ConversationCompactionEntry) => ConversationCompactionEntry,
 ): ConversationProjectionState {
-  const next = replaceEntry(state, match.open.entryId, updatedSeq, entry => entry.kind === 'compaction' ? replace(match.entry) : entry)
-  return next === state ? state : withOpenCompaction(next, match.index, null)
+  const next = replaceEntry(state, match.open.entryId, updatedSeq, () => replace(match.entry))
+  return withOpenCompaction(next, match.index, null)
 }
 
 /** Append a running compaction row, recording its open ids for the lifecycle lookups. */
