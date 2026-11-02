@@ -737,7 +737,7 @@ export function mountRemoteMarketplace(context: RemoteOperationsContext): () => 
     input: { hint: '[install <id> [--source npm|github] | uninstall <id> | info <id> | list | updates | refresh]' },
     async execute(rawInput, signal) {
       if (signal.aborted) return
-      const client = context.base.hosts.current()?.client ?? context.base.hosts.list()[0]
+      const client = context.base.hosts.current()?.client ?? context.base.hosts.active?.() ?? context.base.hosts.list()[0]
       if (client === undefined) { context.base.notice.set('Attach a Host before managing plugins'); return }
       if (current?.client !== client) {
         current?.controller.dispose()

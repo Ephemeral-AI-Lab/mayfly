@@ -7,6 +7,9 @@
 export interface RemoteFeatureCommandDefinition {
   readonly name: string
   readonly description: string
+  /** Internal composition route omitted from user-facing help and completion. */
+  readonly hidden?: boolean
+  readonly aliases?: readonly string[]
   readonly input?: { readonly hint: string }
   execute(rawInput: string, signal: AbortSignal): void | Promise<void>
 }
@@ -23,15 +26,25 @@ export class RemoteFeatureCommandRegistry implements RemoteFeatureCommandSource 
 
   /** List contributed commands in stable name order. */
   list(): readonly RemoteFeatureCommandDefinition[] {
-    return [...this.entries.values()].toSorted((left, right) => left.name.localeCompare(right.name))
+    return [...this.entries.values()].filter(entry => entry.hidden !== true).toSorted((left, right) => left.name.localeCompare(right.name))
   }
 
   /** Add one command and return its exact registration disposer. */
   register(definition: RemoteFeatureCommandDefinition): () => void {
     const name = definition.name.trim().toLowerCase()
     if (!/^[a-z][a-z0-9-]*$/u.test(name)) throw new Error(`Invalid Remote feature command name "${definition.name}"`)
-    if (this.entries.has(name)) throw new Error(`Remote feature command "${name}" is already registered`)
-    const entry = Object.freeze({ ...definition, name })
+    const aliases = definition.aliases?.map(alias => alias.trim().toLowerCase())
+    const names = [name, ...aliases ?? []]
+    const seen = new Set<string>()
+    for (const candidate of names) {
+      if (!/^[a-z][a-z0-9-]*$/u.test(candidate)) throw new Error(`Invalid Remote feature command name "${candidate}"`)
+      if (seen.has(candidate) || this.entries.has(candidate)
+        || [...this.entries.values()].some(entry => entry.aliases?.includes(candidate))) {
+        throw new Error(`Remote feature command "${candidate}" is already registered`)
+      }
+      seen.add(candidate)
+    }
+    const entry = Object.freeze({ ...definition, name, ...aliases === undefined ? {} : { aliases: Object.freeze(aliases) } })
     this.entries.set(name, entry)
     return () => {
       if (this.entries.get(name) === entry) this.entries.delete(name)
@@ -41,6 +54,7 @@ export class RemoteFeatureCommandRegistry implements RemoteFeatureCommandSource 
   /** Execute one exact command, returning false when the name belongs to another router. */
   async execute(name: string, rawInput: string, signal: AbortSignal): Promise<boolean> {
     const command = this.entries.get(name.toLowerCase())
+      ?? [...this.entries.values()].find(entry => entry.aliases?.includes(name.toLowerCase()))
     if (command === undefined) return false
     await command.execute(rawInput, signal)
     return true

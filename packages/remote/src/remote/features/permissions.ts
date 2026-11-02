@@ -48,7 +48,7 @@ export class RemotePermissionsController extends RemoteFeatureController {
 
   /** Read the current process-level catalog. */
   async catalog(selection?: RemoteFeatureSelection): Promise<RemotePermissionCatalog | undefined> {
-    const client = selection?.client ?? this.context.hosts.current()?.client ?? this.context.hosts.list()[0]
+    const client = selection?.client ?? this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]
     if (client === undefined) return undefined
     const operation = this.hostOperation(client)
     if (operation === undefined) return undefined
@@ -98,7 +98,7 @@ export class RemotePermissionsController extends RemoteFeatureController {
   }
 
   private async openDefault(): Promise<void> {
-    const client = this.context.hosts.list()[0]
+    const client = this.context.hosts.active?.() ?? this.context.hosts.list()[0]
     if (client === undefined) return
     const operation = this.hostOperation(client)
     if (operation === undefined) return

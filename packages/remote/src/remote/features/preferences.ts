@@ -39,7 +39,7 @@ export class RemotePreferencesController extends RemoteFeatureController {
   }
 
   /** Open the local theme picker and persist through the official Mayfly schema when present. */
-  openTheme(client = this.context.hosts.current()?.client ?? this.context.hosts.list()[0]): void {
+  openTheme(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): void {
     let mounted: RemoteMountedPanel | undefined
     mounted = openRemoteFeaturePanel(this.context, {
       title: this.context.t('Select a theme'),
@@ -58,7 +58,7 @@ export class RemotePreferencesController extends RemoteFeatureController {
   }
 
   /** Open the local language picker and persist through official settings when present. */
-  openLocale(client = this.context.hosts.current()?.client ?? this.context.hosts.list()[0]): void {
+  openLocale(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): void {
     let mounted: RemoteMountedPanel | undefined
     mounted = openRemoteFeaturePanel(this.context, {
       title: this.context.t('Language'),

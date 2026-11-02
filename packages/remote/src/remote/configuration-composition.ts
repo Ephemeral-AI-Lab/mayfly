@@ -53,24 +53,34 @@ export function mountRemoteConfigurationComposition(
     ...options.edit === undefined ? {} : { settingsEdit: options.edit },
   })
   const currentClient = (): HostClient | undefined =>
-    base.hosts.current()?.client ?? base.hosts.list()[0]
+    base.hosts.current()?.client ?? base.hosts.active?.() ?? base.hosts.list()[0]
   const usage = (name: string): Error => new Error(`Usage: /${name}`)
   const unregister = [
     base.commands.register({
-      name: 'models',
-      description: 'Choose the model for the current session or the default for new ones',
+      name: 'model',
+      description: 'Switch the model (no argument opens the picker)',
+      input: { hint: '[name]' },
       execute: async rawInput => {
-        if (rawInput.trim() !== '') throw usage('models')
-        await features.models.open()
+        await features.models.open(rawInput)
       },
     }),
     base.commands.register({
+      name: 'effort', aliases: ['thinking'],
+      description: 'Switch the thinking effort of the current model', input: { hint: '[level]' },
+      execute: async rawInput => { await features.models.effort(rawInput) },
+    }),
+    base.commands.register({
       name: 'providers',
+      hidden: true,
       description: 'Configure model providers, OAuth sign-in, and credentials',
       execute: async rawInput => {
-        if (rawInput.trim() !== '') throw usage('providers')
         const client = currentClient()
-        if (client !== undefined) await features.providers.open(client)
+        if (client === undefined) return
+        const input = rawInput.trim()
+        if (input === 'add') { await features.providers.openAdd(client); return }
+        if (input.startsWith('edit ')) { await features.providers.openEditor(client, input.slice(5).trim()); return }
+        if (input !== '') throw usage('provider')
+        await features.providers.open(client)
       },
     }),
     base.commands.register({
@@ -100,6 +110,7 @@ export function mountRemoteConfigurationComposition(
     }),
     base.commands.register({
       name: 'presets',
+      hidden: true,
       description: 'Switch the agent preset for the session or by default',
       execute: async rawInput => {
         if (rawInput.trim() !== '') throw usage('presets')

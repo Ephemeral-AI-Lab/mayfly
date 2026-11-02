@@ -90,6 +90,41 @@ function appFixture() {
 }
 
 describe('RemoteApp', () => {
+  it('addresses the active Host while sessionless, preserves exact selection, and falls back after detach', async () => {
+    const first = clientFixture(HostKey('http://one.test/'))
+    const second = clientFixture(HostKey('http://two.test/'))
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, key => key === first.client.key ? first.client : second.client)
+    expect(app.activeClient).toBeUndefined()
+    await app.attach('http://one.test/')
+    await app.selectOrCreate()
+    await app.attach('http://two.test/')
+    expect(app.activeClient).toBe(first.client)
+    app.clearSession()
+    expect(app.activeClient).toBe(second.client)
+    await app.execute('/detach')
+    expect(second.client.detach).toHaveBeenCalledOnce()
+    expect(first.client.detach).not.toHaveBeenCalled()
+    expect(app.activeClient).toBe(first.client)
+  })
+
+  it('does not let a late attach steal the active sessionless Host', async () => {
+    const first = clientFixture(HostKey('http://one.test/'))
+    const second = clientFixture(HostKey('http://two.test/'))
+    let resolve!: (client: HostClient) => void
+    const { conversation, status, panels } = appFixture()
+    const app = new RemoteApp(conversation, status, panels, key => key === first.client.key
+      ? new Promise(done => { resolve = done }) : second.client)
+    const pending = app.attach('http://one.test/')
+    await app.attach('http://two.test/')
+    resolve(first.client)
+    await pending
+    expect(app.activeClient).toBe(second.client)
+    await app.ensureSession('/workspace')
+    expect(second.client.sessions.create).toHaveBeenCalledWith({ cwd: '/workspace' })
+    expect(first.client.sessions.create).not.toHaveBeenCalled()
+  })
+
   it('stays sessionless until the first prompt and clears the view without stopping Host work', async () => {
     const fixture = clientFixture(HostKey('http://127.0.0.1:3080/'))
     const { conversation, status, panels } = appFixture()

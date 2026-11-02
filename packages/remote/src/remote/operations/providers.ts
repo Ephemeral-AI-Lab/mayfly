@@ -49,6 +49,7 @@ import {
 import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
 
 const zh: Readonly<Record<string, string>> = {
+  'Configure providers or choose their models': '配置提供商或选择其模型',
   'List providers or switch to one by picking its model': '列出提供商，或选择其模型以切换',
   'Providers': '提供商',
   'Models for {provider}': '{provider} 的模型',
@@ -178,8 +179,13 @@ class RemoteProviderOperationsController {
       await this.openRoster(target, signal)
       return
     }
-    if (verb === 'add' || verb === 'edit' || verb === 'remove') {
-      this.context.base.notice.set(this.t('Provider configuration and credentials are only editable from /providers'))
+    if (verb === 'add' || verb === 'edit') {
+      if (verb === 'edit' && words.length < 2) throw new Error('Usage: /provider edit <provider>')
+      await this.context.base.commands.execute('providers', verb === 'add' ? 'add' : `edit ${words.slice(1).join(' ')}`, signal)
+      return
+    }
+    if (verb === 'remove') {
+      this.context.base.notice.set('Usage: /provider [list | edit <provider> | switch <provider> | add]')
       return
     }
     // `switch` with no name is the roster, not a provider called "switch".
@@ -203,7 +209,7 @@ class RemoteProviderOperationsController {
   private target(): RemoteProviderTarget | undefined {
     const selection = this.context.base.hosts.current()
     if (selection !== undefined) return { client: selection.client, selection }
-    const client = this.context.base.hosts.list()[0]
+    const client = this.context.base.hosts.active?.() ?? this.context.base.hosts.list()[0]
     return client === undefined ? undefined : { client, selection: undefined }
   }
 
@@ -438,8 +444,8 @@ export function mountRemoteProviderOperations(context: RemoteOperationsContext):
   const t = memoizedLocaleTranslator(context.base.ctx, 'remote-provider').translate
   const unregister = context.base.commands.register({
     name: 'provider',
-    description: t('List providers or switch to one by picking its model'),
-    input: { hint: '[list | switch <provider>]' },
+    description: t('Configure providers or choose their models'),
+    input: { hint: '[list | edit <provider> | switch <provider> | add]' },
     execute: controller.execute,
   })
   return () => {

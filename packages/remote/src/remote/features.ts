@@ -38,6 +38,8 @@ export interface RemoteFeatureSelection {
 
 /** Read-only topology and selection seam; HostRegistry remains the sole owner. */
 export interface RemoteFeatureHosts {
+  /** Selected Host even while the start view has no Session. */
+  active?(): HostClient | undefined
   /** Committed Host Clients, used to mount and retire per-Host event listeners. */
   list(): readonly HostClient[]
   /** Current exact selection and binding, absent during detach or incomplete selection. */

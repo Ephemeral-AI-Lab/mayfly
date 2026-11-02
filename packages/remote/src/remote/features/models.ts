@@ -20,7 +20,9 @@ import {
   remoteProperty,
   remoteValue,
 } from './official.ts'
-import { openRemoteFeaturePanel, type RemoteMountedPanel } from './panel.ts'
+import { EffortPicker, ModelPicker, formatContextWindow } from '@ephemeral-ai/mayfly/model-picker'
+import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
+import type { MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
 
 /** Adapter-merged context and reasoning metadata for one Host catalog generation. */
 export interface RemoteModelCatalogDetails {
@@ -73,15 +75,7 @@ export function currentRemoteModelSelection(projection: unknown, catalog: ModelC
 }
 
 /** Format context metadata in the legacy picker's binary units. */
-export function formatRemoteContextWindow(tokens: number): string {
-  if (tokens < 1024) return `${tokens}`
-  const units = ['k', 'm', 'g']
-  let value = tokens
-  let unit = -1
-  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
-  const text = Number.isInteger(value) || value >= 10 ? `${Math.round(value)}` : value.toFixed(1)
-  return `${text}${units[unit]}`
-}
+export const formatRemoteContextWindow = formatContextWindow
 
 /** Flatten official provider groups, preferring Host-merged context and effort metadata. */
 export function remoteModelRows(
@@ -108,13 +102,16 @@ export function remoteModelRows(
   }))
 }
 
-interface RemoteModelState {
+interface RemoteModelTarget {
+  readonly operation: RemoteFeatureOperation
+  readonly client: HostClient
+  readonly selection: RemoteFeatureSelection | undefined
   readonly catalog: ModelCatalog
   readonly current: ModelSelection
   readonly details: RemoteModelCatalogDetails | undefined
 }
 
-/** Model picker/controller for one Remote feature mount. */
+/** Model selection over the official Host API with the reference wire UI. */
 export class RemoteModelsController extends RemoteFeatureController {
   constructor(
     context: RemoteFeatureContext,
@@ -134,25 +131,6 @@ export class RemoteModelsController extends RemoteFeatureController {
     } finally { operation.dispose() }
   }
 
-  /** Open the Session picker, or the Session-independent default picker without one. */
-  async open(): Promise<void> {
-    const selection = this.context.hosts.current()
-    if (selection === undefined) { await this.openDefault(); return }
-    const operation = this.sessionOperation(selection)
-    if (operation === undefined) return
-    try {
-      const [catalog, details] = await Promise.all([
-        remoteValue(selection.client.remote.session.modelCatalog()),
-        this.loadDetails(operation, selection.client),
-      ])
-      if (!operation.valid()) { operation.dispose(); return }
-      this.mountPicker(operation, selection, catalog, details)
-    } catch (error) {
-      if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
-      operation.dispose()
-    }
-  }
-
   /** Select one complete route for an exact Session. */
   async select(ref: SessionRef, next: ModelSelection): Promise<ModelSelection | undefined> {
     const current = this.context.hosts.current()
@@ -161,30 +139,105 @@ export class RemoteModelsController extends RemoteFeatureController {
     if (operation === undefined) return undefined
     try {
       const result = await remoteValue(current.client.remote.session.selectModel({ sessionId: ref.sessionId, ...next }))
-      return result.selected
+      return operation.valid() ? result.selected : undefined
     } finally { operation.dispose() }
   }
 
-  private async openDefault(): Promise<void> {
-    const client = this.context.hosts.list()[0]
-    if (client === undefined) return
-    if (this.defaultModel === undefined) {
-      this.context.notice.set(this.context.t('Selecting the default model requires the Host defaultModel capability.'))
+  /** Open the reference picker or resolve one unambiguous model name. */
+  async open(rawInput = '', providerFilter?: string): Promise<void> {
+    const target = await this.target()
+    if (target === undefined) return
+    const rows = remoteModelRows(target.catalog, target.current, target.details)
+      .filter(row => providerFilter === undefined || row.provider === providerFilter)
+    const query = rawInput.trim().toLowerCase()
+    if (query !== '') {
+      const exact = rows.filter(row => `${row.provider}/${row.model.id}`.toLowerCase() === query
+        || row.model.id.toLowerCase() === query || row.model.name.toLowerCase() === query)
+      const matched = exact.length === 0 ? rows.filter(row => `${row.provider}/${row.model.id}`.toLowerCase().includes(query)) : exact
+      if (matched.length !== 1) {
+        if (target.operation.valid()) this.context.notice.set(matched.length === 0 ? `Unknown model: ${rawInput.trim()}` : `Ambiguous model: ${rawInput.trim()}`)
+        target.operation.dispose()
+        return
+      }
+      await this.commit(target, { provider: matched[0]!.provider, model: matched[0]!.model.id })
+      target.operation.dispose()
       return
     }
-    const operation = this.hostOperation(client)
-    if (operation === undefined) return
+    this.mountModels(target, rows, providerFilter)
+  }
+
+  /** Open the reference effort slider or explicitly pin/reset one offered level. */
+  async effort(rawInput = ''): Promise<void> {
+    const target = await this.target()
+    if (target === undefined) return
+    const row = remoteModelRows(target.catalog, target.current, target.details)
+      .find(candidate => candidate.provider === target.current.provider && candidate.model.id === target.current.model)
+    if (row === undefined || row.efforts.length === 0) {
+      if (target.operation.valid()) this.context.notice.set('the current model exposes no reasoning efforts')
+      target.operation.dispose()
+      return
+    }
+    const query = rawInput.trim().toLowerCase()
+    if (query !== '') {
+      const match = row.efforts.find(level => level.toLowerCase() === query)
+        ?? row.model.reasoning?.efforts.find(level => level.name.toLowerCase() === query)?.id
+      if (query !== 'default' && match === undefined) {
+        this.context.notice.set(`unsupported thinking effort "${rawInput.trim()}" for ${row.model.id}: available: default, ${row.efforts.join(', ')}`)
+      } else {
+        await this.commit(target, { provider: row.provider, model: row.model.id, ...query === 'default' ? {} : { reasoningEffort: ReasoningEffortId(String(match)) } })
+      }
+      target.operation.dispose()
+      return
+    }
+    const t = this.context.t
+    const model = `${row.providerLabel}/${row.model.id}`
+    const node = EffortPicker({
+      title: t('Effort'),
+      description: row.defaultEffort === undefined ? model : t('{model} · provider default: {level}', { model, level: row.defaultEffort }),
+      levels: row.efforts, inherited: row.defaultEffort, pinned: target.current.reasoningEffort,
+      startCaption: t('Faster'), endCaption: t('Smarter'),
+    })
+    const panel = openRemoteBrowser(this.context, {
+      id: 'mayfly.effort', scope: this.scope(target), signal: target.operation.signal,
+      isCurrent: () => target.operation.valid(), view: () => node,
+      action: async (event, context) => {
+        if (event.kind !== 'slider-accept' || event.controlId !== 'effort') return { kind: 'completed' }
+        if (context.signal.aborted) return { kind: 'cancelled' }
+        if (event.value !== null && !row.efforts.includes(event.value)) return { kind: 'failed', message: 'The thinking effort is no longer available' }
+        return await this.commit(target, { provider: row.provider, model: row.model.id, ...event.value === null ? {} : { reasoningEffort: ReasoningEffortId(event.value) } })
+      },
+      onClosed: () => target.operation.dispose(),
+    })
+    target.operation.onDispose(() => panel.close())
+  }
+
+  private scope(target: RemoteModelTarget): { readonly kind: 'session', readonly sessionId: string } | { readonly kind: 'app', readonly targetId: string } {
+    return target.selection === undefined
+      ? { kind: 'app', targetId: 'model-selection' }
+      : { kind: 'session', sessionId: target.selection.ref.sessionId }
+  }
+
+  private async target(): Promise<RemoteModelTarget | undefined> {
+    const selection = this.context.hosts.current()
+    const client = selection?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]
+    if (client === undefined) return undefined
+    const operation = selection === undefined ? this.hostOperation(client) : this.sessionOperation(selection)
+    if (operation === undefined) return undefined
     try {
-      const [catalog, details, current] = await Promise.all([
+      if (selection === undefined && this.defaultModel === undefined) throw new Error(this.context.t('Selecting the default model requires the Host defaultModel capability.'))
+      const [catalog, details] = await Promise.all([
         remoteValue(client.remote.session.modelCatalog()),
         this.loadDetails(operation, client),
-        this.defaultModel.read(client, operation.signal),
       ])
-      if (!operation.valid()) { operation.dispose(); return }
-      this.mountDefaultPicker(operation, client, catalog, current, details)
+      const current = selection === undefined
+        ? await this.defaultModel!.read(client, operation.signal)
+        : currentRemoteModelSelection(selection.binding.session.projections.faceOf('modelSelection').getSnapshot(), catalog)
+      if (!operation.valid()) { operation.dispose(); return undefined }
+      return { operation, selection, client, catalog, current, details }
     } catch (error) {
       if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
       operation.dispose()
+      return undefined
     }
   }
 
@@ -194,153 +247,77 @@ export class RemoteModelsController extends RemoteFeatureController {
     catch { return undefined }
   }
 
-  private mountPicker(
-    operation: RemoteFeatureOperation,
-    selection: RemoteFeatureSelection,
-    catalog: ModelCatalog,
-    details: RemoteModelCatalogDetails | undefined,
-  ): void {
-    const projection = selection.binding.session.projections.faceOf('modelSelection')
-    const reload = async (): Promise<RemoteModelState> => {
-      const next = await remoteValue(selection.client.remote.session.modelCatalog())
-      return {
-        catalog: next,
-        current: currentRemoteModelSelection(projection.getSnapshot(), next),
-        details: await this.loadDetails(operation, selection.client),
-      }
+  private async commit(target: RemoteModelTarget, next: ModelSelection): Promise<MayflyUiActionReply> {
+    if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
+    try {
+      const selected = target.selection === undefined
+        ? await this.defaultModel!.select(target.client, next, target.operation.signal)
+        : (await remoteValue(target.client.remote.session.selectModel({ sessionId: target.selection.ref.sessionId, ...next }))).selected
+      if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
+      this.context.notice.set(this.context.t('Switched to {model} ({provider})', { model: selected.model, provider: selected.provider }))
+      return { kind: 'completed', dismiss: true }
+    } catch (error) {
+      if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
+      const message = remoteErrorMessage(error)
+      this.context.notice.set(message)
+      return { kind: 'failed', message }
     }
-    const commit = async (row: RemoteModelRow, effort: string | undefined): Promise<ModelSelection> => {
-      const selected = await remoteValue(selection.client.remote.session.selectModel({
-        sessionId: selection.ref.sessionId,
-        provider: row.provider,
-        model: row.model.id,
-        ...effort === undefined ? {} : { reasoningEffort: ReasoningEffortId(effort) },
-      }))
-      return selected.selected
-    }
-    this.mountModelList(operation, { catalog, current: currentRemoteModelSelection(projection.getSnapshot(), catalog), details }, {
-      reload,
-      commit,
-      observe: {
-        subscribe: listener => projection.subscribe(listener),
-        project: (live: ModelCatalog): ModelSelection => currentRemoteModelSelection(projection.getSnapshot(), live),
-      },
-    })
   }
 
-  private mountDefaultPicker(
-    operation: RemoteFeatureOperation,
-    client: HostClient,
-    catalog: ModelCatalog,
-    current: ModelSelection,
-    details: RemoteModelCatalogDetails | undefined,
-  ): void {
-    const reload = async (): Promise<RemoteModelState> => {
-      const [next, latest, nextDetails] = await Promise.all([
-        remoteValue(client.remote.session.modelCatalog()),
-        this.defaultModel === undefined ? Promise.resolve(current) : this.defaultModel.read(client, operation.signal),
-        this.loadDetails(operation, client),
-      ])
-      return { catalog: next, current: latest, details: nextDetails }
-    }
-    const commit = async (row: RemoteModelRow, effort: string | undefined): Promise<ModelSelection> => {
-      if (this.defaultModel === undefined) throw new Error(this.context.t('Selecting the default model requires the Host defaultModel capability.'))
-      return await this.defaultModel.select(client, {
-        provider: row.provider,
-        model: row.model.id,
-        ...effort === undefined ? {} : { reasoningEffort: ReasoningEffortId(effort) },
-      }, operation.signal)
-    }
-    this.mountModelList(operation, { catalog, current, details }, { reload, commit })
-  }
-
-  private mountModelList(
-    operation: RemoteFeatureOperation,
-    initial: RemoteModelState,
-    hooks: {
-      reload(): Promise<RemoteModelState>
-      commit(row: RemoteModelRow, effort: string | undefined): Promise<ModelSelection>
-      observe?: {
-        subscribe(listener: () => void): () => void
-        project(catalog: ModelCatalog): ModelSelection
-      }
-    },
-  ): void {
-    let state = initial
-    let rows = remoteModelRows(state.catalog, state.current, state.details)
-    const pinned = new Map<string, string | undefined>()
-    if (state.current.reasoningEffort !== undefined) {
-      pinned.set(JSON.stringify([state.current.provider, state.current.model]), String(state.current.reasoningEffort))
-    }
-    let mounted: RemoteMountedPanel | undefined
-    let sequence = 0
-    const view = () => ({
-      title: this.context.t('Select a model'),
-      subtitle: this.context.t('Your pick becomes the default for new sessions.'),
+  private mountModels(target: RemoteModelTarget, initial: readonly RemoteModelRow[], providerFilter?: string): void {
+    let rows = initial
+    let current = target.current
+    let currentCatalog = target.catalog
+    let revision = 0
+    let panel: RemoteBrowserPanel
+    const view = () => ModelPicker({
+      title: this.context.t('Select a model'), description: this.context.t('Your pick becomes the default for new sessions.'),
+      thinking: this.context.t('Thinking'), empty: this.context.t('No models advertised'),
+      live: rows.find(row => row.current)?.key,
       rows: rows.map(row => ({
-        id: row.key,
-        text: `${row.providerLabel}/${row.model.name || row.model.id}`,
+        id: row.key, label: `${row.providerLabel}/${row.model.name || row.model.id}`, group: row.providerLabel,
         current: row.current,
-        detail: [
-          row.contextWindow === undefined ? undefined : this.context.t('{size} context', { size: formatRemoteContextWindow(row.contextWindow) }),
-          row.efforts.length === 0 ? undefined : `${this.context.t('Thinking')}: ${pinned.get(row.key) ?? row.defaultEffort ?? this.context.t('Provider default')}`,
-        ].filter((part): part is string => part !== undefined).join(' · ') || undefined,
+        detail: row.contextWindow === undefined ? undefined : this.context.t('{size} context', { size: formatContextWindow(row.contextWindow) }),
+        strip: row.efforts.length === 0 ? undefined : { efforts: row.efforts, inherited: row.defaultEffort, pinned: row.current ? current.reasoningEffort : undefined },
       })),
-      footer: state.catalog.failures.map(failure => `${failure.name}: ${failure.message}`).join('\n'),
-      hint: '↑↓ select · ←/→ thinking · Delete provider default · Enter choose · Esc close',
     })
-    const apply = (next: RemoteModelState): void => {
-      state = next
-      rows = remoteModelRows(state.catalog, state.current, state.details)
-    }
     const refresh = async (): Promise<void> => {
-      const generation = ++sequence
+      const generation = ++revision
       try {
-        const next = await hooks.reload()
-        if (generation !== sequence || !operation.valid() || mounted === undefined) return
-        apply(next)
-        mounted.panel.update(view())
-      } catch (error) {
-        if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
-      }
+        const [catalog, details] = await Promise.all([remoteValue(target.client.remote.session.modelCatalog()), this.loadDetails(target.operation, target.client)])
+        if (!target.operation.valid() || generation !== revision) return
+        const nextCurrent = target.selection === undefined ? await this.defaultModel!.read(target.client, target.operation.signal)
+          : currentRemoteModelSelection(target.selection.binding.session.projections.faceOf('modelSelection').getSnapshot(), catalog)
+        if (!target.operation.valid() || generation !== revision) return
+        current = nextCurrent
+        currentCatalog = catalog
+        rows = remoteModelRows(catalog, current, details).filter(row => providerFilter === undefined || row.provider === providerFilter)
+        panel.refresh()
+      } catch (error) { if (target.operation.valid()) this.context.notice.set(remoteErrorMessage(error)) }
     }
-    const commit = async (key: string | undefined): Promise<void> => {
-      const row = rows.find(candidate => candidate.key === key)
-      if (row === undefined || !operation.valid()) return
-      const effort = pinned.get(row.key)
-      try {
-        const selected = await hooks.commit(row, effort)
-        if (!operation.valid()) return
-        this.context.notice.set(this.context.t('Switched to {model} ({provider})', { model: selected.model, provider: selected.provider }))
-        mounted?.lease.close()
-      } catch (error) {
-        if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
-      }
+    panel = openRemoteBrowser(this.context, {
+      id: 'mayfly.models', scope: this.scope(target), signal: target.operation.signal,
+      isCurrent: () => target.operation.valid(), view,
+      action: async (event, context) => {
+        if (event.kind === 'activate' && event.actionId === 'refresh') { await refresh(); return { kind: 'completed' } }
+        if (event.kind !== 'selection-accept' || event.controlId !== 'selection') return { kind: 'completed' }
+        if (context.signal.aborted) return { kind: 'cancelled' }
+        const row = rows.find(candidate => candidate.key === event.selectedIds[0])
+        if (row === undefined) return { kind: 'failed', message: this.context.t('The model is no longer available') }
+        if (event.segmentId !== undefined && !row.efforts.includes(event.segmentId)) return { kind: 'failed', message: 'The thinking effort is no longer available' }
+        return await this.commit(target, { provider: row.provider, model: row.model.id, ...event.segmentId === undefined ? {} : { reasoningEffort: ReasoningEffortId(event.segmentId) } })
+      },
+      onClosed: () => target.operation.dispose(),
+    })
+    target.operation.onDispose(() => panel.close())
+    if (target.selection !== undefined) {
+      const projection = target.selection.binding.session.projections.faceOf('modelSelection')
+      target.operation.onDispose(projection.subscribe(() => {
+        if (!target.operation.valid()) return
+        current = currentRemoteModelSelection(projection.getSnapshot(), currentCatalog)
+        rows = rows.map(row => ({ ...row, current: row.provider === current.provider && row.model.id === current.model }))
+        panel.refresh()
+      }))
     }
-    const adjust = (key: string | undefined, direction: -1 | 0 | 1): void => {
-      const row = rows.find(candidate => candidate.key === key)
-      if (row === undefined || row.efforts.length === 0 || mounted === undefined) return
-      const choices: (string | undefined)[] = [undefined, ...row.efforts]
-      const existing = choices.indexOf(pinned.get(row.key))
-      if (direction === 0) pinned.set(row.key, undefined)
-      else {
-        const index = (Math.max(0, existing) + direction + choices.length) % choices.length
-        pinned.set(row.key, choices[index])
-      }
-      mounted.panel.update(view())
-    }
-    mounted = openRemoteFeaturePanel(this.context, view(), (action, id) => {
-      if (!operation.valid()) { mounted?.lease.close(); return }
-      if (action === 'accept') void commit(id)
-      else if (action === 'refresh') void refresh()
-      else if (action === 'previous') adjust(id, -1)
-      else if (action === 'next') adjust(id, 1)
-      else if (action === 'delete') adjust(id, 0)
-    }, () => { operation.dispose() })
-    if (hooks.observe !== undefined) operation.onDispose(hooks.observe.subscribe(() => {
-      if (!operation.valid() || mounted === undefined) return
-      apply({ ...state, current: hooks.observe!.project(state.catalog) })
-      mounted.panel.update(view())
-    }))
   }
 }

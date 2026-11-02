@@ -104,6 +104,8 @@ export class RemoteFeatureOperation {
   private readonly lifetime = new AbortController()
   private readonly combined: AbortSignal
   private readonly cleanups = new Set<() => void>()
+  private readonly generation: number | undefined
+  private readonly activeClient: HostClient | undefined
   private disposed = false
 
   constructor(
@@ -112,14 +114,17 @@ export class RemoteFeatureOperation {
     readonly selection?: RemoteFeatureSelection,
     parent?: AbortSignal,
   ) {
+    this.generation = client.state?.getSnapshot().generation
+    this.activeClient = context.hosts.current()?.client ?? context.hosts.active?.()
     this.combined = parent === undefined ? this.lifetime.signal : AbortSignal.any([this.lifetime.signal, parent])
     this.onDispose(() => {
-      if (parent !== undefined) this.combined.removeEventListener('abort', this.abortFromParent)
+      parent?.removeEventListener('abort', this.abortFromParent)
     })
     parent?.addEventListener('abort', this.abortFromParent, { once: true })
+    if (parent?.aborted === true) this.dispose()
   }
 
-  private readonly abortFromParent = (): void => { this.lifetime.abort() }
+  private readonly abortFromParent = (): void => { this.dispose() }
 
   /** Cancellation applies to local reads/watches only, never implicit Host cancellation. */
   get signal(): AbortSignal { return this.combined }
@@ -127,7 +132,8 @@ export class RemoteFeatureOperation {
   /** Whether a late result may still update this operation's panel or notice. */
   valid(): boolean {
     if (this.disposed || this.combined.aborted || !this.context.hosts.list().includes(this.client)) return false
-    if (this.selection === undefined) return true
+    if (this.client.state?.getSnapshot().generation !== this.generation) return false
+    if (this.selection === undefined) return (this.context.hosts.current()?.client ?? this.context.hosts.active?.()) === this.activeClient
     const current = this.context.hosts.current()
     return isRemoteFeatureSelection(current, this.client, this.selection.ref)
       && current.binding === this.selection.binding
@@ -153,10 +159,12 @@ export class RemoteFeatureOperation {
 export abstract class RemoteFeatureController {
   private readonly operations = new Set<RemoteFeatureOperation>()
   private readonly offTopology: () => void
+  private readonly connections = new Map<HostClient, () => void>()
   private disposed = false
 
   protected constructor(protected readonly context: RemoteFeatureContext) {
-    this.offTopology = context.hosts.subscribe(() => { this.invalidateStale() })
+    this.offTopology = context.hosts.subscribe(() => { this.reconcileConnections(); this.invalidateStale() })
+    this.reconcileConnections()
   }
 
   /** Begin an exact Host operation; detached Clients cannot be captured. */
@@ -181,12 +189,28 @@ export abstract class RemoteFeatureController {
     if (this.disposed) return
     this.disposed = true
     this.offTopology()
+    for (const off of this.connections.values()) off()
+    this.connections.clear()
     for (const operation of this.operations) operation.dispose()
     this.operations.clear()
   }
 
   private invalidateStale(): void {
     for (const operation of this.operations) if (!operation.valid()) operation.dispose()
+  }
+
+  private reconcileConnections(): void {
+    if (this.disposed) return
+    const attached = new Set(this.context.hosts.list())
+    for (const [client, off] of this.connections) {
+      if (attached.has(client)) continue
+      off()
+      this.connections.delete(client)
+    }
+    for (const client of attached) {
+      if (this.connections.has(client) || client.state === undefined) continue
+      this.connections.set(client, client.state.subscribe(() => { this.invalidateStale() }))
+    }
   }
 
   private track(operation: RemoteFeatureOperation): RemoteFeatureOperation {

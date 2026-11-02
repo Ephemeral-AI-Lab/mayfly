@@ -35,7 +35,7 @@ export interface RemoteBrowserOptions {
 }
 
 /** Open one editor-presented panel whose close path releases only Frontend observation. */
-export function openRemoteBrowser(options: RemoteFeatureContext, browser: RemoteBrowserOptions): RemoteBrowserPanel {
+export function openRemoteBrowser(options: Pick<RemoteFeatureContext, 'ctx' | 'subscribeLocale'>, browser: RemoteBrowserOptions): RemoteBrowserPanel {
   let handle: MayflyOverlayHandle | undefined
   let cleanup: (() => void) | undefined
   let closed = false

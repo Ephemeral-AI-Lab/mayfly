@@ -17,7 +17,10 @@ import {
   remoteModelSelection,
   type RemoteModelCatalogDetails,
 } from '../../src/remote/features/models.ts'
-import type { RemoteFeaturePanel } from '../../src/remote/features/panel.ts'
+import type { RemoteBrowserOptions } from '../../src/remote/panels/browser.ts'
+import type { MayflyUiActionEvent, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
+const mocks = vi.hoisted(() => ({ open: vi.fn() }))
+vi.mock('../../src/remote/panels/browser.ts', () => ({ openRemoteBrowser: mocks.open }))
 
 /** One model row as the Host catalog carries it. */
 function model(id: string, overrides: Partial<ModelCatalogModel> = {}): ModelCatalogModel {
@@ -145,19 +148,20 @@ function fixture(options: FixtureOptions = {}) {
         read: vi.fn(async () => options.defaultSelection ?? selection('deepseek', 'chat')),
         select: vi.fn(async (_client: HostClient, next: ModelSelection) => next),
       }
-  const opened: { component: RemoteFeaturePanel, lease: { close: ReturnType<typeof vi.fn>, closed: boolean } }[] = []
-  open.mockImplementation((component: RemoteFeaturePanel) => {
-    const lease = { closed: false, close: vi.fn() }
-    opened.push({ component, lease })
+  const opened: { options: RemoteBrowserOptions, lease: { close: ReturnType<typeof vi.fn>, refresh: ReturnType<typeof vi.fn>, closed: boolean } }[] = []
+  mocks.open.mockImplementation((_context: unknown, options: RemoteBrowserOptions) => {
+    const lease = { closed: false, close: vi.fn(), refresh: vi.fn() }
+    opened.push({ options, lease })
     return lease
   })
   const controller = new RemoteModelsController(context, source, defaultModel)
-  const panel = (index = 0): RemoteFeaturePanel => opened[index]!.component
-  const render = (index = 0, width = 120): string => panel(index).render(width).join('\n')
+  const browser = (index = 0): RemoteBrowserOptions => opened[index]!.options
+  const render = (index = 0): string => JSON.stringify(browser(index).view())
+  const act = async (event: Record<string, unknown>, index = 0) => await browser(index).action!(event as unknown as MayflyUiActionEvent, { signal: new AbortController().signal, report: vi.fn() } as unknown as MayflyUiEventContext)
   return {
     context, controller, client, ref, binding, projection, faceOf, listeners,
     modelCatalog, selectModel, hosts, current, notice, source, defaultModel,
-    overlays, opened, panel, render,
+    overlays, opened, browser, render, act,
   }
 }
 
@@ -236,262 +240,169 @@ describe('remote model wire values', () => {
   })
 })
 
-describe('RemoteModelsController roster', () => {
-  it('opens the Session picker with merged details and marks the current route', async () => {
-    const { controller, overlays, opened, render, modelCatalog, source, faceOf } = fixture({
-      details: detailsOf({
-        'deepseek/chat': { contextWindow: 131072, efforts: ['low', 'high'], defaultEffort: 'low' },
-      }),
-    })
-    await controller.open()
-
-    expect(opened).toHaveLength(1)
-    expect(overlays.open).toHaveBeenCalledOnce()
-    expect(modelCatalog).toHaveBeenCalledOnce()
-    expect(source).toBeDefined()
-    expect(faceOf).toHaveBeenCalledWith('modelSelection')
-    const text = render()
-    expect(text).toContain('Select a model')
-    expect(text).toContain('> DeepSeek/DeepSeek Chat')
-    expect(text).toContain('128k context · Thinking: low')
+describe('RemoteModelsController reference wire UI', () => {
+  it('opens the reference filterable numbered picker with grouped rows and live thinking segment', async () => {
+    const test = fixture({ details: detailsOf({ 'deepseek/chat': { contextWindow: 131072, efforts: ['low', 'high'], defaultEffort: 'low' } }) })
+    await test.controller.open()
+    expect(test.browser().id).toBe('mayfly.models')
+    expect(test.browser().scope).toEqual({ kind: 'session', sessionId: test.ref.sessionId })
+    expect(test.render()).toContain('Select a model')
+    expect(test.render()).toContain('128k context')
+    const node = test.browser().view() as unknown as { child: { id: string, numbered: string, filterable: boolean, items: readonly unknown[] } }
+    expect(node.child).toMatchObject({ id: 'selection', numbered: 'focus', filterable: true })
+    expect(node.child.items[0]).toMatchObject({ label: 'DeepSeek/DeepSeek Chat', group: 'DeepSeek', current: true, segment: { inheritedId: 'low' } })
+    expect(test.faceOf).toHaveBeenCalledWith('modelSelection')
+    test.controller.dispose()
   })
 
-  it('renders rows with missing provider/model metadata without inventing values', async () => {
-    const { controller, render } = fixture({
-      catalog: catalog({
-        groups: [
-          { id: 'deepseek', name: 'DeepSeek', models: [model('bare')] },
-          { id: 'other', name: 'Other', models: [model('chat', { name: 'Other Chat' })] },
-        ],
-      }),
-      projection: { next: { provider: 'other', model: 'chat' } },
-    })
-    await controller.open()
-
-    const text = render()
-    // One line per row: the bare row has no detail line carrying invented metadata.
-    expect(text.split('\n').filter(line => line.includes('DeepSeek/bare') || line.includes('Other/Other Chat'))).toHaveLength(2)
-    expect(text).not.toContain('Thinking')
-    expect(text).not.toContain('context')
-    // The current route is also the initially focused row, so it carries the cursor.
-    expect(text).toContain('> Other/Other Chat')
+  it('commits a structured selection and returns dismissal only after native confirmation', async () => {
+    const test = fixture({ details: detailsOf({ 'deepseek/chat': { efforts: ['low', 'high'] } }) })
+    await test.controller.open()
+    const result = await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])], segmentId: 'high' })
+    expect(test.selectModel).toHaveBeenCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'high' })
+    expect(result).toEqual({ kind: 'completed', dismiss: true })
+    expect(test.notice.set).toHaveBeenCalledWith('Switched to chat (deepseek)')
+    test.controller.dispose()
   })
 
-  it('reports a catalog failure as a notice and opens no panel', async () => {
-    const { controller, modelCatalog, notice, opened } = fixture()
-    modelCatalog.mockResolvedValueOnce({ ok: false, error: { code: 'unavailable', message: 'host offline' } })
-    await controller.open()
-
-    expect(notice.set).toHaveBeenCalledWith('host offline')
-    expect(opened).toEqual([])
+  it('omits an unpinned effort and refuses unavailable rows or levels', async () => {
+    const test = fixture()
+    await test.controller.open()
+    expect(await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: ['gone'] })).toMatchObject({ kind: 'failed' })
+    expect(await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])], segmentId: 'unsupported' })).toMatchObject({ kind: 'failed' })
+    expect(test.selectModel).not.toHaveBeenCalled()
+    await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })
+    expect(test.selectModel).toHaveBeenCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat' })
+    test.controller.dispose()
   })
 
-  it('paints catalog failures in the panel footer', async () => {
-    const { controller, render } = fixture({
-      catalog: catalog({ failures: [{ id: 'broken', name: 'Broken provider', message: 'timed out' }] }),
-    })
-    await controller.open()
-    expect(render()).toContain('Broken provider: timed out')
-  })
-})
-
-describe('RemoteModelsController Session commit', () => {
-  it('selects the focused route with the chosen reasoning effort and closes the panel', async () => {
-    const { controller, panel, opened, selectModel, notice, ref } = fixture({
-      details: detailsOf({ 'deepseek/chat': { efforts: ['high', 'low'], defaultEffort: 'high' } }),
-    })
-    await controller.open()
-
-    // No pin yet: the first right press names the first merged effort.
-    panel().handleInput('\x1b[C')
-    panel().handleInput('\r')
-    await vi.waitFor(() => { expect(selectModel).toHaveBeenCalledOnce() })
-
-    expect(selectModel.mock.calls[0]![0]).toEqual({
-      sessionId: ref.sessionId,
-      provider: 'deepseek',
-      model: 'chat',
-      reasoningEffort: 'high',
-    })
-    await vi.waitFor(() => { expect(notice.set).toHaveBeenCalledWith('Switched to chat (deepseek)') })
-    expect(opened[0]!.lease.close).toHaveBeenCalledOnce()
+  it('keeps failed writes visible and never retries an unknown outcome', async () => {
+    const test = fixture()
+    test.selectModel.mockRejectedValueOnce(new Error('connection ended'))
+    await test.controller.open()
+    const result = await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })
+    expect(result).toEqual({ kind: 'failed', message: 'connection ended' })
+    expect(test.selectModel).toHaveBeenCalledOnce()
+    expect(test.opened[0]!.lease.close).not.toHaveBeenCalled()
+    test.controller.dispose()
   })
 
-  it('omits the reasoningEffort key entirely when no effort is pinned', async () => {
-    const { controller, panel, opened, selectModel, ref } = fixture()
-    await controller.open()
-
-    panel().handleInput('\r')
-    await vi.waitFor(() => { expect(selectModel).toHaveBeenCalledOnce() })
-    const request = selectModel.mock.calls[0]![0]
-    expect(request).toEqual({ sessionId: ref.sessionId, provider: 'deepseek', model: 'chat' })
-    expect(Object.hasOwn(request, 'reasoningEffort')).toBe(false)
-    await vi.waitFor(() => { expect(opened[0]!.lease.close).toHaveBeenCalledOnce() })
+  it('uses default-model writes without a Session and preserves the exact route', async () => {
+    const test = fixture({ current: false })
+    await test.controller.open()
+    expect(test.browser().scope).toEqual({ kind: 'app', targetId: 'model-selection' })
+    await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })
+    expect(test.defaultModel!.select).toHaveBeenCalledWith(test.client, { provider: 'deepseek', model: 'chat' }, expect.any(AbortSignal))
+    expect(test.selectModel).not.toHaveBeenCalled()
+    test.controller.dispose()
   })
 
-  it('reports a Host commit failure as a notice and leaves the panel open', async () => {
-    const { controller, panel, opened, selectModel, notice } = fixture()
-    selectModel.mockResolvedValueOnce({ ok: false, error: { code: 'unavailable', message: 'host offline' } })
-    await controller.open()
-
-    panel().handleInput('\r')
-    await vi.waitFor(() => { expect(notice.set).toHaveBeenCalledWith('host offline') })
-    expect(opened[0]!.lease.close).not.toHaveBeenCalled()
-    expect(opened).toHaveLength(1)
-  })
-})
-
-describe('RemoteModelsController default-model route', () => {
-  it('uses the default-model DTO adapter when no Session is selected', async () => {
-    const { controller, panel, selectModel, defaultModel, ref, client } = fixture({
-      current: false,
-      withDefaultModel: true,
-    })
-    await controller.open()
-
-    expect(defaultModel!.read).toHaveBeenCalledOnce()
-    panel().handleInput('\r')
-    await vi.waitFor(() => { expect(defaultModel!.select).toHaveBeenCalledOnce() })
-    expect(selectModel).not.toHaveBeenCalled()
-    const [selectedClient, next, signal] = defaultModel!.select.mock.calls[0] as unknown as [HostClient, ModelSelection, AbortSignal]
-    expect(selectedClient).toBe(client)
-    expect(next).toEqual({ provider: 'deepseek', model: 'chat' })
-    expect(Object.hasOwn(next, 'reasoningEffort')).toBe(false)
-    expect(signal).toBeInstanceOf(AbortSignal)
-    // The Session route is not borrowed for a Session-independent write.
-    expect(ref.sessionId).toBeTruthy()
+  it('supports exact model names and detects missing or ambiguous queries', async () => {
+    const test = fixture({ catalog: catalog({ groups: [
+      { id: 'first', name: 'First', models: [model('chat')] },
+      { id: 'second', name: 'Second', models: [model('chat')] },
+    ] }) })
+    await test.controller.open('chat')
+    expect(test.notice.set).toHaveBeenCalledWith('Ambiguous model: chat')
+    await test.controller.open('missing')
+    expect(test.notice.set).toHaveBeenCalledWith('Unknown model: missing')
+    await test.controller.open('first/chat')
+    expect(test.selectModel).toHaveBeenCalledWith({ sessionId: test.ref.sessionId, provider: 'first', model: 'chat' })
+    expect(test.opened).toHaveLength(0)
+    test.controller.dispose()
   })
 
-  it('uses the Session adapter, never the default-model adapter, when a Session is selected', async () => {
-    const { controller, panel, selectModel, defaultModel, ref } = fixture({ withDefaultModel: true })
-    await controller.open()
-    panel().handleInput('\r')
-    await vi.waitFor(() => { expect(selectModel).toHaveBeenCalledOnce() })
-
-    expect(defaultModel!.select).not.toHaveBeenCalled()
-    expect(selectModel.mock.calls[0]![0]).toMatchObject({ sessionId: ref.sessionId })
+  it('does not create a default picker without its Host capability or an attached Host', async () => {
+    const unavailable = fixture({ current: false, withDefaultModel: false })
+    await unavailable.controller.open()
+    expect(unavailable.opened).toHaveLength(0)
+    expect(unavailable.notice.set).toHaveBeenCalledWith('Selecting the default model requires the Host defaultModel capability.')
+    unavailable.controller.dispose()
+    const detached = fixture({ attached: false })
+    await detached.controller.open()
+    expect(detached.opened).toHaveLength(0)
+    expect(await detached.controller.catalog(detached.client)).toBeUndefined()
+    detached.controller.dispose()
   })
 
-  it('refuses the default picker when the Host has no defaultModel capability', async () => {
-    const { controller, notice, opened, modelCatalog } = fixture({ current: false, withDefaultModel: false })
-    await controller.open()
-
-    expect(notice.set).toHaveBeenCalledWith('Selecting the default model requires the Host defaultModel capability.')
-    expect(opened).toEqual([])
-    expect(modelCatalog).not.toHaveBeenCalled()
+  it('uses the reference effort slider and resets to the provider default without a key', async () => {
+    const test = fixture({ catalog: catalog({ groups: [{ id: 'deepseek', name: 'DeepSeek', models: [model('chat', { reasoning: { efforts: [{ id: 'low', name: 'Fast' }, { id: 'high', name: 'Smart' }], defaultEffort: 'low' } })] }] }) })
+    await test.controller.effort()
+    expect(test.browser().id).toBe('mayfly.effort')
+    expect(test.render()).toContain('Faster')
+    expect(test.render()).toContain('Smarter')
+    expect(test.render()).toContain('provider default: low')
+    expect(await test.act({ kind: 'slider-accept', controlId: 'effort', value: 'high' })).toEqual({ kind: 'completed', dismiss: true })
+    expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'high' })
+    await test.controller.effort('default')
+    expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat' })
+    await test.controller.effort('Smart')
+    expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'high' })
+    await test.controller.effort('unsupported')
+    expect(test.notice.set).toHaveBeenCalledWith(expect.stringContaining('unsupported thinking effort'))
+    test.controller.dispose()
   })
-})
 
-describe('RemoteModelsController thinking control', () => {
-  it('cycles the effort for the focused row, pins it, and clears it on delete', async () => {
-    const { controller, panel, render, selectModel } = fixture({
-      catalog: catalog({
-        groups: [{
-          id: 'deepseek',
-          name: 'DeepSeek',
-          models: [
-            model('chat', { reasoning: { efforts: [{ id: 'own', name: 'Own' }], defaultEffort: 'own' } }),
-            model('flex'),
-          ],
-        }],
-      }),
-      details: detailsOf({
-        'deepseek/chat': { efforts: ['high', 'low'], defaultEffort: 'low' },
-        'deepseek/flex': { efforts: ['fast'] },
-      }),
-    })
-    await controller.open()
-
-    expect(render()).toContain('Thinking: low')
-    panel().handleInput('\x1b[C')
-    expect(render()).toContain('Thinking: high')
-    // Cycling back past the first named effort lands on "no pin", shown as the default.
-    panel().handleInput('\x1b[D')
-    expect(render()).toContain('Thinking: Provider default')
-    panel().handleInput('\x1b[C')
-    panel().handleInput('\x1b[C')
-    expect(render()).toContain('Thinking: low')
-    // Delete clears the pin, so the row's own default is what remains visible.
-    panel().handleInput('\x18')
-    expect(render()).toContain('Thinking: low')
-
-    // A row whose only effort has no default shows the provider default until pinned.
-    panel().handleInput('\x1b[B')
-    expect(render()).toContain('Thinking: Provider default')
-    panel().handleInput('\x1b[C')
-    expect(render()).toContain('Thinking: fast')
-    panel().handleInput('\x18')
-    expect(render()).toContain('Thinking: Provider default')
-
-    // Delete stayed cleared for the chat row, so its commit carries no reasoningEffort.
-    panel().handleInput('\x1b[A')
-    panel().handleInput('\r')
-    await vi.waitFor(() => { expect(selectModel).toHaveBeenCalledOnce() })
-    expect(Object.hasOwn(selectModel.mock.calls[0]![0], 'reasoningEffort')).toBe(false)
+  it('reports models without reasoning efforts without inventing slider levels', async () => {
+    const test = fixture()
+    await test.controller.effort()
+    expect(test.opened).toHaveLength(0)
+    expect(test.notice.set).toHaveBeenCalledWith('the current model exposes no reasoning efforts')
+    test.controller.dispose()
   })
-})
 
-describe('RemoteModelsController stale results', () => {
-  it('does not publish a roster whose Session was replaced during the catalog read', async () => {
-    const { controller, modelCatalog, current, opened, notice } = fixture()
-    const pending = deferred<unknown>()
-    modelCatalog.mockReturnValueOnce(pending.promise as never)
-
-    const opening = controller.open()
-    expect(modelCatalog).toHaveBeenCalledOnce()
-    current.mockReturnValue(undefined)
-    pending.resolve({ ok: true, value: catalog() })
+  it('ignores a catalog answer for a replaced binding and drops late write feedback', async () => {
+    const test = fixture()
+    const read = deferred<unknown>()
+    test.modelCatalog.mockReturnValueOnce(read.promise)
+    const opening = test.controller.open()
+    test.current.mockReturnValue({ ref: test.ref, client: test.client, binding: { session: { projections: { faceOf: test.faceOf } } } })
+    read.resolve({ ok: true, value: catalog() })
     await opening
+    expect(test.opened).toHaveLength(0)
+    test.controller.dispose()
 
-    expect(opened).toEqual([])
-    expect(notice.set).not.toHaveBeenCalled()
+    const late = fixture()
+    await late.controller.open()
+    const response = deferred<unknown>()
+    late.selectModel.mockReturnValueOnce(response.promise)
+    const committing = late.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })
+    late.controller.dispose()
+    response.resolve({ ok: true, value: { selected: selection('deepseek', 'chat') } })
+    expect(await committing).toMatchObject({ kind: 'cancelled' })
+    expect(late.notice.set).not.toHaveBeenCalled()
   })
 
-  it('keeps the newest refresh roster when an older read settles last', async () => {
-    const { controller, panel, modelCatalog, render } = fixture()
-    await controller.open()
-    expect(render()).toContain('DeepSeek/DeepSeek Chat')
-
-    const older = deferred<unknown>()
-    const newer = deferred<unknown>()
-    modelCatalog.mockReturnValueOnce(older.promise as never).mockReturnValueOnce(newer.promise as never)
-    panel().handleInput('\x12')
-    panel().handleInput('\x12')
-
-    newer.resolve({ ok: true, value: catalog({ groups: [{ id: 'b', name: 'B', models: [model('b-model')] }] }) })
-    await vi.waitFor(() => { expect(render()).toContain('B/b-model') })
-
-    older.resolve({ ok: true, value: catalog({ groups: [{ id: 'c', name: 'C', models: [model('c-model')] }] }) })
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(render()).toContain('B/b-model')
-    expect(render()).not.toContain('C/c-model')
+  it('uses the newest refresh and updates the live row from the native projection', async () => {
+    const test = fixture()
+    await test.controller.open()
+    const first = deferred<unknown>()
+    const second = deferred<unknown>()
+    test.modelCatalog.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+    const older = test.act({ kind: 'activate', actionId: 'refresh' })
+    const newer = test.act({ kind: 'activate', actionId: 'refresh' })
+    second.resolve({ ok: true, value: catalog({ groups: [{ id: 'deepseek', name: 'DeepSeek', models: [model('new')] }] }) })
+    await newer
+    first.resolve({ ok: true, value: catalog({ groups: [{ id: 'deepseek', name: 'DeepSeek', models: [model('old')] }] }) })
+    await older
+    expect(test.render()).toContain('DeepSeek/new')
+    expect(test.render()).not.toContain('DeepSeek/old')
+    test.projection.getSnapshot.mockReturnValue({ next: { provider: 'deepseek', model: 'new' } })
+    for (const listener of test.listeners) listener()
+    expect(test.render()).toContain('"current":true')
+    test.controller.dispose()
+    expect(test.opened[0]!.lease.close).toHaveBeenCalledOnce()
+    expect(test.listeners.size).toBe(0)
   })
 
-  it('reports a refresh failure as a notice without closing the panel', async () => {
-    const { controller, panel, modelCatalog, notice, opened, render } = fixture()
-    await controller.open()
-    modelCatalog.mockResolvedValueOnce({ ok: false, error: { code: 'unavailable', message: 'catalog read failed' } })
-    panel().handleInput('\x12')
-
-    await vi.waitFor(() => { expect(notice.set).toHaveBeenCalledWith('catalog read failed') })
-    expect(opened[0]!.lease.close).not.toHaveBeenCalled()
-    expect(render()).toContain('DeepSeek/DeepSeek Chat')
-  })
-
-  it('re-marks the current route when the model projection changes', async () => {
-    const { controller, projection, listeners, render } = fixture({
-      catalog: catalog({
-        groups: [{ id: 'deepseek', name: 'DeepSeek', models: [model('chat'), model('reasoner')] }],
-      }),
-    })
-    await controller.open()
-    expect(render()).toContain('> DeepSeek/chat')
-
-    projection.getSnapshot.mockReturnValue({ next: { provider: 'deepseek', model: 'reasoner' } })
-    for (const listener of listeners) listener()
-    expect(render()).toContain('* DeepSeek/reasoner')
-    // Focus stays where the operator left it; only the current marker moves.
-    expect(render()).toContain('> DeepSeek/chat')
-    expect(render()).not.toContain('* DeepSeek/chat')
+  it('reports catalog failures and keeps native catalog/select methods exact-scoped', async () => {
+    const test = fixture({ withSource: false })
+    test.modelCatalog.mockRejectedValueOnce(new Error('catalog unavailable'))
+    await test.controller.open()
+    expect(test.notice.set).toHaveBeenCalledWith('catalog unavailable')
+    expect(await test.controller.catalog(test.client)).toMatchObject({ groups: expect.any(Array) })
+    expect(await test.controller.select({ ...test.ref, host: HostKey('other') }, selection('deepseek', 'chat'))).toBeUndefined()
+    expect(await test.controller.select(test.ref, selection('deepseek', 'chat'))).toEqual(selection('deepseek', 'chat'))
+    test.controller.dispose()
   })
 })

@@ -274,7 +274,7 @@ export class RemoteAccountController extends RemoteFeatureController {
   }
 
   /** Open account state, profile, Platform balance, and sign-in controls. */
-  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.list()[0]): Promise<void> {
+  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): Promise<void> {
     if (client === undefined) return
     let flow: RemoteAccountSignInFlow | undefined
     let mounted: RemoteMountedPanel | undefined

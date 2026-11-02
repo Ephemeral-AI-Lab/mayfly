@@ -93,6 +93,12 @@ export class RemoteApp {
     return () => this.topologyListeners.delete(listener)
   }
 
+  /** Selected Host for Session-independent configuration and the empty start view. */
+  get activeClient(): HostClient | undefined {
+    const key = this.registry.current?.host ?? this.activeHost ?? this.registry.list()[0]?.key
+    return key === undefined ? undefined : this.registry.get(key)
+  }
+
   async attach(startupUrl: string, hostId?: string): Promise<HostClient> {
     const url = new URL(startupUrl)
     // Credentials and query parameters identify authentication, not the Host.
@@ -103,7 +109,7 @@ export class RemoteApp {
     const generation = ++this.defaultModelGeneration
     this.endpoints.set(key, startupUrl)
     const client = await this.registry.attach(key)
-    this.activeHost = key
+    if (generation === this.defaultModelGeneration) this.activeHost = key
     this.publishTopology()
     const [, defaultModel] = await Promise.all([client.sessions.refresh(), this.actions.defaultModel(key)])
     if (generation === this.defaultModelGeneration) this.conversation.setDefaultModel(defaultModel)
@@ -258,7 +264,7 @@ export class RemoteApp {
       return { exit: false }
     }
     if (name === 'detach') {
-      const host = this.registry.current?.host ?? this.registry.list()[0]?.key
+      const host = this.activeClient?.key
       if (host !== undefined) {
         this.selectionGeneration += 1
         this.creating = undefined

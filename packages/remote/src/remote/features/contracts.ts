@@ -27,6 +27,8 @@ export interface RemoteFeatureSelection {
 
 /** Read-only attached-Host and exact-selection accessor owned by the foundation. */
 export interface RemoteFeatureHosts {
+  /** Selected Host even while the start view has no Session. */
+  active?(): HostClient | undefined
   list(): readonly HostClient[]
   current(): RemoteFeatureSelection | undefined
   subscribe(listener: () => void): () => void

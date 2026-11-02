@@ -200,7 +200,7 @@ export class RemoteProvidersController extends RemoteFeatureController {
   }
 
   /** Open the merged live/dormant provider roster with the API-key balance row. */
-  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.list()[0]): Promise<void> {
+  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): Promise<void> {
     if (client === undefined) return
     const directory = await this.directory(client).catch((error: unknown) => {
       this.context.notice.set(remoteErrorMessage(error))

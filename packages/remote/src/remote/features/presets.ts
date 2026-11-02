@@ -89,7 +89,7 @@ export class RemoteAgentPresetsController extends RemoteFeatureController {
   }
 
   private async openDefault(): Promise<void> {
-    const client = this.context.hosts.list()[0]
+    const client = this.context.hosts.active?.() ?? this.context.hosts.list()[0]
     if (client === undefined) return
     const operation = this.hostOperation(client)
     if (operation === undefined) return

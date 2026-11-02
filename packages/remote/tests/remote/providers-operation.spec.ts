@@ -125,7 +125,7 @@ function fixture(host: ReturnType<typeof makeClient>, selected?: RemoteFeatureSe
         unregister()
       }
     }),
-    execute: vi.fn(async () => true),
+    execute: vi.fn(async (..._args: unknown[]) => true),
     list: () => [...entries.values()],
   }
   const notice = { set: vi.fn() }
@@ -276,20 +276,19 @@ describe('mountRemoteProviderOperations', () => {
     dispose()
   })
 
-  it('refuses add, edit, and remove before touching credentials or settings', async () => {
+  it('routes add and edit to Host configuration without touching credentials in the roster', async () => {
     const host = makeClient({ live: [{ id: 'p1', name: 'P1' }] })
     const f = fixture(host)
     const dispose = mountRemoteProviderOperations(f.context)
-    // Every verb, with and without a name, and in any case: a bare `edit` or an
-    // upper-case `ADD` used to fall through to the name lookup and answer
-    // "Unknown provider" instead of pointing at /providers.
-    for (const input of ['add', 'add other', 'edit', 'edit p1', 'remove', 'remove p1', 'ADD', 'Edit p1']) {
+    for (const input of ['add', 'add other', 'edit p1', 'ADD', 'Edit p1']) {
       await f.execute(input)
-      expect(f.notice.set).toHaveBeenLastCalledWith(
-        'Provider configuration and credentials are only editable from /providers',
-      )
     }
-    expect(f.notice.set).toHaveBeenCalledTimes(8)
+    expect(f.commands.execute.mock.calls.map(call => call.slice(0, 2))).toEqual([
+      ['providers', 'add'], ['providers', 'add'], ['providers', 'edit p1'], ['providers', 'add'], ['providers', 'edit p1'],
+    ])
+    await expect(f.execute('edit')).rejects.toThrow('Usage: /provider edit <provider>')
+    await f.execute('remove')
+    expect(f.notice.set).toHaveBeenLastCalledWith('Usage: /provider [list | edit <provider> | switch <provider> | add]')
     expect(host.remote.settings.describe).not.toHaveBeenCalled()
     expect(host.remote.settings.mutate).not.toHaveBeenCalled()
     expect(host.remote.llm.listProviders).not.toHaveBeenCalled()

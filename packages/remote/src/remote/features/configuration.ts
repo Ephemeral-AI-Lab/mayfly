@@ -72,11 +72,12 @@ export function createRemoteConfigurationFeatures(
   const onboarding = new RemoteOnboardingController(context, providers, account, settings, permissions, preferences, models)
   const attached = new Set<HostClient>()
   const reconcile = (): void => {
-    for (const client of context.hosts.list()) {
-      if (attached.has(client)) continue
-      attached.add(client)
-      void onboarding.onReady(client)
-    }
+    const clients = context.hosts.list()
+    for (const client of attached) if (!clients.includes(client)) attached.delete(client)
+    const client = context.hosts.current()?.client ?? context.hosts.active?.() ?? clients[0]
+    if (client === undefined || attached.has(client)) return
+    attached.add(client)
+    void onboarding.onReady(client)
   }
   const offTopology = context.hosts.subscribe(reconcile)
   reconcile()

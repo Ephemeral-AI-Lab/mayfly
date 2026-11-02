@@ -26,16 +26,31 @@ function failed(code: string, message: string): Promise<never> {
 
 function fixture(options: { readonly attached?: boolean } = {}) {
   const ref: SessionRef = { host: HostKey('local'), sessionId: SessionId('session-1') }
+  let generation = 1
+  const connectionListeners = new Set<() => void>()
+  const topologyListeners = new Set<() => void>()
+  const offConnection = vi.fn()
   const client = {
     key: HostKey('local'),
-    state: { getSnapshot: () => ({ generation: 1 }), subscribe: vi.fn(() => () => {}) },
+    state: {
+      getSnapshot: () => ({ generation }),
+      subscribe: vi.fn((listener: () => void) => {
+        connectionListeners.add(listener)
+        return () => { connectionListeners.delete(listener); offConnection() }
+      }),
+    },
     remote: {},
   } as unknown as HostClient
+  let active = client
   let selection: RemoteFeatureSelection | undefined = { ref, client, binding: {} as RemoteFeatureSelection['binding'] }
   const hosts = {
     list: vi.fn((): readonly HostClient[] => (options.attached === false ? [] : [client])),
     current: vi.fn((): RemoteFeatureSelection | undefined => selection),
-    subscribe: vi.fn(() => () => {}),
+    active: vi.fn(() => active),
+    subscribe: vi.fn((listener: () => void) => {
+      topologyListeners.add(listener)
+      return () => { topologyListeners.delete(listener) }
+    }),
   }
   const context = { hosts } as unknown as RemoteFeatureContextLike
   return {
@@ -44,6 +59,11 @@ function fixture(options: { readonly attached?: boolean } = {}) {
     hosts,
     context,
     selection,
+    offConnection,
+    connectionListeners,
+    topology: (): void => { for (const listener of topologyListeners) listener() },
+    reconnect: (): void => { generation += 1; for (const listener of connectionListeners) listener() },
+    activate: (next: HostClient): void => { active = next },
     replaceBinding: (): void => {
       selection = { ref, client, binding: {} as RemoteFeatureSelection['binding'] }
     },
@@ -188,6 +208,35 @@ describe('RemoteFeatureOperation', () => {
     expect(operation.signal.aborted).toBe(true)
     expect(operation.valid()).toBe(false)
   })
+
+  it('releases operation resources immediately when its parent aborts and handles pre-aborted parents', () => {
+    const { context, client } = fixture()
+    const parent = new AbortController()
+    const remove = vi.spyOn(parent.signal, 'removeEventListener')
+    const cleanup = vi.fn()
+    const operation = new RemoteFeatureOperation(context, client, undefined, parent.signal)
+    operation.onDispose(cleanup)
+    parent.abort()
+    expect(cleanup).toHaveBeenCalledOnce()
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function))
+    const preAborted = new RemoteFeatureOperation(context, client, undefined, parent.signal)
+    const lateCleanup = vi.fn()
+    preAborted.onDispose(lateCleanup)
+    expect(lateCleanup).toHaveBeenCalledOnce()
+    expect(preAborted.valid()).toBe(false)
+  })
+
+  it('invalidates a Host operation after active Host change or same-object reconnect', () => {
+    const f = fixture()
+    f.clearSelection()
+    const operation = new RemoteFeatureOperation(f.context, f.client)
+    f.activate({ key: HostKey('other') } as HostClient)
+    expect(operation.valid()).toBe(false)
+    f.activate(f.client)
+    const next = new RemoteFeatureOperation(f.context, f.client)
+    f.reconnect()
+    expect(next.valid()).toBe(false)
+  })
 })
 
 describe('RemoteFeatureController', () => {
@@ -244,6 +293,33 @@ describe('RemoteFeatureController', () => {
     controller.invalidate(client)
     expect(first.valid()).toBe(false)
     expect(second.valid()).toBe(true)
+  })
+
+  it('retires exact operations and listeners on reconnect, active Host change, detach, and teardown', () => {
+    const f = fixture()
+    f.clearSelection()
+    const controller = new ProbeController(f.context)
+    const beforeReconnect = controller.host(f.client)!
+    const cleanup = vi.fn()
+    beforeReconnect.onDispose(cleanup)
+    f.reconnect()
+    expect(beforeReconnect.signal.aborted).toBe(true)
+    expect(cleanup).toHaveBeenCalledOnce()
+    const beforeSwitch = controller.host(f.client)!
+    f.activate({ key: HostKey('other') } as HostClient)
+    f.topology()
+    expect(beforeSwitch.signal.aborted).toBe(true)
+    f.hosts.list.mockReturnValue([])
+    f.topology()
+    expect(f.offConnection).toHaveBeenCalledOnce()
+    expect(f.connectionListeners.size).toBe(0)
+    f.hosts.list.mockReturnValue([f.client])
+    f.topology()
+    expect(f.connectionListeners.size).toBe(1)
+    controller.dispose()
+    controller.dispose()
+    expect(f.offConnection).toHaveBeenCalledTimes(2)
+    expect(f.connectionListeners.size).toBe(0)
   })
 
   it('never throws an empty message when the Host answers with a code only', async () => {

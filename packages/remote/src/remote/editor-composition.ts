@@ -78,6 +78,7 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
       ...(options.featureCommands?.list() ?? []).map(command => ({
         name: command.name,
         description: command.description,
+        ...command.aliases === undefined ? {} : { aliases: command.aliases },
         ...command.input === undefined ? {} : { input: command.input },
       })),
       { name: 'skills', description: 'List available skills' },

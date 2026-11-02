@@ -125,7 +125,7 @@ export class RemoteSettingsController extends RemoteFeatureController {
   }
 
   /** Open the namespace roster, with the raw document entry when its DTO is composed. */
-  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.list()[0]): Promise<void> {
+  async open(client = this.context.hosts.current()?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]): Promise<void> {
     if (client === undefined) return
     try {
       const settings = await this.describe(client)

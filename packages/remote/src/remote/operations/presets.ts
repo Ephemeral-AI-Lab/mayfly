@@ -72,7 +72,7 @@ class RemotePresetOperationsController {
 
   private async switchTo(name: string, signal: AbortSignal): Promise<void> {
     const selection = this.context.base.hosts.current()
-    const client = selection?.client ?? this.context.base.hosts.list()[0]
+    const client = selection?.client ?? this.context.base.hosts.active?.() ?? this.context.base.hosts.list()[0]
     if (client === undefined) {
       this.context.base.notice.set(this.t('No Host is attached'))
       return
