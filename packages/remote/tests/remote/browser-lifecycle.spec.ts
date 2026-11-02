@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import * as Provider from '@ephemeral-ai/mayfly-ui/provider'
 import type { RemoteFeatureContext } from '../../src/remote/features/contracts.ts'
 import { openRemoteBrowser, type RemoteBrowserOptions } from '../../src/remote/panels/browser.ts'
 function fixture() {
@@ -41,7 +43,23 @@ describe('generation-owned wire browser', () => {
     expect(test.offLocale).toHaveBeenCalledOnce()
     expect(test.closed).toHaveBeenCalledOnce()
     test.panel.refresh(); test.panel.close(); test.abort.abort()
+    test.emit('remove', 'test')
     expect(test.handle.close).toHaveBeenCalledOnce()
+  })
+
+  it('completes an optional action without inventing a mutation and closes an already removed handle', async () => {
+    const test = fixture()
+    delete (test.options as { action?: RemoteBrowserOptions['action'] }).action
+    expect(await test.act({ kind: 'activate' })).toEqual({ kind: 'completed' })
+    // A native registry removal may have been queued before its callback reaches this owner.
+    test.handle.closed = true
+    test.panel.refresh()
+    test.panel.close()
+    expect(test.handle.close).not.toHaveBeenCalled()
+    expect(test.closed).toHaveBeenCalledOnce()
+    test.emit('remove', 'test')
+    for (const cleanup of test.effects) cleanup()
+    expect(test.closed).toHaveBeenCalledOnce()
   })
 
   it('forwards live actions and observations, leaves a back layer first, and drops retired actions', async () => {
@@ -74,5 +92,75 @@ describe('generation-owned wire browser', () => {
     expect(test.panel.closed).toBe(true)
     expect(await test.act({ kind: 'activate' })).toEqual({ kind: 'cancelled', dismiss: true })
     expect(test.closed).toHaveBeenCalledOnce()
+  })
+})
+
+describe('browser mount cancellation through the actual overlay provider', () => {
+  async function context() {
+    const ctx = new Context()
+    await ctx.plugin(Provider)
+    return ctx
+  }
+
+  it('never opens or subscribes for an already aborted caller', async () => {
+    const ctx = await context()
+    const abort = new AbortController()
+    abort.abort()
+    const view = vi.fn(() => ({ kind: 'text' as const, content: 'closed' }))
+    const subscribeLocale = vi.fn(() => () => {})
+    const closed = vi.fn()
+    try {
+      const panel = openRemoteBrowser({ ctx, subscribeLocale }, { id: 'pre-aborted', scope: { kind: 'app', targetId: 'test' }, signal: abort.signal, isCurrent: () => true, view, onClosed: closed })
+      expect(panel.closed).toBe(true)
+      panel.close()
+      panel.refresh()
+      expect(view).not.toHaveBeenCalled()
+      expect(subscribeLocale).not.toHaveBeenCalled()
+      expect(ctx.mayflyOverlays.list()).toEqual([])
+      expect(closed).toHaveBeenCalledOnce()
+    } finally { await ctx.fiber.dispose() }
+    expect(closed).toHaveBeenCalledOnce()
+  })
+
+  it.each(['remove', 'abort'] as const)('retires a panel closed synchronously during provider publication: %s', async reason => {
+    const ctx = await context()
+    const abort = new AbortController()
+    const closed = vi.fn()
+    const subscribeLocale = vi.fn(() => () => {})
+    const off = ctx.mayflyOverlays.subscribe(delta => {
+      if (delta.kind !== 'upsert') return
+      if (reason === 'remove') ctx.mayflyOverlays.close(delta.entry.id)
+      else abort.abort()
+    })
+    try {
+      const panel = openRemoteBrowser({ ctx, subscribeLocale }, { id: 'mount-close', scope: { kind: 'app', targetId: 'test' }, signal: abort.signal, isCurrent: () => true, view: () => ({ kind: 'text', content: 'mount' }), onClosed: closed })
+      expect(panel.closed).toBe(true)
+      expect(ctx.mayflyOverlays.list()).toEqual([])
+      expect(subscribeLocale).not.toHaveBeenCalled()
+      expect(closed).toHaveBeenCalledOnce()
+    } finally { off(); await ctx.fiber.dispose() }
+    expect(closed).toHaveBeenCalledOnce()
+  })
+
+  it('releases a locale lease acquired while its immediate snapshot closes the panel', async () => {
+    const ctx = await context()
+    const abort = new AbortController()
+    const closed = vi.fn()
+    const offLocale = vi.fn()
+    let views = 0
+    const subscribeLocale = (refresh: () => void) => { refresh(); return offLocale }
+    try {
+      const panel = openRemoteBrowser({ ctx, subscribeLocale }, {
+        id: 'locale-close', scope: { kind: 'app', targetId: 'test' }, signal: abort.signal, isCurrent: () => true,
+        view: () => { if (++views === 2) abort.abort(); return { kind: 'text', content: 'locale snapshot' } },
+        onClosed: closed,
+      })
+      expect(views).toBe(2)
+      expect(panel.closed).toBe(true)
+      expect(ctx.mayflyOverlays.list()).toEqual([])
+      expect(offLocale).toHaveBeenCalledOnce()
+      expect(closed).toHaveBeenCalledOnce()
+    } finally { await ctx.fiber.dispose() }
+    expect(closed).toHaveBeenCalledOnce()
   })
 })

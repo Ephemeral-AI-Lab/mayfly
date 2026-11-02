@@ -23,6 +23,41 @@ async function fixture() {
 }
 
 describe('Remote notification row', () => {
+  it('keeps multiline command detail in an app notice before a Session is selected', async () => {
+    const test = await fixture()
+    test.present({})
+    test.notifications.notice.set('First line\n  second line\r\nthird line', 'error')
+    expect(test.node()).toContain('First line · second line · third line')
+    expect(test.ctx.mayflyUiInteraction.notificationSnapshot()).toContainEqual(expect.objectContaining({
+      scope: { kind: 'app', targetId: 'prompt' }, severity: 'error',
+      message: 'First line · second line · third line', detail: 'First line\n  second line\nthird line',
+    }))
+  })
+
+  it('shows the newest equal-severity notice even when an older record was inserted later', async () => {
+    const test = await fixture()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const owner = test.ctx.mayflyUiInteraction.createNotificationOwner('chronology')
+    try {
+      vi.setSystemTime(2000)
+      owner.report('new', { kind: 'app', targetId: 'test' }, { severity: 'warning', message: 'newest warning' })
+      vi.setSystemTime(1000)
+      owner.report('old', { kind: 'app', targetId: 'test' }, { severity: 'warning', message: 'older warning' })
+      expect(test.node()).toContain('newest warning')
+      expect(test.node()).not.toContain('older warning')
+      expect(test.node()).toContain('+1')
+    } finally { owner.dispose() }
+  })
+
+  it.each(['view', 'search'] as const)('leaves %s hints to the focused surface while preserving notices', async mode => {
+    const test = await fixture()
+    test.notifications.notice.set('Surface owns its keys')
+    test.ctx.emit('mayfly/focus-mode-changed', mode)
+    expect(test.node()).toContain('Surface owns its keys')
+    expect(test.node()).not.toContain('Esc back')
+    expect(test.node()).not.toContain('Esc end search')
+    expect(test.node()).not.toContain('Alt+↑ conversation')
+  })
   it('renders success feedback and clears only its own command notice while retaining session activity', async () => {
     const test = await fixture()
     const activity = test.ctx.mayflyUiInteraction.createNotificationOwner('activity')

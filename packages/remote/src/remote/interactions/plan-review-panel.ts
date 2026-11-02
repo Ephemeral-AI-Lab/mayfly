@@ -43,7 +43,8 @@ export function planReviewAnswer(question: Question, choices: PlanReviewChoices,
   if (read === undefined) return undefined
   if (read.action === 'send' || read.choice === 'keep') return read.note === '' ? undefined : { answers: [{ id: question.id, selected: [], custom: read.note }] }
   if (read.choice === 'approve') return { answers: [{ id: question.id, selected: [choices.approve.label] }] }
-  return { answers: [{ id: question.id, selected: [choices.decline.label] }] }
+  if (read.choice === 'reject') return { answers: [{ id: question.id, selected: [choices.decline.label] }] }
+  return undefined
 }
 
 /** Keep the shared revision-required validation; clipboard and external-editor actions belong to their own lane. */

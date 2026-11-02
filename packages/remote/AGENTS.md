@@ -48,6 +48,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   composition retires each connection subscription independently; queued
   callbacks from a detached subscription or disposed composition cannot call
   the current editor controller, including after the same Client reattaches.
+  Browser cleanup owns the mount before overlay publication. An already aborted
+  caller opens no panel; synchronous close during registration or an immediate
+  locale snapshot leaves no later observer and runs close feedback once.
 - `/plugin` consumes the shared rc.2 marketplace presentation and calls the
   official selected Host plugin manager for every install, remove, and enable.
   Its catalog, installed rows, notifications, and restart chip belong to one

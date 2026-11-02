@@ -63,15 +63,18 @@ async function fixture(options: { readonly settings?: Partial<MayflySettings>, r
   const topology = new Set<() => void>()
   const render = vi.fn()
   const resume = vi.fn()
+  const localeSubscribe = vi.spyOn(ctx.mayflyLocale, 'subscribe')
   const startup = new RemoteStartupController(ctx, { requestRender: render } as unknown as MayflyScreenService, {
     client: () => client, current: () => current, directory: () => '/host/workspace', resume,
     subscribe: listener => { topology.add(listener); return () => { topology.delete(listener) } },
     autocomplete: () => autocomplete,
   })
+  const localeCallbacks = localeSubscribe.mock.calls.map(([listener]) => listener)
+  localeSubscribe.mockRestore()
   cleanups.push(() => ctx.fiber.dispose(), () => { startup.dispose() })
   const emit = () => { for (const listener of [...topology]) listener() }
   return {
-    ctx, startup, primary, render, resume, topology, keys,
+    ctx, startup, primary, render, resume, topology, keys, localeCallbacks,
     splash: () => startup.splash() as SplashContent,
     select(ref: SessionRef | undefined) { current = ref; emit() },
     active(next: HostClient | undefined) { client = next; emit() },
@@ -144,6 +147,8 @@ describe('Remote startup', () => {
     f.startup.start()
     await vi.waitFor(() => { expect(f.splash().recent).toHaveLength(1) })
     const late = [...f.primary.catalog][0]!
+    const topology = [...f.topology][0]!
+    const connection = [...f.primary.connections][0]!
     f.select({ host: f.primary.client.key, sessionId: SessionId('one') })
     expect(f.startup.splash()).toBeUndefined()
     expect(f.primary.catalog.size).toBe(0)
@@ -159,6 +164,9 @@ describe('Remote startup', () => {
     f.startup.dispose()
     const renders = f.render.mock.calls.length
     late()
+    topology()
+    connection()
+    for (const callback of f.localeCallbacks) callback(f.ctx.mayflyLocale.snapshot)
     f.primary.rows([summary('late')])
     f.primary.reconnect()
     f.startup.start()
@@ -167,6 +175,25 @@ describe('Remote startup', () => {
     expect(f.render).toHaveBeenCalledTimes(renders)
     expect(f.primary.connections.size).toBe(0)
     expect(f.topology.size).toBe(0)
+  })
+
+  it('reuses one catalog subscription and one refresh across repeated identical syncs while pending and loaded', async () => {
+    const f = await fixture({ rows: [summary('retained')] })
+    const pending = deferred()
+    f.primary.refresh.mockReturnValueOnce(pending.promise)
+    f.startup.start()
+    const subscription = [...f.primary.catalog][0]!
+    f.active(f.primary.client)
+    f.settings({ theme: 'tide' })
+    expect(f.primary.refresh).toHaveBeenCalledOnce()
+    expect([...f.primary.catalog]).toEqual([subscription])
+    pending.resolve()
+    await pending.promise
+    await vi.waitFor(() => { expect(f.splash().recent?.[0]?.id).toBe('retained') })
+    f.active(f.primary.client)
+    f.settings({ theme: 'dusk' })
+    expect(f.primary.refresh).toHaveBeenCalledOnce()
+    expect([...f.primary.catalog]).toEqual([subscription])
   })
 
   it('fences pending catalog success/failure across Host replacement, reconnect, selection and disposal', async () => {

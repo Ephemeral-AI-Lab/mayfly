@@ -16,7 +16,11 @@ async function fixture() {
   const ctx = new Context()
   await ctx.plugin(Provider)
   await ctx.plugin(Frontend)
-  ctx.provide('mayflyKeymap', { list: () => [{ id: 'test', keys: 'ctrl+k', description: 'Test key' }] } as never)
+  ctx.provide('mayflyKeymap', { list: () => [
+    { id: 'test', keys: 'ctrl+k', description: 'Test key' },
+    { id: 'labelled', keys: ['f1', 'f2'], label: 'Fallback key label' },
+    { id: 'unlabelled-key-id', keys: 'f3' },
+  ] } as never)
   const panels = new RemotePlainPanels(ctx)
   const text = () => JSON.stringify(ctx.mayflyOverlays.list()[0]?.node)
   return { ctx, panels, text }
@@ -36,6 +40,8 @@ describe('shared wire command panels', () => {
       expect(text()).toContain('/quit (/q, /exit)')
       expect(text()).toContain('Panels and pickers')
       expect(text()).toContain('Test key')
+      expect(text()).toContain('Fallback key label')
+      expect(text()).toContain('unlabelled-key-id')
       expect(ctx.mayflyOverlays.list()[0]!.definition.presentation).toBe('editor')
       panels.showVersion()
       expect(ctx.mayflyOverlays.list()).toHaveLength(1)
@@ -72,11 +78,42 @@ describe('shared wire command panels', () => {
       const eventContext = { surfaceId: previous.id, source: [], signal: new AbortController().signal, revision: previous.revision, operationId: 'dismiss', report: vi.fn() }
       await previous.events.prepare(event, eventContext)
       expect(text()).toContain('Harness')
+      // The endpoint rejects old deliveries; an action already queued at retirement
+      // must also be fenced by the feature's own generation.
+      expect(await previous.definition.onEvent!.action!(event, eventContext)).toEqual({ kind: 'cancelled' })
+      const irrelevant = { kind: 'activate' as const, pagePath: [], controlId: 'other', actionId: 'other' }
+      expect(await current.definition.onEvent!.action!(irrelevant, { ...eventContext, surfaceId: current.id, revision: current.revision })).toEqual({ kind: 'completed' })
+      expect(text()).toContain('Harness')
       await current.events.prepare(event, { ...eventContext, surfaceId: current.id, revision: current.revision })
       expect(ctx.mayflyOverlays.list()).toEqual([])
       const registry = ctx.mayflyOverlays
       await ctx.fiber.dispose()
       expect(registry.list()).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
+
+  it('fences an already queued locale callback after the document is replaced', async () => {
+    const { ctx, panels, text } = await fixture()
+    const subscribe = vi.spyOn(ctx.mayflyLocale, 'subscribe')
+    try {
+      panels.showHelp([])
+      const queued = subscribe.mock.calls.map(([listener]) => listener)
+      expect(queued.length).toBeGreaterThan(0)
+      panels.showVersion('new native version')
+      const revision = ctx.mayflyOverlays.list()[0]!.revision
+      for (const callback of queued) callback(ctx.mayflyLocale.snapshot)
+      expect(ctx.mayflyOverlays.list()[0]!.revision).toBe(revision)
+      expect(text()).toContain('new native version')
+      expect(text()).not.toContain('Panels and pickers')
+    } finally { subscribe.mockRestore(); await ctx.fiber.dispose() }
+  })
+
+  it('shows an explicitly unavailable initial Context without inventing native usage', async () => {
+    const { ctx, panels, text } = await fixture()
+    try {
+      panels.showContext({ read: () => undefined, subscribe: () => () => {} })
+      expect(text()).toContain('Session information unavailable')
+      expect(text()).not.toContain('Context window')
     } finally { await ctx.fiber.dispose() }
   })
 

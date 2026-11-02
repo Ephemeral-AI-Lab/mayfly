@@ -41,20 +41,40 @@ export interface RemoteBrowserOptions {
 /** Open one editor-presented panel whose close path releases only Frontend observation. */
 export function openRemoteBrowser(options: Pick<RemoteFeatureContext, 'ctx' | 'subscribeLocale'>, browser: RemoteBrowserOptions): RemoteBrowserPanel {
   let handle: MayflyOverlayHandle | undefined
-  let cleanup: (() => void) | undefined
   let closed = false
+  const cleanups: Array<() => void> = []
   const fallbackSource = [{ resourceId: browser.id, revision: 1 }]
   const source = (): readonly MayflySourceStamp[] => browser.source?.() ?? fallbackSource
-  const finish = (): void => {
+  const abort = (): void => { close() }
+  const finish = options.ctx.effect(() => () => {
     if (closed) return
     closed = true
-    cleanup?.()
+    for (const cleanup of cleanups.splice(0).reverse()) cleanup()
+    browser.signal?.removeEventListener('abort', abort)
+    browser.onClosed?.()
+  })
+  const own = (cleanup: () => void): void => {
+    if (closed) cleanup()
+    else cleanups.push(cleanup)
   }
   const close = (): void => {
     if (closed) return
     if (handle === undefined || handle.closed) finish()
     else handle.close()
   }
+  const refresh = (): void => {
+    if (!closed && handle?.closed === false && browser.isCurrent()) handle.set(browser.view(), { source: source() })
+  }
+  const panel: RemoteBrowserPanel = {
+    get closed() { return closed },
+    refresh,
+    close,
+  }
+  if (browser.signal?.aborted) {
+    finish()
+    return panel
+  }
+  browser.signal?.addEventListener('abort', abort, { once: true })
   handle = options.ctx.mayflyOverlays.open({
     id: browser.id,
     presentation: 'editor',
@@ -77,25 +97,14 @@ export function openRemoteBrowser(options: Pick<RemoteFeatureContext, 'ctx' | 's
       },
     },
   }, browser.view())
-  const refresh = (): void => {
-    if (!closed && handle?.closed === false && browser.isCurrent()) handle.set(browser.view(), { source: source() })
+  if (closed || handle.closed) {
+    handle.close()
+    finish()
+    return panel
   }
-  const offRegistry = options.ctx.mayflyOverlays.subscribe((delta) => {
-    if (delta.kind === 'remove' && delta.id === browser.id && handle?.closed) finish()
-  })
-  const offLocale = options.subscribeLocale(refresh)
-  const abort = (): void => { close() }
-  browser.signal?.addEventListener('abort', abort, { once: true })
-  cleanup = options.ctx.effect(() => () => {
-    offRegistry()
-    offLocale()
-    browser.signal?.removeEventListener('abort', abort)
-    browser.onClosed?.()
-  })
-  if (handle.closed) finish()
-  return {
-    get closed() { return closed },
-    refresh,
-    close,
-  }
+  own(options.ctx.mayflyOverlays.subscribe((delta) => {
+    if (delta.kind === 'remove' && delta.id === browser.id && handle!.closed) finish()
+  }))
+  own(options.subscribeLocale(refresh))
+  return panel
 }

@@ -84,9 +84,10 @@ export class RemoteStartupController {
     } else if (keymap.matches(data, 'ui.up')) this.focus = Math.max(0, this.focus - 1)
     else if (keymap.matches(data, 'ui.down')) this.focus = this.focus + 1 >= this.recent.length ? undefined : this.focus + 1
     else if (keymap.matches(data, 'ui.accept')) {
-      const id = this.recent[this.focus]?.id
+      // Every recent list is dense and every synchronous cursor update stays in bounds.
+      const id = this.recent[this.focus]!.id
       this.focus = undefined
-      if (id !== undefined) void this.options.resume(id)
+      void this.options.resume(id)
     } else if (keymap.matches(data, 'ui.cancel')) this.focus = undefined
     else {
       this.focus = undefined

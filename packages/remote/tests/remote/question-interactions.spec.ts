@@ -95,6 +95,26 @@ describe('Remote question interactions', () => {
     expect(f.decisionWaits.at(-1)).toBeUndefined()
   })
 
+  it('retains multiple native choices alongside a custom answer and renders option details and the plan document', async () => {
+    const f = await fixture()
+    const pending = f.request({ questions: [
+      { id: 'many', question: 'Choose compatible routes', multiSelect: true, detail: '## Native route details', options: [{ label: 'One', description: 'First native description' }, { label: 'Two', description: 'Second native description' }] },
+      { id: 'note', question: 'Anything else?' },
+    ] })
+    const model = f.model()
+    expect(JSON.stringify(model.node)).toContain('select all that apply')
+    expect(JSON.stringify(model.node)).toContain('First native description')
+    expect(JSON.stringify(model.node)).toContain('Native route details')
+    const many = [{ controlId: 'questions', itemId: 'many' }]
+    model.updateChoice({ pagePath: many, controlId: 'options' }, { kind: 'select', ids: ['0', '1'] })
+    model.updateChoice({ pagePath: many, controlId: 'options' }, { kind: 'input', id: 'other', text: 'Also preserve this constraint' })
+    model.invoke('questions.next.many', many)
+    model.invoke('questions.next.note', [{ controlId: 'questions', itemId: 'note' }])
+    model.invoke('questions.submit', [{ controlId: 'questions', itemId: 'questions.review' }])
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'many', selected: ['One', 'Two'], custom: 'Also preserve this constraint' }, { id: 'note', selected: [] }] })
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
   it('renders a claimed native deadline, hides a timed question on Escape, and delegates when the foreground wait ends', async () => {
     const f = await fixture()
     const pending = f.request({ wait: { callId, timed: true } })
