@@ -209,4 +209,148 @@ describe('RemoteAccountSignInFlow native lifecycle', () => {
     expect(f.account.cancelSignIn).not.toHaveBeenCalled()
     expect(f.io.openBrowser).not.toHaveBeenCalled()
   })
+
+  it('keeps initial linked accounts and terminal watches owned by the exact native flow', async () => {
+    const f = await fixture()
+    f.account.getState.mockResolvedValueOnce({ ok: true, value: accountView('succeeded') })
+    const connected = (await f.accounts.createSignInFlow(f.client, vi.fn()))!
+    expect(connected.snapshot.stage).toBe('connected')
+    await expect(connected.connected).resolves.toBe(true)
+    connected.dispose()
+    f.account.getState.mockResolvedValueOnce({ ok: true, value: { ...accountView(), status: 'credential-stored' } })
+    const stored = (await f.accounts.createSignInFlow(f.client, vi.fn()))!
+    expect(stored.snapshot.stage).toBe('connected')
+    stored.applyExternal(accountView())
+    expect(stored.snapshot.stage).toBe('idle')
+    stored.dispose()
+    await expect(stored.connected).resolves.toBe(false)
+  })
+
+  it('refuses writes and clipboard/delivery work after local retirement', async () => {
+    const f = await fixture()
+    f.io.callbackOrigin.mockReturnValue(undefined)
+    const flow = (await f.accounts.createSignInFlow(f.client, vi.fn()))!
+    expect(await flow.deliver('http://127.0.0.1:6789/oauth/callback')).toBe('invalid')
+    flow.dispose()
+    await flow.start(); await flow.cancel(); await flow.copy(); await flow.restart()
+    expect(await flow.deliver('http://127.0.0.1:6789/oauth/callback')).toBe('rejected')
+    expect(f.account.startSignIn).not.toHaveBeenCalled()
+    expect(f.account.cancelSignIn).not.toHaveBeenCalled()
+    expect(f.io.copy).not.toHaveBeenCalled()
+    expect(f.io.deliverCallback).not.toHaveBeenCalled()
+  })
+
+  it('retires a browser result when the native attempt changes while opening', async () => {
+    const f = await fixture()
+    const opened = Promise.withResolvers<boolean>()
+    f.io.openBrowser.mockReturnValueOnce(opened.promise)
+    const flow = (await f.accounts.createSignInFlow(f.client, vi.fn()))!
+    const starting = flow.start()
+    await vi.waitFor(() => { expect(f.io.openBrowser).toHaveBeenCalledOnce() })
+    f.stream.emit(accountView('waiting-browser', true, 'replacement-attempt'))
+    await vi.waitFor(() => { expect(flow.snapshot.view.attempt?.id).toBe('replacement-attempt') })
+    opened.resolve(true); await starting
+    expect(flow.snapshot.browser).toBe('pending')
+    flow.applyExternal(accountView('committing', false, 'replacement-attempt'))
+    expect(flow.snapshot.stage).toBe('finishing')
+    flow.applyExternal(accountView('failed', false, 'replacement-attempt'))
+    expect(flow.snapshot.stage).toBe('ended')
+  })
+
+  it.each([false, true])('surfaces native start errors without late local state (retired=%s)', async retired => {
+    const f = await fixture()
+    const response = Promise.withResolvers<Awaited<ReturnType<typeof f.account.startSignIn>>>()
+    f.account.startSignIn.mockReturnValueOnce(response.promise)
+    const flow = (await f.accounts.createSignInFlow(f.client, vi.fn()))!
+    const starting = flow.start()
+    const rejection = expect(starting).rejects.toThrow('native sign-in failed')
+    if (retired) flow.dispose()
+    response.reject(new Error('native sign-in failed'))
+    await rejection
+    if (retired) expect(flow.snapshot.error).toBeUndefined()
+    else expect(flow.snapshot).toMatchObject({ stage: 'ended', error: 'native sign-in failed' })
+  })
+
+  it('shares one pending link waiter and handles a start response without an attempt', async () => {
+    const f = await fixture()
+    f.account.startSignIn.mockResolvedValue({ ok: true, value: accountView('initializing', false) })
+    const flow = (await f.accounts.createSignInFlow(f.client, vi.fn()))!
+    const first = flow.start()
+    await vi.waitFor(() => { expect(flow.snapshot.stage).toBe('starting') })
+    await flow.start()
+    expect(f.io.openBrowser).not.toHaveBeenCalled()
+    f.stream.emit(accountView('waiting-browser'))
+    await first
+    expect(f.io.openBrowser).toHaveBeenCalledOnce()
+    flow.dispose()
+    f.account.startSignIn.mockResolvedValueOnce({ ok: true, value: accountView() })
+    const absent = (await f.accounts.createSignInFlow(f.client, vi.fn()))!
+    const starting = absent.start()
+    await vi.waitFor(() => { expect(absent.snapshot.stage).toBe('starting') })
+    absent.dispose(); await starting
+    expect(f.io.openBrowser).toHaveBeenCalledOnce()
+  })
+
+  it('ignores a native watch item already queued when its owner disconnects', async () => {
+    const f = await fixture()
+    const response = Promise.withResolvers<ReturnType<typeof accountView>>()
+    f.account.watch.mockImplementationOnce(() => ({ async *[Symbol.asyncIterator]() { yield await response.promise } }))
+    const changed = vi.fn()
+    const flow = (await f.accounts.createSignInFlow(f.client, changed))!
+    f.reconnect()
+    response.resolve(accountView('succeeded'))
+    await Promise.resolve(); await Promise.resolve()
+    await expect(flow.connected).resolves.toBe(false)
+    expect(changed).not.toHaveBeenCalled()
+    expect(flow.snapshot.stage).toBe('idle')
+  })
+
+  it('leaves a retired callback transport failure to its caller without publishing stale feedback', async () => {
+    const f = await fixture()
+    const flow = (await f.accounts.createSignInFlow(f.client, vi.fn()))!
+    await flow.start()
+    const response = Promise.withResolvers<{ status: number }>()
+    f.io.deliverCallback.mockReturnValueOnce(response.promise)
+    const delivering = flow.deliver('http://127.0.0.1:6789/oauth/callback')
+    const failure = expect(delivering).rejects.toThrow('callback failed after detach')
+    flow.dispose(); response.reject(new Error('callback failed after detach'))
+    await failure
+    expect(f.account.cancelSignIn).not.toHaveBeenCalled()
+  })
+
+  it('releases an actually pending link timer and tolerates its already queued callback after disposal', async () => {
+    const f = await fixture()
+    vi.useFakeTimers()
+    const timers = vi.spyOn(globalThis, 'setTimeout')
+    f.remote.$host.isLoopback = false
+    f.account.startSignIn.mockResolvedValueOnce({ ok: true, value: accountView('initializing', false) })
+    const changed = vi.fn()
+    const flow = (await f.accounts.createSignInFlow(f.client, changed))!
+    expect(flow.snapshot.transport).toBe('forwarded')
+    const starting = flow.start()
+    await vi.advanceTimersByTimeAsync(0)
+    const timeout = timers.mock.calls.find(call => call[1] === 15_000)![0] as () => void
+    expect(vi.getTimerCount()).toBe(1)
+    flow.dispose()
+    await starting
+    expect(vi.getTimerCount()).toBe(0)
+    timeout()
+    const retired = flow.snapshot
+    const notifications = changed.mock.calls.length
+    flow.setManual(true)
+    flow.applyExternal(accountView('succeeded'))
+    expect(flow.snapshot).toBe(retired)
+    expect(changed).toHaveBeenCalledTimes(notifications)
+    expect(f.io.openBrowser).not.toHaveBeenCalled()
+    timers.mockRestore()
+
+    f.account.startSignIn.mockResolvedValueOnce({ ok: true, value: accountView() })
+    const empty = (await f.accounts.createSignInFlow(f.client, vi.fn()))!
+    const opening = empty.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(empty.snapshot.stage).toBe('starting')
+    expect(empty.snapshot.view.attempt).toBeNull()
+    empty.dispose(); await opening
+    expect(vi.getTimerCount()).toBe(0)
+  })
 })

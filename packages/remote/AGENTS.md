@@ -97,6 +97,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   environment-owned keys remain intact when a profile is removed. Authorization
   answers reach the Host only after the shared UI acknowledges the answer action;
   dismissal, detach, and reconnect retire outstanding prompts and discovery.
+  Account sign-in retirement freezes its local snapshot, releases an actually
+  pending link timer, and makes queued native watch, callback and timer results
+  inert. Closing the panel never cancels the Host's sign-in attempt.
 - Model pickers preserve the native selection's explicit/default effort
   provenance. An adapter-default request header never creates an explicit pin;
   the shared reference picker renders that native distinction. Newer catalog

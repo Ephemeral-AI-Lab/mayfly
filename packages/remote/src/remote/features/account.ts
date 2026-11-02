@@ -75,7 +75,7 @@ export function remoteAccountMetadata(context: RemoteFeatureContext, version: st
   if (version === '') throw new Error('Account client version must not be empty')
   return {
     version,
-    locale: context.presentation.snapshot.locale.split('-')[0] ?? 'en',
+    locale: context.presentation.snapshot.locale.split('-')[0]!,
     timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
   }
 }
@@ -213,8 +213,9 @@ export class RemoteAccountSignInFlow {
   private get url(): string | undefined { return this.snapshot.view.attempt?.authorizeUrl }
 
   private patch(next: Partial<RemoteSignInSnapshot>): void {
+    if (!this.operation.valid()) return
     this.snapshotValue = { ...this.snapshotValue, ...next }
-    if (this.operation.valid()) this.changed()
+    this.changed()
   }
 
   private apply(view: RemoteAccountView): void {
