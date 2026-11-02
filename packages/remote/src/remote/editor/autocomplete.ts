@@ -162,7 +162,7 @@ export class EditorAutocomplete {
     }
     const slash = /^\/(\S*)$/u.exec(line.slice(0, cursorCol))
     if (slash === null || this.options.bash()) return null
-    const query = slash[1] ?? ''
+    const query = slash[1]!
     const items = filterEditorCommands(this.options.commands.list(), query, this.options.components)
       .map((match): MayflyAutocompleteItem => ({
         value: `/${match.command.name}`,

@@ -30,6 +30,10 @@ export interface CapturedAttachments {
   rollback(): void
 }
 
+/** Every image created by this owner has an explicit local/default name. */
+type CapturedPart = Exclude<PromptContentPart, { readonly type: 'image' }>
+  | (Extract<PromptContentPart, { readonly type: 'image' }> & { readonly name: string })
+
 /** Format the byte count used in the current image marker presentation. */
 export function formatImageSize(bytes: number): string {
   if (bytes < 1024) return `${String(bytes)} B`
@@ -137,7 +141,7 @@ export class EditorAttachments {
 
   /** Split known markers into official image/file parts and retain rollback until admission settles. */
   capture(text: string): CapturedAttachments {
-    const content: PromptContentPart[] = []
+    const content: CapturedPart[] = []
     const consumedImages: Array<readonly [string, LocalImage]> = []
     const consumedFiles: Array<readonly [string, FileUploadValue]> = []
     let last = 0
@@ -157,10 +161,10 @@ export class EditorAttachments {
         })
         this.images.delete(marker)
         consumedImages.push([marker, image])
-      } else if (file !== undefined) {
-        content.push({ type: 'file', receiptId: file.receiptId })
+      } else {
+        content.push({ type: 'file', receiptId: file!.receiptId })
         this.files.delete(marker)
-        consumedFiles.push([marker, file])
+        consumedFiles.push([marker, file!])
       }
       last = match.index + marker.length
     }
@@ -176,7 +180,7 @@ export class EditorAttachments {
             type: 'image',
             value: {
               previewUrl: `data:${part.mediaType};base64,${part.data}`,
-              ...(part.name === undefined ? {} : { name: part.name }),
+              name: part.name,
               ...dimensions === undefined ? {} : dimensions,
             },
           }]
@@ -190,8 +194,9 @@ export class EditorAttachments {
       rollback: () => {
         if (rolledBack) return
         rolledBack = true
-        for (const [marker, image] of consumedImages) if (!this.images.has(marker)) this.images.set(marker, image)
-        for (const [marker, file] of consumedFiles) if (!this.files.has(marker)) this.files.set(marker, file)
+        // Serials are never reused; only this one-shot rollback restores these markers.
+        for (const [marker, image] of consumedImages) this.images.set(marker, image)
+        for (const [marker, file] of consumedFiles) this.files.set(marker, file)
       },
     }
   }
