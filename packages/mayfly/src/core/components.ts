@@ -201,9 +201,10 @@ class EditorAdapter implements MayflyEditor {
 
   constructor(
     private readonly editor: Editor,
-    private readonly chrome: EditorChromePaints,
+    private chrome: EditorChromePaints,
     /** The list pi-tui's factory last made; it is the open list while the editor shows one. */
     private readonly completions: { list: CompletionList | undefined },
+    private readonly updateNativeColors: (colors: MayflySemanticColors) => void,
   ) {
     this.observedBuffer = { raw: editor.getText(), expanded: editor.getExpandedText() }
     const bridge = editor as unknown as { submitValue(): void }
@@ -217,6 +218,16 @@ class EditorAdapter implements MayflyEditor {
       submitValue()
     }
     bridge.submitValue = () => { this.requestSubmit() }
+  }
+
+  updateColors(colors: MayflySemanticColors): void {
+    this.updateNativeColors(colors)
+    this.chrome = {
+      slashTokenPaint: text => `\x1b[1m${colors.primary(text)}\x1b[22m`,
+      ghostHintPaint: colors.textMuted,
+      tokenPaints: { label: colors.accent, detail: colors.muted },
+    }
+    this.invalidate()
   }
 
   captureDraft(): MayflySubmittedDraft {
@@ -928,7 +939,13 @@ export class MayflyComponentsService extends Service implements MayflyComponents
       slashTokenPaint: (text) => `\x1b[1m${colors.primary(text)}\x1b[22m`,
       ghostHintPaint: colors.textMuted,
       tokenPaints: { label: colors.accent, detail: colors.muted },
-    }, completions)
+    }, completions, next => {
+      // pi-tui retains this exact theme object; mutate its paints rather than
+      // replacing the Editor or touching its interaction state.
+      theme.borderColor = next.border
+      Object.assign(theme.selectList, selectListTheme(next))
+      editor.borderColor = next.border
+    })
   }
 
   /**

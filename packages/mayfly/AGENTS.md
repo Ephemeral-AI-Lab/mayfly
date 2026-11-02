@@ -270,6 +270,9 @@ The presentation (`core/presentation.ts`: glyph mode, monochrome, reduced
 motion, from the `mayfly` settings and `NO_COLOR`) is read when a theme provider
 and the components service are built, never per paint. A change restarts the
 live theme provider (`reloadTheme`), so every consumer and cached row rebuilds.
+Independent frontends retaining a native editor across palette swaps call
+`MayflyEditor.updateColors` and rebuild its frame around that same engine;
+recoloring never replaces its cursor, undo, history, paste, or completion state.
 
 Build surfaces from the shared components (actions row, text/choice fields,
 lists, tabs, decision panels, questionnaire, loader/progress/empty). The

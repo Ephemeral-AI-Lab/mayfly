@@ -574,6 +574,11 @@ export interface MayflyCompletionView {
  * component's idiom.
  */
 export interface MayflyEditor extends MayflyFocusable {
+  /**
+   * Repaint the same native editor after a local palette swap, retaining its
+   * cursor, undo, paste, history, and completion state.
+   */
+  updateColors(colors: MayflySemanticColors): void
   /** Called when the user submits; receives the full text. */
   onSubmit?: ((text: string) => void) | undefined
   /**

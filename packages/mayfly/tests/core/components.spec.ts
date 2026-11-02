@@ -166,6 +166,53 @@ describe('MayflyComponentsService registration', () => {
 })
 
 describe('createEditor', () => {
+  it('repaints the same native editor while preserving draft, caret, undo, history, pastes, and completion selection', async () => {
+    const { tui, stop } = bootTui()
+    try {
+      const editor = createSgrService(tui).createEditor()
+      editor.focused = true
+      editor.addToHistory('history entry')
+      const pasted = Array.from({ length: 12 }, (_, index) => `line ${index}`).join('\n')
+      editor.handleInput!(`\x1b[200~${pasted}\x1b[201~`)
+      editor.insertText(' tail')
+      editor.handleInput!('\x1b[D')
+      const internals = (editor as unknown as { editor: { state: unknown, undoStack: unknown, historyIndex: number, getCursor(): unknown } }).editor
+      const state = internals.state
+      const undo = internals.undoStack
+      const cursor = internals.getCursor()
+      const draft = editor.captureDraft!()
+      const history = editor.getHistory()
+      const next = sgrTheme().colors
+      const primary = (text: string): string => `\x1b[38;5;33m${text}\x1b[0m`
+      editor.updateColors({ ...next, primary })
+      expect(internals.state).toBe(state)
+      expect(internals.undoStack).toBe(undo)
+      expect(internals.getCursor()).toEqual(cursor)
+      expect(editor.captureDraft!()).toEqual(draft)
+      expect(editor.getHistory()).toEqual(history)
+      expect(editor.focused).toBe(true)
+      expect(editor.getExpandedText()).toContain(pasted)
+
+      editor.setText('')
+      editor.setAutocompleteProvider({
+        getSuggestions: async () => ({ prefix: '/', items: [{ value: '/alpha' }, { value: '/beta' }] }),
+        applyCompletion: (lines, cursorLine, cursorCol) => ({ lines: [...lines], cursorLine, cursorCol }),
+      })
+      editor.handleInput!('/')
+      await waitForRender()
+      editor.handleInput!('\x1b[B')
+      const completion = editor.completion()
+      expect(completion?.index).toBe(1)
+      const showing = internals.state
+      const completionCursor = internals.getCursor()
+      editor.updateColors({ ...next, primary })
+      expect(editor.completion()).toEqual(completion)
+      expect(internals.state).toBe(showing)
+      expect(internals.getCursor()).toEqual(completionCursor)
+      expect(editor.render(60).join('').replaceAll(CURSOR_MARKER, '')).toContain(primary('/'))
+    } finally { stop() }
+  })
+
   it('keeps one real editor caret through layout and direct replay', () => {
     const { tui, stop } = bootTui()
     const theme = sgrTheme()
