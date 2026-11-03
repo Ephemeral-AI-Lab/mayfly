@@ -1,5 +1,6 @@
 /** Projection-only readable exports, native audit paging, local paths, overwrites and stale ownership. @module */
 import * as fs from 'node:fs/promises'
+import * as syncfs from 'node:fs'
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,14 +18,22 @@ import { events, projection } from './export-fixture.ts'
 
 vi.mock('node:fs/promises', async original => {
   const actual = await original<typeof fs>()
-  return { ...actual, readFile: vi.fn(actual.readFile), writeFile: vi.fn(actual.writeFile), unlink: vi.fn(actual.unlink), mkdir: vi.fn(actual.mkdir) }
+  return { ...actual, readFile: vi.fn(actual.readFile), writeFile: vi.fn(actual.writeFile), unlink: vi.fn(actual.unlink), mkdir: vi.fn(actual.mkdir), mkdtemp: vi.fn(actual.mkdtemp), rm: vi.fn(actual.rm) }
+})
+vi.mock('node:fs', async original => {
+  const actual = await original<typeof syncfs>()
+  return { ...actual, renameSync: vi.fn(actual.renameSync) }
 })
 const actual = await vi.importActual<typeof fs>('node:fs/promises')
+const actualSync = await vi.importActual<typeof syncfs>('node:fs')
 beforeEach(() => {
   vi.mocked(fs.readFile).mockReset().mockImplementation(actual.readFile)
   vi.mocked(fs.writeFile).mockReset().mockImplementation(actual.writeFile)
   vi.mocked(fs.unlink).mockReset().mockImplementation(actual.unlink)
   vi.mocked(fs.mkdir).mockReset().mockImplementation(actual.mkdir)
+  vi.mocked(fs.mkdtemp).mockReset().mockImplementation(actual.mkdtemp)
+  vi.mocked(fs.rm).mockReset().mockImplementation(actual.rm)
+  vi.mocked(syncfs.renameSync).mockReset().mockImplementation(actualSync.renameSync)
 })
 afterEach(() => { vi.useRealTimers() })
 registerTempDirCleanup()
@@ -151,14 +160,15 @@ describe('local session export composition', () => {
     for (const failure of [new Error('disk full'), null]) {
       const f = fixture()
       vi.mocked(fs.writeFile).mockRejectedValueOnce(failure)
-      vi.mocked(fs.unlink).mockRejectedValueOnce(new Error('already gone'))
+      vi.mocked(fs.rm).mockRejectedValueOnce(new Error('cleanup denied'))
       await expect(f.execute('failed')).rejects.toThrow('could not write export:')
-      expect(fs.unlink).toHaveBeenLastCalledWith(join(f.directory, 'failed'))
+      expect(fs.rm).toHaveBeenLastCalledWith(expect.stringContaining(join(f.directory, '.mayfly-export-')), { recursive: true, force: true })
+      expect(existsSync(join(f.directory, 'failed'))).toBe(false)
       expect(f.notice.set).not.toHaveBeenCalled()
     }
   })
 
-  it('restores an existing destination after failed writes and preserves the write error if restoration fails', async () => {
+  it('preserves an existing destination after failed staged writes even when temporary cleanup fails', async () => {
     for (const cleanupFails of [false, true]) {
       const f = fixture()
       const target = join(f.directory, 'existing')
@@ -168,9 +178,9 @@ describe('local session export composition', () => {
         await actual.writeFile(...args)
         throw new Error('write failed')
       })
-      if (cleanupFails) vi.mocked(fs.writeFile).mockRejectedValueOnce(new Error('restore failed'))
+      if (cleanupFails) vi.mocked(fs.rm).mockRejectedValueOnce(new Error('cleanup failed'))
       await expect(f.execute('existing')).rejects.toThrow('could not write export: write failed')
-      if (!cleanupFails) expect(readFileSync(target)).toEqual(original)
+      expect(readFileSync(target)).toEqual(original)
       expect(fs.unlink).not.toHaveBeenCalled()
       expect(f.notice.set).not.toHaveBeenCalled()
     }
@@ -233,5 +243,77 @@ describe('local session export composition', () => {
         expect(f.notice.set).not.toHaveBeenCalled()
       }
     }
+  })
+
+  it('serializes save/export for the same normalized path and never lets retired cleanup delete a later export', async () => {
+    const f = fixture()
+    const gate = deferred<void>()
+    const caller = new AbortController()
+    vi.mocked(fs.writeFile).mockImplementationOnce(async (...args) => {
+      await actual.writeFile(...args)
+      await gate.promise
+    })
+    const first = f.execute('shared', caller.signal)
+    const retired = expect(first).rejects.toThrow('cancelled first export')
+    await vi.waitFor(() => { expect(fs.writeFile).toHaveBeenCalledOnce() })
+    const second = f.commands.execute('save', 'full ./sub/../shared', new AbortController().signal)
+    await vi.waitFor(() => { expect(f.history).toHaveBeenCalledOnce() })
+    await new Promise(resolve => setImmediate(resolve))
+    expect(fs.writeFile).toHaveBeenCalledOnce()
+    caller.abort(new Error('cancelled first export'))
+    gate.resolve()
+    await retired
+    await second
+    expect(readFileSync(join(f.directory, 'shared'), 'utf8')).toContain('CONTEXT')
+    expect(readdirSync(f.directory)).toEqual(['shared'])
+    expect(f.notice.set).toHaveBeenCalledOnce()
+  })
+
+  it.each([false, true])('preserves an external writer after retirement when a destination previously existed: %s', async existing => {
+    const f = fixture()
+    const target = join(f.directory, 'external')
+    if (existing) writeFileSync(target, 'original')
+    vi.mocked(fs.writeFile).mockImplementationOnce(async (...args) => {
+      await actual.writeFile(...args)
+      writeFileSync(target, 'external edit')
+      f.select(undefined)
+    })
+    await expect(f.execute('external')).rejects.toThrow('Session changed during export')
+    expect(readFileSync(target, 'utf8')).toBe('external edit')
+    expect(readdirSync(f.directory)).toEqual(['external'])
+    expect(f.notice.set).not.toHaveBeenCalled()
+  })
+
+  it.each(['created', 'replaced', 'removed'] as const)('refuses an externally %s destination before atomic replacement', async change => {
+    const f = fixture()
+    const target = join(f.directory, 'external')
+    if (change !== 'created') writeFileSync(target, 'original')
+    vi.mocked(fs.writeFile).mockImplementationOnce(async (...args) => {
+      await actual.writeFile(...args)
+      if (change === 'removed') await actual.unlink(target)
+      else writeFileSync(target, 'external edit')
+    })
+    await expect(f.execute('external')).rejects.toThrow('The export destination changed during export')
+    expect(existsSync(target)).toBe(change !== 'removed')
+    if (change !== 'removed') expect(readFileSync(target, 'utf8')).toBe('external edit')
+    expect(syncfs.renameSync).not.toHaveBeenCalled()
+    expect(readdirSync(f.directory)).toEqual(change === 'removed' ? [] : ['external'])
+  })
+
+  it('cleans its temporary directory after preparation retirement or failed atomic replacement', async () => {
+    const stale = fixture()
+    vi.mocked(fs.mkdtemp).mockImplementationOnce(async (...args) => {
+      const value = await actual.mkdtemp(...args)
+      stale.unmount()
+      return value
+    })
+    await expect(stale.execute('stale')).rejects.toThrow('Session changed during export')
+    expect(readdirSync(stale.directory)).toEqual([])
+    const failed = fixture()
+    writeFileSync(join(failed.directory, 'original'), 'before')
+    vi.mocked(syncfs.renameSync).mockImplementationOnce(() => { throw new Error('rename denied') })
+    await expect(failed.execute('original')).rejects.toThrow('rename denied')
+    expect(readFileSync(join(failed.directory, 'original'), 'utf8')).toBe('before')
+    expect(readdirSync(failed.directory)).toEqual(['original'])
   })
 })
