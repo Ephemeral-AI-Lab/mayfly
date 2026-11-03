@@ -65,6 +65,8 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   composition retires each connection subscription independently; queued
   callbacks from a detached subscription or disposed composition cannot call
   the current editor controller, including after the same Client reattaches.
+  F7 warnings have their own Fiber-owned notification producer: input and
+  same-Host Session changes preserve them; Host changes and unload retire them.
   Browser cleanup owns the mount before overlay publication. An already aborted
   caller opens no panel; synchronous close during registration or an immediate
   locale snapshot leaves no later observer and runs close feedback once.
