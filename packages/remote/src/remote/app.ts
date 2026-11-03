@@ -1,3 +1,4 @@
+/** Native Session routing and local command admission for the independent TUI. @module */
 import { rewindCandidates } from '@ephemeral-ai/mayfly/command-panels'
 import { collectRemoteSessionEvents } from './operations/support.ts'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -326,7 +327,7 @@ export class RemoteApp {
         ...signal === undefined ? {} : { signal },
         isCurrent: current,
       }).catch(error => { if (current()) throw error; return undefined })
-      if (current() && result !== undefined && !result.ok) this.notice.set(result.error.message)
+      if (current() && result !== undefined && !result.ok) this.notice.set(result.error.message, 'error')
       return { exit: false }
     }
 
@@ -356,16 +357,16 @@ export class RemoteApp {
       }
       this.clearSession()
       this.pendingPreset = input === '' ? undefined : input
-      this.notice.set('starting a new session')
+      this.notice.set('starting a new session', 'info')
       return { exit: false }
     }
     if (name === 'sessions' || name === 'resume') {
       if (input !== '') {
-        this.notice.set(`resuming session ${input}`)
+        this.notice.set(`resuming session ${input}`, 'info')
         await this.selectOrCreate(input, this.cwd, signal)
       } else {
         if (this.sessionsBrowser === undefined) {
-          this.notice.set('Session browsing is unavailable in this composition')
+          this.notice.set('Session browsing is unavailable in this composition', 'error')
           return { exit: false }
         }
         const host = this.requireHost()
@@ -380,7 +381,7 @@ export class RemoteApp {
         this.sessionsBrowser.open(client, this.registry.current, (sessionId) => {
           if (!isCurrent()) return
           void this.selectOrCreate(sessionId, this.cwd, signal).catch((error: unknown) => {
-            if (isCurrent()) this.notice.set(error instanceof Error ? error.message : String(error))
+            if (isCurrent()) this.notice.set(error instanceof Error ? error.message : String(error), 'error')
           })
         }, signal)
       }
@@ -396,13 +397,13 @@ export class RemoteApp {
       if (atSeq !== undefined && (!Number.isSafeInteger(atSeq) || atSeq < 0)) {
         throw new Error('Usage: /fork [atSeq]')
       }
-      if (binding.session.getSnapshot().running) { this.notice.set('cannot fork while the agent is running'); return { exit: false } }
-      this.notice.set('forking the current session')
+      if (binding.session.getSnapshot().running) { this.notice.set('cannot fork while the agent is running', 'error'); return { exit: false } }
+      this.notice.set('forking the current session', 'info')
       // A fork needs a completed turn to cut at, which an empty or entirely
       // failed Session never has; report that instead of failing the submit.
       const child = await this.actions.fork(ref, atSeq === undefined ? {} : { atSeq })
         .catch((error: unknown) => {
-          if (current()) this.notice.set(describeSessionSplitFailure(error))
+          if (current()) this.notice.set(describeSessionSplitFailure(error), 'error')
           return undefined
         })
       if (child === undefined || !current()) return { exit: false }
@@ -419,10 +420,10 @@ export class RemoteApp {
       const ref = await this.ensureSession(this.cwd, signal)
       signal?.throwIfAborted()
       const { binding, current } = this.captureSelection(signal)
-      if (binding.session.getSnapshot().running) { this.notice.set('cannot run /init while the agent is running'); return { exit: false } }
+      if (binding.session.getSnapshot().running) { this.notice.set('cannot run /init while the agent is running', 'error'); return { exit: false } }
       await this.preparePrompt(ref, signal).catch(error => { if (current()) throw error })
       if (!current()) return { exit: false }
-      if (binding.session.getSnapshot().running) { this.notice.set('cannot run /init while the agent is running'); return { exit: false } }
+      if (binding.session.getSnapshot().running) { this.notice.set('cannot run /init while the agent is running', 'error'); return { exit: false } }
       const result = await this.actions.prompt(ref, {
         mode: 'queue',
         text: INIT_PROMPT,
@@ -434,7 +435,7 @@ export class RemoteApp {
           return current()
         },
       }).catch(error => { if (current()) throw error; return undefined })
-      if (current() && result !== undefined && !result.ok) this.notice.set(result.error.message)
+      if (current() && result !== undefined) this.notice.set(result.ok ? 'analyzing the codebase to write AGENTS.md' : result.error.message, result.ok ? 'info' : 'error')
       return { exit: false }
     }
     if (name === 'host') {
@@ -548,8 +549,8 @@ export class RemoteApp {
     const { ref, current } = this.captureSelection(signal)
     const result = await this.actions.command(ref, text, current, signal).catch(error => { if (current()) throw error; return undefined })
     if (current() && result !== undefined) {
-      if (!result.ok) this.notice.set(result.error.message)
-      else if (!result.value.matched) this.notice.set(`Unknown command: ${text}`)
+      if (!result.ok) this.notice.set(result.error.message, 'error')
+      else if (!result.value.matched) this.notice.set(`unknown command: ${text}`, 'error')
     }
     return { exit: false }
   }
@@ -576,7 +577,7 @@ export class RemoteApp {
     const ref = view?.ref ?? this.registry.current
     if (ref === undefined) return
     const result = await this.actions.cancel(ref)
-    if (!result.ok) this.notice.set(result.error.message)
+    if (!result.ok) this.notice.set(result.error.message, 'error')
   }
 
   private requireHost(): HostKey {
@@ -599,8 +600,8 @@ export class RemoteApp {
     if (input !== '') {
       try {
         const title = await save(input)
-        if (current()) this.notice.set(`renamed session to ${title}`)
-      } catch (error) { if (current()) this.notice.set(error instanceof Error ? error.message : String(error)) }
+        if (current()) this.notice.set(`renamed session to ${title}`, 'info')
+      } catch (error) { if (current()) this.notice.set(error instanceof Error ? error.message : String(error), 'error') }
       return
     }
     const title = binding.session.projections.faceOf('title').getSnapshot()
@@ -645,16 +646,15 @@ export class RemoteApp {
       && this.registry.get(ref.host) === client && client.state.getSnapshot().generation === connection
     const choose = async (atSeq: number): Promise<void> => {
       if (!current()) return
-      if (binding.session.getSnapshot().running) { this.notice.set('cannot rewind while the agent is running'); return }
+      if (binding.session.getSnapshot().running) { this.notice.set('cannot rewind while the agent is running', 'error'); return }
       const child = await this.actions.fork(ref, { atSeq }).catch((error: unknown) => {
-        if (current()) this.notice.set(describeSessionSplitFailure(error))
+        if (current()) this.notice.set(describeSessionSplitFailure(error), 'error')
         return undefined
       })
       if (child === undefined || !current()) return
-      this.notice.set(`Rewound into ${child.sessionId} at ${String(atSeq)}`)
       await this.selectOrCreate(child.sessionId, this.cwd, signal)
     }
-    if (binding.session.getSnapshot().running) { this.notice.set('cannot rewind while the agent is running'); return }
+    if (binding.session.getSnapshot().running) { this.notice.set('cannot rewind while the agent is running', 'error'); return }
     if (input !== '') {
       const atSeq = Number(input)
       if (!Number.isSafeInteger(atSeq) || atSeq < 0) throw new Error('Usage: /rewind [seq]')
@@ -670,7 +670,7 @@ export class RemoteApp {
       const events = await collectRemoteSessionEvents(client, { address: { kind: 'session', sessionId: ref.sessionId }, signal: lifetime.signal })
       if (!current()) return
       const candidates = rewindCandidates(events)
-      if (candidates.length === 0) { this.notice.set('no user turns to rewind'); return }
+      if (candidates.length === 0) { this.notice.set('no user turns to rewind', 'info'); return }
       this.panels.showRewind?.(candidates, choose, current, invalidatePanel => {
         const off = this.subscribeTopology(invalidatePanel)
         const offState = client.state.subscribe(invalidatePanel)

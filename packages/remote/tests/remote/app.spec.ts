@@ -429,10 +429,10 @@ describe('RemoteApp native command admission', () => {
     f.session.getSnapshot.mockReturnValueOnce({ running: true })
     await app.execute('/fork')
     expect(fork).not.toHaveBeenCalled()
-    expect(test.status.set).toHaveBeenLastCalledWith('cannot fork while the agent is running')
+    expect(test.status.set).toHaveBeenLastCalledWith('cannot fork while the agent is running', 'error')
     f.session.getSnapshot.mockReturnValueOnce({ running: true })
     await app.execute('/init')
-    expect(test.status.set).toHaveBeenLastCalledWith('cannot run /init while the agent is running')
+    expect(test.status.set).toHaveBeenLastCalledWith('cannot run /init while the agent is running', 'error')
     vi.spyOn(app, 'preparePrompt').mockImplementationOnce(async () => { f.session.getSnapshot.mockReturnValueOnce({ running: true }) })
     await app.execute('/init')
     expect(f.session.prompt).not.toHaveBeenCalled()
@@ -470,7 +470,7 @@ describe('RemoteApp native command admission', () => {
       else gate.resolve(SessionId('retired-child'))
       await pending
       expect(f.client.sessions.retain).toHaveBeenCalledOnce()
-      expect(test.status.set).not.toHaveBeenCalledWith('retired fork refusal')
+      expect(test.status.set).not.toHaveBeenCalledWith('retired fork refusal', 'error')
       expect(fork).toHaveBeenCalledOnce()
       expect(f.session.cancel).not.toHaveBeenCalled()
       app.dispose()
@@ -478,7 +478,7 @@ describe('RemoteApp native command admission', () => {
   })
 
   it.each(['init', 'prompt', 'command'] as const)('fences cancelled %s at native reference acquisition and after its sent result', async kind => {
-    for (const stage of ['prepare', 'acquire', 'result'] as const) for (const fails of [false, true]) {
+    for (const stage of ['prepare', 'acquire', 'result'] as const) for (const outcome of ['success', 'refusal', 'rejection'] as const) {
       if (kind === 'command' && stage === 'prepare') continue
       const f = clientFixture(HostKey('http://one.test/'))
       const test = appFixture()
@@ -495,15 +495,16 @@ describe('RemoteApp native command admission', () => {
       else if (stage === 'acquire') await vi.waitFor(() => { expect(f.client.sessions.using).toHaveBeenCalled() })
       else await vi.waitFor(() => { expect(kind === 'command' ? f.session.command : f.session.prompt).toHaveBeenCalled() })
       abort.abort()
-      if (fails) gate.reject(new Error('retired native rejection'))
-      else gate.resolve(stage === 'result' ? { ok: false, error: { message: 'retired native refusal' } } : undefined)
+      if (outcome === 'rejection') gate.reject(new Error('retired native rejection'))
+      else gate.resolve(stage !== 'result' ? undefined : outcome === 'success'
+        ? { ok: true, value: kind === 'command' ? { matched: true } : { accepted: true } }
+        : { ok: false, error: { message: 'retired native refusal' } })
       await pending
       if (stage !== 'result') {
         expect(f.session.prompt).not.toHaveBeenCalled()
         expect(f.session.command).not.toHaveBeenCalled()
       }
-      expect(test.status.set).not.toHaveBeenCalledWith('retired native rejection')
-      expect(test.status.set).not.toHaveBeenCalledWith('retired native refusal')
+      expect(test.status.set).not.toHaveBeenCalled()
       expect(f.session.cancel).not.toHaveBeenCalled()
       app.dispose()
     }
@@ -551,7 +552,7 @@ describe('RemoteApp title editor and lifetime', () => {
     ready.resolve()
     await pending
     expect(rename).not.toHaveBeenCalled()
-    expect(test.status.set).not.toHaveBeenCalledWith(expect.stringContaining('Too late'))
+    expect(test.status.set).not.toHaveBeenCalledWith(expect.stringContaining('Too late'), 'info')
     expect(f.session.cancel).not.toHaveBeenCalled()
   })
 
@@ -570,7 +571,7 @@ describe('RemoteApp title editor and lifetime', () => {
       return rejected
     })
     await app.execute('/rename Changed')
-    expect(test.status.set).not.toHaveBeenCalledWith('retired rejection')
+    expect(test.status.set).not.toHaveBeenCalledWith('retired rejection', 'error')
   })
   it('prefills the exact displayed title, trims through the form owner, and retires its observers', async () => {
     const f = clientFixture(HostKey('http://one.test/'))
@@ -595,6 +596,7 @@ describe('RemoteApp title editor and lifetime', () => {
     expect(listener).toHaveBeenCalledOnce()
     await save('Edited title')
     expect(rename).toHaveBeenCalledWith('Edited title')
+    expect(test.status.set).not.toHaveBeenCalled()
     rename.mockResolvedValueOnce({ ok: false, error: { message: 'native refused' } } as never)
     await expect(save('Refused')).rejects.toThrow('native refused')
     off()
@@ -656,7 +658,7 @@ describe('RemoteApp title editor and lifetime', () => {
     await app.attach('http://one.test/')
     await app.selectOrCreate()
     await app.execute('/rename Failed')
-    expect(test.status.set).toHaveBeenLastCalledWith('plain rejection')
+    expect(test.status.set).toHaveBeenLastCalledWith('plain rejection', 'error')
     const pendingTitle = Promise.withResolvers<never>()
     rename.mockReturnValueOnce(pendingTitle.promise)
     const pending = app.execute('/rename Late')
@@ -844,7 +846,7 @@ describe('RemoteApp', () => {
     await app.selectOrCreate()
     await app.execute('/not-a-command')
     expect(fixture.session.command).toHaveBeenCalledWith('/not-a-command')
-    expect(status.set).toHaveBeenCalledWith('Unknown command: /not-a-command')
+    expect(status.set).toHaveBeenCalledWith('unknown command: /not-a-command', 'error')
     expect(fixture.session.prompt).not.toHaveBeenCalled()
   })
 
@@ -885,9 +887,9 @@ describe('RemoteApp', () => {
     await app.attach('http://127.0.0.1:3080/?token=secret')
     await app.selectOrCreate()
     await app.execute('hello')
-    expect(status.set).toHaveBeenCalledWith('denied')
+    expect(status.set).toHaveBeenCalledWith('denied', 'error')
     await app.cancel()
-    expect(status.set).toHaveBeenCalledWith('busy')
+    expect(status.set).toHaveBeenCalledWith('busy', 'error')
 
     fixture.client.sessions.retain = vi.fn(() => ({ ...fixture.reference, binding: undefined }) as never)
     await expect(app.selectOrCreate('other-session')).rejects.toThrow('Selected Session has no Client binding')
@@ -972,6 +974,10 @@ describe('RemoteApp', () => {
     await expect(app.execute('/exit')).resolves.toEqual({ exit: true })
     await app.execute('/clear')
     expect(fixture.client.sessions.create).not.toHaveBeenCalled()
+    // rc.2's reportCommand maps a successful command's text to info.
+    expect(status.set).toHaveBeenLastCalledWith('starting a new session', 'info')
+    await app.execute('/resume shared-session')
+    expect(status.set).toHaveBeenLastCalledWith('resuming session shared-session', 'info')
     await expect(app.execute('/attach')).rejects.toThrow('Usage: /attach <host-url>')
   })
 
@@ -980,7 +986,7 @@ describe('RemoteApp', () => {
     const { conversation, status, panels, browser } = appFixture()
     const incomplete = new RemoteApp(conversation, status, panels, () => fixture.client)
     await incomplete.execute('/sessions')
-    expect(status.set).toHaveBeenCalledWith('Session browsing is unavailable in this composition')
+    expect(status.set).toHaveBeenCalledWith('Session browsing is unavailable in this composition', 'error')
     let generation = 1
     fixture.client.state.getSnapshot = () => ({ status: 'connected', generation })
     const app = new RemoteApp(conversation, status, panels, () => fixture.client, '/workspace', browser)
@@ -1006,10 +1012,10 @@ describe('RemoteApp', () => {
     await app.selectOrCreate()
     fixture.session.command.mockResolvedValueOnce({ ok: true, value: { matched: true } })
     await app.execute('/compact')
-    expect(status.set).not.toHaveBeenCalledWith(expect.stringContaining('Unknown command'))
+    expect(status.set).not.toHaveBeenCalled()
     fixture.session.command.mockResolvedValueOnce({ ok: false, error: { code: 'offline', message: 'offline' } } as never)
     await app.execute('/model')
-    expect(status.set).toHaveBeenCalledWith('offline')
+    expect(status.set).toHaveBeenCalledWith('offline', 'error')
   })
 
   it('reports asynchronous Session selection failures from the catalog panel', async () => {
@@ -1024,7 +1030,7 @@ describe('RemoteApp', () => {
     await app.execute('/sessions')
     const select = vi.mocked(browser.open).mock.calls[0]![2]
     select('missing')
-    await vi.waitFor(() => { expect(status.set).toHaveBeenCalledWith('missing Session') })
+    await vi.waitFor(() => { expect(status.set).toHaveBeenCalledWith('missing Session', 'error') })
     select('missing')
     await vi.waitFor(() => { expect(status.set).toHaveBeenCalledTimes(2) })
   })
@@ -1297,7 +1303,7 @@ describe('RemoteApp', () => {
     expect(panels.showStatus).toHaveBeenCalledOnce()
     await app.execute('/new')
     expect(app.registry.current).toBeUndefined()
-    expect(status.set).toHaveBeenLastCalledWith('starting a new session')
+    expect(status.set).toHaveBeenLastCalledWith('starting a new session', 'info')
   })
 
   it('reads Harness version from actual Host bundle inventory without creating a Session', async () => {
@@ -1434,24 +1440,24 @@ describe('RemoteApp', () => {
     expect(panels.showRename).toHaveBeenCalledWith('', expect.any(Function), expect.any(Function), expect.any(Function))
     await app.execute('/rename Revised title')
     expect(rename).toHaveBeenCalledWith('Revised title')
-    expect(status.set).toHaveBeenLastCalledWith('renamed session to Revised title')
+    expect(status.set).toHaveBeenLastCalledWith('renamed session to Revised title', 'info')
     rename.mockResolvedValueOnce({ ok: false, error: { message: 'rename denied' } } as never)
     await app.execute('/rename Denied')
-    expect(status.set).toHaveBeenLastCalledWith('rename denied')
+    expect(status.set).toHaveBeenLastCalledWith('rename denied', 'error')
     for (const argument of ['-1', 'bad', '1.5', '9007199254740992']) {
       await expect(app.execute(`/fork ${argument}`)).rejects.toThrow('Usage: /fork [atSeq]')
     }
     fork.mockRejectedValueOnce(new Error('fork-unavailable'))
     await app.execute('/fork')
-    expect(status.set).toHaveBeenLastCalledWith(expect.stringContaining('Nothing to fork yet'))
+    expect(status.set).toHaveBeenLastCalledWith(expect.stringContaining('Nothing to fork yet'), 'error')
     expect(app.registry.current?.sessionId).toBe('shared-session')
     fork.mockRejectedValueOnce('native fork denied')
     await app.execute('/fork 0')
-    expect(status.set).toHaveBeenLastCalledWith('native fork denied')
+    expect(status.set).toHaveBeenLastCalledWith('native fork denied', 'error')
     await app.execute('/fork 12')
     expect(fork).toHaveBeenLastCalledWith({ sessionId: 'shared-session', atSeq: 12 })
     expect(app.registry.current?.sessionId).toBe('forked')
-    expect(status.set).toHaveBeenCalledWith('forking the current session')
+    expect(status.set).toHaveBeenCalledWith('forking the current session', 'info')
     await app.execute('/fork')
     expect(fork).toHaveBeenLastCalledWith({ sessionId: 'forked' })
   })
@@ -1464,10 +1470,10 @@ describe('RemoteApp', () => {
     await app.execute('/init')
     expect(fixture.client.sessions.create).toHaveBeenCalledOnce()
     expect(fixture.session.prompt).toHaveBeenLastCalledWith([expect.objectContaining({ type: 'text', text: expect.stringContaining('AGENTS.md') })], 'queue', undefined, 'request-1')
-    expect(status.set).not.toHaveBeenCalledWith('Analyzing the codebase to write AGENTS.md')
+    expect(status.set).toHaveBeenLastCalledWith('analyzing the codebase to write AGENTS.md', 'info')
     fixture.session.prompt.mockResolvedValueOnce({ ok: false, error: { message: 'init refused' } } as never)
     await app.execute('/init')
-    expect(status.set).toHaveBeenLastCalledWith('init refused')
+    expect(status.set).toHaveBeenLastCalledWith('init refused', 'error')
   })
 
   it('uses displayed writable bindings and refuses readonly views before prompt, command, and cancellation admission', async () => {
@@ -1623,6 +1629,7 @@ describe('RemoteApp rewind', () => {
     await choose(1)
     expect(test.fork).toHaveBeenCalledWith({ sessionId: 'shared-session', atSeq: 1 })
     expect(test.app.registry.current?.sessionId).toBe('child')
+    expect(test.status.set).not.toHaveBeenCalled()
     expect(test.client.sessions.create).not.toHaveBeenCalled()
     expect(listener).toHaveBeenCalled()
     off()
@@ -1639,13 +1646,13 @@ describe('RemoteApp rewind', () => {
     await expect(test.app.execute('/rewind invalid')).rejects.toThrow('Usage: /rewind [seq]')
     test.session.getSnapshot.mockReturnValueOnce({ running: true })
     await test.app.execute('/rewind')
-    expect(test.status.set).toHaveBeenCalledWith('cannot rewind while the agent is running')
+    expect(test.status.set).toHaveBeenCalledWith('cannot rewind while the agent is running', 'error')
     test.events.mockResolvedValueOnce({ ok: true, value: { records: [], hasMore: false } })
     await test.app.execute('/rewind')
-    expect(test.status.set).toHaveBeenCalledWith('no user turns to rewind')
+    expect(test.status.set).toHaveBeenCalledWith('no user turns to rewind', 'info')
     test.fork.mockRejectedValueOnce(new Error('fork-unavailable'))
     await test.app.execute('/rewind 0')
-    expect(test.status.set).toHaveBeenCalledWith(expect.stringContaining('Nothing to fork yet'))
+    expect(test.status.set).toHaveBeenCalledWith(expect.stringContaining('Nothing to fork yet'), 'error')
     await test.app.execute('/rewind')
     const choose = vi.mocked(test.panels.showRewind!).mock.calls[0]![1]
     test.session.getSnapshot.mockReturnValueOnce({ running: true })
@@ -1695,7 +1702,7 @@ describe('RemoteApp rewind', () => {
     test.app.clearSession()
     native.reject(new Error('retired fork rejection'))
     await pending
-    expect(test.status.set).not.toHaveBeenCalledWith('retired fork rejection')
+    expect(test.status.set).not.toHaveBeenCalledWith('retired fork rejection', 'error')
     expect(test.app.registry.current).toBeUndefined()
   })
 
@@ -1711,7 +1718,7 @@ describe('RemoteApp rewind', () => {
     expect(signal.aborted).toBe(false)
     native.resolve({ ok: true, value: { records: [], hasMore: false } })
     await pending
-    expect(test.status.set).toHaveBeenCalledWith('no user turns to rewind')
+    expect(test.status.set).toHaveBeenCalledWith('no user turns to rewind', 'info')
   })
 
   it('retires a rewind after history settles but before its caller resumes', async () => {
@@ -1730,7 +1737,7 @@ describe('RemoteApp rewind', () => {
     test.app.clearSession()
     await pending
     expect(test.panels.showRewind).not.toHaveBeenCalled()
-    expect(test.status.set).not.toHaveBeenCalledWith('no user turns to rewind')
+    expect(test.status.set).not.toHaveBeenCalledWith('no user turns to rewind', 'info')
     expect(test.app.registry.current).toBeUndefined()
   })
 })
