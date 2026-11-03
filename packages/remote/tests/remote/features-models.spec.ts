@@ -74,6 +74,7 @@ const translate = vi.fn((key: string, params?: Readonly<Record<string, string | 
   : key.replace(/\{(\w+)\}/gu, (_match, name: string) => String(params[name])))
 
 interface FixtureOptions {
+  readonly access?: 'interactive' | 'resumable' | 'readonly'
   readonly catalog?: ModelCatalog
   readonly details?: RemoteModelCatalogDetails
   readonly current?: boolean
@@ -115,7 +116,7 @@ function fixture(options: FixtureOptions = {}) {
     remote: { session: { modelCatalog, selectModel } },
   } as unknown as HostClient
   const attached = options.attached ?? true
-  const current = vi.fn(() => (options.current === false ? undefined : { ref, client, binding }))
+  const current = vi.fn(() => (options.current === false ? undefined : { ref, client, binding, ...options.access === undefined ? {} : { access: options.access } }))
   const hosts = {
     current,
     list: vi.fn(() => (attached ? [client] : [])),
@@ -169,6 +170,41 @@ function fixture(options: FixtureOptions = {}) {
 }
 
 describe('remoteModelRows', () => {
+  it('refuses readonly direct, cycle, command and picker writes without falling back to Host defaults', async () => {
+    const test = fixture({ access: 'readonly', details: detailsOf({ 'deepseek/chat': { efforts: ['high'] } }) })
+    await expect(test.controller.select(test.ref, selection('deepseek', 'chat', 'high'))).rejects.toThrow('read-only')
+    await test.controller.cycle()
+    await test.controller.open('chat')
+    await test.controller.effort('high')
+    await test.controller.open()
+    expect(await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])], segmentId: 'high' })).toMatchObject({ kind: 'failed', message: 'This conversation is read-only' })
+    await test.controller.effort()
+    expect(await test.act({ kind: 'slider-accept', controlId: 'effort', value: 'high' }, 1)).toMatchObject({ kind: 'failed', message: 'This conversation is read-only' })
+    expect(test.selectModel).not.toHaveBeenCalled()
+    expect(test.defaultModel!.select).not.toHaveBeenCalled()
+    test.controller.dispose()
+  })
+
+  it.each(['interactive', 'resumable'] as const)('preserves model writes for %s access', async access => {
+    const test = fixture({ access })
+    await test.controller.select(test.ref, selection('deepseek', 'chat', 'high'))
+    expect(test.selectModel).toHaveBeenCalledOnce()
+    test.controller.dispose()
+  })
+
+  it('rejects a default-model commit when a readonly Session appears during its preceding read', async () => {
+    const test = fixture({ current: false, details: detailsOf({ 'deepseek/chat': { efforts: ['high'] } }) })
+    await test.controller.effort()
+    const response = Promise.withResolvers<ModelSelection>()
+    test.defaultModel!.read.mockReturnValueOnce(response.promise)
+    const pending = test.act({ kind: 'slider-accept', controlId: 'effort', value: 'high' })
+    test.current.mockReturnValue({ ref: test.ref, client: test.client, binding: test.binding, access: 'readonly' })
+    response.resolve(selection('deepseek', 'chat'))
+    expect(await pending).toMatchObject({ kind: 'cancelled' })
+    expect(test.selectModel).not.toHaveBeenCalled()
+    expect(test.defaultModel!.select).not.toHaveBeenCalled()
+    test.controller.dispose()
+  })
   it.each(['model', 'effort'] as const)('suppresses a late %s picker write after its action is cancelled while the panel remains mounted', async kind => {
     for (const rejected of [false, true]) {
       const test = fixture({ details: detailsOf({ 'deepseek/chat': { efforts: ['high'] } }) })

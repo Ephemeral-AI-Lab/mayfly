@@ -7,6 +7,7 @@ import { memoizedLocaleTranslator, type MayflyTranslate } from '@ephemeral-ai/ma
 import type { MayflyStatusRegistration } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../features.ts'
 import { RemoteFeatureLifecycle } from './lifecycle.ts'
+import { assertRemoteSessionWritable } from './official.ts'
 
 interface PlanProjection {
   readonly active: boolean
@@ -117,6 +118,7 @@ class RemotePlanController {
   private async executeNative(current: RemoteFeatureSelection, line: string, generation: number, parent?: AbortSignal, cycle = false): Promise<void> {
     const signal = parent === undefined ? this.commandLifetime.signal : AbortSignal.any([this.commandLifetime.signal, parent])
     try {
+      assertRemoteSessionWritable(current)
       const result = await current.client.remote.commands.execute(current.ref.sessionId, line, [], signal)
       if (!this.lifecycle.owns(generation) || signal.aborted) return
       if (!result.ok) this.options.notice.set(result.error.message, 'error')

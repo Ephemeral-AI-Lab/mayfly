@@ -99,6 +99,11 @@ export function remoteStringProjection(value: unknown, key: string): string | un
   return typeof nested === 'string' ? nested : undefined
 }
 
+/** Refuse Session writes while preserving readonly browsing and local drafts. */
+export function assertRemoteSessionWritable(selection: RemoteFeatureSelection | undefined): void {
+  if (selection?.access === 'readonly') throw new Error('This conversation is read-only')
+}
+
 /** An operation bound to one exact attached Client and optional displayed Session binding. */
 export class RemoteFeatureOperation {
   private readonly lifetime = new AbortController()
@@ -137,6 +142,13 @@ export class RemoteFeatureOperation {
     const current = this.context.hosts.current()
     return isRemoteFeatureSelection(current, this.client, this.selection.ref)
       && current.binding === this.selection.binding
+      && current.access === this.selection.access
+  }
+
+  /** Check actual write admission, including a Session appearing over a Host-default operation. */
+  assertWritable(): void {
+    if (!this.valid() || this.selection === undefined && this.context.hosts.current() !== undefined) throw new Error('Session selection changed before the write')
+    assertRemoteSessionWritable(this.context.hosts.current())
   }
 
   /** Register idempotent local cleanup owned by this operation. */

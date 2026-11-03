@@ -26,6 +26,27 @@ function fixture(options: Parameters<typeof configurationFixture>[1] & { readonl
 }
 
 describe('Remote permission reference UI', () => {
+  it('keeps readonly permission browsing but refuses direct and picker writes', async () => {
+    const test = fixture()
+    test.select({ ...test.selection, access: 'readonly' })
+    await expect(test.controller.select(test.selection.ref, 'review')).rejects.toThrow('read-only')
+    await test.controller.open()
+    expect(test.render()).toContain('Permissions')
+    expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['review'] })).toMatchObject({ kind: 'failed', message: expect.stringContaining('read-only') })
+    expect(test.execute).not.toHaveBeenCalled()
+    expect(test.settings.mutate).not.toHaveBeenCalled()
+  })
+
+  it('retires a pending permission write when access becomes readonly during catalog discovery', async () => {
+    const test = fixture()
+    const gate = deferred<unknown>()
+    test.catalog.mockReturnValueOnce(gate.promise)
+    const pending = test.controller.select(test.selection.ref, 'review')
+    test.select({ ...test.selection, access: 'readonly' })
+    gate.resolve({ ok: true, value: permissionCatalog() })
+    await pending
+    expect(test.execute).not.toHaveBeenCalled()
+  })
   it('retires the command caller across catalog discovery and mounted permission actions', async () => {
     const test = fixture()
     const cancelled = new AbortController(); cancelled.abort()

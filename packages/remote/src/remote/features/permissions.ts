@@ -170,6 +170,7 @@ export class RemotePermissionsController extends RemoteFeatureController {
         if (value === undefined || !options.some(option => option.value === value)) return { kind: 'completed' }
         if (context.signal.aborted || !operation.valid()) return { kind: 'cancelled', dismiss: true }
         try {
+          operation.assertWritable()
           await select(value, context.signal)
           if (context.signal.aborted || !operation.valid()) return { kind: 'cancelled', dismiss: true }
           this.context.notice.set(t('Permission preset: {preset}', { preset: options.find(option => option.value === value)!.name }), 'success')
@@ -193,8 +194,10 @@ export class RemotePermissionsController extends RemoteFeatureController {
   }
 
   private async selectInOperation(operation: RemoteFeatureOperation, selection: RemoteFeatureSelection, value: string, signal?: AbortSignal): Promise<void> {
+    operation.assertWritable()
     const catalog = await remoteValue(selection.client.remote.permissionPresets.catalog())
     if (!operation.valid() || signal?.aborted) return
+    operation.assertWritable()
     if (!catalog.options.some(option => option.value === value)) throw new Error(this.translate('permission command is unavailable'))
     const result = await selection.client.remote.commands.execute(selection.ref.sessionId, `/permission ${value}`, [], signal === undefined ? operation.signal : AbortSignal.any([operation.signal, signal]))
     if (!operation.valid() || signal?.aborted) return

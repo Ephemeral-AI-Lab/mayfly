@@ -78,12 +78,14 @@ class RemotePresetOperationsController {
     const operation = new RemoteFeatureOperation(this.context.base, client, selection, AbortSignal.any([signal, this.lifetime.signal]))
     try {
       if (!operation.valid()) return
+      operation.assertWritable()
       if (selection?.binding.session.getSnapshot().running) {
         this.context.base.notice.set(this.t('cannot switch presets while the agent is running'), 'error')
         return
       }
       const roster = await remoteValue(client.remote.agentPresets.list())
       if (!operation.valid() || this.disposed) return
+      operation.assertWritable()
       const match = roster.presets.find(preset => preset.id === name)
       if (match === undefined) {
         this.context.base.notice.set(`Unknown agent preset: ${name}`, 'error')
@@ -114,6 +116,7 @@ class RemotePresetOperationsController {
       this.context.base.notice.set(this.t('preset selection is unavailable'), 'error')
       return
     }
+    operation.assertWritable()
     await remoteValue(client.remote.settings.mutate(
       PRESET_SETTINGS_NS,
       [{ op: 'set', path: ['selectedDefault'], value: id }],

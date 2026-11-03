@@ -22,7 +22,7 @@ interface KeymapBinding {
   handler(): void
 }
 
-function fixture(options: { readonly session?: boolean, readonly plan?: unknown } = {}) {
+function fixture(options: { readonly session?: boolean, readonly plan?: unknown, readonly access?: 'interactive' | 'resumable' | 'readonly' } = {}) {
   let snapshot: unknown = options.plan
   const projectionListeners = new Set<() => void>()
   const unsubscribeProjection = vi.fn()
@@ -44,6 +44,7 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
     remote: { commands: { execute: executeNative } },
   } as unknown as HostClient
   const selection: RemoteFeatureSelection = {
+    access: options.access,
     ref: { host: HostKey('local'), sessionId: SessionId('session-1') },
     client,
     binding: { session: { command: executeNative, projections: { faceOf: vi.fn(() => projection) } } },
@@ -158,6 +159,20 @@ beforeEach(() => {
 })
 
 describe('mountPlanFeature', () => {
+  it('refuses readonly /plan, /mode and Shift+Tab writes without changing startup intent', async () => {
+    const f = fixture({ access: 'readonly', plan: { active: false, pending: false } })
+    const dispose = mountPlanFeature(f.context)
+    await f.command('plan').execute('')
+    await f.command('plan').execute('off')
+    await f.command('plan').execute('message')
+    await f.command('mode').execute('')
+    f.keymapBinding().handler()
+    await flush()
+    expect(f.executeNative).not.toHaveBeenCalled()
+    expect(f.startupPlan.set).not.toHaveBeenCalled()
+    expect(f.notice.set).toHaveBeenLastCalledWith('This conversation is read-only', 'error')
+    dispose()
+  })
   it.each(['investigate', 'OFF', 'off extra'])('runs the actual sessionless /plan %s parser without creating or prompting a Session', async input => {
     const f = fixture({ session: false })
     const dispose = mountPlanFeature(f.context)

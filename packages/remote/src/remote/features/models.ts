@@ -141,6 +141,7 @@ export class RemoteModelsController extends RemoteFeatureController {
     const operation = this.sessionOperation(current)
     if (operation === undefined) return undefined
     try {
+      operation.assertWritable()
       const result = await remoteValue(current.client.remote.session.selectModel({ sessionId: ref.sessionId, ...next }))
       return operation.valid() ? result.selected : undefined
     } finally { operation.dispose() }
@@ -278,10 +279,12 @@ export class RemoteModelsController extends RemoteFeatureController {
     const valid = (): boolean => target.operation.valid() && !signal.aborted
     if (!valid()) return { kind: 'cancelled', dismiss: true }
     try {
+      target.operation.assertWritable()
       const previous = target.selection === undefined
         ? await this.defaultModel!.read(target.client, signal)
         : currentRemoteModelSelection(target.selection.binding.session.projections.faceOf('modelSelection').getSnapshot(), target.catalog)
       if (!valid()) return { kind: 'cancelled', dismiss: true }
+      target.operation.assertWritable()
       const selected = sameModelSelection(previous, next) ? previous : target.selection === undefined
         ? await this.defaultModel!.select(target.client, next, signal)
         : (await remoteValue(target.client.remote.session.selectModel({ sessionId: target.selection.ref.sessionId, ...next }))).selected
