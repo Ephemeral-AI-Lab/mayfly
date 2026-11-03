@@ -26,12 +26,13 @@ async function fixture(injected = false, contributed = false, source?: RemoteFea
   let generation = 1
   const native = { stat: vi.fn(async () => ({ ok: true, value: {} })), readBytes: vi.fn(async () => ({ ok: true, value: {} })) }
   const upload = vi.fn(async () => ({ ok: true, value: {} }))
+  const openWorkspacePath = vi.fn(async () => ({ ok: true, value: { opened: true } }))
   const client = {
-    key: HostKey('exact-host'), remote: { workspaceFiles: native }, fileUpload: { upload },
+    key: HostKey('exact-host'), remote: { workspaceFiles: native, session: { openWorkspacePath } }, fileUpload: { upload },
     state: { getSnapshot: () => ({ generation }), subscribe: (listener: () => void) => { states.add(listener); return () => states.delete(listener) } },
   } as unknown as HostClient
   const ref = { host: client.key, sessionId: SessionId('native-session') }
-  const session = { openWorkspacePath: vi.fn(async () => ({ ok: true, value: { opened: true } })) }
+  const session = {}
   const binding = { session } as unknown as RemoteFeatureSelection['binding']
   let currentRef: typeof ref | undefined = ref
   let reference: { binding: typeof binding } | undefined = { binding }
@@ -52,7 +53,7 @@ async function fixture(injected = false, contributed = false, source?: RemoteFea
     ...contributed ? { featureCommands: source ?? commands } : {},
   })
   cleanups.push(async () => { handle.dispose(); await ctx.fiber.dispose() })
-  return { ctx, options: captured.options!, handle, app, client, ref, binding, session, native, upload, topology, states, side, commands, notice, focusEditor, startupKey, exit,
+  return { ctx, options: captured.options!, handle, app, client, ref, binding, session, native, upload, openWorkspacePath, topology, states, side, commands, notice, focusEditor, startupKey, exit,
     clearRef: () => { currentRef = undefined }, clearBinding: () => { reference = undefined }, restore: () => { currentRef = ref; reference = { binding }; available = client },
     available: (value: HostClient | undefined) => { available = value }, attached: (value: HostClient[]) => { attached = value },
     select: (value: typeof selection) => { selection = value }, generation: () => { generation += 1 }, extensionRuntime,
@@ -63,6 +64,26 @@ function invocation(name: string, extra: Partial<EditorLocalCommandInvocation> =
 }
 
 describe('Remote editor composition', () => {
+  it.each(['caller', 'client', 'session-face', 'host', 'session', 'generation', 'access', 'connection', 'unload'] as const)('fences native opener results after %s retirement', async change => {
+    const f = await fixture(true)
+    const gate = Promise.withResolvers<Awaited<ReturnType<typeof f.openWorkspacePath>>>()
+    f.openWorkspacePath.mockReturnValueOnce(gate.promise)
+    const caller = new AbortController()
+    const pending = f.options.files.openWorkspacePath('native.txt', caller.signal)
+    const selected = { client: f.client, ref: f.ref, binding: f.binding, access: 'readonly' as const }
+    if (change === 'caller') caller.abort()
+    if (change === 'client') f.select({ ...selected, client: {} as HostClient })
+    if (change === 'session-face') f.select({ ...selected, binding: { session: {} } as typeof f.binding })
+    if (change === 'host') f.select({ ...selected, ref: { ...f.ref, host: HostKey('other') } })
+    if (change === 'session') f.select({ ...selected, ref: { ...f.ref, sessionId: SessionId('other') } })
+    if (change === 'generation') for (const listener of f.side) listener()
+    if (change === 'access') f.select({ ...selected, access: 'interactive' })
+    if (change === 'connection') f.generation()
+    if (change === 'unload') f.handle.dispose()
+    gate.resolve({ ok: true, value: { opened: true } })
+    await expect(pending).rejects.toThrow()
+    expect(f.openWorkspacePath).toHaveBeenCalledExactlyOnceWith({ path: 'native.txt' }, caller.signal)
+  })
   it('borrows only the exact selected binding and refuses unavailable Host file scope', async () => {
     const f = await fixture()
     const options = f.options, signal = new AbortController().signal
@@ -77,7 +98,7 @@ describe('Remote editor composition', () => {
     await options.upload(f.ref.sessionId, data)
     expect(f.upload).toHaveBeenCalledWith(f.ref.sessionId, data, undefined, undefined)
     await options.files.openWorkspacePath('native.txt', signal)
-    expect(f.session.openWorkspacePath).toHaveBeenCalledWith('native.txt', signal)
+    expect(f.openWorkspacePath).toHaveBeenCalledWith({ path: 'native.txt' }, signal)
     expect(() => options.files.stat(SessionId('another-session'), 'native.txt', signal)).toThrow('The selected Session changed before the file operation')
     const aborted = new AbortController(); aborted.abort()
     expect(() => options.files.stat(f.ref.sessionId, 'native.txt', aborted.signal)).toThrow()

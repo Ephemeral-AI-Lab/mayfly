@@ -82,7 +82,17 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     readBytes: (sessionId, path, signal) => workspaceFiles(fileClient(sessionId, signal)).readBytes(sessionId, path, {}, signal),
     openWorkspacePath: (path, signal) => {
       signal.throwIfAborted()
-      return openWorkspacePath(requireSelection(session()).session, path, signal)
+      const selected = requireSelection(session())
+      const connection = selected.client.state.getSnapshot().generation
+      return selected.client.remote.session.openWorkspacePath({ path }, signal).then(result => {
+        signal.throwIfAborted()
+        const current = session()
+        if (disposed || current?.client !== selected.client || current.session !== selected.session
+          || current.ref.host !== selected.ref.host || current.ref.sessionId !== selected.ref.sessionId
+          || current.generation !== selected.generation || current.access !== selected.access
+          || selected.client.state.getSnapshot().generation !== connection) throw new Error('The selected Session changed before the file operation completed')
+        return result
+      })
     },
   }
   const local: EditorLocalAdapter = {
@@ -208,13 +218,3 @@ function workspaceFiles(client: HostClient): OfficialWorkspaceFiles {
   return (client.remote as HostClient['remote'] & { readonly workspaceFiles: OfficialWorkspaceFiles }).workspaceFiles
 }
 
-function openWorkspacePath(
-  session: EditorFeatureSession['session'],
-  path: string,
-  signal: AbortSignal,
-): ReturnType<EditorHostFiles['openWorkspacePath']> {
-  const official = session as EditorFeatureSession['session'] & {
-    openWorkspacePath(path: string, signal: AbortSignal): ReturnType<EditorHostFiles['openWorkspacePath']>
-  }
-  return official.openWorkspacePath(path, signal)
-}
