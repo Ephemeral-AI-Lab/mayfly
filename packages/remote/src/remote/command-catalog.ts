@@ -40,6 +40,9 @@ export function remoteCommandCatalog(
   const commands: RemoteCommandDescriptor[] = []
   for (const command of [...FRONTEND_COMMANDS, ...features]) {
     if (command.hidden === true || (!hasWritableSession && command.scope !== 'sessionless')) continue
+    // The start-surface plan intent is local; a selected Session advertises
+    // its actual native plan command, including its message input contract.
+    if (hasWritableSession && command.name === 'plan') continue
     append(command)
   }
   if (hasWritableSession) for (const command of native) append(command)

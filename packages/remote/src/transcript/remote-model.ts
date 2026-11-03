@@ -46,7 +46,6 @@ export interface RemoteConversationOptions {
   readonly defaultCwd?: string
   readonly modelCatalog?: (host: HostKey) => ModelCatalog | undefined
   readonly onPresentation?: () => void
-  readonly onCommandResult?: (result: { readonly kind: 'success' | 'error', readonly text?: string }) => void
 }
 
 /** Provider and model advertised by the Host for new Sessions. */
@@ -232,13 +231,6 @@ export class RemoteConversationModelSource {
       if (this.disposed || this.source !== source || attachmentGeneration !== this.attachmentGeneration) return
       const window = source.getSnapshot()
       if (window.revision <= this.revision) return
-      if (this.visible && window.change.kind === 'append' && window.revision === this.revision + 1) {
-        for (const entry of window.change.entries) {
-          if (entry.type !== 'event' || entry.event.type !== 'command/done') continue
-          const { kind, text } = entry.event.data
-          this.options.onCommandResult?.({ kind, ...(text === undefined ? {} : { text }) })
-        }
-      }
       if (!this.visible) {
         this.unread = true
         this.replacedWhileHidden ||= window.change.kind === 'replace'

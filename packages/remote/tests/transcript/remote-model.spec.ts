@@ -410,14 +410,13 @@ describe('RemoteConversationModelSource', () => {
     expect(source.snapshot().entries).toEqual([])
   })
 
-  it('publishes remote presentation facts and only live command outcomes', () => {
+  it('publishes remote presentation facts without interpreting command outcomes', () => {
     const events = new TestEventSource()
     const title = projection<unknown>(undefined)
     const model = projection<unknown>({ next: null, lastUsed: { model: 'deepseek-chat', provider: 'deepseek' } })
     const binding = events.binding({ title, modelSelection: model })
     const onPresentation = vi.fn()
-    const onCommandResult = vi.fn()
-    const source = new RemoteConversationModelSource(tools, vi.fn(), { onPresentation, onCommandResult })
+    const source = new RemoteConversationModelSource(tools, vi.fn(), { onPresentation })
     const ref = { host: HostKey('local'), sessionId: SessionId('session-1') }
     source.attach(binding, { ref, cwd: '/work/mayfly' })
     expect(source.presentation()).toMatchObject({ ref, cwd: '/work/mayfly', model: 'deepseek-chat', provider: 'deepseek', contextTokens: 0 })
@@ -454,16 +453,13 @@ describe('RemoteConversationModelSource', () => {
       event: { type: 'command/done', seq: SessionSeq(3), time: 30, data: { commandId: 'command-1', kind: 'error', text: 'failed' } },
     } as SessionEventLikeEntry
     events.append(command)
-    expect(onCommandResult).toHaveBeenCalledOnce()
-    expect(onCommandResult).toHaveBeenCalledWith({ kind: 'error', text: 'failed' })
     events.append({
       type: 'event',
       event: { type: 'command/done', seq: SessionSeq(4), time: 40, data: { commandId: 'command-2', kind: 'success' } },
     } as SessionEventLikeEntry)
-    expect(onCommandResult).toHaveBeenCalledWith({ kind: 'success' })
     events.replace([command], false)
     events.prepend([turn(1, 1)], true)
-    expect(onCommandResult).toHaveBeenCalledTimes(2)
+    expect(source.presentation().model).toBe('deepseek-chat')
     expect(onPresentation).toHaveBeenCalled()
 
     source.attach(null)
@@ -820,8 +816,7 @@ describe('hidden native conversation views', () => {
     const events = new TestEventSource()
     const publish = vi.fn()
     const onPresentation = vi.fn()
-    const onCommandResult = vi.fn()
-    const source = new RemoteConversationModelSource(tools, publish, { onPresentation, onCommandResult })
+    const source = new RemoteConversationModelSource(tools, publish, { onPresentation })
     source.attach(events.binding())
     const before = source.snapshot()
     source.setVisible(false)
@@ -831,7 +826,7 @@ describe('hidden native conversation views', () => {
     expect(publish).not.toHaveBeenCalled()
     expect(onPresentation).not.toHaveBeenCalled()
     events.append({ type: 'event', event: { type: 'command/done', seq: SessionSeq(41), time: 410, data: { kind: 'success', text: 'hidden result' } } } as SessionEventLikeEntry)
-    expect(onCommandResult).not.toHaveBeenCalled()
+    expect(publish).not.toHaveBeenCalled()
     source.setVisible(true)
     expect(source.snapshot().entries).toHaveLength(40)
     expect(source.snapshot().entries.at(-1)).toMatchObject({ text: 'unread 40' })

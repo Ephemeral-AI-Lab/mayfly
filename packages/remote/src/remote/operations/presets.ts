@@ -99,7 +99,7 @@ class RemotePresetOperationsController {
       }
       const selected = await remoteValue(client.remote.agentPresets.select(selection.ref.sessionId, match.id))
       if (!operation.valid() || this.disposed) return
-      this.context.base.notice.set(`preset ${selected}`, 'success')
+      this.context.base.notice.set(`preset ${selected}`, 'info')
     } catch (error) {
       if (!this.disposed && operation.valid()) this.context.base.notice.set(remoteErrorMessage(error), 'error')
     } finally { operation.dispose() }
@@ -120,7 +120,7 @@ class RemotePresetOperationsController {
       descriptor.revision,
     ))
     if (this.disposed || !operation.valid()) return
-    this.context.base.notice.set(this.t('Default preset: {preset}', { preset: id }), 'success')
+    this.context.base.notice.set(this.t('Default preset: {preset}', { preset: id }), 'info')
   }
 }
 

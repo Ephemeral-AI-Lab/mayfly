@@ -22,7 +22,6 @@ const mocks = vi.hoisted(() => ({
   } | undefined,
   conversationOptions: undefined as {
     onPresentation: () => void
-    onCommandResult: (result: { kind: 'success' | 'error', text?: string }) => void
   } | undefined,
   noticeSet: vi.fn(),
   editorDispose: vi.fn(),
@@ -121,7 +120,6 @@ vi.mock('../../src/transcript/remote-model.ts', () => ({
 
     constructor(_tools: { get: () => undefined }, refresh: () => void, options: {
       onPresentation: () => void
-      onCommandResult: (result: { kind: 'success' | 'error', text?: string }) => void
     }) {
       mocks.toolPresentation = _tools
       mocks.refreshTranscript = refresh
@@ -310,11 +308,6 @@ describe('runRemoteFrontend', () => {
     expect(mocks.noticeSet).toHaveBeenCalledWith('offline', 'error')
     expect(mocks.noticeSet).toHaveBeenCalledWith('disconnect', 'error')
     mocks.conversationOptions!.onPresentation()
-    mocks.conversationOptions!.onCommandResult({ kind: 'success' })
-    mocks.conversationOptions!.onCommandResult({ kind: 'success', text: 'command complete' })
-    mocks.conversationOptions!.onCommandResult({ kind: 'error', text: 'command failed' })
-    expect(mocks.noticeSet).toHaveBeenCalledWith('command complete', 'success')
-    expect(mocks.noticeSet).toHaveBeenCalledWith('command failed', 'error')
     expect(mocks.bannerFacts!()).toEqual({})
     expect(mocks.statusFacts!()).toEqual({ presentation: {}, values: {} })
     expect(mocks.transcriptOptions).toBeDefined()
@@ -333,9 +326,6 @@ describe('runRemoteFrontend', () => {
     expect(mocks.panelDispose).toHaveBeenCalled()
     expect(mocks.apps[0]!.dispose).toHaveBeenCalled()
     expect(mocks.apps[0]!.dispose.mock.invocationCallOrder[0]).toBeLessThan(mocks.apps[0]!.registry.detach.mock.invocationCallOrder[0]!)
-    const notices = mocks.noticeSet.mock.calls.length
-    mocks.conversationOptions!.onCommandResult({ kind: 'success', text: 'retired native result' })
-    expect(mocks.noticeSet).toHaveBeenCalledTimes(notices)
   })
 
   it('stops through SIGINT and SIGTERM', async () => {

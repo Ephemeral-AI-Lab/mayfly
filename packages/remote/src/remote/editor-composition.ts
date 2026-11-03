@@ -120,7 +120,7 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
     ...options.extensionRuntime === undefined ? {} : { extensionRuntime: options.extensionRuntime },
     session,
     async ensureSession() {
-      await options.app.ensureSession(options.localCwd)
+      await options.app.ensureSession()
       return requireSelection(session())
     },
     preparePrompt: (selected, signal, intent) => options.app.preparePrompt(selected.ref, signal, intent),

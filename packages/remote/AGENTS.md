@@ -249,8 +249,11 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
 - Durable conversation and facts come from whole Host projections.
   `src/conversation/` and `src/transcript/` map their latest snapshots plus a
   bounded current-attempt stream overlay; they never fold a second durable
-  history or facts store. Only live command completion produces a notice.
-  Reconnect replaces the baseline and historical commands never replay notices.
+  history or facts store. Command submissions report their exact native return
+  values through their input owner. Plan-mode shortcuts report their own admitted
+  result. Conversation events never produce command notices, including a second
+  notice for a command already acknowledged by its submit owner. Reconnect
+  replaces the baseline.
   Effective reasoning labels may read an admitted native request header or the
   exact Host/route's native model catalog when that header is outside the tail
   page. The rc.2 greeting keeps a provider-default route unlabelled during its

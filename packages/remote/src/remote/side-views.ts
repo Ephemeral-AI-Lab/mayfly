@@ -5,7 +5,6 @@ import type { MayflyScreenService } from '@ephemeral-ai/mayfly/core'
 import type { ToolPresentationSource } from '@ephemeral-ai/mayfly/transcript'
 import { TranscriptController } from '@ephemeral-ai/mayfly/transcript'
 import type { HostKey, SessionRef } from '../client/types.ts'
-import type { RemoteNotice } from './notice.ts'
 import type { RemotePresentedViewFacts } from './operations/support.ts'
 import { RemoteConversationModelSource, type RemotePresentationFacts, type RemotePresentationSelection } from '../transcript/remote-model.ts'
 
@@ -52,7 +51,6 @@ export class RemoteSideViews {
     private readonly transcript: TranscriptController,
     private readonly tools: ToolPresentationSource,
     private readonly screen: MayflyScreenService,
-    private readonly notice: RemoteNotice,
     private readonly options: RemoteSideViewOptions = {},
   ) {}
 
@@ -110,7 +108,6 @@ export class RemoteSideViews {
     }, {
       ...this.options.modelCatalog === undefined ? {} : { modelCatalog: this.options.modelCatalog },
       onPresentation: () => { if (this.displayed === key) this.repaint() },
-      onCommandResult: result => { if (result.text !== undefined) this.notice.set(result.text) },
     })
     const record = { ref: selection.ref, binding, facts, source, key }
     this.views.set(key, record)

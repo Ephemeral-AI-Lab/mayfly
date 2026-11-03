@@ -83,7 +83,7 @@ describe('Remote editor composition', () => {
     f.restore(); f.available(undefined); expect(options.session()).toBeUndefined()
     await expect(options.ensureSession!()).rejects.toThrow('Select or create a Session')
     f.restore(); await expect(options.ensureSession!()).resolves.toMatchObject({ ref: f.ref })
-    expect(f.app.ensureSession).toHaveBeenCalledWith('/frontend/workspace')
+    expect(f.app.ensureSession).toHaveBeenCalledWith()
     await options.preparePrompt!(options.session()!, signal)
     expect(f.app.preparePrompt).toHaveBeenCalledWith(f.ref, signal, undefined)
     await options.preparePrompt!(options.session()!, signal, 'plan')

@@ -127,9 +127,6 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         editor?.refresh()
         screen.requestRender()
       },
-      onCommandResult: (result) => {
-        if (result.text !== undefined && !lifetime.signal.aborted) editor?.notice.set(result.text, result.kind)
-      },
     })
     const bannerSlot = screen.mountContentSlot('transcript.prelude', new RemoteBannerComponent(
       ctx.mayflyTheme.colors,
@@ -287,7 +284,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       })
     }))
     completionDrawer = mountRemoteCompletionDrawer(ctx, screen, editor.editor, ctx.mayflyTheme.colors, ctx.mayflyComponents)
-    sideViews = new RemoteSideViews(transcript, toolPresentations, screen, editor.notice, {
+    sideViews = new RemoteSideViews(transcript, toolPresentations, screen, {
       modelCatalog: host => conversation!.getModelCatalog(host),
       changed: () => { status?.refresh(); editor?.refresh() },
       evicted: ref => { operations?.closeChild(ref) },
@@ -398,7 +395,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       },
     })
     operations = mountRemoteOperationsComposition(featureContext, {
-      localCwd: options.cwd ?? process.cwd(),
+      localCwd: process.cwd(),
       primary: () => {
         const ref = app!.registry.current
         const binding = app!.registry.currentReference?.binding
@@ -427,7 +424,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       colors: ctx.mayflyTheme.colors,
       keymap: ctx.mayflyKeymap,
       notice: editor.notice,
-      localCwd: options.cwd ?? process.cwd(),
+      localCwd: process.cwd(),
       exit: stop,
       featureCommands: commandSource,
       focusEditor: () => editor!.focus(),

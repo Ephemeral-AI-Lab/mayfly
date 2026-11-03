@@ -50,6 +50,15 @@ describe('actual Remote command catalog', () => {
     expect(names).not.toContain('model')
   })
 
+  it('uses the start-surface plan contract only without a writable Session', () => {
+    const nextSession = feature('plan', { scope: 'sessionless', input: { hint: '[off]' } })
+    const native = { name: 'plan', description: 'Native selected Session plan', input: { hint: '[off|message]' } }
+    expect(remoteCommandCatalog(false, [nextSession], [native]).find(command => command.name === 'plan'))
+      .toMatchObject({ description: 'feature plan', input: { hint: '[off]' } })
+    expect(remoteCommandCatalog(true, [nextSession], [native]).find(command => command.name === 'plan')).toEqual(native)
+    expect(remoteCommandCatalog(true, [nextSession]).some(command => command.name === 'plan')).toBe(false)
+  })
+
   it('reserves local aliases before feature/native discovery and removes aliases already owned by a real command', () => {
     const commands = remoteCommandCatalog(true, [
       feature('aaa', { aliases: ['help', 'quit', 'q', 'custom'] }),

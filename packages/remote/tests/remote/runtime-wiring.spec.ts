@@ -121,7 +121,7 @@ vi.mock('../../src/remote/editor.ts', () => ({ mountRemoteEditor: vi.fn((_ctx, _
   return { notice: { set: wiring.notice }, editor: { isShowingAutocomplete: wiring.autocomplete, setText: wiring.setText }, extensions: {}, focus: wiring.focus, refresh: wiring.refreshEditor, retheme: wiring.rethemeEditor, dispose: vi.fn() }
 }) }))
 vi.mock('../../src/remote/side-views.ts', () => ({ RemoteSideViews: class {
-  constructor(_transcript: unknown, _tools: unknown, _screen: unknown, _notice: unknown, options: RemoteSideViewOptions) { wiring.sideOptions = options }
+  constructor(_transcript: unknown, _tools: unknown, _screen: unknown, options: RemoteSideViewOptions) { wiring.sideOptions = options }
   presentation() { return wiring.sideFacts }
   selected() { return wiring.side }
   current() { return wiring.currentSide }
@@ -431,6 +431,9 @@ describe('standalone Remote runtime wiring', () => {
 
   it('preserves primary replacement, session browser, startup and editor presentation callbacks', async () => {
     await start()
+    expect(wiring.appArgs[4]).toBe('/local/workspace')
+    expect(wiring.operations!.localCwd).toBe(process.cwd())
+    expect(wiring.editorOptions!.localCwd).toBe(process.cwd())
     const home = wiring.banner!
     expect(home.identity!()).toBe(client); expect(home.home!()).toBe('/host/home'); expect(home.directory!()).toBe('/local/workspace')
     expect(home.colors!()).toEqual({}); expect(home.components!()).toEqual({}); expect(home.flyInAt!()).toBe(42); expect(home.splash!()).toBe(true)

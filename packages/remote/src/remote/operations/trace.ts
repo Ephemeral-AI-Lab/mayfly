@@ -178,7 +178,7 @@ class RemoteTraceController {
         if (match !== null && item === undefined) throw new Error(this.t('trace event #{seq} was not found', { seq: match[1]! }))
         const reply = await this.copy(current, item, items, operation.signal)
         if (reply.kind === 'failed') throw new Error(reply.message)
-        if (reply.kind === 'completed' && operation.valid() && ticket === this.ticket) this.context.base.notice.set(reply.feedback.message, reply.feedback.severity)
+        if (reply.kind === 'completed' && operation.valid() && ticket === this.ticket) this.context.base.notice.set(reply.feedback.message, 'info')
         return
       }
       this.items = items

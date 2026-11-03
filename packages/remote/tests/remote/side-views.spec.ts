@@ -38,14 +38,13 @@ function mount(options: RemoteSideViewOptions = {}) {
   transcript.setView('remote', createTranscriptModel('main', []))
   transcript.show('remote')
   const screen = { requestRender: vi.fn() }
-  const notice = { set: vi.fn() }
-  const side = new RemoteSideViews(transcript, { get: () => undefined }, screen as unknown as MayflyScreenService, notice, options)
-  return { side, transcript, show, refresh, screen, notice }
+  const side = new RemoteSideViews(transcript, { get: () => undefined }, screen as unknown as MayflyScreenService, options)
+  return { side, transcript, show, refresh, screen }
 }
 
 describe('RemoteSideViews', () => {
-  it('publishes the displayed source, routes only visible live command results, and keeps primary navigation stable', () => {
-    const { side, transcript, notice } = mount()
+  it('publishes the displayed source without replaying command feedback and keeps primary navigation stable', () => {
+    const { side, transcript } = mount()
     const setView = vi.spyOn(transcript, 'setView')
     const a = binding('a'), b = binding('b')
     side.showPrimary()
@@ -53,19 +52,19 @@ describe('RemoteSideViews', () => {
     side.present(a.face, { ref: ref('a'), cwd: '' })
     const source = setView.mock.lastCall?.[1]
     expect(typeof source).toBe('function')
-    if (typeof source === 'function') expect(source()).toMatchObject({ kind: 'transcript' })
+    if (typeof source !== 'function') throw new Error('The side view must borrow its live source')
+    expect(source()).toMatchObject({ kind: 'transcript' })
     expect(side.navigation()).toEqual({ counterpart: 'primary', close: 'subagent' })
     const done = (seq: number, text?: string): SessionEventLikeEntry => ({ type: 'event', event: {
       type: 'command/done', seq: SessionSeq(seq), time: seq, data: { commandId: 'command', kind: 'success', ...text === undefined ? {} : { text } },
     } } as unknown as SessionEventLikeEntry)
     a.append(done(1, 'visible command'))
-    expect(notice.set).toHaveBeenLastCalledWith('visible command')
-    notice.set.mockClear()
+    expect(JSON.stringify(source())).not.toContain('visible command')
     a.append(done(2))
-    expect(notice.set).not.toHaveBeenCalled()
+    expect(JSON.stringify(source())).not.toContain('command/done')
     side.present(b.face, { ref: ref('b'), cwd: '' }, facts)
     a.append(done(3, 'hidden command'))
-    expect(notice.set).not.toHaveBeenCalled()
+    expect(JSON.stringify(source())).not.toContain('hidden command')
     side.showPrimary()
     expect(side.navigation()).toEqual({ counterpart: 'subagent', close: 'subagent' })
     side.dispose(); transcript.dispose()
