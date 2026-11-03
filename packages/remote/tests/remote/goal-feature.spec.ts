@@ -55,9 +55,10 @@ describe('native Goal command admission', () => {
     expect(await router.execute('/goal', [], AbortSignal.abort())).toMatchObject({ accepted: false })
     expect(execute).toHaveBeenCalledTimes(calls)
     expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    expect(f.options.notice.set).not.toHaveBeenCalled()
     execute.mockResolvedValueOnce(good({ result: { kind: 'error', text: 'Attachments only accompany a goal objective' } }))
-    expect(await router.execute('/goal pause', attachments, signal)).toMatchObject({ accepted: false })
-    expect(f.options.notice.set).toHaveBeenLastCalledWith('Attachments only accompany a goal objective')
+    expect(await router.execute('/goal pause', attachments, signal)).toMatchObject({ accepted: true })
+    expect(f.options.notice.set).toHaveBeenLastCalledWith('Attachments only accompany a goal objective', 'error')
   })
 })
 
