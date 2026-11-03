@@ -129,6 +129,23 @@ describe('TranscriptView', () => {
     expect(TranscriptView(value, { rev: 1, ids: ['same~2'] })).toBe(node)
   })
 
+  it('preserves a real later row when its id matches the numbering of a repeated block', () => {
+    const tool: Extract<StreamRow, { kind: 'tool' }> = { kind: 'tool', id: 'same', name: 'Write', target: 'first', state: 'ok', body: [{ text: 'first body' }] }
+    const value = facts([{
+      ...turn('turn:1', [tool, { ...tool, target: 'second', body: [{ text: 'second body' }] }]),
+      after: [{ ...tool, id: 'same~2', target: 'real later row', body: [{ text: 'later body' }] }],
+    }])
+    const node = TranscriptView(value, { rev: 1, ids: ['same~2'] })
+
+    expect(node.items.find(item => item.id === 'same~2~')).toMatchObject({ disabled: true })
+    expect(node.items.find(item => item.id === 'same~2~.body.0')).toMatchObject({ under: 'same~2~', disabled: true, label: '  second body' })
+    expect(node.items.find(item => item.id === 'same~2')!.disabled).not.toBe(true)
+    expect(node.items.find(item => item.id === 'same~2.body.0')).toMatchObject({ under: 'same~2', label: '  later body' })
+    expect(node.focusItem).toEqual({ id: 'same~2', rev: 1 })
+    expect(new Set(node.items.map(item => item.id)).size).toBe(node.items.length)
+    expect(() => freezeWire(node)).not.toThrow()
+  })
+
   it('draws the cut turn marker as its translated text', () => {
     const items = itemsOf(facts([turn('turn:1', [{ kind: 'interrupted', id: 'i1', text: '■ interrupted' }])]))
     expect(items[0]!.labelSpans).toEqual([{ text: '■ interrupted', tone: 'warning' }])
