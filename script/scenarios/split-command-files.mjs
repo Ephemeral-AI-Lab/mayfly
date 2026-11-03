@@ -56,7 +56,7 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
       return projection
     }
     const fileMetadata = upload => ({ kind: 'file', attachmentId: upload.file.attachmentId, name: upload.file.name, bytes: upload.file.bytes })
-    const captureAttachments = async (name, markers) => {
+    const captureAttachments = async (name, markers, imageBetween) => {
       const dir = join(artifacts, name)
       mkdirSync(dir, { recursive: true })
       const env = {
@@ -90,7 +90,15 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
         assert.ok(index > previous, `TUI must display ${marker} in native attachment order`)
         previous = index
       }
-      return { exitCode: captured.exitCode, checkpoints: captured.checkpoints.map(checkpoint => checkpoint.name), exit: captured.exit }
+      let imageRepresentation
+      if (imageBetween !== undefined) {
+        const between = wide.slice(wide.indexOf(imageBetween[0]), wide.indexOf(imageBetween[1]))
+        // The real image body can still be loading when its surrounding file
+        // metadata paints. Both states keep the image's native block position.
+        imageRepresentation = between.includes('diagram.png') ? 'metadata-fallback' : between.includes('Loading image…') ? 'pending-loader' : undefined
+        assert.ok(imageRepresentation, 'TUI must retain the image representation between the ordered file blocks')
+      }
+      return { exitCode: captured.exitCode, checkpoints: captured.checkpoints.map(checkpoint => checkpoint.name), exit: captured.exit, ...imageRepresentation === undefined ? {} : { imageRepresentation } }
     }
     const before = await journal(sessionId)
     const refusal = value(await client.remote.commands.execute(sessionId, '/plan off', attachments))
@@ -120,8 +128,6 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
     assert.deepEqual(orderedEntry.attachments[0], fileMetadata(uploads[1]))
     assert.equal(orderedEntry.attachments[1].name, 'diagram.png')
     assert.deepEqual(orderedEntry.attachments[2], fileMetadata(uploads[0]))
-    report.cases.orderedFilesAndImage.tui = await captureAttachments('ordered-attachments', ['second.txt', 'diagram.png', 'first.txt'])
-
     const onlyUpload = value(await client.fileUpload.upload(sessionId, new TextEncoder().encode('only native file'), 'attachment-only.txt'))
     uploads.push(onlyUpload)
     const attachmentOnly = value(await client.remote.commands.execute(sessionId, '/plan', [{ type: 'file', receiptId: onlyUpload.receiptId }]))
@@ -136,8 +142,6 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
     assert.equal(onlyEntry.text, '')
     assert.deepEqual(onlyEntry.attachments, [fileMetadata(onlyUpload)])
     assert.deepEqual(Object.keys(onlyEntry.attachments[0]).sort(), ['attachmentId', 'bytes', 'kind', 'name'])
-    report.cases.attachmentOnly.tui = await captureAttachments('file-only', ['[file] attachment-only.txt'])
-
     await client.detach()
     client = await createHostClient({ key: HostKey('native-command-files-reconnected'), startupUrl: host.startupUrl })
     const reconnected = await conversation()
@@ -150,6 +154,8 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
     assert.equal((await journal(otherSessionId)).some(event => event.type === 'user/message'), false)
     report.cases.exactSession = wrongSession
     report.events = afterOnly
+    report.cases.orderedFilesAndImage.tui = await captureAttachments('ordered-attachments', ['second.txt', 'first.txt'], ['second.txt', 'first.txt'])
+    report.cases.attachmentOnly.tui = await captureAttachments('file-only', ['[file] attachment-only.txt'])
     report.status = 'passed'
   } catch (error) {
     report.failures.push(error instanceof Error ? error.stack ?? error.message : String(error))
