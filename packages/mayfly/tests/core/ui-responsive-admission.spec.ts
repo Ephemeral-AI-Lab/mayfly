@@ -1,6 +1,7 @@
 /** Responsive siblings share only immutable exclusive declarations and still pay all admission costs. @module */
 import { describe, expect, it } from 'vitest'
-import { ui, type MayflyUiNode, type MayflyViewportCondition } from '@ephemeral-ai/mayfly-ui'
+import { ui, isWireSnapshot, type MayflyUiNode, type MayflyViewportCondition } from '@ephemeral-ai/mayfly-ui'
+import { ui as foreignUi, isWireSnapshot as isForeignSnapshot } from '../../../ui/src/builders.ts'
 import { createAdmissionCache, materializeDeferredUiNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 
@@ -38,6 +39,60 @@ describe('responsive declaration admission', () => {
       expect(materializeDeferredUiNode(nodes[1]!.node)).toBe(second)
     }
     expect(validateMayflyUiNode(ui.stack.row([source, source]), undefined, cache)).toMatchObject({ ok: false, message: expect.stringContaining('duplicated') })
+  })
+
+  it('revalidates frozen declarations from another builder module without trusting their cache identity', () => {
+    const source = foreignUi.stack.column([
+      foreignUi.list({ id: 'rows', role: 'browse', filterable: true, filterMode: 'slash', items: [{ id: 'one', label: 'One' }] }),
+      foreignUi.actions({ id: 'commands', items: [{ id: 'run', label: 'Run', key: 'ctrl+g' }] }),
+    ])
+    expect(isForeignSnapshot(source)).toBe(true)
+    expect(isWireSnapshot(source)).toBe(false)
+    const counters = createWorkCounters()
+    const cache = createAdmissionCache()
+    const tree = { kind: 'stack', direction: 'row', children: [wide, narrow].map(when => ({ node: source, when })) }
+    const children = admitted(tree, counters, cache).children
+    expect(materializeDeferredUiNode(children[0]!.node)).toMatchObject({ ok: true })
+    const before = counters.nodesValidated
+    expect(materializeDeferredUiNode(children[1]!.node)).toMatchObject({ ok: true })
+    expect(counters.nodesValidated - before).toBe(4)
+    expect(cache.subtrees.has(source)).toBe(false)
+    const overlapping = admitted({ ...tree, children: [wide, wide].map(when => ({ node: source, when })) }).children
+    expect(materializeDeferredUiNode(overlapping[0]!.node)).toMatchObject({ ok: true })
+    expect(materializeDeferredUiNode(overlapping[1]!.node)).toMatchObject({ ok: false, message: expect.stringContaining('duplicated') })
+  })
+
+  it('contains a hostile frozen-state probe instead of throwing through lazy admission', () => {
+    const source = new Proxy({ kind: 'text', content: 'safe' }, { isExtensible: () => { throw new Error('frozen-state trap') } })
+    const tree = admitted({ kind: 'stack', direction: 'row', children: [{ node: source, when: wide }] })
+    expect(materializeDeferredUiNode(tree.children[0]!.node)).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'Mayfly UI validation failed safely' })
+  })
+
+  it.each(['external-id', 'internal-id', 'external-key', 'internal-key', 'invalid', 'accessor', 'quota'] as const)('fully revalidates a shallow-frozen alias after nested %s mutation', mutation => {
+    const row = { kind: 'list', id: 'rows', role: 'browse', filterable: true, filterMode: 'slash', items: [] }
+    const item = { id: 'run', label: 'Run', key: 'ctrl+g' }
+    const children: { node: unknown }[] = [{ node: row }, { node: { kind: 'actions', id: 'commands', items: [item] } }]
+    const source = Object.freeze({ kind: 'stack', direction: 'column', children })
+    expect(isWireSnapshot(source)).toBe(false)
+    expect(Object.isFrozen(children)).toBe(false)
+    const cache = createAdmissionCache()
+    const tree = admitted({ kind: 'stack', direction: 'row', children: [
+      { node: ui.list({ id: 'outside', role: 'browse', items: [] }) },
+      { node: ui.actions({ id: 'outside-actions', items: [{ id: 'outside-run', label: 'Outside', key: 'ctrl+h' }] }) },
+      { node: source, when: narrow }, { node: source, when: wide },
+    ] }, undefined, cache).children
+    expect(materializeDeferredUiNode(tree[2]!.node)).toMatchObject({ ok: true })
+    if (mutation === 'external-id') row.id = 'outside'
+    else if (mutation === 'internal-id') children.push({ node: { ...row } })
+    else if (mutation === 'external-key') item.key = 'ctrl+h'
+    else if (mutation === 'internal-key') children.push({ node: { kind: 'actions', id: 'other-actions', items: [{ id: 'other-run', label: 'Other', key: 'ctrl+g' }] } })
+    else if (mutation === 'invalid') children.push({ node: { kind: 'unknown' } })
+    else if (mutation === 'accessor') Object.defineProperty(row, 'id', { get: () => { throw new Error('must never read') } })
+    else children.push(...Array.from({ length: 2 }, () => ({ node: ui.stack.column(Array.from({ length: 130 }, () => ui.text('quota'))) })))
+    const failure = materializeDeferredUiNode(tree[3]!.node)
+    const message = mutation === 'external-id' || mutation === 'internal-id' ? 'duplicated' : mutation.endsWith('key') ? 'already bound' : mutation === 'invalid' ? 'unknown Mayfly UI kind' : mutation === 'accessor' ? 'must be data' : '256 nodes'
+    expect(failure).toMatchObject({ ok: false, code: mutation === 'quota' ? 'MAYFLY_LIMIT_EXCEEDED' : 'MAYFLY_INVALID_CONTRIBUTION', message: expect.stringContaining(message) })
+    expect(cache.subtrees.has(source)).toBe(false)
   })
 
   it.each([

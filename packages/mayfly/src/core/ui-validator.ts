@@ -782,7 +782,10 @@ function exclusiveViewports(left: MayflyViewportCondition, right: MayflyViewport
 }
 
 function sharedResponsiveClaims(deferred: DeferredUiAdmission): ResponsiveClaims | undefined {
-  if (!isWireSnapshot(deferred.source)) return undefined
+  // Other installed UI module copies have independent snapshot brands. A frozen source may
+  // lend its exclusive sibling one-use reservations; it is still fully validated and charged,
+  // and does not become a trusted snapshot for admission caching.
+  if (!isWireSnapshot(deferred.source) && !Object.isFrozen(deferred.source)) return undefined
   const siblings = deferred.group.filter(sibling => sibling !== deferred && sibling.claims !== undefined
     && sibling.source === deferred.source
     && pageControl(sibling.pagePath, '') === pageControl(deferred.pagePath, ''))
@@ -834,8 +837,8 @@ export function materializeDeferredUiNode(value: MayflyUiNode): MayflyValidation
   state.scrollDepth = deferred.scrollDepth
   state.pagePath = deferred.pagePath
   state.responsiveClaims = { controls: new Set(), keys: new Set() }
-  state.sharedClaims = sharedResponsiveClaims(deferred)
   try {
+    state.sharedClaims = sharedResponsiveClaims(deferred)
     deferred.result = { ok: true, value: freeze(node(deferred.source, deferred.path, state, deferred.depth, 'ui')) }
     validateBudget(deferred.budget)
     // Nested responsive children evaluate their own local viewports and own their reservations independently.
