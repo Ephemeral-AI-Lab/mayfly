@@ -8,6 +8,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { cancelAuthorization, authorize } from '../../src/remote/authorization.ts'
 import { AuthorizationError, AuthorizationService, type AuthorizationNotice, type AuthorizationOutcome, type AuthorizationPrompt } from '@deepseek-ai/dsh-authorization'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
+import { expectFrozenJson } from './frozen-frame.ts'
 
 const nativeContexts: Context[] = []
 afterEach(async () => { await Promise.all(nativeContexts.splice(0).map(ctx => ctx.fiber.dispose())) })
@@ -118,11 +119,15 @@ async function drain(stream: AsyncIterable<unknown>): Promise<{ frames: unknown[
 
 describe('authorize', () => {
   it('forwards selected native methods, text placeholders, notices and addressed answers', async () => {
-    const h = harness({ prompt: { kind: 'text', message: 'device code', placeholder: 'ABCD' }, notice: { message: 'Open browser', url: 'https://login.example' } })
+    const notice = { message: 'Open browser', url: 'https://login.example' }
+    const h = harness({ prompt: { kind: 'text', message: 'device code', placeholder: 'ABCD' }, notice })
     const native = vi.spyOn(h.ctx.authorization, 'begin')
     const iterator = authorize(h.ctx, { key: 'deepseek/api' as never, method: 'oauth' }, new AbortController().signal)[Symbol.asyncIterator]()
     const started = (await iterator.next()).value!
-    expect((await iterator.next()).value).toMatchObject({ type: 'notice', notice: { message: 'Open browser' } })
+    expect(Object.isFrozen(notice)).toBe(false)
+    notice.message = 'native producer changed after enqueue'
+    const publishedNotice = (await iterator.next()).value
+    expect(publishedNotice).toMatchObject({ type: 'notice', notice: { message: 'Open browser' } })
     const prompt = (await iterator.next()).value as { operationId: string, promptId: string }
     expect(prompt).toMatchObject({ type: 'prompt', prompt: { kind: 'text', placeholder: 'ABCD' } })
     h.uplink.push({ operationId: 'another operation', promptId: prompt.promptId, type: 'answer', value: 'wrong operation' })
@@ -133,6 +138,16 @@ describe('authorize', () => {
     expect(h.answer()).toBe('ABCD')
     expect(native).toHaveBeenCalledWith(expect.objectContaining({ method: 'oauth' }))
     expect(started).toMatchObject({ operationId: prompt.operationId })
+    for (const frame of [started, publishedNotice, prompt, ...frames.frames]) expectFrozenJson(frame)
+  })
+
+  it('rejects a non-JSON native notice without publishing or freezing its alias', async () => {
+    const notice = { message: 'native', callback: () => {} }
+    const h = harness({ notice })
+    const result = await drain(authorize(h.ctx, { key: 'deepseek/api' as never }, new AbortController().signal))
+    expect(result.frames).toMatchObject([{ type: 'started' }])
+    expect(result.error).toMatchObject({ code: 'mayflyHost/authorization-failed' })
+    expect(Object.isFrozen(notice)).toBe(false)
   })
 
   it('copies native select choices and rejects only the addressed declined prompt', async () => {

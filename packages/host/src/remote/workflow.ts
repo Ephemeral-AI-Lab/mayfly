@@ -380,7 +380,7 @@ export async function* followWorkflow(
     const signature = JSON.stringify(value)
     if (signature === lastSignature) return undefined
     lastSignature = signature
-    return { type: 'replacement', value }
+    return frozen({ type: 'replacement', value })
   }
   const publish = (): void => {
     try {
@@ -403,7 +403,7 @@ export async function* followWorkflow(
     signal.throwIfAborted()
     const baseline = catalog.snapshot(ctx, session)
     lastSignature = JSON.stringify(baseline)
-    yield { type: 'baseline', value: baseline }
+    yield frozen({ type: 'baseline', value: baseline })
     for await (const next of queue) yield next
   } finally {
     offCatalog()

@@ -6,6 +6,7 @@ import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import { RemoteError, type RemoteStream } from '@deepseek-ai/dsh-typert-protocol'
 import type { MayflyAuthorizationAnswer, MayflyAuthorizationFrame, MayflyAuthorizationPrompt, MayflyAuthorizationRequest } from '../types.ts'
 import { ChangeQueue } from './queue.ts'
+import { frozen, jsonSnapshot } from './json.ts'
 
 interface PendingPrompt {
   readonly resolve: (value: string) => void
@@ -76,12 +77,16 @@ export async function* authorize(ctx: Context, request: MayflyAuthorizationReque
         ...request.method === undefined ? {} : { method: request.method },
         signal,
         interaction: {
-          notify: notice => { frames.push({ type: 'notice', operationId, notice }) },
+          notify: notice => {
+            const snapshot = jsonSnapshot(notice)
+            if (snapshot === undefined) throw failure(key, undefined)
+            frames.push(frozen({ type: 'notice', operationId, notice: snapshot }))
+          },
           prompt: async prompt => {
             const promptId = `${operationId}:${String(++sequence)}`
             const deferred = Promise.withResolvers<string>()
             pending.set(promptId, deferred)
-            frames.push({ type: 'prompt', operationId, promptId, prompt: publicPrompt(prompt) })
+            frames.push(frozen({ type: 'prompt', operationId, promptId, prompt: publicPrompt(prompt) }))
             const withdraw = (): void => { deferred.reject(new Error('Authorization prompt withdrawn')) }
             prompt.signal?.addEventListener('abort', withdraw, { once: true })
             signal.addEventListener('abort', withdraw, { once: true })
@@ -92,12 +97,12 @@ export async function* authorize(ctx: Context, request: MayflyAuthorizationReque
               prompt.signal?.removeEventListener('abort', withdraw)
               signal.removeEventListener('abort', withdraw)
               pending.delete(promptId)
-              frames.push({ type: 'prompt-ended', operationId, promptId })
+              frames.push(frozen({ type: 'prompt-ended', operationId, promptId }))
             }
           },
         },
       })
-      frames.push({ type: 'settled', operationId, status: outcome.status })
+      frames.push(frozen({ type: 'settled', operationId, status: outcome.status }))
       frames.finish()
     } catch (error) {
       frames.fail(mapFailure(key, error))
@@ -121,7 +126,7 @@ export async function* authorize(ctx: Context, request: MayflyAuthorizationReque
     }
   })()
   try {
-    yield { type: 'started', operationId }
+    yield frozen({ type: 'started', operationId })
     while (true) {
       const next = await frames.next()
       if (next.done === true) break
