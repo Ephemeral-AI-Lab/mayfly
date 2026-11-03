@@ -89,7 +89,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       .filter(action => action.id !== 'mayfly.interaction.cycle-mode' && action.id !== 'mayfly.interaction.cycle-model')
       .map(action => action.id === 'mayfly.interaction.toggle-agent-view' ? {
         ...action, handler: () => {
-          if (sideViews?.back() !== true) editor?.notice.set('no other conversation is open')
+          if (sideViews?.back() !== true) editor?.notice.set('no other conversation is open', 'warning')
         },
       } : action.id === 'mayfly.interaction.close-agent-view' ? {
         ...action, handler: () => {
@@ -265,7 +265,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       const keyHint = (id: string) => ctx.mayflyKeymap.getKeys(id).map(displayKey).join('/')
       return {
         view: side === undefined ? { kind: 'primary', access: 'interactive' } : side.facts,
-        title: side?.facts.label ?? facts.title,
+        title: side !== undefined && side.facts.access !== 'interactive' ? side.facts.label ?? facts.title : facts.title,
         running: facts.active,
         quietHints: settings.quietHints,
         hostKey: facts.ref?.host,

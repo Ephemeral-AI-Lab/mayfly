@@ -405,7 +405,7 @@ describe('standalone Remote runtime wiring', () => {
     expect(wiring.features!.hosts.list()).toEqual([client])
     expect(wiring.keyActions.map(action => action.id)).toEqual(['mayfly.interaction.toggle-agent-view', 'mayfly.interaction.close-agent-view', 'other', 'mayfly.transcript.toggle-collapse'])
     const key = (id: string) => wiring.keyActions.find(action => action.id.endsWith(id))!.handler!()
-    key('toggle-agent-view'); expect(wiring.notice).toHaveBeenCalledWith('no other conversation is open')
+    key('toggle-agent-view'); expect(wiring.notice).toHaveBeenCalledWith('no other conversation is open', 'warning')
     wiring.back = true; wiring.notice.mockClear(); key('toggle-agent-view'); expect(wiring.notice).not.toHaveBeenCalled()
     key('close-agent-view'); expect(wiring.closeChild).not.toHaveBeenCalled()
     wiring.closeTarget = child; key('close-agent-view'); expect(wiring.closeChild).toHaveBeenCalledWith(child)
@@ -448,6 +448,11 @@ describe('standalone Remote runtime wiring', () => {
     wiring.side = { ref: child, binding, facts: { kind: 'btw', access: 'readonly', label: 'Cold leaf' } }
     wiring.navigation = { counterpart: 'primary', close: 'subagent' }
     expect(wiring.editorState!()).toMatchObject({ view: wiring.side.facts, title: 'Cold leaf', toggle: 'f7 main · f7 detach' })
+    wiring.side = { ...wiring.side, facts: { ...wiring.side.facts, access: 'interactive' } }
+    wiring.sideFacts = { ...wiring.defaultFacts, title: 'Native live title' }
+    expect(wiring.editorState!()).toMatchObject({ view: wiring.side.facts, title: 'Native live title' })
+    wiring.side = { ...wiring.side, facts: { kind: 'subagent', access: 'resumable' } }
+    expect(wiring.editorState!()).toMatchObject({ title: 'Native live title' })
     wiring.navigation = { counterpart: 'btw', close: 'btw' }
     expect(wiring.editorState!()).toMatchObject({ toggle: 'f7 btw · f7 close' })
     wiring.editorOptions!.focusEditor!(); expect(wiring.focus).toHaveBeenCalled()
