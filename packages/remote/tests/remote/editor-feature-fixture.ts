@@ -15,6 +15,7 @@ import { EditorSkills } from '../../src/remote/editor/skills.ts'
 import { EditorSubmit } from '../../src/remote/editor/submit.ts'
 import { EditorDraftStore } from '../../src/remote/editor/utils.ts'
 import type { EditorFeatureSession, EditorLocalAdapter } from '../../src/remote/editor/types.ts'
+import type { RemoteNotice } from '../../src/remote/notice.ts'
 
 export function deferred<T>() {
   let resolve!: (value: T) => void
@@ -59,7 +60,7 @@ const cleanup = new Set<() => void>()
 afterEach(() => { for (const dispose of cleanup) dispose(); cleanup.clear() })
 
 /** Only external Host I/O and terminal scheduling are doubled; all editor feature classes are real. */
-export function submissionFixture(initial?: EditorFeatureSession, ensureSession?: () => Promise<EditorFeatureSession>, preparePrompt?: (selected: EditorFeatureSession, signal: AbortSignal, intent?: 'plan') => Promise<void>) {
+export function submissionFixture(initial?: EditorFeatureSession, ensureSession?: () => Promise<EditorFeatureSession>, preparePrompt?: (selected: EditorFeatureSession, signal: AbortSignal, intent?: 'plan') => Promise<void>, targetNotice?: RemoteNotice) {
   const requestRender = vi.fn()
   const components = new MayflyComponentsService(new Context(), {
     theme: { colors: new Proxy({}, { get: () => (text: string) => text }) },
@@ -69,7 +70,8 @@ export function submissionFixture(initial?: EditorFeatureSession, ensureSession?
   const screen = { requestRender, setFocus: vi.fn() } as unknown as MayflyScreen
   let current: EditorFeatureSession | undefined = initial
   const notices: string[] = []
-  const notice = { set: (text: string) => { notices.push(text) } }
+  const feedback: Array<{ readonly text: string, readonly severity: Parameters<RemoteNotice['set']>[1] }> = []
+  const notice: RemoteNotice = { set: (text, severity) => { notices.push(text); feedback.push({ text, severity }); targetNotice?.set(text, severity) } }
   const local: EditorLocalAdapter = { cwd: () => '/workspace', list: () => [], execute: () => ({ kind: 'unhandled' }), exit: vi.fn() }
   const draft = new EditorDraftStore()
   const attachments = new EditorAttachments(components, async () => { throw new Error('upload fixture not configured') })
@@ -80,7 +82,7 @@ export function submissionFixture(initial?: EditorFeatureSession, ensureSession?
   editor.onSubmit = value => { submit.submit(value) }
   cleanup.add(() => { submit.dispose(); attachments.dispose(); skills.dispose() })
   return {
-    editor, screen, components, notices, local, commands, attachments, skills, draft, submit, exit,
+    editor, screen, components, notices, feedback, local, commands, attachments, skills, draft, submit, exit,
     select: (selected: EditorFeatureSession | undefined) => { current = selected },
     enter: (text: string) => { editor.setText(text); editor.handleInput?.('\r') },
     file: () => attachments.addFile({ receiptId: 'receipt-1', file: { attachmentId: 'attachment-1', name: 'notes.txt', bytes: 12 } } as FileUploadValue, current!),

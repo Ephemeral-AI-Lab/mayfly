@@ -137,7 +137,7 @@ describe('Job whole-snapshot feature ownership', () => {
         ? panel!.options.action!(action('read'), { signal: caller.signal } as never)
         : f.dispatch(select(), caller.signal)
       const pending = read()
-      let replacement: Promise<unknown> | undefined
+      let replacement: ReturnType<typeof read> | undefined
       if (retirement === 'caller') caller.abort()
       else if (retirement === 'connection') f.reconnect()
       else replacement = read()

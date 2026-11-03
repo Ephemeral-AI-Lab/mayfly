@@ -128,7 +128,7 @@ describe('command discovery and invocation', () => {
     host.executeCommand.mockResolvedValueOnce(denied('command transport failed') as never)
     await expect(f.commands.execute('/host-only', [], signal)).rejects.toThrow('command transport failed')
     host.executeCommand.mockResolvedValueOnce({ ok: true, value: { result: { kind: 'error', text: 'Host refused' } } } as never)
-    expect((await f.commands.execute('/host-only', [], signal)).accepted).toBe(false)
+    expect((await f.commands.execute('/host-only', [], signal)).accepted).toBe(true)
     expect(f.notices.at(-1)).toBe('Host refused')
     expect(f.commands.failure(null)).toBe('command execution failed')
   })

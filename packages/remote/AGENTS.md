@@ -51,7 +51,11 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   App owns startup plan intent through `startupPlan`; the plan feature only
   reads/writes that intent. Prompt preparation awaits native plan admission
   before admitting the first prompt. Selection listeners never apply it in the
-  background. Native Session command outcomes render from their durable events.
+  background. Admitted commands consume the generated `commands.execute`
+  outcome exactly once; historical durable events never replay their notices.
+  Generic command success text uses the reference info severity and errors use
+  error severity. Explicit picker actions and mode cycles retain their own
+  success reporting.
   The editor uses shared readonly `Editor` and placeholder models. Theme swaps
   call its `retheme` handle around the same native editor, preserving its draft,
   caret, undo, history, paste, and completion state. Notification clocks and core
@@ -279,12 +283,18 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   receipts through `commands.execute`; markers stay in the reversible draft
   and are removed from the command line. File receipts retain their exact
   Host, Client, Session binding and generation; a changed scope refuses dispatch.
-  Refusal restores the original draft and attachments without retrying a write.
+  Pre-admission refusal restores the original draft and attachments before
+  reporting feedback, so the restored editor cannot clear that notice. A local
+  handler that executes and throws, or a returned native command error, consumes
+  its submitted draft just like a successful admitted command. Stale failures
+  never publish feedback and transport refusals never retry a write.
   A selected Session's `/plan` uses native command admission, including ordered
-  attachments and native refusals. `/plan <message>` can create its first Session;
-  the explicit command supersedes unstarted startup mode intent before dispatch
+  attachments and native refusals. The explicit command supersedes unstarted
+  startup mode intent before dispatch
   so preparation never sends an extra plan switch. Sessionless `/plan` and
-  `/plan off` retain their next-Session behavior.
+  `/plan off` retain their next-Session behavior; any other sessionless argument
+  reports the exact native refusal without creating a Session. Mode cycles read
+  the generated full native command outcome rather than a matched-only ACK.
   Late upload results after cancellation are never retained. MCP transport
   health is unknown unless the Host advertises the optional sanitized catalog.
   Passive cold-child history keeps generic tool cards; Agent controls must

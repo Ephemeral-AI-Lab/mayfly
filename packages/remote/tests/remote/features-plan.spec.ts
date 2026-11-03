@@ -4,6 +4,7 @@ import { HostKey } from '../../src/client/types.ts'
 import type { HostClient } from '../../src/client/types.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
 import { mountPlanFeature } from '../../src/remote/features/plan.ts'
+import { flush, submissionFixture, wire } from './editor-feature-fixture.ts'
 
 interface CommandDefinition {
   readonly name: string
@@ -36,7 +37,7 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
     getSnapshot: vi.fn(() => snapshot),
     subscribe: subscribeProjection,
   }
-  const executeNative = vi.fn(async (_line: string): Promise<unknown> => ({ ok: true, value: { matched: true } }))
+  const executeNative = vi.fn(async (_id: unknown, _line: string, _attachments: readonly unknown[], _signal: AbortSignal): Promise<unknown> => ({ ok: true, value: { result: { kind: 'success' } } }))
   const client = {
     key: HostKey('local'),
     state: { getSnapshot: () => ({ generation: 1 }), subscribe: vi.fn(() => () => {}) },
@@ -157,6 +158,36 @@ beforeEach(() => {
 })
 
 describe('mountPlanFeature', () => {
+  it.each(['investigate', 'OFF', 'off extra'])('runs the actual sessionless /plan %s parser without creating or prompting a Session', async input => {
+    const f = fixture({ session: false })
+    const dispose = mountPlanFeature(f.context)
+    const create = vi.fn(async () => wire().selected)
+    const editor = submissionFixture(undefined, create)
+    editor.local.list = () => [{ name: 'plan', description: f.command('plan').description }]
+    editor.local.execute = async invocation => { await f.command('plan').execute(invocation.rawInput, invocation.signal); return { kind: 'success' } }
+    editor.enter(`/plan ${input}`); await flush()
+    expect(create).not.toHaveBeenCalled()
+    expect(f.executeNative).not.toHaveBeenCalled()
+    expect(f.startupPlan.set).not.toHaveBeenCalled()
+    expect(editor.editor.getText()).toBe('')
+    expect(editor.feedback).toEqual([{ text: 'Send a message first: /plan with a message needs a session', severity: 'error' }])
+    dispose()
+  })
+
+  it.each(['plan', 'mode'] as const)('reports the actual native %s returned outcome with its reference feedback path', async command => {
+    const f = fixture({ plan: { active: false, pending: false } })
+    const dispose = mountPlanFeature(f.context)
+    for (const kind of ['success', 'error'] as const) {
+      f.executeNative.mockResolvedValueOnce({ ok: true, value: { result: { kind, text: 'native plan outcome' } } })
+      await f.command(command).execute('')
+      expect(f.notice.set).toHaveBeenLastCalledWith('native plan outcome', kind === 'error' ? 'error' : command === 'mode' ? 'success' : 'info')
+    }
+    f.executeNative.mockResolvedValueOnce({ ok: true, value: undefined })
+    await f.command(command).execute('')
+    expect(f.notice.set).toHaveBeenLastCalledWith(command === 'mode' ? 'mode command is unavailable: /plan' : 'plan mode is unavailable', 'error')
+    dispose()
+  })
+
   it('enables plan intent when App has not supplied a previous choice', async () => {
     const f = fixture({ session: false })
     f.clearPending()
@@ -206,7 +237,7 @@ describe('mountPlanFeature', () => {
     const dispose = mountPlanFeature(f.context)
     f.executeNative.mockRejectedValueOnce('transport unavailable')
     await f.command('plan').execute('')
-    expect(f.notice.set).toHaveBeenLastCalledWith('transport unavailable')
+    expect(f.notice.set).toHaveBeenLastCalledWith('transport unavailable', 'error')
     dispose()
   })
 
@@ -214,7 +245,7 @@ describe('mountPlanFeature', () => {
     const f = fixture()
     const dispose = mountPlanFeature(f.context)
     expect([...f.entries.keys()]).toEqual(['plan', 'mode'])
-    expect(f.command('plan')).toMatchObject({ description: 'Enter or leave plan mode for the next session', scope: 'sessionless', input: { hint: '[off|message]' } })
+    expect(f.command('plan')).toMatchObject({ description: 'Enter or leave plan mode for the next session', scope: 'sessionless', input: { hint: '[off]' } })
     expect(f.command('mode')).toMatchObject({ description: 'Toggle plan mode (same as Shift+Tab)', scope: 'sessionless' })
     expect(f.command('mode').input).toBeUndefined()
     expect(f.registerKeymap).toHaveBeenCalledOnce()
@@ -238,7 +269,8 @@ describe('mountPlanFeature', () => {
     await f.command('plan').execute('')
     await f.command('plan').execute('off')
     await f.command('plan').execute('focus on the parser')
-    expect(f.executeNative.mock.calls).toEqual([['/plan'], ['/plan off'], ['/plan focus on the parser']])
+    expect(f.executeNative.mock.calls.map(call => call[1])).toEqual(['/plan', '/plan off', '/plan focus on the parser'])
+    expect(f.executeNative.mock.calls.every(call => call[0] === f.selection.ref.sessionId && call[2].length === 0 && call[3] instanceof AbortSignal)).toBe(true)
     expect(f.notice.set).not.toHaveBeenCalled()
     dispose()
   })
@@ -252,7 +284,7 @@ describe('mountPlanFeature', () => {
     f.emitPlan({ active: false, pending: false })
     f.keymapBinding().handler()
     await vi.waitFor(() => { expect(f.executeNative).toHaveBeenCalledTimes(3) })
-    expect(f.executeNative.mock.calls).toEqual([['/plan off'], ['/plan'], ['/plan']])
+    expect(f.executeNative.mock.calls.map(call => call[1])).toEqual(['/plan off', '/plan', '/plan'])
     dispose()
   })
 
@@ -263,7 +295,7 @@ describe('mountPlanFeature', () => {
     await f.command('plan').execute('')
     expect(f.startupPlan.pending()).toBe(true)
     expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'text', content: 'plan…', tone: 'accent' })
-    expect(f.notice.set).toHaveBeenLastCalledWith('Plan mode on for the next session')
+    expect(f.notice.set).toHaveBeenLastCalledWith('Plan mode on for the next session', 'info')
     await f.command('mode').execute('')
     expect(f.startupPlan.pending()).toBe(false)
     expect(f.status.set).toHaveBeenLastCalledWith(null)
@@ -271,9 +303,8 @@ describe('mountPlanFeature', () => {
     expect(f.startupPlan.pending()).toBe(true)
     await f.command('plan').execute('off')
     expect(f.startupPlan.pending()).toBe(false)
-    expect(f.notice.set).toHaveBeenLastCalledWith('Plan mode off for the next session')
-    await f.command('plan').execute('a task')
-    expect(f.notice.set).toHaveBeenLastCalledWith('Send a message first: /plan with a message needs a session')
+    expect(f.notice.set).toHaveBeenLastCalledWith('Plan mode off for the next session', 'info')
+    await expect(f.command('plan').execute('a task')).rejects.toThrow('Send a message first: /plan with a message needs a session')
     expect(f.executeNative).not.toHaveBeenCalled()
     dispose()
   })
@@ -296,12 +327,12 @@ describe('mountPlanFeature', () => {
     const context = { ...startup.context }; delete context.startupPlan
     const releaseStartup = mountPlanFeature(context)
     await startup.command('plan').execute('')
-    expect(startup.notice.set).toHaveBeenLastCalledWith('plan mode is unavailable')
+    expect(startup.notice.set).toHaveBeenLastCalledWith('plan mode is unavailable', 'error')
     releaseStartup()
     const f = fixture()
     const dispose = mountPlanFeature(f.context)
     await f.command('mode').execute('')
-    expect(f.notice.set).toHaveBeenCalledWith('plan mode is unavailable')
+    expect(f.notice.set).toHaveBeenCalledWith('plan mode is unavailable', 'error')
     expect(f.executeNative).not.toHaveBeenCalled()
     dispose()
   })
@@ -324,13 +355,13 @@ describe('mountPlanFeature', () => {
     const dispose = mountPlanFeature(f.context)
     f.executeNative.mockResolvedValueOnce({ ok: false, error: { message: 'Host refused' } })
     await f.command('plan').execute('')
-    expect(f.notice.set).toHaveBeenLastCalledWith('Host refused')
-    f.executeNative.mockResolvedValueOnce({ ok: true, value: { matched: false } })
+    expect(f.notice.set).toHaveBeenLastCalledWith('Host refused', 'error')
+    f.executeNative.mockResolvedValueOnce({ ok: true, value: undefined })
     await f.command('plan').execute('')
-    expect(f.notice.set).toHaveBeenLastCalledWith('plan mode is unavailable')
+    expect(f.notice.set).toHaveBeenLastCalledWith('plan mode is unavailable', 'error')
     f.executeNative.mockRejectedValueOnce(new Error('offline'))
     await f.command('plan').execute('')
-    expect(f.notice.set).toHaveBeenLastCalledWith('offline')
+    expect(f.notice.set).toHaveBeenLastCalledWith('offline', 'error')
     dispose()
   })
 

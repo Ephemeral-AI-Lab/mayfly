@@ -101,12 +101,14 @@ export class EditorCommands {
     line: string,
     attachments: readonly EditorCommandAttachment[],
     signal: AbortSignal,
+    onRefused: () => void = () => {},
   ): Promise<{ readonly handled: boolean, readonly exit: boolean, readonly accepted: boolean }> {
     this.syncSelection()
     if (signal.aborted) return { handled: true, exit: false, accepted: false }
     const parsed = parseEditorCommand(line)
     if (parsed === undefined) {
-      this.options.notice.set(this.options.t('unknown command: {command}', { command: line }))
+      onRefused()
+      this.options.notice.set(this.options.t('unknown command: {command}', { command: line }), 'error')
       return { handled: true, exit: false, accepted: false }
     }
     const selected = this.options.session()
@@ -119,16 +121,26 @@ export class EditorCommands {
     const local = canonicalLocalCommand(this.options.local.list(), parsed.name)
     if (local !== undefined) {
       const canonical = canonicalCommandLine(local, parsed.rawInput)
-      const result = await this.options.local.execute({
-        line: canonical,
-        name: local.name,
-        rawInput: parsed.rawInput,
-        attachments,
-        session: selected,
-        signal,
-      })
+      let result
+      try {
+        result = await this.options.local.execute({
+          line: canonical,
+          name: local.name,
+          rawInput: parsed.rawInput,
+          attachments,
+          session: selected,
+          signal,
+        })
+      } catch (error) {
+        if (!isCurrent()) return { handled: true, exit: false, accepted: false }
+        this.options.notice.set(this.failure(error), 'error')
+        return { handled: true, exit: false, accepted: true }
+      }
       if (result.kind !== 'unhandled') {
-        if (isCurrent() && result.text !== undefined) this.options.notice.set(result.text)
+        if (isCurrent() && result.text !== undefined) {
+          if (result.kind === 'error') onRefused()
+          this.options.notice.set(result.text, result.kind === 'error' ? 'error' : 'info')
+        }
         return {
           handled: true,
           exit: isCurrent() && result.kind === 'success' && result.exit === true,
@@ -138,22 +150,27 @@ export class EditorCommands {
     }
     if (!isCurrent()) return { handled: true, exit: false, accepted: false }
     if (selected === undefined) {
-      this.options.notice.set(this.options.t('Send a message first: /{command} needs a session', { command: parsed.name }))
+      onRefused()
+      this.options.notice.set(this.options.t('Send a message first: /{command} needs a session', { command: parsed.name }), 'error')
       return { handled: true, exit: false, accepted: false }
     }
     if (selected.access === 'readonly') {
-      this.options.notice.set(this.options.t('This conversation is read-only'))
+      onRefused()
+      this.options.notice.set(this.options.t('This conversation is read-only'), 'error')
       return { handled: true, exit: false, accepted: false }
     }
     const result = await selected.client.remote.commands.execute(selected.ref.sessionId, line, attachments, signal)
     if (!result.ok) throw new Error(result.error.message)
     if (result.value === undefined) {
-      if (isCurrent()) this.options.notice.set(this.options.t('unknown command: {command}', { command: line }))
+      if (isCurrent()) {
+        onRefused()
+        this.options.notice.set(this.options.t('unknown command: {command}', { command: line }), 'error')
+      }
       return { handled: true, exit: false, accepted: false }
     }
     const outcome = result.value.result
-    if (isCurrent() && outcome.text !== undefined) this.options.notice.set(outcome.text)
-    return { handled: true, exit: false, accepted: outcome.kind === 'success' }
+    if (isCurrent() && outcome.text !== undefined && (parsed.name !== 'goal' || outcome.kind === 'error')) this.options.notice.set(outcome.text, outcome.kind === 'error' ? 'error' : 'info')
+    return { handled: true, exit: false, accepted: true }
   }
 
   /** Convert a thrown local or transport failure for the submit owner. */

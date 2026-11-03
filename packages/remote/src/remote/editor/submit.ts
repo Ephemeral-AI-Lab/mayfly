@@ -227,18 +227,13 @@ export class EditorSubmit {
         const attachments = captured.content.filter(part => part.type !== 'text')
         const line = captured.content.filter(part => part.type === 'text').map(part => part.text).join('').trim()
         const input = line.slice(parsed.name.length + 1).trim()
-        if (parsed.name === 'plan' && record.selected === undefined
-          && (input !== '' && input !== 'off' || attachments.length > 0)) {
-          record.selected = await this.options.ensureSession?.()
-          if (this.disposed || controller.signal.aborted || !this.isCurrent(record.selected)) { this.fail(record, false); return }
-        }
         captured.assertFileScope(record.selected)
         if (parsed.name === 'plan' && record.selected !== undefined
           && (input !== 'off' || attachments.length === 0) && this.options.preparePrompt !== undefined) {
           await this.options.preparePrompt(record.selected, controller.signal, 'plan')
           if (this.disposed || controller.signal.aborted || !this.isCurrent(record.selected)) { this.fail(record, false); return }
         }
-        const result = await this.options.commands.execute(line, attachments, controller.signal)
+        const result = await this.options.commands.execute(line, attachments, controller.signal, () => { this.fail(record, false) })
         if (!result.accepted) {
           this.fail(record, false)
           return
@@ -251,13 +246,13 @@ export class EditorSubmit {
       if (this.disposed || controller.signal.aborted) { this.fail(record, false); return }
       record.selected = selected
       if (selected === undefined) {
-        this.options.notice.set(this.options.t('Select or create a Session before prompting'))
         this.fail(record, false)
+        this.options.notice.set(this.options.t('Select or create a Session before prompting'), 'error')
         return
       }
       if (selected.access === 'readonly') {
-        this.options.notice.set(this.options.t('This conversation is read-only'))
         this.fail(record, false)
+        this.options.notice.set(this.options.t('This conversation is read-only'), 'error')
         return
       }
       captured.assertFileScope(selected)
@@ -280,8 +275,8 @@ export class EditorSubmit {
       try {
         const result = await selected.session.prompt(content, mode, controller.signal, submission.requestId)
         if (!result.ok) {
-          if (!this.disposed && this.isCurrent(record.selected)) this.options.notice.set(result.error.message)
           this.fail(record, record.accepted)
+          if (!this.disposed && this.isCurrent(record.selected)) this.options.notice.set(result.error.message, 'error')
           return
         }
         this.records.delete(record.id)
@@ -290,11 +285,11 @@ export class EditorSubmit {
         throw error
       }
     } catch (error) {
+      this.fail(record, record.accepted)
       if (!this.disposed && this.isCurrent(record.selected)) {
         const prefix = record.accepted ? 'Prompt accepted; confirmation ended early' : 'Submission was not confirmed; no retry was sent'
-        this.options.notice.set(`${prefix}: ${errorMessage(error)}`)
+        this.options.notice.set(`${prefix}: ${errorMessage(error)}`, 'error')
       }
-      this.fail(record, record.accepted)
     }
   }
 
@@ -309,7 +304,7 @@ export class EditorSubmit {
   }
 
   private fail(record: SubmissionRecord, accepted: boolean): void {
-    this.records.delete(record.id)
+    if (!this.records.delete(record.id)) return
     if (accepted) return
     record.rollback()
     if (this.disposed || !this.isCurrent(record.selected)

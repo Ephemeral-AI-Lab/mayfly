@@ -22,6 +22,7 @@ const zh = {
   'Send a message first: /plan with a message needs a session': '请先发送消息：带内容的 /plan 需要会话',
   'Toggle plan mode': '切换计划模式',
   'Enter or leave plan mode': '进入或离开计划模式',
+  'mode command is unavailable: /plan': '模式命令不可用：/plan',
 } as const
 
 class RemotePlanController {
@@ -95,33 +96,34 @@ class RemotePlanController {
     if (this.disposed || parent?.aborted === true) return
     const current = this.options.hosts.current()
     if (current === undefined) {
-      this.setNextPlan(!(this.options.startupPlan?.pending() ?? false))
+      this.setNextPlan(!(this.options.startupPlan?.pending() ?? false), 'success')
       return
     }
     if (this.plan === undefined) {
-      this.options.notice.set(this.t('plan mode is unavailable'))
+      this.options.notice.set(this.t('plan mode is unavailable'), 'error')
       return
     }
-    await this.executeNative(current, this.plan.active !== this.plan.pending ? '/plan off' : '/plan', this.lifecycle.currentGeneration(), parent)
+    await this.executeNative(current, this.plan.active !== this.plan.pending ? '/plan off' : '/plan', this.lifecycle.currentGeneration(), parent, true)
   }
 
-  private setNextPlan(active: boolean): void {
-    if (this.options.startupPlan === undefined) { this.options.notice.set(this.t('plan mode is unavailable')); return }
+  private setNextPlan(active: boolean, severity: 'info' | 'success' = 'info'): void {
+    if (this.options.startupPlan === undefined) { this.options.notice.set(this.t('plan mode is unavailable'), 'error'); return }
     this.options.startupPlan.set(active)
     this.plan = undefined
     this.publish()
-    this.options.notice.set(this.t(active ? 'Plan mode on for the next session' : 'Plan mode off for the next session'))
+    this.options.notice.set(this.t(active ? 'Plan mode on for the next session' : 'Plan mode off for the next session'), severity)
   }
 
-  private async executeNative(current: RemoteFeatureSelection, line: string, generation: number, parent?: AbortSignal): Promise<void> {
+  private async executeNative(current: RemoteFeatureSelection, line: string, generation: number, parent?: AbortSignal, cycle = false): Promise<void> {
     const signal = parent === undefined ? this.commandLifetime.signal : AbortSignal.any([this.commandLifetime.signal, parent])
     try {
-      const result = await current.binding.session.command(line)
+      const result = await current.client.remote.commands.execute(current.ref.sessionId, line, [], signal)
       if (!this.lifecycle.owns(generation) || signal.aborted) return
-      if (!result.ok) this.options.notice.set(result.error.message)
-      else if (!result.value.matched) this.options.notice.set(this.t('plan mode is unavailable'))
+      if (!result.ok) this.options.notice.set(result.error.message, 'error')
+      else if (result.value === undefined) this.options.notice.set(this.t(cycle ? 'mode command is unavailable: /plan' : 'plan mode is unavailable'), 'error')
+      else if (result.value.result.text !== undefined) this.options.notice.set(result.value.result.text, result.value.result.kind === 'error' ? 'error' : cycle ? 'success' : 'info')
     } catch (error) {
-      if (this.lifecycle.owns(generation) && !signal.aborted) this.options.notice.set(error instanceof Error ? error.message : String(error))
+      if (this.lifecycle.owns(generation) && !signal.aborted) this.options.notice.set(error instanceof Error ? error.message : String(error), 'error')
     }
   }
 
@@ -131,8 +133,7 @@ class RemotePlanController {
     const input = rawInput.trim()
     if (current === undefined) {
       if (input !== '' && input !== 'off') {
-        this.options.notice.set(this.t('Send a message first: /plan with a message needs a session'))
-        return
+        throw new Error(this.t('Send a message first: /plan with a message needs a session'))
       }
       this.setNextPlan(input !== 'off')
       return
@@ -153,7 +154,7 @@ export function mountPlanFeature(options: RemoteFeatureContext): () => void {
       name: 'plan',
       scope: 'sessionless',
       description: 'Enter or leave plan mode for the next session',
-      input: { hint: '[off|message]' },
+      input: { hint: '[off]' },
       execute: controller.execute,
     }),
     options.commands.register({

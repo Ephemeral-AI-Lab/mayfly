@@ -296,7 +296,7 @@ describe('editor submission through the real core editor', () => {
     expect(f.editor.getText()).toBe('')
   })
 
-  it.each(['', ' off'])('reacquires the exact staged-file Session for a first /plan%s attachment submission', async suffix => {
+  it.each(['', ' off'])('refuses a retired staged-file Session for sessionless /plan%s without creating another Session', async suffix => {
     const host = wire()
     const create = vi.fn(async () => { f.select(host.selected); return host.selected })
     const f = submissionFixture(host.selected, create)
@@ -304,12 +304,13 @@ describe('editor submission through the real core editor', () => {
     f.select(undefined)
     f.enter(`/plan${suffix} ${marker}`)
     await flush()
-    expect(create).toHaveBeenCalledOnce()
-    expect(host.executeCommand).toHaveBeenCalledExactlyOnceWith(host.selected.ref.sessionId, `/plan${suffix}`, [{ type: 'file', receiptId: 'receipt-1' }], expect.any(AbortSignal))
+    expect(create).not.toHaveBeenCalled()
+    expect(host.executeCommand).not.toHaveBeenCalled()
     expect(host.prompt).not.toHaveBeenCalled()
+    expect(f.editor.getText()).toBe(`/plan${suffix} ${marker}`)
   })
 
-  it('preserves the native /plan off attachment refusal and restores its exact original draft', async () => {
+  it('reports the admitted native /plan off attachment error and consumes its draft', async () => {
     const host = wire()
     host.executeCommand.mockResolvedValueOnce({ ok: true, value: { result: { kind: 'error', text: 'Attachments cannot accompany /plan off.' } } } as never)
     const prepare = vi.fn(async () => {})
@@ -322,8 +323,8 @@ describe('editor submission through the real core editor', () => {
     expect(host.prompt).not.toHaveBeenCalled()
     expect(prepare).not.toHaveBeenCalled()
     expect(f.notices.at(-1)).toBe('Attachments cannot accompany /plan off.')
-    expect(f.editor.getText()).toBe(source)
-    expect(f.attachments.capture(marker).content).toEqual([{ type: 'file', receiptId: 'receipt-1' }])
+    expect(f.editor.getText()).toBe('')
+    expect(f.attachments.capture(marker).content).toEqual([{ type: 'text', text: marker }])
   })
 
   it.each(['', ' off', ' investigate'])('supersedes unstarted startup intent before an already selected Session admits /plan%s', async suffix => {
@@ -341,55 +342,10 @@ describe('editor submission through the real core editor', () => {
     expect(host.prompt).not.toHaveBeenCalled()
   })
 
-  it('starts the exact first Session for /plan message and sends the native command once', async () => {
-    const host = wire()
-    const pending = deferred<typeof host.selected>()
-    const create = vi.fn(() => pending.promise)
-    const f = submissionFixture(undefined, create)
-    f.enter('/plan  investigate this')
-    expect(create).toHaveBeenCalledOnce()
-    expect(host.executeCommand).not.toHaveBeenCalled()
-    f.select(host.selected)
-    pending.resolve(host.selected)
-    await flush()
-    expect(host.executeCommand).toHaveBeenCalledExactlyOnceWith(host.selected.ref.sessionId, '/plan  investigate this', [], expect.any(AbortSignal))
-    expect(host.prompt).not.toHaveBeenCalled()
-    expect(f.editor.getText()).toBe('')
-  })
-
-  it('prepares startup state on the created Session before admitting its first plan message', async () => {
+  it.each(['disposed', 'generation'] as const)('never admits a selected plan command after startup preparation becomes %s', async transition => {
     const host = wire()
     const ready = deferred<void>()
-    const prepare = vi.fn(() => ready.promise)
-    const f = submissionFixture(undefined, async () => { f.select(host.selected); return host.selected }, prepare)
-    f.enter('/plan first plan')
-    await flush()
-    expect(prepare).toHaveBeenCalledExactlyOnceWith(host.selected, expect.any(AbortSignal), 'plan')
-    expect(host.executeCommand).not.toHaveBeenCalled()
-    ready.resolve()
-    await flush()
-    expect(host.executeCommand).toHaveBeenCalledExactlyOnceWith(host.selected.ref.sessionId, '/plan first plan', [], expect.any(AbortSignal))
-    expect(host.prompt).not.toHaveBeenCalled()
-  })
-
-  it.each(['disposed', 'other Host', 'binding', 'generation'] as const)('never admits a first plan message after creation becomes %s', async transition => {
-    const host = wire()
-    const pending = deferred<typeof host.selected>()
-    const f = submissionFixture(undefined, () => pending.promise)
-    f.enter('/plan late first command')
-    if (transition === 'disposed') { f.select(host.selected); f.submit.dispose() }
-    else f.select(transition === 'other Host' ? wire('two').selected : transition === 'binding' ? { ...host.selected, session: wire().selected.session } : { ...host.selected, generation: 2 })
-    pending.resolve(host.selected)
-    await flush()
-    expect(host.executeCommand).not.toHaveBeenCalled()
-    expect(host.prompt).not.toHaveBeenCalled()
-    expect(f.notices).toEqual([])
-  })
-
-  it.each(['disposed', 'generation'] as const)('never admits a first plan message after startup preparation becomes %s', async transition => {
-    const host = wire()
-    const ready = deferred<void>()
-    const f = submissionFixture(undefined, async () => { f.select(host.selected); return host.selected }, () => ready.promise)
+    const f = submissionFixture(host.selected, undefined, () => ready.promise)
     f.enter('/plan pending preparation')
     await flush()
     if (transition === 'disposed') f.submit.dispose()
@@ -401,21 +357,15 @@ describe('editor submission through the real core editor', () => {
     expect(f.notices).toEqual([])
   })
 
-  it('restores the first plan draft if Session creation fails and never retries it', async () => {
-    const create = vi.fn(async () => { throw new Error('plan Session creation refused') })
-    const f = submissionFixture(undefined, create)
-    f.enter(' /plan keep my request ')
+  it.each(['investigate', 'OFF', 'off extra'])('leaves sessionless /plan %s with its local command parser without creating a Session', async input => {
+    const create = vi.fn(async () => wire().selected)
+    const prepare = vi.fn(async () => {})
+    const f = submissionFixture(undefined, create, prepare)
+    f.enter(`/plan ${input}`)
     await flush()
-    expect(f.editor.getText()).toBe(' /plan keep my request ')
-    expect(create).toHaveBeenCalledOnce()
-    expect(f.notices.at(-1)).toContain('plan Session creation refused')
-  })
-
-  it('restores a plan draft when no Session creator is composed', async () => {
-    const f = submissionFixture()
-    f.enter('/plan investigate')
-    await flush()
-    expect(f.editor.getText()).toBe('/plan investigate')
+    expect(create).not.toHaveBeenCalled()
+    expect(prepare).not.toHaveBeenCalled()
+    expect(f.editor.getText()).toBe(`/plan ${input}`)
     expect(f.notices.at(-1)).toContain('/plan needs a session')
   })
 
@@ -431,9 +381,10 @@ describe('editor submission through the real core editor', () => {
     await flush()
     expect(host.executeCommand).toHaveBeenCalledExactlyOnceWith(host.selected.ref.sessionId, '/host-only argument  suffix', [{ type: 'file', receiptId: 'receipt-1' }], expect.any(AbortSignal))
     expect(host.prompt).not.toHaveBeenCalled()
-    expect(f.editor.getText()).toBe(source)
-    expect(f.editor.getHistory()).not.toContain(source.trim())
-    expect(f.attachments.capture(marker).content).toEqual([{ type: 'file', receiptId: 'receipt-1' }])
+    expect(f.editor.getText()).toBe(failure === 'refusal' ? '' : source)
+    if (failure === 'refusal') expect(f.editor.getHistory()).toContain(source.trim())
+    else expect(f.editor.getHistory()).not.toContain(source.trim())
+    expect(f.attachments.capture(marker).content).toEqual(failure === 'refusal' ? [{ type: 'text', text: marker }] : [{ type: 'file', receiptId: 'receipt-1' }])
   })
 
   it.each(['refusal', 'success', 'transport'] as const)('fences late file-command %s after Session binding replacement', async outcome => {
