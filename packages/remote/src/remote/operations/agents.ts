@@ -169,7 +169,7 @@ class RemoteAgentsController extends RemoteFeatureController<RemoteOperationsCon
     try {
       const reply = await this.stop(current, match[1]!, operation)
       if (reply.kind === 'failed') this.agentsContext.base.notice.set(reply.message, 'error')
-      else if (reply.kind === 'completed') this.agentsContext.base.notice.set(reply.feedback!.message, 'success')
+      else if (reply.kind === 'completed') this.agentsContext.base.notice.set(reply.feedback!.message, 'info')
     } finally { operation.dispose() }
   }
 }

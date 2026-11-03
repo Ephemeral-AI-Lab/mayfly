@@ -126,7 +126,7 @@ describe('exact native descendant stop', () => {
     await f.run('agents', 'stop\tchild')
     expect(f.stopping).toHaveBeenCalledWith({ sessionId: 'session', childSessionId: 'child' }, expect.any(AbortSignal))
     expect(f.closePresent).toHaveBeenCalledWith({ host: f.client.key, sessionId: 'child' })
-    expect(f.options.notice.set).toHaveBeenCalledWith('stopped subagent child', 'success')
+    expect(f.options.notice.set).toHaveBeenCalledExactlyOnceWith('stopped subagent child', 'info')
     f.stopping.mockResolvedValueOnce(bad('unknown subagent: missing') as never)
     await f.run('agents', 'stop missing')
     expect(f.options.notice.set).toHaveBeenCalledWith('unknown subagent: missing', 'error')

@@ -131,7 +131,8 @@ class RemoteActivityController {
     this.activity = EMPTY_ACTIVITY
     this.waiting = false
     this.decision = undefined
-    this.live = false
+    // Rebinding an unchanged live row does not start another teaching tip.
+    // The reconciler advances only when the row appears or its turn changes.
     this.waitingSince = undefined
     this.phaseSeenAt = undefined
     this.pressure = undefined

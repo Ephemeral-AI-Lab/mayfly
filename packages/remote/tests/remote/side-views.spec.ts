@@ -1,6 +1,7 @@
 /** Display recency and bounded native view residency over actual transcript sources. @module remote/tests/side-views */
 import { describe, expect, it, vi } from 'vitest'
 import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionBinding, SessionEventLikeEntry } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
@@ -111,7 +112,7 @@ describe('RemoteSideViews', () => {
   it('preserves known access after refused reads and unknown addresses, and keeps one-shot views readonly even while live', async () => {
     const native = availability()
     native.available.set('a', true)
-    native.list.mockResolvedValueOnce({ ok: false, error: { code: 'denied', message: 'denied' } })
+    native.list.mockResolvedValueOnce({ ok: false, error: new RemoteError('gateway/internal', 'denied', {}) })
     const { side, transcript } = mount({ client: () => native.client })
     side.present(binding('a').face, { ref: ref('a'), cwd: '' }, { ...facts, access: 'interactive' })
     await flush()

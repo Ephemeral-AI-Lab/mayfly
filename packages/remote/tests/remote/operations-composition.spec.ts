@@ -2,6 +2,7 @@
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/remote/features.ts'
@@ -87,7 +88,7 @@ describe('retained child operation composition', () => {
 
   it('keeps native availability refusal visible and never substitutes a guessed Agent or retains after retirement', async () => {
     const f = fixture()
-    f.list.mockResolvedValueOnce({ ok: false, error: { code: 'denied', message: 'native list denied' } })
+    f.list.mockResolvedValueOnce({ ok: false, error: new RemoteError('gateway/internal', 'native list denied', {}) })
     await expect(f.handle.openChild(f.client, f.address, new AbortController().signal)).rejects.toThrow('native list denied')
     expect(f.retain).not.toHaveBeenCalled()
     for (const failure of [false, true]) {
