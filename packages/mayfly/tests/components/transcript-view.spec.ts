@@ -119,7 +119,7 @@ describe('TranscriptView', () => {
   })
 
   it('keeps every repeated block under its own parent occurrence and declines ambiguous cursor targets', () => {
-    const tool: Extract<StreamRow, { kind: 'tool' }> = { kind: 'tool', id: 'same', name: 'Write', detail: 'report', state: 'ok', body: [{ text: 'first body' }] }
+    const tool: Extract<StreamRow, { kind: 'tool' }> = { kind: 'tool', id: 'same', name: 'Write', target: 'report', state: 'ok', body: [{ text: 'first body' }] }
     const value = facts([turn('turn:1', [tool, { ...tool, body: [{ text: 'second body' }] }])])
     const node = TranscriptView(value, { rev: 1, ids: ['same~2'] })
     expect(node.items.find(item => item.id === 'same.body.0')!.under).toBe('same')
