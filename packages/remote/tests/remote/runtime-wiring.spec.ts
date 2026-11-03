@@ -422,11 +422,13 @@ describe('standalone Remote runtime wiring', () => {
     wiring.sideOptions!.evicted!(child); expect(wiring.closeChild).toHaveBeenCalledWith(child)
     wiring.sideOptions!.retainOnly!([child]); expect(wiring.retainOnly).toHaveBeenCalledWith([child])
     wiring.sideOptions!.primaryVisible!(false); expect(wiring.setVisible).toHaveBeenCalledWith(false)
+    expect(wiring.sideOptions!.client!(child)).toBe(client)
     wiring.sideOptions!.modelCatalog!(local); wiring.operations!.modelCatalog!(local)
     expect(wiring.getModelCatalog).toHaveBeenCalledWith(local)
     wiring.ref = undefined; wiring.side = undefined; expect(selected()).toBeUndefined(); expect(wiring.operations!.primary!()).toBeUndefined()
     wiring.ref = ref; wiring.binding = undefined; expect(selected()).toBeUndefined(); expect(wiring.operations!.primary!()).toBeUndefined()
     wiring.binding = binding; wiring.client = undefined; expect(selected()).toBeUndefined(); expect(wiring.operations!.primary!()).toBeUndefined()
+    expect(wiring.sideOptions!.client!(child)).toBeUndefined()
   })
 
   it('preserves primary replacement, session browser, startup and editor presentation callbacks', async () => {

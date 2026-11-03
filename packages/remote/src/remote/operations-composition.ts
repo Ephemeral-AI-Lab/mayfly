@@ -11,7 +11,7 @@ import type { RemoteFeatureCommandSource } from './features/commands.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from './features.ts'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type { HostClient, SessionRef } from '../client/types.ts'
-import { RemoteFeatureOperation } from './features/official.ts'
+import { RemoteFeatureOperation, remoteValue } from './features/official.ts'
 import { mountRemoteAgentsOperations } from './operations/agents.ts'
 import { mountRemoteBtwOperations } from './operations/btw.ts'
 import { mountRemoteExportOperations } from './operations/export.ts'
@@ -158,13 +158,17 @@ export function mountRemoteOperationsComposition(
         if (address.mode === 'unknown') await client.sessions.refreshProjections(address.parentSessionId)
         if (!operation.valid()) return
         const native = client.sessions.subagentAddress(address.childSessionId) ?? address
+        const live = native.mode === 'continuable'
+          ? (await remoteValue(client.remote.session.list({}, operation.signal))).items.some(summary => summary.sessionId === native.childSessionId && summary.agentAvailable)
+          : false
+        if (!operation.valid()) return
         const parent = { host: client.key, sessionId: native.parentSessionId }
         const child = { host: client.key, sessionId: native.childSessionId }
         const lease = options.btw.retainColdSubagentView(parent, child, 'remote-agents-cold')
         await presentSlot.adopt(child, lease, () => {
           const resolved = client.sessions.subagentAddress(child.sessionId) ?? native
           const summary = client.sessions.list.getSnapshot().byId[child.sessionId]
-          return { kind: 'subagent', access: resolved.mode === 'continuable' ? 'resumable' : 'readonly', address: resolved, ...summary?.displayTitle === undefined ? {} : { label: summary.displayTitle }, ...summary?.cwd === undefined ? {} : { cwd: summary.cwd } }
+          return { kind: 'subagent', access: resolved.mode === 'continuable' ? live ? 'interactive' : 'resumable' : 'readonly', address: resolved, ...summary?.displayTitle === undefined ? {} : { label: summary.displayTitle }, ...summary?.cwd === undefined ? {} : { cwd: summary.cwd } }
         }, { signal: operation.signal, isCurrent: () => operation.valid() })
       } catch (error) {
         if (operation.valid()) throw error

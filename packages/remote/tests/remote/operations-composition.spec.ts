@@ -41,7 +41,8 @@ function fixture(options: { readonly empty?: boolean, readonly noCallbacks?: boo
   let generation = 1
   const subagentAddress = vi.fn((_id: ReturnType<typeof SessionId>): SubagentAddress | undefined => address)
   const refreshProjections = vi.fn(async (_id: ReturnType<typeof SessionId>) => {})
-  const client = { key: ref.host, state: { getSnapshot: () => ({ generation }), subscribe: subscribe(connection) }, sessions: { subagentAddress, refreshProjections, list: { getSnapshot: () => ({ byId: options.empty ? {} : { child: { displayTitle: 'Worker', cwd: '/host/repo' } } }) } } } as unknown as HostClient
+  const list = vi.fn(async (_request: object, _signal?: AbortSignal): ReturnType<HostClient['remote']['session']['list']> => ({ ok: true, value: { items: [{ sessionId: address.childSessionId, agentAvailable: false, blank: false, running: false, updatedAt: 1 }] } }))
+  const client = { key: ref.host, state: { getSnapshot: () => ({ generation }), subscribe: subscribe(connection) }, remote: { session: { list } }, sessions: { subagentAddress, refreshProjections, list: { getSnapshot: () => ({ byId: options.empty ? {} : { child: { displayTitle: 'Worker', cwd: '/host/repo' } } }) } } } as unknown as HostClient
   let current: RemoteFeatureSelection | undefined = { client, ref, binding }
   let attached: readonly HostClient[] = [client]
   const base = { hosts: { current: () => current, list: () => attached, subscribe: subscribe(topology) }, commands: {} } as unknown as RemoteFeatureContext
@@ -62,7 +63,7 @@ function fixture(options: { readonly empty?: boolean, readonly noCallbacks?: boo
   const showPrimary = vi.fn()
   const handle = mountRemoteOperationsComposition(base, { localCwd: '/local', btw: { retainColdSubagentView: retain, retainBtwView: retainBtw, current: activeBtw, close: closeBtw } as never, ...options.noCallbacks ? {} : { present, closePresent, copy, modelCatalog, primary, showPrimary } })
   const contexts = mounts.mount.mock.calls.map(call => call[0] as RemoteOperationsContext)
-  return { base, ref, address, binding, client, subagentAddress, refreshProjections, retain, retainBtw, leases, activeBtw, closeBtw, present, closePresent, copy, modelCatalog, primary, showPrimary, handle, contexts,
+  return { base, ref, address, binding, client, list, subagentAddress, refreshProjections, retain, retainBtw, leases, activeBtw, closeBtw, present, closePresent, copy, modelCatalog, primary, showPrimary, handle, contexts,
     topology, connection,
     reconnect() { generation += 1; for (const listener of connection) listener() },
     select(next: typeof current) { current = next; for (const listener of topology) listener() },
@@ -71,6 +72,40 @@ function fixture(options: { readonly empty?: boolean, readonly noCallbacks?: boo
 }
 
 describe('retained child operation composition', () => {
+  it('reads live access from the passive native whole list before presenting a continuable child', async () => {
+    const f = fixture()
+    f.list.mockResolvedValueOnce({ ok: true, value: { items: [
+      { sessionId: SessionId('unrelated'), agentAvailable: true, blank: false, running: false, updatedAt: 1 },
+      { sessionId: f.address.childSessionId, agentAvailable: true, blank: false, running: false, updatedAt: 1 },
+    ] } })
+    await f.handle.openChild(f.client, f.address, new AbortController().signal)
+    expect(f.list).toHaveBeenCalledWith({}, expect.any(AbortSignal))
+    expect(f.present.mock.calls[0]![2]).toMatchObject({ access: 'interactive', address: f.address })
+    expect(f.refreshProjections).not.toHaveBeenCalled()
+    f.handle.dispose()
+  })
+
+  it('keeps native availability refusal visible and never substitutes a guessed Agent or retains after retirement', async () => {
+    const f = fixture()
+    f.list.mockResolvedValueOnce({ ok: false, error: { code: 'denied', message: 'native list denied' } })
+    await expect(f.handle.openChild(f.client, f.address, new AbortController().signal)).rejects.toThrow('native list denied')
+    expect(f.retain).not.toHaveBeenCalled()
+    for (const failure of [false, true]) {
+      const gate = deferred<Awaited<ReturnType<typeof f.list>>>()
+      f.list.mockReturnValueOnce(gate.promise)
+      const pending = f.handle.openChild(f.client, f.address, new AbortController().signal)
+      const signal = f.list.mock.calls.at(-1)![1]!
+      f.reconnect()
+      expect(signal.aborted).toBe(true)
+      if (failure) gate.reject(new Error('retired list failure'))
+      else gate.resolve({ ok: true, value: { items: [] } })
+      await expect(pending).resolves.toBeUndefined()
+    }
+    expect(f.retain).not.toHaveBeenCalled()
+    expect(f.present).not.toHaveBeenCalled()
+    f.handle.dispose()
+  })
+
   it('admits a replacement BTW before its old descriptor removal triggers residency updates', () => {
     const f = fixture()
     let retained: readonly typeof f.ref[] = []
@@ -196,6 +231,8 @@ describe('retained child operation composition', () => {
     f.retain.mockReturnValueOnce({ ready: ready.promise, release })
     const controller = new AbortController()
     const pending = f.handle.openChild(f.client, f.address, controller.signal)
+    await Promise.resolve()
+    await Promise.resolve()
     controller.abort()
     expect(release).toHaveBeenCalledOnce()
     ready.resolve(f.binding); await pending
@@ -236,6 +273,8 @@ describe('retained child operation composition', () => {
     const child = deferred<SessionBinding>()
     f.retain.mockReturnValueOnce({ ready: child.promise, release: vi.fn() })
     const old = f.handle.openChild(f.client, f.address, new AbortController().signal)
+    await Promise.resolve()
+    await Promise.resolve()
     f.reconnect()
     child.reject(new Error('retired native binding'))
     await expect(old).resolves.toBeUndefined()

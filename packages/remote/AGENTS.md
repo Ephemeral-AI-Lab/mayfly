@@ -194,6 +194,13 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   readonly native access metadata and BTW history floors accompany bindings.
   Only displayed and F7 counterpart views retain native bindings. Listed child
   and BTW descriptors reacquire through this same owner when displayed again.
+  Retained subagent bindings derive live access from passive native
+  `session.list` whole summaries: the official Client display catalog omits
+  `agentAvailable`. Catalog notifications coalesce reads for at most those two
+  bindings; exact Client, binding, connection generation and request ownership
+  fence every result. A refused read preserves known access. Natural Agent
+  disposal keeps the descriptor and makes a continuable child resumable;
+  explicit `/agents stop` closes that child as in the reference.
 - `/provider` uses the reference configured-provider roster, editor tabs,
   connection/model setup, and model picker. Native namespace revisions and
   credential observations fence every write. A successful settings write followed

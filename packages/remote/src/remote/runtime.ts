@@ -285,6 +285,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     }))
     completionDrawer = mountRemoteCompletionDrawer(ctx, screen, editor.editor, ctx.mayflyTheme.colors, ctx.mayflyComponents)
     sideViews = new RemoteSideViews(transcript, toolPresentations, screen, {
+      client: ref => app?.registry.get(ref.host),
       modelCatalog: host => conversation!.getModelCatalog(host),
       changed: () => { status?.refresh(); editor?.refresh() },
       evicted: ref => { operations?.closeChild(ref) },

@@ -4,7 +4,7 @@ import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflyScreenService } from '@ephemeral-ai/mayfly/core'
 import type { ToolPresentationSource } from '@ephemeral-ai/mayfly/transcript'
 import { TranscriptController } from '@ephemeral-ai/mayfly/transcript'
-import type { HostKey, SessionRef } from '../client/types.ts'
+import type { HostClient, HostKey, SessionRef } from '../client/types.ts'
 import type { RemotePresentedViewFacts } from './operations/support.ts'
 import { RemoteConversationModelSource, type RemotePresentationFacts, type RemotePresentationSelection } from '../transcript/remote-model.ts'
 
@@ -23,14 +23,17 @@ export interface RemoteSideSelection {
 
 interface SideRecord {
   readonly ref: SessionRef
-  readonly facts: RemotePresentedViewFacts
+  facts: RemotePresentedViewFacts
   readonly key: string
   binding: SessionBinding | undefined
   source: RemoteConversationModelSource | undefined
+  stopAccess: (() => void) | undefined
 }
 
 /** Local view-selection hooks; lease retirement remains with the operations owner. */
 export interface RemoteSideViewOptions {
+  /** Resolve the exact currently attached Client for this borrowed binding. */
+  readonly client?: (ref: SessionRef) => HostClient | undefined
   readonly modelCatalog?: (host: HostKey) => ModelCatalog | undefined
   readonly changed?: () => void
   readonly evicted?: (ref: SessionRef) => void
@@ -109,7 +112,7 @@ export class RemoteSideViews {
       ...this.options.modelCatalog === undefined ? {} : { modelCatalog: this.options.modelCatalog },
       onPresentation: () => { if (this.displayed === key) this.repaint() },
     })
-    const record = { ref: selection.ref, binding, facts, source, key }
+    const record: SideRecord = { ref: selection.ref, binding, facts, source, key, stopAccess: undefined }
     this.views.set(key, record)
     source.attach(binding, { ...selection, ...facts.historyFloorSeq === undefined ? {} : { historyFloorSeq: facts.historyFloorSeq } })
     this.transcript.setView(key, () => source.snapshot())
@@ -179,6 +182,7 @@ export class RemoteSideViews {
     const record = this.views.get(key)
     if (record === undefined) return
     this.views.delete(key)
+    record.stopAccess?.()
     record.source?.dispose()
     this.transcript.dropView(key)
     this.recent = this.recent.filter(candidate => candidate !== key)
@@ -194,17 +198,75 @@ export class RemoteSideViews {
     this.screen.requestRender()
   }
 
+  /** Native whole-list reads provide Agent availability omitted by the Client display catalog. */
+  private observeAccess(record: SideRecord): void {
+    const client = this.options.client?.(record.ref)
+    if (client === undefined || record.facts.kind !== 'subagent') return
+    const binding = record.binding
+    let stopped = false
+    let ticket = 0
+    let pending: { readonly generation: number, readonly controller: AbortController, again: boolean } | undefined
+    const retained = (): boolean => !stopped && !this.disposed && this.views.get(record.key) === record
+      && record.binding === binding && this.options.client!(record.ref) === client
+    const refresh = async (): Promise<void> => {
+      if (!retained()) { record.stopAccess?.(); return }
+      if (client.state.getSnapshot().status !== 'connected') return
+      if (pending !== undefined) { pending.again = true; ticket += 1; return }
+      const request = { generation: client.state.getSnapshot().generation, controller: new AbortController(), again: false }
+      pending = request
+      const valid = (): boolean => retained() && pending === request && !request.controller.signal.aborted
+        && client.state.getSnapshot().generation === request.generation && client.state.getSnapshot().status === 'connected'
+      do {
+        const current = ++ticket
+        request.again = false
+        try {
+          const result = await client.remote.session.list({}, request.controller.signal)
+          if (!valid() || current !== ticket || !result.ok) continue
+          const address = client.sessions.subagentAddress(record.ref.sessionId) ?? record.facts.address
+          if (address === undefined || address.mode === 'unknown') continue
+          const live = result.value.items.some(summary => summary.sessionId === record.ref.sessionId && summary.agentAvailable)
+          const access = address.mode === 'continuable' ? live ? 'interactive' : 'resumable' : 'readonly'
+          if (record.facts.access === access) continue
+          record.facts = { ...record.facts, access }
+          this.publish()
+        } catch { /* A refused availability read preserves the last native-derived access. */ }
+      } while (request.again && valid())
+      if (pending === request) pending = undefined
+    }
+    const stopCatalog = client.sessions.list.subscribe(() => { void refresh() })
+    const stopConnection = client.state.subscribe(() => {
+      if (pending !== undefined && (pending.generation !== client.state.getSnapshot().generation || client.state.getSnapshot().status !== 'connected')) {
+        pending.controller.abort()
+        pending = undefined
+        ticket += 1
+      }
+      void refresh()
+    })
+    record.stopAccess = () => {
+      stopped = true
+      pending?.controller.abort()
+      stopCatalog()
+      stopConnection()
+    }
+    void refresh()
+  }
+
   private publish(): void {
     const retained = new Set(this.recent.slice(0, 2))
     const refs: SessionRef[] = []
     for (const record of this.views.values()) {
       if (!retained.has(record.key)) {
+        record.stopAccess?.()
+        record.stopAccess = undefined
         record.source?.dispose()
         record.source = undefined
         record.binding = undefined
       } else {
         record.source?.setVisible(record.key === this.displayed)
-        if (record.binding !== undefined) refs.push(record.ref)
+        if (record.binding !== undefined) {
+          refs.push(record.ref)
+          if (record.stopAccess === undefined) this.observeAccess(record)
+        }
       }
     }
     this.options.primaryVisible?.(this.displayed === PRIMARY)

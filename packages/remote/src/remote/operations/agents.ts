@@ -143,7 +143,7 @@ class RemoteAgentsController extends RemoteFeatureController<RemoteOperationsCon
         presented = true
         const address = current.client.sessions.subagentAddress(entry.id)
         const cwd = current.client.sessions.list.getSnapshot().byId[entry.id]?.cwd
-        return { kind: 'subagent', access: entry.mode === 'continuable' ? 'resumable' : 'readonly', label: entry.label ?? entry.id,
+        return { kind: 'subagent', access: entry.mode === 'continuable' ? entry.live === true ? 'interactive' : 'resumable' : 'readonly', label: entry.label ?? entry.id,
           ...address === undefined ? {} : { address }, ...cwd === undefined ? {} : { cwd } }
       }, { signal: operation.signal, isCurrent: () => operation.valid() })
       return presented ? { kind: 'completed' } : { kind: 'cancelled' }

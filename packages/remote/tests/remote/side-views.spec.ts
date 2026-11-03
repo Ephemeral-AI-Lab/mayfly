@@ -3,9 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { SessionBinding, SessionEventLikeEntry } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import { TranscriptController, createTranscriptModel } from '@ephemeral-ai/mayfly/transcript'
 import type { MayflyScreenService } from '@ephemeral-ai/mayfly/core'
-import { HostKey, type SessionRef } from '../../src/client/types.ts'
+import { HostKey, type HostClient, type HostConnectionState, type SessionRef } from '../../src/client/types.ts'
 import { RemoteSideViews, type RemoteSideViewOptions } from '../../src/remote/side-views.ts'
 import { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
 
@@ -30,6 +31,25 @@ function binding(id: string, values: Record<string, unknown> = {}) {
 }
 const ref = (id: string, host = 'host-a'): SessionRef => ({ host: HostKey(host), sessionId: SessionId(id) })
 const facts = { kind: 'subagent', access: 'resumable', cwd: '/host/work', label: 'Child' } as const
+const flush = async () => { for (let index = 0; index < 4; index += 1) await new Promise<void>(resolve => { setImmediate(resolve) }) }
+
+function availability(host = 'host-a') {
+  const catalogListeners = new Set<() => void>()
+  const connectionListeners = new Set<() => void>()
+  const available = new Map<string, boolean>()
+  let generation = 1
+  let connected = true
+  const list = vi.fn(async (_request: object, _signal?: AbortSignal): ReturnType<HostClient['remote']['session']['list']> => ({ ok: true, value: { items: [...available].map(([id, agentAvailable]) => ({ sessionId: SessionId(id), agentAvailable, blank: false, running: false, updatedAt: 1 })) } }))
+  const subscribe = (listeners: Set<() => void>) => (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } }
+  const subagentAddress = vi.fn((id: ReturnType<typeof SessionId>): SubagentAddress | undefined => ({ parentSessionId: SessionId('lead'), childSessionId: id, mode: 'continuable' }))
+  const client = { key: HostKey(host), remote: { session: { list } }, sessions: { list: { subscribe: subscribe(catalogListeners) }, subagentAddress }, state: { getSnapshot: (): HostConnectionState => ({ status: connected ? 'connected' : 'connecting', generation }), subscribe: subscribe(connectionListeners) } } as unknown as HostClient
+  const emit = (listeners: Set<() => void>) => { for (const listener of [...listeners]) listener() }
+  return { client, list, available, subagentAddress, catalogListeners, connectionListeners,
+    catalog: () => { emit(catalogListeners) },
+    reconnect: () => { generation += 1; emit(connectionListeners) },
+    connected: (next: boolean) => { connected = next; emit(connectionListeners) },
+  }
+}
 
 function mount(options: RemoteSideViewOptions = {}) {
   const transcript = new TranscriptController({ t: key => key, queued: () => [] })
@@ -43,6 +63,166 @@ function mount(options: RemoteSideViewOptions = {}) {
 }
 
 describe('RemoteSideViews', () => {
+  it('updates retained child access from whole native Agent availability without replacing bindings or descriptors', async () => {
+    const native = availability()
+    const changed = vi.fn()
+    const { side, transcript } = mount({ client: () => native.client })
+    side.subscribe(changed)
+    const child = binding('a')
+    native.available.set('a', false)
+    side.present(child.face, { ref: ref('a'), cwd: '' }, facts)
+    await flush()
+    expect(side.selected()).toMatchObject({ binding: child.face, facts: { access: 'resumable' } })
+    changed.mockClear()
+    native.available.set('a', true); native.catalog(); await flush()
+    expect(side.selected()).toMatchObject({ binding: child.face, facts: { access: 'interactive' } })
+    expect(changed).toHaveBeenCalledOnce()
+    side.showPrimary()
+    native.available.set('a', false); native.catalog(); await flush()
+    expect(side.references()).toEqual([ref('a')])
+    expect(side.navigation()).toEqual({ counterpart: 'subagent', close: 'subagent' })
+    expect(side.back()).toBe(true)
+    expect(side.selected()).toMatchObject({ binding: child.face, facts: { access: 'resumable' } })
+    expect(native.list).toHaveBeenCalledWith({}, expect.any(AbortSignal))
+    side.dispose(); transcript.dispose()
+    expect(native.catalogListeners.size + native.connectionListeners.size).toBe(0)
+  })
+
+  it('coalesces overlapping native reads and never publishes a stale baseline before the latest catalog settles', async () => {
+    const native = availability()
+    const gate = Promise.withResolvers<Awaited<ReturnType<typeof native.list>>>()
+    native.list.mockReturnValueOnce(gate.promise)
+    native.available.set('a', false)
+    const changed = vi.fn()
+    const { side, transcript } = mount({ client: () => native.client })
+    side.subscribe(changed)
+    side.present(binding('a').face, { ref: ref('a'), cwd: '' }, facts)
+    changed.mockClear()
+    native.catalog(); native.catalog()
+    expect(native.list).toHaveBeenCalledOnce()
+    gate.resolve({ ok: true, value: { items: [{ sessionId: SessionId('a'), agentAvailable: true, blank: false, running: false, updatedAt: 1 }] } })
+    await flush()
+    expect(native.list).toHaveBeenCalledTimes(2)
+    expect(side.selected()?.facts.access).toBe('resumable')
+    expect(changed).not.toHaveBeenCalled()
+    side.dispose(); transcript.dispose()
+  })
+
+  it('preserves known access after refused reads and unknown addresses, and keeps one-shot views readonly even while live', async () => {
+    const native = availability()
+    native.available.set('a', true)
+    native.list.mockResolvedValueOnce({ ok: false, error: { code: 'denied', message: 'denied' } })
+    const { side, transcript } = mount({ client: () => native.client })
+    side.present(binding('a').face, { ref: ref('a'), cwd: '' }, { ...facts, access: 'interactive' })
+    await flush()
+    expect(side.selected()?.facts.access).toBe('interactive')
+    native.list.mockRejectedValueOnce(new Error('offline'))
+    native.catalog(); await flush()
+    expect(side.selected()?.facts.access).toBe('interactive')
+    native.subagentAddress.mockReturnValue(undefined)
+    native.catalog(); await flush()
+    expect(side.selected()?.facts.access).toBe('interactive')
+    native.subagentAddress.mockReturnValue({ parentSessionId: SessionId('lead'), childSessionId: SessionId('a'), mode: 'unknown' })
+    native.catalog(); await flush()
+    expect(side.selected()?.facts.access).toBe('interactive')
+    native.subagentAddress.mockReturnValue({ parentSessionId: SessionId('lead'), childSessionId: SessionId('a'), mode: 'one-shot' })
+    native.catalog(); await flush()
+    expect(side.selected()?.facts.access).toBe('readonly')
+    native.catalog(); await flush()
+    expect(side.selected()?.facts.access).toBe('readonly')
+    side.dispose(); transcript.dispose()
+  })
+
+  it('uses recorded native addresses when absent from the current Client catalog and ignores other Session identities', async () => {
+    const native = availability()
+    native.subagentAddress.mockReturnValue(undefined)
+    native.available.set('another', true)
+    const { side, transcript } = mount({ client: () => native.client })
+    side.present(binding('a').face, { ref: ref('a'), cwd: '' }, { ...facts, access: 'interactive', address: { parentSessionId: SessionId('lead'), childSessionId: SessionId('a'), mode: 'continuable' } })
+    await flush()
+    expect(side.selected()?.facts.access).toBe('resumable')
+    side.dispose(); transcript.dispose()
+  })
+
+  it('observes only displayed and F7 bindings and releases parked or ordinary BTW availability watches', async () => {
+    const native = availability()
+    const reopen = vi.fn()
+    const { side, transcript } = mount({ client: target => target.host === native.client.key ? native.client : undefined, reopen })
+    for (const id of ['a', 'b', 'c']) side.present(binding(id).face, { ref: ref(id), cwd: '' }, facts)
+    await flush()
+    expect(side.references()).toHaveLength(3)
+    expect(native.catalogListeners.size).toBe(2)
+    expect(native.connectionListeners.size).toBe(2)
+    const before = native.list.mock.calls.length
+    native.catalog(); await flush()
+    expect(native.list).toHaveBeenCalledTimes(before + 2)
+    side.close(ref('c'))
+    side.back()
+    expect(reopen).toHaveBeenCalledWith(ref('a'), facts)
+    side.present(binding('btw').face, { ref: ref('btw'), cwd: '' }, { kind: 'btw', access: 'interactive' })
+    expect(native.catalogListeners.size).toBe(1)
+    side.present(binding('foreign').face, { ref: ref('foreign', 'host-b'), cwd: '' }, facts)
+    expect(native.catalogListeners.size).toBe(0)
+    side.dispose(); transcript.dispose()
+  })
+
+  it.each([false, true])('retires old connection reads and admits a fresh native baseline after reconnect (reject old=%s)', async rejected => {
+    const native = availability()
+    native.available.set('a', true)
+    const old = Promise.withResolvers<Awaited<ReturnType<typeof native.list>>>()
+    native.list.mockReturnValueOnce(old.promise)
+    const { side, transcript } = mount({ client: () => native.client })
+    side.present(binding('a').face, { ref: ref('a'), cwd: '' }, facts)
+    const signal = native.list.mock.calls[0]![1]!
+    native.reconnect(); await flush()
+    expect(signal.aborted).toBe(true)
+    expect(side.selected()?.facts.access).toBe('interactive')
+    if (rejected) old.reject(new Error('retired connection'))
+    else old.resolve({ ok: true, value: { items: [] } })
+    await flush()
+    expect(side.selected()?.facts.access).toBe('interactive')
+    const blocked = Promise.withResolvers<Awaited<ReturnType<typeof native.list>>>()
+    native.list.mockReturnValueOnce(blocked.promise)
+    native.catalog()
+    const disconnectedSignal = native.list.mock.calls.at(-1)![1]!
+    native.connected(false)
+    expect(disconnectedSignal.aborted).toBe(true)
+    const before = native.list.mock.calls.length
+    native.catalog()
+    expect(native.list).toHaveBeenCalledTimes(before)
+    blocked.resolve({ ok: true, value: { items: [] } })
+    await flush()
+    native.available.set('a', false)
+    native.connected(true); await flush()
+    expect(side.selected()?.facts.access).toBe('resumable')
+    side.dispose(); transcript.dispose()
+  })
+
+  it.each(['close', 'dispose', 'replace', 'park', 'client'] as const)('fences late native availability and queued callbacks on %s', async retirement => {
+    const native = availability()
+    const gate = Promise.withResolvers<Awaited<ReturnType<typeof native.list>>>()
+    native.list.mockReturnValueOnce(gate.promise)
+    let client = native.client
+    const { side, transcript, screen } = mount({ client: () => client })
+    side.present(binding('a').face, { ref: ref('a'), cwd: '' }, facts)
+    const callbacks = [...native.catalogListeners, ...native.connectionListeners]
+    const signal = native.list.mock.calls[0]![1]!
+    if (retirement === 'close') side.close(ref('a'))
+    else if (retirement === 'dispose') side.dispose()
+    else if (retirement === 'replace') side.present(binding('a').face, { ref: ref('a'), cwd: '' }, facts)
+    else if (retirement === 'park') for (const id of ['b', 'c']) side.present(binding(id).face, { ref: ref(id), cwd: '' }, facts)
+    else client = { ...native.client }
+    screen.requestRender.mockClear()
+    for (const callback of callbacks) callback()
+    gate.resolve({ ok: true, value: { items: [{ sessionId: SessionId('a'), agentAvailable: true, blank: false, running: false, updatedAt: 1 }] } })
+    await flush()
+    expect(signal.aborted).toBe(true)
+    expect(side.selected()?.facts.access).not.toBe('interactive')
+    expect(screen.requestRender).not.toHaveBeenCalled()
+    side.dispose(); transcript.dispose()
+    expect(native.catalogListeners.size + native.connectionListeners.size).toBe(0)
+  })
+
   it('publishes the displayed source without replaying command feedback and keeps primary navigation stable', () => {
     const { side, transcript } = mount()
     const setView = vi.spyOn(transcript, 'setView')
