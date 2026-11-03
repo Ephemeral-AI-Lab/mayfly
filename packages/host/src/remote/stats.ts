@@ -53,10 +53,6 @@ export class StatsHistory {
       const matching = records.filter(row => request.allWorkspaces || row.header.cwd === current.cwd).sort((a, b) => b.header.createdAt - a.header.createdAt)
       const wanted = matching.slice(0, LIMIT)
       const digests = new Map<string, MayflyStatsDigest>()
-      for (const record of wanted) {
-        const cached = this.memo.get(String(record.header.id))?.digest
-        if (cached !== undefined) digests.set(String(record.header.id), cached)
-      }
       for (const id of this.memo.keys()) if (!records.some(row => String(row.header.id) === id)) this.memo.delete(id)
       let done = 0
       let failed = 0
@@ -72,14 +68,15 @@ export class StatsHistory {
           try {
             using observation = await source.observeSession(record.header.id, { signal: retire, projectionMode: 'none' })
             assertCurrent()
-            const revision = observation.revision === undefined ? '' : String(observation.revision)
-            let value = this.memo.get(id)
-            if (revision === '' || value?.revision !== revision) {
-              value = { revision, digest: statsDigest(id, observation.header.cwd, observation.events) }
-              this.memo.set(id, value)
+            const revision = observation.source === 'prepared' && observation.revision !== undefined ? String(observation.revision) : undefined
+            let value = revision === undefined ? undefined : this.memo.get(id)
+            if (value === undefined || value.revision !== revision) {
+              const digest = statsDigest(id, observation.header.cwd, observation.events)
+              value = { revision: revision ?? '', digest }
+              if (revision === undefined) this.memo.delete(id)
+              else this.memo.set(id, value)
             }
-            if (value!.digest === undefined) digests.delete(id)
-            else digests.set(id, value!.digest)
+            if (value.digest !== undefined) digests.set(id, value.digest)
           } catch {
             assertCurrent()
             failed += 1
