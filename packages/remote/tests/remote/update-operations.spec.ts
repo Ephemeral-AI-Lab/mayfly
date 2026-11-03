@@ -6,6 +6,10 @@ import type { RemoteOperationsContext } from '../../src/remote/operations/suppor
 import type { RemoteBrowserOptions } from '../../src/remote/panels/browser.ts'
 import { RemoteUpdateController, mountRemoteUpdate } from '../../src/remote/operations/update.ts'
 import type { LocalFrontendUpdater, LocalUpdateSnapshot } from '../../src/remote/operations/local-update.ts'
+import { registerTempDirCleanup } from '../../../mayfly/tests/core/temp-dir.ts'
+import { nativeUpdateHost } from './update-native-fixture.ts'
+
+registerTempDirCleanup()
 
 const opened = vi.hoisted(() => vi.fn())
 const registryDelay = vi.hoisted(() => vi.fn())
@@ -31,16 +35,18 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks() })
 
 function fixture() {
-  let installed = '1.0.0'
+  let installed: string | undefined = '1.0.0'
   let generation = 1
   const listeners = new Set<() => void>()
   const states = new Set<() => void>()
   const bundle = { name: '@ephemeral-ai/mayfly-host', installed: true, enabled: true, updatable: true, version: '1.0.0' }
-  const listBundles = vi.fn(async () => ok([{ ...bundle, version: installed }]))
+  const listBundles = vi.fn(async () => ok(installed === undefined ? [] : [{ ...bundle, version: installed }]))
   const listVersions = vi.fn(async (): Promise<unknown> => ok({ status: 'listed', registry: null, installed: '1.0.0', versions: [{ version: '1.1.0', tags: ['latest'], bundle: true }], omitted: 0 }))
   const updateBundle = vi.fn(async () => { installed = '1.1.0'; return ok({ from: '1.0.0', to: '1.1.0', step: 'install', result: { changed: true, application: 'restart-required' } }) })
-  const installBundle = vi.fn(async () => { installed = '1.0.0'; return ok({ changed: true, application: 'restart-required' }) })
-  const client = { key: 'one', remote: { pluginManager: { listBundles, listVersions, updateBundle, installBundle } }, state: { getSnapshot: () => ({ generation }), subscribe: (listener: () => void) => { states.add(listener); return () => { states.delete(listener) } } } } as unknown as HostClient
+  const installBundle = vi.fn(async (spec: string, options?: { enabled?: boolean }): Promise<unknown> => { installed = spec.slice(spec.lastIndexOf('@') + 1); bundle.enabled = options?.enabled !== false; return ok({ changed: true, application: 'restart-required' }) })
+  const removeBundle = vi.fn(async (): Promise<unknown> => { installed = undefined; bundle.enabled = false; return ok({ changed: true, application: 'applied' }) })
+  const setBundleEnabled = vi.fn(async (_name: string, enabled: boolean): Promise<unknown> => { bundle.enabled = enabled; return ok({ changed: true, application: 'applied' }) })
+  const client = { key: 'one', remote: { pluginManager: { listBundles, listVersions, updateBundle, installBundle, removeBundle, setBundleEnabled } }, state: { getSnapshot: () => ({ generation }), subscribe: (listener: () => void) => { states.add(listener); return () => { states.delete(listener) } } } } as unknown as HostClient
   const running = vi.fn(() => ({ running: false }))
   const selection = { client, ref: { host: 'one', sessionId: 's1' }, binding: { session: { getSnapshot: running } } }
   const hosts = {
@@ -61,7 +67,9 @@ function fixture() {
   const controller = new RemoteUpdateController(context, local as unknown as LocalFrontendUpdater)
   const change = () => { for (const listener of listeners) listener() }
   const reconnect = () => { generation += 1; for (const listener of states) listener() }
-  return { controller, context, local, hosts, notice, notifications, client, running, bundle, listBundles, listVersions, updateBundle, installBundle, register, unregister, settings, change, reconnect }
+  return { controller, context, local, hosts, notice, notifications, client, running, bundle, listBundles, listVersions, updateBundle, installBundle, removeBundle, setBundleEnabled, register, unregister, settings, change, reconnect,
+    setInstalled: (version: string | undefined) => { installed = version },
+  }
 }
 
 function text() { return JSON.stringify(panels.at(-1)?.options.view()) }
@@ -303,16 +311,18 @@ describe('split release upgrade', () => {
     try {
       test.updateBundle.mockResolvedValueOnce(ok({ from: '1.0.0', to: '1.1.0', step: 'install', result: { changed: false, application: 'failed', error: { code: 'operation-error' } } } as never))
       await accepted(test)
-      expect(test.installBundle).toHaveBeenCalledWith('@ephemeral-ai/mayfly-host@1.0.0', { enabled: true, saveExact: true })
+      expect(test.installBundle).not.toHaveBeenCalled()
+      expect(test.removeBundle).not.toHaveBeenCalled()
       expect(test.local.restore).toHaveBeenCalledWith(snapshot)
       expect(text()).toContain('Native Host update failed')
-      test.updateBundle.mockRejectedValueOnce(new Error('transport lost'))
+      test.updateBundle.mockImplementationOnce(async () => { test.setInstalled('1.1.0'); throw new Error('transport lost') })
       test.installBundle.mockRejectedValueOnce(new Error('Host restore failed'))
       test.local.restore.mockRejectedValueOnce(new Error('local restore failed'))
       await accepted(test)
       expect(text()).toContain('recovery is incomplete')
       expect(text()).toContain('npm install --global --ignore-scripts @ephemeral-ai/mayfly-cli@1.0.0')
       expect(text()).toContain('✗ rollback')
+      test.setInstalled('1.0.0')
       test.updateBundle.mockResolvedValueOnce(ok({ from: '1.0.0', to: '1.1.0', step: 'install', result: { changed: false, application: 'failed' } }))
       await accepted(test)
       expect(text()).toContain('Native Host update failed')
@@ -322,7 +332,8 @@ describe('split release upgrade', () => {
   it('restores after a mismatched Host result and honors unsuccessful recovery results', async () => {
     const test = fixture()
     try {
-      test.updateBundle.mockResolvedValueOnce(ok({ from: '1.0.0', to: '1.1.0', step: 'install', result: { changed: true, application: 'restart-required' } }))
+      test.updateBundle.mockImplementationOnce(async () => { test.setInstalled('1.1.0'); return ok({ from: '1.0.0', to: '1.1.0', step: 'install', result: { changed: true, application: 'restart-required' } }) })
+      test.listBundles.mockResolvedValueOnce(ok([{ ...test.bundle }])).mockResolvedValueOnce(ok([{ ...test.bundle }])).mockResolvedValueOnce(ok([{ ...test.bundle, version: 'unexpected-observation' }]))
       test.installBundle.mockResolvedValueOnce(ok({ changed: false, application: 'failed' }))
       await accepted(test)
       expect(text()).toContain('The Host installed version does not match the target')
@@ -397,13 +408,102 @@ describe('split release upgrade', () => {
 
 
 describe('interrupted update recovery and explicit releases', () => {
+  it('recovers an update interrupted after native removal even when no Host bundle is listed', async () => {
+    const test = fixture()
+    try {
+      test.setInstalled(undefined)
+      test.local.pending.mockResolvedValue({ snapshot, host: 'one', enabled: true })
+      await accepted(test, 'recover')
+      expect(test.installBundle).toHaveBeenCalledWith('@ephemeral-ai/mayfly-host@1.0.0', { enabled: true, saveExact: true })
+      expect(test.removeBundle).not.toHaveBeenCalled()
+      expect(text()).toContain('Recovered Host and TUI to v1.0.0')
+    } finally { test.controller.dispose() }
+  })
+
+  it.each([
+    ['changed', 'The Host release changed before removal'],
+    ['retained', 'Host removal did not release the installed bundle'],
+    ['remove-failed', 'Host removal failed: bundle-in-use'],
+    ['version-mismatch', 'The restored Host version or enablement does not match'],
+    ['enablement-mismatch', 'The restored Host version or enablement does not match'],
+    ['cancelled', 'Host installation failed: cancelled'],
+  ] as const)('preserves the failing native recovery stage and keeps its marker (%s)', async (failure, diagnostic) => {
+    const test = fixture()
+    try {
+      test.setInstalled('1.1.0')
+      test.local.pending.mockResolvedValue({ snapshot, host: 'one', enabled: true })
+      if (failure === 'version-mismatch') test.installBundle.mockResolvedValueOnce(ok({ changed: true, application: 'applied' }))
+      else if (failure === 'enablement-mismatch') test.installBundle.mockImplementationOnce(async () => { test.setInstalled('1.0.0'); test.bundle.enabled = false; return ok({ changed: true, application: 'applied' }) })
+      else if (failure === 'cancelled') test.installBundle.mockResolvedValueOnce(ok({ changed: false, application: 'cancelled' }))
+      else {
+        test.installBundle.mockImplementationOnce(async () => {
+          if (failure === 'changed') test.setInstalled('2.0.0')
+          return ok({ changed: false, application: 'failed', error: { code: 'already-installed' } })
+        })
+        if (failure === 'retained') test.removeBundle.mockResolvedValueOnce(ok({ changed: false, application: 'applied' }))
+        if (failure === 'remove-failed') test.removeBundle.mockResolvedValueOnce(ok({ changed: false, application: 'failed', error: { code: 'bundle-in-use' } }))
+      }
+      await accepted(test, 'recover')
+      expect(text()).toContain(`Host restoration failed: ${diagnostic}`)
+      expect(text()).toContain('recovery is incomplete')
+      expect(test.local.restore).toHaveBeenCalledWith(snapshot)
+      expect(test.local.finish).not.toHaveBeenCalled()
+    } finally { test.controller.dispose() }
+  })
+
+  it('observes the actual native updateBundle automatic restoration before compensating the frontend', async () => {
+    const native = await nativeUpdateHost(true)
+    const test = fixture()
+    try {
+      await native.refuse('1.1.0')
+      test.listBundles.mockImplementation(async () => ok(await native.manager.listBundles()) as never)
+      test.updateBundle.mockImplementation(async () => ok(await native.manager.updateBundle('@ephemeral-ai/mayfly-host', '1.1.0')) as never)
+      await accepted(test)
+      expect(text()).toContain('both installations restored')
+      expect((await native.manifest()).dependencies['@ephemeral-ai/mayfly-host']).toBe('1.0.0')
+      expect(test.local.restore).toHaveBeenCalledWith(snapshot)
+      expect(test.installBundle).not.toHaveBeenCalled()
+      expect(test.removeBundle).not.toHaveBeenCalled()
+    } finally { test.controller.dispose(); await native.dispose() }
+  })
+
+  it.each([false, true])('uses the actual native profile lifecycle for downgrades and idempotent recovery (HMR=%s)', async hmr => {
+    const native = await nativeUpdateHost(hmr)
+    const test = fixture()
+    try {
+      if (hmr) {
+        expect(await native.manager.installBundle('@ephemeral-ai/mayfly-host@0.9.0', { saveExact: true })).toMatchObject({ application: 'failed', error: { code: 'already-installed' } })
+        expect((await native.manifest()).dependencies['@ephemeral-ai/mayfly-host']).toBe('1.0.0')
+      }
+      test.listBundles.mockImplementation(async () => ok(await native.manager.listBundles()) as never)
+      test.installBundle.mockImplementation(async (spec, options) => ok(await native.manager.installBundle(spec, options)))
+      test.removeBundle.mockImplementation(async () => ok(await native.manager.removeBundle('@ephemeral-ai/mayfly-host')))
+      test.setBundleEnabled.mockImplementation(async (name, enabled) => ok(await native.manager.setBundleEnabled(name, enabled)))
+      const downgrade = { ...snapshot, target: '0.9.0' }
+      test.local.preflight.mockResolvedValueOnce(downgrade)
+      await accepted(test, '0.9.0')
+      expect(text()).toContain('Updated Host and TUI to v0.9.0')
+      expect((await native.manifest()).dependencies['@ephemeral-ai/mayfly-host']).toBe('0.9.0')
+      expect(test.removeBundle).toHaveBeenCalledTimes(hmr ? 1 : 0)
+      test.local.pending.mockResolvedValue({ snapshot: downgrade, host: 'one', enabled: true })
+      await accepted(test, 'recover')
+      expect(text()).toContain('Recovered Host and TUI to v1.0.0')
+      expect((await native.manifest()).dependencies['@ephemeral-ai/mayfly-host']).toBe('1.0.0')
+      const installs = test.installBundle.mock.calls.length
+      const removals = test.removeBundle.mock.calls.length
+      await accepted(test, 'recover')
+      expect(test.installBundle).toHaveBeenCalledTimes(installs)
+      expect(test.removeBundle).toHaveBeenCalledTimes(removals)
+    } finally { test.controller.dispose(); await native.dispose() }
+  })
+
   it('accepts explicit versions omitted by the capped newer-only list and uses native install for downgrades', async () => {
     const test = fixture()
     try {
       test.listVersions.mockResolvedValueOnce(ok({ status: 'listed', registry: 'https://registry.example', versions: [] }))
       await accepted(test, '1.1.0')
       expect(test.updateBundle).toHaveBeenCalledWith('@ephemeral-ai/mayfly-host', '1.1.0', { registry: 'https://registry.example' })
-      test.listBundles.mockResolvedValueOnce(ok([{ ...test.bundle }])).mockResolvedValueOnce(ok([{ ...test.bundle }])).mockResolvedValueOnce(ok([{ ...test.bundle, version: '0.9.0' }]))
+      test.setInstalled('1.0.0')
       test.local.preflight.mockResolvedValueOnce({ ...snapshot, target: '0.9.0' })
       await accepted(test, '0.9.0')
       expect(test.installBundle).toHaveBeenCalledWith('@ephemeral-ai/mayfly-host@0.9.0', { registry: null, enabled: true, saveExact: true })
@@ -424,7 +524,8 @@ describe('interrupted update recovery and explicit releases', () => {
       await vi.waitFor(() => { expect(text()).toContain('Restore to v1.0.0') })
       await answer(true)
       await pending
-      expect(test.installBundle).toHaveBeenCalledWith('@ephemeral-ai/mayfly-host@1.0.0', { enabled: false, saveExact: true })
+      expect(test.setBundleEnabled).toHaveBeenCalledWith('@ephemeral-ai/mayfly-host', false)
+      expect(test.installBundle).not.toHaveBeenCalled()
       expect(test.local.restore).toHaveBeenCalledWith(snapshot)
       expect(test.local.finish).toHaveBeenCalledWith(snapshot)
       expect(text()).toContain('Recovered Host and TUI to v1.0.0')

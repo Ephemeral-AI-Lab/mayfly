@@ -111,6 +111,12 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Linked/read-only or foreign-prefix installs refuse mutation. The official
   API lacks an isolated Host boot check: confirmation and completion must say
   Host startup remains unverified until restart, never claim a full boot pass.
+  Native Host restoration first verifies the exact installed release and
+  enablement, including an updateBundle automatic restoration. Startup-only
+  profiles permit direct replacement; an HMR already-installed refusal requires
+  an exact-version recheck, native removal, and native installation. Recovery
+  accepts a missing bundle after an interrupted removal, preserves failed-stage
+  diagnostics, and never replaces a release outside the captured transaction.
 - `/goal` belongs entirely to the official native command catalog, including
   its parser, bare-command output, ordered attachments and refusal messages.
   The Goal status consumes the whole native goal projection and merges only

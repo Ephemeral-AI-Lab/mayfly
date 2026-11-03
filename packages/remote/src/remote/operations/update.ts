@@ -56,6 +56,9 @@ const zh = {
   'update failed — recovery is incomplete; use the repair commands below': '升级失败——恢复未完成；请使用下面的修复命令',
   'update failed — rolled back to v{version}': '升级失败——已回滚到 v{version}',
   'update failed — the repair recipe is in the update panel': '升级失败——修复步骤位于升级面板中',
+  'Host restoration failed: {message}': 'Host 恢复失败：{message}',
+  'Frontend restoration failed: {message}': '前端恢复失败：{message}',
+  'Recovery marker cleanup failed: {message}': '恢复标记清理失败：{message}',
 } as const
 
 function succeeded(result: ChangeResult): boolean {
@@ -98,7 +101,7 @@ export class RemoteUpdateController extends RemoteFeatureController<RemoteOperat
       if (!operation.valid()) return
       const bundle = bundles.find(row => row.name === HOST && row.installed)
       const current = remoteClientVersion()
-      if (bundle !== undefined && (bundle.updatable || requested.trim() === 'recover')) {
+      if (bundle?.updatable === true || requested.trim() === 'recover') {
         const pending = await this.local.pending(operation.signal)
         if (!operation.valid()) return
         if (pending !== undefined) {
@@ -256,26 +259,60 @@ export class RemoteUpdateController extends RemoteFeatureController<RemoteOperat
     let running = true
     const panel = this.progressPanel(operation, state, snapshot.target, snapshot.current, () => running)
     let restored = true
+    const failures: string[] = []
     try {
       applyUpdateProgress(state, { step: 'rollback', state: 'start' })
       panel.refresh()
       try {
-        const result = await remoteValue(operation.client.remote.pluginManager.installBundle(`${HOST}@${snapshot.current}`, { enabled: pending.enabled, saveExact: true }))
-        if (!succeeded(result)) restored = false
-        else if ((await remoteValue(operation.client.remote.pluginManager.listBundles())).find(row => row.name === HOST)?.version !== snapshot.current) restored = false
-      } catch { restored = false }
-      try { await this.local.restore(snapshot) } catch { restored = false }
-      if (restored) { try { await this.local.finish(snapshot) } catch { restored = false } }
+        await this.installExactHost(operation, snapshot, snapshot.current, pending.enabled)
+      } catch (error) { restored = false; failures.push(this.t('Host restoration failed: {message}', { message: remoteErrorMessage(error) })) }
+      try { await this.local.restore(snapshot) } catch (error) { restored = false; failures.push(this.t('Frontend restoration failed: {message}', { message: remoteErrorMessage(error) })) }
+      if (restored) { try { await this.local.finish(snapshot) } catch (error) { restored = false; failures.push(this.t('Recovery marker cleanup failed: {message}', { message: remoteErrorMessage(error) })) } }
       applyUpdateProgress(state, { step: 'rollback', state: restored ? 'ok' : 'fail' })
       state.outcome = {
         kind: restored ? 'success' : 'rollback-incomplete', fromVersion: snapshot.target, toVersion: snapshot.current, logPath: snapshot.logPath,
-        message: restored ? this.t('Recovered Host and TUI to v{version}. Restart both to apply.', { version: snapshot.current }) : `${this.t('update failed — recovery is incomplete; use the repair commands below')}\n${this.repair(snapshot)}`,
+        message: restored ? this.t('Recovered Host and TUI to v{version}. Restart both to apply.', { version: snapshot.current }) : `${this.t('update failed — recovery is incomplete; use the repair commands below')}\n${failures.join('\n')}\n${this.repair(snapshot)}`,
       }
     } finally { running = false; if (operation.valid()) panel.refresh() }
   }
 
   private repair(snapshot: LocalUpdateSnapshot): string {
     return `npm install --global --ignore-scripts @ephemeral-ai/mayfly-cli@${snapshot.current}\nHost: install @ephemeral-ai/mayfly-host@${snapshot.current} with the original profile installer`
+  }
+
+  private async installExactHost(operation: RemoteFeatureOperation, snapshot: LocalUpdateSnapshot, version: string, enabled: boolean, registry?: string | null): Promise<void> {
+    const manager = operation.client.remote.pluginManager
+    const read = async (): Promise<BundleInfo | undefined> => (await remoteValue(manager.listBundles())).find(row => row.name === HOST && row.installed)
+    const before = await read()
+    if (before !== undefined && before.version !== snapshot.current && before.version !== snapshot.target) {
+      throw new Error('The Host release changed outside this update; refusing to replace it')
+    }
+    // Native updateBundle may already have restored the previous exact release.
+    if (before?.version === version && before.enabled === enabled) return
+    const requireChange = (result: ChangeResult, step: string): void => {
+      if (!succeeded(result)) throw new Error(`${step}: ${result.error?.diagnostic ?? result.error?.code ?? result.application}`)
+    }
+    if (before?.version === version) {
+      requireChange(await remoteValue(manager.setBundleEnabled(HOST, enabled)), 'Host enablement failed')
+    } else {
+      const options = { enabled, saveExact: true, ...registry === undefined ? {} : { registry } }
+      const install = (): Promise<ChangeResult> => remoteValue(manager.installBundle(`${HOST}@${version}`, options))
+      let result = await install()
+      // Startup-only profiles allow replacement. HMR profiles first require the
+      // installed bundle to stop and leave the profile through removeBundle.
+      if (result.application === 'failed' && result.error?.code === 'already-installed') {
+        const current = await read()
+        if (before === undefined || current === undefined || current.version !== before.version || current.enabled !== before.enabled) {
+          throw new Error('The Host release changed before removal; refusing to replace it')
+        }
+        requireChange(await remoteValue(manager.removeBundle(HOST)), 'Host removal failed')
+        if (await read() !== undefined) throw new Error('Host removal did not release the installed bundle')
+        result = await install()
+      }
+      requireChange(result, 'Host installation failed')
+    }
+    const after = await read()
+    if (after?.version !== version || after.enabled !== enabled) throw new Error('The restored Host version or enablement does not match the transaction')
   }
 
   private async perform(operation: RemoteFeatureOperation, bundle: BundleInfo, snapshot: LocalUpdateSnapshot, registry: string | null): Promise<void> {
@@ -305,14 +342,11 @@ export class RemoteUpdateController extends RemoteFeatureController<RemoteOperat
       // After mutation starts, finish or compensate independently of UI cancellation.
       await this.local.install(snapshot)
       hostTouched = true
-      let result: ChangeResult
       if (compareVersions(snapshot.target, snapshot.current) > 0) {
-        result = (await remoteValue(operation.client.remote.pluginManager.updateBundle(HOST, snapshot.target, { registry }))).result
+        const result = (await remoteValue(operation.client.remote.pluginManager.updateBundle(HOST, snapshot.target, { registry }))).result
+        if (!succeeded(result)) throw new Error(result.error?.diagnostic ?? 'Native Host update failed')
       } else {
-        result = await remoteValue(operation.client.remote.pluginManager.installBundle(`${HOST}@${snapshot.target}`, { registry, enabled: bundle.enabled, saveExact: true }))
-      }
-      if (!succeeded(result)) {
-        throw new Error(result.error?.diagnostic ?? 'Native Host update failed')
+        await this.installExactHost(operation, snapshot, snapshot.target, bundle.enabled, registry)
       }
       progress('install', 'ok')
       progress('verify', 'start')
@@ -326,23 +360,22 @@ export class RemoteUpdateController extends RemoteFeatureController<RemoteOperat
       }
     } catch (error) {
       let restored = true
+      const failures: string[] = []
       if (frontendTouched) {
         progress('rollback', 'start')
         if (hostTouched) {
           try {
-            const result = await remoteValue(operation.client.remote.pluginManager.installBundle(`${HOST}@${snapshot.current}`, { enabled: bundle.enabled, saveExact: true }))
-            if (!succeeded(result)) restored = false
-            else if ((await remoteValue(operation.client.remote.pluginManager.listBundles())).find(row => row.name === HOST)?.version !== snapshot.current) restored = false
-          } catch { restored = false }
+            await this.installExactHost(operation, snapshot, snapshot.current, bundle.enabled)
+          } catch (restoreError) { restored = false; failures.push(this.t('Host restoration failed: {message}', { message: remoteErrorMessage(restoreError) })) }
         }
-        try { await this.local.restore(snapshot) } catch { restored = false }
-        if (restored) { try { await this.local.finish(snapshot) } catch { restored = false } }
+        try { await this.local.restore(snapshot) } catch (restoreError) { restored = false; failures.push(this.t('Frontend restoration failed: {message}', { message: remoteErrorMessage(restoreError) })) }
+        if (restored) { try { await this.local.finish(snapshot) } catch (restoreError) { restored = false; failures.push(this.t('Recovery marker cleanup failed: {message}', { message: remoteErrorMessage(restoreError) })) } }
         progress('rollback', restored ? 'ok' : 'fail')
       }
       state.outcome = {
         kind: frontendTouched ? restored ? 'rolled-back' : 'rollback-incomplete' : 'failed-no-rollback',
         fromVersion: snapshot.current, toVersion: snapshot.target, logPath: snapshot.logPath,
-        message: `${remoteErrorMessage(error)}\n${!frontendTouched ? this.t('nothing was changed') : this.t(restored ? 'update failed — both installations restored' : 'update failed — recovery is incomplete; use the repair commands below')}${restored ? '' : `\n${this.repair(snapshot)}`}`,
+        message: `${remoteErrorMessage(error)}\n${!frontendTouched ? this.t('nothing was changed') : this.t(restored ? 'update failed — both installations restored' : 'update failed — recovery is incomplete; use the repair commands below')}${restored ? '' : `\n${failures.join('\n')}\n${this.repair(snapshot)}`}`,
       }
     } finally {
       inFlight = false
