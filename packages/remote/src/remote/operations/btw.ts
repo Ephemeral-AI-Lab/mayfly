@@ -45,7 +45,7 @@ class RemoteBtwCommand {
       const open = options.btw.close()
       this.operations.presentSlot.closeBtw()
       if (!open) throw new Error(this.t('no side question is open'))
-      base.notice.set(this.t('dismissed the side question'))
+      base.notice.set(this.t('dismissed the side question'), 'success')
       return
     }
     const current = base.hosts.current()
@@ -69,7 +69,7 @@ class RemoteBtwCommand {
         kind: 'btw', access: 'interactive', label: 'btw', cwd: session.selection.cwd,
         ...session.selection.historyFloorSeq === undefined ? {} : { historyFloorSeq: session.selection.historyFloorSeq },
       })
-      base.notice.set(this.t('asked the side question'))
+      base.notice.set(this.t('asked the side question'), 'success')
     } catch (error) {
       if (operation.valid()) throw error
     } finally { operation.dispose() }

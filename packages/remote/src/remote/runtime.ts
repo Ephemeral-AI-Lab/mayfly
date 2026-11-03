@@ -128,7 +128,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         screen.requestRender()
       },
       onCommandResult: (result) => {
-        if (result.text !== undefined) editor?.notice.set(result.text)
+        if (result.text !== undefined && !lifetime.signal.aborted) editor?.notice.set(result.text, result.kind)
       },
     })
     const bannerSlot = screen.mountContentSlot('transcript.prelude', new RemoteBannerComponent(
