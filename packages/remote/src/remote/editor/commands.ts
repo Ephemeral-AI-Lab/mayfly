@@ -58,7 +58,8 @@ export class EditorCommands {
     this.syncSelection()
     const local = this.options.local.list()
     const names = new Set(local.flatMap(command => [command.name, ...command.aliases ?? []]))
-    return [...local, ...this.host.filter(command => !names.has(command.name))]
+    return [...local, ...this.host.filter(command => !names.has(command.name)
+      && this.options.local.resolve?.(command.name)?.hidden !== true)]
       .toSorted((left, right) => left.name.localeCompare(right.name))
   }
 

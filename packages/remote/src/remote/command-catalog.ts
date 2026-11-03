@@ -39,7 +39,7 @@ export function remoteCommandCatalog(
   const seen = new Set<string>()
   const commands: RemoteCommandDescriptor[] = []
   for (const command of [...FRONTEND_COMMANDS, ...features]) {
-    if (command.hidden === true || (!hasWritableSession && command.scope !== 'sessionless')) continue
+    if (!hasWritableSession && command.scope !== 'sessionless') continue
     // The start-surface plan intent is local; a selected Session advertises
     // its actual native plan command, including its message input contract.
     if (hasWritableSession && command.name === 'plan') continue
@@ -48,11 +48,14 @@ export function remoteCommandCatalog(
   if (hasWritableSession) for (const command of native) append(command)
   return commands.toSorted((left, right) => left.name.localeCompare(right.name))
 
-  function append(command: RemoteCommandDescriptor): void {
+  function append(command: RemoteCommandDescriptor & Pick<RemoteFeatureCommandDefinition, 'hidden'>): void {
     if (seen.has(command.name)) return
     seen.add(command.name)
     const aliases = command.aliases?.filter(alias => !seen.has(alias)) ?? []
     for (const alias of aliases) seen.add(alias)
+    // A hidden local route still owns admission; a lower-priority native
+    // descriptor must not make it visible again under its name or aliases.
+    if (command.hidden === true) return
     commands.push({
       name: command.name,
       description: command.description,

@@ -11,6 +11,7 @@ describe('RemoteFeatureCommandRegistry', () => {
     aliases[0] = 'changed'
     const signal = new AbortController().signal
     expect(registry.list().map(entry => [entry.name, entry.aliases])).toEqual([['effort', ['thinking']]])
+    expect(registry.list(true).map(entry => entry.name)).toEqual(['effort', 'providers'])
     expect(registry.resolve('THINKING')).toBe(registry.resolve('effort'))
     expect(registry.resolve('providers')).toMatchObject({ name: 'providers', hidden: true })
     await expect(registry.execute('THINKING', 'high', signal)).resolves.toBe(true)
@@ -73,11 +74,14 @@ describe('RemoteFeatureCommandRegistry', () => {
     const merged = mergeRemoteFeatureCommandSources(first, second)
     const captured = merged.resolve('PRIVATE')
     expect(captured).toBe(first.resolve('internal'))
+    expect(merged.list()).toEqual([])
+    expect(merged.list(true)).toEqual([captured])
     const signal = new AbortController().signal
     await expect(merged.execute('private', 'original owner', signal)).resolves.toBe(true)
     expect(runFirst).toHaveBeenCalledWith('original owner', signal)
     expect(runSecond).not.toHaveBeenCalled()
     off()
+    expect(merged.list()).toEqual([second.resolve('internal')])
     expect(merged.resolve('private')).toBe(second.resolve('internal'))
     expect(merged.resolve('private')).not.toBe(captured)
     await expect(merged.execute('private', 'replacement owner', signal)).resolves.toBe(true)

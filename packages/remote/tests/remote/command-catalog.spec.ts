@@ -1,7 +1,7 @@
 /** Actual mounted discovery data is scoped, local-first and renderer-neutral. @module tests/remote/command-catalog */
 import { describe, expect, it, vi } from 'vitest'
 import { remoteCommandCatalog } from '../../src/remote/command-catalog.ts'
-import type { RemoteFeatureCommandDefinition } from '../../src/remote/features/commands.ts'
+import { RemoteFeatureCommandRegistry, mergeRemoteFeatureCommandSources, type RemoteFeatureCommandDefinition } from '../../src/remote/features/commands.ts'
 
 const feature = (name: string, extra: Partial<RemoteFeatureCommandDefinition> = {}): RemoteFeatureCommandDefinition => ({
   name, description: `feature ${name}`, execute: vi.fn(), ...extra,
@@ -50,6 +50,30 @@ describe('actual Remote command catalog', () => {
     expect(names).not.toContain('theme')
     expect(names).not.toContain('plugin')
     expect(names).not.toContain('model')
+  })
+
+  it('keeps a hidden merged local owner and its aliases out of the real native catalog until it unloads', () => {
+    const first = new RemoteFeatureCommandRegistry(), second = new RemoteFeatureCommandRegistry()
+    const off = first.register(feature('export', { hidden: true, aliases: ['archive', 'help'] }))
+    first.register(feature('save', { input: { hint: '[full] [<path>]' } }))
+    second.register(feature('export', { description: 'Later visible export owner' }))
+    const source = mergeRemoteFeatureCommandSources(first, second)
+    const native = [
+      { name: 'export', description: 'Download this Session log as a ZIP archive' },
+      { name: 'archive', description: 'Native alias collision' },
+      { name: 'compact', description: 'Compact history', input: { hint: '[instructions]' } },
+    ]
+    const commands = remoteCommandCatalog(true, source.list(true), native)
+    expect(commands.some(command => command.name === 'export' || command.name === 'archive')).toBe(false)
+    expect(commands.find(command => command.name === 'save')).toMatchObject({ input: { hint: '[full] [<path>]' } })
+    expect(commands.find(command => command.name === 'help')).toEqual({ name: 'help', description: 'Show available commands and key bindings' })
+    expect(commands.find(command => command.name === 'compact')).toEqual(native[2])
+    expect(source.list().some(command => command.name === 'export')).toBe(false)
+    off()
+    expect(remoteCommandCatalog(true, source.list(true), native).find(command => command.name === 'export'))
+      .toMatchObject({ description: 'Later visible export owner' })
+    second.clear()
+    expect(remoteCommandCatalog(true, source.list(true), native).find(command => command.name === 'export')).toEqual(native[0])
   })
 
   it('uses the start-surface plan contract only without a writable Session', () => {

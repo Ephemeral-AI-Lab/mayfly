@@ -7,6 +7,7 @@ import { RemoteApp, type RemoteAppView } from '../../src/remote/app.ts'
 import type { RemoteNotice } from '../../src/remote/notice.ts'
 import type { RemoteAppPanels } from '../../src/remote/interactions/plain-panels.ts'
 import type { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
+import { mergeRemoteFeatureCommandSources, RemoteFeatureCommandRegistry } from '../../src/remote/features/commands.ts'
 
 vi.mock('../../src/frontend/btw.ts', () => ({
   RemoteBtwService: class {
@@ -1136,6 +1137,40 @@ describe('RemoteApp', () => {
     features.mockReturnValue([])
     await app.execute('/help')
     expect(vi.mocked(panels.showHelp).mock.calls[1]![0].map(command => command.name)).not.toContain('theme')
+  })
+
+  it('hides the native ZIP export in actual help while retaining local save and live native commands', async () => {
+    const fixture = clientFixture(HostKey('http://host/'))
+    const { conversation, status, panels } = appFixture()
+    const features = new RemoteFeatureCommandRegistry(), later = new RemoteFeatureCommandRegistry()
+    const off = features.register({ name: 'export', description: 'Hidden local export', hidden: true, execute: vi.fn() })
+    features.register({ name: 'save', description: 'Save the current session as a Markdown file', input: { hint: '[full] [<path>]' }, execute: vi.fn() })
+    features.register({ name: 'plan', description: 'Next Session plan', scope: 'sessionless', execute: vi.fn() })
+    later.register({ name: 'export', description: 'Later export owner', execute: vi.fn() })
+    const source = mergeRemoteFeatureCommandSources(features, later)
+    const native = [
+      { name: 'export', description: 'Download this Session log as a ZIP archive' },
+      { name: 'plan', description: 'Plan the current Session', input: { hint: '[off|message]', attachments: true } },
+      { name: 'compact', description: 'Compact history', input: { hint: '[instructions]' } },
+    ]
+    fixture.client.remote.commands.list = vi.fn(async () => ({ ok: true, value: native })) as never
+    const app = new RemoteApp(conversation, status, panels, () => fixture.client, '/workspace', undefined, undefined, () => source.list(true))
+    await app.attach('http://host/')
+    await app.selectOrCreate()
+    await app.execute('/help')
+    const commands = vi.mocked(panels.showHelp).mock.calls[0]![0]
+    expect(fixture.client.remote.commands.list).toHaveBeenCalledExactlyOnceWith(fixture.sessionId)
+    expect(commands.some(command => command.name === 'export')).toBe(false)
+    expect(commands.find(command => command.name === 'save')).toMatchObject({ input: { hint: '[full] [<path>]' } })
+    expect(commands.find(command => command.name === 'plan')).toEqual(native[1])
+    expect(commands.find(command => command.name === 'compact')).toEqual(native[2])
+    off()
+    await app.execute('/help')
+    expect(vi.mocked(panels.showHelp).mock.calls[1]![0].find(command => command.name === 'export')).toMatchObject({ description: 'Later export owner' })
+    later.clear()
+    await app.execute('/help')
+    expect(vi.mocked(panels.showHelp).mock.calls[2]![0].find(command => command.name === 'export')).toEqual(native[0])
+    app.dispose()
   })
 
   it('fences help reads after reconnect and suppresses retired catalog failures', async () => {

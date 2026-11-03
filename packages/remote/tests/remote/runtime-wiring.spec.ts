@@ -499,7 +499,7 @@ describe('standalone Remote runtime wiring', () => {
     const displayed = wiring.appArgs[6] as () => unknown
     expect(displayed()).toMatchObject({ ref: child, presentation: wiring.defaultFacts })
     wiring.side = undefined; expect(displayed()).toBeUndefined()
-    ;(wiring.appArgs[7] as () => unknown)(); expect(wiring.commandList).toHaveBeenCalled()
+    ;(wiring.appArgs[7] as () => unknown)(); expect(wiring.commandList).toHaveBeenCalledWith(true)
     const offAppSide = (wiring.appArgs[8] as (listener: () => void) => () => void)(vi.fn()); offAppSide()
     ;(wiring.appArgs[9] as () => void)(); expect(wiring.showPrimary).toHaveBeenCalled()
     wiring.references = [child]

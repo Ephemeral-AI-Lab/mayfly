@@ -75,6 +75,8 @@ export interface EditorCommandDescriptor {
   readonly name: string
   readonly description: string
   readonly aliases?: readonly string[]
+  /** An internal local admission owner omitted from help and completion. */
+  readonly hidden?: boolean
   readonly input?: {
     readonly hint: string
     /** Native command admission for ordered image/file attachments. */

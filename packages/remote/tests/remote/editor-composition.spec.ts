@@ -120,6 +120,7 @@ describe('Remote editor composition', () => {
     const f = await fixture(false, true)
     expect(f.options.local.cwd()).toBe('/frontend/workspace')
     expect(f.options.local.list().some(command => command.name === 'local-fixture')).toBe(true)
+    expect(f.commands.list).toHaveBeenCalledWith(true)
     await expect(f.options.local.execute(invocation('model', { attachments: [{ type: 'file', receiptId: 'attached' }] }))).resolves.toEqual({ kind: 'error', text: '/model does not accept attachments; no command was sent' })
     expect(f.app.execute).not.toHaveBeenCalled(); expect(f.commands.execute).not.toHaveBeenCalled()
     await expect(f.options.local.execute(invocation('plan', { session: f.options.session(), attachments: [{ type: 'file', receiptId: 'native-file' }] }))).resolves.toEqual({ kind: 'unhandled' })
@@ -143,21 +144,45 @@ describe('Remote editor composition', () => {
   it('admits hidden feature routes through the real editor while preserving discovery, scope, attachments and unload', async () => {
     const source = new RemoteFeatureCommandRegistry()
     const execute = vi.fn(async () => {})
-    const off = source.register({ name: 'export', hidden: true, description: 'Internal export route', execute })
+    const off = source.register({ name: 'export', aliases: ['archive'], hidden: true, description: 'Internal export route', execute })
     source.register({ name: 'save', description: 'Save the current session as a Markdown file', input: { hint: '[full] [<path>]' }, execute })
+    source.register({ name: 'plan', scope: 'sessionless', description: 'Next Session plan', execute: vi.fn() })
     const f = await fixture(true, true, mergeRemoteFeatureCommandSources(new RemoteFeatureCommandRegistry(), source))
     const selected = { client: f.client, ref: f.ref, binding: f.binding, access: 'interactive' as const }
     f.select(selected)
+    const native = {
+      list: vi.fn(async () => ({ ok: true, value: [
+        { name: 'export', description: 'Download this Session log as a ZIP archive' },
+        { name: 'archive', description: 'Native alias collision' },
+        { name: 'save', description: 'Native save' },
+        { name: 'plan', description: 'Native plan', input: { hint: '[off|message]', attachments: true } },
+        { name: 'compact', description: 'Native compact', input: { hint: '[instructions]', attachments: true } },
+      ] })),
+      execute: vi.fn(async () => ({ ok: true, value: { result: { kind: 'success', text: 'Native admitted' } } })),
+    }
+    Object.assign(f.client.remote, { commands: native })
     const commands = new EditorCommands({ session: f.options.session, local: f.options.local, notice: f.notice, t: translate })
+    await commands.refresh()
+    expect(native.list).toHaveBeenCalledExactlyOnceWith(f.ref.sessionId)
     expect(commands.list().some(command => command.name === 'export' || command.aliases?.includes('export'))).toBe(false)
+    expect(commands.list().some(command => command.name === 'archive')).toBe(false)
     expect(commands.list().find(command => command.name === 'save')).toEqual({ name: 'save', description: 'Save the current session as a Markdown file', input: { hint: '[full] [<path>]' } })
     const signal = new AbortController().signal
     await expect(commands.execute('/export full 本地报告.md', [], signal)).resolves.toEqual({ handled: true, accepted: true, exit: false })
     expect(execute).toHaveBeenCalledExactlyOnceWith(' full 本地报告.md', signal)
     expect(f.app.execute).not.toHaveBeenCalled()
+    expect(native.execute).not.toHaveBeenCalled()
     await expect(commands.execute('/export file', [{ type: 'file', receiptId: 'unsupported' }], signal)).resolves.toMatchObject({ accepted: false })
     expect(f.notice.set).toHaveBeenLastCalledWith('/export does not accept attachments; no command was sent', 'error')
     expect(execute).toHaveBeenCalledOnce()
+    await expect(commands.execute('/archive alias.md', [], signal)).resolves.toMatchObject({ accepted: true })
+    expect(execute).toHaveBeenLastCalledWith(' alias.md', signal)
+    const attachments = [{ type: 'file' as const, receiptId: 'native-file' }]
+    for (const name of ['plan', 'compact']) {
+      expect(commands.list().find(command => command.name === name)?.input).toMatchObject({ attachments: true })
+      await expect(commands.execute(`/${name} preserve original`, attachments, signal)).resolves.toMatchObject({ accepted: true })
+      expect(native.execute).toHaveBeenLastCalledWith(f.ref.sessionId, `/${name} preserve original`, attachments, signal)
+    }
     f.select(undefined)
     expect(f.options.local.resolve?.('export')).toBeUndefined()
     await expect(commands.execute('/export', [], signal)).resolves.toMatchObject({ accepted: false })
@@ -166,7 +191,7 @@ describe('Remote editor composition', () => {
     expect(f.options.local.resolve?.('export')).toBeUndefined()
     await expect(commands.execute('/export', [], signal)).resolves.toMatchObject({ accepted: false })
     expect(f.notice.set).toHaveBeenLastCalledWith('This conversation is read-only', 'error')
-    expect(execute).toHaveBeenCalledOnce()
+    expect(execute).toHaveBeenCalledTimes(2)
     const sessionless = source.register({ name: 'internal-global', hidden: true, scope: 'sessionless', description: 'Internal global', execute })
     expect(f.options.local.resolve?.('internal-global')).toMatchObject({ name: 'internal-global', scope: 'sessionless' })
     sessionless()
@@ -174,6 +199,8 @@ describe('Remote editor composition', () => {
     off()
     expect(f.options.local.resolve?.('export')).toBeUndefined()
     expect(commands.list().some(command => command.name === 'save')).toBe(true)
+    await commands.refresh()
+    expect(commands.list().find(command => command.name === 'export')).toMatchObject({ description: 'Download this Session log as a ZIP archive' })
   })
 
   it('retires every listener once and ignores callbacks queued before detach or full unload', async () => {

@@ -87,7 +87,7 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
   }
   const local: EditorLocalAdapter = {
     cwd: () => options.localCwd,
-    list: () => remoteCommandCatalog(session() !== undefined && session()?.access !== 'readonly', options.featureCommands?.list() ?? []),
+    list: () => remoteCommandCatalog(session() !== undefined && session()?.access !== 'readonly', options.featureCommands?.list(true) ?? []),
     resolve(name) {
       const command = options.featureCommands?.resolve(name)
       const selected = session()

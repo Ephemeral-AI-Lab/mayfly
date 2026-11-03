@@ -20,7 +20,8 @@ export interface RemoteFeatureCommandDefinition {
 
 /** Registration and dispatch face exposed to the foundation's eventual local command router. */
 export interface RemoteFeatureCommandSource {
-  list(): readonly RemoteFeatureCommandDefinition[]
+  /** Include hidden owners when composing discovery with lower-priority catalogs. */
+  list(includeHidden?: boolean): readonly RemoteFeatureCommandDefinition[]
   resolve(name: string): RemoteFeatureCommandDefinition | undefined
   execute(name: string, rawInput: string, signal: AbortSignal): Promise<boolean>
 }
@@ -29,9 +30,9 @@ export interface RemoteFeatureCommandSource {
 export class RemoteFeatureCommandRegistry implements RemoteFeatureCommandSource {
   private readonly entries = new Map<string, RemoteFeatureCommandDefinition>()
 
-  /** List contributed commands in stable name order. */
-  list(): readonly RemoteFeatureCommandDefinition[] {
-    return [...this.entries.values()].filter(entry => entry.hidden !== true).toSorted((left, right) => left.name.localeCompare(right.name))
+  /** List contributed commands in stable name order, retaining hidden ownership on request. */
+  list(includeHidden = false): readonly RemoteFeatureCommandDefinition[] {
+    return [...this.entries.values()].filter(entry => includeHidden || entry.hidden !== true).toSorted((left, right) => left.name.localeCompare(right.name))
   }
 
   /** Resolve the exact current owner, including routes omitted from help and completion. */
@@ -81,13 +82,13 @@ export function mergeRemoteFeatureCommandSources(
   ...sources: readonly RemoteFeatureCommandSource[]
 ): RemoteFeatureCommandSource {
   return {
-    list: () => {
+    list: (includeHidden = false) => {
       const seen = new Set<string>()
       const merged: RemoteFeatureCommandDefinition[] = []
-      for (const definition of sources.flatMap(source => source.list())) {
+      for (const definition of sources.flatMap(source => source.list(true))) {
         if (seen.has(definition.name)) continue
         seen.add(definition.name)
-        merged.push(definition)
+        if (includeHidden || definition.hidden !== true) merged.push(definition)
       }
       return merged.toSorted((left, right) => left.name.localeCompare(right.name))
     },
