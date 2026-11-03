@@ -62,15 +62,23 @@ describe('Remote configuration native DTO adapters', () => {
 
   it('maps native resolved permission facts, retaining an unknown row as unknown', async () => {
     const f = fixture()
-    const current = (await f.host.resolve(f.client, 'safe'))!
+    const current = (await f.host.resolve(f.client, f.selection.ref))!
     expect(current.yolo).toBe(true)
     expect(current.spec('safe')).toEqual({ sandbox: 'read-only', approval: 'ask' })
     expect(current.detail('safe')).toBe('sandbox read-only · approval ask')
     expect(current.spec('unknown')).toBeUndefined()
     expect(current.detail('unknown')).toBeUndefined()
-    expect(f.native.permissionCatalogDetails).toHaveBeenLastCalledWith({ currentPreset: 'safe' }, expect.any(AbortSignal))
+    expect(f.native.permissionCatalogDetails).toHaveBeenLastCalledWith({ sessionId: f.selection.ref.sessionId }, expect.any(AbortSignal))
     await f.host.resolve(f.client)
     expect(f.native.permissionCatalogDetails).toHaveBeenLastCalledWith({}, expect.any(AbortSignal))
+    f.dispose()
+  })
+
+  it('refuses a permission SessionRef belonging to another Host before reading capabilities', async () => {
+    const f = fixture()
+    expect(await f.host.resolve(f.client, { ...f.selection.ref, host: 'other' as typeof f.client.key })).toBeUndefined()
+    expect(f.native.permissionCatalogDetails).not.toHaveBeenCalled()
+    expect(f.native.capabilities).not.toHaveBeenCalled()
     f.dispose()
   })
 
