@@ -4,6 +4,15 @@ Each file is a dated record of one investigation or acceptance round. A record s
 define current behavior; the code and the [architecture docs](../README.md) do. Read a record's closeout or status note
 first, when it has one.
 
+## Split remediation tasks (2026-11-04)
+
+Record: [2026-11-04-split-remediation-tasks.md](2026-11-04-split-remediation-tasks.md).
+Baseline `5a834609`. This is a Codex-ready remediation task list for the split
+Host + Remote runtime: two P0 authorization/Host-isolation defects, three P1
+data-integrity/readonly defects, and the lower-priority capability, rendering,
+and architecture findings. It also separates unverified hypotheses and known
+upstream limitations from confirmed work.
+
 ## Release readiness audit (2026-10-18)
 
 Record: [2026-10-18-release-readiness-audit.md](2026-10-18-release-readiness-audit.md). Baseline `4701538f`, target
