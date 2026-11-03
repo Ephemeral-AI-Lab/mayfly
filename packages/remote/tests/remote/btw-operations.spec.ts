@@ -55,7 +55,7 @@ describe('native BTW command composition', () => {
     const f = fixture()
     await f.execute(' explain this ')
     expect(f.ask).toHaveBeenCalledWith(f.ref, 'explain this', { signal: expect.any(AbortSignal) })
-    expect(f.present).toHaveBeenCalledWith(f.child, f.binding, { kind: 'btw', access: 'interactive', label: 'btw', cwd: '/host/repo', historyFloorSeq: 25 })
+    expect(f.present).toHaveBeenCalledWith(f.child, f.binding, { kind: 'btw', access: 'interactive', label: 'explain this', cwd: '/host/repo', historyFloorSeq: 25 })
     expect(f.notice.set).toHaveBeenLastCalledWith('asked the side question', 'info')
     await f.execute('')
     expect(f.closePresent).toHaveBeenCalledWith(f.child)
@@ -66,6 +66,18 @@ describe('native BTW command composition', () => {
     expect(f.topology.size + f.connections.size).toBe(0)
     await f.execute('after unload')
     expect(f.ask).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['  first\r\n\nsecond\rthird\n  ', 'first second third'],
+    ['x'.repeat(60), 'x'.repeat(60)],
+    ['x'.repeat(61), `${'x'.repeat(57)}...`],
+  ])('keeps the native side question label for %j', async (question, expected) => {
+    const f = fixture()
+    await f.execute(question)
+    expect(f.ask).toHaveBeenCalledWith(f.ref, question.trim(), { signal: expect.any(AbortSignal) })
+    expect(f.present.mock.calls[0]![2]).toMatchObject({ label: expected })
+    f.unmount()
   })
 
   it('treats the bare command as close and refuses missing questions without creating Host work', async () => {
@@ -91,7 +103,7 @@ describe('native BTW command composition', () => {
     f.ask.mockResolvedValueOnce({ ok: false, error: { code: 'fork-denied', message: 'fork denied' } } as never)
     await expect(f.execute('denied')).rejects.toMatchObject({ code: 'fork-denied' })
     f.select(undefined)
-    await expect(f.execute('sessionless')).rejects.toThrow('No current session')
+    await expect(f.execute('sessionless')).rejects.toThrow('no active session for a side question')
     f.unmount()
   })
 

@@ -10,11 +10,17 @@ import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
 import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
 
 const zh: Readonly<Record<string, string>> = {
-  'No current session': '当前没有会话',
+  'no active session for a side question': '当前没有用于侧问题的会话',
   'no side question is open': '当前没有打开的侧问题',
   'dismissed the side question': '已关闭侧问题',
   'asked the side question': '已提出侧问题',
   'The BTW question was cancelled': 'BTW 问题已取消',
+}
+
+/** The reference view label is one line, capped at sixty characters. */
+function labelFor(question: string): string {
+  const line = question.replace(/[\r\n]+/gu, ' ').trim()
+  return line.length <= 60 ? line : `${line.slice(0, 57)}...`
 }
 
 class RemoteBtwCommand {
@@ -49,7 +55,7 @@ class RemoteBtwCommand {
       return
     }
     const current = base.hosts.current()
-    if (current === undefined) throw new Error(this.t('No current session'))
+    if (current === undefined) throw new Error(this.t('no active session for a side question'))
     const operation = new RemoteFeatureOperation(base, current.client, current, AbortSignal.any([signal, this.lifetime.signal]))
     try {
       if (!operation.valid()) return
@@ -66,7 +72,7 @@ class RemoteBtwCommand {
         return
       }
       this.operations.presentSlot.present(session.child, binding, {
-        kind: 'btw', access: 'interactive', label: 'btw', cwd: session.selection.cwd,
+        kind: 'btw', access: 'interactive', label: labelFor(input), cwd: session.selection.cwd,
         ...session.selection.historyFloorSeq === undefined ? {} : { historyFloorSeq: session.selection.historyFloorSeq },
       })
       base.notice.set(this.t('asked the side question'), 'info')
