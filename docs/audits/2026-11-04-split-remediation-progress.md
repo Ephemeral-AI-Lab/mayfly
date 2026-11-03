@@ -22,7 +22,7 @@
 | T03 | `870fe7ef` | controller/operation 统一写入 admission，readonly 不退化为 Host 默认写；独立复核通过 |
 | T04 | `e0d8c751` | 按规范化目标排队、同目录私有 staging、同步原子提交、仅清理本次临时文件；独立复核通过 |
 | T05 | `b50a1eda` | **部分修复**：共享 profile 锁与原子写，跨进程协作 writer 回归通过；不合作外部编辑器限制如上 |
-| T06 | `fa0ba576`、`a4201183`、`b55afdb3`、`a4245c46` | Host/schema/checkpoint、共享 Transcript、export/copy、Remote 图片读取保留有序 file/image 元数据；真实 HTTP/WebSocket、ordered file/image/file、file-only、reconnect 与精确 Session receipt 通过；flow 图片永久 loader 相邻缺陷另补回归并修复，最终真实复验待更新 |
+| T06 | `fa0ba576`、`a4201183`、`b55afdb3`、`a4245c46` | Host/schema/checkpoint、共享 Transcript、export/copy、Remote 图片读取保留有序 file/image 元数据；真实 HTTP/WebSocket、ordered file/image/file、file-only、reconnect 与精确 Session receipt 通过；flow 图片永久 loader 相邻缺陷另补回归并修复，严格真实复验已通过，最终顺序含 diagram.png，禁止残留 loader |
 | T07 | `691ec5fc` | editor key 经官方 `client.remote.session.openWorkspacePath`，精确所有者与迟到反馈回归；独立复核通过 |
 | T08 | `25b2369e` | `/changes [seq]` 复用 Files/diff，指定 seq 不跟随 latest；39 项局部回归；真实 Host 两个 seq（42/77）、latest、无效 seq/索引、8 个宽/窄 PTY checkpoint 通过；冷重启无 comparison 的 RPC 不激活、不写 event |
 | T09 | `4676f461`、`aa26732c` | Host 被动读取实际权限 knobs，Remote 独立组合 plan/yolo；custom/withdrawn、sessionless/readonly、授权/卸载/乱序覆盖；相关运行时文件局部覆盖率 100% |
@@ -47,12 +47,17 @@
 
 T06 真实验证另外发现启动目录协调缺陷，已在 `a8ae7686` 修复：等待官方 Connection generation 后再加入原生 Session 目录刷新。修复前受控回归失败，修复后 app 115 项测试及逐文件 100% 覆盖通过；不修改 dsh。
 
-T06 真实图片读取进一步定位到既存 flow 渲染缓存缺陷：HTTP 45ms 返回原始 PNG 的全部 90 字节，但缓存的 list block 永久保留 loader。`a5c64b70` 固定原先失败的回归，`813bc0fe` 在图片 repaint 时同时清空 flow block 缓存；图片、列表和性能预算 138 项通过。`0baa98c8` 加强真实验证，必须看到最终图片 metadata fallback，禁止将 pending loader 算作完成。该 PTY 不支持内联图片协议，因此不宣称图像像素已在终端显示。
+T06 真实图片读取进一步定位到既存 flow 渲染缓存缺陷：HTTP 45ms 返回原始 PNG 的全部 90 字节，但缓存的 list block 永久保留 loader。`a5c64b70` 固定原先失败的回归，`813bc0fe` 在图片 repaint 时同时清空 flow block 缓存；图片、列表和性能预算 138 项通过。`0baa98c8` 加强真实验证，必须看到最终图片 metadata fallback，禁止将 pending loader 算作完成。该 PTY 不支持内联图片协议，因此不宣称图像像素已在终端显示。`fd6a8a46` 进一步修复唯一 image provider 卸载时 pending→missing 不通知的问题，覆盖迟到成功/失败与 surface 先卸载的分支。
 
 ## 组合验证与验收
 
 - `0c236c3e` 已完成全量 build，冻结给独立验证运行 T06/T08；其实际 runtime hash 由场景 report 记录。
 - 首次组合源码测试：9,137 项通过，两个旧架构断言需跟随 T23 的 DTO owner/包声明调整，已修正，针对测试与源码/测试类型检查通过；最终全量覆盖率仍需组合门禁确认。
+- `fd6a8a46` 稳定构建下的完整源码覆盖率：529 个套件通过、2 个既有套件跳过；9,153 项测试通过、2 项既有测试跳过。可执行代码的 statements/branches/functions/lines 全部达到逐文件 100%，未放宽阈值或排除源码。日志 `/tmp/mayfly-remediation-coverage-stable.log`。
+- 完整 repository workflow：180 项通过、1 项既有跳过、0 失败。`e20ddaad` 将按键审计的影响图断言跟随到实际纯定义文件。日志 `/tmp/mayfly-remediation-workflow-final.log`。
+- 严格 T06 真实证据：`/home/x/dev/mayfly-remediation-verify/.artifacts/remediation-t06/candidate-b3c23959-settled-image/report.json`，runtime before/after hash 均为 `233fa4fcd8ef864cb994615059f2fb56451b579d5a88121d4efeef8d1fa219c4`；两个 TUI 干净退出，4 个宽/窄 checkpoint 通过，图像明确完成到 metadata fallback。
+- Root Website 严格 build 通过（19.25 秒），14 个受影响预览路由 HTTP 200；仍需人工视觉/内容验收。
+- 首轮 `verify:changed` 的 coverage 曾被集成者并行安装构建短暂删除 `lib/` 干扰，部分入口解析失败；该轮 coverage 无效，不作为产品回归或验收通过证据。随后稳定构建重跑的完整 coverage 如上，最终 `verify:full` 仍将串行运行。
 - `verify:changed -- --plan` 已执行。`verify:changed`、`verify:full`、最终 pack/examples/agent-docs 与专用 profile/Website 验收结果将在完成后追加。
 - T08 独立真实证据：`/home/x/dev/mayfly-remediation-verify/.artifacts/remediation-t08/candidate-0c236c3e-final/report.json`。重启后原生 comparison 不再保留；普通 TUI resume 会激活 Session，已将被动 RPC 与 resume UI 证据分别记录，未把后者称为 passive。
 - Website 预览持续保留于 `http://192.168.8.188:4193/`，中文与英文 guide/config、plugins/seams、quickstart、reference/commands、features、theme 等页面待人工验收。
