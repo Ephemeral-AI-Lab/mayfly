@@ -22,18 +22,6 @@ function remoteSummary(mark: MayflyInlineSpan, label: string, progress: string):
   return ui.richText([mark, { text: ' ' }, { text: `${label} `, tone: 'muted' }, { text: progress }])
 }
 
-/** Build the shared fixed-length scrolling view with optional hidden actions. */
-export function remoteViewPanel(id: string, rows: readonly MayflyUiNode[], actions?: MayflyUiNode): MayflyUiNode {
-  const scroll = ui.scroll(ui.stack.column(rows), {
-    id,
-    height: REMOTE_VIEW_PANEL_ROWS,
-    expandable: false,
-    more: true,
-    scrollbar: rows.length > REMOTE_VIEW_PANEL_ROWS,
-  })
-  return actions === undefined ? scroll : ui.stack.column([scroll, actions])
-}
-
 /** Build the shared selectable list view with stable padding and hidden actions. */
 export function remoteViewList(id: string, items: readonly MayflyListItem[], actions: MayflyUiNode): MayflyUiNode {
   const padding = Array.from({ length: Math.max(0, REMOTE_VIEW_PANEL_ROWS - items.length) }, (_, index): MayflyListItem => ({
