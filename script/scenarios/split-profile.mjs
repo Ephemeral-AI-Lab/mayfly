@@ -44,12 +44,13 @@ export function prepareSplitProfile({ root, dshBin, artifacts }) {
 }
 
 /** Wait for the actual Host's authenticated readiness URL; keep credentials in memory only. */
-export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe = false, startup, fixture, workspace }) {
+export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe = false, startup, fixture, workspace, resumeRunDir }) {
   const profile = prepareSplitProfile({ root, dshBin, artifacts })
   if (workspace !== undefined) { mkdirSync(workspace, { recursive: true }); profile.cwd = workspace }
   seedSplitNativeWorkspace(profile.cwd, fixture)
-  // Reuse installed dependencies, never reuse previous scenarios' sessions or settings.
-  const runDir = join(artifacts, 'runs', randomUUID())
+  // Fresh scenarios share no state. An explicit restart keeps only that
+  // scenario's native persisted sessions/settings for cold-read verification.
+  const runDir = resumeRunDir ?? join(artifacts, 'runs', randomUUID())
   mkdirSync(runDir, { recursive: true })
   const patch = join(runDir, 'overlay.yml')
   const clockRelease = join(runDir, 'release-clock')
