@@ -34,6 +34,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Attaching stays Session-independent: the first submitted prompt creates a
   Session, while `/new` and `/clear` release only the primary view. Concurrent
   initial prompts share creation; clearing or detaching fences its late result.
+  Startup joins the Session catalog refresh after the official Connection
+  generation is established; a superseded bootstrap pull cannot admit resume.
+  Pending connection waits retire on caller cancellation, detach, a newer
+  attachment or app disposal and release their native subscriptions.
   Clearing the primary view also releases any pending primary acquisition so a
   stalled native open cannot retain the old view or block the next selection;
   independent view-role leases retain their own lifetimes.

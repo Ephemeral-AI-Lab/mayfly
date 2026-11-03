@@ -69,6 +69,7 @@ export class RemoteApp {
   private readonly topologyListeners = new Set<() => void>()
   private activeHost: HostKey | undefined
   private defaultModelGeneration = 0
+  private attachmentWait: AbortController | undefined
   private readonly hostVersions = new WeakMap<HostClient, {
     readonly generation: number
     readonly pending: Promise<string | undefined>
@@ -141,6 +142,7 @@ export class RemoteApp {
     if (this.disposed) return
     this.disposed = true
     this.defaultModelGeneration += 1
+    this.attachmentWait?.abort()
     this.clearSession()
     this.topologyListeners.clear()
   }
@@ -165,6 +167,9 @@ export class RemoteApp {
       ? HostKey(canonicalHostBaseUrl(url).href)
       : HostKey(hostId)
     const generation = ++this.defaultModelGeneration
+    this.attachmentWait?.abort()
+    const waiting = new AbortController()
+    this.attachmentWait = waiting
     const previous = this.registry.get(key)
     this.endpoints.set(key, startupUrl)
     const client = await this.registry.attach(key)
@@ -185,13 +190,20 @@ export class RemoteApp {
       this.activeHost = key
     }
     this.publishTopology()
+    const owner = (): boolean => !this.disposed && signal?.aborted !== true && generation === this.defaultModelGeneration
+      && this.registry.get(key) === client
+    const ready = await this.waitForConnection(client, signal === undefined ? waiting.signal : AbortSignal.any([waiting.signal, signal])).catch(error => {
+      if (owner()) throw error
+      return false
+    }).finally(() => { if (this.attachmentWait === waiting) this.attachmentWait = undefined })
     const connection = client.state.getSnapshot().generation
-    const current = (): boolean => !this.disposed && signal?.aborted !== true && generation === this.defaultModelGeneration
-      && this.registry.get(key) === client && client.state.getSnapshot().generation === connection
-    const result = await Promise.all([client.sessions.refresh(), this.actions.modelCatalog(key)]).catch(error => {
+    const current = (): boolean => owner() && client.state.getSnapshot().generation === connection
+    // Native connection establishment replaces any earlier Session-list pull.
+    // Join that generation's refresh only after its opening callbacks ran.
+    const result = ready && owner() ? await Promise.all([client.sessions.refresh(), this.actions.modelCatalog(key)]).catch(error => {
       if (current()) throw error
       return undefined
-    })
+    }) : undefined
     if (current() && result !== undefined) {
       const catalog = result[1]
       if (!catalog.ok) throw catalog.error
@@ -204,6 +216,24 @@ export class RemoteApp {
       this.publishTopology()
     }
     return client
+  }
+
+  private async waitForConnection(client: HostClient, signal: AbortSignal): Promise<boolean> {
+    let check!: () => void
+    const ready = new Promise<boolean>((resolve, reject) => {
+      check = (): void => {
+        if (signal.aborted) { resolve(false); return }
+        const state = client.state.getSnapshot()
+        if (state.status === 'authentication-required' || state.status === 'failed') { reject(state.error); return }
+        if (state.status === 'detached') { reject(new Error('Host Client is detached')); return }
+        if (client.connection.generation.getSnapshot() !== undefined) resolve(true)
+      }
+    })
+    const offGeneration = client.connection.generation.subscribe(check)
+    const offState = client.state.subscribe(check)
+    signal.addEventListener('abort', check, { once: true })
+    try { check(); return await ready }
+    finally { signal.removeEventListener('abort', check); offGeneration(); offState() }
   }
 
   async selectOrCreate(sessionId?: string, cwd = this.cwd, signal?: AbortSignal): Promise<SessionRef> {
@@ -464,6 +494,7 @@ export class RemoteApp {
         this.creating = undefined
         this.planPreparation = undefined
         this.defaultModelGeneration += 1
+        this.attachmentWait?.abort()
         this.conversation.setModelCatalog(host, undefined)
         this.conversation.setDefaultModel(undefined)
         this.conversation.attach(null)
