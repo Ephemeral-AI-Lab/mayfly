@@ -98,6 +98,7 @@ function verifyExternalConsumers(packageTarballs) {
   const uiTarball = packageTarballs.get('@ephemeral-ai/mayfly-ui')
   const remoteTarball = packageTarballs.get('@ephemeral-ai/mayfly-remote')
   const sharedTarball = packageTarballs.get('@ephemeral-ai/mayfly')
+  const hostTarball = packageTarballs.get('@ephemeral-ai/mayfly-host')
   if (uiTarball === undefined) {
     fail('external UI kit fixture requires the packed UI tarball')
     return
@@ -108,6 +109,10 @@ function verifyExternalConsumers(packageTarballs) {
   }
   if (sharedTarball === undefined) {
     fail('external editor fixture requires the packed shared tarball')
+    return
+  }
+  if (hostTarball === undefined) {
+    fail('external conversation and namespace fixture requires the packed Host types')
     return
   }
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'mayfly-ui-kit-pack-'))
@@ -155,10 +160,12 @@ export declare const metric: MayflyComponentFactory<MetricProps>
       dependencies: {
         '@ephemeral-ai/mayfly-ui': `file:${uiTarball}`,
         '@ephemeral-ai/mayfly': `file:${sharedTarball}`,
+        '@ephemeral-ai/mayfly-host': `file:${hostTarball}`,
         '@ephemeral-ai/mayfly-remote': `file:${remoteTarball}`,
         '@mayfly-pack-fixture/user-kit': `file:${kitTarball}`,
       },
       devDependencies: {
+        '@deepseek-ai/dsh-typert-protocol': readManifest('packages/remote').devDependencies['@deepseek-ai/dsh-typert-protocol'],
         '@types/node': readManifest('packages/remote').devDependencies['@types/node'],
         '@types/ws': readManifest('packages/remote').devDependencies['@types/ws'],
       },
@@ -166,7 +173,7 @@ export declare const metric: MayflyComponentFactory<MetricProps>
     // The candidate shares rc.2's version until release. Resolve every Mayfly
     // dependency from these tarballs instead of mixing in the published TUI.
     writeFileSync(join(consumerRoot, 'pnpm-workspace.yaml'), `packages: []\nallowBuilds: {}\noverrides:\n${[...packageTarballs].map(([name, tarball]) => `  ${JSON.stringify(name)}: ${JSON.stringify(`file:${tarball}`)}\n`).join('')}`)
-    execFileSync('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], { cwd: consumerRoot, stdio: 'ignore' })
+    execFileSync('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], { cwd: consumerRoot, stdio: 'inherit' })
     writeFileSync(join(consumerRoot, 'verify.mjs'), `
 import { metric } from '@mayfly-pack-fixture/user-kit'
 import { EditorExtensionRuntime } from '@ephemeral-ai/mayfly/editor-presentation'
