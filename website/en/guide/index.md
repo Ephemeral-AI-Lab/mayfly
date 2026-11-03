@@ -2,7 +2,7 @@
 
 ::: info Current development line and reference
 The split implementation targets Harness `0.2.2-alpha.2` and runs a native Host
-plus an independent Remote TUI. Published Mayfly `0.1.4-rc.2` is the immutable
+plus an independent Remote TUI. Published Mayfly `v0.1.4-rc.2` is the immutable
 UI, key, and workflow reference; it does not mean the split artifacts below
 have been published. Install development artifacts from this workspace or a
 verified matching tarball set.
