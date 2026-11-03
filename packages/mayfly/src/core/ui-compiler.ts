@@ -1598,7 +1598,7 @@ function containsDeferredNode(node: CompilableNode): boolean {
   return false
 }
 
-function deferredComponent(node: MayflyUiNode, state: FocusState, options: RuntimeCompilerOptions, path: string, mode: CompilerMode): MayflyComponent {
+function deferredComponent(node: MayflyUiNode, state: FocusState, options: RuntimeCompilerOptions, path: string, mode: CompilerMode): MayflyComponent & { [LAYOUT_NODE](): LayoutNode } {
   let component: Component | undefined
   const current = (): Component => {
     if (component !== undefined) return component
@@ -1610,6 +1610,17 @@ function deferredComponent(node: MayflyUiNode, state: FocusState, options: Runti
     return component
   }
   return {
+    // Materialize only when layout visits the visible branch, and keep its stacks and scrolls in the layout tree.
+    // A render-only wrapper would measure a flex scroll at its minimum height and clip away the remaining rows.
+    [LAYOUT_NODE](): LayoutNode {
+      const inner = current()
+      return getLayoutNode(inner) ?? {
+        type: 'vstack',
+        entries: [{ component: inner, basis: 'auto', grow: 1, shrink: 1 }],
+        gap: 0,
+        align: 'stretch',
+      }
+    },
     render: width => current().render(width),
     invalidate: () => component?.invalidate?.(),
   }

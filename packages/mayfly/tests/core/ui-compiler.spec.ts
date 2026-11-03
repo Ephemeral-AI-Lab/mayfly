@@ -4,7 +4,7 @@ import { renderLayoutFrame, type LayoutBox, type LayoutFrame } from '@earendil-w
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { describe, expect, it, vi } from 'vitest'
 import { ui as wireUi } from '@ephemeral-ai/mayfly-ui'
-import { ui } from '../../../ui/src/index.ts'
+import { browser, ui } from '../../../ui/src/index.ts'
 import {
   MayflyUiSurfaceRuntime,
   compileMayflyEditorShellNode,
@@ -420,6 +420,86 @@ describe('compileMayflyUiNode', () => {
     expect(paddedFrame.lines.join('\n')).toContain('line-7')
     expect(paddedFrame.lines.join('\n')).toContain('line-9')
     expect(paddedScroll).toMatchObject({ scrollTop: 7, viewportHeight: 3, primary: false })
+  })
+
+  it('passes responsive layout height through to a nested multiline preview', () => {
+    const preview = ui.stack.column([
+      ui.child(ui.scroll(ui.text('Native delivered file\nExact preview 你好 🪰'), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
+    ])
+    const result = compiledSurface(ui.stack.row([
+      ui.child(preview, { grow: 1, when: { maxWidth: 99 } }),
+    ]), fixture({ contextHints: { rows: false } }).options)
+    const frame = layout(result.component as Component, 80, 8)
+    expect(frame.lines.slice(0, 2).map(line => line.trimEnd())).toEqual(['Native delivered file', 'Exact preview 你好 🪰'])
+    expect(scrollViews(frame.root)).toHaveLength(1)
+    expect(scrollViews(frame.root)[0]).toMatchObject({ viewportHeight: 8, scrollTop: 0 })
+    result.surfaceRuntime.dispose()
+  })
+
+  it('lays out responsive leaf fallbacks without admitting hidden invalid content', () => {
+    const f = fixture({ contextHints: { rows: false } })
+    f.viewport.columns = 40
+    const hidden = Object.defineProperty({ kind: 'text' }, 'content', {
+      enumerable: true,
+      get: () => 'must not run',
+    })
+    const result = compiledSurface({ kind: 'stack', direction: 'column', children: [
+      { node: ui.text('first line\n第二行 🪰'), when: { maxWidth: 99 } },
+      { node: hidden, when: { minWidth: 100 } },
+    ] }, f.options)
+    expect(layout(result.component as Component, 40, 4).lines.map(line => line.trimEnd())).toEqual(['first line', '第二行 🪰', '', ''])
+    f.viewport.columns = 120
+    const rejected = layout(result.component as Component, 120, 4).lines.join('\n')
+    expect(rejected).toContain('must be data')
+    expect(rejected).not.toContain('first line')
+    f.viewport.columns = 40
+    expect(layout(result.component as Component, 40, 4).lines[1]).toBe('第二行 🪰')
+    result.surfaceRuntime.dispose()
+  })
+
+  it('keeps responsive direct scrolls in the native layout tree', () => {
+    const f = fixture({ contextHints: { rows: false } })
+    const result = compiledSurface(ui.stack.column([
+      ui.child(ui.scroll(ui.text('first\nsecond\nthird'), { follow: 'end' }), { grow: 1, when: { maxWidth: 99 } }),
+    ]), f.options)
+    const frame = layout(result.component as Component, 80, 2)
+    expect(frame.lines).toEqual(['second', 'third'])
+    expect(scrollViews(frame.root)).toHaveLength(1)
+    expect(scrollViews(frame.root)[0]).toMatchObject({ viewportHeight: 2, scrollTop: 1 })
+    result.surfaceRuntime.dispose()
+  })
+
+  it('keeps browser detail scrolling and list visibility across its breakpoint', () => {
+    const f = fixture({ contextHints: { rows: false } })
+    const detail = ui.stack.column([
+      ui.child(ui.text('Preview'), { basis: 1, shrink: 0 }),
+      ui.child(ui.scroll(ui.text(Array.from({ length: 20 }, (_, at) => `preview ${String(at + 1)}`).join('\n'))), { basis: 0, grow: 1, minSize: 1 }),
+    ])
+    const result = compiledSurface(browser({ list: ui.text('Files list'), detail, narrow: 'detail' }), f.options)
+    result.focusTarget!.focused = true
+    const paint = (width: number): LayoutFrame => {
+      f.viewport.columns = width
+      f.viewport.rows = 5
+      return layout(result.component as Component, width, 5)
+    }
+    let frame = paint(80)
+    expect(frame.lines.map(line => line.trimEnd())).toEqual(['Preview', 'preview 1', 'preview 2', 'preview 3', 'preview 4'])
+    expect(scrollViews(frame.root)[0]).toMatchObject({ viewportHeight: 4, scrollTop: 0 })
+    result.focusTarget!.handleInput?.('\x1b[6~')
+    frame = paint(80)
+    expect(frame.lines.map(line => line.trimEnd())).toEqual(['Preview', 'preview 5', 'preview 6', 'preview 7', 'preview 8'])
+    frame = paint(120)
+    expect(frame.lines[0]).toContain('Files list')
+    expect(frame.lines[0]).toContain('Preview')
+    expect(frame.lines[4]).toContain('preview 4')
+    expect(scrollViews(frame.root)).toHaveLength(1)
+    result.focusTarget!.handleInput?.('\x1b[6~')
+    expect(paint(120).lines[1]).toContain('preview 5')
+    frame = paint(40)
+    expect(frame.lines[0]).toBe('Preview')
+    expect(frame.lines.join('\n')).not.toContain('Files list')
+    expect(frame.lines[1]).toContain('preview 5')
+    result.surfaceRuntime.dispose()
   })
 
   it('restores active groups and scroll bindings after a persistent compile failure', () => {
