@@ -10,13 +10,13 @@ import {
   documentBlocks,
   documentBlockText,
   documentOffset,
-  documentResolver,
   moveDocument,
   reconcileDocument,
   remapDocumentOffset,
   type DocumentResolver,
   type UiDocumentState,
 } from '../../src/core/ui-interaction-document.ts'
+import { documentResolver } from '../../src/core/document-layout.ts'
 import { materializeDeferredUiNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'

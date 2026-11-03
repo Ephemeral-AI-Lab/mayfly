@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 import { Markdown, type MarkdownTheme } from '@earendil-works/pi-tui'
 import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
 import { virtualRows } from '../../src/core/ui-rows.ts'
+import { CodeHighlighter } from '../../src/core/highlight.ts'
 import { expandMarkdownRules, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit } from '../../src/core/markdown-rows.ts'
 import { renderMermaidRows, splitRichDocument } from '../../src/core/rich-document.ts'
 import { CONTENT_SEGMENT_UNITS } from '../../src/core/content-segments.ts'
@@ -58,7 +59,7 @@ function makeEnv(bound?: number, colors: MayflySemanticColors = DARK_COLORS): En
   }
 }
 
-const theme = markdownTheme(DARK_COLORS)
+const theme = markdownTheme(DARK_COLORS, new CodeHighlighter())
 const hr = DARK_COLORS.mdHr
 
 /** The adapter's render, mirrored: mermaid segments paint through the rich document, the rest is one fragment each. */

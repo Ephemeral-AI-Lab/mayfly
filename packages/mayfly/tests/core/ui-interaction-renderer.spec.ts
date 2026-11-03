@@ -7,7 +7,7 @@ import { ui } from '../../../ui/src/index.ts'
 import * as provider from '../../../ui/src/provider.ts'
 import type { MayflyUiEventHandlers, MayflyUiNode } from '../../../ui/src/contracts.ts'
 import * as frontend from '../../src/frontend/index.ts'
-import { compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
+import { compileMayflyUiNode, compileMayflyUiSurfaceNode, MayflyUiSurfaceRuntime, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
 import type { MayflyComponents, MayflyKeymap } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
@@ -48,6 +48,32 @@ async function setup(node: MayflyUiNode, onEvent?: MayflyUiEventHandlers, screen
 }
 
 describe('shared interaction compiler', () => {
+  it('aligns review answers by terminal width while preserving headless drafts and focus identity', async () => {
+    const { model, compile } = await setup(ui.review({
+      id: 'review', tabsId: 'steps', skippedLabel: 'Skipped', submitLabel: 'Submit', submitActionId: 'submit',
+      items: [
+        { id: 'one', label: '名称', source: { kind: 'list', pagePath: [], controlId: 'missing' } },
+        { id: 'two', label: 'X', source: { kind: 'list', pagePath: [], controlId: 'missing' } },
+      ],
+    }))
+    const semantic = model.node
+    const first = compile()
+    const painted = plainBlock(first.compiled.component.render(40))
+    expect(painted).toContain('名称  Skipped')
+    expect(painted).toContain('X     Skipped')
+    first.input('\x1b[B')
+    const focused = model.focus
+    first.runtime.dispose()
+    const rebuilt = compile()
+    expect(model.node).toBe(semantic)
+    expect(model.focus).toEqual(focused)
+    expect(plainBlock(rebuilt.compiled.component.render(40))).toContain('X     Skipped')
+    rebuilt.runtime.dispose()
+    const direct = compileMayflyUiNode(model.node, { interaction: model, components, colors, getViewport: () => ({ columns: 40, rows: 10 }), screenMode: 'alternate', emit: () => {} })
+    expect(direct.ok).toBe(true)
+    if (direct.ok) expect(plainBlock(direct.value.component.render(40))).toContain('X     Skipped')
+  })
+
   it.each(['main', 'alternate'] as const)('allocates a scrollable document beside decisions in %s mode', async mode => {
     const { compile, viewport } = await setup(ui.stack.column([
       ui.text('Review'),

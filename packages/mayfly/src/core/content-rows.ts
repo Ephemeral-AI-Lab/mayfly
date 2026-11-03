@@ -23,7 +23,7 @@ import { commonPrefix } from './text-match.ts'
 import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, extendMergedLines, indexContent, indexMergedLines, scanContentLines, type ContentIndex, type ContentLineScan } from './content-segments.ts'
 import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment, type DiffStyle } from './diff-align.ts'
 import { ownDataErrorMessage } from './error-message.ts'
-import { highlightable, highlightCodeLines, type CodePaints } from './highlight.ts'
+import { highlightable, type CodePaints } from './highlight.ts'
 import { markdownBlockRows, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit, type PreparedMarkdown } from './markdown-rows.ts'
 import {
   CODE_HIGHLIGHT_MAX_BYTES,
@@ -288,8 +288,8 @@ function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: '
   // Alignment is independent of paint; syntax-colored lines belong to the current palette and components.
   const lit = highlightable(layout.language) && Buffer.byteLength(layout.before, 'utf8') + Buffer.byteLength(layout.after, 'utf8') <= CODE_HIGHLIGHT_MAX_BYTES
     ? {
-        before: highlightCodeLines(layout.before, layout.language, codePaints(env)),
-        after: highlightCodeLines(layout.after, layout.language, codePaints(env)),
+        before: env.cache.highlights.highlight(layout.before, layout.language, codePaints(env)),
+        after: env.cache.highlights.highlight(layout.after, layout.language, codePaints(env)),
       }
     : undefined
   prepared = {
@@ -487,7 +487,7 @@ class MarkdownRowSource implements RowSource {
       this.tree.add(index, estimate)
     })
     this.declaredWidth = width
-    this.theme = markdownTheme(env.colors)
+    this.theme = markdownTheme(env.colors, env.cache.highlights)
     // A document that fits a paint budget is painted eagerly: its row map is exact at once, like the texts.
     this.lazy = prepared.normalized.length > CONTENT_SEGMENT_UNITS
     if (!this.lazy) this.prepare(0, Number.MAX_SAFE_INTEGER)
@@ -982,7 +982,7 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
           const [start, end] = index.lineText(line)
           head.push(sanitizePluginText(code.slice(start, end)))
         }
-        highlighted = highlightCodeLines(head.join('\n'), language, codePaints(env))
+        highlighted = env.cache.highlights.highlight(head.join('\n'), language, codePaints(env))
       }
     }
     return highlighted

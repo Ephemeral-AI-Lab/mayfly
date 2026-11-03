@@ -18,7 +18,8 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import { ACTION_CANCEL, ACTION_SUBMIT, isKeyId, matchesKeyId, printableKey } from './key-actions.ts'
+import { ACTION_CANCEL, ACTION_SUBMIT, isKeyId, printableKey } from './key-actions.ts'
+import { matchesKeyId } from './key-matching.ts'
 import type { MayflyKeyAction, MayflyKeyBinding, MayflyKeymap, MayflyKeyScope, MayflySeenAction } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {

@@ -28,6 +28,27 @@ import { identity, plainColors } from '../helpers.ts'
 
 const colors = plainColors()
 
+describe('renderer content ownership', () => {
+  it('releases a standalone cache while leaving shared caches to their renderer owner', () => {
+    const standalone = new MayflyUiSurfaceRuntime()
+    standalone.content.put('own', ['own rows'], 80)
+    const clearOwnColors = vi.spyOn(standalone.content.highlights, 'clear')
+    standalone.dispose()
+    expect(standalone.content.size).toBe(0)
+    expect(clearOwnColors).toHaveBeenCalledOnce()
+    const shared = new MayflyContentCache()
+    const clearSharedColors = vi.spyOn(shared.highlights, 'clear')
+    shared.put('shared', ['shared rows'], 80)
+    const surface = new MayflyUiSurfaceRuntime(undefined, undefined, undefined, undefined, undefined, shared)
+    surface.dispose()
+    expect(shared.get('shared')).toEqual(['shared rows'])
+    expect(clearSharedColors).not.toHaveBeenCalled()
+    shared.clear()
+    expect(shared.size).toBe(0)
+    expect(clearSharedColors).toHaveBeenCalledOnce()
+  })
+})
+
 function createTestEditor(): MayflyEditor {
   let value = ''
   let cursor = 0

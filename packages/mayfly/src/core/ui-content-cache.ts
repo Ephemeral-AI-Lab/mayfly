@@ -8,6 +8,8 @@
  * @module @ephemeral-ai/mayfly/core/ui-content-cache
  */
 
+import { CodeHighlighter } from './highlight.ts'
+
 /** Total painted rows the cache retains; sized from the 2c measurements (roadmap D33). */
 export const MAYFLY_CONTENT_CACHE_BYTES = 64 * 1024 * 1024
 
@@ -27,10 +29,18 @@ export function paintedRowsBytes(rows: readonly string[]): number {
 }
 
 export class MayflyContentCache {
+  readonly highlights = new CodeHighlighter()
   private readonly entries = new Map<string, ContentCacheEntry>()
   private total = 0
 
   constructor(private readonly byteBudget: number = MAYFLY_CONTENT_CACHE_BYTES) {}
+
+  /** Release derived rows and syntax colors together with the renderer. */
+  clear(): void {
+    this.entries.clear()
+    this.total = 0
+    this.highlights.clear()
+  }
 
   /** Entries currently retained; the byte cost they sum to stays within the budget once it is met. */
   get size(): number { return this.entries.size }

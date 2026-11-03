@@ -43,12 +43,6 @@ const KEYWORD_TOKENS = ['keyword', 'meta-keyword', 'doctag'] as const
 const STRING_TOKENS = ['string', 'regexp', 'meta-string', 'subst', 'template-variable'] as const
 const COMMENT_TOKENS = ['comment', 'meta', 'quote'] as const
 
-/* A streaming answer re-renders its whole Markdown on every delta, so every
-   completed fence would re-highlight per frame. Results are memoized by the
-   resolved paints (probed per call, so a `/theme` switch misses), the
-   language, and the code; the oldest entry leaves first. */
-const highlightCache = new Map<string, readonly string[]>()
-
 /** A paint that closes on every line, so splitting the highlighted block never leaves a run open across rows. */
 function perLine(paint: MayflyColorFn): MayflyColorFn {
   return text => text.split('\n').map(line => line === '' ? '' : paint(line)).join('\n')
@@ -74,37 +68,44 @@ function paletteTheme(paints: CodePaints): Theme {
 /**
  * Whether a language name has a highlighter.
  * @param lang - the language name, if any.
- * @returns true when {@link highlightCodeLines} would color it.
+ * @returns true when {@link CodeHighlighter.highlight} would color it.
  */
 export function highlightable(lang: string | undefined): lang is string {
   const normalized = lang?.trim().toLowerCase()
   return normalized !== undefined && normalized !== '' && supportsLanguage(normalized)
 }
 
-/**
- * Split fenced code into syntax-highlighted lines.
- * @param code - the raw code block body.
- * @param lang - the info string after the fence, if any.
- * @param paints - the palette paints; keywords and strings take the kit's tones.
- * @returns one string per input line, never more or fewer.
- */
-export function highlightCodeLines(code: string, lang: string | undefined, paints: CodePaints): string[] {
-  const normalized = lang?.trim().toLowerCase()
-  if (!highlightable(normalized)) return code.split('\n')
-  const key = `${[paints.base, paints.keyword, paints.string, paints.comment, paints.number, paints.type, paints.added, paints.removed].map(paint => paint?.(' ') ?? '').join('')}\u0000${normalized}\u0000${code}`
-  const cached = highlightCache.get(key)
-  if (cached !== undefined) {
-    highlightCache.delete(key)
-    highlightCache.set(key, cached)
-    return [...cached]
+/** One renderer owner's bounded syntax-color cache, released when its owner unloads. */
+export class CodeHighlighter {
+  private readonly entries = new Map<string, readonly string[]>()
+
+  clear(): void { this.entries.clear() }
+
+  /**
+   * Split fenced code into syntax-highlighted lines.
+   * @param code - the raw code block body.
+   * @param lang - the info string after the fence, if any.
+   * @param paints - the palette paints; keywords and strings take the kit's tones.
+   * @returns one string per input line, never more or fewer.
+   */
+  highlight(code: string, lang: string | undefined, paints: CodePaints): string[] {
+    const normalized = lang?.trim().toLowerCase()
+    if (!highlightable(normalized)) return code.split('\n')
+    const key = `${[paints.base, paints.keyword, paints.string, paints.comment, paints.number, paints.type, paints.added, paints.removed].map(paint => paint?.(' ') ?? '').join('')}\u0000${normalized}\u0000${code}`
+    const cached = this.entries.get(key)
+    if (cached !== undefined) {
+      this.entries.delete(key)
+      this.entries.set(key, cached)
+      return [...cached]
+    }
+    let lines: string[]
+    try {
+      lines = highlight(code, { language: normalized, ignoreIllegals: true, theme: paletteTheme(paints) }).split('\n')
+    } catch {
+      lines = code.split('\n')
+    }
+    this.entries.set(key, lines)
+    if (this.entries.size > HIGHLIGHT_CACHE_ENTRIES) this.entries.delete(this.entries.keys().next().value!)
+    return [...lines]
   }
-  let lines: string[]
-  try {
-    lines = highlight(code, { language: normalized, ignoreIllegals: true, theme: paletteTheme(paints) }).split('\n')
-  } catch {
-    lines = code.split('\n')
-  }
-  highlightCache.set(key, lines)
-  if (highlightCache.size > HIGHLIGHT_CACHE_ENTRIES) highlightCache.delete(highlightCache.keys().next().value!)
-  return [...lines]
 }

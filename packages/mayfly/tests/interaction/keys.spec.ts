@@ -10,7 +10,8 @@ import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import * as keys from '../../src/interaction/keys.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS, type MayflySettings } from '../../src/interaction/settings.ts'
-import { ACTION_SUBMIT, displayKey, keyActionKeys, matchesKeyAction } from '../../src/core/key-actions.ts'
+import { ACTION_SUBMIT, displayKey, keyActionKeys } from '../../src/core/key-actions.ts'
+import { matchesKeyAction } from '../../src/core/key-matching.ts'
 
 describe('interaction keys', () => {
   it('normalizes paging, boundary, deletion, and Agent-view keys', () => {

@@ -32,6 +32,7 @@ import {
   type TUI,
 } from '@earendil-works/pi-tui'
 import { expandMarkdownRules, markdownTheme } from './markdown-rows.ts'
+import { CodeHighlighter } from './highlight.ts'
 import { readPresentation, type MayflyPresentation } from './presentation.ts'
 import { renderMermaidRows, splitRichDocument } from './rich-document.ts'
 import { extractMentionToken, mentionPath } from '../internal/mention.ts'
@@ -889,6 +890,7 @@ export interface MayflyComponentsDeps {
  */
 export class MayflyComponentsService extends Service implements MayflyComponents {
   private readonly widths = new Map<string, number>()
+  private readonly highlighter = new CodeHighlighter()
   private readonly theme: MayflyTheme
   private readonly tui: TUI
   readonly presentation: MayflyPresentation
@@ -903,6 +905,7 @@ export class MayflyComponentsService extends Service implements MayflyComponents
     this.theme = deps.theme
     this.tui = deps.tui
     this.presentation = readPresentation(ctx)
+    ctx.effect(() => () => { this.highlighter.clear() })
   }
 
   strong(text: string): string { return `\x1b[1m${text}\x1b[22m` }
@@ -957,7 +960,7 @@ export class MayflyComponentsService extends Service implements MayflyComponents
       options?.text ?? '',
       options?.paddingX ?? 0,
       options?.paddingY ?? 0,
-      markdownTheme(this.theme.colors),
+      markdownTheme(this.theme.colors, this.highlighter),
       this.theme.colors.mdHr,
     )
   }
