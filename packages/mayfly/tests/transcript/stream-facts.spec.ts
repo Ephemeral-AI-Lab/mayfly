@@ -15,7 +15,7 @@ import { NO_DISCLOSURE } from '../../src/transcript/disclosure.ts'
 
 let seq = 0
 const base = (turn: number) => ({ seq: (seq += 1), updatedSeq: seq, turn })
-const user = (turn: number, text: string): TranscriptEntryModel => ({ ...base(turn), id: `user:${String(seq + 1)}`, kind: 'transcript-user', text, attachments: [] })
+const user = (turn: number, text: string): Extract<TranscriptEntryModel, { kind: 'transcript-user' }> => ({ ...base(turn), id: `user:${String(seq + 1)}`, kind: 'transcript-user', text, attachments: [] })
 const assistant = (turn: number, text: string, streaming = false): TranscriptEntryModel => ({ ...base(turn), id: `assistant:${String(seq + 1)}`, kind: 'transcript-assistant', step: 1, text, streaming })
 const thinking = (turn: number, text: string, streaming = false): TranscriptEntryModel => ({ ...base(turn), id: `thinking:${String(seq + 1)}`, kind: 'transcript-thinking', step: 1, text, streaming, durationMs: 4_000 })
 const tool = (turn: number, name: string, detail: string, done = true): TranscriptEntryModel => ({
@@ -31,6 +31,24 @@ const model = (entries: TranscriptEntryModel[], turns: TranscriptModel['turns'],
 const rowsOf = (turn: StreamTurn | undefined): StreamRow[] => [...(turn?.rows ?? [])]
 
 describe('StreamFacts', () => {
+  it('keeps duplicate semantic occurrences distinct for ownership, disclosure, copy and repaint', () => {
+    const first = { ...user(1, 'first'), id: 'repeat' }
+    const second = { ...user(1, 'second'), id: 'repeat' }
+    const stored = model([first, second], [{ turn: 1, startedAt: NOON }], true)
+    const stream = new StreamFacts()
+    const options = inputs({ disclosure: { ...NO_DISCLOSURE, rows: new Set(['repeat~2']) } })
+    const facts = stream.build(stored, options)
+    expect(rowsOf(facts.turns[0]).map(row => row.id)).toEqual(['repeat', 'repeat~2'])
+    expect(rowsOf(facts.turns[0])[1]).toMatchObject({ open: true })
+    expect(stream.locate('repeat~2.body')).toMatchObject({ parts: ['repeat~2'] })
+    expect(stream.rowOf('repeat~2')).toBe('repeat~2')
+    expect(stream.textOf('repeat', 'text')).toBe('first')
+    expect(stream.textOf('repeat~2', 'text')).toBe('second')
+    expect(stream.build(stored, options)).toBe(facts)
+    const reserved = stream.build(model([first, second, { ...first, id: 'repeat~2' }], [], true), inputs())
+    expect(rowsOf(reserved.turns[0]).map(row => row.id)).toEqual(['repeat', 'repeat~2~', 'repeat~2'])
+  })
+
   it('formats a turn start as the local HH:MM', () => {
     const local = new Date(NOON)
     expect(clockTime(NOON)).toBe(`${String(local.getHours()).padStart(2, '0')}:${String(local.getMinutes()).padStart(2, '0')}`)

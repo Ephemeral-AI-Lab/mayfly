@@ -210,6 +210,10 @@ export class StreamFacts {
    * @returns the turns in order and the messages queued behind them.
    */
   build(model: TranscriptModel | null, inputs: StreamInputs): TranscriptViewFacts {
+    if (model !== null) {
+      const entries = this.uniqueEntriesOf(model.entries)
+      if (entries !== model.entries) model = { ...model, entries }
+    }
     const rows = new Map<string, StreamRow>()
     const turns = new Map<string, StreamTurn>()
     const queued = new Map<string, StreamQueued>()
@@ -228,6 +232,32 @@ export class StreamFacts {
     this.turns = turns
     this.queued = queued
     return facts
+  }
+
+  private readonly uniqueEntries = new WeakMap<object, TranscriptModel['entries']>()
+
+  /** Give each durable occurrence its own identity before grouping, ownership, disclosure and copy are derived. */
+  private uniqueEntriesOf(source: TranscriptModel['entries']): TranscriptModel['entries'] {
+    const cached = this.uniqueEntries.get(source)
+    if (cached !== undefined) return cached
+    const reserved = new Set(source.filter(isSemantic).map(entry => entry.id))
+    const seen = new Set<string>()
+    let changed = false
+    const result = source.map(entry => {
+      if (!isSemantic(entry)) return entry
+      let id = entry.id
+      for (let copy = 2; seen.has(id); copy += 1) {
+        id = `${entry.id}~${String(copy)}`
+        while (reserved.has(id)) id += '~'
+      }
+      seen.add(id)
+      if (id === entry.id) return entry
+      changed = true
+      return { ...entry, id }
+    })
+    const entries = changed ? result : source
+    this.uniqueEntries.set(source, entries)
+    return entries
   }
 
   /**

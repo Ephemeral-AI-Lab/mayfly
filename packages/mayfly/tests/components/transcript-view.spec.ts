@@ -112,9 +112,21 @@ describe('TranscriptView', () => {
     const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'one'), prompt('u1', 'one again')])], [{ id: 'q', text: 'x', suffix: '⏎ queued', lane: 'turn', open: false }, { id: 'q', text: 'y', suffix: '⏎ queued', lane: 'turn', open: false }]))
     const ids = items.map(item => item.id)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(ids).toEqual(['u1', 'u1.gap', 'u1~2', 'queued.q.gap', 'queued.q', 'queued.q.gap~2', 'queued.q~2'])
+    expect(ids).toEqual(['u1', 'u1~2.gap', 'u1~2', 'queued.q.gap', 'queued.q', 'queued.q.gap~2', 'queued.q~2'])
+    expect(items.find(item => item.id === 'u1~2')!.disabled).toBe(true)
     // The nodes still admit as a stream.
     expect(() => freezeWire(TranscriptView(facts([turn('turn:1', [prompt('u1', 'a'), prompt('u1', 'b')])])))).not.toThrow()
+  })
+
+  it('keeps every repeated block under its own parent occurrence and declines ambiguous cursor targets', () => {
+    const tool: Extract<StreamRow, { kind: 'tool' }> = { kind: 'tool', id: 'same', name: 'Write', detail: 'report', state: 'ok', body: [{ text: 'first body' }] }
+    const value = facts([turn('turn:1', [tool, { ...tool, body: [{ text: 'second body' }] }])])
+    const node = TranscriptView(value, { rev: 1, ids: ['same~2'] })
+    expect(node.items.find(item => item.id === 'same.body.0')!.under).toBe('same')
+    expect(node.items.find(item => item.id === 'same~2.body.0')).toMatchObject({ under: 'same~2', disabled: true })
+    expect(node.focusItem).toBeUndefined()
+    expect(new Set(node.items.map(item => item.id)).size).toBe(node.items.length)
+    expect(TranscriptView(value, { rev: 1, ids: ['same~2'] })).toBe(node)
   })
 
   it('draws the cut turn marker as its translated text', () => {
