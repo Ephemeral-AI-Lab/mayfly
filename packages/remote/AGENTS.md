@@ -48,6 +48,8 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   selection owners fence native reference admission and late feedback; a
   retired fork cannot replace a newer selection. Session browser callers own
   its reads, actions and panel lifetime through the same cancellation signal.
+  `/fork` and `/rewind` ignore command arguments as the reference handlers do;
+  rewind boundaries come only from the native-history picker.
   App owns startup plan intent through `startupPlan`; the plan feature only
   reads/writes that intent. Prompt preparation awaits native plan admission
   before admitting the first prompt. Selection listeners never apply it in the
