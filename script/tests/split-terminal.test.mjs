@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { createScreen } from '../scenarios/screen.mjs'
-import { captureSplitTerminal, settleSplitScreen, splitStartupReadiness } from '../scenarios/split-terminal.mjs'
+import { captureSplitTerminal, exitSplitTerminal, settleSplitScreen, splitStartupReadiness } from '../scenarios/split-terminal.mjs'
 
 function fixture(t, cols = 80, rows = 24) {
   const screen = createScreen({ cols, rows, reply() {} })
@@ -29,7 +29,7 @@ const footer = '\u001b[24;1Hdeepseek-official/deepseek-flash'
 const editor = '\u001b[22;1HAsk anything'
 
 test('the isolated native startup needs both the release banner and the configured default model', () => {
-  const conversation = [['mayfly v0.1.4-rc.2'], ['deepseek-official/deepseek-flash']]
+  const conversation = [{ text: 'mayfly v0.1.4-rc.2' }, { text: 'deepseek-flash', row: 'last' }]
   assert.deepEqual(splitStartupReadiness(), conversation)
 })
 
@@ -59,11 +59,11 @@ test('a native model alone cannot admit the still hidden startup banner', async 
   assert.ok(state.now() >= 860)
 })
 
-test('the common startup barrier admits the wordmark and model in both narrow and regular splash layouts', async t => {
+test('the startup barrier accepts the real abbreviated model footer at 40 columns and with a long 80-column workspace', async t => {
   for (const cols of [40, 80]) {
     const state = fixture(t, cols, 16)
     state.screen.feed(banner)
-    state.tick(time => { if (time === 600) state.screen.feed('\u001b[16;1Hdeepseek-official/deepseek-flash') })
+    state.tick(time => { if (time === 600) state.screen.feed('\u001b[16;1Hdeepseek-flash  ~/workspace') })
     await settleSplitScreen({ ...state, ready: splitStartupReadiness() })
     assert.ok(state.now() >= 860)
     assert.deepEqual(state.screen.wrappedRows(), [])
@@ -96,7 +96,7 @@ test('synchronized paints and native model work must drain after all ready text 
 test('a missing native ready marker fails at the 30 second deadline instead of capturing a partial startup', async t => {
   const state = fixture(t)
   state.screen.feed(editor + banner)
-  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(), timeoutMs: 30_000 }), /startup did not become ready within 30000ms; missing visible text: deepseek-official\/deepseek-flash/u)
+  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(), timeoutMs: 30_000 }), /startup did not become ready within 30000ms; missing visible text: deepseek-flash \(last row\)/u)
   assert.equal(state.now(), 30_000)
 })
 
@@ -108,7 +108,20 @@ test('native process exit or an unsettled frame remains a failure after ready te
   await assert.rejects(settleSplitScreen({ ...state, check: () => { throw new Error('Host exited') } }), /Host exited/u)
 })
 
-test('the real PTY sends the second Ctrl+C inside the confirmation window then waits for its actual drain', { timeout: 10_000 }, async t => {
+test('a model name in the banner or earlier output cannot substitute for the current native footer', async t => {
+  const state = fixture(t, 40, 16)
+  state.screen.feed(banner + '\u001b[4;1Hdeepseek-flash · deepseek-official')
+  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(), timeoutMs: 400 }), /deepseek-flash \(last row\)/u)
+  state.screen.feed('\u001b[16;1Hdeepseek-flash  ~/workspace')
+  state.tick(time => {
+    if (time === 500) state.screen.feed('\u001b[16;1H\u001b[2K~/workspace')
+    if (time === 1000) state.screen.feed('\u001b[16;1Hdeepseek-flash  ~/workspace')
+  })
+  await settleSplitScreen({ ...state, ready: splitStartupReadiness() })
+  assert.ok(state.now() >= 1260)
+})
+
+async function realExitFixture(t, options) {
   const dir = join(tmpdir(), `mayfly-terminal-test-${randomUUID()}`)
   mkdirSync(dir)
   t.after(() => rmSync(dir, { recursive: true, force: true }))
@@ -117,39 +130,114 @@ test('the real PTY sends the second Ctrl+C inside the confirmation window then w
     bin: process.execPath,
     args: ['--input-type=module', '-e', `
       import { writeFileSync } from 'node:fs'
-      let presses = 0
-      let first
+      const options = JSON.parse(process.env.MAYFLY_TEST_EXIT_OPTIONS)
+      const events = []
+      let consumed = false
+      let handling = false
+      let armed
+      const record = (kind, extra = {}) => {
+        events.push({ kind, at: performance.now(), ...extra })
+        writeFileSync(process.env.MAYFLY_TEST_CTRL_C_RECORD, JSON.stringify(events))
+      }
+      const paint = text => process.stdout.write('\\u001b[?2026h\\u001b[2;1H\\u001b[2K' + text + '\\u001b[?2026l')
       process.stdin.setRawMode(true)
       process.stdin.resume()
-      process.stdout.write('\\u001b[?2026h\\u001b[2J\\u001b[Hdriver ready\\u001b[?2026l')
+      process.stdout.write('\\u001b[?25l\\u001b[?1000h\\u001b[?2026h\\u001b[2J\\u001b[Hdriver ready\\u001b[?2026l')
       process.stdin.on('data', data => {
         for (const byte of data) {
           if (byte !== 3) continue
-          presses += 1
-          if (presses === 1) {
-            first = performance.now()
-            process.stdout.write('\\r\\nPress Ctrl+C again to exit')
-          } else if (presses === 2) {
-            const elapsed = performance.now() - first
-            writeFileSync(process.env.MAYFLY_TEST_CTRL_C_RECORD, JSON.stringify({ presses, elapsed }))
-            if (elapsed > 900) process.exit(71)
-            // As in the real runtime, the input handler is gone while terminal drain continues.
+          record('received')
+          if (handling) { record('unacknowledged-input'); process.exit(73) }
+          if (options.consume && !consumed) {
+            consumed = true
+            handling = true
+            setTimeout(() => {
+              record(options.consume)
+              paint(options.consume)
+              handling = false
+            }, options.firstDelay ?? 0)
+          } else if (armed === undefined || performance.now() - armed >= 1000) {
+            armed = performance.now()
+            handling = true
+            setTimeout(() => {
+              record('warning')
+              paint('press Ctrl+C again to exit')
+              handling = false
+            }, options.ackDelay ?? 0)
+          } else {
+            record('confirmed', { elapsed: performance.now() - armed })
+            // The real input handler may be gone for much longer than one
+            // confirmation window while the process restores and drains.
             process.stdin.setRawMode(false)
             process.stdin.pause()
-            setTimeout(() => process.exit(0), 800)
-          } else process.exit(72)
+            process.stdout.write('\\u001b[?2026h\\u001b[2J\\u001b[?1000l\\u001b[?25h\\u001b[?2026l')
+            setTimeout(() => {
+              record('drained')
+              if (options.signal) process.kill(process.pid, 'SIGTERM')
+              else process.exit(0)
+            }, options.drain ?? 800)
+          }
         }
       })
     `],
     cwd: dir,
-    env: { ...process.env, MAYFLY_TEST_CTRL_C_RECORD: record },
+    env: { ...process.env, MAYFLY_TEST_CTRL_C_RECORD: record, MAYFLY_TEST_EXIT_OPTIONS: JSON.stringify(options) },
     cols: 80, rows: 24,
     steps: [{ step: 'until', text: 'driver ready' }, { step: 'checkpoint', name: 'ready' }],
     stub: { inFlight: () => 0 },
   })
-  assert.deepEqual(result.failures, [])
-  assert.equal(result.exitCode, 0)
-  const observed = JSON.parse(readFileSync(record, 'utf8'))
-  assert.equal(observed.presses, 2)
-  assert.ok(observed.elapsed >= 250 && observed.elapsed < 900)
+  return { result, events: JSON.parse(readFileSync(record, 'utf8')) }
+}
+
+for (const options of [
+  { label: 'clearDraft before arming, with delayed first processing', consume: 'draft cleared', firstDelay: 600 },
+  { label: 'cancel before arming, with a late warning acknowledgment', consume: 'turn cancelled', ackDelay: 600 },
+  { label: 'late warning acknowledgment inside the real double-press window', ackDelay: 600 },
+  { label: 'a slow terminal drain beyond the old five-second retry', drain: 6000 },
+]) {
+  test(`the real PTY handles ${options.label}`, { timeout: 15_000 }, async t => {
+    const { result, events } = await realExitFixture(t, options)
+    assert.deepEqual(result.failures, [])
+    assert.equal(result.exitCode, 0)
+    assert.equal(events.filter(event => event.kind === 'received').length, options.consume ? 3 : 2)
+    assert.equal(events.some(event => event.kind === 'unacknowledged-input'), false)
+    assert.equal(events.at(-1).kind, 'drained')
+    const confirmation = events.find(event => event.kind === 'confirmed')
+    const warning = events.find(event => event.kind === 'warning')
+    assert.ok(confirmation.at >= warning.at)
+    assert.ok(confirmation.elapsed < 1000)
+  })
+}
+
+test('a real nonzero PTY termination remains a failure after acknowledged confirmation', { timeout: 10_000 }, async t => {
+  const { result } = await realExitFixture(t, { signal: true, drain: 20 })
+  assert.match(result.failures.join('\n'), /Product exit was not clean.*signal=15/u)
+})
+
+test('a disappeared warning can start a fresh pair only in a still interactive UI, within a bounded deadline', async t => {
+  const state = fixture(t)
+  state.screen.feed('\u001b[?25l\u001b[?1000h\u001b[?2026hdriver ready\u001b[?2026l')
+  const writes = []
+  let exited = false
+  const terminal = { write: bytes => {
+    assert.equal(bytes, '\u0003')
+    writes.push(state.now())
+    if (writes.length === 1 || writes.length === 3) state.screen.feed('\u001b[?2026h\u001b[2;1Hpress Ctrl+C again to exit\u001b[?2026l')
+    if (writes.length === 2) state.screen.feed('\u001b[?2026h\u001b[2;1H\u001b[2Kdriver ready again\u001b[?2026l')
+    if (writes.length === 4) exited = true
+  } }
+  assert.equal(await exitSplitTerminal({ ...state, terminal, isExited: () => exited }), true)
+  assert.equal(writes.length, 4)
+  assert.ok(writes[2] - writes[1] >= 5000)
+  assert.ok(writes[1] - writes[0] < 1000)
+  assert.ok(writes[3] - writes[2] < 1000)
+})
+
+test('a missing interrupt acknowledgment fails at the deadline without queuing blind extra signals', async t => {
+  const state = fixture(t)
+  state.screen.feed('\u001b[?25l\u001b[?1000h\u001b[?2026hdriver ready\u001b[?2026l')
+  const writes = []
+  assert.equal(await exitSplitTerminal({ ...state, terminal: { write: bytes => writes.push(bytes) }, isExited: () => false, timeoutMs: 1000 }), false)
+  assert.equal(state.now(), 1000)
+  assert.deepEqual(writes, ['\u0003'])
 })

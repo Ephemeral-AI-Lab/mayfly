@@ -8,11 +8,11 @@ import { normalizeSplitGrid, redactSplitOutput, SPLIT_REFERENCE } from './split-
 
 const require = createRequire(import.meta.url)
 
-/** Visible readiness for the real isolated fixtures, shared by both executables. Each group needs one match. */
+/** Visible readiness for the real isolated fixtures, shared by both executables. */
 export function splitStartupReadiness() {
   return [
-    [`mayfly v${SPLIT_REFERENCE.version}`],
-    ['deepseek-official/deepseek-flash'],
+    { text: `mayfly v${SPLIT_REFERENCE.version}` },
+    { text: 'deepseek-flash', row: 'last' },
   ]
 }
 
@@ -27,12 +27,55 @@ export async function settleSplitScreen({ screen, stub, check, ready = [], timeo
     await screen.flush()
     const next = screen.serialize()
     if (next !== previous) { previous = next; since = now() }
-    missing = ready.filter(group => !group.some(text => screen.find(text) !== undefined))
+    missing = ready.filter(marker => marker.row === 'last'
+      ? !screen.grid().lines.at(-1)?.includes(marker.text)
+      : screen.find(marker.text) === undefined)
     if (screen.state.bytes > 0 && now() - since >= 250 && screen.state.openSync === 0 && stub.inFlight() === 0 && missing.length === 0) return
     await pause(20)
   } while (now() - begin < timeoutMs)
-  if (missing.length > 0) throw new Error(`Terminal startup did not become ready within ${timeoutMs}ms; missing visible text: ${missing.map(group => group.join(' or ')).join('; ')}`)
+  if (missing.length > 0) throw new Error(`Terminal startup did not become ready within ${timeoutMs}ms; missing visible text: ${missing.map(marker => marker.text + (marker.row === 'last' ? ' (last row)' : '')).join('; ')}`)
   throw new Error('Terminal did not settle')
+}
+
+/** Confirm the current visible exit warning; an interrupt may first clear a draft or cancel a turn. */
+export async function exitSplitTerminal({ terminal, screen, isExited, timeoutMs = 30_000, now = () => performance.now(), pause = sleep }) {
+  const begin = now()
+  let phase = 'interrupt'
+  let previous
+  let changedAt = begin
+  let sentGrid
+  let sentFrames = 0
+  let confirmedAt = begin
+  const send = (grid, confirm) => {
+    sentGrid = grid
+    sentFrames = screen.state.frames.length
+    phase = confirm ? 'drain' : 'acknowledge'
+    if (confirm) confirmedAt = now()
+    terminal.write('\u0003')
+  }
+  while (!isExited() && now() - begin < timeoutMs) {
+    await screen.flush()
+    if (isExited()) break
+    const grid = screen.serialize()
+    if (grid !== previous) { previous = grid; changedAt = now() }
+    const warning = screen.state.openSync === 0 && screen.find('press Ctrl+C again to exit') !== undefined
+    const active = screen.state.mouse !== 'none' && !screen.state.cursorVisible
+    const painted = screen.state.frames.length > sentFrames && grid !== sentGrid
+      && screen.state.openSync === 0 && now() - changedAt >= 250
+    if (phase === 'interrupt') send(grid, warning)
+    else if (phase === 'acknowledge') {
+      if (warning) send(grid, true)
+      // A completed visible change acknowledges a clear/cancel; do not queue
+      // another interrupt while the first key has produced no terminal result.
+      else if (active && painted) send(grid, false)
+    } else if (!warning && active && painted && now() - confirmedAt >= 5000) {
+      // Only a still-interactive, newly painted UI can start another pair.
+      // Restored terminal modes mean the real process is draining input.
+      send(grid, false)
+    }
+    await pause(20)
+  }
+  return isExited()
 }
 
 /** Drive identical semantic steps through either real executable. Never inject renderer state. */
@@ -102,10 +145,7 @@ export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, st
     await beforeExit()
     terminal.write('\u001b')
     await sleep(100)
-    for (let attempt = 0; attempt < 5 && exitCode === undefined; attempt += 1) {
-      terminal.write('\u0003')
-      await Promise.race([exited, sleep(attempt === 0 ? 300 : 5000)])
-    }
+    await exitSplitTerminal({ terminal, screen, isExited: () => exitCode !== undefined })
     if (exitCode === undefined) failures.push('Product did not exit on Ctrl+C')
     else if (exitCode !== 0 || exitSignal !== 0) failures.push(`Product exit was not clean (code=${exitCode}, signal=${exitSignal})`)
     await screen.flush()
