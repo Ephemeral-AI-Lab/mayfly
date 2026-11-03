@@ -158,7 +158,7 @@ export class RemoteModelsController extends RemoteFeatureController {
       }
       const current = models.findIndex(model => model.id === target.current.model)
       const model = models[current < 0 ? 0 : (current + 1) % models.length]!
-      await this.commit(target, { provider: target.current.provider, model: model.id }, 'warning')
+      await this.commit(target, { provider: target.current.provider, model: model.id }, 'cycle')
     } finally { target.operation.dispose() }
   }
 
@@ -179,7 +179,7 @@ export class RemoteModelsController extends RemoteFeatureController {
         target.operation.dispose()
         return
       }
-      await this.commit(target, { provider: chosen.provider, model: chosen.model.id })
+      await this.commit(target, { provider: chosen.provider, model: chosen.model.id }, 'command')
       target.operation.dispose()
       return
     }
@@ -206,7 +206,7 @@ export class RemoteModelsController extends RemoteFeatureController {
       if (!reset && match === undefined) {
         this.context.notice.set(`unsupported thinking effort "${rawInput.trim()}" for ${row.model.id}: available: default, ${row.efforts.join(', ')}`, 'error')
       } else {
-        await this.commit(target, { provider: row.provider, model: row.model.id, ...reset ? {} : { reasoningEffort: ReasoningEffortId(String(match)) } })
+        await this.commit(target, { provider: row.provider, model: row.model.id, ...reset ? {} : { reasoningEffort: ReasoningEffortId(String(match)) } }, 'command')
       }
       target.operation.dispose()
       return
@@ -226,7 +226,7 @@ export class RemoteModelsController extends RemoteFeatureController {
         if (event.kind !== 'slider-accept' || event.controlId !== 'effort') return { kind: 'completed' }
         if (context.signal.aborted) return { kind: 'cancelled' }
         if (event.value !== null && !row.efforts.includes(event.value)) return { kind: 'failed', message: 'The thinking effort is no longer available' }
-        return await this.commit(target, { provider: row.provider, model: row.model.id, ...event.value === null ? {} : { reasoningEffort: ReasoningEffortId(event.value) } })
+        return await this.commit(target, { provider: row.provider, model: row.model.id, ...event.value === null ? {} : { reasoningEffort: ReasoningEffortId(event.value) } }, 'picker')
       },
       onClosed: () => target.operation.dispose(),
     })
@@ -272,7 +272,7 @@ export class RemoteModelsController extends RemoteFeatureController {
     catch { return undefined }
   }
 
-  private async commit(target: RemoteModelTarget, next: ModelSelection, failureSeverity: 'error' | 'warning' = 'error'): Promise<MayflyUiActionReply> {
+  private async commit(target: RemoteModelTarget, next: ModelSelection, feedback: 'command' | 'picker' | 'cycle'): Promise<MayflyUiActionReply> {
     if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
     try {
       const previous = target.selection === undefined
@@ -284,12 +284,12 @@ export class RemoteModelsController extends RemoteFeatureController {
         : (await remoteValue(target.client.remote.session.selectModel({ sessionId: target.selection.ref.sessionId, ...next }))).selected
       if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
       const row = remoteModelRows(target.catalog, selected, target.details).find(row => row.current)
-      this.context.notice.set(this.context.t(modelSwitchNotice(previous, selected, row?.defaultEffort)), 'success')
+      this.context.notice.set(this.context.t(modelSwitchNotice(previous, selected, row?.defaultEffort)), feedback === 'command' ? 'info' : 'success')
       return { kind: 'completed', dismiss: true }
     } catch (error) {
       if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
       const message = remoteErrorMessage(error)
-      this.context.notice.set(message, failureSeverity)
+      if (feedback !== 'picker') this.context.notice.set(message, feedback === 'cycle' ? 'warning' : 'error')
       return { kind: 'failed', message }
     }
   }
@@ -336,7 +336,7 @@ export class RemoteModelsController extends RemoteFeatureController {
         const row = rows.find(candidate => candidate.key === event.selectedIds[0])
         if (row === undefined) return { kind: 'failed', message: this.context.t('The model is no longer available') }
         if (event.segmentId !== undefined && !row.efforts.includes(event.segmentId)) return { kind: 'failed', message: 'The thinking effort is no longer available' }
-        return await this.commit(target, { provider: row.provider, model: row.model.id, ...event.segmentId === undefined ? {} : { reasoningEffort: ReasoningEffortId(event.segmentId) } })
+        return await this.commit(target, { provider: row.provider, model: row.model.id, ...event.segmentId === undefined ? {} : { reasoningEffort: ReasoningEffortId(event.segmentId) } }, 'picker')
       },
       onClosed: () => target.operation.dispose(),
     })

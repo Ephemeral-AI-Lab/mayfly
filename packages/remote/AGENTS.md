@@ -198,7 +198,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Direct `/model` input resolves exact case-sensitive model ids, preferring the
   current provider when ids repeat. Only the exact `/effort default` argument
   restores provider-default provenance; effort ids and labels otherwise use
-  the native case-insensitive matching.
+  the native case-insensitive matching. Direct model/effort success uses info
+  feedback; picker and Alt+M success uses success feedback. Failed picker writes
+  remain inline action failures, while direct failures use error and failed
+  Alt+M commits use warning.
   A prompt already closed during mounting must acquire no later ACK observer.
   Retrying profile setup after successful sign-in reuses that exact authorization
   owner and never starts another native authorization attempt.

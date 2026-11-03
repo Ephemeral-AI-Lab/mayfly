@@ -369,6 +369,7 @@ describe('RemoteModelsController reference wire UI', () => {
     const result = await test.act({ kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])] })
     expect(result).toEqual({ kind: 'failed', message: 'connection ended' })
     expect(test.selectModel).toHaveBeenCalledOnce()
+    expect(test.notice.set).not.toHaveBeenCalled()
     expect(test.opened[0]!.lease.close).not.toHaveBeenCalled()
     test.controller.dispose()
   })
@@ -404,7 +405,7 @@ describe('RemoteModelsController reference wire UI', () => {
     const duplicate = fixture({ catalog: advertised, projection: { next: selection('second', 'other', 'high') } })
     await duplicate.controller.open('chat')
     expect(duplicate.selectModel).toHaveBeenCalledWith({ sessionId: duplicate.ref.sessionId, provider: 'second', model: 'chat' })
-    expect(duplicate.notice.set).toHaveBeenCalledWith('Switched to chat (second)', 'success')
+    expect(duplicate.notice.set).toHaveBeenCalledWith('Switched to chat (second)', 'info')
     duplicate.controller.dispose()
   })
 
@@ -431,7 +432,7 @@ describe('RemoteModelsController reference wire UI', () => {
     expect(await test.act({ kind: 'slider-accept', controlId: 'effort', value: 'high' })).toEqual({ kind: 'completed', dismiss: true })
     expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'high' })
     await test.controller.effort('default')
-    expect(test.notice.set).toHaveBeenLastCalledWith('Already using chat (deepseek)', 'success')
+    expect(test.notice.set).toHaveBeenLastCalledWith('Already using chat (deepseek)', 'info')
     await test.controller.effort('Smart')
     expect(test.selectModel).toHaveBeenLastCalledWith({ sessionId: test.ref.sessionId, provider: 'deepseek', model: 'chat', reasoningEffort: 'high' })
     await test.controller.effort('DEFAULT')
@@ -439,6 +440,27 @@ describe('RemoteModelsController reference wire UI', () => {
     await test.controller.effort('unsupported')
     expect(test.notice.set).toHaveBeenCalledWith(expect.stringContaining('unsupported thinking effort'), 'error')
     test.controller.dispose()
+  })
+
+  it('reports direct switch failures once as errors while effort picker failures stay inline', async () => {
+    const options = { catalog: catalog({ groups: [{ id: 'deepseek', name: 'DeepSeek', models: [model('chat', { reasoning: { efforts: [{ id: 'high', name: 'Smart' }] } })] }] }) }
+    for (const method of ['open', 'effort'] as const) {
+      const test = fixture({ ...options, projection: { next: selection('deepseek', 'previous') } })
+      if (method === 'effort') test.projection.getSnapshot.mockReturnValue({ next: selection('deepseek', 'chat') })
+      test.selectModel.mockRejectedValueOnce(new Error('native switch refused'))
+      await test.controller[method](method === 'open' ? 'chat' : 'high')
+      expect(test.selectModel).toHaveBeenCalledOnce()
+      expect(test.notice.set).toHaveBeenCalledExactlyOnceWith('native switch refused', 'error')
+      expect(test.opened).toHaveLength(0)
+      test.controller.dispose()
+    }
+    const picker = fixture(options)
+    await picker.controller.effort()
+    picker.selectModel.mockRejectedValueOnce(new Error('native effort refused'))
+    expect(await picker.act({ kind: 'slider-accept', controlId: 'effort', value: 'high' })).toEqual({ kind: 'failed', message: 'native effort refused' })
+    expect(picker.notice.set).not.toHaveBeenCalled()
+    expect(picker.opened[0]!.lease.close).not.toHaveBeenCalled()
+    picker.controller.dispose()
   })
 
   it('reports models without reasoning efforts without inventing slider levels', async () => {
