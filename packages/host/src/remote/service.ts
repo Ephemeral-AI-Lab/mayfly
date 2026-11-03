@@ -201,8 +201,8 @@ export class MayflyHostService extends TypertRemoteService {
     return statsSession(this.ctx, request, this.signal(signal))
   }
 
-  /** Scan native history into complete progress snapshots without activating Agents. */
-  @Remote({ mode: 'stream', resources: { session: request => request.sessionId } })
+  /** Scan the global native corpus; suppress the default single-Session resource inference. */
+  @Remote({ mode: 'stream', resources: { session: () => undefined } })
   statsHistory(request: MayflyStatsHistoryRequest, signal: AbortSignal): RemoteStream<MayflyStatsHistory> {
     return this.statistics.read(request, this.signal(signal))
   }

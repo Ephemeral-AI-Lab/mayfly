@@ -1,5 +1,7 @@
 /** Host Remote entry routing and Fiber lifetime with the built decorators. @module */
 import { Context, Service } from '@deepseek-ai/cordis'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
@@ -11,6 +13,9 @@ import { mkdtempTracked, registerTempDirCleanup } from '../../../mayfly/tests/co
 
 registerTempDirCleanup()
 const contexts: Context[] = []
+const clientRequire = createRequire(new URL('../../../remote/package.json', import.meta.url))
+const { TypertRegistry } = await import(pathToFileURL(clientRequire.resolve('@deepseek-ai/dsh-typert-registry')).href)
+const { TypertGatewayService } = await import(pathToFileURL(clientRequire.resolve('@deepseek-ai/dsh-api-gateway')).href)
 type HostService = InstanceType<typeof MayflyHostService>
 afterEach(async () => { await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose())) })
 
@@ -97,7 +102,7 @@ describe('Host Remote composition', () => {
     const { service } = await host()
     const methods = new Map(remoteMethods(service).map(method => [method.method, method]))
     const sessionId = SessionId('authorized-session')
-    for (const name of ['btwFork', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'statsHistory', 'listMcpResources', 'readMcpResource', 'subagentTree']) {
+    for (const name of ['btwFork', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'listMcpResources', 'readMcpResource', 'subagentTree']) {
       const reader = methods.get(name)?.resources?.['session']
       expect(reader, `${name} must declare Session authorization`).toBeTypeOf('function')
       expect(reader?.({ sessionId })).toBe(sessionId)
@@ -106,6 +111,50 @@ describe('Host Remote composition', () => {
     expect(presentations?.({ entries: [] })).toBeUndefined()
     expect(presentations?.({ entries: [{ sessionId }, { sessionId }, { sessionId: 'second' }] })).toEqual([sessionId, 'second'])
     expect(methods.get('subagentStop')?.resources?.['session']?.({ sessionId, childSessionId: 'child' })).toEqual([sessionId, 'child'])
+    expect(methods.get('statsHistory')?.resources?.['session']?.({ sessionId })).toBeUndefined()
+  })
+
+  it.each([false, true])('requires global Gateway access before any history read, allWorkspaces=%s', async allWorkspaces => {
+    const { ctx } = await host()
+    new TypertRegistry(ctx)
+    // Native sessionController registers a default resolver. The corpus method
+    // must override it even though its request carries the selected Session.
+    ctx.typert.resources.register('session', { field: 'sessionId' })
+    const decide = vi.fn(({ resources }: { resources: readonly { kind: string, id?: string }[] }) =>
+      resources.every(resource => resource.kind === 'session' && resource.id === 'parent')
+        ? { kind: 'allow' } : { kind: 'deny', reason: 'only parent is authorized' })
+    ctx.provide('remoteAccess', { decide })
+    const gateway = new TypertGatewayService(ctx, {})
+    const controller = new AbortController()
+    const peer = { id: 'history-test', ctx, principal: { kind: 'global' }, signal: controller.signal, interactions: 'none', dispose: async () => {} }
+    const observe = vi.spyOn(ctx.sessionQuery, 'observeSession')
+    const list = vi.spyOn(ctx.sessionQuery, 'listSessions')
+    await expect(gateway.stream({ namespace: 'mayflyHost', method: 'statsHistory', args: { request: { sessionId: 'parent', allWorkspaces } }, peer }))
+      .rejects.toMatchObject({ code: 'remote-access/denied' })
+    expect(decide).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'mayflyHost/statsHistory', resources: [{ kind: 'global' }] }))
+    expect(list).not.toHaveBeenCalled()
+    expect(observe).not.toHaveBeenCalled()
+    await expect(gateway.invoke({ namespace: 'mayflyHost', method: 'statsSession', args: { request: { sessionId: 'parent' } }, peer }))
+      .resolves.toMatchObject({ createdAt: 10 })
+    expect(decide).toHaveBeenLastCalledWith(expect.objectContaining({ resources: [{ kind: 'session', id: 'parent' }] }))
+    decide.mockReturnValue({ kind: 'allow' })
+    const records = [
+      { header: { id: 'parent', cwd: '/host', createdAt: 10 } },
+      { header: { id: 'forbidden-sibling', cwd: '/host', createdAt: 20 } },
+      { header: { id: 'other-workspace', cwd: '/other', createdAt: 30 } },
+    ]
+    list.mockResolvedValue(records as never)
+    observe.mockImplementation(async id => ({
+      header: records.find(record => record.header.id === id)!.header,
+      events: [{ type: 'turn/start', seq: 1, time: 1, data: { turn: 1 } }],
+      revision: 'cold-one', [Symbol.dispose]: () => {},
+    }) as never)
+    const frames = []
+    for await (const frame of await gateway.stream({ namespace: 'mayflyHost', method: 'statsHistory', args: { request: { sessionId: 'parent', allWorkspaces } }, peer })) frames.push(frame)
+    expect(frames.at(-1)).toMatchObject({ running: false, total: allWorkspaces ? 3 : 2, digests: allWorkspaces
+      ? [{ id: 'other-workspace' }, { id: 'forbidden-sibling' }, { id: 'parent' }]
+      : [{ id: 'forbidden-sibling' }, { id: 'parent' }] })
+    expect(list).toHaveBeenCalledOnce()
   })
 
   it('routes every capability through the service installed by Cordis', async () => {
