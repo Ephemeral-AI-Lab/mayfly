@@ -10,6 +10,8 @@ import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './
 
 const zh: Readonly<Record<string, string>> = {
   'Browse files delivered by the agent': '浏览 Agent 交付的文件',
+  'Browse workspace changes for a recorded sequence': '浏览指定序列的工作区改动',
+  'Usage: /changes [seq] (a non-negative integer)': '用法：/changes [seq]（非负整数）',
   'No current session': '当前没有会话',
   'Loading file…': '正在加载文件…',
   'Loading comparison…': '正在加载比较…',
@@ -33,6 +35,7 @@ class RemoteFilesBrowser {
     private readonly current: RemoteFeatureSelection,
     private readonly operation: RemoteFeatureOperation,
     t: MayflyTranslate,
+    private readonly changes?: { readonly seq?: number | undefined },
   ) {
     const face = current.binding.session.projections.faceOf('mayflyDeliverables')
     const update = (): void => {
@@ -40,8 +43,8 @@ class RemoteFilesBrowser {
       this.facts = { ...this.facts, files: face.getSnapshot() as readonly FilesDeliveredFile[] | undefined ?? [] }
       this.refreshRows()
     }
-    operation.onDispose(face.subscribe(update))
-    operation.onDispose(current.binding.eventSource.subscribe(() => {
+    if (changes === undefined) operation.onDispose(face.subscribe(update))
+    if (changes?.seq === undefined) operation.onDispose(current.binding.eventSource.subscribe(() => {
       if (!operation.valid()) return
       const seq = current.binding.eventSource.getSnapshot().entries.findLast(entry => entry.type === 'event' && entry.event.type === 'workspace/changes')
       const next = seq?.type === 'event' ? seq.event.seq : undefined
@@ -50,9 +53,9 @@ class RemoteFilesBrowser {
       void this.refreshChanges()
     }))
     operation.onDispose(() => { this.loadAbort?.abort(); this.browser?.close() })
-    this.facts = { ...this.facts, files: face.getSnapshot() as readonly FilesDeliveredFile[] | undefined ?? [] }
+    this.facts = { ...this.facts, files: changes === undefined ? face.getSnapshot() as readonly FilesDeliveredFile[] | undefined ?? [] : [] }
     this.browser = openRemoteBrowser(context.base, {
-      id: 'remote.operations.files',
+      id: changes === undefined ? 'remote.operations.files' : 'remote.operations.changes',
       scope: { kind: 'session', sessionId: current.ref.sessionId },
       signal: operation.signal,
       isCurrent: () => operation.valid(),
@@ -69,13 +72,13 @@ class RemoteFilesBrowser {
     if (!operation.valid()) return
     this.refreshRows()
     void this.refreshChanges()
-    void this.readOpenCapability()
+    if (changes === undefined) void this.readOpenCapability()
   }
 
   /** Refocusing preserves this invocation's selected row, preview and pending reads. */
   refocus(): boolean {
     if (!this.operation.valid()) return false
-    return this.context.base.ctx.mayflyOverlays.focus('remote.operations.files')
+    return this.context.base.ctx.mayflyOverlays.focus(this.changes === undefined ? 'remote.operations.files' : 'remote.operations.changes')
   }
 
   private refreshRows(): void {
@@ -99,7 +102,12 @@ class RemoteFilesBrowser {
   private async refreshChanges(): Promise<void> {
     const ticket = ++this.latestTicket
     try {
-      const latest = await remoteValue(mayflyHostRemote(this.current.client).latestWorkspaceChanges({ sessionId: this.current.ref.sessionId }, this.operation.signal))
+      const seq = this.changes?.seq
+      const host = mayflyHostRemote(this.current.client)
+      const summary = seq === undefined ? undefined : await remoteValue(host.workspaceChangesSummary({ sessionId: this.current.ref.sessionId, seq }, this.operation.signal))
+      const latest = seq === undefined
+        ? await remoteValue(host.latestWorkspaceChanges({ sessionId: this.current.ref.sessionId }, this.operation.signal))
+        : summary === null ? null : { seq, summary: summary! }
       if (!this.operation.valid() || ticket !== this.latestTicket) return
       this.facts = { ...this.facts, latest: latest ?? undefined }
       this.refreshRows()
@@ -191,29 +199,41 @@ class RemoteFilesController extends RemoteFeatureController<RemoteOperationsCont
   private readonly t: MayflyTranslate
   private operation: RemoteFeatureOperation | undefined
   private browser: RemoteFilesBrowser | undefined
+  private seq: number | undefined
 
-  constructor(private readonly filesContext: RemoteOperationsContext) {
+  constructor(private readonly filesContext: RemoteOperationsContext, private readonly changes = false) {
     super(filesContext.base)
     this.t = memoizedLocaleTranslator(filesContext.base.ctx, 'remote-operations-files').translate
     registerRemoteOperationsLocale(filesContext.base, 'remote-operations-files', zh)
   }
 
-  readonly execute = (_rawInput: string, signal: AbortSignal): void => {
+  readonly execute = (rawInput: string, signal: AbortSignal): void => {
     if (signal.aborted) return
+    const argument = rawInput.trim()
+    const seq = this.changes && argument !== '' ? Number(argument) : undefined
+    if (seq !== undefined && (!/^\d+$/u.test(argument) || !Number.isSafeInteger(seq))) {
+      this.filesContext.base.notice.set(this.t('Usage: /changes [seq] (a non-negative integer)'), 'error')
+      return
+    }
     const current = this.filesContext.base.hosts.current()
     if (current === undefined) { this.filesContext.base.notice.set(this.t('No current session'), 'error'); return }
-    if (this.browser?.refocus() === true) return
+    if (seq === this.seq && this.browser?.refocus() === true) return
     this.operation?.dispose()
     const operation = this.sessionOperation(current, signal)
     if (operation === undefined) return
     this.operation = operation
-    this.browser = new RemoteFilesBrowser(this.filesContext, current, operation, this.t)
+    this.seq = seq
+    this.browser = new RemoteFilesBrowser(this.filesContext, current, operation, this.t, this.changes ? { seq } : undefined)
   }
 }
 
 /** Mount the Files browser, with native Host reads and Frontend clipboard ownership. */
 export function mountRemoteFilesOperations(context: RemoteOperationsContext): () => void {
   const controller = new RemoteFilesController(context)
-  const unregister = context.base.commands.register({ name: 'files', description: 'Browse files delivered by the agent', execute: controller.execute })
-  return () => { unregister(); controller.dispose() }
+  const changes = new RemoteFilesController(context, true)
+  const unregister = [
+    context.base.commands.register({ name: 'files', description: 'Browse files delivered by the agent', execute: controller.execute }),
+    context.base.commands.register({ name: 'changes', description: 'Browse workspace changes for a recorded sequence', input: { hint: '[seq]' }, execute: changes.execute }),
+  ]
+  return () => { for (const stop of unregister) stop(); controller.dispose(); changes.dispose() }
 }
