@@ -131,8 +131,8 @@ export class RemoteSettingsController extends RemoteFeatureController {
     try {
       const reply = await this.editDocument(client, operation, operation.signal)
       if (!operation.valid()) return
-      if (reply.kind === 'failed' || reply.kind === 'conflict') this.context.notice.set(reply.message)
-      else if ('feedback' in reply && reply.feedback !== undefined) this.context.notice.set(reply.feedback.message)
+      if (reply.kind === 'failed' || reply.kind === 'conflict') this.context.notice.set(reply.message, 'error')
+      else if ('feedback' in reply && reply.feedback !== undefined) this.context.notice.set(reply.feedback.message, reply.feedback.severity)
     } finally { operation.dispose() }
   }
 
@@ -187,7 +187,7 @@ export class RemoteSettingsController extends RemoteFeatureController {
       }
       const refresh = async (): Promise<void> => {
         try { if (await read()) mounted?.refresh() }
-        catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error)) }
+        catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error), 'error') }
       }
       mounted = openRemoteBrowser(this.context, {
         id: ROOT_ID, scope: { kind: 'app', targetId: 'settings' }, signal: operation.signal, isCurrent: () => operation.valid(), dismissal: 'confirm-dirty',
@@ -238,7 +238,7 @@ export class RemoteSettingsController extends RemoteFeatureController {
       operation.onDispose(this.context.subscribeLocale(() => { current = snapshot(); mounted?.refresh() }))
       operation.onDispose(onRemoteSettingsDocumentUpdated(client, () => { void refresh() }))
       operation.onDispose(client.remote.$on('permission-presets/catalog-changed', () => { void refresh() }))
-    } catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error)); operation.dispose() }
+    } catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error), 'error'); operation.dispose() }
   }
 
   private async editDocument(client: HostClient, operation: RemoteFeatureOperation, callerSignal: AbortSignal): Promise<MayflyUiActionReply> {

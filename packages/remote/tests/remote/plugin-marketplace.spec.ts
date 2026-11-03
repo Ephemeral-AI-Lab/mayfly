@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MarketEntry } from '@ephemeral-ai/mayfly/plugin-marketplace'
+import { DEFAULT_SETTINGS } from '@ephemeral-ai/mayfly/settings'
 import type { BundleInfo, ManagementError, ChangeResult } from '../../src/client/remote-face.ts'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
@@ -66,10 +67,12 @@ function fixture(options: { readonly bundles?: BundleInfo[], readonly sessionles
     translate: (_namespace: string, key: string, values?: Record<string, string | number>) => key.replace(/\{(\w+)\}/gu, (_match, name: string) => String(values?.[name] ?? name)),
   }
   const screen = { columns: 120, rows: 40 }
+  const settings = { ...DEFAULT_SETTINGS }
   const services: Record<string, unknown> = {
     mayflyLocale: locale, mayflyScreen: screen, mayflyOverlays: {},
     mayflyStatus: { register: vi.fn(() => status) },
     mayflyUiInteraction: { createNotificationOwner: vi.fn(() => notify) },
+    mayflyInteractionState: { settingsSource: () => settings },
   }
   const effect = (run: () => unknown) => { const off = run(); return typeof off === 'function' ? off : () => {} }
   const ctx = {
@@ -88,7 +91,7 @@ function fixture(options: { readonly bundles?: BundleInfo[], readonly sessionles
   cleanup.push(dispose)
   const execute = (input: string, signal = new AbortController().signal) => commands[0]!.execute(input, signal)
   const change = () => { for (const listener of topology) listener() }
-  return { execute, commands, dispose, manager, notify, notice, status, hosts, change, client, screen, unregister, services, generation, localeListeners, reconnect: () => { generation.generation += 1; for (const fn of connections) fn() } }
+  return { execute, commands, dispose, manager, notify, notice, status, hosts, change, client, screen, settings, unregister, services, generation, localeListeners, reconnect: () => { generation.generation += 1; for (const fn of connections) fn() } }
 }
 
 function browser(): RemoteBrowserOptions {
@@ -114,6 +117,20 @@ beforeEach(() => {
 })
 
 describe('Remote rc.2 plugin marketplace', () => {
+  it('reads the live Host-derived marketplace preference and falls back to the official index', async () => {
+    const test = fixture({ sessionless: true })
+    test.settings.marketIndexUrl = 'https://plugins.example/first.json'
+    await test.execute('refresh')
+    expect(mocks.catalog).toHaveBeenLastCalledWith('https://plugins.example/first.json', true)
+    expect(test.notice.set).toHaveBeenLastCalledWith('refreshed 1 entries', 'info')
+    test.settings.marketIndexUrl = 'https://plugins.example/second.json'
+    await test.execute('refresh')
+    expect(mocks.catalog).toHaveBeenLastCalledWith('https://plugins.example/second.json', true)
+    test.settings.marketIndexUrl = ''
+    await test.execute('refresh')
+    expect(mocks.catalog).toHaveBeenLastCalledWith('https://raw.githubusercontent.com/Ephemeral-AI-Lab/dsh-plugins/main/dist/index.json', true)
+  })
+
   it('opens the actual reference marketplace and supports sessionless browsing', async () => {
     const test = fixture({ sessionless: true })
     await test.execute('')
@@ -178,7 +195,7 @@ describe('Remote rc.2 plugin marketplace', () => {
     const removed = fixture()
     await removed.execute('install alpha')
     expect(removed.manager.installBundle).not.toHaveBeenCalled()
-    expect(removed.notice.set).toHaveBeenCalledWith(expect.stringContaining('removed from the marketplace'))
+    expect(removed.notice.set).toHaveBeenCalledWith(expect.stringContaining('removed from the marketplace'), 'error')
     removed.dispose()
   })
 
@@ -246,16 +263,16 @@ describe('Remote rc.2 plugin marketplace', () => {
   it('validates arguments and has an explicit unavailable state', async () => {
     const test = fixture({ attached: false, sessionless: true })
     await test.execute('')
-    expect(test.notice.set).toHaveBeenCalledWith('Attach a Host before managing plugins')
+    expect(test.notice.set).toHaveBeenCalledWith('Attach a Host before managing plugins', 'error')
     expect(test.manager.listBundles).not.toHaveBeenCalled()
     test.dispose()
     const ready = fixture()
     await ready.execute('install alpha --source invalid')
-    expect(ready.notice.set).toHaveBeenCalledWith(expect.stringContaining('usage: /plugin install'))
+    expect(ready.notice.set).toHaveBeenCalledWith(expect.stringContaining('usage: /plugin install'), 'error')
     await ready.execute('info missing')
-    expect(ready.notice.set).toHaveBeenCalledWith('unknown plugin: missing')
+    expect(ready.notice.set).toHaveBeenCalledWith('unknown plugin: missing', 'error')
     await ready.execute('unexpected')
-    expect(ready.notice.set).toHaveBeenCalledWith(expect.stringContaining('usage: /plugin'))
+    expect(ready.notice.set).toHaveBeenCalledWith(expect.stringContaining('usage: /plugin'), 'error')
     ready.dispose()
   })
 })
@@ -360,7 +377,7 @@ describe('marketplace native refusal and mutation semantics', () => {
     const source = fixture(); await source.execute('install alpha --source github'); expect(noticeMessages(source).at(-1)).toBe('"Alpha plugin" has no github install source'); expect(source.manager.installBundle).not.toHaveBeenCalled()
     mocks.catalog.mockResolvedValue(catalog([{ ...entry, install: { rows: [{ name: '@scope/alpha', npm: { spec: '@scope/alpha' } }, { name: '@scope/beta', github: { repo: 'example/beta', ref: 'main' } }] } }]))
     const mixed = fixture(); await mixed.execute('install alpha'); expect(noticeMessages(mixed).at(-1)).toContain('no common install source')
-    const unlisted = fixture({ bundles: [bundle({ name: '@scope/unlisted' })] }); await unlisted.execute('install @scope/unlisted'); expect(unlisted.notice.set).toHaveBeenCalledWith('this bundle is not listed in the marketplace index')
+    const unlisted = fixture({ bundles: [bundle({ name: '@scope/unlisted' })] }); await unlisted.execute('install @scope/unlisted'); expect(unlisted.notice.set).toHaveBeenCalledWith('this bundle is not listed in the marketplace index', 'error')
   })
 })
 
@@ -410,18 +427,18 @@ describe('marketplace reference navigation and native catalog observations', () 
   })
 
   it('refreshes from both command and acknowledged UI actions and reports native catalog errors', async () => {
-    const test = fixture(); await test.execute('refresh'); expect(test.notice.set).toHaveBeenCalledWith('refreshed 1 entries')
+    const test = fixture(); await test.execute('refresh'); expect(test.notice.set).toHaveBeenCalledWith('refreshed 1 entries', 'info')
     await test.execute(''); await settled()
     expect(await perform('refresh')).toMatchObject({ kind: 'accepted', feedback: { message: 'refreshed 1 entries' } })
     mocks.catalog.mockResolvedValue({ status: 'offline', message: 'catalog unreachable' })
     expect(await perform('refresh')).toMatchObject({ kind: 'failed', message: 'refresh failed: catalog unreachable' })
-    await test.execute('refresh'); expect(test.notice.set).toHaveBeenLastCalledWith('refresh failed: catalog unreachable')
+    await test.execute('refresh'); expect(test.notice.set).toHaveBeenLastCalledWith('refresh failed: catalog unreachable', 'error')
     mocks.catalog.mockResolvedValue(catalog()); test.manager.listBundles.mockRejectedValueOnce('native roster refused')
     expect(await perform('refresh')).toMatchObject({ kind: 'failed', message: 'refresh failed: native roster refused' })
     test.manager.listBundles.mockRejectedValueOnce('native roster refused')
-    await test.execute('refresh'); expect(test.notice.set).toHaveBeenLastCalledWith('refresh failed: native roster refused')
+    await test.execute('refresh'); expect(test.notice.set).toHaveBeenLastCalledWith('refresh failed: native roster refused', 'error')
     const unavailable = fixture(); Reflect.deleteProperty(unavailable.client.remote, 'pluginManager')
-    for (const input of ['refresh', 'info alpha', 'install alpha']) { await unavailable.execute(input); expect(unavailable.notice.set).toHaveBeenLastCalledWith('plugin manager is unavailable: the native plugin service is not mounted') }
+    for (const input of ['refresh', 'info alpha', 'install alpha']) { await unavailable.execute(input); expect(unavailable.notice.set).toHaveBeenLastCalledWith('plugin manager is unavailable: the native plugin service is not mounted', 'error') }
     await unavailable.execute(''); expect(await perform('refresh')).toMatchObject({ kind: 'failed', message: 'plugin manager is unavailable: the native plugin service is not mounted' })
   })
 
@@ -443,12 +460,12 @@ describe('marketplace reference navigation and native catalog observations', () 
 
   it('validates every command route and honors native state and install blocks', async () => {
     const test = fixture()
-    for (const input of ['install', 'uninstall', 'install alpha --source', 'info']) { await test.execute(input); expect(test.notice.set).toHaveBeenLastCalledWith(expect.stringContaining('usage: /plugin')) }
-    for (const input of ['install missing', 'uninstall missing']) { await test.execute(input); expect(test.notice.set).toHaveBeenLastCalledWith('unknown plugin: missing') }
-    await test.execute('uninstall alpha'); expect(test.notice.set).toHaveBeenLastCalledWith('"Alpha plugin" is not installed in this profile')
+    for (const input of ['install', 'uninstall', 'install alpha --source', 'info']) { await test.execute(input); expect(test.notice.set).toHaveBeenLastCalledWith(expect.stringContaining('usage: /plugin'), 'error') }
+    for (const input of ['install missing', 'uninstall missing']) { await test.execute(input); expect(test.notice.set).toHaveBeenLastCalledWith('unknown plugin: missing', 'error') }
+    await test.execute('uninstall alpha'); expect(test.notice.set).toHaveBeenLastCalledWith('"Alpha plugin" is not installed in this profile', 'error')
     await test.execute('list'); await settled(); expect(textOf(browser().view())).toContain('Installed')
     Reflect.deleteProperty(test.services, 'mayflyOverlays')
-    for (const input of ['', 'info alpha']) { await test.execute(input); expect(test.notice.set).toHaveBeenLastCalledWith('plugin browser is unavailable: the Mayfly UI registry is not mounted') }
+    for (const input of ['', 'info alpha']) { await test.execute(input); expect(test.notice.set).toHaveBeenLastCalledWith('plugin browser is unavailable: the Mayfly UI registry is not mounted', 'error') }
     mocks.catalog.mockResolvedValue(catalog([{ ...entry, status: 'removed' }]))
     const removed = fixture({ bundles: [bundle()] }); await removed.execute('info alpha'); expect(await perform('install')).toMatchObject({ kind: 'failed', message: expect.stringContaining('removed from the marketplace') })
     const available = fixture(); mocks.catalog.mockResolvedValue(catalog()); await available.execute(''); await settled(); expect(await perform('remove')).toMatchObject({ kind: 'failed', message: '"Alpha plugin" is not installed in this profile' })
@@ -564,7 +581,7 @@ describe('marketplace exact Host ownership and late native results', () => {
     unlisted.manager.listBundles.mockResolvedValueOnce(ok([bundle({ name: '@scope/unlisted' })])).mockResolvedValueOnce(ok([]))
     expect(await perform('remove')).toMatchObject({ kind: 'accepted' })
     expect(textOf(browser().view())).toContain('No plugin selected')
-    const blank = fixture({ bundles: [] }); mocks.catalog.mockResolvedValue({ status: 'offline', message: 'offline' }); await blank.execute('info missing'); expect(blank.notice.set).toHaveBeenCalledWith('unknown plugin: missing')
+    const blank = fixture({ bundles: [] }); mocks.catalog.mockResolvedValue({ status: 'offline', message: 'offline' }); await blank.execute('info missing'); expect(blank.notice.set).toHaveBeenCalledWith('unknown plugin: missing', 'error')
     mocks.catalog.mockResolvedValue(catalog())
     const absentStatus = fixture(); Reflect.deleteProperty(absentStatus.services, 'mayflyStatus'); await absentStatus.execute('install alpha'); expect(absentStatus.status.set).not.toHaveBeenCalled()
     const noNotifications = fixture(); Reflect.deleteProperty(noNotifications.services, 'mayflyUiInteraction'); mocks.catalog.mockResolvedValue(catalog()); await noNotifications.execute('install alpha'); expect(noNotifications.notify.report).not.toHaveBeenCalled()

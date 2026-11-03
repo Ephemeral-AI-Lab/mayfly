@@ -6,6 +6,7 @@
 
 import type { MayflyStatusRegistration, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext, MayflyUiNode, MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
+import { currentMayflySettings } from '@ephemeral-ai/mayfly/settings'
 import {
   DEFAULT_MARKET_INDEX_URL, loadMarketCatalog, buildRows, defaultInstallSource, entrySupportsSource,
   GROUP_MODES, groupRows, MARKET_TABS, marketEntryInstallBlock, newerVersion, rowName, rowSpec, tabRows,
@@ -133,7 +134,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
   const env = (): FactsEnv => ({ t, locale: locale() })
 
   /** The configured index URL; the empty default means the official chain. */
-  const indexUrl = (): string => DEFAULT_MARKET_INDEX_URL
+  const indexUrl = (): string => currentMayflySettings(ctx).marketIndexUrl || DEFAULT_MARKET_INDEX_URL
 
   /** Load (or force-reload) the read-only catalog. */
   const reload = (force: boolean, signal: AbortSignal): Promise<CatalogResult> => {
@@ -739,7 +740,7 @@ export function mountRemoteMarketplace(context: RemoteOperationsContext): () => 
     async execute(rawInput, signal) {
       if (signal.aborted) return
       const client = context.base.hosts.current()?.client ?? context.base.hosts.active?.() ?? context.base.hosts.list()[0]
-      if (client === undefined) { context.base.notice.set('Attach a Host before managing plugins'); return }
+      if (client === undefined) { context.base.notice.set('Attach a Host before managing plugins', 'error'); return }
       if (current?.client !== client) {
         current?.controller.dispose()
         current = { client, controller: createMarketplace(context, client) }
@@ -747,7 +748,7 @@ export function mountRemoteMarketplace(context: RemoteOperationsContext): () => 
       const controller = current.controller
       const generation = lifecycle.currentGeneration()
       const outcome = await controller.execute(rawInput, signal)
-      if (!signal.aborted && lifecycle.owns(generation) && outcome.text !== undefined) context.base.notice.set(outcome.text)
+      if (!signal.aborted && lifecycle.owns(generation) && outcome.text !== undefined) context.base.notice.set(outcome.text, outcome.kind === 'error' ? 'error' : 'info')
     },
   })
   return () => {
