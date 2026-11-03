@@ -780,6 +780,65 @@ describe('RemoteApp', () => {
     expect(fixture.client.sessions.retain).not.toHaveBeenCalled()
   })
 
+  it.each(['complete-first', 'complete-last'] as const)('isolates sessionless creation, prompts and startup intent across Hosts: %s', async order => {
+    const first = clientFixture(HostKey('http://one.test/'))
+    const second = clientFixture(HostKey('http://two.test/'))
+    const test = appFixture()
+    const app = new RemoteApp(test.conversation, test.status, test.panels, key => key === first.client.key ? first.client : second.client)
+    const created = Promise.withResolvers<SessionId>()
+    vi.mocked(first.client.sessions.create).mockReturnValueOnce(created.promise)
+    Object.assign(first.client.remote, { agentPresets: { list: async () => ({ ok: true, value: { presets: [{ id: 'builder' }] } }) } })
+    await app.attach('http://one.test/')
+    await app.execute('/new builder')
+    app.startupPlan.set(true)
+    const pending = app.execute('first')
+    const retired = expect(pending).rejects.toThrow('superseded')
+    await app.attach('http://two.test/')
+    expect(app.startupPlan.pending()).toBe(false)
+    if (order === 'complete-first') {
+      created.resolve(first.sessionId)
+      await retired
+    }
+    await app.execute('second')
+    if (order === 'complete-last') created.resolve(first.sessionId)
+    await retired
+    expect(first.client.sessions.create).toHaveBeenCalledExactlyOnceWith({ cwd: process.cwd(), agentPreset: 'builder' })
+    expect(first.client.sessions.retain).not.toHaveBeenCalled()
+    expect(first.session.command).not.toHaveBeenCalled()
+    expect(first.session.prompt).not.toHaveBeenCalled()
+    expect(first.session.cancel).not.toHaveBeenCalled()
+    expect(second.client.sessions.create).toHaveBeenCalledExactlyOnceWith({ cwd: process.cwd() })
+    expect(second.session.prompt).toHaveBeenCalledExactlyOnceWith([{ type: 'text', text: 'second' }], 'queue', undefined, 'request-1')
+    expect(second.session.command).not.toHaveBeenCalled()
+    expect(app.registry.current?.host).toBe(second.client.key)
+    app.dispose()
+  })
+
+  it.each(['reconnect', 'detach'] as const)('replaces pending initial creation after %s without admitting its prompt', async change => {
+    const f = clientFixture(HostKey('http://one.test/'))
+    const test = appFixture()
+    let generation = 1
+    f.client.state.getSnapshot = () => ({ status: 'connected', generation })
+    const app = new RemoteApp(test.conversation, test.status, test.panels, () => f.client)
+    await app.attach('http://one.test/')
+    const created = Promise.withResolvers<SessionId>()
+    vi.mocked(f.client.sessions.create).mockReturnValueOnce(created.promise)
+    const pending = app.execute('retired')
+    const retired = expect(pending).rejects.toThrow('superseded')
+    if (change === 'reconnect') generation += 1
+    else {
+      await app.execute('/detach')
+      await app.attach('http://one.test/')
+    }
+    await app.execute('current')
+    created.resolve(f.sessionId)
+    await retired
+    expect(f.client.sessions.create).toHaveBeenCalledTimes(2)
+    expect(f.session.prompt).toHaveBeenCalledExactlyOnceWith([{ type: 'text', text: 'current' }], 'queue', undefined, 'request-1')
+    expect(f.session.cancel).not.toHaveBeenCalled()
+    app.dispose()
+  })
+
   it('separates schemes and reverse-proxy mount paths without putting credentials in Host keys', async () => {
     const { conversation, status, panels } = appFixture()
     const attach = vi.fn(async (key: HostKey) => clientFixture(key).client)

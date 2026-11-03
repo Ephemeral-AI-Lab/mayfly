@@ -74,7 +74,13 @@ export class RemoteApp {
   }>()
   private selectionGeneration = 0
   private disposed = false
-  private creating: Promise<SessionRef> | undefined
+  private creating: {
+    readonly host: HostKey
+    readonly client: HostClient
+    readonly selectionGeneration: number
+    readonly connectionGeneration: number
+    readonly promise: Promise<SessionRef>
+  } | undefined
   private pendingPlan = false
   private pendingPlanExplicit = false
   private pendingPreset: string | undefined
@@ -172,7 +178,11 @@ export class RemoteApp {
     // The native inventory includes full management metadata. Warm this read
     // during startup so the local version panel does not wait for it on Enter.
     void this.harnessVersion(client).catch(() => {})
-    if (generation === this.defaultModelGeneration) this.activeHost = key
+    if (generation === this.defaultModelGeneration) {
+      if (this.activeHost !== undefined && this.activeHost !== key
+        && this.registry.current === undefined && this.displayedView?.() === undefined) this.clearSession()
+      this.activeHost = key
+    }
     this.publishTopology()
     const connection = client.state.getSnapshot().generation
     const current = (): boolean => !this.disposed && signal?.aborted !== true && generation === this.defaultModelGeneration
@@ -245,7 +255,6 @@ export class RemoteApp {
   ensureSession(cwd = this.cwd, signal?: AbortSignal): Promise<SessionRef> {
     if (this.disposed) return Promise.reject(new Error('Mayfly frontend is disposed'))
     if (signal?.aborted === true) return Promise.reject(signal.reason)
-    if (this.creating !== undefined) return this.creating
     const displayed = this.displayedView?.()
     if (displayed !== undefined) {
       if (displayed.access === 'readonly') return Promise.reject(new Error('This conversation is read-only'))
@@ -253,12 +262,19 @@ export class RemoteApp {
     }
     const current = this.registry.current
     if (current !== undefined) return Promise.resolve(current)
-    const creating = this.selectOrCreate(undefined, cwd, signal)
+    const host = this.requireHost()
+    const client = this.registry.get(host)!
+    const connectionGeneration = client.state.getSnapshot().generation
+    if (this.creating?.host === host && this.creating.client === client
+      && this.creating.selectionGeneration === this.selectionGeneration
+      && this.creating.connectionGeneration === connectionGeneration) return this.creating.promise
+    const promise = this.selectOrCreate(undefined, cwd, signal)
+    const creating = { host, client, selectionGeneration: this.selectionGeneration, connectionGeneration, promise }
     this.creating = creating
-    void creating.finally(() => {
+    void promise.finally(() => {
       if (this.creating === creating) this.creating = undefined
     }).catch(() => {})
-    return creating
+    return promise
   }
 
   /** Finish one initial mode write; an explicit plan command supersedes an unstarted startup selection. */
