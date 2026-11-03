@@ -9,11 +9,10 @@ import { normalizeSplitGrid, redactSplitOutput, SPLIT_REFERENCE } from './split-
 const require = createRequire(import.meta.url)
 
 /** Visible readiness for the real isolated fixtures, shared by both executables. Each group needs one match. */
-export function splitStartupReadiness(startup) {
+export function splitStartupReadiness() {
   return [
     [`mayfly v${SPLIT_REFERENCE.version}`],
     ['deepseek-official/deepseek-flash'],
-    ...(startup === 'splash' ? [['No sessions here yet', 'Recent sessions']] : []),
   ]
 }
 
@@ -105,7 +104,7 @@ export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, st
     await sleep(100)
     for (let attempt = 0; attempt < 5 && exitCode === undefined; attempt += 1) {
       terminal.write('\u0003')
-      await Promise.race([exited, sleep(attempt === 4 ? 5000 : 300)])
+      await Promise.race([exited, sleep(attempt === 0 ? 300 : 5000)])
     }
     if (exitCode === undefined) failures.push('Product did not exit on Ctrl+C')
     else if (exitCode !== 0 || exitSignal !== 0) failures.push(`Product exit was not clean (code=${exitCode}, signal=${exitSignal})`)

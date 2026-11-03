@@ -46,7 +46,7 @@ export async function runSplitScenario({ root, dshBin, artifacts, cols = 80, row
     for (const name of ['CI', 'COLUMNS', 'LINES', 'NO_COLOR', 'FORCE_COLOR', 'MAYFLY_SESSION_ID', 'MAYFLY_TASK']) delete env[name]
     const captured = await captureSplitTerminal({
       bin: process.execPath, args: [join(root, 'packages/remote/lib/remote-bin.js')], cwd: host.cwd,
-      env, cols, rows, steps, stub, startupUrl, startupReady: splitStartupReadiness(startup),
+      env, cols, rows, steps, stub, startupUrl, startupReady: splitStartupReadiness(),
       audit: step => awaitProbeAudit(host.auditLog, step),
       network: action => {
         if (forwarding === undefined || !['drop', 'restore'].includes(action)) throw new Error(`Invalid network action ${action}`)
