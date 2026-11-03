@@ -9,7 +9,7 @@ it('derives the complete Mayfly namespace from its generated augmentation', asyn
   expectTypeOf<MayflyHostRemote>().toEqualTypeOf<TypertRemoteNamespaceMap['mayflyHost']>()
   expectTypeOf<ReturnType<MayflyHostRemote['authorize']>>().toEqualTypeOf<RemoteStreamHandle<MayflyAuthorizationFrame, MayflyAuthorizationAnswer>>()
   expectTypeOf<ReturnType<MayflyHostRemote['followWorkflow']>>().toEqualTypeOf<RemoteStreamHandle<MayflyWorkflowFrame, never>>()
-  expectTypeOf<Parameters<MayflyHostRemote['followWorkflow']>>().toEqualTypeOf<[MayflyHostSessionRequest, AbortSignal?]>()
+  expectTypeOf<Parameters<MayflyHostRemote['followWorkflow']>>().toEqualTypeOf<[MayflyHostSessionRequest, (AbortSignal | undefined)?]>()
   const source = await readFile(new URL('../../src/frontend/host-contract.ts', import.meta.url), 'utf8')
   expect(source).toContain("TypertRemoteNamespaceMap['mayflyHost']")
   expect(source).not.toMatch(/interface MayflyHostRemote/u)

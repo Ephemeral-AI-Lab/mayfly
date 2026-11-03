@@ -207,7 +207,7 @@
     "@deepseek-ai/dsh-session-turn-outline": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-tool-schedule": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-workspace-changes": "0.2.2-alpha.2",
-    "@ephemeral-ai/mayfly-host": "0.1.4-rc.2"
+    "@ephemeral-ai/mayfly-host": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
