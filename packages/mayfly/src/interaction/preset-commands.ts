@@ -56,7 +56,10 @@ export function apply(ctx: Context): void {
   ctx.effect(() => () => lifetime.abort())
   const roster = ctx.agentPresets
   const t = interactionTranslator(ctx)
-  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.preset', 'preset')
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.preset', () => {
+    const agent = ctx.get('mayflyCurrentAgent')?.current()
+    return agent == null ? { kind: 'app', targetId: 'preset' } : { kind: 'session', sessionId: String(agent.id) }
+  })
   /** Whether this invocation still owns the selection it read. */
   const current = (agent: Agent | null) => !lifetime.signal.aborted
     && (agent === null ? ctx.mayflyCurrentAgent.current() === null : ctx.mayflyCurrentAgent.current() === agent)

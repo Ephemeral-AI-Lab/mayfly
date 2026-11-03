@@ -184,7 +184,10 @@ function publishAgeDetail(published: number | undefined, now: number): string {
  * @returns the disposer removing the command.
  */
 export function registerUpdateCommand(ctx: Context): () => void {
-  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.update-command', 'update')
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.update-command', () => {
+    const agent = ctx.get('mayflyCurrentAgent')?.current()
+    return agent == null ? { kind: 'app', targetId: 'update' } : { kind: 'session', sessionId: String(agent.id) }
+  })
   const dispose = registerOwnedCommand(ctx, {
     name: 'update',
     description: 'Safely update Mayfly (preflight, snapshot, smoke, auto-rollback)',

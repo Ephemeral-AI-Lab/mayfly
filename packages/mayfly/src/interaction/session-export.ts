@@ -467,7 +467,10 @@ export function buildFullExportMarkdown(input: FullExportInput): string {
  * @returns a disposer unregistering both commands.
  */
 export function registerExportCommands(ctx: Context): () => void {
-  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.session-export', 'session-export')
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.session-export', () => {
+    const agent = ctx.get('mayflyCurrentAgent')?.current()
+    return agent == null ? { kind: 'app', targetId: 'session-export' } : { kind: 'session', sessionId: String(agent.id) }
+  })
   /** The shared read path's outcome: session identity, decoded audit events,
    * and the current official projected transcript. */
   interface SessionExportSource {

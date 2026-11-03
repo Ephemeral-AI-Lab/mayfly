@@ -11,17 +11,12 @@ interface InteractionNotificationOwner {
 }
 export type InteractionFeedbackReporter = (id: string, feedback: MayflyFeedback) => void
 
-export function currentNotificationScope(ctx: Context, targetId: string): MayflyUiScope {
-  const agent = ctx.get('mayflyCurrentAgent')?.current()
-  return agent == null ? { kind: 'app', targetId } : { kind: 'session', sessionId: String(agent.id) }
-}
-
 /** Create one producer identity and retire only its records with the calling Fiber. */
-export function createInteractionNotificationOwner(ctx: Context, label: string, targetId = label): InteractionNotificationOwner {
+export function createInteractionNotificationOwner(ctx: Context, label: string, scope: () => MayflyUiScope): InteractionNotificationOwner {
   const owner = ctx.get('mayflyUiInteraction')?.createNotificationOwner(label)
   if (owner !== undefined) ctx.effect(() => () => owner.dispose())
   return {
-    report: (id, feedback, scope = currentNotificationScope(ctx, targetId), operationId = id) => owner?.report(id, scope, feedback, operationId),
+    report: (id, feedback, target = scope(), operationId = id) => owner?.report(id, target, feedback, operationId),
     clear: id => owner?.clear(id),
     clearAll: () => owner?.clearAll(),
   }

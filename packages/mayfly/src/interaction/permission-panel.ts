@@ -64,7 +64,10 @@ const CUSTOM_BLOCKED = 'custom is the derived state — pick a preset'
  */
 export function openPermissionPanel(ctx: Context): void {
   const t = interactionTranslator(ctx)
-  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.permission', 'permission')
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.permission', () => {
+    const agent = ctx.get('mayflyCurrentAgent')?.current()
+    return agent == null ? { kind: 'app', targetId: 'permission' } : { kind: 'session', sessionId: String(agent.id) }
+  })
   const presets = ctx.get('permissionPresets') as PermissionPresetsService | undefined
   if (presets === undefined) return
   const overlays = ctx.get('mayflyOverlays')

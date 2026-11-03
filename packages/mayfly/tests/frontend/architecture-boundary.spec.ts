@@ -56,6 +56,30 @@ function runtimeSpecifiers(source: string): string[] {
 }
 
 describe('frontend runtime architecture boundary', () => {
+  it('keeps every public runtime entry free of retired Agent lookup and development-only parsers', async () => {
+    const manifest = JSON.parse(await readFile(resolve(root, 'packages/mayfly/package.json'), 'utf8')) as { exports: Record<string, { default?: string }>, dependencies: Record<string, string>, devDependencies: Record<string, string> }
+    const visited = new Set<string>()
+    const visit = async (file: string): Promise<void> => {
+      if (visited.has(file)) return
+      visited.add(file)
+      const source = await readFile(file, 'utf8')
+      expect(source, file).not.toContain('mayflyCurrentAgent')
+      for (const target of runtimeSpecifiers(source)) {
+        expect(target, file).not.toMatch(/^(?:commander|yaml|@ephemeral-ai\/mayfly-host)(?:\/|$)/u)
+        if (target.startsWith('.')) await visit(resolve(file, '..', target))
+      }
+    }
+    for (const entry of Object.values(manifest.exports)) {
+      if (entry.default?.startsWith('./lib/') === true && entry.default.endsWith('.js')) {
+        await visit(resolve(root, 'packages/mayfly/src', entry.default.slice('./lib/'.length).replace(/\.js$/u, '.ts')))
+      }
+    }
+    expect(visited.size).toBeGreaterThan(100)
+    for (const dependency of ['commander', 'yaml']) {
+      expect(manifest.dependencies[dependency]).toBeUndefined()
+      expect(manifest.devDependencies[dependency]).toBeTypeOf('string')
+    }
+  })
   it('follows runtime imports while erasing every type-only import and export form', () => {
     expect(runtimeSpecifiers(`
       import type { A } from './type-a.ts'

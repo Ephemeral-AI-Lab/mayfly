@@ -66,7 +66,10 @@ export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
   const sessionListCache = createSessionListCache(ctx)
   const aliasRegistry = ctx.mayflyInteractionState.aliases
-  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.commands', 'commands')
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.commands', () => {
+    const agent = ctx.get('mayflyCurrentAgent')?.current()
+    return agent == null ? { kind: 'app', targetId: 'commands' } : { kind: 'session', sessionId: String(agent.id) }
+  })
   /**
    * Browse the native session catalog, recover missing titles, search content,
    * and inspect current facts before resuming or archiving a conversation.

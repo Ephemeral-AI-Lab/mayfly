@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { MayflyKeymapService } from '../../src/core/keymap.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import * as keys from '../../src/interaction/keys.ts'
+import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/key-definitions.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS, type MayflySettings } from '../../src/interaction/settings.ts'
 import { ACTION_SUBMIT, displayKey, keyActionKeys } from '../../src/core/key-actions.ts'
@@ -17,7 +18,7 @@ describe('interaction keys', () => {
   it('normalizes paging, boundary, deletion, and Agent-view keys', () => {
     const ctx = new Context()
     const keymap = new MayflyKeymapService(ctx)
-    keymap.register([...keys.INTERACTION_KEY_ACTIONS])
+    keymap.register([...INTERACTION_KEY_ACTIONS])
     expect(keymap.matches('\x1b[5~', keys.ACTION_PAGE_UP)).toBe(true)
     expect(keymap.matches('\x1b[6~', keys.ACTION_PAGE_DOWN)).toBe(true)
     expect(keymap.matches('\x1b[H', keys.ACTION_HOME)).toBe(true)

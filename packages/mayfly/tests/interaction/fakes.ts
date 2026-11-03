@@ -29,7 +29,7 @@ import { PromptEditorController } from '../../src/interaction/editor-instance.ts
 import { PromptSubmitPipeline } from '../../src/interaction/prompt-submit-pipeline.ts'
 import {
   INTERACTION_KEY_ACTIONS,
-} from '../../src/interaction/keys.ts'
+} from '../../src/interaction/key-definitions.ts'
 import { SkillsCatalogService } from '../../src/interaction/skills-catalog.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
