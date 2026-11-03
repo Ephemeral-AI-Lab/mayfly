@@ -820,7 +820,7 @@ export class UiSurfaceModel {
   private observe(event: MayflyUiEvent): void {
     if (this.input.definition.onEvent === undefined) return
     // Focus reports keep their own slot, so one never cancels a control's `tab-change` or `value-change` in flight.
-    const key = `observe:${event.kind === 'focus-change' ? 'focus:' : ''}${uiControlKey({ pagePath: event.pagePath, controlId: (event as { readonly controlId: string }).controlId })}`
+    const key = event.kind === 'focus-change' ? 'observe:focus' : `observe:${uiControlKey({ pagePath: event.pagePath, controlId: (event as { readonly controlId: string }).controlId })}`
     const previous = this.activeKeys.get(key)
     if (previous !== undefined) this.tasks.get(previous)?.controller.abort()
     this.start(key, event)

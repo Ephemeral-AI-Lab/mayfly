@@ -52,6 +52,31 @@ function directSurface(
 }
 
 describe.each(['pane', 'overlay'] as const)('%s frontend interaction', kind => {
+  it('retires older focus observations across different controls and fences their late feedback', async () => {
+    const first = Promise.withResolvers<MayflyUiObservationReply>()
+    const second = Promise.withResolvers<MayflyUiObservationReply>()
+    const signals: AbortSignal[] = []
+    const reports: ((feedback: { severity: 'error', message: string }) => void)[] = []
+    const { model } = await setup(kind, { observe: (event, context) => {
+      if (event.kind !== 'focus-change') return { kind: 'completed' }
+      signals.push(context.signal)
+      reports.push(context.report)
+      return event.controlId === 'older' ? first.promise : second.promise
+    } })
+    model.observeFocus({ pagePath: [], controlId: 'older' })
+    await flush()
+    model.observeFocus({ pagePath: [], controlId: 'newer' })
+    await flush()
+    expect(signals[0]!.aborted).toBe(true)
+    expect(signals[1]!.aborted).toBe(false)
+    second.resolve({ kind: 'completed' })
+    await flush()
+    reports[0]!({ severity: 'error', message: 'old focus' })
+    first.resolve({ kind: 'failed', message: 'old focus' })
+    await flush()
+    expect(model.feedbackSnapshot()).toEqual([])
+  })
+
   it.each(['submit', 'read'] as const)('keeps explicit %s validation errors when older field validation settles', async boundary => {
     const pending = Promise.withResolvers<MayflyUiObservationReply>()
     const unrelated = Promise.withResolvers<MayflyUiObservationReply>()
