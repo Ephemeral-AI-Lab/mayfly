@@ -502,6 +502,52 @@ describe('compileMayflyUiNode', () => {
     result.surfaceRuntime.dispose()
   })
 
+  it.each(['none', 'end'] as const)('keeps %s-follow layout scroll intent through measurement and focus-only recompiles', follow => {
+    const f = fixture({ contextHints: { rows: false } })
+    const content = (count: number) => ui.scroll(ui.text(Array.from({ length: count }, (_, at) => `line-${String(at)}`).join('\n')), { follow })
+    const snapshot = {
+      id: 'scroll-memory', revision: 0, source: [], scope: { kind: 'app' as const, targetId: 'scroll-memory' },
+      update: { reason: 'data' as const }, node: content(10),
+      events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }, definition: {},
+    }
+    const model = new UiSurfaceModel('scroll-memory', snapshot)
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    const first = compiledSurface(model.node, f.options, runtime)
+    first.focusTarget!.focused = true
+    layout(first.component as Component, 20, 3)
+    first.focusTarget!.handleInput?.('\x1b[F')
+    first.focusTarget!.handleInput?.('\x1b[A')
+    expect(layout(first.component as Component, 20, 3).lines).toEqual(['line-6', 'line-7', 'line-8'])
+    const second = compiledSurface(model.node, f.options, runtime)
+    const repaint = vi.fn()
+    // Measuring with zero rows or enough room for the whole document must not replace the reader's remembered place.
+    for (const height of [0, 20, 3, 20, 3, 20, 3]) renderLayoutFrame(second.component as Component, 20, height, repaint)
+    expect(repaint).not.toHaveBeenCalled()
+    expect(renderLayoutFrame(second.component as Component, 20, 3, repaint).lines).toEqual(['line-6', 'line-7', 'line-8'])
+    second.focusTarget!.handleInput?.('\x1b[B')
+    expect(repaint).toHaveBeenCalled()
+    second.focusTarget!.handleInput?.('\x1b[A')
+    first.focusTarget!.handleInput?.('\x1b[H')
+    expect(first.component.render(20)).toEqual([])
+    expect(layout(second.component as Component, 20, 3).lines[0]).toBe('line-6')
+    model.receive({ ...snapshot, revision: 1, node: content(11) })
+    const replacement = compiledSurface(model.node, f.options, runtime)
+    let frame = layout(replacement.component as Component, 20, 3)
+    expect(frame.lines[0]).toBe(follow === 'end' ? 'line-8' : 'line-0')
+    scrollViews(frame.root)[0]!.scrollTo(3, { disableFollow: true })
+    expect(layout(replacement.component as Component, 20, 3).lines).toEqual(['line-3', 'line-4', 'line-5'])
+    const retained = compiledSurface(model.node, f.options, runtime)
+    frame = layout(retained.component as Component, 20, 3)
+    expect(frame.lines[0]).toBe('line-3')
+    runtime.dispose()
+    retained.focusTarget!.handleInput?.('\x1b[F')
+    expect(retained.component.render(20)).toEqual([])
+    const successor = compiledSurface(model.node, f.options, new MayflyUiSurfaceRuntime(model))
+    expect(layout(successor.component as Component, 20, 3).lines[0]).toBe(follow === 'end' ? 'line-8' : 'line-0')
+    successor.surfaceRuntime.dispose()
+    model.dispose()
+  })
+
   it('restores active groups and scroll bindings after a persistent compile failure', () => {
     const runtime = new MayflyUiSurfaceRuntime()
     const f = fixture({ getViewport: () => ({ columns: 20, rows: 3 }) })

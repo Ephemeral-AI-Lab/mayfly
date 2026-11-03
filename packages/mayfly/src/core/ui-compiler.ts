@@ -627,7 +627,7 @@ function contentLeafComponent(node: WindowedContentNode, options: RuntimeCompile
 class WindowScrollView extends BarredScrollView {
   private readonly held: { rows: string[] }
 
-  constructor(component: Component, options: BarredScrollViewOptions) {
+  constructor(component: Component, options: BarredScrollViewOptions, private readonly memory?: ScrollMemory) {
     const held = { rows: [] as string[] }
     super({
       render: (width: number): string[] => {
@@ -637,7 +637,19 @@ class WindowScrollView extends BarredScrollView {
       invalidate: () => component.invalidate(),
     }, options)
     this.held = held
+    if (memory !== undefined) memory.following ??= options.follow === 'end'
   }
+
+  private remember(): void {
+    if (this.memory === undefined) return
+    this.memory.offset = this.scrollTop
+    this.memory.following = this.isFollowingEnd
+  }
+
+  override scrollTo(scrollTop: number, options?: Parameters<ScrollView['scrollTo']>[1]): void { super.scrollTo(scrollTop, options); this.remember() }
+  override scrollBy(lines: number): number { const remaining = super.scrollBy(lines); this.remember(); return remaining }
+  override scrollToStart(): void { super.scrollToStart(); this.remember() }
+  override scrollToEnd(): void { super.scrollToEnd(); this.remember() }
 
   /** Paint the segments under the settled window before the frame reads the rows. */
   protected prepareWindow(): void {
@@ -645,7 +657,17 @@ class WindowScrollView extends BarredScrollView {
   }
 
   override updateLayout(contentHeight: number, viewportHeight: number, requestRender: () => void): void {
-    super.updateLayout(contentHeight, viewportHeight, requestRender)
+    // Restoring layout geometry must not schedule another frame; later reader moves still request one.
+    let restoring = true
+    super.updateLayout(contentHeight, viewportHeight, () => { if (!restoring) requestRender() })
+    const memory = this.memory
+    // Measurement may temporarily fit the whole document or have no height. Only a reader's move replaces the
+    // remembered position, so a subsequent constrained layout and a recompiled branch can restore that intent.
+    if (memory !== undefined) this.quietly(() => {
+      if (memory.following === true) super.scrollToEnd()
+      else super.scrollTo(memory.offset, { disableFollow: true })
+    })
+    restoring = false
     this.prepareWindow()
   }
 
@@ -1874,12 +1896,12 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       const scrollOptions = { follow: node.follow === 'end' ? 'end' as const : 'none' as const, primary: false, overscroll: 'contain' as const, scrollbar: node.scrollbar === true, colors: () => options.colors, focusGated: true, repaint: options.listRuntime.repaint }
       const address = node.id === undefined ? undefined : { pagePath, controlId: node.id }
       const model = options.listRuntime.interaction
+      const key = scopedControlKey('scroll', path)
       const scroll = address === undefined || model === undefined || model.document(address) === undefined
-        ? new WindowScrollView(child, scrollOptions)
+        ? new WindowScrollView(child, scrollOptions, options.listRuntime.scrollMemory(key, node))
         : new SemanticScrollView(child as Component, scrollOptions, model, address, documentResolver(contentEnv(options, options)))
       // A scroll view holds one child, from its first row: what is on screen is decided against this view's window.
       placeChild(child, scroll, 0)
-      const key = scopedControlKey('scroll', path)
       state.bindControls([key], { component: scroll, axis: 'none' })
       state.bindScroll(key, scroll)
       return scroll
@@ -2324,7 +2346,7 @@ export class MayflyUiSurfaceRuntime {
   /** The painted content segments this surface's leaves produced; the renderer's one shared cache by default. */
   readonly content: MayflyContentCache
   /** Where this surface's scroll regions are scrolled, by control key, the least recently compiled first. */
-  private readonly scrolled = new Map<string, ScrollMemory>()
+  private readonly scrolled = new Map<string, { readonly memory: ScrollMemory, readonly source: object | undefined }>()
   /** The one-shot drains of this surface's progress bars. */
   private readonly transitions = new UiProgressTransitions()
   /** The last key-hint row this surface painted, with what it was painted from. */
@@ -2604,12 +2626,14 @@ export class MayflyUiSurfaceRuntime {
   /**
    * The place of the scroll region at `key`, made the most recent. A region is remembered by its position in the tree, so
    * a tree that shifts its siblings brings a new key for the same region, and the keys it leaves behind age out once the
-   * limit is reached; a region still in a compiled tree was touched by that compile and outlasts them.
+   * limit is reached; a region still in a compiled tree was touched by that compile and outlasts them. A layout scroll
+   * also supplies its admitted node, so focus-only recompiles retain its place while replacement content starts anew.
    */
-  scrollMemory(key: string): ScrollMemory {
-    const memory = this.scrolled.get(key) ?? { offset: 0, following: undefined, away: 0 }
+  scrollMemory(key: string, source?: object): ScrollMemory {
+    const previous = this.scrolled.get(key)
+    const memory = previous !== undefined && previous.source === source ? previous.memory : { offset: 0, following: undefined, away: 0 }
     this.scrolled.delete(key)
-    this.scrolled.set(key, memory)
+    this.scrolled.set(key, { memory, source })
     if (this.scrolled.size > SCROLL_MEMORY_LIMIT) this.scrolled.delete(this.scrolled.keys().next().value!)
     return memory
   }

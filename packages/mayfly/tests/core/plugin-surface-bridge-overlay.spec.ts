@@ -19,11 +19,12 @@ import { flush, plainText } from '../helpers.ts'
 
 /** A focusable one-row stand-in for the prompt editor in its dock slot. */
 const promptStandIn = (): MayflyFocusable => ({ focused: false, render: () => ['prompt'], invalidate() {} })
-import { FakeTerminal } from './fake-terminal.ts'
+import { FakeTerminal, waitForRender } from './fake-terminal.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
 import { untranslated } from '../../src/core/ui-interaction-locale.ts'
 import { FilesBrowser } from '../../src/interaction/files-browser-model.ts'
+import { MayflyUiSurfaceRuntime } from '../../src/core/ui-compiler.ts'
 
 class Scope {
   private readonly cleanups: Array<() => void> = []
@@ -400,6 +401,66 @@ it.each([2, 160])('lays out a %s-line preview on its first editor-overlay frame 
     expect(slot.component.render(80)).toEqual(['prompt'])
     slot.dispose()
   } finally { await bench.dispose() }
+})
+
+it('retains responsive preview positions when a settled focus move recompiles the full editor frame', async () => {
+  const bind = vi.spyOn(MayflyUiSurfaceRuntime.prototype, 'bind')
+  const bench = await fixture(80, 24)
+  try {
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', promptStandIn())
+    slot.focus()
+    let file = 'delivered.txt'
+    let prefix = 'PREVIEW'
+    const handle = bench.open({
+      id: 'files-settled-preview', presentation: 'editor', capturing: true,
+      render: () => FilesBrowser({
+        files: [{ id: 'file', path: `/workspace/${file}` }], focusedId: 'file', detailMode: true, canOpen: false,
+        detail: { kind: 'delivered', path: `/workspace/${file}`, fileType: 'file', previewable: true, preview: Array.from({ length: 160 }, (_, at) => `${prefix} ${String(at + 1).padStart(3, '0')}`).join('\n') },
+      }, untranslated),
+    })
+    const paint = () => bench.runtime.tui.render(bench.terminal.columns).map(stripTerminalSequences).join('\n')
+    const settle = async () => {
+      await flush(8)
+      bench.runtime.requestRender(true)
+      await waitForRender()
+      return paint()
+    }
+    const key = async (data: string) => { bench.terminal.sendInput(data); return await settle() }
+    expect(await settle()).toContain('PREVIEW 011')
+    expect(await key('\x1b[B')).toContain('PREVIEW 012')
+    expect(await key('\x1b[F')).toContain('PREVIEW 160')
+    expect(await key('\x1b[H')).toContain('PREVIEW 001')
+    bench.terminal.resize(40, 16)
+    expect(await settle()).toContain('PREVIEW 006')
+    expect(await key('\x1b[F')).toContain('PREVIEW 160')
+    bench.terminal.resize(120, 40)
+    expect(await settle()).toContain('PREVIEW 023')
+    const model = bench.root.mayflyUiInteraction.get('overlay', 'files-settled-preview')!
+    const node = model.node
+    const revision = model.revision
+    const compiled = bind.mock.calls.length
+    await key('\x1b[15~')
+    expect(model.node).toBe(node)
+    expect(model.revision).toBeGreaterThan(revision)
+    expect(bind.mock.calls.length).toBeGreaterThan(compiled)
+    expect(await key('\x1b[F')).toContain('PREVIEW 160')
+    expect(await key('\x1b[H')).toContain('PREVIEW 001')
+    bench.terminal.resize(80, 24)
+    expect(await settle()).toContain('PREVIEW 160')
+    expect(await key('\x1b[H')).toContain('PREVIEW 001')
+    expect(await key('\x1b[F')).toContain('PREVIEW 160')
+    file = 'replacement.txt'
+    prefix = 'REPLACEMENT'
+    handle.refresh()
+    const replaced = await settle()
+    expect(replaced).toContain('/workspace/replacement.txt')
+    expect(replaced).toContain('REPLACEMENT 001')
+    expect(replaced).not.toContain('REPLACEMENT 160')
+    handle.close()
+    await settle()
+    expect(slot.component.render(80)).toEqual(['prompt'])
+    slot.dispose()
+  } finally { bind.mockRestore(); await bench.dispose() }
 })
 
 it('keeps the root overlay node title over the registration frame', async () => {
