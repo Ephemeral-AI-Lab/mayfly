@@ -9,7 +9,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { t as listTar } from 'tar'
 import { SPLIT_SMOKE_STEPS } from './split-runner.mjs'
 import { SPLIT_REFERENCE, redactSplitOutput, verifyReferenceTarball } from './split-reference.mjs'
-import { captureSplitTerminal } from './split-terminal.mjs'
+import { captureSplitTerminal, splitStartupReadiness } from './split-terminal.mjs'
 import { startStubModel } from './stub-model.mjs'
 import { awaitProbeAudit } from './split-audit.mjs'
 import { splitProfileEnvironment } from './split-profile.mjs'
@@ -123,7 +123,7 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
   for (const name of ['CI', 'COLUMNS', 'LINES', 'NO_COLOR', 'FORCE_COLOR']) delete childEnv[name]
   let captured
   try {
-    captured = await captureSplitTerminal({ bin: acquired.dshBin, args: ['--profile', 'mayfly-rc2-test', '--patch', patch], cwd: work, env: childEnv, cols, rows, steps, stub, audit: step => awaitProbeAudit(auditLog, step), beforeExit: async () => { writeFileSync(release, 'release'); await sleep(30) } })
+    captured = await captureSplitTerminal({ bin: acquired.dshBin, args: ['--profile', 'mayfly-rc2-test', '--patch', patch], cwd: work, env: childEnv, cols, rows, steps, stub, startupReady: splitStartupReadiness(startup), audit: step => awaitProbeAudit(auditLog, step), beforeExit: async () => { writeFileSync(release, 'release'); await sleep(30) } })
   } finally { await stub.close() }
   const captureDir = join(dir, 'captures', caseName ?? '')
   mkdirSync(captureDir, { recursive: true })

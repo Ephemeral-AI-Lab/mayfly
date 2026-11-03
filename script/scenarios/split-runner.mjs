@@ -11,7 +11,7 @@ import { awaitProbeAudit } from './split-audit.mjs'
 import { startSplitNetwork } from './split-network.mjs'
 import { builtSplitRuntime, persistedSplitEvidence } from './split-evidence.mjs'
 
-import { captureSplitTerminal } from './split-terminal.mjs'
+import { captureSplitTerminal, splitStartupReadiness } from './split-terminal.mjs'
 
 /** Baseline and candidate must execute these same semantic steps and checkpoints. */
 export const SPLIT_SMOKE_STEPS = Object.freeze([
@@ -46,7 +46,7 @@ export async function runSplitScenario({ root, dshBin, artifacts, cols = 80, row
     for (const name of ['CI', 'COLUMNS', 'LINES', 'NO_COLOR', 'FORCE_COLOR', 'MAYFLY_SESSION_ID', 'MAYFLY_TASK']) delete env[name]
     const captured = await captureSplitTerminal({
       bin: process.execPath, args: [join(root, 'packages/remote/lib/remote-bin.js')], cwd: host.cwd,
-      env, cols, rows, steps, stub, startupUrl,
+      env, cols, rows, steps, stub, startupUrl, startupReady: splitStartupReadiness(startup),
       audit: step => awaitProbeAudit(host.auditLog, step),
       network: action => {
         if (forwarding === undefined || !['drop', 'restore'].includes(action)) throw new Error(`Invalid network action ${action}`)

@@ -4,12 +4,40 @@ import { createRequire } from 'node:module'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { keyBytes } from './input.mjs'
 import { createScreen } from './screen.mjs'
-import { normalizeSplitGrid, redactSplitOutput } from './split-reference.mjs'
+import { normalizeSplitGrid, redactSplitOutput, SPLIT_REFERENCE } from './split-reference.mjs'
 
 const require = createRequire(import.meta.url)
 
+/** Visible readiness for the real isolated fixtures, shared by both executables. Each group needs one match. */
+export function splitStartupReadiness(startup) {
+  return [
+    [`mayfly v${SPLIT_REFERENCE.version}`],
+    ['deepseek-official/deepseek-flash'],
+    ...(startup === 'splash' ? [['No sessions here yet', 'Recent sessions']] : []),
+  ]
+}
+
+/** An unchanged editor can precede native attachment; startup also needs the configured visible state. */
+export async function settleSplitScreen({ screen, stub, check, ready = [], timeoutMs = 20_000, now = () => performance.now(), pause = sleep }) {
+  let previous
+  let since = now()
+  const begin = since
+  let missing = ready
+  do {
+    check()
+    await screen.flush()
+    const next = screen.serialize()
+    if (next !== previous) { previous = next; since = now() }
+    missing = ready.filter(group => !group.some(text => screen.find(text) !== undefined))
+    if (screen.state.bytes > 0 && now() - since >= 250 && screen.state.openSync === 0 && stub.inFlight() === 0 && missing.length === 0) return
+    await pause(20)
+  } while (now() - begin < timeoutMs)
+  if (missing.length > 0) throw new Error(`Terminal startup did not become ready within ${timeoutMs}ms; missing visible text: ${missing.map(group => group.join(' or ')).join('; ')}`)
+  throw new Error('Terminal did not settle')
+}
+
 /** Drive identical semantic steps through either real executable. Never inject renderer state. */
-export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, steps, stub, alive = () => {}, startupUrl, onCheckpoint = () => {}, beforeExit = async () => {}, audit, network }) {
+export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, steps, stub, alive = () => {}, startupUrl, startupReady, onCheckpoint = () => {}, beforeExit = async () => {}, audit, network }) {
   const terminal = require('node-pty').spawn(bin, args, { name: 'xterm-256color', cols, rows, cwd, env })
   const screen = createScreen({ cols, rows, reply: data => terminal.write(data) })
   let output = ''
@@ -20,20 +48,7 @@ export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, st
   terminal.onData(data => { output += data; screen.feed(data) })
   const exited = new Promise(resolve => terminal.onExit(event => { exitCode = event.exitCode; exitSignal = event.signal; resolve(event.exitCode) }))
   const check = () => { alive(); if (exitCode !== undefined) throw new Error(`Terminal exited early with ${exitCode}`) }
-  const settle = async (timeoutMs = 20_000) => {
-    let previous
-    let since = performance.now()
-    const begin = since
-    do {
-      check()
-      await screen.flush()
-      const next = screen.serialize()
-      if (next !== previous) { previous = next; since = performance.now() }
-      if (screen.state.bytes > 0 && performance.now() - since >= 250 && screen.state.openSync === 0 && stub.inFlight() === 0) return
-      await sleep(20)
-    } while (performance.now() - begin < timeoutMs)
-    throw new Error('Terminal did not settle')
-  }
+  const settle = (timeoutMs = 20_000, ready) => settleSplitScreen({ screen, stub, check, ready, timeoutMs })
   try {
     const boot = performance.now()
     while (screen.state.frames.length === 0) {
@@ -41,7 +56,7 @@ export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, st
       if (performance.now() - boot > 30_000) throw new Error('Product did not paint a terminal frame')
       await sleep(20)
     }
-    await settle()
+    await settle(startupReady === undefined ? 20_000 : Math.max(0, 30_000 - (performance.now() - boot)), startupReady)
     for (const step of steps) {
       check()
       switch (step.step) {
