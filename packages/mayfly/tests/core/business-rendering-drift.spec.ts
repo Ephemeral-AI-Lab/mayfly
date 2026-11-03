@@ -49,11 +49,10 @@ const approvedPresentation = new Set([
   // Remaining Remote-specific plain panels; completion, skills and status use
   // the shared renderer and have no business-owned padding.
   "padding:packages/remote/src/remote/panels.ts:return missing > 0 ? `${row}${' '.repeat(missing)}` : row",
-  "padding:packages/remote/src/remote/panels/operations/agents.ts:label: `${'  '.repeat(row.depth)}${row.label}`,",
   "pointer:packages/mayfly/src/interaction/update-command.ts:detail: [`v${fromVersion} \u2192 v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' \u00b7 '),",
   "pointer:packages/mayfly/src/interaction/update-model.ts:{ kind: 'divider', label: `v${fromVersion} \u2192 v${toVersion}` },",
   // A version transition caption in the shared decision strip, not a selection pointer.
-  "pointer:packages/remote/src/remote/operations/update.ts:view: () => decisionStrip({ title: this.t(recovery ? 'Restore to v{version}?' : 'Update to v{version}?', { version: to }), detail: [`v${from} \u2192 v${to}`, this.t('The frontend update is kept only after a successful startup check.'), this.t('Host startup verification requires restarting the Host; the official API provides no isolated boot check.')].join(' \u00b7 '), yesLabel: this.t('Yes'), noLabel: this.t('No'), actionsId: 'update-confirm-actions' }),",
+  "pointer:packages/remote/src/remote/operations/update.ts:`v${from} \u2192 v${to}`,",
   "pointer:packages/mayfly/src/transcript/stream-facts.ts:const tokens = mark?.before !== undefined && mark.after !== undefined ? `${approx(mark.before)} \u2192 ${approx(mark.after)} ${t('tokens')}`",
   "pointer:packages/mayfly/src/transcript/tool-calls.ts:if (mcp !== null) return `${mcp[1]!} \u203a ${mcp[2]!}`",
 ])

@@ -292,6 +292,8 @@ const zh: Readonly<Record<string, string>> = {
   'Registered tools': '已注册工具',
   'Visible tools': '可见工具',
   'No tools registered; connection state is unavailable': '没有已注册工具，无法确定连接状态',
+  '(no parameters)': '（无参数）',
+  'Live tool availability is unknown while the server is not connected': '服务器未连接，实时工具可用性未知',
   'Tools are registered but restricted for this Agent': '工具已注册，但对当前 Agent 受限',
   'Configuration': '配置',
   'Connection': '连接',
