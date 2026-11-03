@@ -68,7 +68,8 @@ class RemoteWorkflowController {
     this.capabilityError = undefined
     void this.source.attach(null, undefined, undefined)
     const current = this.lifecycle.selection(generation)
-    if (current === undefined) {
+    // Passive child history has no live Agent for automatic Workflow reads.
+    if (current === undefined || (current.access !== undefined && current.access !== 'interactive')) {
       this.publish()
       return
     }

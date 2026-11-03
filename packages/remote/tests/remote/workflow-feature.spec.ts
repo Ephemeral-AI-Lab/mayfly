@@ -73,7 +73,7 @@ function wire() {
   }
 }
 
-async function fixture({ selected = true, capable = true } = {}) {
+async function fixture({ selected = true, capable = true, access }: { selected?: boolean, capable?: boolean, access?: RemoteFeatureSelection['access'] } = {}) {
   const ctx = new Context()
   const provider = await ctx.plugin({ name: 'workflow-test-ui', apply: uiProvider })
   const front = await ctx.plugin(frontend)
@@ -91,7 +91,7 @@ async function fixture({ selected = true, capable = true } = {}) {
     },
     remote: { $stream: streams, mayflyHost: { capabilities, followWorkflow: native.follow } },
   } as unknown as HostClient
-  const selection = { ref: { host: client.key, sessionId }, client, binding: {} } as RemoteFeatureSelection
+  const selection = { ref: { host: client.key, sessionId }, client, binding: {}, access } as RemoteFeatureSelection
   let current: RemoteFeatureSelection | undefined = selected ? selection : undefined
   const options = {
     ctx, components: fakeMayflyComponents(), colors: plainColors(),
@@ -121,11 +121,60 @@ async function fixture({ selected = true, capable = true } = {}) {
     ctx, native, capabilities, streams, state, options, dispose, node, render, dispatch, refresh, registration,
     rows: (width = 80) => render(node(), width),
     select: (value: boolean) => { current = value ? selection : undefined; for (const listener of topology) listener() },
+    setAccess: (access: NonNullable<RemoteFeatureSelection['access']>) => { current = { ...current!, access }; for (const listener of topology) listener() },
     reconnect: () => { state.generation += 1; for (const listener of states) listener() },
   }
 }
 
 describe('Remote Workflow shared presentation and physical stream ownership', () => {
+  it.each(['readonly', 'resumable'] as const)('leaves %s child history passive without reading Agent-only Workflow state', async access => {
+    const f = await fixture({ access })
+    expect(f.capabilities).not.toHaveBeenCalled()
+    expect(f.native.follow).not.toHaveBeenCalled()
+    expect(f.rows()).toEqual([])
+    await f.refresh(); f.reconnect(); await flush()
+    expect(f.capabilities).not.toHaveBeenCalled()
+    expect(f.native.follow).not.toHaveBeenCalled()
+    expect(f.rows()).toEqual([])
+  })
+
+  it.each(['readonly', 'resumable'] as const)('retires a live Workflow when access becomes %s and resumes observing only explicit interactive access', async access => {
+    const f = await fixture({ access: 'interactive' })
+    f.native.emit(frame([run()])); await flush()
+    expect(f.rows().join('\n')).toContain('Workflow Review')
+    const signal = f.native.signals[0]!
+    const retired = [...f.native.channels][0]!
+    f.setAccess(access); await flush()
+    expect(signal.aborted).toBe(true)
+    expect(f.native.channels.size).toBe(0)
+    retired.emit(frame([run({ name: 'Stale child' })], 'replacement'))
+    retired.fail(new Error('retired Agent unavailable')); await flush()
+    expect(f.rows()).toEqual([])
+    expect(f.capabilities).toHaveBeenCalledOnce()
+    expect(f.native.follow).toHaveBeenCalledOnce()
+    f.setAccess('interactive'); await flush()
+    expect(f.capabilities).toHaveBeenCalledTimes(2)
+    expect(f.native.follow).toHaveBeenCalledTimes(2)
+    f.native.emit(frame([run({ name: 'Active child' })])); await flush()
+    expect(f.rows().join('\n')).toContain('Workflow Active child')
+  })
+
+  it('retires pending capability discovery on a cold access change and preserves a subsequent live failure', async () => {
+    const f = await fixture({ selected: false })
+    const pending = deferred<Awaited<ReturnType<typeof f.capabilities>>>()
+    f.capabilities.mockImplementationOnce(() => pending.promise)
+    f.select(true)
+    f.setAccess('readonly')
+    pending.resolve({ ok: true, value: { features: ['followWorkflow'] } }); await flush()
+    expect(f.native.follow).not.toHaveBeenCalled()
+    expect(f.rows()).toEqual([])
+    f.setAccess('interactive'); await flush()
+    f.native.fail(new Error('interactive child Agent unavailable')); await flush()
+    expect(f.rows().join('\n')).toContain('interactive child Agent unavailable')
+    f.setAccess('resumable'); await flush()
+    expect(f.rows()).toEqual([])
+  })
+
   it('reserves zero renderer rows before selection, before baseline, and for an empty native baseline', async () => {
     const f = await fixture({ selected: false })
     expect(f.node()).toBeNull(); expect(f.rows()).toEqual([])

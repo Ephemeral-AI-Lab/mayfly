@@ -2,28 +2,93 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflyGitStatus } from '@ephemeral-ai/mayfly-host/types'
+import type { RemoteFeatureSelection } from '../../src/remote/features.ts'
 import { mountGitFeature } from '../../src/remote/features/git.ts'
 import { projection } from './approval-feature-fixture.ts'
 import { taskFixture, good, bad } from './task-feature-fixture.ts'
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const dispose of cleanups.splice(0).reverse()) await dispose(); vi.useRealTimers(); vi.restoreAllMocks() })
-async function fixture(selected = true) {
+async function fixture(selected = true, access?: RemoteFeatureSelection['access']) {
   vi.useFakeTimers()
   const f = await taskFixture(selected)
   const directory = projection<unknown>('/work')
   const current = f.options.hosts.current()
-  if (current !== undefined) Object.assign(current.binding.session, { projections: { faceOf: () => directory } })
+  if (current !== undefined) {
+    Object.assign(current, { access })
+    Object.assign(current.binding.session, { projections: { faceOf: () => directory } })
+  }
   const capabilities = vi.fn(async (..._args: unknown[]): Promise<unknown> => good({ features: ['gitStatus'] }))
   const gitStatus = vi.fn(async (..._args: unknown[]): Promise<RemoteResult<MayflyGitStatus | null>> => good({ branch: 'main', dirty: false, ahead: 0, behind: 0, diffAdded: 0, diffDeleted: 0 }))
   Object.assign(f.client.remote, { mayflyHost: { capabilities, gitStatus } })
   const stop = mountGitFeature(f.options)
   cleanups.push(async () => { stop(); await f.dispose() })
   const text = () => JSON.stringify(f.ctx.mayflyStatus.list().find(item => item.id === 'mayfly.status.git')?.node ?? null)
-  return { ...f, current, directory, capabilities, gitStatus, stop, text }
+  return { ...f, current, directory, capabilities, gitStatus, stop, text,
+    setAccess: (access: NonNullable<RemoteFeatureSelection['access']>, notify = true) => {
+      Object.assign(f.options.hosts.current()!, { access })
+      if (notify) for (const listener of f.topology) listener()
+    },
+  }
 }
 
 describe('Host Git badge owner', () => {
+  it.each(['readonly', 'resumable'] as const)('keeps %s history passive without Agent-only Git reads or directory observers', async access => {
+    const f = await fixture(true, access)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(f.capabilities).not.toHaveBeenCalled()
+    expect(f.gitStatus).not.toHaveBeenCalled()
+    expect(f.directory.listeners.size).toBe(0)
+    expect(f.text()).toBe('null')
+    f.reconnect(); await vi.advanceTimersByTimeAsync(0)
+    expect(f.capabilities).not.toHaveBeenCalled()
+    expect(f.gitStatus).not.toHaveBeenCalled()
+  })
+
+  it.each(['readonly', 'resumable'] as const)('releases live Git reads when access becomes %s and restarts only for interactive access', async access => {
+    const f = await fixture(true, 'interactive'); await vi.advanceTimersByTimeAsync(0)
+    const pending = Promise.withResolvers<RemoteResult<MayflyGitStatus | null>>()
+    f.gitStatus.mockReturnValueOnce(pending.promise)
+    f.directory.set('/pending'); await vi.advanceTimersByTimeAsync(0)
+    const signal = f.gitStatus.mock.calls.at(-1)![1] as AbortSignal
+    const queued = [...f.directory.listeners][0]!
+    f.setAccess(access)
+    expect(signal.aborted).toBe(true)
+    expect(f.directory.listeners.size).toBe(0)
+    expect(f.text()).toBe('null')
+    queued()
+    pending.resolve(good({ branch: 'stale', dirty: false, ahead: 0, behind: 0, diffAdded: 0, diffDeleted: 0 }))
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(f.text()).toBe('null')
+    expect(f.gitStatus).toHaveBeenCalledTimes(2)
+    expect(f.capabilities).toHaveBeenCalledTimes(2)
+    f.setAccess('interactive'); await vi.advanceTimersByTimeAsync(0)
+    expect(f.directory.listeners.size).toBe(1)
+    expect(f.gitStatus).toHaveBeenCalledTimes(3)
+    expect(f.text()).toContain('main')
+    f.gitStatus.mockResolvedValueOnce(bad('interactive Agent unavailable') as unknown as RemoteResult<MayflyGitStatus | null>)
+    f.directory.set('/failed'); await vi.advanceTimersByTimeAsync(0)
+    expect(f.text()).toContain('gitStatus failed')
+    f.setAccess(access); await vi.advanceTimersByTimeAsync(0)
+    expect(f.text()).toBe('null')
+  })
+
+  it('fences pending capability discovery and queued polls when access becomes cold', async () => {
+    const f = await fixture(); await vi.advanceTimersByTimeAsync(0)
+    const pending = Promise.withResolvers<unknown>()
+    f.capabilities.mockReturnValueOnce(pending.promise)
+    f.directory.set('/pending')
+    f.setAccess('readonly')
+    pending.resolve(good({ features: ['gitStatus'] })); await vi.advanceTimersByTimeAsync(0)
+    expect(f.gitStatus).toHaveBeenCalledOnce()
+    expect(f.text()).toBe('null')
+    f.setAccess('interactive'); await vi.advanceTimersByTimeAsync(0)
+    f.setAccess('resumable', false)
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(f.gitStatus).toHaveBeenCalledTimes(2)
+    expect(f.text()).toBe('null')
+  })
+
   it('polls only a current exact Host and repaints native statuses through the shared badge', async () => {
     const empty = await fixture(false); await vi.advanceTimersByTimeAsync(0); expect(empty.gitStatus).not.toHaveBeenCalled(); expect(empty.text()).toBe('null')
     const f = await fixture(); await vi.advanceTimersByTimeAsync(0); expect(f.text()).toContain('main')

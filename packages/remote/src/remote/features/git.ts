@@ -32,7 +32,9 @@ class RemoteGitController {
     this.lifecycle = new RemoteFeatureLifecycle(options, this.attach)
     this.poller = new RemoteGitPoller((ref, signal) => {
       const current = options.hosts.current()
-      if (current === undefined || !isRemoteFeatureSelection(current, current.client, ref)) {
+      if (current === undefined
+        || (current.access !== undefined && current.access !== 'interactive')
+        || !isRemoteFeatureSelection(current, current.client, ref)) {
         return Promise.reject(new Error('Git poll selection changed'))
       }
       return current.client.remote.mayflyHost.gitStatus({ sessionId: ref.sessionId }, signal)
@@ -65,7 +67,8 @@ class RemoteGitController {
     this.capabilityError = undefined
     this.poller.attach(null)
     const current = this.lifecycle.selection(generation)
-    if (current !== undefined) {
+    // Passive child history has no live Agent for automatic Git reads.
+    if (current !== undefined && (current.access === undefined || current.access === 'interactive')) {
       const directory = current.binding.session.projections.faceOf('workingDirectory')
       const update = (): void => {
         if (!this.lifecycle.owns(generation)) return
