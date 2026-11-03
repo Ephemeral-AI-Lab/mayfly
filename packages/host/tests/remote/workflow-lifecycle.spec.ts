@@ -169,6 +169,23 @@ describe('native Workflow live catalog', () => {
 })
 
 describe('native Workflow replacement stream', () => {
+  it('detaches native phase metadata before enqueue without freezing the producer', async () => {
+    const { ctx, parent, catalog } = await harness()
+    parent.append('tool-workflow/run-start', { runId: 'r' as never, name: 'r' })
+    const iterator = followWorkflow(ctx, catalog, parent.id, new AbortController().signal)[Symbol.asyncIterator]()
+    await iterator.next()
+    const phases = [{ title: 'initial' }]
+    ctx.emit('workflow/start', info('r', phases))
+    expect(Object.isFrozen(phases)).toBe(false)
+    expect(Object.isFrozen(phases[0])).toBe(false)
+    phases[0]!.title = 'native producer changed after enqueue'
+    phases.push({ title: 'late phase' })
+    const replacement = (await iterator.next()).value
+    expect(replacement).toMatchObject({ type: 'replacement', value: { runs: [{ phases: [{ title: 'initial' }] }] } })
+    expectFrozenJson(replacement)
+    await iterator.return?.(undefined as never)
+  })
+
   it('filters foreign changes, deduplicates equal snapshots and cleans listeners on caller abort', async () => {
     const { ctx, parent, foreign, child, catalog, agent } = await harness()
     const control = new AbortController()
