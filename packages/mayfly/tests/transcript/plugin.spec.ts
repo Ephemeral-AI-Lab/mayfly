@@ -17,7 +17,7 @@ import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandl
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
-import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyUiNode, MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import { ACTION_TOGGLE_COLLAPSE, apply, inject } from '../../src/transcript/index.ts'
 import { LiveAssistantStreamService } from '../../src/conversation/live-stream.ts'
@@ -155,7 +155,7 @@ interface Harness {
   readonly setMayflySettings: (value: unknown) => void
   readonly projections: FakeProjectionService
   /** The feedback the transcript reports on its notification owner, in order. */
-  readonly reports: Array<{ readonly id: string, readonly feedback: { readonly message: string, readonly severity?: string, readonly detail?: string } }>
+  readonly reports: Array<{ readonly id: string, readonly scope: MayflyUiScope, readonly feedback: { readonly message: string, readonly severity?: string, readonly detail?: string } }>
 }
 
 function fixtureApply(ctx: Context): void {
@@ -224,7 +224,7 @@ async function bootTranscript(
   if (options.interaction === true) {
     ctx.reflect.provide('mayflyUiInteraction', {
       createNotificationOwner: () => ({
-        report: (id: string, _scope: unknown, feedback: Harness['reports'][number]['feedback']) => { reports.push({ id, feedback }) },
+        report: (id: string, scope: MayflyUiScope, feedback: Harness['reports'][number]['feedback']) => { reports.push({ id, scope, feedback }) },
         clear: () => {},
         clearAll: () => {},
         dispose: () => {},
@@ -771,10 +771,11 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
     await vi.waitFor(() => expect(images.read('image-x', () => {})).toEqual({ state: 'missing' }))
   })
 
-  it('copies the row under the cursor as text or model JSON and reports the outcome', async () => {
+  it.each([false, true])('copies text and JSON from a readonly=%s conversation with the matching notification scope', async readonly => {
     resetSeq()
     const agent = fakeParent([userEvent('hello'), assistantEvent(1, 1, [{ type: 'text', text: 'an answer' }])])
-    const { screen, reports } = await bootTranscript(agent, { interaction: true })
+    const { screen, reports, showReadonlyChild } = await bootTranscript(agent, { interaction: true })
+    if (readonly) showReadonlyChild(agent)
     const writes: string[] = []
     setClipboardTextWriter(async (text) => { writes.push(text) })
     setClipboardOsc52Emitter(() => false)
@@ -783,6 +784,7 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
       const press = (actionId: string) => screen.slotOptions.get('transcript.conversation')!.onEvent({ kind: 'activate', controlId: STREAM.keys, actionId })
       press(STREAM.copy)
       await vi.waitFor(() => expect(reports.at(-1)?.feedback.message).toBe('Copied 9 characters'))
+      expect(reports.at(-1)?.scope).toEqual(readonly ? { kind: 'app', targetId: 'transcript-rows' } : { kind: 'session', sessionId: agent.id })
       expect(writes).toEqual(['an answer'])
       press(STREAM.copyRaw)
       await vi.waitFor(() => expect(reports.at(-1)?.feedback.message).toMatch(/^Copied \d+ characters of JSON$/u))

@@ -65,16 +65,22 @@ describe('interaction keys', () => {
     await fiber.dispose()
   })
 
-  it('reports that no other conversation is open without throwing from global dispatch', async () => {
+  it.each([null, 'selected-session'])('scopes a global conversation warning to the current selection %s', async sessionId => {
     const ctx = new Context()
     await ctx.plugin(MayflyKeymapService)
     const interaction = new UiInteractionService(ctx)
     new InteractionStateService(ctx, DEFAULT_SETTINGS)
     ctx.reflect.provide('mayflyConversations', { back: () => false })
-    await ctx.plugin(keys)
+    if (sessionId !== null) ctx.provide('mayflyCurrentAgent', { current: () => ({ id: sessionId }) } as never)
+    const fiber = await ctx.plugin(keys)
     ctx.mayflyKeymap.dispatch('\x1b[18~')
     ctx.mayflyKeymap.dispatch('\x1b[19~')
-    expect(interaction.notificationSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'warning', message: 'no other conversation is open' })]))
+    expect(interaction.notificationSnapshot()).toEqual([expect.objectContaining({
+      severity: 'warning', message: 'no other conversation is open',
+      scope: sessionId === null ? { kind: 'app', targetId: 'agent-view' } : { kind: 'session', sessionId },
+    })])
+    await fiber.dispose()
+    expect(interaction.notificationSnapshot()).toEqual([])
   })
 
   describe('saved key bindings', () => {

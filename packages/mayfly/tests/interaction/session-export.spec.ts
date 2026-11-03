@@ -838,6 +838,26 @@ describe('registerExportCommands', () => {
     await fiber.dispose()
   })
 
+  it('reports a completed copy in the app scope when the current Session closes while the clipboard waits', async () => {
+    const { ctx, agent, fiber } = await mount({ attach: false, persistence: { content: singleTurnLog('hi', 'hello') } })
+    const selection: { current: Agent | null, modelRef: undefined } = { current: agent, modelRef: undefined }
+    ctx.provide('testSession', selection)
+    const clipboard = Promise.withResolvers<void>()
+    const write = vi.fn(() => clipboard.promise)
+    setClipboardTextWriter(write)
+    const copying = run(ctx, agent, '/copy')
+    await vi.waitFor(() => expect(write).toHaveBeenCalledWith('hello'))
+    selection.current = null
+    clipboard.resolve()
+    expect(await copying).toEqual({ kind: 'success' })
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([expect.objectContaining({
+      scope: { kind: 'app', targetId: 'session-export' },
+      severity: 'success', message: 'copied the last assistant message (5 characters)',
+    })])
+    await fiber.dispose()
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
+  })
+
   it('guards /copy when there is no assistant message or the clipboard fails', async () => {
     const userOnly = await mount({ persistence: { content: logLine({ type: 'user/message', seq: 1, time: 1, data: { content: [{ type: 'text', text: 'q' }], source: { kind: 'user' } } }) } })
     expect(await run(userOnly.ctx, userOnly.agent, '/copy'))
