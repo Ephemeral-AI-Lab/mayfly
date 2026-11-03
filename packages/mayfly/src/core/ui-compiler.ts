@@ -569,6 +569,7 @@ const PURE_STATIC_WIDTHS = 4
  */
 function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, 'components' | 'colors' | 'counters' | 'reportRuntimeFailure'>): ContentRowsEnv {
   return {
+    owner: options.listRuntime,
     get components() { return paint.components },
     get colors() { return paint.colors },
     get counters() { return paint.counters },

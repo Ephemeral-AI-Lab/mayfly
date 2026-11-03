@@ -48,6 +48,8 @@ export type WindowedContentNode = MayflySectionContentNode | Extract<MayflyConte
 
 /** What a content leaf needs beyond its node: width helpers, palette, the content cache, and the frame contract. */
 export interface ContentRowsEnv {
+  /** The surface whose layout, diagnostics and work counters this source owns. */
+  readonly owner?: object | undefined
   readonly components: MayflyComponents
   readonly colors: MayflySemanticColors
   readonly counters?: MayflyWorkCounters | undefined
@@ -1140,7 +1142,7 @@ function buildNodeSource(node: WindowedContentNode, width: number, env: ContentR
 const CONTENT_NODE_KINDS = new Set<string>(['text', 'fields', 'code', 'sections', 'rich-text', 'diff', 'markdown'])
 
 /**
- * One source per admitted node, width, paint, and cache, shared by the leaf that paints it and the document resolver
+ * One source per admitted node, width, paint, cache, and surface owner, shared by the leaf and document resolver
  * that maps its anchors: a scroll's anchor and its viewport read the same row map instead of re-wrapping the document
  * on their own. Keyed by node identity — the same object arriving again is the same text — plus the palette and
  * components it paints with and the cache its segments live in, so a theme change or another renderer never reads
@@ -1151,7 +1153,7 @@ const SHARED_SOURCE_VARIANTS = 4
 const sharedSources = new WeakMap<object, Map<string, RowSource>>()
 
 function nodeSource(node: WindowedContentNode, width: number, env: ContentRowsEnv, depth: number): RowSource {
-  const key = `${String(width)}|${paintKey(env)}|${String(idOf(env.cache))}`
+  const key = `${String(width)}|${paintKey(env)}|${String(idOf(env.cache))}|${String(idOf(env.owner ?? env))}`
   let variants = sharedSources.get(node)
   const shared = variants?.get(key)
   if (shared !== undefined) return shared

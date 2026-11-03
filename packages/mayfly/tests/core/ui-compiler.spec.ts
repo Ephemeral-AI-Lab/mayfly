@@ -19,6 +19,8 @@ import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../..
 import { createAdmissionCache } from '../../src/core/ui-validator.ts'
 import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
+import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { choiceSegment } from '../../src/core/ui-interaction-choice.ts'
 import type { MayflyUiEvent } from '../../../ui/src/index.ts'
 import { ADVERSARIAL, expectLinesFit, SCAN_WIDTHS } from './width-scan.ts'
@@ -3041,6 +3043,35 @@ describe('compiler flow lists and framed surfaces', () => {
     expect(runtime.probe.line).toBe(1)
     runtime.dispose()
     model.dispose()
+  })
+
+  it('keeps lazy content notifications with each surface sharing a renderer cache after the first surface retires', () => {
+    const cache = new MayflyContentCache()
+    const firstFrame = vi.fn()
+    const secondFrame = vi.fn()
+    const firstCounters = createWorkCounters()
+    const secondCounters = createWorkCounters()
+    const first = new MayflyUiSurfaceRuntime(undefined, firstFrame, undefined, undefined, firstFrame, cache)
+    const second = new MayflyUiSurfaceRuntime(undefined, secondFrame, undefined, undefined, secondFrame, cache)
+    const answer = `${Array.from({ length: 10 }, (_, index) => `${'answer '.repeat(150)}${String(index)}\n\n| k | v |\n| - | - |\n| a | ${String(index)} |`).join('\n\n')}\n\nLAST LINE`
+    const node = ui.markdown(answer)
+    const options = fixture({ screenMode: 'main', getViewport: () => ({ columns: 40, rows: 10 }) }).options
+    const a = compiledSurface(node, { ...options, counters: firstCounters }, first)
+    const b = compiledSurface(node, { ...options, counters: secondCounters }, second)
+    a.component.render(40)
+    b.component.render(40)
+    first.dispose()
+    firstFrame.mockClear()
+    secondFrame.mockClear()
+    const paintedByFirst = firstCounters.segmentsPainted
+    const rows = b.component.render(40)
+    expect([...rows].join('\n')).toContain('LAST LINE')
+    expect(firstFrame).not.toHaveBeenCalled()
+    expect(secondFrame).toHaveBeenCalled()
+    expect(firstCounters.segmentsPainted).toBe(paintedByFirst)
+    expect(secondCounters.segmentsPainted).toBeGreaterThan(0)
+    expect(b.component.render(40).length).toBe(rows.length)
+    second.dispose()
   })
 
   it('keeps every row of a long Markdown answer in a flowing column as its units paint, and the rows after it', () => {
