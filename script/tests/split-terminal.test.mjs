@@ -29,7 +29,7 @@ const footer = '\u001b[24;1Hdeepseek-official/deepseek-flash'
 const editor = '\u001b[22;1HAsk anything'
 
 test('the isolated native startup needs both the release banner and the configured default model', () => {
-  const conversation = [{ text: 'mayfly v0.1.4-rc.2' }, { text: 'deepseek-flash', row: 'last' }]
+  const conversation = [{ text: 'mayfly v0.1.4-rc.2' }, { text: 'deepseek-flash' }]
   assert.deepEqual(splitStartupReadiness(), conversation)
 })
 
@@ -96,7 +96,7 @@ test('synchronized paints and native model work must drain after all ready text 
 test('a missing native ready marker fails at the 30 second deadline instead of capturing a partial startup', async t => {
   const state = fixture(t)
   state.screen.feed(editor + banner)
-  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(), timeoutMs: 30_000 }), /startup did not become ready within 30000ms; missing visible text: deepseek-flash \(last row\)/u)
+  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(), timeoutMs: 30_000 }), /startup did not become ready within 30000ms; missing visible text: deepseek-flash/u)
   assert.equal(state.now(), 30_000)
 })
 
@@ -108,17 +108,19 @@ test('native process exit or an unsettled frame remains a failure after ready te
   await assert.rejects(settleSplitScreen({ ...state, check: () => { throw new Error('Host exited') } }), /Host exited/u)
 })
 
-test('a model name in the banner or earlier output cannot substitute for the current native footer', async t => {
-  const state = fixture(t, 40, 16)
-  state.screen.feed(banner + '\u001b[4;1Hdeepseek-flash · deepseek-official')
-  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(), timeoutMs: 400 }), /deepseek-flash \(last row\)/u)
-  state.screen.feed('\u001b[16;1Hdeepseek-flash  ~/workspace')
-  state.tick(time => {
-    if (time === 500) state.screen.feed('\u001b[16;1H\u001b[2K~/workspace')
-    if (time === 1000) state.screen.feed('\u001b[16;1Hdeepseek-flash  ~/workspace')
-  })
+test('the real long-workspace frame needs native model facts while the responsive footer sheds the entire model', async t => {
+  const actual = JSON.parse(readFileSync(new URL('./fixtures/split-native-startup-long-workspace.json', import.meta.url), 'utf8'))
+  const state = fixture(t, actual.cols, actual.rows)
+  assert.equal(actual.lines.at(-1).includes('deepseek-flash'), false)
+  assert.ok(actual.lines.some(line => line.includes('deepseek-flash · deepseek-official')))
+  const paint = lines => state.screen.feed('\u001b[2J\u001b[H' + lines.map((line, row) => `\u001b[${row + 1};1H${line}`).join(''))
+  // Before native attach, the banner's model/provider facts are both default.
+  paint(actual.lines.map(line => line.replace('deepseek-flash · deepseek-official', 'default · default')))
+  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(), timeoutMs: 400 }), /deepseek-flash/u)
+  state.tick(time => { if (time === 800) paint(actual.lines) })
   await settleSplitScreen({ ...state, ready: splitStartupReadiness() })
-  assert.ok(state.now() >= 1260)
+  assert.ok(state.now() >= 1060)
+  assert.equal(state.screen.grid().lines.at(-1), actual.lines.at(-1))
 })
 
 async function realExitFixture(t, options) {

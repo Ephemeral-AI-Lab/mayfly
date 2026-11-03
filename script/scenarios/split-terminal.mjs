@@ -8,11 +8,11 @@ import { normalizeSplitGrid, redactSplitOutput, SPLIT_REFERENCE } from './split-
 
 const require = createRequire(import.meta.url)
 
-/** Visible readiness for the real isolated fixtures, shared by both executables. */
+/** The native model can appear in the banner or responsive footer of either isolated fixture. */
 export function splitStartupReadiness() {
   return [
     { text: `mayfly v${SPLIT_REFERENCE.version}` },
-    { text: 'deepseek-flash', row: 'last' },
+    { text: 'deepseek-flash' },
   ]
 }
 
@@ -27,13 +27,11 @@ export async function settleSplitScreen({ screen, stub, check, ready = [], timeo
     await screen.flush()
     const next = screen.serialize()
     if (next !== previous) { previous = next; since = now() }
-    missing = ready.filter(marker => marker.row === 'last'
-      ? !screen.grid().lines.at(-1)?.includes(marker.text)
-      : screen.find(marker.text) === undefined)
+    missing = ready.filter(marker => screen.find(marker.text) === undefined)
     if (screen.state.bytes > 0 && now() - since >= 250 && screen.state.openSync === 0 && stub.inFlight() === 0 && missing.length === 0) return
     await pause(20)
   } while (now() - begin < timeoutMs)
-  if (missing.length > 0) throw new Error(`Terminal startup did not become ready within ${timeoutMs}ms; missing visible text: ${missing.map(marker => marker.text + (marker.row === 'last' ? ' (last row)' : '')).join('; ')}`)
+  if (missing.length > 0) throw new Error(`Terminal startup did not become ready within ${timeoutMs}ms; missing visible text: ${missing.map(marker => marker.text).join('; ')}`)
   throw new Error('Terminal did not settle')
 }
 

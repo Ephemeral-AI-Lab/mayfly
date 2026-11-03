@@ -1,0 +1,32 @@
+{
+  "provenance": "Text rows of the real native Host/Remote long-workspace development preflight, source 17a27d201203b874b98c0e5800d3f7467e946d67 and runtime 69c1189f31a621facbd9a720c1204d7bb3612c765a8014c88bbf64323dc45b0c. Driver readiness fixture only; not a parity reference.",
+  "ansiSha256": "706fd2d2add8da4296a443d071f78fdae00731c44feaa725e267a50f2ce53a0f",
+  "cols": 80,
+  "rows": 24,
+  "lines": [
+    "",
+    "    ▗▘   ▝▖     mayfly v0.1.4-rc.2",
+    " ▄▄▖█▛███▜█▗▄▄  ephemeral agents, enduring works",
+    "  ▄▖█▙███▟█▗▄   deepseek-flash · deepseek-official",
+    "    ▝▜▀▀▀▛▘     /home/x/dev/mayfly-split-parity/.artifacts/development-drive",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "                                              Alt+↑ conversation · Alt+↓ view",
+    "╭──────────────────────────────────────────────────────────────────────────────╮",
+    "│ >  Ask anything · / commands · @ files · # skills · ! shell                  │",
+    "╰──────────────────────────────────────────────────────────────────────────────╯",
+    " long-native-workspace-keeps-responsive-model-footer-你好-and-retained-draft"
+  ]
+}
