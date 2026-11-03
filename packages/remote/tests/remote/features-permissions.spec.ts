@@ -10,6 +10,8 @@ afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup() })
 
 function fixture(options: Parameters<typeof configurationFixture>[1] & { readonly withSource?: boolean } = {}) {
   const test = configurationFixture(mocks.open, options)
+  const execute = vi.fn(async (): Promise<unknown> => ({ ok: true, value: { result: { kind: 'success' } } }))
+  Object.assign(test.client.remote, { commands: { execute } })
   const settings = { revision: vi.fn(() => ({ descriptor: 7, fields: 'revision' })), mutate: vi.fn(async () => ({})) }
   const specs: Record<string, MayflyPermissionSpec> = {
     safe: { sandbox: 'read-only', approval: 'ask' }, review: { sandbox: 'danger-full-access', approval: 'ask' },
@@ -20,7 +22,7 @@ function fixture(options: Parameters<typeof configurationFixture>[1] & { readonl
   })) }
   const controller = new RemotePermissionsController(test.context, settings as unknown as RemoteSettingsController, options.withSource === false ? undefined : source)
   cleanups.push(() => { controller.dispose(); test.dispose() })
-  return { ...test, settings, source, specs, controller }
+  return { ...test, execute, settings, source, specs, controller }
 }
 
 describe('Remote permission reference UI', () => {
@@ -44,7 +46,7 @@ describe('Remote permission reference UI', () => {
     expect(test.opened[0]!.panel.closed).toBe(true)
     expect(test.projectionListeners.size).toBe(0)
     expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['review'] })).toMatchObject({ kind: 'cancelled' })
-    expect(test.command).not.toHaveBeenCalled()
+    expect(test.execute).not.toHaveBeenCalled()
   })
 
   it('retains a wizard caller through nested Session permission discovery', async () => {
@@ -58,7 +60,7 @@ describe('Remote permission reference UI', () => {
     const selecting = test.controller.select(test.selection.ref, 'review', caller.signal)
     caller.abort(); gate.resolve({ ok: true, value: permissionCatalog() })
     await selecting
-    expect(test.command).not.toHaveBeenCalled()
+    expect(test.execute).not.toHaveBeenCalled()
     expect(test.notice.set).not.toHaveBeenCalled()
   })
 
@@ -82,7 +84,7 @@ describe('Remote permission reference UI', () => {
     expect(wire).toContain('Requests that require approval will still prompt.')
     expect(wire).toContain('"numbered":true')
     expect(wire).toContain('"selectedIds":["safe"]')
-    expect(test.command).not.toHaveBeenCalled()
+    expect(test.execute).not.toHaveBeenCalled()
     test.locale.setPreference('zh')
     expect(test.render()).toContain('权限')
     expect(test.render()).toContain('启用 Full access？')
@@ -102,21 +104,23 @@ describe('Remote permission reference UI', () => {
     const test = fixture()
     await test.controller.open()
     expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['review'] })).toEqual({ kind: 'completed', dismiss: true })
-    expect(test.command).toHaveBeenCalledExactlyOnceWith('/permission review')
-    expect(test.notice.set).toHaveBeenCalledWith('Permission preset: Review')
+    expect(test.execute).toHaveBeenCalledExactlyOnceWith(test.selection.ref.sessionId, '/permission review', [], expect.any(AbortSignal))
+    expect(test.command).not.toHaveBeenCalled()
+    expect(test.notice.set).toHaveBeenCalledWith('Permission preset: Review', 'success')
     expect(test.settings.mutate).not.toHaveBeenCalled()
   })
 
   it('keeps a failed command visible, ignores unrelated actions, and refuses unknown presets', async () => {
     const test = fixture()
     await test.controller.open()
-    test.command.mockResolvedValueOnce({ ok: false, error: { message: 'gone' } })
-    expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['safe'] })).toEqual({ kind: 'failed', message: 'gone' })
+    test.execute.mockResolvedValueOnce({ ok: false, error: { message: 'gone' } })
+    expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['safe'] })).toEqual({ kind: 'failed', message: 'permission dispatch failed: gone' })
+    expect(test.notice.set).toHaveBeenCalledExactlyOnceWith('permission dispatch failed: gone', 'error')
     expect(await test.act({ kind: 'selection-accept', controlId: 'other', selectedIds: ['safe'] })).toEqual({ kind: 'completed' })
     expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['custom'] })).toEqual({ kind: 'completed' })
-    expect(test.command).toHaveBeenCalledOnce()
+    expect(test.execute).toHaveBeenCalledOnce()
     await expect(test.controller.select(test.selection.ref, 'missing')).rejects.toThrow('permission command is unavailable')
-    test.command.mockResolvedValueOnce({ ok: true, value: { matched: false } })
+    test.execute.mockResolvedValueOnce({ ok: true, value: undefined })
     await expect(test.controller.select(test.selection.ref, 'safe')).rejects.toThrow('permission command is unavailable')
   })
 
@@ -125,7 +129,7 @@ describe('Remote permission reference UI', () => {
     await test.controller.open()
     expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['review'] })).toMatchObject({ kind: 'completed', dismiss: true })
     expect(test.settings.mutate).toHaveBeenCalledWith(test.client, 'permission', [{ op: 'set', path: ['defaultPreset'], value: 'review' }], { descriptor: 7, fields: 'revision' }, expect.any(AbortSignal))
-    expect(test.command).not.toHaveBeenCalled()
+    expect(test.execute).not.toHaveBeenCalled()
   })
 
   it('fences a delayed catalog before dispatch after exact binding replacement or abort', async () => {
@@ -137,7 +141,7 @@ describe('Remote permission reference UI', () => {
     test.select({ ...test.selection, binding: {} } as typeof test.selection)
     pending.resolve({ ok: true, value: permissionCatalog() })
     expect(await action).toMatchObject({ kind: 'cancelled' })
-    expect(test.command).not.toHaveBeenCalled()
+    expect(test.execute).not.toHaveBeenCalled()
     expect(test.notice.set).not.toHaveBeenCalled()
     expect(test.opened[0]!.close).toHaveBeenCalled()
   })
@@ -152,7 +156,7 @@ describe('Remote permission reference UI', () => {
     abort.abort()
     pending.resolve({ ok: true, value: permissionCatalog() })
     expect(await selecting).toMatchObject({ kind: 'cancelled' })
-    expect(test.command).not.toHaveBeenCalled()
+    expect(test.execute).not.toHaveBeenCalled()
   })
 
   it('drops late opens and retired catalog refreshes, releases every listener, and opens no default without its namespace', async () => {
@@ -199,13 +203,13 @@ describe('Remote permission reference UI', () => {
     test.detach()
     await test.controller.open()
     expect(await test.controller.catalog(test.selection)).toBeUndefined()
-    expect(test.command).not.toHaveBeenCalled()
+    expect(test.execute).not.toHaveBeenCalled()
     expect(test.opened).toEqual([])
     const disposed = fixture()
     disposed.controller.dispose()
     expect(await disposed.controller.catalog()).toBeUndefined()
     await disposed.controller.select(disposed.selection.ref, 'safe')
-    expect(disposed.command).not.toHaveBeenCalled()
+    expect(disposed.execute).not.toHaveBeenCalled()
   })
 
   it('keeps native-only options when optional consequences are unavailable or fail to load', async () => {
@@ -226,7 +230,7 @@ describe('Remote permission reference UI', () => {
     const test = fixture()
     test.catalog.mockRejectedValueOnce(new Error('current catalog failed'))
     await test.controller.open()
-    expect(test.notice.set).toHaveBeenCalledExactlyOnceWith('current catalog failed')
+    expect(test.notice.set).toHaveBeenCalledExactlyOnceWith('current catalog failed', 'error')
     const pending = Promise.withResolvers<unknown>()
     test.catalog.mockReturnValueOnce(pending.promise)
     const opening = test.controller.open()
@@ -251,19 +255,19 @@ describe('Remote permission reference UI', () => {
     notify()
     expect(test.browser().isCurrent!()).toBe(false)
     expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['safe'] })).toEqual({ kind: 'cancelled', dismiss: true })
-    expect(test.command).not.toHaveBeenCalled()
+    expect(test.execute).not.toHaveBeenCalled()
   })
 
   it.each([false, true])('fences a native permission command settling after reconnect (reject=%s)', async rejected => {
     const test = fixture()
     await test.controller.open()
     const response = Promise.withResolvers<unknown>()
-    test.command.mockReturnValueOnce(response.promise)
+    test.execute.mockReturnValueOnce(response.promise)
     const action = test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['review'] })
-    await vi.waitFor(() => { expect(test.command).toHaveBeenCalledOnce() })
+    await vi.waitFor(() => { expect(test.execute).toHaveBeenCalledOnce() })
     test.reconnect()
     if (rejected) response.reject(new Error('obsolete permission result'))
-    else response.resolve({ ok: true, value: { matched: true } })
+    else response.resolve({ ok: true, value: { result: { kind: 'success' } } })
     expect(await action).toEqual({ kind: 'cancelled', dismiss: true })
     expect(test.notice.set).not.toHaveBeenCalled()
   })
@@ -277,9 +281,9 @@ describe('Remote permission reference UI', () => {
     expect(test.render()).toContain('"selectedIds":["review"]')
     expect(test.render()).not.toContain('"id":"safe"')
     test.settings.mutate.mockRejectedValueOnce(new Error('native settings conflict'))
-    expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['review'] })).toEqual({ kind: 'failed', message: 'native settings conflict' })
+    expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['review'] })).toEqual({ kind: 'failed', message: 'permission dispatch failed: native settings conflict' })
     expect(test.settings.revision).toHaveBeenCalledWith(expect.objectContaining({ ns: 'permission' }), true)
-    expect(test.command).not.toHaveBeenCalled()
+    expect(test.execute).not.toHaveBeenCalled()
   })
 
   it('surfaces current refresh failures and rejects errors from older refreshes or closed panels', async () => {
@@ -295,7 +299,7 @@ describe('Remote permission reference UI', () => {
     expect(test.notice.set).not.toHaveBeenCalled()
     test.catalog.mockRejectedValueOnce(new Error('current refresh failed'))
     test.emit('permission-presets/catalog-changed')
-    await vi.waitFor(() => { expect(test.notice.set).toHaveBeenCalledWith('current refresh failed') })
+    await vi.waitFor(() => { expect(test.notice.set).toHaveBeenCalledWith('current refresh failed', 'error') })
     const retired = Promise.withResolvers<unknown>()
     test.catalog.mockReturnValueOnce(retired.promise)
     test.emit('permission-presets/catalog-changed')
@@ -303,5 +307,36 @@ describe('Remote permission reference UI', () => {
     retired.reject(new Error('closed refresh failed'))
     await Promise.resolve(); await Promise.resolve()
     expect(test.notice.set).toHaveBeenCalledOnce()
+  })
+
+  it('uses the full native outcome to refuse preset errors and never publishes success from an ACK', async () => {
+    const test = fixture()
+    await test.controller.open()
+    for (const text of ['native preset refused', undefined]) {
+      test.execute.mockResolvedValueOnce({ ok: true, value: { result: { kind: 'error', ...text === undefined ? {} : { text } } } })
+      const message = `permission dispatch failed: ${text ?? 'permission command is unavailable'}`
+      expect(await test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['safe'] })).toEqual({ kind: 'failed', message })
+      expect(test.notice.set).toHaveBeenLastCalledWith(message, 'error')
+    }
+    expect(test.notice.set).toHaveBeenCalledTimes(2)
+    expect(test.command).not.toHaveBeenCalled()
+    expect(test.opened[0]!.panel.closed).toBe(false)
+  })
+
+  it.each([false, true])('retires a pending native command after action cancellation (reject=%s)', async reject => {
+    const test = fixture()
+    await test.controller.open()
+    const pending = Promise.withResolvers<unknown>()
+    test.execute.mockReturnValueOnce(pending.promise)
+    const caller = new AbortController()
+    const action = test.act({ kind: 'selection-accept', controlId: 'permissions', selectedIds: ['safe'] }, caller.signal)
+    await vi.waitFor(() => { expect(test.execute).toHaveBeenCalledOnce() })
+    const signal = (test.execute.mock.calls[0] as unknown as readonly unknown[])[3] as AbortSignal
+    caller.abort()
+    expect(signal.aborted).toBe(true)
+    if (reject) pending.reject(new Error('caller cancelled'))
+    else pending.resolve({ ok: true, value: { result: { kind: 'success' } } })
+    expect(await action).toEqual({ kind: 'cancelled', dismiss: true })
+    expect(test.notice.set).not.toHaveBeenCalled()
   })
 })

@@ -86,7 +86,7 @@ export class RemotePermissionsController extends RemoteFeatureController {
           async (value, signal) => { await this.selectInOperation(operation, selection, value, signal) }, selection)
       }
     } catch (error) {
-      if (operation.valid()) this.context.notice.set(remoteErrorMessage(error))
+      if (operation.valid()) this.context.notice.set(remoteErrorMessage(error), 'error')
       operation.dispose()
     }
   }
@@ -159,7 +159,7 @@ export class RemotePermissionsController extends RemoteFeatureController {
         options = selection === undefined ? catalog.defaultOptions : catalog.options
         if (selection === undefined) current = catalog.defaultPreset
         mounted.refresh()
-      } catch (error) { if (operation.valid() && sequence === readSequence) this.context.notice.set(remoteErrorMessage(error)) }
+      } catch (error) { if (operation.valid() && sequence === readSequence) this.context.notice.set(remoteErrorMessage(error), 'error') }
     }
     mounted = openRemoteBrowser(this.context, {
       id: 'mayfly.permission', scope: { kind: 'app', targetId: 'permission' }, signal: operation.signal,
@@ -172,9 +172,14 @@ export class RemotePermissionsController extends RemoteFeatureController {
         try {
           await select(value, context.signal)
           if (context.signal.aborted || !operation.valid()) return { kind: 'cancelled', dismiss: true }
-          this.context.notice.set(t('Permission preset: {preset}', { preset: options.find(option => option.value === value)!.name }))
+          this.context.notice.set(t('Permission preset: {preset}', { preset: options.find(option => option.value === value)!.name }), 'success')
           return { kind: 'completed', dismiss: true }
-        } catch (error) { return operation.valid() ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled', dismiss: true } }
+        } catch (error) {
+          if (!operation.valid() || context.signal.aborted) return { kind: 'cancelled', dismiss: true }
+          const message = t('permission dispatch failed: {error}', { error: remoteErrorMessage(error) })
+          this.context.notice.set(message, 'error')
+          return { kind: 'failed', message }
+        }
       },
       onClosed: () => operation.dispose(),
     })
@@ -191,9 +196,10 @@ export class RemotePermissionsController extends RemoteFeatureController {
     const catalog = await remoteValue(selection.client.remote.permissionPresets.catalog())
     if (!operation.valid() || signal?.aborted) return
     if (!catalog.options.some(option => option.value === value)) throw new Error(this.translate('permission command is unavailable'))
-    const result = await selection.binding.session.command(`/permission ${value}`)
-    if (!operation.valid()) return
+    const result = await selection.client.remote.commands.execute(selection.ref.sessionId, `/permission ${value}`, [], signal === undefined ? operation.signal : AbortSignal.any([operation.signal, signal]))
+    if (!operation.valid() || signal?.aborted) return
     if (!result.ok) throw new Error(result.error.message)
-    if (!result.value.matched) throw new Error(this.translate('permission command is unavailable'))
+    if (result.value === undefined) throw new Error(this.translate('permission command is unavailable'))
+    if (result.value.result.kind === 'error') throw new Error(result.value.result.text ?? this.translate('permission command is unavailable'))
   }
 }

@@ -239,6 +239,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   retire that provider exactly as they retire a builtin palette.
   `/settings` and `/permissions` ignore command arguments as the native handlers
   do, while `/theme` retains the reference case-sensitive theme parser.
+  Permission actions await the generated full native command result before
+  reporting success; a matched command ACK alone proves no preset write.
+  Native refusals keep the picker open with the reference prefixed dispatch
+  error and error notice. Action cancellation fences both replies and notices.
 - Raw settings editing uses `createRemoteSettingsEditor` with core-owned
   `screen.suspend`. Editing happens locally; writes use the original Host
   document revision and reject results after cancellation or selection change.
