@@ -72,6 +72,12 @@ class RemoteFilesBrowser {
     void this.readOpenCapability()
   }
 
+  /** Refocusing preserves this invocation's selected row, preview and pending reads. */
+  refocus(): boolean {
+    if (!this.operation.valid()) return false
+    return this.context.base.ctx.mayflyOverlays.focus('remote.operations.files')
+  }
+
   private refreshRows(): void {
     if (filesBrowserRow(this.facts, this.facts.focusedId) === undefined) {
       this.focus(filesBrowserItems(this.facts)[0]?.id)
@@ -98,7 +104,7 @@ class RemoteFilesBrowser {
       this.facts = { ...this.facts, latest: latest ?? undefined }
       this.refreshRows()
     } catch (error) {
-      if (this.operation.valid() && ticket === this.latestTicket) this.context.base.notice.set(remoteErrorMessage(error))
+      if (this.operation.valid() && ticket === this.latestTicket) this.context.base.notice.set(remoteErrorMessage(error), 'error')
     }
   }
 
@@ -184,6 +190,7 @@ class RemoteFilesBrowser {
 class RemoteFilesController extends RemoteFeatureController<RemoteOperationsContext['base']> {
   private readonly t: MayflyTranslate
   private operation: RemoteFeatureOperation | undefined
+  private browser: RemoteFilesBrowser | undefined
 
   constructor(private readonly filesContext: RemoteOperationsContext) {
     super(filesContext.base)
@@ -194,12 +201,13 @@ class RemoteFilesController extends RemoteFeatureController<RemoteOperationsCont
   readonly execute = (_rawInput: string, signal: AbortSignal): void => {
     if (signal.aborted) return
     const current = this.filesContext.base.hosts.current()
-    if (current === undefined) { this.filesContext.base.notice.set(this.t('No current session')); return }
+    if (current === undefined) { this.filesContext.base.notice.set(this.t('No current session'), 'error'); return }
+    if (this.browser?.refocus() === true) return
     this.operation?.dispose()
     const operation = this.sessionOperation(current, signal)
     if (operation === undefined) return
     this.operation = operation
-    new RemoteFilesBrowser(this.filesContext, current, operation, this.t)
+    this.browser = new RemoteFilesBrowser(this.filesContext, current, operation, this.t)
   }
 }
 

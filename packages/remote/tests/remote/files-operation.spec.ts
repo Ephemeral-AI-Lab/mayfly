@@ -38,7 +38,8 @@ function fixture(options: { readonly files?: typeof delivered | null, readonly n
   let attached = true
   let current: RemoteFeatureSelection | undefined = { client, binding, ref: { host: HostKey('one'), sessionId: SessionId('lead') } }
   const locale = { register: vi.fn(), subscribe: vi.fn(() => () => {}), translate: vi.fn((_namespace: string, key: string) => key) }
-  const ctx = { effect: (fn: () => unknown) => { fn(); return () => {} }, get: (name: string) => name === 'mayflyLocale' ? locale : undefined, inject: (_keys: unknown, fn: (scope: unknown) => void) => { fn(ctx); return () => {} }, mayflyLocale: locale } as unknown as Context
+  const focus = vi.fn(() => true)
+  const ctx = { effect: (fn: () => unknown) => { fn(); return () => {} }, get: (name: string) => name === 'mayflyLocale' ? locale : undefined, inject: (_keys: unknown, fn: (scope: unknown) => void) => { fn(ctx); return () => {} }, mayflyLocale: locale, mayflyOverlays: { focus } } as unknown as Context
   const commands = new RemoteFeatureCommandRegistry()
   const notice = { set: vi.fn() }
   const context = { base: { ctx, commands, notice, hosts: { list: () => attached ? [client] : [], current: () => current, subscribe: subscribe('topology') }, subscribeLocale: () => () => {} } as unknown as RemoteFeatureContext, options: { localCwd: '/local', ...options.noCopy ? {} : { copy } } } as unknown as RemoteOperationsContext
@@ -57,7 +58,7 @@ function fixture(options: { readonly files?: typeof delivered | null, readonly n
   const act = (event: object, signal = new AbortController().signal) => browser!.action!(event as MayflyUiActionEvent, { signal } as MayflyUiEventContext)
   const select = (id?: string, controlId = 'files') => act({ kind: 'selection-accept', controlId, selectedIds: id === undefined ? [] : [id] })
   const activate = (actionId: string, signal?: AbortSignal) => act({ kind: 'activate', actionId }, signal)
-  return { client, binding, commands, notice, unmount, execute, act, select, activate, deliveredFile, latestWorkspaceChanges, workspaceChangesDiff, canOpenWorkspacePath, openWorkspacePath, copy, refresh, close, listeners,
+  return { client, binding, commands, notice, unmount, execute, act, select, activate, deliveredFile, latestWorkspaceChanges, workspaceChangesDiff, canOpenWorkspacePath, openWorkspacePath, copy, refresh, close, focus, listeners,
     browser: () => browser!, view: () => browser!.view(),
     project: (value: typeof files) => { files = value; fire('projection') },
     events: (value: readonly unknown[]) => { entries = value; fire('events') },
@@ -130,7 +131,7 @@ describe('native Files command composition', () => {
     const f = fixture()
     f.selection(undefined)
     f.execute('extra')
-    expect(f.notice.set).toHaveBeenCalledWith('No current session')
+    expect(f.notice.set).toHaveBeenCalledWith('No current session', 'error')
     expect(f.deliveredFile).not.toHaveBeenCalled()
     f.unmount()
   })
@@ -263,7 +264,7 @@ describe('native Files command composition', () => {
     f.execute()
     await tick()
     expect(contains(f.view(), 'file denied')).toBe(true)
-    expect(f.notice.set).toHaveBeenCalledWith('native refusal')
+    expect(f.notice.set).toHaveBeenCalledWith('native refusal', 'error')
     f.latestWorkspaceChanges.mockResolvedValueOnce(ok(latest))
     f.events([{ type: 'event', event: { type: 'workspace/changes', seq: 8 } }])
     await tick()
@@ -288,7 +289,66 @@ describe('native Files command composition', () => {
 })
 
 describe('Files browser operation retirement', () => {
-  it.each(['reconnect', 'detach', 'binding', 'unmount', 'close', 'reopen'] as const)('retires listeners and ignores an old metadata success on %s', async retirement => {
+  it('refocuses the original selected narrow preview without replacing its caller or duplicating reads and listeners', async () => {
+    const f = fixture()
+    const original = new AbortController()
+    f.execute('', original.signal)
+    await tick()
+    await f.select('4/1', 'files-narrow')
+    await tick()
+    await f.activate('preview')
+    const browser = f.browser()
+    const view = f.view()
+    const reads = f.deliveredFile.mock.calls.length
+    expect(contains(view, 'preview line')).toBe(true)
+    expect((view as { title?: string }).title).toBe('other.txt')
+    const later = new AbortController()
+    f.execute('', later.signal)
+    expect(f.focus).toHaveBeenCalledExactlyOnceWith('remote.operations.files')
+    expect(f.browser()).toBe(browser)
+    expect(f.view()).toEqual(view)
+    expect(f.deliveredFile).toHaveBeenCalledTimes(reads)
+    expect(f.latestWorkspaceChanges).toHaveBeenCalledOnce()
+    expect(f.canOpenWorkspacePath).toHaveBeenCalledOnce()
+    expect(f.listeners.projection.size).toBe(1)
+    expect(f.listeners.events.size).toBe(1)
+    expect(f.close).not.toHaveBeenCalled()
+    later.abort()
+    expect(browser.isCurrent()).toBe(true)
+    f.execute('', AbortSignal.abort())
+    expect(f.focus).toHaveBeenCalledOnce()
+    expect(browser.isCurrent()).toBe(true)
+    original.abort()
+    expect(browser.isCurrent()).toBe(false)
+    expect(f.close).toHaveBeenCalledOnce()
+    expect(f.listeners.projection.size + f.listeners.events.size).toBe(0)
+    f.unmount()
+  })
+
+  it('keeps the original pending read on refocus and starts a fresh owner after that caller retires', async () => {
+    const f = fixture()
+    const pending = deferred<unknown>()
+    f.deliveredFile.mockReturnValueOnce(pending.promise)
+    const caller = new AbortController()
+    f.execute('', caller.signal)
+    const original = f.browser()
+    f.execute()
+    expect(f.deliveredFile).toHaveBeenCalledOnce()
+    expect(original.isCurrent()).toBe(true)
+    pending.resolve(ok({ path: '/original', displayPath: '/original', fileType: 'file' }))
+    await tick()
+    expect(contains(f.view(), '/original')).toBe(true)
+    caller.abort()
+    f.execute()
+    expect(original.isCurrent()).toBe(false)
+    expect(f.browser()).not.toBe(original)
+    await tick()
+    expect(f.deliveredFile).toHaveBeenCalledTimes(2)
+    expect(f.browser().isCurrent()).toBe(true)
+    f.unmount()
+  })
+
+  it.each(['reconnect', 'detach', 'binding', 'unmount', 'close', 'missing-overlay'] as const)('retires listeners and ignores an old metadata success on %s', async retirement => {
     const f = fixture()
     const pending = deferred<unknown>()
     f.deliveredFile.mockReturnValueOnce(pending.promise)
@@ -300,7 +360,7 @@ describe('Files browser operation retirement', () => {
     else if (retirement === 'binding') { f.selection({ ...f.current(), binding: { ...f.binding } }); f.topology() }
     else if (retirement === 'unmount') f.unmount()
     else if (retirement === 'close') old.onClosed?.()
-    else f.execute()
+    else { f.focus.mockReturnValueOnce(false); f.execute() }
     await tick()
     expect(old.isCurrent()).toBe(false)
     const paints = f.refresh.mock.calls.length
