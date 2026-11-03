@@ -191,7 +191,7 @@ describe('official conversation model mapping', () => {
   it('maps every semantic entry and keeps pane-owned channels as process members', () => {
     const model = conversationTranscriptModel(projection([
       {
-        kind: 'user', id: 'user-1', seq: 1, updatedSeq: 1, turn: 1, text: 'hello', attachments: [{ kind: 'image',
+        kind: 'user', id: 'user-1', seq: 1, updatedSeq: 1, turn: 1, text: 'hello', attachments: [{
           kind: 'image', attachmentId: 'image-1', mediaType: 'image/png', bytes: 12, width: 4, height: 3,
           name: 'plot.png', originalDimensions: { width: 8, height: 6 },
         }, {
