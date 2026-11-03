@@ -34,6 +34,10 @@ export interface RemoteFeatureSelection {
   readonly ref: SessionRef
   readonly client: HostClient
   readonly binding: SessionBinding
+  /** Native side-view access; omitted primary selections are interactive. */
+  readonly access?: 'interactive' | 'resumable' | 'readonly'
+  /** Only the primary selection announces resumed history. */
+  readonly kind?: 'primary' | 'btw' | 'subagent'
 }
 
 /** Read-only topology and selection seam; HostRegistry remains the sole owner. */

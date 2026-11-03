@@ -168,7 +168,7 @@ class RemoteActivityController {
       const key = `${current.ref.host}\0${current.ref.sessionId}`
       const first = !this.seen.has(key)
       this.seen.add(key)
-      if (first && this.activity.turn > 0 && !this.activity.active) {
+      if ((current.kind === undefined || current.kind === 'primary') && first && this.activity.turn > 0 && !this.activity.active) {
         const history = facts.getSnapshot() as ConversationFacts | undefined
         this.notifications.report('resumed', { kind: 'session', sessionId: current.ref.sessionId }, {
           severity: 'info',

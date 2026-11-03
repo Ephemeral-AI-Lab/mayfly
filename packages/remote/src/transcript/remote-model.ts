@@ -105,6 +105,10 @@ export class RemoteConversationModelSource {
   setVisible(visible: boolean): void {
     if (this.disposed || this.visible === visible) return
     this.visible = visible
+    if (visible && !this.restoreEffectiveEffort && readRecordedModelSelection(this.facts.snapshot().values['modelSelection']) !== undefined) {
+      this.restoreEffectiveEffort = true
+      this.options.onPresentation?.()
+    }
     if (!visible || !this.unread) return
     this.unread = false
     if (this.replacedWhileHidden) this.generation += 1

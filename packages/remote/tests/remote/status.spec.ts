@@ -59,6 +59,21 @@ async function mount(initial: RemoteStatusSnapshot, paths?: { home?: () => strin
 }
 
 describe('mountRemoteStatus', () => {
+  it.each(['resumable', 'readonly'] as const)('keeps cold history model and directory without Agent context or effort (%s)', async access => {
+    const current = { presentation: facts({ reasoningEffort: 'high' }), values: {
+      modelSelection: { next: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'max' } },
+      contextPressure: { projectedTokens: 100, contextWindow: 1000 },
+    }, conversation: 'subagent' as const, access }
+    const mounted = await mount(current)
+    try {
+      expect(mounted.rows(160).join('\n')).toContain('deepseek/deepseek-chat')
+      expect(mounted.rows(160).join('\n')).toContain('subagent')
+      expect(mounted.rows(160).join('\n')).not.toMatch(/High|Max|ctx/u)
+      mounted.update({ ...current, access: 'interactive' })
+      expect(mounted.rows(160).join('\n')).toContain('Max')
+      expect(mounted.rows(160).join('\n')).toContain('ctx')
+    } finally { await mounted.owner.dispose() }
+  })
   it('shows the shared inverse focus chip and withdraws it on prompt return and unload', async () => {
     const mounted = await mount({ presentation: facts(), values: {} })
     try {

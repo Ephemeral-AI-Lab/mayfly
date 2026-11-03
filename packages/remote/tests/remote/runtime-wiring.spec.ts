@@ -400,7 +400,7 @@ describe('standalone Remote runtime wiring', () => {
     expect(wiring.initialCommands).toEqual([])
     expect(wiring.selectOrCreate).toHaveBeenCalledWith('native-initial', '/local/workspace')
     wiring.toolResolver!(ref)
-    expect(selected()).toMatchObject({ ref, binding, client, access: 'interactive' })
+    expect(selected()).toMatchObject({ ref, binding, client, access: 'interactive', kind: 'primary' })
     expect(wiring.features!.hosts.active!()).toBe(client)
     expect(wiring.features!.hosts.list()).toEqual([client])
     expect(wiring.keyActions.map(action => action.id)).toEqual(['mayfly.interaction.toggle-agent-view', 'mayfly.interaction.close-agent-view', 'other', 'mayfly.transcript.toggle-collapse'])
@@ -410,7 +410,7 @@ describe('standalone Remote runtime wiring', () => {
     key('close-agent-view'); expect(wiring.closeChild).not.toHaveBeenCalled()
     wiring.closeTarget = child; key('close-agent-view'); expect(wiring.closeChild).toHaveBeenCalledWith(child)
     wiring.side = { ref: child, binding, facts: { kind: 'subagent', access: 'readonly' } }
-    expect(selected()).toMatchObject({ ref: child, binding, access: 'readonly' })
+    expect(selected()).toMatchObject({ ref: child, binding, access: 'readonly', kind: 'subagent' })
     expect(wiring.operations!.primary!()).toEqual({ ref, binding, client })
     wiring.operations!.showPrimary!()
     expect(wiring.showPrimary).toHaveBeenCalledOnce()
@@ -443,9 +443,9 @@ describe('standalone Remote runtime wiring', () => {
     expect(wiring.startupOptions!.autocomplete()).toBe(false); wiring.autocomplete.mockReturnValueOnce(true); expect(wiring.startupOptions!.autocomplete()).toBe(true)
     await wiring.startupOptions!.resume('resume-native'); expect(wiring.selectOrCreate).toHaveBeenCalledWith('resume-native', '/local/workspace')
     expect(wiring.editorState!()).toMatchObject({ view: { kind: 'primary', access: 'interactive' }, quietHints: false })
-    wiring.side = { ref: child, binding, facts: { kind: 'btw', access: 'readonly' } }
+    wiring.side = { ref: child, binding, facts: { kind: 'btw', access: 'readonly', label: 'Cold leaf' } }
     wiring.navigation = { counterpart: 'primary', close: 'subagent' }
-    expect(wiring.editorState!()).toMatchObject({ view: wiring.side.facts, toggle: 'f7 main · f7 detach' })
+    expect(wiring.editorState!()).toMatchObject({ view: wiring.side.facts, title: 'Cold leaf', toggle: 'f7 main · f7 detach' })
     wiring.navigation = { counterpart: 'btw', close: 'btw' }
     expect(wiring.editorState!()).toMatchObject({ toggle: 'f7 btw · f7 close' })
     wiring.editorOptions!.focusEditor!(); expect(wiring.focus).toHaveBeenCalled()

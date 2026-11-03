@@ -614,6 +614,33 @@ describe('RemoteConversationModelSource', () => {
     source.dispose()
   })
 
+  it.each([false, true])('restores the recorded effective effort after F7 returns with no new events (presentation hook=%s)', withHook => {
+    const events = new TestEventSource()
+    const native = { provider: 'provider', model: 'model' }
+    const selected = projection<unknown>({ next: null, lastUsed: null })
+    const changed = vi.fn()
+    const source = new RemoteConversationModelSource(tools, vi.fn(), withHook ? { onPresentation: changed } : {})
+    const ref = { host: HostKey('host'), sessionId: SessionId('session') }
+    const binding = events.binding({ modelSelection: selected })
+    source.setModelCatalog(ref.host, nativeCatalog())
+    source.attach(binding, { ref, cwd: '' })
+    source.setVisible(false)
+    source.setVisible(true)
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    const header = requestHeader()
+    events.append(header)
+    selected.set({ next: native, lastUsed: native })
+    expect(source.presentation().reasoningEffort).toBeUndefined()
+    const before = changed.mock.calls.length
+    source.setVisible(false)
+    source.setVisible(true)
+    expect(source.presentation().reasoningEffort).toBe('high')
+    expect(changed.mock.calls.length).toBe(before + (withHook ? 1 : 0))
+    expect(selected.getSnapshot()).toEqual({ next: native, lastUsed: native })
+    expect(events.getSnapshot().entries).toContain(header)
+    source.dispose()
+  })
+
   it('prefers its own Host catalog over a borrowed resolver and observes the current readonly catalog on every presentation', () => {
     const events = new TestEventSource()
     const native = { provider: 'provider', model: 'model' }

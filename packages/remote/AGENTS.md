@@ -312,6 +312,11 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   health is unknown unless the Host advertises the optional sanitized catalog.
   Passive cold-child history keeps generic tool cards; Agent controls must
   refuse unavailable scope rather than activate or borrow a parent Agent.
+  Displayed feature selections carry native access and conversation kind.
+  Cold side views retain their declared title and history; automatic Workflow,
+  Git, context and effective-effort lanes require interactive access. Only the
+  primary view announces resumed history. Returning to a used primary view may
+  restore its recorded effective effort without changing native selection.
 - `/skills` consumes the exact Host `skillCatalog` native source/provider
   metadata and completeness. Only an uncomposed capability falls back to the
   official skill list with an explicit metadata notice; a failed read does not

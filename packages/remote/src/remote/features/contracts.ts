@@ -23,6 +23,10 @@ export interface RemoteFeatureSelection {
   readonly ref: SessionRef
   readonly client: HostClient
   readonly binding: SessionBinding
+  /** Native access of a side view; primary callers may omit it. */
+  readonly access?: 'interactive' | 'resumable' | 'readonly'
+  /** Presentation kind; only primary selections announce resumed history. */
+  readonly kind?: 'primary' | 'btw' | 'subagent'
 }
 
 /** Read-only attached-Host and exact-selection accessor owned by the foundation. */

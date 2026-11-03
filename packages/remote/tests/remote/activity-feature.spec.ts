@@ -10,8 +10,13 @@ import { plain } from './render-fixture.ts'
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const dispose of cleanups.splice(0).reverse()) await dispose(); vi.useRealTimers() })
-async function fixture(initial?: Readonly<Record<string, unknown>>, conversation?: unknown) {
+async function fixture(initial?: Readonly<Record<string, unknown>>, conversation?: unknown, kind?: 'primary' | 'btw' | 'subagent') {
   const f = await approvalFixture()
+  const current = f.options.hosts.current
+  vi.spyOn(f.options.hosts, 'current').mockImplementation(() => {
+    const selection = current()
+    return selection === undefined ? undefined : { ...selection, ...kind === undefined ? {} : { kind } }
+  })
   if (initial !== undefined) f.facts.set(initial)
   if (conversation !== undefined) f.conversation.set(conversation)
   const dispose = mountActivityFeature(f.options)
@@ -30,6 +35,11 @@ async function fixture(initial?: Readonly<Record<string, unknown>>, conversation
 }
 
 describe('Remote shared activity and approval waiting', () => {
+  it.each(['primary', 'btw', 'subagent'] as const)('announces history only for the primary view (%s)', async kind => {
+    const f = await fixture({ active: false, phase: 'idle', turn: 2, flowDownChars: 0, inFlight: [] }, undefined, kind)
+    const notices = f.ctx.mayflyUiInteraction.notificationSnapshot().filter(record => record.message.startsWith('Resumed session'))
+    expect(notices).toHaveLength(kind === 'primary' ? 1 : 0)
+  })
   it('publishes the exact shared three-row tool model, retaining its teaching tip without a detail', async () => {
     const f = await fixture(); f.active()
     expect(f.node()).toEqual(ActivityRow({ phase: 'tool', label: 'Calling tools', tail: [], tip: 'Tip: Esc to interrupt the turn' }))

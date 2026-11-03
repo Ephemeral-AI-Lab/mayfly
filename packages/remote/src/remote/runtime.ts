@@ -106,7 +106,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       const binding = side?.binding ?? app?.registry.currentReference?.binding
       const client = ref === undefined ? undefined : app?.registry.get(ref.host)
       return ref === undefined || binding === undefined || client === undefined ? undefined
-        : { ref, binding, client, access: side?.facts.access ?? 'interactive' as const }
+        : { ref, binding, client, access: side?.facts.access ?? 'interactive' as const, kind: side?.facts.kind ?? 'primary' as const }
     }
     const presentationOwner = (): (() => boolean) => {
       const selection = displayedSelection()
@@ -265,7 +265,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       const keyHint = (id: string) => ctx.mayflyKeymap.getKeys(id).map(displayKey).join('/')
       return {
         view: side === undefined ? { kind: 'primary', access: 'interactive' } : side.facts,
-        title: facts.title,
+        title: side?.facts.label ?? facts.title,
         running: facts.active,
         quietHints: settings.quietHints,
         hostKey: facts.ref?.host,
@@ -436,6 +436,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       presentation: displayedFacts(),
       values: (sideViews!.sessionFacts() ?? conversation!.sessionFacts()).values,
       conversation: sideViews!.kind(),
+      access: sideViews!.selected()?.facts.access,
     }), {
       home: () => app?.activeClient?.remote.$host.home ?? '',
       directory: () => options.cwd ?? process.cwd(),

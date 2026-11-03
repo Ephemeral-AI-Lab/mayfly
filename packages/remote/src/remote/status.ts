@@ -13,6 +13,8 @@ export interface RemoteStatusSnapshot {
   readonly presentation: RemotePresentationFacts
   readonly values: Readonly<Record<string, unknown>>
   readonly conversation?: 'primary' | 'btw' | 'subagent' | undefined
+  /** Cold side views have durable history but no Agent-backed context or effort. */
+  readonly access?: 'interactive' | 'resumable' | 'readonly' | undefined
 }
 
 /** Host-owned paths, including startup before any Session exists. */
@@ -48,7 +50,8 @@ export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot
     } | null | undefined
     const selected = projected?.next ?? projected?.lastUsed
     const matches = selected == null || selected.provider === facts.provider && selected.model === facts.model
-    const effort = selected?.reasoningEffort ?? (matches ? facts.reasoningEffort : undefined)
+    const live = snapshot.access === undefined || snapshot.access === 'interactive'
+    const effort = live ? selected?.reasoningEffort ?? (matches ? facts.reasoningEffort : undefined) : undefined
     const nodes: readonly (MayflyStatusNode | null)[] = [
       buildModelStatusNode({
         model: facts.model ?? (facts.ref === undefined ? '' : 'no model'),
@@ -57,7 +60,7 @@ export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot
       }),
       buildCwdStatusNode(shortenCwd(facts.cwd || options.directory?.() || '', options.home?.() ?? '')),
       buildConversationStatus(snapshot.conversation, t),
-      buildContextStatusNode({ usage: values['tokenUsage'] as ContextStatusValues['usage'], pressure: values['contextPressure'] as ContextStatusValues['pressure'], breakdown: values['contextBreakdown'] as ContextStatusValues['breakdown'] }),
+      live ? buildContextStatusNode({ usage: values['tokenUsage'] as ContextStatusValues['usage'], pressure: values['contextPressure'] as ContextStatusValues['pressure'], breakdown: values['contextBreakdown'] as ContextStatusValues['breakdown'] }) : null,
     ]
     for (const [index, registration] of [model, cwd, conversation, context].entries()) {
       const node = nodes[index]!
