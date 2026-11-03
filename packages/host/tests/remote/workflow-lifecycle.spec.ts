@@ -58,7 +58,13 @@ describe('durable Workflow lifecycle', () => {
       expect(mayflyWorkflowSnapshotSchema.safeParse({ ...snapshot, runs: [{ ...snapshot.runs[0], phases: [phase] }] }).success).toBe(false)
     }
     const valid = { ...snapshot, runs: [{ ...snapshot.runs[0], phases: [{ title: 'p' }, { title: 'q', detail: 'd', provider: 'a', model: 'b' }] }] }
-    expect(mayflyWorkflowSnapshotSchema.parse(valid)).toEqual(valid)
+    const parsed = mayflyWorkflowSnapshotSchema.parse(valid)
+    expect(parsed).toEqual(valid)
+    expect(parsed.runs[0]!.phases![0]).not.toBe(valid.runs[0]!.phases[0])
+    valid.runs[0]!.phases[0]!.title = 'producer changed'
+    expect(parsed.runs[0]!.phases![0]!.title).toBe('p')
+    const extended = { ...snapshot, runs: [{ ...snapshot.runs[0], phases: [{ title: 'p', renderer: () => 'private' }] }] }
+    expect(mayflyWorkflowSnapshotSchema.parse(extended).runs[0]!.phases).toEqual([{ title: 'p' }])
     expect(definition.wire.view(initial())).toEqual(initial())
   })
 
