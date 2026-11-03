@@ -334,6 +334,31 @@ describe('compiled image nodes', () => {
     expect(result.value.component.render(40)).toEqual(['[image: image/png]'])
   })
 
+  it('replaces a cached flow-list loader when the image bytes arrive', async () => {
+    const images = imageService()
+    const pending = gate()
+    images.provide(pending.loader)
+    let component: { render(width: number): string[], invalidate(): void } | undefined
+    const runtime = new MayflyUiSurfaceRuntime(undefined, () => { component?.invalidate() }, undefined, images)
+    runtime.flow = true
+    const result = compileMayflyUiSurfaceNode(ui.list({ id: 'transcript', role: 'browse', items: [
+      { id: 'prompt', label: 'Inspect image' },
+      { id: 'image', under: 'prompt', disabled: true, label: '[image] diagram.png', body: ui.image({ attachmentId: 'a', alt: '[image] diagram.png' }), bodyAlways: true, bodyLead: [{ text: '  ▪ ' }] },
+    ] }), {
+      ...base(runtime), components: Object.assign(new FakeMayflyComponents(), { imageProtocolActive: false }),
+    })
+    if (!result.ok) throw new Error(result.message)
+    component = result.value.component
+    try {
+      expect(component.render(80).join('\n')).toContain('Loading image…')
+      pending.waiting.get('a')!.resolve(PHOTO)
+      await flush()
+      expect(images.read('a', () => {}).state).toBe('ready')
+      expect(component.render(80).join('\n')).toContain('[image] diagram.png')
+      expect(component.render(80).join('\n')).not.toContain('Loading image…')
+    } finally { runtime.dispose() }
+  })
+
   it('reads an image as its alt in a document block', () => {
     expect(documentBlocks(ui.image({ attachmentId: 'a', alt: '[Image #1]' })).blocks.map(documentBlockText)).toEqual(['[Image #1]'])
   })
