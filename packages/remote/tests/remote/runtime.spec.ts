@@ -227,6 +227,7 @@ vi.mock('@ephemeral-ai/mayfly/core', () => ({
   inject: [],
   apply: (ctx: any) => {
     if (mocks.coreError !== undefined) throw mocks.coreError
+    ctx.provide('mayflyUiInteraction', { createNotificationOwner: () => ({ report: vi.fn(), clearAll: vi.fn(), dispose: vi.fn() }) })
     ctx.provide('mayflyScreen', {
       rows: 30,
       editorRowsFromBottom: 4,

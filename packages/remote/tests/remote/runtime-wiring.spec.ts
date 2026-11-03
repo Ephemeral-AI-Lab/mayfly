@@ -73,6 +73,7 @@ const wiring = vi.hoisted(() => ({
   },
   commandList: vi.fn(() => []),
   notice: vi.fn(), requestRender: vi.fn(), refreshEditor: vi.fn(), rethemeEditor: vi.fn(), refreshStatus: vi.fn(), republish: vi.fn(),
+  keyNotices: { report: vi.fn(), clearAll: vi.fn(), dispose: vi.fn() },
   getModelCatalog: vi.fn(), setVisible: vi.fn(), present: vi.fn(), close: vi.fn(), closeChild: vi.fn(), retainOnly: vi.fn(), showPrimary: vi.fn(),
   openChild: vi.fn(async () => {}), openBtw: vi.fn(async () => {}), subagentAddress: vi.fn(),
   selectOrCreate: vi.fn(async () => {}), sessionsOpen: vi.fn(),
@@ -200,6 +201,7 @@ vi.mock('@ephemeral-ai/mayfly/transcript', () => ({
 } }))
 vi.mock('@ephemeral-ai/mayfly/core', () => ({ name: 'core', Config: undefined, inject: [], apply(ctx: Context) {
   wiring.ctx = ctx
+  ctx.provide('mayflyUiInteraction', { createNotificationOwner: () => wiring.keyNotices } as never)
   ctx.provide('mayflyScreen', { rows: 30, editorRowsFromBottom: 4, mountContentSlot: () => ({ dispose() {} }), requestRender: wiring.requestRender, suspend: wiring.suspend, leaveViews: wiring.leaveViews } as never)
   ctx.provide('mayflyComponents', {} as never)
   ctx.provide('mayflyKeymap', {
@@ -261,6 +263,36 @@ async function start(cwd: string | null = '/local/workspace', sessionId?: string
 const selected = () => wiring.features!.hosts.current!()
 
 describe('standalone Remote runtime wiring', () => {
+  it('owns key warnings independently across prompt and Session changes, and retires them on Host changes or unload', async () => {
+    wiring.onEditorMount = () => {
+      wiring.keyActions.find(action => action.id.endsWith('toggle-agent-view'))!.handler!()
+    }
+    await start()
+    expect(wiring.keyNotices.report).toHaveBeenCalledWith('toggle-agent-view', { kind: 'app', targetId: 'agent-view' }, { message: 'no other conversation is open', severity: 'warning' }, 'toggle-agent-view')
+    const toggle = wiring.keyActions.find(action => action.id.endsWith('toggle-agent-view'))!.handler!
+    wiring.currentSide = child
+    toggle()
+    expect(wiring.keyNotices.report).toHaveBeenLastCalledWith('toggle-agent-view', { kind: 'session', sessionId: child.sessionId }, { message: 'no other conversation is open', severity: 'warning' }, 'toggle-agent-view')
+    wiring.currentSide = undefined
+    wiring.ref = undefined
+    toggle()
+    expect(wiring.keyNotices.report).toHaveBeenLastCalledWith('toggle-agent-view', { kind: 'app', targetId: 'agent-view' }, { message: 'no other conversation is open', severity: 'warning' }, 'toggle-agent-view')
+    for (const listener of wiring.topologies) listener()
+    expect(wiring.keyNotices.clearAll).not.toHaveBeenCalled()
+    wiring.client = { ...client, key: HostKey('other') }
+    for (const listener of wiring.topologies) listener()
+    expect(wiring.keyNotices.clearAll).toHaveBeenCalledOnce()
+    wiring.client = undefined
+    for (const listener of wiring.topologies) listener()
+    expect(wiring.keyNotices.clearAll).toHaveBeenCalledTimes(2)
+    wiring.actions!.exit()
+    await running
+    expect(wiring.keyNotices.dispose).toHaveBeenCalledOnce()
+    wiring.keyNotices.report.mockClear()
+    toggle()
+    expect(wiring.keyNotices.report).not.toHaveBeenCalled()
+  })
+
   it('rethemes the retained editor before its exact composition owner', async () => {
     await start()
     expect(wiring.rethemeEditor).toHaveBeenCalledWith(wiring.ctx!.mayflyComponents, wiring.ctx!.mayflyTheme.colors)
@@ -405,8 +437,9 @@ describe('standalone Remote runtime wiring', () => {
     expect(wiring.features!.hosts.list()).toEqual([client])
     expect(wiring.keyActions.map(action => action.id)).toEqual(['mayfly.interaction.toggle-agent-view', 'mayfly.interaction.close-agent-view', 'other', 'mayfly.transcript.toggle-collapse'])
     const key = (id: string) => wiring.keyActions.find(action => action.id.endsWith(id))!.handler!()
-    key('toggle-agent-view'); expect(wiring.notice).toHaveBeenCalledWith('no other conversation is open', 'warning')
-    wiring.back = true; wiring.notice.mockClear(); key('toggle-agent-view'); expect(wiring.notice).not.toHaveBeenCalled()
+    key('toggle-agent-view')
+    expect(wiring.keyNotices.report).toHaveBeenCalledWith('toggle-agent-view', { kind: 'session', sessionId: ref.sessionId }, { message: 'no other conversation is open', severity: 'warning' }, 'toggle-agent-view')
+    wiring.back = true; wiring.keyNotices.report.mockClear(); key('toggle-agent-view'); expect(wiring.keyNotices.report).not.toHaveBeenCalled()
     key('close-agent-view'); expect(wiring.closeChild).not.toHaveBeenCalled()
     wiring.closeTarget = child; key('close-agent-view'); expect(wiring.closeChild).toHaveBeenCalledWith(child)
     wiring.side = { ref: child, binding, facts: { kind: 'subagent', access: 'readonly' } }

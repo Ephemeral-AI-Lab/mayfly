@@ -85,11 +85,18 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     await ctx.plugin(Frontend)
     await ctx.plugin(ThemeDark)
     await ctx.plugin(Core)
+    const keyNotifications = ctx.mayflyUiInteraction.createNotificationOwner('mayfly.remote.keys')
+    ctx.effect(() => () => { keyNotifications.dispose() })
+    let app: RemoteApp | undefined
     ctx.effect(() => ctx.mayflyKeymap.register(INTERACTION_KEY_ACTIONS
       .filter(action => action.id !== 'mayfly.interaction.cycle-mode' && action.id !== 'mayfly.interaction.cycle-model')
       .map(action => action.id === 'mayfly.interaction.toggle-agent-view' ? {
         ...action, handler: () => {
-          if (sideViews?.back() !== true) editor?.notice.set('no other conversation is open', 'warning')
+          if (lifetime.signal.aborted) return
+          if (sideViews?.back() !== true) {
+            const ref = sideViews?.current() ?? app?.registry.current
+            keyNotifications.report('toggle-agent-view', ref === undefined ? { kind: 'app', targetId: 'agent-view' } : { kind: 'session', sessionId: ref.sessionId }, { message: 'no other conversation is open', severity: 'warning' }, 'toggle-agent-view')
+          }
         },
       } : action.id === 'mayfly.interaction.close-agent-view' ? {
         ...action, handler: () => {
@@ -98,7 +105,6 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         },
       } : action)))
     const screen = ctx.mayflyScreen
-    let app: RemoteApp | undefined
     const displayedFacts = () => sideViews?.presentation() ?? conversation!.presentation()
     const displayedSelection = () => {
       const side = sideViews?.selected()
@@ -315,6 +321,13 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     apps.push(app)
     const mountedApp = app
     ctx.effect(() => () => { mountedApp.dispose() })
+    let notificationHost = app.activeClient
+    ctx.effect(() => app!.subscribeTopology(() => {
+      const next = app!.activeClient
+      if (next === notificationHost) return
+      notificationHost = next
+      keyNotifications.clearAll()
+    }))
     startup = new RemoteStartupController(ctx, screen, {
       client: () => app?.activeClient,
       current: () => app?.registry.current,
