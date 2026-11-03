@@ -63,7 +63,7 @@ function fixture() {
   const register = vi.fn(() => unregister)
   const base = { hosts, ctx, notice, commands: { register }, subscribeLocale: vi.fn(() => () => {}) }
   const context = { base } as unknown as RemoteOperationsContext
-  const local = { releases: vi.fn(async () => ({ tags: { latest: '1.1.0' } as Record<string, string>, versions: ['1.0.0', '1.1.0', '0.9.0'], time: {} as Record<string, string> })), pending: vi.fn(async (): Promise<import('../../src/remote/operations/local-update.ts').PendingLocalUpdate | undefined> => undefined), begin: vi.fn(async () => {}), finish: vi.fn(async () => {}), preflight: vi.fn(async () => snapshot), stage: vi.fn(async () => {}), install: vi.fn(async () => {}), restore: vi.fn(async () => {}), cleanup: vi.fn(async () => {}) }
+  const local = { releases: vi.fn(async () => ({ tags: { latest: '1.1.0' } as Record<string, string>, versions: ['1.0.0', '1.1.0', '0.9.0'], time: {} as Record<string, string> })), pending: vi.fn(async (): Promise<import('../../src/remote/operations/local-update.ts').PendingLocalUpdate | undefined> => undefined), transaction: vi.fn(async (_snapshot: LocalUpdateSnapshot, operation: () => Promise<void>, _signal: AbortSignal) => operation()), recovery: vi.fn(async (_pending: unknown, operation: () => Promise<void>, _signal: AbortSignal) => operation()), begin: vi.fn(async () => {}), finish: vi.fn(async () => {}), preflight: vi.fn(async () => snapshot), stage: vi.fn(async () => {}), install: vi.fn(async () => {}), restore: vi.fn(async () => {}), cleanup: vi.fn(async () => {}) }
   const controller = new RemoteUpdateController(context, local as unknown as LocalFrontendUpdater)
   const change = () => { for (const listener of listeners) listener() }
   const reconnect = () => { generation += 1; for (const listener of states) listener() }
@@ -589,6 +589,19 @@ describe('interrupted update recovery and explicit releases', () => {
 })
 
 describe('upgrade late-result ownership', () => {
+  it('retires transaction and recovery callbacks that acquired their lock after the UI generation changed', async () => {
+    const test = fixture()
+    try {
+      test.local.transaction.mockImplementationOnce(async (_snapshot, operation) => { test.reconnect(); await operation() })
+      await accepted(test)
+      expect(test.local.stage).not.toHaveBeenCalled()
+      test.local.pending.mockResolvedValue({ snapshot, host: 'one', enabled: true })
+      test.local.recovery.mockImplementationOnce(async (_pending, operation) => { test.reconnect(); await operation() })
+      await accepted(test, 'recover')
+      expect(test.local.restore).not.toHaveBeenCalled()
+    } finally { test.controller.dispose() }
+  })
+
   it('retires pending metadata/version/preflight reads and failed reads after reconnect', async () => {
     const test = fixture()
     try {

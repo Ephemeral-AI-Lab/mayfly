@@ -108,7 +108,7 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   and installation checks. Registry progress and bounded retries retire with
   their caller and connection; confirmation shows known native publish age and
   states that the Host enforces its undisclosed release-age setting at install.
-  An exclusive local marker retains logs and graphs across interruption;
+  A durable local recovery marker retains logs and graphs across interruption;
   `/update recover` requires the original Host and explicit confirmation.
   Linked/read-only or foreign-prefix installs refuse mutation. The official
   API lacks an isolated Host boot check: confirmation and completion must say
@@ -119,6 +119,16 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   an exact-version recheck, native removal, and native installation. Recovery
   accepts a missing bundle after an interrupted removal, preserves failed-stage
   diagnostics, and never replaces a release outside the captured transaction.
+  A native cross-process file lock owns each local callback through staging,
+  mutation and compensation. Recovery rechecks its original marker under that lock before
+  transferring ownership. Each global npm Node process records its own PID
+  before importing npm; a surviving writer blocks recovery after its parent
+  exits. An unconfirmed startup record requires explicit manual repair, never
+  an inferred safe takeover. UI cancellation only cancels lock acquisition and
+  pre-mutation reads; admitted writes finish under their captured owner.
+  Same-process recovery may use its already verified snapshot when npm left the
+  launcher entry or manifest absent, after rechecking the exact marker and
+  original canonical global prefix. A fresh process requires installation proof.
 - `/goal` belongs entirely to the official native command catalog, including
   its parser, bare-command output, ordered attachments and refusal messages.
   The Goal status consumes the whole native goal projection and merges only

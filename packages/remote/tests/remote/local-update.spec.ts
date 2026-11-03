@@ -20,8 +20,10 @@ function fixture() {
   const io: LocalUpdateIo = {
     entry: `${root}/lib/bin.js`, node: '/node', npm: '/npm-cli.js', pid: 123,
     running: vi.fn(() => false), claim: vi.fn(async () => {}),
+    replace: vi.fn(async () => {}), lock: async (_path, operation) => operation(),
     real: vi.fn(async path => path),
     read: vi.fn(async path => {
+      if (path.endsWith('.worker')) throw Object.assign(new Error('no worker'), { code: 'ENOENT' })
       const version = versionAt(path)
       return JSON.stringify(path.endsWith('mayfly-remote/package.json')
         ? { version, dependencies: { '@ephemeral-ai/mayfly': version, '@ephemeral-ai/mayfly-ui': version } }
@@ -83,7 +85,7 @@ describe('frontend-local updater', () => {
     expect(test.installed()).toBe(target)
     await test.updater.restore(snapshot)
     expect(test.installed()).toBe(current)
-    expect(test.io.run).toHaveBeenCalledWith('/node', ['/npm-cli.js', 'install', '--global', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '@ephemeral-ai/mayfly-cli@1.0.0'], undefined)
+    expect(test.io.run).toHaveBeenCalledWith('/node', ['/npm-cli.js', 'install', '--global', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '@ephemeral-ai/mayfly-cli@1.0.0'], undefined, `${snapshot.lockPath}.worker`)
     await test.updater.cleanup(snapshot)
     expect(test.io.remove).toHaveBeenCalledWith('/tmp/mayfly-update/previous')
     expect(test.io.remove).toHaveBeenCalledWith('/tmp/mayfly-update/candidate')
@@ -199,7 +201,7 @@ it('reads interrupted ownership, refuses a live updater/invalid marker, and fenc
   expect(pending).toEqual({ snapshot, host: 'host-one', enabled: true })
   await test.updater.cleanup(pending!.snapshot)
   expect(test.io.remove).not.toHaveBeenCalled()
-  vi.mocked(test.io.read).mockResolvedValueOnce(marker)
+  vi.mocked(test.io.read).mockResolvedValueOnce(JSON.stringify({ snapshot, host: 'host-one', enabled: true, pid: 456 }))
   vi.mocked(test.io.running).mockReturnValueOnce(true)
   await expect(test.updater.pending(signal())).rejects.toThrow('still running')
   for (const invalid of [
@@ -237,4 +239,21 @@ it('verifies actual shared manifests after dependency declarations, including ho
   await test.updater.stage(snapshot, signal())
   vi.mocked(test.io.read).mockImplementation(async path => path.endsWith('mayfly-ui/package.json') ? JSON.stringify({ version: 'wrong' }) : read(path))
   await expect(test.updater.install(snapshot)).rejects.toThrow('installed shared presentation version is inconsistent')
+})
+
+it('refuses unreadable, malformed and unconfirmed npm worker ownership before taking a transaction lock into mutation', async () => {
+  const test = fixture()
+  const snapshot = await prepared(test)
+  const read = vi.mocked(test.io.read).getMockImplementation()!
+  const mutate = vi.fn(async () => {})
+  for (const text of ['invalid-json', 'null', '[]', '{"state":"starting"}', '{"state":"running","pid":"123"}', '{"state":"running","pid":0}', '{"state":"running","pid":1.5}']) {
+    vi.mocked(test.io.read).mockImplementation(async path => path.endsWith('.worker') ? text : read(path))
+    await expect(test.updater.transaction(snapshot, mutate, signal())).rejects.toThrow('manual repair')
+  }
+  vi.mocked(test.io.read).mockImplementation(async path => {
+    if (path.endsWith('.worker')) throw new Error('worker ownership unreadable')
+    return read(path)
+  })
+  await expect(test.updater.transaction(snapshot, mutate, signal())).rejects.toThrow('worker ownership unreadable')
+  expect(mutate).not.toHaveBeenCalled()
 })

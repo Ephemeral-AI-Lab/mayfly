@@ -5,10 +5,23 @@ import { execFile } from 'node:child_process'
 import { appendFile, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 
 const CLI = '@ephemeral-ai/mayfly-cli'
 const REMOTE = '@ephemeral-ai/mayfly-remote'
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u
+const OWNED_NPM = `
+import { randomUUID } from 'node:crypto'
+import { rename, rm, writeFile } from 'node:fs/promises'
+import { pathToFileURL } from 'node:url'
+const temporary = process.argv[1] + '.' + randomUUID()
+try {
+  await writeFile(temporary, JSON.stringify({ state: 'running', pid: process.pid }), { mode: 0o600, flag: 'wx' })
+  await rename(temporary, process.argv[1])
+} finally { await rm(temporary, { force: true }) }
+process.argv = [process.execPath, ...process.argv.slice(2)]
+await import(pathToFileURL(process.argv[1]).href)
+`
 
 /** The local process/file boundary; tests exercise the transaction without changing global packages. */
 export interface LocalUpdateIo {
@@ -24,7 +37,9 @@ export interface LocalUpdateIo {
   write(path: string, text: string): Promise<void>
   append(path: string, text: string): Promise<void>
   remove(path: string): Promise<void>
-  run(command: string, args: readonly string[], signal?: AbortSignal): Promise<string>
+  replace(path: string, text: string): Promise<void>
+  lock<T>(path: string, operation: () => Promise<T>, signal: AbortSignal): Promise<T>
+  run(command: string, args: readonly string[], signal?: AbortSignal, ownerPath?: string): Promise<string>
 }
 
 /** Construct a bounded subprocess boundary with no shell and no credential-bearing environment. */
@@ -39,16 +54,22 @@ export function systemLocalUpdateIo(): LocalUpdateIo {
     write: (path, text) => writeFile(path, text, { mode: 0o600 }),
     append: (path, text) => appendFile(path, text, { mode: 0o600 }),
     remove: path => rm(path, { recursive: true, force: true }),
-    run: (command, args, signal) => new Promise((resolveRun, reject) => {
-      const env = { ...process.env }
-      delete env.MAYFLY_DSH_STARTUP_URL
-      delete env.MAYFLY_TASK
-      delete env.MAYFLY_SESSION_ID
-      execFile(command, [...args], { env, timeout: 1_200_000, maxBuffer: 4 * 1024 * 1024, ...(signal === undefined ? {} : { signal }) }, (error, stdout, stderr) => {
-        if (error !== null) reject(new Error(`Local update process failed: ${error.code ?? 'unknown'}`))
-        else resolveRun(`${stdout}${stderr}`)
-      })
-    }),
+    replace: (path, text) => writeFileAtomic(path, text, { mode: 0o600 }),
+    lock: (path, operation, signal) => withFileLock(path, operation, { signal, waitMs: 0 }),
+    run: async (command, args, signal, ownerPath) => {
+      if (ownerPath !== undefined) await writeFileAtomic(ownerPath, JSON.stringify({ state: 'starting' }), { mode: 0o600 })
+      try { return await new Promise<string>((resolveRun, reject) => {
+        const env = { ...process.env }
+        delete env.MAYFLY_DSH_STARTUP_URL
+        delete env.MAYFLY_TASK
+        delete env.MAYFLY_SESSION_ID
+        const owned = ownerPath === undefined ? [...args] : ['--input-type=module', '--eval', OWNED_NPM, ownerPath, ...args]
+        execFile(command, owned, { env, timeout: 1_200_000, maxBuffer: 4 * 1024 * 1024, ...(signal === undefined ? {} : { signal }) }, (error, stdout, stderr) => {
+          if (error !== null) reject(new Error(`Local update process failed: ${error.code ?? 'unknown'}`))
+          else resolveRun(`${stdout}${stderr}`)
+        })
+      }) } finally { if (ownerPath !== undefined) await rm(ownerPath, { force: true }) }
+    },
   }
 }
 
@@ -113,7 +134,8 @@ export class LocalFrontendUpdater {
   /** Read a durable interrupted-update marker without changing either installation. */
   async pending(signal: AbortSignal): Promise<PendingLocalUpdate | undefined> {
     if (this.io.entry === undefined) return undefined
-    const root = dirname(dirname(await this.io.real(this.io.entry)))
+    const captured = this.active
+    const root = captured?.root ?? dirname(dirname(await this.io.real(this.io.entry)))
     const lockPath = join(dirname(root), '.mayfly-update.json')
     let raw: string
     try { raw = await this.io.read(lockPath) }
@@ -124,8 +146,10 @@ export class LocalFrontendUpdater {
     if (typeof record.host !== 'string' || typeof record.enabled !== 'boolean' || !Number.isSafeInteger(record.pid)
       || snapshot?.root !== root || snapshot.lockPath !== lockPath || !VERSION.test(snapshot.current) || !VERSION.test(snapshot.target)
       || typeof snapshot.directory !== 'string' || snapshot.logPath !== join(snapshot.directory, 'update.log')) throw new Error('The interrupted-update marker is invalid; inspect it before repairing the installation')
-    if (this.io.running(record.pid)) throw new Error('Another Mayfly update process is still running')
-    await this.installationRoot(signal)
+    if (record.pid !== this.io.pid && this.io.running(record.pid)) throw new Error('Another Mayfly update process is still running')
+    await this.checkWorker(lockPath)
+    if (captured !== undefined && JSON.stringify(snapshot) === JSON.stringify(captured)) await this.checkGlobalRoot(root, signal)
+    else await this.installationRoot(signal)
     this.active = snapshot
     return { snapshot, host: record.host, enabled: record.enabled }
   }
@@ -134,6 +158,45 @@ export class LocalFrontendUpdater {
   async begin(snapshot: LocalUpdateSnapshot, host: string, enabled: boolean): Promise<void> {
     await this.io.claim(snapshot.lockPath, `${JSON.stringify({ snapshot, host, enabled, pid: this.io.pid })}\n`)
     this.active = snapshot
+  }
+
+  /** Keep the local installation exclusively owned until the callback has finished or compensated. */
+  async transaction<T>(snapshot: LocalUpdateSnapshot, operation: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    return this.io.lock(snapshot.lockPath, async () => {
+      await this.checkWorker(snapshot.lockPath, true)
+      await this.installationRoot(signal, snapshot.current)
+      return operation()
+    }, signal)
+  }
+
+  /** Recheck and transfer an interrupted marker while holding the same process lock as normal updates. */
+  async recovery<T>(pending: PendingLocalUpdate, operation: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    const { snapshot } = pending
+    return this.io.lock(snapshot.lockPath, async () => {
+      const current = await this.pending(signal)
+      if (current === undefined || current.host !== pending.host || current.enabled !== pending.enabled || JSON.stringify(current.snapshot) !== JSON.stringify(snapshot)) {
+        throw new Error('The interrupted update changed before recovery; inspect its marker and retry explicitly')
+      }
+      signal.throwIfAborted()
+      await this.checkWorker(snapshot.lockPath, true)
+      await this.io.replace(snapshot.lockPath, `${JSON.stringify({ snapshot, host: pending.host, enabled: pending.enabled, pid: this.io.pid })}\n`)
+      this.active = snapshot
+      return operation()
+    }, signal)
+  }
+
+  /** A worker writes its own durable PID before loading npm; an unknown startup cannot prove safe recovery. */
+  private async checkWorker(lockPath: string, clear = false): Promise<void> {
+    const path = `${lockPath}.worker`
+    let text: string
+    try { text = await this.io.read(path) }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error }
+    const unconfirmed = new Error(`The npm worker startup is unconfirmed; inspect ${path} and stop any earlier npm writer before manual repair`)
+    let record: { state?: unknown, pid?: unknown } | undefined
+    try { record = JSON.parse(text) as typeof record } catch { throw unconfirmed }
+    if (record?.state !== 'running' || typeof record.pid !== 'number' || !Number.isSafeInteger(record.pid) || record.pid <= 0) throw unconfirmed
+    if (this.io.running(record.pid)) throw new Error(`An earlier npm worker (${record.pid}) is still writing this installation; wait for it before recovery`)
+    if (clear) await this.io.remove(path)
   }
 
   /** Clear recovery ownership only after both installations have verified or restored. */
@@ -158,13 +221,13 @@ export class LocalFrontendUpdater {
 
   /** Install only the already validated exact launcher; its exact dependency owns Remote/shared presentation. */
   async install(snapshot: LocalUpdateSnapshot, signal?: AbortSignal): Promise<void> {
-    await this.npm(snapshot, ['install', '--global', '--ignore-scripts', '--no-audit', '--no-fund', `${CLI}@${snapshot.target}`], signal)
+    await this.npm(snapshot, ['install', '--global', '--ignore-scripts', '--no-audit', '--no-fund', `${CLI}@${snapshot.target}`], signal, true)
     await this.verify(snapshot.root, snapshot.target)
   }
 
   /** Recovery is explicit exact-version installation using the graph cached before the transaction. */
   async restore(snapshot: LocalUpdateSnapshot): Promise<void> {
-    await this.npm(snapshot, ['install', '--global', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', `${CLI}@${snapshot.current}`])
+    await this.npm(snapshot, ['install', '--global', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', `${CLI}@${snapshot.current}`], undefined, true)
     await this.verify(snapshot.root, snapshot.current)
   }
 
@@ -181,13 +244,18 @@ export class LocalFrontendUpdater {
     const root = dirname(dirname(entry))
     const manifest = JSON.parse(await this.io.read(join(root, 'package.json'))) as { name?: unknown, version?: unknown }
     if (manifest.name !== CLI || typeof manifest.version !== 'string' || !VERSION.test(manifest.version) || (current !== undefined && manifest.version !== current)) throw new Error('Linked or standalone Remote installs cannot self-update; use the installed npm mayfly launcher')
-    const globalRoot = (await this.io.run(this.io.node, [this.io.npm, 'root', '--global'], signal)).trim()
-    if (await this.io.real(join(globalRoot, CLI)) !== root) throw new Error('This launcher is not owned by the selected npm global prefix; update it with its original installer')
+    await this.checkGlobalRoot(root, signal)
     return root
   }
 
-  private async npm(snapshot: LocalUpdateSnapshot, args: readonly string[], signal?: AbortSignal): Promise<void> {
-    const output = await this.io.run(this.io.node, [this.io.npm, ...args], signal)
+  /** A captured installation survives missing package files, but never a prefix change or npm link. */
+  private async checkGlobalRoot(root: string, signal: AbortSignal): Promise<void> {
+    const globalRoot = (await this.io.run(this.io.node, [this.io.npm, 'root', '--global'], signal)).trim()
+    if (join(await this.io.real(globalRoot), CLI) !== root) throw new Error('This launcher is not owned by the selected npm global prefix; update it with its original installer')
+  }
+
+  private async npm(snapshot: LocalUpdateSnapshot, args: readonly string[], signal?: AbortSignal, owned = false): Promise<void> {
+    const output = await this.io.run(this.io.node, [this.io.npm, ...args], signal, owned ? `${snapshot.lockPath}.worker` : undefined)
     await this.io.append(snapshot.logPath, output)
   }
 

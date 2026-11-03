@@ -111,7 +111,9 @@ export class RemoteUpdateController extends RemoteFeatureController<RemoteOperat
             this.blocked(operation, current, snapshot.target, `${this.t('A previous update was interrupted; run /update recover to restore both installations before retrying.')}\n${snapshot.logPath}`)
             return
           }
-          if (await this.confirm(operation, current, snapshot.current, true) && operation.valid()) await this.recover(operation, pending)
+          if (await this.confirm(operation, current, snapshot.current, true) && operation.valid()) {
+            await this.local.recovery(pending, async () => { if (operation.valid()) await this.recover(operation, pending) }, operation.signal)
+          }
           return
         }
       }
@@ -156,7 +158,8 @@ export class RemoteUpdateController extends RemoteFeatureController<RemoteOperat
       const confirmed = await this.confirm(operation, current, target, false, publishedAt)
       if (!operation.valid()) return
       if (!confirmed) { this.options.base.notice.set(this.t('update cancelled'), 'info'); return }
-      await this.perform(operation, bundle, snapshot, versions.registry)
+      const prepared = snapshot
+      await this.local.transaction(prepared, async () => { if (operation.valid()) await this.perform(operation, bundle, prepared, versions.registry) }, operation.signal)
     } catch (error) {
       if (operation.valid()) this.options.base.notice.set(remoteErrorMessage(error), 'error')
     } finally {
