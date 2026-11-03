@@ -79,9 +79,9 @@ export class RemoteSessionsBrowserController implements RemoteSessionsBrowser {
     })
   }
 
-  /** Open one exact Host catalog; a later open replaces its local observation. */
+  /** Open one exact Host catalog, or focus its existing browser and original invocation. */
   open(client: HostClient, current: SessionRef | undefined, select: (sessionId: string) => void, signal?: AbortSignal): void {
-    if (signal?.aborted === true) return
+    if (signal?.aborted === true || this.context.ctx.mayflyOverlays.focus('mayfly.sessions')) return
     this.operation?.dispose()
     if (this.disposed || !this.context.hosts.list().includes(client)) return
     const selected = this.context.hosts.current()
