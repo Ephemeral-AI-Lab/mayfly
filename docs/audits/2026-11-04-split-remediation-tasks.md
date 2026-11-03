@@ -5,6 +5,8 @@
 
 本文是修复任务单，不定义新的产品行为。行号对应上述基线；代码变化后以实际调用链为准。审计证据保存在 `.artifacts/audit-5a834609/`。若其他机器没有该目录，按本文的最小复现步骤重建证据，不要猜测结果。
 
+本轮实施状态、用户确认的并行方式及 T05 部分修复边界，见 [实施与验证记录](2026-11-04-split-remediation-progress.md)。原始任务与复现描述保留如下。
+
 ## 给 Codex 的执行约束
 
 1. 先阅读根 `AGENTS.md` 和涉及包的 `AGENTS.md`。在独立 worktree/branch 工作，不使用生产 `mayfly` profile，不修改普通 `default` profile。
