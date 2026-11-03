@@ -125,6 +125,7 @@
     "@deepseek-ai/dsh-agent": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-agent-default-model": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-api-session-controller": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-app-boot": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-authorization": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-client-connection": "0.2.2-alpha.2",
     "@deepseek-ai/dsh-commands": "0.2.2-alpha.2",
