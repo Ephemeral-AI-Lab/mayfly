@@ -43,7 +43,7 @@ describe('change impact planning', () => {
   })
 
   test('key tables reach the key audit', () => {
-    for (const file of ['packages/mayfly/src/interaction/keys.ts', 'packages/mayfly/src/core/key-actions.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/core/ui-key-grammar.ts']) {
+    for (const file of ['packages/mayfly/src/interaction/key-definitions.ts', 'packages/mayfly/src/core/key-actions.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/core/ui-key-grammar.ts']) {
       assert.ok(classifyChanges([file]).tests.specs.includes('packages/mayfly/tests/core/key-audit.spec.ts'), file)
     }
   })
