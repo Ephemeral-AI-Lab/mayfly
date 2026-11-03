@@ -124,8 +124,9 @@ function fixture(options: FixtureOptions = {}) {
   const open = vi.fn()
   const overlays = { open, close: vi.fn() }
   const notice = { set: vi.fn() }
+  const focus = vi.fn(() => false)
   const context = {
-    ctx: {},
+    ctx: { mayflyOverlays: { focus } },
     screen: { requestRender: vi.fn() },
     components: { truncateToWidth: (text: string, width: number) => text.slice(0, width) },
     colors: {
@@ -159,15 +160,77 @@ function fixture(options: FixtureOptions = {}) {
   const controller = new RemoteModelsController(context, source, defaultModel, catalogObserved)
   const browser = (index = 0): RemoteBrowserOptions => opened[index]!.options
   const render = (index = 0): string => JSON.stringify(browser(index).view())
-  const act = async (event: Record<string, unknown>, index = 0) => await browser(index).action!(event as unknown as MayflyUiActionEvent, { signal: new AbortController().signal, report: vi.fn() } as unknown as MayflyUiEventContext)
+  const act = async (event: Record<string, unknown>, index = 0, signal = new AbortController().signal) => await browser(index).action!(event as unknown as MayflyUiActionEvent, { signal, report: vi.fn() } as unknown as MayflyUiEventContext)
   return {
     context, controller, client, ref, binding, projection, faceOf, listeners,
     modelCatalog, selectModel, hosts, current, notice, source, defaultModel,
-    overlays, opened, browser, render, act, catalogObserved,
+    overlays, opened, browser, render, act, catalogObserved, focus,
   }
 }
 
 describe('remoteModelRows', () => {
+  it.each(['model', 'effort'] as const)('suppresses a late %s picker write after its action is cancelled while the panel remains mounted', async kind => {
+    for (const rejected of [false, true]) {
+      const test = fixture({ details: detailsOf({ 'deepseek/chat': { efforts: ['high'] } }) })
+      if (kind === 'model') await test.controller.open()
+      else await test.controller.effort()
+      const response = Promise.withResolvers<unknown>()
+      test.selectModel.mockReturnValueOnce(response.promise)
+      const caller = new AbortController()
+      const pending = test.act(kind === 'model'
+        ? { kind: 'selection-accept', controlId: 'selection', selectedIds: [JSON.stringify(['deepseek', 'chat'])], segmentId: 'high' }
+        : { kind: 'slider-accept', controlId: 'effort', value: 'high' }, 0, caller.signal)
+      await vi.waitFor(() => { expect(test.selectModel).toHaveBeenCalledOnce() })
+      caller.abort()
+      expect(test.browser().isCurrent!()).toBe(true)
+      if (rejected) response.reject(new Error('cancelled action failed'))
+      else response.resolve({ ok: true, value: { selected: selection('deepseek', 'chat', 'high') } })
+      expect(await pending).toEqual({ kind: 'cancelled', dismiss: true })
+      expect(test.notice.set).not.toHaveBeenCalled()
+      expect(test.opened[0]!.lease.close).not.toHaveBeenCalled()
+      test.controller.dispose()
+    }
+  })
+
+  it('does not send a default-model write when its picker action is cancelled during the preceding read', async () => {
+    const test = fixture({ current: false, details: detailsOf({ 'deepseek/chat': { efforts: ['high'] } }) })
+    await test.controller.effort()
+    const response = Promise.withResolvers<ModelSelection>()
+    test.defaultModel!.read.mockReturnValueOnce(response.promise)
+    const caller = new AbortController()
+    const pending = test.act({ kind: 'slider-accept', controlId: 'effort', value: 'high' }, 0, caller.signal)
+    caller.abort()
+    response.resolve(selection('deepseek', 'chat'))
+    expect(await pending).toEqual({ kind: 'cancelled', dismiss: true })
+    expect(test.defaultModel!.select).not.toHaveBeenCalled()
+    expect(test.notice.set).not.toHaveBeenCalled()
+    test.controller.dispose()
+  })
+
+  it.each(['model', 'effort'] as const)('refocuses the existing %s picker while retaining its original invocation and draft', async kind => {
+    const test = fixture({ details: detailsOf({ 'deepseek/chat': { efforts: ['high'] } }) })
+    const first = new AbortController()
+    const second = new AbortController()
+    const invoke = (signal: AbortSignal) => kind === 'model' ? test.controller.open('', undefined, signal) : test.controller.effort('', signal)
+    await invoke(first.signal)
+    expect(test.opened).toHaveLength(1)
+    test.focus.mockReturnValue(true)
+    test.modelCatalog.mockClear()
+    await invoke(second.signal)
+    expect(test.focus).toHaveBeenLastCalledWith(kind === 'model' ? 'mayfly.models' : 'mayfly.effort')
+    expect(test.opened).toHaveLength(1)
+    expect(test.modelCatalog).not.toHaveBeenCalled()
+    second.abort()
+    expect(test.opened[0]!.lease.close).not.toHaveBeenCalled()
+    const cancelled = new AbortController(); cancelled.abort()
+    test.focus.mockClear()
+    await invoke(cancelled.signal)
+    expect(test.focus).not.toHaveBeenCalled()
+    first.abort()
+    expect(test.opened[0]!.lease.close).toHaveBeenCalledOnce()
+    test.controller.dispose()
+  })
+
   it('retires cancelled command catalog reads before opening a picker or writing a Session or Host default', async () => {
     for (const current of [true, false]) {
       for (const name of ['model-picker', 'model-name', 'effort-picker', 'effort-name']) {

@@ -112,7 +112,7 @@ class RemoteScheduleController {
   private open(parent: AbortSignal): void {
     const current = this.options.hosts.current()
     if (current === undefined) {
-      this.options.notice.set(this.t('Schedule unavailable'))
+      this.options.notice.set(this.t('Schedule unavailable'), 'error')
       return
     }
     if (this.browser?.closed === false) { this.options.ctx.mayflyOverlays.focus('remote.schedule'); return }

@@ -45,16 +45,13 @@ class RemoteCopyCommand extends RemoteFeatureController<RemoteOperationsContext[
   readonly execute = async (_rawInput: string, signal: AbortSignal): Promise<void> => {
     if (signal.aborted) return
     const current = this.copyContext.base.hosts.current()
-    // A missing selection is an ordinary state, not a failed command: throwing
-    // here would surface as 'Submission was not confirmed; no retry was sent',
-    // which reads like a transport fault. Every other Remote command notices.
     if (current === undefined) {
-      this.copyContext.base.notice.set(this.t('no session is live yet'))
+      this.copyContext.base.notice.set(this.t('no session is live yet'), 'error')
       return undefined
     }
     const copy = this.copyContext.options.copy
     if (copy === undefined) {
-      this.copyContext.base.notice.set(this.t('Clipboard is unavailable in this frontend'))
+      this.copyContext.base.notice.set(this.t('Clipboard is unavailable in this frontend'), 'error')
       return
     }
     const operation = this.sessionOperation(current, signal)
@@ -65,7 +62,7 @@ class RemoteCopyCommand extends RemoteFeatureController<RemoteOperationsContext[
       if (projection === undefined) throw new Error(this.t('Conversation projection is unavailable'))
       const text = latestAssistantText(projection.entries)
       if (text === undefined) {
-        this.copyContext.base.notice.set(this.t('no assistant message to copy'))
+        this.copyContext.base.notice.set(this.t('no assistant message to copy'), 'error')
         return
       }
       try {
@@ -76,7 +73,7 @@ class RemoteCopyCommand extends RemoteFeatureController<RemoteOperationsContext[
           : 'copied the last assistant message ({count} characters)', { count: text.length }), 'success')
       } catch (error: unknown) {
         // Clipboard refusal is an outcome; it must still belong to the displayed Session.
-        if (operation.valid()) this.copyContext.base.notice.set(this.t('could not copy to clipboard: {message}', { message: remoteErrorMessage(error) }))
+        if (operation.valid()) this.copyContext.base.notice.set(this.t('could not copy to clipboard: {message}', { message: remoteErrorMessage(error) }), 'error')
         return
       }
     } catch (error: unknown) {

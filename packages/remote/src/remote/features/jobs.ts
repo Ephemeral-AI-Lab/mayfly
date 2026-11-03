@@ -77,9 +77,7 @@ class RemoteJobsController {
     this.closeReader()
     clearInterval(this.timer)
     this.pane.dispose()
-    void this.source.dispose().catch((error: unknown) => {
-      this.options.notice.set(error instanceof Error ? error.message : String(error))
-    })
+    void this.source.dispose().catch(() => {})
   }
 
   private readonly attach = (generation: number): void => {
@@ -113,7 +111,7 @@ class RemoteJobsController {
       this.stopEvents = history.subscribe(update)
       update()
       void this.source.attach(current.client, current.ref).catch((error: unknown) => {
-        if (this.lifecycle.owns(generation)) this.options.notice.set(error instanceof Error ? error.message : String(error))
+        if (this.lifecycle.owns(generation)) this.options.notice.set(error instanceof Error ? error.message : String(error), 'error')
       })
     }
     this.publish()

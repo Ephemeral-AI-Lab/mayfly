@@ -187,7 +187,7 @@ describe('native Schedule reads and observations', () => {
   it('opens selected native reminders, ignores reference command arguments, ticks only an open panel and clears exact subscriptions', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] }); vi.setSystemTime(1_000)
     const f = await fixture('schedule', false)
-    await f.run('schedule'); expect(f.options.notice.set).toHaveBeenCalledWith('Schedule unavailable')
+    await f.run('schedule'); expect(f.options.notice.set).toHaveBeenCalledWith('Schedule unavailable', 'error')
     expect(f.status()).toBeNull()
     f.schedule.list.mockResolvedValue(good([reminder()]))
     f.schedule.catalog.mockResolvedValue(good([reminder({ sessionId: 'session', status: 'inactive', timeZone: 'Asia/Shanghai' })]))

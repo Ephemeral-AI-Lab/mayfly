@@ -164,6 +164,7 @@ export class RemoteModelsController extends RemoteFeatureController {
 
   /** Open the reference picker or resolve one unambiguous model name. */
   async open(rawInput = '', providerFilter?: string, parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted || rawInput.trim() === '' && this.context.ctx.mayflyOverlays.focus('mayfly.models')) return
     const target = await this.target(parent)
     if (target === undefined) return
     const rows = remoteModelRows(target.catalog, target.current, target.details)
@@ -188,6 +189,7 @@ export class RemoteModelsController extends RemoteFeatureController {
 
   /** Open the reference effort slider or explicitly pin/reset one offered level. */
   async effort(rawInput = '', parent?: AbortSignal): Promise<void> {
+    if (parent?.aborted || rawInput.trim() === '' && this.context.ctx.mayflyOverlays.focus('mayfly.effort')) return
     const target = await this.target(parent)
     if (target === undefined) return
     const row = remoteModelRows(target.catalog, target.current, target.details)
@@ -226,7 +228,7 @@ export class RemoteModelsController extends RemoteFeatureController {
         if (event.kind !== 'slider-accept' || event.controlId !== 'effort') return { kind: 'completed' }
         if (context.signal.aborted) return { kind: 'cancelled' }
         if (event.value !== null && !row.efforts.includes(event.value)) return { kind: 'failed', message: 'The thinking effort is no longer available' }
-        return await this.commit(target, { provider: row.provider, model: row.model.id, ...event.value === null ? {} : { reasoningEffort: ReasoningEffortId(event.value) } }, 'picker')
+        return await this.commit(target, { provider: row.provider, model: row.model.id, ...event.value === null ? {} : { reasoningEffort: ReasoningEffortId(event.value) } }, 'picker', context.signal)
       },
       onClosed: () => target.operation.dispose(),
     })
@@ -240,7 +242,6 @@ export class RemoteModelsController extends RemoteFeatureController {
   }
 
   private async target(parent?: AbortSignal): Promise<RemoteModelTarget | undefined> {
-    if (parent?.aborted) return undefined
     const selection = this.context.hosts.current()
     const client = selection?.client ?? this.context.hosts.active?.() ?? this.context.hosts.list()[0]
     if (client === undefined) return undefined
@@ -272,22 +273,24 @@ export class RemoteModelsController extends RemoteFeatureController {
     catch { return undefined }
   }
 
-  private async commit(target: RemoteModelTarget, next: ModelSelection, feedback: 'command' | 'picker' | 'cycle'): Promise<MayflyUiActionReply> {
-    if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
+  private async commit(target: RemoteModelTarget, next: ModelSelection, feedback: 'command' | 'picker' | 'cycle', caller?: AbortSignal): Promise<MayflyUiActionReply> {
+    const signal = caller === undefined ? target.operation.signal : AbortSignal.any([target.operation.signal, caller])
+    const valid = (): boolean => target.operation.valid() && !signal.aborted
+    if (!valid()) return { kind: 'cancelled', dismiss: true }
     try {
       const previous = target.selection === undefined
-        ? await this.defaultModel!.read(target.client, target.operation.signal)
+        ? await this.defaultModel!.read(target.client, signal)
         : currentRemoteModelSelection(target.selection.binding.session.projections.faceOf('modelSelection').getSnapshot(), target.catalog)
-      if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
+      if (!valid()) return { kind: 'cancelled', dismiss: true }
       const selected = sameModelSelection(previous, next) ? previous : target.selection === undefined
-        ? await this.defaultModel!.select(target.client, next, target.operation.signal)
+        ? await this.defaultModel!.select(target.client, next, signal)
         : (await remoteValue(target.client.remote.session.selectModel({ sessionId: target.selection.ref.sessionId, ...next }))).selected
-      if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
+      if (!valid()) return { kind: 'cancelled', dismiss: true }
       const row = remoteModelRows(target.catalog, selected, target.details).find(row => row.current)
       this.context.notice.set(this.context.t(modelSwitchNotice(previous, selected, row?.defaultEffort)), feedback === 'command' ? 'info' : 'success')
       return { kind: 'completed', dismiss: true }
     } catch (error) {
-      if (!target.operation.valid()) return { kind: 'cancelled', dismiss: true }
+      if (!valid()) return { kind: 'cancelled', dismiss: true }
       const message = remoteErrorMessage(error)
       if (feedback !== 'picker') this.context.notice.set(message, feedback === 'cycle' ? 'warning' : 'error')
       return { kind: 'failed', message }
@@ -336,7 +339,7 @@ export class RemoteModelsController extends RemoteFeatureController {
         const row = rows.find(candidate => candidate.key === event.selectedIds[0])
         if (row === undefined) return { kind: 'failed', message: this.context.t('The model is no longer available') }
         if (event.segmentId !== undefined && !row.efforts.includes(event.segmentId)) return { kind: 'failed', message: 'The thinking effort is no longer available' }
-        return await this.commit(target, { provider: row.provider, model: row.model.id, ...event.segmentId === undefined ? {} : { reasoningEffort: ReasoningEffortId(event.segmentId) } }, 'picker')
+        return await this.commit(target, { provider: row.provider, model: row.model.id, ...event.segmentId === undefined ? {} : { reasoningEffort: ReasoningEffortId(event.segmentId) } }, 'picker', context.signal)
       },
       onClosed: () => target.operation.dispose(),
     })
