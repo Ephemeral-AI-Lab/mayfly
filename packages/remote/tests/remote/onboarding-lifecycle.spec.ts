@@ -345,15 +345,21 @@ describe('RemoteOnboardingController shared wizard operations', () => {
     }
   })
 
-  it('applies the permission to the exact selected Session and fences its late command result', async () => {
+  it.each(['success', 'error'] as const)('applies the permission to the exact selected Session using the full native %s result and fences late replies', async outcome => {
     for (const reconnect of [false, true]) {
       const f = await fixture()
-      const command = vi.fn(async () => { if (reconnect) f.reconnect(); return { ok: true, value: { matched: true } } })
+      const execute = vi.fn(async () => { if (reconnect) f.reconnect(); return { ok: true, value: { result: { kind: outcome, text: 'native permission result' } } } })
+      Object.assign(f.remote, { commands: { execute } })
+      const command = vi.fn(async () => ({ ok: true, value: { matched: true } }))
       const selected = { client: f.client, ref: { host: f.client.key, sessionId: SessionId('active-session') }, binding: { session: { command } } } as unknown as RemoteFeatureSelection
       f.context.hosts.current = () => selected
       await f.open()
-      expect(await f.raw(preferences())).toMatchObject({ kind: reconnect ? 'cancelled' : 'accepted' })
-      expect(command).toHaveBeenCalledExactlyOnceWith('/permission plan')
+      const reply = await f.raw(preferences())
+      expect(reply).toMatchObject(reconnect ? { kind: 'cancelled' } : outcome === 'success'
+        ? { kind: 'accepted', navigate: [{ controlId: ONBOARDING_WIZARD, itemId: ONBOARDING_CONNECT }] }
+        : { kind: 'failed', message: 'native permission result' })
+      expect(execute).toHaveBeenCalledExactlyOnceWith(selected.ref.sessionId, '/permission plan', [], expect.any(AbortSignal))
+      expect(command).not.toHaveBeenCalled()
     }
   })
 
