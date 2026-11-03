@@ -84,15 +84,16 @@ async function fixture(options: { sessionless?: boolean, noPaths?: boolean, noOp
   const open = () => { controller.open(client, current?.ref, onSelect) }
   const latest = () => overlays.list().find(entry => entry.id === 'mayfly.sessions')!
   const text = () => JSON.stringify(latest()?.node)
+  const report = vi.fn()
   const event = async (event: MayflyUiEvent, signal = new AbortController().signal) => {
     const entry = latest()
-    const prepared = await entry.events.prepare(event, { surfaceId: entry.id, source: entry.source, revision: entry.revision, operationId: 'sessions-test', signal, report: vi.fn() })
+    const prepared = await entry.events.prepare(event, { surfaceId: entry.id, source: entry.source, revision: entry.revision, operationId: 'sessions-test', signal, report })
     prepared.publish()
     return prepared.reply
   }
   const flush = async () => { for (let index = 0; index < 5; index += 1) await new Promise<void>(resolve => { setImmediate(resolve) }) }
   const emit = (listeners: Set<() => void>) => { for (const listener of listeners) listener() }
-  return { ctx, owner, overlays, locale, client, hosts, controller, sessions, workspaces, reminderCatalog, onSelect, openChild, open, latest, text, event, flush, sessionListeners, workspaceListeners, connectionListeners, topologyListeners,
+  return { ctx, owner, overlays, locale, client, hosts, controller, sessions, workspaces, reminderCatalog, onSelect, openChild, open, latest, text, event, report, flush, sessionListeners, workspaceListeners, connectionListeners, topologyListeners,
     setRows(next: SessionSummary[]) { rows = next; emit(sessionListeners) },
     setProjections(next: typeof projections) { projections = next; emit(sessionListeners) },
     setWorkspaces(next: readonly WorkspaceView[]) { workspaceRows = next; emit(workspaceListeners) },
@@ -349,6 +350,7 @@ describe('RemoteSessionsBrowserController', () => {
     await f.event(tab('workspace:unregistered'))
     expect(f.text()).toContain('other')
     await f.event(action('refresh'))
+    expect(f.report).toHaveBeenLastCalledWith({ message: 'Loading workspace sessions…', severity: 'info' })
     expect(f.text()).not.toContain('global match')
   })
 

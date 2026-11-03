@@ -249,6 +249,7 @@ export class RemoteSessionsBrowserController implements RemoteSessionsBrowser {
         return { kind: 'completed' }
       }
       if (event.actionId === 'reload' || event.actionId === 'refresh') {
+        eventContext.report({ message: t('Loading workspace sessions…'), severity: 'info' })
         resetPage()
         await refresh(signal)
         return signal.aborted || !valid() ? { kind: 'cancelled' } : { kind: 'completed' }
