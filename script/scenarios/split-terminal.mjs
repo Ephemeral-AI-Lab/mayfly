@@ -38,18 +38,28 @@ export async function settleSplitScreen({ screen, stub, check, ready = [], timeo
 /** Confirm the current visible exit warning; an interrupt may first clear a draft or cancel a turn. */
 export async function exitSplitTerminal({ terminal, screen, isExited, timeoutMs = 30_000, now = () => performance.now(), pause = sleep }) {
   const begin = now()
+  const interrupts = []
+  const acknowledgmentMs = 2000
+  const maxInterrupts = 6
   let phase = 'interrupt'
   let previous
   let changedAt = begin
   let sentGrid
   let sentFrames = 0
   let confirmedAt = begin
-  const send = (grid, confirm) => {
+  let sentAt = begin
+  let unacknowledgedRetries = 0
+  let warningObserved = false
+  const send = (grid, confirm, reason) => {
+    if (interrupts.length >= maxInterrupts) return false
     sentGrid = grid
     sentFrames = screen.state.frames.length
+    sentAt = now()
     phase = confirm ? 'drain' : 'acknowledge'
-    if (confirm) confirmedAt = now()
+    if (confirm) confirmedAt = sentAt
+    interrupts.push({ atMs: Math.round(sentAt - begin), reason, frames: sentFrames, bytes: screen.state.bytes })
     terminal.write('\u0003')
+    return true
   }
   while (!isExited() && now() - begin < timeoutMs) {
     await screen.flush()
@@ -57,23 +67,44 @@ export async function exitSplitTerminal({ terminal, screen, isExited, timeoutMs 
     const grid = screen.serialize()
     if (grid !== previous) { previous = grid; changedAt = now() }
     const warning = screen.state.openSync === 0 && screen.find('press Ctrl+C again to exit') !== undefined
+    if (warning) warningObserved = true
     const active = screen.state.mouse !== 'none' && !screen.state.cursorVisible
     const painted = screen.state.frames.length > sentFrames && grid !== sentGrid
       && screen.state.openSync === 0 && now() - changedAt >= 250
-    if (phase === 'interrupt') send(grid, warning)
+    if (phase === 'interrupt') send(grid, warning, warning ? 'confirm-warning' : 'initial')
     else if (phase === 'acknowledge') {
-      if (warning) send(grid, true)
+      if (warning) {
+        if (!send(grid, true, 'confirm-warning')) break
+      }
       // A completed visible change acknowledges a clear/cancel; do not queue
-      // another interrupt while the first key has produced no terminal result.
-      else if (active && painted) send(grid, false)
+      // another interrupt until that paint settles or the bounded no-ack wait.
+      else if (active && painted) {
+        if (!send(grid, false, 'acknowledged-change')) break
+      } else if (now() - sentAt >= acknowledgmentMs) {
+        // PTYs can lose the first input without producing a new frame. Retry
+        // once after a full acknowledgment interval, never indefinitely and
+        // never while draining an already confirmed shutdown.
+        if (unacknowledgedRetries >= 1 || !active || screen.state.openSync !== 0) break
+        unacknowledgedRetries += 1
+        if (!send(grid, false, 'unacknowledged-retry')) break
+      }
     } else if (!warning && active && painted && now() - confirmedAt >= 5000) {
       // Only a still-interactive, newly painted UI can start another pair.
       // Restored terminal modes mean the real process is draining input.
-      send(grid, false)
+      if (!send(grid, false, 'interactive-after-confirmation')) break
     }
     await pause(20)
   }
-  return isExited()
+  await screen.flush()
+  const exited = isExited()
+  const modesRestored = screen.state.cursorVisible && screen.state.mouse === 'none' && !screen.state.sgr
+  const failure = !exited
+    ? { code: warningObserved ? 'confirmation-not-exited' : 'warning-not-observed', message: warningObserved ? 'Exit warning was observed but the confirmed interrupt did not terminate the process' : 'Interrupt did not produce a visible exit warning within the bounded acknowledgment attempts' }
+    : !modesRestored ? { code: 'modes-not-restored', message: 'Exited process did not restore terminal cursor/mouse modes' } : undefined
+  return {
+    exited, failure, phase, durationMs: Math.round(now() - begin), interrupts,
+    terminal: { frames: screen.state.frames.length, bytes: screen.state.bytes, openSync: screen.state.openSync, cursorVisible: screen.state.cursorVisible, mouse: screen.state.mouse, sgr: screen.state.sgr },
+  }
 }
 
 /** Drive identical semantic steps through either real executable. Never inject renderer state. */
@@ -83,6 +114,7 @@ export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, st
   let output = ''
   let exitCode
   let exitSignal
+  let exit
   const checkpoints = []
   const failures = []
   terminal.onData(data => { output += data; screen.feed(data) })
@@ -143,8 +175,8 @@ export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, st
     await beforeExit()
     terminal.write('\u001b')
     await sleep(100)
-    await exitSplitTerminal({ terminal, screen, isExited: () => exitCode !== undefined })
-    if (exitCode === undefined) failures.push('Product did not exit on Ctrl+C')
+    exit = await exitSplitTerminal({ terminal, screen, isExited: () => exitCode !== undefined })
+    if (exitCode === undefined) failures.push(`Product did not exit on Ctrl+C (${exit.failure.code}: ${exit.failure.message}; interrupts=${exit.interrupts.length}, phase=${exit.phase}, frames=${exit.terminal.frames})`)
     else if (exitCode !== 0 || exitSignal !== 0) failures.push(`Product exit was not clean (code=${exitCode}, signal=${exitSignal})`)
     await screen.flush()
     if (!screen.state.cursorVisible || screen.state.mouse !== 'none' || screen.state.sgr) failures.push('Product did not restore terminal cursor/mouse modes')
@@ -160,5 +192,5 @@ export async function captureSplitTerminal({ bin, args, cwd, env, cols, rows, st
     screen.dispose()
   }
   if (/ERR_MODULE_NOT_FOUND|StartupError|failed to import:|action failed|replay failed/u.test(output)) failures.push('Product emitted a loader or scenario failure; inspect the PTY log')
-  return { checkpoints, failures, output: redactSplitOutput(output, startupUrl), exitCode }
+  return { checkpoints, failures, output: redactSplitOutput(output, startupUrl), exitCode, exit }
 }

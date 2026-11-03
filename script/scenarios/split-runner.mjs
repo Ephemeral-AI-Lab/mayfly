@@ -59,6 +59,7 @@ export async function runSplitScenario({ root, dshBin, artifacts, cols = 80, row
     checkpoints = captured.checkpoints
     failures.push(...captured.failures)
     writeFileSync(join(artifacts, 'remote.ansi'), captured.output)
+    writeFileSync(join(artifacts, 'exit.json'), `${JSON.stringify(captured.exit ?? null, null, 2)}\n`)
     if (host.child.exitCode !== null || host.child.signalCode !== null) failures.push('Detaching Remote stopped the Host')
     if (referenceDir !== undefined) failures.push(...compareSplitReference(referenceDir, checkpoints, { cols, rows, steps, startup }))
   } catch (error) {
