@@ -6,6 +6,9 @@ import type { EditorFeatureOptions, EditorLocalCommandInvocation } from '../../s
 import type { RemoteFeatureSelection } from '../../src/remote/features/contracts.ts'
 import type { HostClient } from '../../src/client/types.ts'
 import { HostKey } from '../../src/client/types.ts'
+import { EditorCommands } from '../../src/remote/editor/commands.ts'
+import { mergeRemoteFeatureCommandSources, RemoteFeatureCommandRegistry, type RemoteFeatureCommandSource } from '../../src/remote/features/commands.ts'
+import { translate } from './editor-feature-fixture.ts'
 
 const captured = vi.hoisted(() => ({
   options: undefined as EditorFeatureOptions | undefined,
@@ -17,7 +20,7 @@ import { mountEditorComposition } from '../../src/remote/editor-composition.ts'
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const stop of cleanups.splice(0).reverse()) await stop() })
 beforeEach(() => { vi.clearAllMocks() })
-async function fixture(injected = false, contributed = false) {
+async function fixture(injected = false, contributed = false, source?: RemoteFeatureCommandSource) {
   const ctx = new Context()
   const topology = new Set<() => void>(), side = new Set<() => void>(), states = new Set<() => void>()
   let generation = 1
@@ -39,15 +42,17 @@ async function fixture(injected = false, contributed = false) {
     subscribeTopology: (listener: () => void) => { topology.add(listener); return () => topology.delete(listener) },
     execute: vi.fn(async () => ({ exit: true })), ensureSession: vi.fn(async () => {}), preparePrompt: vi.fn(async () => {}),
   }
-  const commands = { list: vi.fn(() => [{ name: 'local-fixture', description: 'Feature fixture', scope: 'sessionless' as const, execute() {} }]), execute: vi.fn(async () => true) }
+  const command = { name: 'local-fixture', description: 'Feature fixture', scope: 'sessionless' as const, execute() {} }
+  const commands = { list: vi.fn(() => [command]), resolve: vi.fn((name: string) => name === command.name ? command : undefined), execute: vi.fn(async () => true) }
+  const notice = { set: vi.fn() }
   const focusEditor = vi.fn(), startupKey = vi.fn(() => false), exit = vi.fn()
   const extensionRuntime = {} as NonNullable<EditorFeatureOptions['extensionRuntime']>
-  const handle = mountEditorComposition({ ctx, app: app as never, editor: {} as never, screen: {} as never, components: {} as never, colors: {} as never, keymap: {} as never, notice: { set() {} }, localCwd: '/frontend/workspace', exit,
+  const handle = mountEditorComposition({ ctx, app: app as never, editor: {} as never, screen: {} as never, components: {} as never, colors: {} as never, keymap: {} as never, notice, localCwd: '/frontend/workspace', exit,
     ...injected ? { selection: () => selection, subscribeSelection: (listener: () => void) => { side.add(listener); return () => side.delete(listener) }, focusEditor, startupKey, extensionRuntime } : {},
-    ...contributed ? { featureCommands: commands } : {},
+    ...contributed ? { featureCommands: source ?? commands } : {},
   })
   cleanups.push(async () => { handle.dispose(); await ctx.fiber.dispose() })
-  return { ctx, options: captured.options!, handle, app, client, ref, binding, session, native, upload, topology, states, side, commands, focusEditor, startupKey, exit,
+  return { ctx, options: captured.options!, handle, app, client, ref, binding, session, native, upload, topology, states, side, commands, notice, focusEditor, startupKey, exit,
     clearRef: () => { currentRef = undefined }, clearBinding: () => { reference = undefined }, restore: () => { currentRef = ref; reference = { binding }; available = client },
     available: (value: HostClient | undefined) => { available = value }, attached: (value: HostClient[]) => { attached = value },
     select: (value: typeof selection) => { selection = value }, generation: () => { generation += 1 }, extensionRuntime,
@@ -132,6 +137,43 @@ describe('Remote editor composition', () => {
     const plain = await fixture()
     await expect(plain.options.local.execute(invocation('native-command'))).resolves.toEqual({ kind: 'success', exit: true })
     plain.clearRef(); expect(plain.options.local.list().some(command => command.name === 'rename')).toBe(false)
+    expect(plain.options.local.resolve?.('unknown')).toBeUndefined()
+  })
+
+  it('admits hidden feature routes through the real editor while preserving discovery, scope, attachments and unload', async () => {
+    const source = new RemoteFeatureCommandRegistry()
+    const execute = vi.fn(async () => {})
+    const off = source.register({ name: 'export', hidden: true, description: 'Internal export route', execute })
+    source.register({ name: 'save', description: 'Save the current session as a Markdown file', input: { hint: '[full] [<path>]' }, execute })
+    const f = await fixture(true, true, mergeRemoteFeatureCommandSources(new RemoteFeatureCommandRegistry(), source))
+    const selected = { client: f.client, ref: f.ref, binding: f.binding, access: 'interactive' as const }
+    f.select(selected)
+    const commands = new EditorCommands({ session: f.options.session, local: f.options.local, notice: f.notice, t: translate })
+    expect(commands.list().some(command => command.name === 'export' || command.aliases?.includes('export'))).toBe(false)
+    expect(commands.list().find(command => command.name === 'save')).toEqual({ name: 'save', description: 'Save the current session as a Markdown file', input: { hint: '[full] [<path>]' } })
+    const signal = new AbortController().signal
+    await expect(commands.execute('/export full 本地报告.md', [], signal)).resolves.toEqual({ handled: true, accepted: true, exit: false })
+    expect(execute).toHaveBeenCalledExactlyOnceWith(' full 本地报告.md', signal)
+    expect(f.app.execute).not.toHaveBeenCalled()
+    await expect(commands.execute('/export file', [{ type: 'file', receiptId: 'unsupported' }], signal)).resolves.toMatchObject({ accepted: false })
+    expect(f.notice.set).toHaveBeenLastCalledWith('/export does not accept attachments; no command was sent', 'error')
+    expect(execute).toHaveBeenCalledOnce()
+    f.select(undefined)
+    expect(f.options.local.resolve?.('export')).toBeUndefined()
+    await expect(commands.execute('/export', [], signal)).resolves.toMatchObject({ accepted: false })
+    expect(f.notice.set).toHaveBeenLastCalledWith('Send a message first: /export needs a session', 'error')
+    f.select({ ...selected, access: 'readonly' })
+    expect(f.options.local.resolve?.('export')).toBeUndefined()
+    await expect(commands.execute('/export', [], signal)).resolves.toMatchObject({ accepted: false })
+    expect(f.notice.set).toHaveBeenLastCalledWith('This conversation is read-only', 'error')
+    expect(execute).toHaveBeenCalledOnce()
+    const sessionless = source.register({ name: 'internal-global', hidden: true, scope: 'sessionless', description: 'Internal global', execute })
+    expect(f.options.local.resolve?.('internal-global')).toMatchObject({ name: 'internal-global', scope: 'sessionless' })
+    sessionless()
+    f.select(selected)
+    off()
+    expect(f.options.local.resolve?.('export')).toBeUndefined()
+    expect(commands.list().some(command => command.name === 'save')).toBe(true)
   })
 
   it('retires every listener once and ignores callbacks queued before detach or full unload', async () => {

@@ -110,6 +110,8 @@ export interface EditorLocalAdapter {
   cwd(): string
   /** Local commands and their aliases, listed before Host commands. */
   list(): readonly EditorCommandDescriptor[]
+  /** Resolve an additional local admission route without exposing it to help or completion. */
+  resolve?(name: string): EditorCommandDescriptor | undefined
   /** Handle one canonical local command or decline it for Host execution. */
   execute(invocation: EditorLocalCommandInvocation): EditorLocalCommandResult | Promise<EditorLocalCommandResult>
   /** Exit the Remote process after the editor's normal double-Ctrl+C arm. */

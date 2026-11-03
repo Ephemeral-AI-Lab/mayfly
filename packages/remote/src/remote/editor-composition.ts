@@ -88,6 +88,12 @@ export function mountEditorComposition(options: EditorCompositionOptions): Edito
   const local: EditorLocalAdapter = {
     cwd: () => options.localCwd,
     list: () => remoteCommandCatalog(session() !== undefined && session()?.access !== 'readonly', options.featureCommands?.list() ?? []),
+    resolve(name) {
+      const command = options.featureCommands?.resolve(name)
+      const selected = session()
+      return command !== undefined && (command.scope === 'sessionless' || (selected !== undefined && selected.access !== 'readonly'))
+        ? command : undefined
+    },
     async execute(invocation) {
       // A live Session's plan command owns its native ordered attachments and
       // actual success/refusal; sessionless mode intent stays with the feature.

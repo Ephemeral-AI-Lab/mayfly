@@ -108,16 +108,15 @@ class RemoteExportCommand {
 }
 
 /**
- * Mount the `/export` Markdown export command and its `/save` name. The local
- * registry has no alias table, so both names are registered over one executor:
- * `/save` reads as the obvious verb but must write the same file as `/export`,
- * and routing it through the Host instead would silently reach no command.
+ * Keep the reference `/save` descriptor in help and completion. The additional
+ * `/export` route shares its local executor without changing that public catalog.
  */
 export function mountRemoteExportOperations(context: RemoteOperationsContext): () => void {
   const command = new RemoteExportCommand(context)
   const unregister = [
     context.base.commands.register({
       name: 'export',
+      hidden: true,
       description: 'Export the current session as Markdown',
       input: { hint: '[full] [<path>]' },
       execute: command.execute,

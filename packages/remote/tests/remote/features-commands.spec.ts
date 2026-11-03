@@ -11,6 +11,8 @@ describe('RemoteFeatureCommandRegistry', () => {
     aliases[0] = 'changed'
     const signal = new AbortController().signal
     expect(registry.list().map(entry => [entry.name, entry.aliases])).toEqual([['effort', ['thinking']]])
+    expect(registry.resolve('THINKING')).toBe(registry.resolve('effort'))
+    expect(registry.resolve('providers')).toMatchObject({ name: 'providers', hidden: true })
     await expect(registry.execute('THINKING', 'high', signal)).resolves.toBe(true)
     expect(execute).toHaveBeenCalledWith('high', signal)
     await expect(registry.execute('providers', '', signal)).resolves.toBe(true)
@@ -21,8 +23,10 @@ describe('RemoteFeatureCommandRegistry', () => {
     expect(registry.list()).toHaveLength(1)
     offNext()
     await expect(registry.execute('thinking', '', signal)).resolves.toBe(false)
+    expect(registry.resolve('thinking')).toBeUndefined()
     registry.clear()
     expect(registry.list()).toEqual([])
+    expect(registry.resolve('providers')).toBeUndefined()
   })
 
   it('rejects invalid names and aliases or ambiguous routing before registration', () => {
@@ -55,5 +59,30 @@ describe('RemoteFeatureCommandRegistry', () => {
     expect(runSecond).not.toHaveBeenCalled()
     await expect(merged.execute('alpha', '', signal)).resolves.toBe(true)
     await expect(merged.execute('missing', '', signal)).resolves.toBe(false)
+    expect(merged.resolve('zebra')).toBe(first.resolve('zebra'))
+    expect(merged.resolve('alpha')).toBe(second.resolve('alpha'))
+    expect(merged.resolve('missing')).toBeUndefined()
+  })
+
+  it('resolves hidden owners with the same source precedence as dispatch and retires exact descriptors on unload', async () => {
+    const first = new RemoteFeatureCommandRegistry()
+    const second = new RemoteFeatureCommandRegistry()
+    const runFirst = vi.fn(), runSecond = vi.fn()
+    const off = first.register({ name: 'internal', aliases: ['private'], hidden: true, description: 'first hidden', execute: runFirst })
+    second.register({ name: 'internal', aliases: ['private'], description: 'second visible', execute: runSecond })
+    const merged = mergeRemoteFeatureCommandSources(first, second)
+    const captured = merged.resolve('PRIVATE')
+    expect(captured).toBe(first.resolve('internal'))
+    const signal = new AbortController().signal
+    await expect(merged.execute('private', 'original owner', signal)).resolves.toBe(true)
+    expect(runFirst).toHaveBeenCalledWith('original owner', signal)
+    expect(runSecond).not.toHaveBeenCalled()
+    off()
+    expect(merged.resolve('private')).toBe(second.resolve('internal'))
+    expect(merged.resolve('private')).not.toBe(captured)
+    await expect(merged.execute('private', 'replacement owner', signal)).resolves.toBe(true)
+    expect(runSecond).toHaveBeenCalledWith('replacement owner', signal)
+    second.clear()
+    expect(merged.resolve('private')).toBeUndefined()
   })
 })

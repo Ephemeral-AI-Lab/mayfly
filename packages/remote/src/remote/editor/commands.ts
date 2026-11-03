@@ -118,7 +118,7 @@ export class EditorCommands {
       if (selected === undefined || current === undefined) return selected === current
       return current.client === selected.client && current.session === selected.session && selectionKey(current) === selectionKey(selected)
     }
-    const local = canonicalLocalCommand(this.options.local.list(), parsed.name)
+    const local = canonicalLocalCommand(this.options.local.list(), parsed.name) ?? this.options.local.resolve?.(parsed.name)
     if (local !== undefined) {
       const canonical = canonicalCommandLine(local, parsed.rawInput)
       let result

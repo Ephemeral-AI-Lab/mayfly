@@ -8,6 +8,7 @@ import type { ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
 import type { RemoteFeatureSelection } from '../../src/remote/features.ts'
+import { remoteCommandCatalog } from '../../src/remote/command-catalog.ts'
 import { RemoteFeatureCommandRegistry } from '../../src/remote/features/commands.ts'
 import { mountRemoteExportOperations } from '../../src/remote/operations/export.ts'
 import type { RemoteOperationsContext } from '../../src/remote/operations/support.ts'
@@ -48,19 +49,23 @@ function fixture(options: { readonly noListCwd?: boolean, readonly projectedCwd?
   const notice = { set: vi.fn() }
   const context = { base: { ctx, commands, notice, hosts: { current: () => current } }, options: { localCwd: directory } } as unknown as RemoteOperationsContext
   const unmount = mountRemoteExportOperations(context)
-  const command = commands.list().find(item => item.name === 'export')!
   return { root, directory, client, binding, ref, history, notice, commands, unmount,
-    execute: (text = '', signal = new AbortController().signal) => command.execute(text, signal),
+    execute: (text = '', signal = new AbortController().signal) => commands.execute('export', text, signal),
     select: (value: RemoteFeatureSelection | undefined) => { current = value },
     reconnect: () => { generation += 1 },
   }
 }
 
 describe('local session export composition', () => {
-  it('exports the visible Host projection without reading raw history and removes both command registrations', async () => {
+  it('advertises the reference save descriptor, dispatches the hidden export route locally and removes both on unload', async () => {
     const f = fixture()
-    expect(f.commands.list().map(command => command.name)).toEqual(['export', 'save'])
-    await f.execute(' visible report ')
+    expect(f.commands.list().map(command => command.name)).toEqual(['save'])
+    const catalog = remoteCommandCatalog(true, f.commands.list())
+    expect(catalog.some(command => command.name === 'export')).toBe(false)
+    expect(catalog.find(command => command.name === 'save')).toEqual({
+      name: 'save', description: 'Save the current session as a Markdown file', input: { hint: '[full] [<path>]' },
+    })
+    await expect(f.execute(' visible report ')).resolves.toBe(true)
     expect(f.history).not.toHaveBeenCalled()
     const content = readFileSync(join(f.directory, 'visible report'), 'utf8')
     expect(content).toContain('message_count: 7')
@@ -70,6 +75,8 @@ describe('local session export composition', () => {
     expect(f.notice.set).toHaveBeenCalledWith(`exported 7 items to ${join(f.directory, 'visible report')}`, 'success')
     f.unmount()
     expect(f.commands.list()).toEqual([])
+    for (const name of ['save', 'export']) await expect(f.commands.execute(name, 'after-unload', new AbortController().signal)).resolves.toBe(false)
+    expect(existsSync(join(f.directory, 'after-unload'))).toBe(false)
   })
 
   it('uses native audit paging for full mode, keeps source injections and acquires projected cwd only when necessary', async () => {
@@ -97,16 +104,19 @@ describe('local session export composition', () => {
   })
 
   it('shares save/export path semantics, preserving spaces, Unicode, arbitrary suffixes, absolute and parent paths', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-08-21T07:15:30.000Z'))
     const f = fixture()
-    expect(f.commands.list().map(command => command.input?.hint)).toEqual(['[full] [<path>]', '[full] [<path>]'])
+    expect(f.commands.list().map(command => command.input?.hint)).toEqual(['[full] [<path>]'])
     const save = f.commands.list().find(command => command.name === 'save')!
     for (const path of ['nested/报告  visible.txt', '../parent/without-extension', join(f.root, 'absolute/note.data')]) {
       await save.execute(`  ${path}  `, new AbortController().signal)
       const target = path.startsWith('/') ? path : join(f.directory, path)
-      expect(readFileSync(target, 'utf8')).toContain('message_count: 7')
+      const expected = readFileSync(target)
+      expect(expected.toString()).toContain('message_count: 7')
       writeFileSync(target, 'old bytes')
       await f.execute(path)
-      expect(readFileSync(target, 'utf8')).toContain('message_count: 7')
+      expect(readFileSync(target)).toEqual(expected)
     }
     await f.execute('full\tnot-a-mode')
     expect(f.history).not.toHaveBeenCalled()

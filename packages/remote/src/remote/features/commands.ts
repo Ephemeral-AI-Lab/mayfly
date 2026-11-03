@@ -21,6 +21,7 @@ export interface RemoteFeatureCommandDefinition {
 /** Registration and dispatch face exposed to the foundation's eventual local command router. */
 export interface RemoteFeatureCommandSource {
   list(): readonly RemoteFeatureCommandDefinition[]
+  resolve(name: string): RemoteFeatureCommandDefinition | undefined
   execute(name: string, rawInput: string, signal: AbortSignal): Promise<boolean>
 }
 
@@ -31,6 +32,12 @@ export class RemoteFeatureCommandRegistry implements RemoteFeatureCommandSource 
   /** List contributed commands in stable name order. */
   list(): readonly RemoteFeatureCommandDefinition[] {
     return [...this.entries.values()].filter(entry => entry.hidden !== true).toSorted((left, right) => left.name.localeCompare(right.name))
+  }
+
+  /** Resolve the exact current owner, including routes omitted from help and completion. */
+  resolve(name: string): RemoteFeatureCommandDefinition | undefined {
+    return this.entries.get(name.toLowerCase())
+      ?? [...this.entries.values()].find(entry => entry.aliases?.includes(name.toLowerCase()))
   }
 
   /** Add one command and return its exact registration disposer. */
@@ -57,8 +64,7 @@ export class RemoteFeatureCommandRegistry implements RemoteFeatureCommandSource 
 
   /** Execute one exact command, returning false when the name belongs to another router. */
   async execute(name: string, rawInput: string, signal: AbortSignal): Promise<boolean> {
-    const command = this.entries.get(name.toLowerCase())
-      ?? [...this.entries.values()].find(entry => entry.aliases?.includes(name.toLowerCase()))
+    const command = this.resolve(name)
     if (command === undefined) return false
     await command.execute(rawInput, signal)
     return true
@@ -84,6 +90,13 @@ export function mergeRemoteFeatureCommandSources(
         merged.push(definition)
       }
       return merged.toSorted((left, right) => left.name.localeCompare(right.name))
+    },
+    resolve(name) {
+      for (const source of sources) {
+        const command = source.resolve(name)
+        if (command !== undefined) return command
+      }
+      return undefined
     },
     async execute(name, rawInput, signal) {
       for (const source of sources) {
