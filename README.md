@@ -72,7 +72,7 @@ The shared layout contains the conversation, activity and notification rows, edi
 
 Enter queues a prompt and Ctrl+Enter steers it through the official Client. Readonly conversations preserve drafts and refuse writes. A cold continuable child resumes only when the user explicitly replies through its native address. `/agents stop <id>` drains a live continuable leaf; a child with live descendants is refused. The selected conversation's interrupt uses native cancellation authority and keeps queued input.
 
-Attachment-capable native commands receive images and uploaded file receipts in their original order. A native refusal restores the draft and attachments. `/skills` shows the selected Session's native source/provider metadata and catalog completeness; a Host without the optional Mayfly catalog capability explicitly identifies the missing metadata.
+Attachment-capable native commands receive images and uploaded file receipts in their original order. A refusal before admission restores the draft and attachments. An admitted command consumes them even when its native result reports an error. `/skills` shows the selected Session's native source/provider metadata and catalog completeness; a Host without the optional Mayfly catalog capability explicitly identifies the missing metadata.
 
 ## Partial behavior and upstream limits
 
@@ -86,6 +86,8 @@ These rows describe the remaining official API limits:
 | `/update` Host startup check | `/update [<version>]` stages and checks the exact frontend release graph, confirms, upgrades both installations, verifies versions, and compensates failed changes. `/update recover` restores an interrupted transaction on its original Host. The official Host API provides no isolated Host boot check; the confirmation and result explicitly require restarting both processes and checking Host startup. Linked/read-only and non-npm frontend installations use their original installer. |
 
 `/plugin` installs, updates, removes, and enables Host bundles through the native plugin manager. `/settings` supports revision-bound form changes and a local external editor for the actual Host settings document. These features have native APIs and are implemented. Plugin changes report their restart boundary; a cancelled or stale write is never silently retried. `/schedule` and other optional features state when their Host service is absent.
+
+Updates hold one cross-process lock through staging, installation, verification, and compensation. An interrupted transaction retains its recovery marker and log. Recovery refuses while an earlier npm writer is still alive; an unconfirmed worker startup reports the marker path and requires manual inspection before repair.
 
 ## Architecture and extensions
 

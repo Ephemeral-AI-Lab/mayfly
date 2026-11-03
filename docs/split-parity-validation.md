@@ -86,6 +86,8 @@ node script/split-parity.mjs --scenario focus-resize
 node script/split-parity.mjs --scenario editor-feedback
 node script/split-parity.mjs --scenario local-shell
 node script/split-parity.mjs --scenario agents
+node script/split-parity.mjs --scenario agents-lifecycle
+node script/split-parity.mjs --scenario agents-settlement
 node script/split-parity.mjs --scenario rename
 ```
 
@@ -136,6 +138,14 @@ collapse, filtering, external-conversation refusal, stop confirmation/cancel,
 completed native teardown, cold history, F7 return, and narrow/wide layouts.
 The fixture audits native descendant and completion facts independently of UI
 text; it supplies no replacement tree or renderer state.
+
+`agents-lifecycle` adds 18 checkpoints for a live child, explicit-stop view
+closure, stored-history reopening, and an addressed cold-child continuation at
+40, 80, and 120 columns. `agents-settlement` adds six checkpoints for a naturally
+completed addressed turn: the side descriptor remains available through F7 and
+returns to resumable access. Explicit stop and natural disposal have different
+reference behavior. These cases use the same native descendant fixture; they
+neither replace nor change the original 21-checkpoint case.
 
 `rename` drives the original title editor through the actual command and native
 Session Controller. Its 15 checkpoints cover Unicode prefill, clean cancel,

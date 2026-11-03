@@ -72,7 +72,7 @@ script/mayfly-remote.sh --cwd /path/on/host '运行相关检查'
 
 Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读会话保留草稿并拒绝写入。冷的 continuable 子会话只有在用户通过原生地址明确回复后才恢复。`/agents stop <id>` 只 drain 活跃的 continuable 叶节点；有活跃后代的子节点会被拒绝。中断所选会话使用原生取消权限并保留排队输入。
 
-支持附件的原生命令会按原始顺序接收图片和已上传文件的 receipt。原生接纳拒绝时恢复草稿和附件。`/skills` 显示当前 Session 的原生来源、provider 元数据和目录完整性；Host 未提供可选的 Mayfly 目录能力时，会明确标注缺失的元数据。
+支持附件的原生命令会按原始顺序接收图片和已上传文件的 receipt。接纳前的拒绝会恢复草稿和附件；已接纳的命令会消费草稿和附件，即使其原生结果报告错误。`/skills` 显示当前 Session 的原生来源、provider 元数据和目录完整性；Host 未提供可选的 Mayfly 目录能力时，会明确标注缺失的元数据。
 
 ## 部分实现与上游限制
 
@@ -86,6 +86,8 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 | `/update` Host 启动检查 | `/update [<version>]` 先准备并检查前端精确发布依赖图，经确认后升级两端、验证版本，并在失败时补偿恢复。`/update recover` 在原 Host 上恢复中断的事务。官方 Host API 没有独立 Host 启动检查；确认页和结果页会明确要求重启两进程并验证 Host 启动。链接、只读或非 npm 前端安装使用原安装方式升级。 |
 
 `/plugin` 已通过原生 plugin manager 安装、更新、移除和启停 Host bundle；`/settings` 已支持绑定 revision 的表单写入，以及用本地外部编辑器修改实际 Host settings 文档。这些功能具有原生 API，已实现。插件修改会说明重启边界；取消或过期写入不会静默重试。`/schedule` 等可选功能会说明所需 Host 服务是否缺失。
+
+更新从准备依赖到安装、验证和补偿恢复，全程持有同一个跨进程锁。中断的事务保留恢复标记和日志。旧 npm 写入进程仍存活时，恢复会被拒绝；无法确认写入进程是否已启动时，会给出标记文件路径，要求先人工检查再修复。
 
 ## 架构与扩展
 
