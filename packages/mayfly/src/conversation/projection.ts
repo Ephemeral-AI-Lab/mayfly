@@ -18,6 +18,7 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
 import { everyAdmitted, identityAdmission } from './admission.ts'
 import { outputProgressSchema } from './output-progress.ts'
+import { isSpawnToolName } from '../transcript/tool-names.ts'
 import { foldAssistantStreamRecords, initialAssistantStream, type AssistantStreamState } from './stream-accumulator.ts'
 import type {
   ConversationCompactionEntry,
@@ -287,14 +288,6 @@ function settleStreaming(state: ConversationProjectionState, updatedSeq: number)
     streamingThinkingId: null,
     pendingReasoning: '',
   }
-}
-
-/**
- * Whether a tool name is spawn-class delegation: `subagent` or any configured
- * `subagent_*` provider (fork, codex, claude-code), the upstream Chat rule.
- */
-export function isSpawnToolName(name: string): boolean {
-  return name === 'subagent' || name.startsWith('subagent_')
 }
 
 function toolChannel(name: string): ConversationToolEntry['channel'] {
