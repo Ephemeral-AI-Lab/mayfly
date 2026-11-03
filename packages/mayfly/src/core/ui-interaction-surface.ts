@@ -334,7 +334,7 @@ export class UiSurfaceModel {
     // Replaying both definitions would alternate their identities and publish a change on every walk.
     const reconciled = new Set<string>()
     visitUiControls(node, (current, pagePath) => {
-      if ('id' in current && current.id !== undefined) {
+      if ((current.kind === 'form' || current.kind === 'list' || current.kind === 'prompt' || current.kind === 'slider' || current.kind === 'tabs' || current.kind === 'scroll') && current.id !== undefined) {
         const key = uiControlKey({ pagePath, controlId: current.id })
         if (reconciled.has(key)) return
         reconciled.add(key)

@@ -7,6 +7,38 @@ import { materializeDeferredUiNode } from '../../src/core/ui-validator.ts'
 const page = (itemId: string) => [{ controlId: 'pages', itemId }]
 
 describe('responsive semantic state', () => {
+  it.each(['form', 'list'] as const)('keeps action group ids separate from %s ids and from other action groups', kind => {
+    const model = new UiSurfaceModel('action-groups', {
+      id: 'surface', revision: 1, source: [], scope: { kind: 'app', targetId: 'test' }, update: { reason: 'data' }, definition: {},
+      events: { prepare: async () => ({ reply: { kind: 'completed' }, publish: () => true }) },
+      node: ui.stack.column([
+        ui.actions({ id: 'shared', items: [{ id: 'first', label: 'First' }] }),
+        kind === 'form'
+          ? ui.form({ id: 'shared', fields: [{ id: 'name', kind: 'input', label: 'Name', value: 'initial' }] })
+          : ui.list({ id: 'shared', role: 'browse', selectedIds: [], filterable: true, items: [{ id: 'row', label: 'Initial' }] }),
+        ui.actions({ id: 'shared', items: [{ id: 'second', label: 'Second' }] }),
+      ]),
+    })
+    try {
+      expect(model.availableActions().map(action => action.actionId)).toEqual(['first', 'second'])
+      if (kind === 'form') {
+        expect(model.form({ pagePath: [], formId: 'shared' })?.fields.name?.value).toBe('initial')
+        model.edit({ pagePath: [], formId: 'shared', fieldId: 'name' }, 'draft')
+      } else {
+        expect(model.choice({ pagePath: [], controlId: 'shared' })?.focusedId).toBe('row')
+        model.updateChoice({ pagePath: [], controlId: 'shared' }, { kind: 'query', query: 'draft' })
+      }
+      const revision = model.revision
+      for (let round = 0; round < 4; round += 1) {
+        model.admitVisibleControls()
+        expect(model.revision).toBe(revision)
+        expect(model.availableActions().map(action => action.actionId)).toEqual(['first', 'second'])
+        if (kind === 'form') expect(model.form({ pagePath: [], formId: 'shared' })?.fields.name?.value).toBe('draft')
+        else expect(model.choice({ pagePath: [], controlId: 'shared' })?.query).toBe('draft')
+      }
+    } finally { model.dispose() }
+  })
+
   it('settles independently admitted aliases once and retains separate forms, prompts, tabs, choices, and documents per page', () => {
     const source = ui.stack.column([
       ui.form({ id: 'form', fields: [{ id: 'name', kind: 'input', label: 'Name', value: '' }] }),

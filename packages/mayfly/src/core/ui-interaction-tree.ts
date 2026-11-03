@@ -58,7 +58,8 @@ export function uiDeclarations(source: unknown): { readonly complete: boolean, r
     active.add(value)
     const kind = data(value, 'kind')
     const id = data(value, 'id')
-    if (typeof kind === 'string' && typeof id === 'string') {
+    // Group and content ids do not own drafts and must not mask a semantic control.
+    if (typeof id === 'string' && (kind === 'form' || kind === 'list' || kind === 'prompt' || kind === 'slider' || kind === 'tabs' || kind === 'scroll' || kind === 'review')) {
       const fields = data(value, 'fields')
       const fieldKinds = new Map<string, string>()
       let knownFields = kind === 'form' && Array.isArray(fields) && fields.length <= MAYFLY_UI_MAX_COLLECTION
