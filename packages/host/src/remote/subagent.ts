@@ -55,10 +55,10 @@ function treeOwner(ctx: Context, request: MayflyHostSessionRequest, signal: Abor
   }
 }
 
-async function liveMetrics(ctx: Context, agent: Agent, check: () => void, signal: AbortSignal) {
+async function liveMetrics(ctx: Context, entry: Exclude<ChildEntry, { readonly mode: 'external' }>, agent: Agent, check: () => void, signal: AbortSignal) {
   const lifetime = new AbortController()
   const combined = AbortSignal.any([signal, lifetime.signal])
-  const iterator = ctx.sessionController.follow({ address: { kind: 'session', sessionId: agent.id }, assistantStream: true, maxMessages: 1 }, combined)[Symbol.asyncIterator]()
+  const iterator = ctx.sessionController.follow({ address: { kind: 'subagent', parentSessionId: entry.parentId, childSessionId: entry.id, mode: entry.mode }, assistantStream: true, maxMessages: 1 }, combined)[Symbol.asyncIterator]()
   let onAbort!: () => void
   try {
     const aborted = new Promise<never>((_resolve, reject) => {
@@ -111,11 +111,11 @@ export async function subagentTree(ctx: Context, request: MayflyHostSessionReque
   const rows: MayflySubagentTreeEntry[] = []
   for (const entry of entries) {
     if (entry.kind !== 'child') { rows.push(Object.freeze({ ...entry })); continue }
-    const agent = owners.get(entry.id)
+    const agent = entry.mode === 'external' ? undefined : owners.get(entry.id)
     const session = sessions.get(entry.id)
     const parent = ctx.sessions.get(entry.parentId)
     const label = entry.label ?? (parent === undefined ? undefined : workflows.snapshot(ctx, parent).runs.flatMap(run => run.agents).find(member => String(member.childId) === String(entry.id))?.label)
-    const metrics = agent === undefined ? {} : await liveMetrics(ctx, agent, current, signal).catch(error => {
+    const metrics = entry.mode === 'external' || agent === undefined ? {} : await liveMetrics(ctx, entry, agent, current, signal).catch(error => {
       current()
       throw treeFailure(request.sessionId, 'stream-opening-unavailable', describe(error))
     })

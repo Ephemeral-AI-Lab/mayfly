@@ -57,8 +57,8 @@ describe('subagentTree', () => {
     expect(rows[4]).toMatchObject({ stopBlocked: 'not-continuable' })
     expect(f.follow).toHaveBeenCalledTimes(2)
     expect(f.follow.mock.calls.map(([request]) => request)).toEqual([
-      { address: { kind: 'session', sessionId: 'parent' }, assistantStream: true, maxMessages: 1 },
-      { address: { kind: 'session', sessionId: 'nested' }, assistantStream: true, maxMessages: 1 },
+      { address: { kind: 'subagent', parentSessionId: 'root', childSessionId: 'parent', mode: 'continuable' }, assistantStream: true, maxMessages: 1 },
+      { address: { kind: 'subagent', parentSessionId: 'parent', childSessionId: 'nested', mode: 'continuable' }, assistantStream: true, maxMessages: 1 },
     ])
     await flush()
     expect(f.returned).toHaveBeenCalledTimes(2)
@@ -93,6 +93,13 @@ describe('subagentTree', () => {
     expect(f.resolve).not.toHaveBeenCalled()
     const resident = fixture([child('plain', 'root', 'one-shot')])
     expect((await resident.tree())[0]).not.toHaveProperty('label')
+  })
+
+  it('never follows an external execution through an unrelated local Agent with the same id', async () => {
+    const f = fixture([child('external', 'root', 'external')])
+    f.resident('external', 'running')
+    expect((await f.tree())[0]).toMatchObject({ mode: 'external', activity: 'inactive', live: false })
+    expect(f.follow).not.toHaveBeenCalled()
   })
 
   it.each(['done', 'event', 'missing'] as const)('refuses a %s native opening and releases the exact reader', async shape => {
