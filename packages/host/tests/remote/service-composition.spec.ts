@@ -220,8 +220,10 @@ describe('Host Remote composition', () => {
   it('waits for sent native descendant teardown but retires its reply on actual service Fiber unload', async () => {
     const { ctx, service, unload } = await host()
     const parent = ctx.agents.get(SessionId('parent'))!
-    const childSession = { ...parent.session, id: SessionId('leaf') }
-    const child = { ...parent, id: childSession.id, session: childSession }
+    // This composition fixture supplies structural native owners; spreading a
+    // typed Session/Agent does not preserve their private class members.
+    const childSession = { ...parent.session, id: SessionId('leaf') } as typeof parent.session
+    const child = { ...parent, id: childSession.id, session: childSession } as typeof parent
     vi.spyOn(ctx.agents, 'get').mockImplementation(id => id === child.id ? child : id === parent.id ? parent : undefined)
     vi.spyOn(ctx.sessions, 'get').mockImplementation(id => id === child.id ? childSession : id === parent.id ? parent.session : undefined)
     vi.spyOn(ctx.subagents, 'listDescendants').mockResolvedValue([{ kind: 'child', id: child.id, parentId: parent.id, depth: 1, mode: 'continuable', label: 'leaf', activity: 'inactive', hasChildren: false }])
