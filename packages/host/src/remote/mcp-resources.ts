@@ -9,22 +9,27 @@ import type { MayflyMcpResourceBody, MayflyMcpResourceItem, MayflyMcpResourceLis
 import { frozen, jsonSnapshot } from './json.ts'
 import { requireExactAgent, resolveExactAgent } from './session.ts'
 
+function failed(server: string, message: string): RemoteError<'mayflyHost/mcp-resource-failed'> {
+  const safeServer = /^[a-zA-Z0-9._-]{1,128}$/u.test(server) ? server : 'unknown'
+  return new RemoteError('mayflyHost/mcp-resource-failed', 'MCP resource operation failed', { server: safeServer, message })
+}
+
 async function invoke(ctx: Context, agent: Agent, name: string, args: Record<string, string>, signal: AbortSignal, server: string): Promise<unknown> {
-  const batch = await ctx.tools.execute({ calls: [{ type: 'tool-call', id: randomUUID() as ToolCallId, name, arguments: JSON.stringify(args) }], agent, signal })
+  const batch = await ctx.tools.execute({ calls: [{ type: 'tool-call', id: randomUUID() as ToolCallId, name, arguments: JSON.stringify(args) }], agent, signal }).catch(() => {
+    signal.throwIfAborted()
+    throw failed(server, 'native operation failed')
+  })
   signal.throwIfAborted()
   requireExactAgent(ctx, agent.id, agent)
   const outcome = batch.results[0]?.result
-  if (outcome === undefined) throw new RemoteError('mayflyHost/mcp-resource-failed', `MCP resource operation returned no result for "${server}"`, { server, message: 'no result' })
-  if (outcome.isError) {
-    const message = outcome.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
-    throw new RemoteError('mayflyHost/mcp-resource-failed', `MCP resource operation failed for "${server}": ${message}`, { server, message })
-  }
+  if (outcome === undefined) throw failed(server, 'no result')
+  if (outcome.isError) throw failed(server, 'native operation failed')
   return outcome.value
 }
 
 function record(value: unknown, server: string): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new RemoteError('mayflyHost/mcp-resource-failed', `MCP returned an invalid result for "${server}"`, { server, message: 'invalid result' })
+    throw failed(server, 'invalid result')
   }
   return value as Record<string, unknown>
 }
@@ -40,12 +45,12 @@ export async function listMcpResources(ctx: Context, request: MayflyMcpResourceL
   const value = record(result, request.server)
   const rows = value[templates ? 'resourceTemplates' : 'resources']
   if (!Array.isArray(rows)) {
-    throw new RemoteError('mayflyHost/mcp-resource-failed', `MCP returned an invalid catalog for "${request.server}"`, { server: request.server, message: 'invalid catalog' })
+    throw failed(request.server, 'invalid catalog')
   }
   const items = rows.map((row): MayflyMcpResourceItem => {
     const snapshot = jsonSnapshot(record(row, request.server)) as MayflyMcpResourceItem | undefined
     if (snapshot === undefined) {
-      throw new RemoteError('mayflyHost/mcp-resource-failed', `MCP returned a non-JSON resource row for "${request.server}"`, { server: request.server, message: 'invalid resource row' })
+      throw failed(request.server, 'invalid resource row')
     }
     return snapshot
   })

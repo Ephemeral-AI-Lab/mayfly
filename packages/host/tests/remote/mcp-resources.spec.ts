@@ -60,10 +60,35 @@ describe('listMcpResources', () => {
     expect(page).not.toHaveProperty('cursor')
   })
 
-  it('names the server in every refusal, with the tool error text', async () => {
+  it('keeps a safe server identity and a fixed message without native error text', async () => {
     const { ctx } = bridge({ result: { isError: true, content: [{ type: 'text', text: 'connection refused' }] } })
     await expect(listMcpResources(ctx, { sessionId: 'session-1' as never, server: 'docs', kind: 'resources' }, new AbortController().signal))
-      .rejects.toMatchObject({ code: 'mayflyHost/mcp-resource-failed', details: { server: 'docs' }, message: expect.stringContaining('connection refused') as never })
+      .rejects.toMatchObject({ code: 'mayflyHost/mcp-resource-failed', details: { server: 'docs', message: 'native operation failed' }, message: 'MCP resource operation failed' })
+  })
+
+  it.each(['outcome', 'throw'] as const)('redacts credentials and internal endpoints in native %s failures', async mode => {
+    const secret = 'https://user:password@internal.proxy:8123/private?token=secret-token Authorization: Bearer credential'
+    const { ctx } = bridge(mode === 'throw' ? new Error(secret) : { result: { isError: true, content: [{ type: 'text', text: secret }] } })
+    const errors = vi.spyOn(console, 'error')
+    const warnings = vi.spyOn(console, 'warn')
+    const logs = vi.spyOn(console, 'log')
+    try {
+      const error = await readMcpResource(ctx, { sessionId: 'session-1' as never, server: secret, uri: 'docs://one' }, new AbortController().signal).catch(value => value)
+      expect(error).toMatchObject({ code: 'mayflyHost/mcp-resource-failed', message: 'MCP resource operation failed', details: { server: 'unknown', message: 'native operation failed' } })
+      const exposed = JSON.stringify({ message: error.message, details: error.details, errors: errors.mock.calls, warnings: warnings.mock.calls, logs: logs.mock.calls })
+      for (const token of ['user:password', 'internal.proxy', 'secret-token', 'Authorization', 'credential']) expect(exposed).not.toContain(token)
+    } finally { errors.mockRestore(); warnings.mockRestore(); logs.mockRestore() }
+  })
+
+  it('preserves caller cancellation when the native resource call rejects', async () => {
+    const { ctx } = bridge(new Error('native failed'))
+    const controller = new AbortController()
+    const execute = ctx.tools.execute.bind(ctx.tools)
+    ctx.tools.execute = ((...args: Parameters<typeof execute>) => {
+      controller.abort(new Error('cancelled resource'))
+      return execute(...args)
+    }) as typeof ctx.tools.execute
+    await expect(readMcpResource(ctx, { sessionId: 'session-1' as never, server: 'docs', uri: 'docs://one' }, controller.signal)).rejects.toThrow('cancelled resource')
   })
 
   it('refuses a non-array catalog and a non-object result with the closed codes', async () => {
