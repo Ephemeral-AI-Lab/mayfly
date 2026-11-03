@@ -2,32 +2,31 @@
 
 ## 为什么不直接 `npm install @ephemeral-ai/mayfly`？
 
-Mayfly 是装进 dsh profile 的插件包，不是独立应用——裸装只把包放进 node_modules，没有宿主与 profile 装配，跑不起来。正确路径：装 `mayfly` 壳包，或用 `dsh plugin --profile mayfly add`，见[快速上手](/guide/)。当前预览版是 `v0.1.4-rc.2`，发布在 npm `rc` tag，`latest` 仍是上一发布线；插件与 CI 应锁定 Mayfly `0.1.4-rc.2` 与 Harness `0.2.1-rc.2`。Harness 依赖线当前追踪 npm 的 RC 发布线。贡献者的本地开发安装见开发手册的[贡献本仓库](/plugins/contributing)页。
+共享包只包含 renderer 与只读展示 subpath。当前产品由原生 dsh profile 中的
+`mayfly-host` 和独立 `mayfly-remote` TUI 组成；小型 `mayfly-cli` 启动器精确依赖
+Remote，不打包或启动 Host。安装见[分体快速上手](/guide/)。已发布的 `0.1.4-rc.2`
+是不可改写的 UI 参照；当前开发面向 Harness `0.2.2-alpha.2`，使用经验证的匹配构建产物。
 
-## 默认安装没有拿到最新版本？
+## 安装解析到了旧版本？
 
-pnpm 11 默认开启 `minimumReleaseAge` 冷却期：dist-tag 解析会静默跳过冷却窗口内刚发布的版本、回退到旧版。若 `dsh plugin --profile mayfly add @ephemeral-ai/mayfly` 装到的版本偏旧，两个办法：
-
-- 立即安装当前 `latest`：先用 `npm view @ephemeral-ai/mayfly dist-tags.latest` 查询精确版本，再执行 `dsh plugin --profile mayfly add @ephemeral-ai/mayfly@<已发布版本>`；
-- 或等冷却窗口过去后重跑同一条无版本后缀的命令（升级 = 重跑同一条 `plugin add`）。
-
-用 `/update` 升级的用户不受此坑影响：它按 registry 元数据解析目标、始终精确钉版，冷却窗口内会直接给出可重试的时间（ETA）而不是装到旧版。
+pnpm 的 `minimumReleaseAge` 可能推迟新版本可用时间。使用经验证的精确发布集并
+保留仓库配置中的 exclusions，不要把无版本的共享 renderer 包当成 Host 安装。
+开发安装器构建本工作区，并检查所选 dsh 版本。
 
 ## 如何升级 Mayfly？
 
-两条路：
+`/update` 做只读检查；`/update <version>` 准备并检查前端精确发布依赖图，经确认后
+升级两端、验证版本，并在失败时补偿恢复。`/update recover` 在原 Host 恢复中断事务。
+跨进程锁与恢复标记防止并发 writer。链接、只读或非 npm 前端安装使用原安装方式。
 
-- **壳包用户**：重跑 `npm -g install @ephemeral-ai/mayfly-cli`——重装即升级（壳按自身版本把 profile 里的 Mayfly 校准到同一版，宿主线随之固定），之后照常 `mayfly` 启动。
-- **dsh 直装用户**：
-  - **应用内（推荐）**：会话里输入 `/update`——先做安全预检（profile 健康度、当前 dsh 运行时是否满足目标版本的 harness 线、冷却期窗口），在 Yes / No 确认中选择 Yes 后自动执行：快照当前安装 → 精确版本单事务安装 → 装后整套包的版本校验 → 装机冒烟（模块导入扫描 + 真实启动）→ 任一失败**自动回滚**到原版本，全程有进度面板与日志路径。`/update <版本号>` 可显式指定目标版本；不带参数的 `/update` 兼作只读检查。升级完成后当前会话继续运行旧版，重启后生效。
-  - **手工**：重跑同一条 `dsh plugin --profile mayfly add @ephemeral-ai/mayfly`（或上一条 FAQ 的精确版本号形式）。
+升级后重启两个进程并检查 Host 启动。官方 Host API 没有独立启动检查；前端模块
+导入成功不能证明 Host 已成功启动。开发 worktree 在依赖变化后重新构建并安装专用 profile。
 
-此外 Mayfly 启动后会后台检查一次新版（每 24h 至多一次、失败静默、只读 registry 元数据、不做任何上报），有新版时在会话流中（横幅下方）追加两行提示。不想要启动检查，在 `~/.dsh/settings.yaml` 写入：
+## 为什么 `/stats` 历史不可用？
 
-```yaml
-mayfly:
-  updateCheck: false
-```
+历史即使只查看当前工作区，也可能暴露其他 Session，因此需要 Host 全局授权。
+只有所选 Session 的权限时，只允许读取它自身的统计。被拒绝的历史请求明确说明边界，
+并且不会开始扫描。
 
 ## 粘贴图片没有反应？
 
@@ -36,7 +35,8 @@ Ctrl-V 粘贴依赖两个条件：
 1. **终端环境**：按平台探测各自的剪贴板通道——Linux 依次探测 `wl-paste`、`xclip`（3 秒超时），Windows 单次 PowerShell 调用（10 秒），macOS 走 osascript（5 秒）；
 2. **模型能力**：粘贴的图片以图片内容块进入消息。如果当前模型路由不支持图片输入，包含图片块的消息会被拒绝——这是上游 harness 的能力协商行为，换用具备视觉输入的模型即可。
 
-图片落入附件存储（默认 `~/.dsh/attachments`，可用 `DSH_MAYFLY_ATTACHMENT_DIR` 或 `DSH_HOME` 改址），单图上限 10MB、每条消息至多 8 张 / 30MB / 16M 像素。
+TUI 接纳本地图片数据并通过原生 Host 附件 API 暂存；Session 写入保留图片与文件 receipt
+的原始顺序，本地图片存储路径不是 Host 文件系统能力。
 
 既可以复制应用中的图片内容，也可以在文件管理器（Ubuntu 文件、Windows 资源管理器、macOS Finder）中复制一个或多个本地 PNG/JPEG/WebP/GIF 文件——三平台都按原顺序整批粘贴。文件管理器路径只接受本地普通文件；远程 URI、目录、符号链接和特殊文件会显示拒绝原因。
 
@@ -48,9 +48,10 @@ harness 会把工作区指令（AGENTS.md 等）、运行时上下文快照等�
 
 暂缓。键位经 `mayflyKeymap` 注册、重复绑定会被拒绝，但面向用户的自定义配置属于后续阶段（alt-screen 全屏表面同理）。当前全部键位见[键位参考](/reference/keys)。
 
-## `/quit` 按了没反应？
+## `/quit` 如何退出？
 
-在 agent 尚未 attach 时（会话建立前的极短窗口）输入 `/quit`，会显示 `no active session` 而不是退出——命令分发前会检查当前 agent。稍候重试即可。另外交互模式里 **1 秒内连按两次 Ctrl-C** 也可以退出。
+`/quit` 是前端本地命令，尚无 Session 时也可用；它解除连接并退出 TUI，Host 工作继续运行。
+两次 Ctrl-C 的退出方式遵循编辑器显示的提示。
 
 ## 状态栏的 git 分支什么时候刷新？
 

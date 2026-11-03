@@ -4,7 +4,7 @@ Mayfly 的计划状态与权限设置相互独立。编辑器焦点下按 **`Shi
 
 **normal ↔ plan**
 
-YOLO 通过独立的 `/permission` 命令选择，可以与 plan 同时开启。状态栏第一行同时显示 `plan`（accent 色）与 `yolo`（warning 色）；计划状态切换待生效时显示 `plan...`。这些状态来自 dsh：plan 来自原生 `plan` projection，yolo 表示 `danger-full-access` + `never` 权限预设。
+YOLO 通过独立的 `/permission` 命令选择，可以与 plan 同时开启。状态栏第一行同时显示 `plan`（accent 色）与 `yolo`（warning 色）；计划状态切换待生效时显示 `plan...`。plan 来自原生 `plan` projection；yolo 经 Host 读取当前实际的原生沙箱与审批事实，包含 custom 或已撤回 preset 的情况，表示 `danger-full-access` + `never` 组合。
 
 ## normal
 

@@ -1,17 +1,15 @@
 # Features overview
 
-Mayfly `0.1.4-rc.2` is a flat Cordis plugin tree over `dsh-base`. The
-bundle inserts a set of dsh support rows and the Mayfly rows (the row list
-lives in `cordis.patch.yml`).
+Mayfly runs a native dsh Host and an independent Remote TUI on Harness
+`0.2.2-alpha.2`. Each process has its own Cordis tree. The published
+`0.1.4-rc.2` release is the immutable UI, key, and workflow reference.
 
 ## Data and interaction
 
 - native Harness `sessionProjections` drive conversation, token/context,
   title, and session facts;
-- built-in commands register directly on native `commands`;
-- app owns the conversation registry (`mayflyConversations`: the primary
-  plus side conversations) and exposes the exact displayed identity through
-  `mayflyCurrentAgent`;
+- Host commands register on native `commands`; Remote routes frontend commands locally and discovers native Session commands through the official Client;
+- Remote owns HostKey + SessionRef selection for primary and side conversations; Host owns exact Agent/Session domain state;
 - transcript and interaction do not maintain a second Agent/Session truth.
 
 ## Terminal UI
@@ -20,7 +18,7 @@ lives in `cordis.patch.yml`).
 - status producers register directly on `mayflyStatus`;
 - activity, queue, todo, Agent, and workflow panes register on `mayflyPanes`;
 - BTW, subagents, and stored children all render in the one transcript pane; live ones drive the complete main layout, cold or one-shot ones are read from native history as read-only or resumable;
-- the jobs footer, `/jobs`, and `/agents` consume native Harness services;
+- Remote jobs, `/jobs`, and `/agents` consume native transport facts and focused Host DTOs;
 - `mayflyOverlays` renders overlay contributions;
 - `mayflyEditorExtensions` composes extensions around the one Mayfly editor.
 

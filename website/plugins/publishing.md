@@ -3,7 +3,7 @@
 Mayfly 插件按普通 npm Cordis package 发布。发布前：
 
 - `package.json` 的 `exports` 指向实际存在的 JS/type；
-- `files` 包含 build output 与 `cordis.patch.yml`；
+- `files` 包含 build output；可安装的 Host bundle 另发布其原生 `cordis.patch.yml`；
 - dsh 与 Mayfly 包放在合理的 peer dependency；
 - tarball 在空目录独立安装并通过测试；
 - README 写清安装命令、`inject` service、unload 行为和 profile 验收流程；
@@ -17,4 +17,5 @@ npm publish --access public
 只有用户明确授权 exact package/version/tag 后才执行 publish。GitHub repository
 创建与 npm 发布是两个独立动作。
 
-发布之后，把插件[提交到插件市场](/market/submit)，Mayfly 用户就能用 `/plugin` 找到它。
+Host bundle 可[提交到插件市场](/market/submit)，供用户通过 `/plugin` 发现。前端 UI
+package 当前仍需源码集成到 Remote、构建并重启；发布本身不会建立 TUI 安装或热加载路径。

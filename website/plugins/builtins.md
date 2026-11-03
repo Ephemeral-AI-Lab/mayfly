@@ -1,8 +1,23 @@
 # 内置插件
 
-Mayfly bundle 在 `dsh-base` 上插入普通 Cordis sibling：一组 dsh 支撑行
-与全部 Mayfly product 行（行清单以 `cordis.patch.yml` 为准）。不存在
-group/isolate 或私有 service realm。
+当前产品在 Harness `0.2.2-alpha.2` 上分别组合 Host 与 Remote 两个进程。
+
+| 所有者 | 组合 |
+| --- | --- |
+| 原生 Host | `dsh-base`、`dsh-web-app`、原生 service 与 Agent preset |
+| `@ephemeral-ai/mayfly-host` | 持久 Mayfly 投影、focused `mayflyHost` 方法、Host 就绪输出与原生 `mayfly-cordis` preset |
+| `@ephemeral-ai/mayfly-remote` | 官方 Client 连接、Session 选择、前端功能控制器与 TUI composition |
+| `@ephemeral-ai/mayfly` | 共享 renderer、theme、editor/transcript controller 与只读展示 subpath |
+| `@ephemeral-ai/mayfly-ui` | 纯 builder、契约及四个前端本地 UI registry |
+
+原生 service 留在 Host。前端 contribution 在 TUI tree 中通过 `mayflyStatus`、
+`mayflyPanes`、`mayflyOverlays`、`mayflyEditorExtensions` 发布。Cordis `inject`
+决定启动次序与 reload 行为。安装 Host bundle 不会挂载 TUI contribution。
+
+## 历史测试 fixture
+
+下图只记录旧 renderer 与 composition 测试使用的私有进程内 fixture，不代表当前
+安装方式、公开包契约或受支持的扩展路径。
 
 <!-- BEGIN diagram:mayfly-composition -->
 <!-- single source: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
@@ -25,25 +40,3 @@ flowchart TB
     UI --> PLUGINS
 ```
 <!-- END diagram:mayfly-composition -->
-
-## 支撑行
-
-- subagent model settings、agent presets；
-- dynamic Cordis host runner；
-- workspace、connection、file-upload；
-- session controller；
-- session statistics（轮次/步数与模型/工具耗时）。
-
-## Mayfly 行
-
-- `mayfly-ui-provider`：由 `@ephemeral-ai/mayfly-ui/provider` 挂载四个直接 UI registry；
-- `mayfly-frontend`、`mayfly-core`、dark theme；
-- `mayfly-conversation`、startup、app/current Agent；
-- banner、transcript、official model；
-- basic/cwd/git/context/mode/jobs/goal status；
-- activity/queue/todo/agents/workflow pane；
-- BTW、jobs 与 agents command、attachments、paste image、editor-plus、interaction。
-
-外部 plugin row 与这些行处于同一 service graph。启动依赖全部由 `inject`
-决定，而不是 YAML 行序。任何内置 status/pane 都使用与外部插件相同的
-`mayflyStatus`/`mayflyPanes` registry。

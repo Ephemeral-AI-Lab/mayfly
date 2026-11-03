@@ -11,14 +11,10 @@
 | `overlay` | `commands`, `settings`, `mayflyOverlays` | 原生 command 打开 capturing overlay |
 | `ui-gallery` | `mayflyPanes` | 公共 node builder 展示 |
 
-`@mayfly-example/ecosystem` 通过五条普通 Cordis row 一次启用五个
-runtime 示例：
-
-```sh
-dsh plugin --profile mayfly-examples add @ephemeral-ai/mayfly
-dsh plugin --profile mayfly-examples add @mayfly-example/ecosystem
-dsh --profile mayfly-examples
-```
+这些示例是模拟发布形态的 package 与 renderer fixture。纯 UI entry 可在专用
+Remote composition 中做源码集成。`overlay` 同时依赖原生 commands/settings 与
+UI，属于私有进程内 fixture；分体实现必须把 Host 读写与前端 overlay 分开，通过官方
+Client/Remote DTO 通信。`ecosystem` patch 不能向当前 Host 安装终端 UI。
 
 示例证明 package entry、direct `inject`、renderer-neutral output、Fiber
 unload、publish-shaped pack/install 和窄宽渲染。它们不进入 Mayfly 默认 bundle。

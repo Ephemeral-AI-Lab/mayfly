@@ -42,25 +42,22 @@ view is entered with `Alt+↓`, `F5`, or `F6`. `size` and `narrow` do not apply.
 
 ## Overlay
 
+This source-integrated TUI entry opens once on mount. A production controller
+opens it in response to a frontend action; Host command handlers return
+serializable results and cannot access this registry.
+
 ```ts
-export const inject = ['commands', 'mayflyOverlays']
+export const inject = ['mayflyOverlays']
 
 export function apply(ctx: Context): void {
-  ctx.commands.register({
-    name: 'health',
-    description: 'Open health details',
-    handler: () => {
-      ctx.mayflyOverlays.close('acme.health')
-      ctx.mayflyOverlays.open({
-        id: 'acme.health',
-        title: 'Health',
-        capturing: true,
-        anchor: 'center',
-        width: '70%',
-      }, { kind: 'text', content: 'healthy' })
-      return { kind: 'success', text: 'opened health details' }
-    },
-  })
+  ctx.mayflyOverlays.open({
+    id: 'acme.health',
+    title: 'Health',
+    scope: { kind: 'app', targetId: 'acme.health' },
+    capturing: true,
+    anchor: 'center',
+    width: '70%',
+  }, { kind: 'text', content: 'healthy' })
 }
 ```
 

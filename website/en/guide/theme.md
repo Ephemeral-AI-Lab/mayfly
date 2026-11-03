@@ -56,12 +56,11 @@ Mayfly's own palettes (the first rows of each picker group):
 
 ## The persisted default theme
 
-`/theme` switches the theme **for the session**; the persisted default lives in the `mayfly:` section of settings.yaml (or the `/settings` panel's Theme row — it lists the palettes by name with their dark or light tag, applies live, and writes through):
-
-```yaml
-mayfly:
-  theme: tide   # any palette key above, or auto
-```
+`/theme` switches the current frontend theme. Choose a persistent default in
+the `/settings` Theme row, which lists palettes by name with their dark or
+light tag. Native Host settings own the write and the current TUI applies it
+live. For raw editing, use the actual Host document offered by `/settings`
+instead of an old `settings.yaml` path. See [configuration](/en/guide/config).
 
 The default applies at startup; an in-session `/theme` pick overrides it, and unrelated settings writes never stomp that pick. A saved value that names no palette (`ocean` or `paper` from an earlier version) starts on Mayfly Dark and leaves every other setting as it is. Custom palettes (`/theme custom <path>`) stay session-only — they never persist.
 

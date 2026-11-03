@@ -39,25 +39,21 @@ export function apply(ctx: Context): void {
 
 ## Overlay
 
+这个源码集成的 TUI entry 在挂载时打开一次。实际功能由前端 action 触发控制器打开；
+Host command handler 返回可序列化结果，不能访问该 registry。
+
 ```ts
-export const inject = ['commands', 'mayflyOverlays']
+export const inject = ['mayflyOverlays']
 
 export function apply(ctx: Context): void {
-  ctx.commands.register({
-    name: 'health',
-    description: 'Open health details',
-    handler: () => {
-      ctx.mayflyOverlays.close('acme.health')
-      ctx.mayflyOverlays.open({
-        id: 'acme.health',
-        title: 'Health',
-        capturing: true,
-        anchor: 'center',
-        width: '70%',
-      }, { kind: 'text', content: 'healthy' })
-      return { kind: 'success', text: 'opened health details' }
-    },
-  })
+  ctx.mayflyOverlays.open({
+    id: 'acme.health',
+    title: 'Health',
+    scope: { kind: 'app', targetId: 'acme.health' },
+    capturing: true,
+    anchor: 'center',
+    width: '70%',
+  }, { kind: 'text', content: 'healthy' })
 }
 ```
 

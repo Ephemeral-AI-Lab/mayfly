@@ -4,7 +4,7 @@ Mayfly keeps planning and permissions independent. With the editor focused, **`S
 
 **normal ↔ plan**
 
-YOLO is selected separately through `/permission` and can remain active alongside plan mode. The first status row shows both `plan` in the accent color and `yolo` in the warning color; a pending plan transition displays `plan...`. These states come from dsh: plan uses the native `plan` projection, and yolo labels a `danger-full-access` + `never` permission preset.
+YOLO is selected separately through `/permission` and can remain active alongside plan mode. The first status row shows both `plan` in the accent color and `yolo` in the warning color; a pending plan transition displays `plan...`. Plan uses the native `plan` projection. YOLO follows the actual native sandbox and approval facts through Host, including custom or withdrawn presets: `danger-full-access` + `never`.
 
 ## normal
 

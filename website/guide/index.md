@@ -1,80 +1,62 @@
 # 快速上手
 
-::: info 当前发布线
-`v0.1.4-rc.2` 是当前预览版，发布在 npm 的 **`rc`** dist-tag；`latest` 仍停在上一发布线。安装请显式锁定 `@ephemeral-ai/mayfly-cli@0.1.4-rc.2`（或 `@rc`）；CI 和可复现环境应锁定 Mayfly `0.1.4-rc.2` 与 Harness `0.2.1-rc.2`。本页是用户安装路径；贡献者的本地开发安装见[贡献本仓库](/plugins/contributing)。
+::: info 当前开发线与参照
+当前分体实现面向 Harness `0.2.2-alpha.2`，需要原生 Host 与独立 Remote TUI。
+已发布的 Mayfly `0.1.4-rc.2` 是不可改写的 UI、按键和工作流参照，不代表下面的
+分体安装产物已经发布。开发产物从本工作区或经验证的匹配 tarball 安装。
 :::
 
 ## 前置条件
 
 | 依赖 | 版本 |
 | --- | --- |
-| Node | `^22.19.0 \|\| >=24.0.0` |
-| pnpm | 11（首次装配、升级和 `plugin` 管理需要；日常启动已校准的 profile 不会重复检查。推荐先执行 `npm i -g pnpm@11`，或 `corepack enable && corepack prepare pnpm@11.7.0 --activate`） |
-| dsh CLI | 推荐的 `mayfly` 启动器已内含精确版本 `0.2.1-rc.2`；只有下方“dsh 直装”路径需要单独安装 |
+| Node | `>=24.9.0` |
+| pnpm | 仓库锁定的 `11.7.0` |
+| dsh CLI | 独立安装的官方 `0.2.2-alpha.2` 可执行文件 |
 
-## 安装（预览版）
+## 安装专用 Host profile
 
-**推荐：一体化 `mayfly` 启动器。** 它把固定的 Harness 闭包封装为公共层和平台层归档，npm 安装时只处理一个无依赖包，不解析 Harness 图，也不运行其中的安装脚本：
-
-```sh
-npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.2
-mayfly
-```
-
-如果首次运行提示 pnpm 缺失或版本不是 11：
+在仓库根目录执行：
 
 ```sh
-npm i -g pnpm@11
-# 或：corepack enable && corepack prepare pnpm@11.7.0 --activate
+pnpm install --frozen-lockfile
+DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
 ```
 
-壳包的 npm 安装只写入启动器与压缩运行时层。第一个需要 dsh 的命令只会把公共层和当前平台层以有界内存展开到用户缓存，不再联网；首次运行 `mayfly` 仍会经 `dsh plugin add` 和 pnpm 装配 Mayfly profile，这个独立操作下载 Mayfly 插件闭包，并可从 pnpm 缓存续传。国内网络建议同时配置两个 registry：
+安装器构建工作区，从原生 Web 模板创建专用 profile 并添加 Mayfly Host。
+它检查 dsh 版本，不修改全局安装，并拒绝共享的 `mayfly` 与 `default` profile。
+共享 `@ephemeral-ai/mayfly` 只有 renderer 与展示 subpath，不是可安装的 Host bundle。
+
+## 分别启动两个进程
 
 ```sh
-pnpm config set registry https://registry.npmmirror.com
-npm config set registry https://registry.npmmirror.com   # /update 的新版检查走 npm
+# 终端 1：Host；模型 key 在这个进程配置
+DEEPSEEK_API_KEY='<your key>' /path/to/dsh --profile mayfly-split-accept
+
+# 终端 2：TUI；复制 Host 打印的认证 URL
+MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh
 ```
 
-**或 dsh 直装**（宿主自理，适合已有 dsh 的用户）：
+认证 URL 只通过环境变量提供，不能放进命令行参数、日志或提交。Host 持有凭据、
+provider、权限与 Session；TUI 关闭只解除连接，Host 上的工作继续运行。
 
-```sh
-npm i -g @deepseek-ai/dsh
-dsh plugin --profile mayfly add @ephemeral-ai/mayfly
-dsh --profile mayfly
-```
+不带任务或恢复 id 时，首条普通消息才创建 Session。也可以运行
+`script/mayfly-remote.sh '解释这个仓库'`，或加 `--resume <session-id>` 恢复会话；
+`--cwd <path>` 指定 Host 上的工作目录。`/new` 和 `/clear` 回到启动界面，不创建空会话。
 
-安装完成后，按下方「开跑前配一个 key」与「首次运行」两节启动；模型、Provider、主题与密钥的详细配置见[配置：模型、Provider 与主题](/guide/config)。
+## 开始使用
 
-- 该 RC 不写 npm `latest`；请使用上方的精确版本或 `@rc`。普通安装不写 dist-tag 会得到上一发布线。
-- 升级到新版：壳包用户重跑 `npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.2`（重装即升级——壳按自身版本校准 profile 里的 Mayfly，宿主线随之固定）；dsh 直装用户在 Mayfly 中输入 `/update`（应用内安全升级：预检、快照、装机冒烟、失败自动回滚），或重跑同一条 `plugin add`。
+- 输入 `/` 或 `/help` 查看当前 Host 与前端真正可用的命令。
+- 用 `/provider` 配置原生 provider，用 `/model`、`/effort` 选择模型。
+- `/theme` 切换当前 TUI 主题，`/settings` 保存默认值；切换主题保留编辑器草稿。
+- 启动界面的 `/plan` 只设置下一个 Session 的模式；`/plan <message>` 需要已有 Session。
+- `/quit` 解除连接并退出 TUI，不停止 Host 工作。
 
-## 开跑前配一个 key
+修改源码后 rebuild，依赖变化后重新安装专用 profile。更多配置见[配置](/guide/config)，
+验证与插件集成见[贡献本仓库](/plugins/contributing)。
 
-**配一个 `DEEPSEEK_API_KEY` 就可以开始使用了**——开箱默认连 DeepSeek 官方 API（`deepseek-official` 路由，默认模型 `deepseek-v4-flash`），除 key 外无需任何配置：
-
-```sh
-export DEEPSEEK_API_KEY=sk-...        # 或写入 ~/.dsh/.credentials.yaml，一劳永逸
-```
-
-换模型、接自建网关、自定义主题等，见[配置：模型、Provider 与主题](/guide/config)。
-
-## 首次运行
-
-```sh
-mayfly                        # 交互模式：欢迎横幅 + 输入编辑器
-mayfly 修复登录页的空指针       # 直接执行任务
-# dsh 直装用户：dsh --profile mayfly（两条等价，壳包只是把宿主与 profile 管了起来）
-```
-
-启动后可以先试这几件事：
-
-- 输入 `/` 查看斜杠命令补全，`/help` 打开命令与键位总览；
-- 随手问点什么，观察流式回复与工具卡片；
-- `/theme` 按名称列出 32 套内置调色板（Mayfly 自有的，以及 Catppuccin、Dracula、Nord、Tokyo Night 等移植），按适合深色与浅色终端分组，另有 Auto，并标出当前项，`/theme tide` 热切换——输入草稿不会丢；`/settings` 面板的 Theme 行循环修改则实时生效并落盘为默认；
-- 退出时最后一行是**会话遗言**：会话 id 与一行恢复命令（三击整行即选），下次直接续上。
-
-## 界面预览
+## 界面参照
 
 <p align="center">
-  <img src="/shots/app-conversation.svg" width="720" alt="Mayfly 终端界面：实时会话、工具卡片、编辑器与状态栏">
+  <img src="/shots/app-conversation.svg" width="720" alt="Mayfly 终端会话、工具卡片、编辑器与状态栏参照">
 </p>

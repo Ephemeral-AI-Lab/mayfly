@@ -54,9 +54,9 @@ Standard 模式下，提示的位置改为显示当前动作：命令、路径�
 
 Mayfly 同时保留主会话与任意数量的旁支会话，但 transcript 面板一次只显示其中一个。`/btw <question>` 创建临时旁路 Agent——以当前会话的全量事件流为种子，并继承 provider、model、reasoning effort 和 agent preset。`/agents` 则打开当前主会话的完整 descendant 树：
 
-- 所有会话都在同一个 transcript 面板中渲染。live BTW 或 continuable subagent 成为 `mayflyCurrentAgent.current()`，状态栏、底部面板、命令与完整编辑器随之切换到该 Session；BTW 保留完整父会话种子作为模型上下文，但 transcript 从 BTW 的第一个问题开始，隐藏继承的历史；图片、follow-up、steer、撤回与中断走同一条输入管线；
-- one-shot child 或当前不驻留的 continuable child 不激活 Agent：它的 transcript 从原生历史加载到同一面板，保留自己的运行中 turn 标题（没有活动行跟随它），状态栏标注 `只读` 或 `回复以恢复`。编辑器仍在：只读会话中提交的草稿留在编辑器并给出提示；可恢复会话中发送会唤醒 child：`Enter` 把消息排队到它的下一个 turn，`Ctrl+Enter` 转向它。斜杠命令仍作用于主会话；
-- 打开的会话多于一个时，状态栏用一个标签（` main `、` btw `、` subagent `）标出当前会话，通知栏右侧以 `F7 btw · F8 close` 开头（子代理为 `F8 detach`），取代通用的按键提示。`F7` 返回上一个显示的会话；`F8` 关闭当前显示的旁支会话，显示主会话时则关闭 `F7` 对端。关闭普通 subagent 只 detach，关闭 BTW 会 dispose 临时 Agent；
+- 所有会话都在同一个 transcript 面板中渲染。Remote 以 HostKey + SessionRef 选中 live BTW 或 continuable subagent，状态栏、底部面板、命令与完整编辑器随之切换到该 Session；BTW 保留完整父会话种子作为模型上下文，但 transcript 从 BTW 的第一个问题开始，隐藏继承的历史；图片、follow-up、steer、撤回与中断走同一条输入管线；
+- one-shot child 或当前不驻留的 continuable child 不激活 Agent：它的 transcript 从原生历史加载到同一面板，保留自己的运行中 turn 标题（没有活动行跟随它），状态栏标注 `只读` 或 `回复以恢复`。编辑器仍在：只读会话中提交的草稿留在编辑器并给出提示；可恢复会话中发送会唤醒 child：`Enter` 把消息排队到它的下一个 turn，`Ctrl+Enter` 转向它。依赖 live Agent 的 Host 写入会报告不可用，直到所选 child 被明确恢复；
+- 打开的会话多于一个时，状态栏用一个标签（` main `、` btw `、` subagent `）标出当前会话，通知栏右侧以 `F7 btw · F8 close` 开头（子代理为 `F8 detach`），取代通用的按键提示。`F7` 返回上一个显示的会话；`F8` 关闭当前显示的旁支会话，显示主会话时则关闭 `F7` 对端。关闭这两类视图都只解除前端展示，Host 工作继续运行；
 - 再打开其他 child 不会关闭已打开的会话；新的 BTW 会替换旧的 BTW。无参 `/btw` 关闭当前 BTW；`/new`、`/resume`、`/fork` 会关闭所有旁支会话，`/rewind` 与 `/agents` 浏览会先显示主会话；
 - 只有当前显示的会话和它的 `F7` 对端保留 transcript 状态；其余会话在你切回之前不占用任何 transcript 资源，因此同时打开很多会话依然轻量；
 - `/agents` 中 `Enter` 查看 child，`Space` 或 `←` / `→` 展开分支，`Tab` 到 **Stop selected**，停止 live continuable child 前会弹出 Yes / No 确认（默认聚焦 No）。对 one-shot、cold/inactive 或仍有 live 后代的 child，Stop 会直接说明为何不可用而不弹确认。`/agents stop <id>` 提供直接停止路径。Harness 销毁 Agent 时会递归销毁它拥有的 live 后代，因此 Mayfly 对仍有 live 后代的目标直接拒绝，要求先从叶子节点开始停止。
