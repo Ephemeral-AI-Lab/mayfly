@@ -1,6 +1,8 @@
 /** Remote dsh Host Client assembly, transport, shared contracts, and headless smoke. */
 // oxlint-disable-next-line typescript/no-useless-empty-export -- This edge preserves official namespace augmentations in published declarations.
 export type {} from '@deepseek-ai/dsh-api-remotes/client'
+// oxlint-disable-next-line typescript/no-useless-empty-export -- Preserve the generated Mayfly namespace in consumer declarations.
+export type {} from '@ephemeral-ai/mayfly-host/remote'
 export {
   createHostClient,
   type CreateHostClientOptions,

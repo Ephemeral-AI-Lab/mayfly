@@ -395,6 +395,9 @@ importers:
       '@earendil-works/pi-tui':
         specifier: ^0.84.2
         version: 0.84.2
+      '@ephemeral-ai/mayfly-host':
+        specifier: link:../host
+        version: link:../host
       '@ephemeral-ai/mayfly-ui':
         specifier: workspace:*
         version: link:../ui
@@ -404,9 +407,6 @@ importers:
       cli-highlight:
         specifier: ^2.1.11
         version: 2.1.11
-      commander:
-        specifier: ^15.0.0
-        version: 15.0.0
       cross-spawn:
         specifier: 7.0.6
         version: 7.0.6
@@ -422,9 +422,6 @@ importers:
       simple-ascii-chart:
         specifier: 6.0.0
         version: 6.0.0
-      yaml:
-        specifier: 2.9.0
-        version: 2.9.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -672,9 +669,15 @@ importers:
       '@types/semver':
         specifier: 7.8.0
         version: 7.8.0
+      commander:
+        specifier: ^15.0.0
+        version: 15.0.0
       react:
         specifier: 19.2.8
         version: 19.2.8
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
 
   packages/ui:
     devDependencies:

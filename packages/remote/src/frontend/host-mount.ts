@@ -24,5 +24,5 @@ export function mountMayflyHostRemote(
 
 /** Read the namespace installed by that exact generated contribution. */
 export function mayflyHostRemote(client: HostClient): MayflyHostRemote {
-  return (client.remote as ClientRemote & { readonly mayflyHost: MayflyHostRemote }).mayflyHost
+  return client.remote.mayflyHost
 }

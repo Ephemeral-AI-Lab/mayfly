@@ -30,8 +30,8 @@ export function releaseDistTags(version) {
 /** Publish order is dependency order; the launcher is always last. */
 export const RELEASE_PACKAGE_DIRS = [
   'packages/ui',
-  'packages/mayfly',
   'packages/host',
+  'packages/mayfly',
   'packages/remote',
   'packages/cli',
 ]
