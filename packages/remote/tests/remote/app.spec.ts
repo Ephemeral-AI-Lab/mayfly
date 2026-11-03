@@ -8,6 +8,8 @@ import type { RemoteNotice } from '../../src/remote/notice.ts'
 import type { RemoteAppPanels } from '../../src/remote/interactions/plain-panels.ts'
 import type { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
 import { mergeRemoteFeatureCommandSources, RemoteFeatureCommandRegistry } from '../../src/remote/features/commands.ts'
+import { flush, submissionFixture } from './editor-feature-fixture.ts'
+import type { EditorFeatureSession } from '../../src/remote/editor/types.ts'
 
 vi.mock('../../src/frontend/btw.ts', () => ({
   RemoteBtwService: class {
@@ -836,6 +838,52 @@ describe('RemoteApp', () => {
     expect(f.client.sessions.create).toHaveBeenCalledTimes(2)
     expect(f.session.prompt).toHaveBeenCalledExactlyOnceWith([{ type: 'text', text: 'current' }], 'queue', undefined, 'request-1')
     expect(f.session.cancel).not.toHaveBeenCalled()
+    app.dispose()
+  })
+
+  it('fences a pending editor attachment submission and its startup intent before admitting a new Host prompt', async () => {
+    const first = clientFixture(HostKey('http://one.test/'))
+    const second = clientFixture(HostKey('http://two.test/'))
+    const test = appFixture()
+    const app = new RemoteApp(test.conversation, test.status, test.panels, key => key === first.client.key ? first.client : second.client)
+    const created = Promise.withResolvers<SessionId>()
+    vi.mocked(first.client.sessions.create).mockReturnValueOnce(created.promise)
+    Object.assign(first.client.remote, { agentPresets: { list: async () => ({ ok: true, value: { presets: [{ id: 'builder' }] } }) } })
+    await app.attach('http://one.test/')
+    await app.execute('/new builder')
+    app.startupPlan.set(true)
+    const formerSelection: EditorFeatureSession = {
+      client: first.client, session: first.reference.binding.session,
+      ref: { host: first.client.key, sessionId: first.sessionId }, generation: 1,
+    }
+    const editor = submissionFixture(formerSelection, async () => {
+      const ref = await app.ensureSession()
+      const client = app.registry.get(ref.host)!
+      const selected: EditorFeatureSession = { client, session: app.registry.currentReference!.binding.session, ref, generation: 1 }
+      editor.select(selected)
+      return selected
+    }, (selected, signal, intent) => app.preparePrompt(selected.ref, signal, intent))
+    // A receipt may remain in the draft after /new; it retains its original
+    // exact native owner even while first-Session acquisition is pending.
+    const marker = editor.file()
+    editor.select(undefined)
+    editor.enter(`first ${marker}`)
+    expect(first.client.sessions.create).toHaveBeenCalledOnce()
+    await app.attach('http://two.test/')
+    editor.enter('second')
+    await flush()
+    expect(second.session.prompt).toHaveBeenCalledExactlyOnceWith([{ type: 'text', text: 'second' }], 'queue', expect.any(AbortSignal), 'request-1')
+    created.resolve(first.sessionId)
+    await flush()
+    expect(first.client.sessions.retain).not.toHaveBeenCalled()
+    expect(first.session.command).not.toHaveBeenCalled()
+    expect(first.session.prompt).not.toHaveBeenCalled()
+    expect(first.session.beginSubmission).not.toHaveBeenCalled()
+    expect(second.session.command).not.toHaveBeenCalled()
+    expect(second.client.sessions.create).toHaveBeenCalledExactlyOnceWith({ cwd: process.cwd() })
+    expect(app.startupPlan.pending()).toBe(false)
+    expect(app.registry.current?.host).toBe(second.client.key)
+    expect(editor.attachments.capture(marker).content).toEqual([{ type: 'file', receiptId: 'receipt-1' }])
     app.dispose()
   })
 
