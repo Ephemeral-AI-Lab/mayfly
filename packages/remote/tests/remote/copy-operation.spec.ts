@@ -43,7 +43,7 @@ function conversation(entries: readonly ConversationEntry[]): ConversationProjec
 }
 
 const assistant = (text: string) => entry({ kind: 'assistant', text, step: 0, streaming: false })
-const question = (text: string) => entry({ kind: 'user', text, images: [] })
+const question = (text: string) => entry({ kind: 'user', text, attachments: [] })
 
 function fixture(options: { readonly withoutCopy?: boolean, readonly entries?: readonly ConversationEntry[] } = {}) {
   const ctx = fakeContext()
