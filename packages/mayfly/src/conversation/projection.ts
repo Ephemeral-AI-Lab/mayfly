@@ -6,7 +6,7 @@
  * @module @ephemeral-ai/mayfly/conversation/projection
  */
 
-import type { ContentBlock, ImageBlock } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
 // Empty type imports activate the command- and compaction-lifecycle event
@@ -22,7 +22,7 @@ import { foldAssistantStreamRecords, initialAssistantStream, type AssistantStrea
 import type {
   ConversationCompactionEntry,
   ConversationEntry,
-  ConversationImage,
+  ConversationAttachment,
   ConversationJson,
   ConversationProjection,
   ConversationProjectionState,
@@ -41,6 +41,7 @@ const jsonSchema: z.ZodType<ConversationJson> = z.lazy(() => z.union([
 ]))
 
 const imageSchema = z.object({
+  kind: z.literal('image'),
   attachmentId: z.string(),
   mediaType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']),
   bytes: z.number().nonnegative(),
@@ -58,7 +59,7 @@ const entryBase = {
 }
 
 const conversationEntriesSchema = z.array(z.discriminatedUnion('kind', [
-  z.object({ ...entryBase, kind: z.literal('user'), text: z.string(), images: z.array(imageSchema) }),
+  z.object({ ...entryBase, kind: z.literal('user'), text: z.string(), attachments: z.array(z.discriminatedUnion('kind', [imageSchema, z.object({ kind: z.literal('file'), attachmentId: z.string(), name: z.string(), bytes: z.number().nonnegative() })])) }),
   z.object({ ...entryBase, kind: z.literal('assistant'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean() }),
   z.object({ ...entryBase, kind: z.literal('thinking'), step: z.number().int().nonnegative(), text: z.string(), streaming: z.boolean(), outputProgress: outputProgressSchema.optional(), durationMs: z.number().nonnegative().optional() }),
   z.object({
@@ -188,18 +189,27 @@ function reasoningText(content: readonly ContentBlock[]): string {
   return content.filter(block => block.type === 'reasoning').map(block => block.text).join('\n\n')
 }
 
-function imagesOf(content: readonly ContentBlock[]): ConversationImage[] {
-  return content
-    .filter((block): block is ImageBlock => block.type === 'image')
-    .map(({ attachment }) => ({
-      attachmentId: String(attachment.attachmentId),
-      mediaType: attachment.mediaType,
-      bytes: attachment.bytes,
-      width: attachment.width,
-      height: attachment.height,
-      ...(attachment.name === undefined ? {} : { name: attachment.name }),
-      ...(attachment.originalDimensions === undefined ? {} : { originalDimensions: { ...attachment.originalDimensions } }),
-    }))
+function attachmentsOf(content: readonly ContentBlock[]): ConversationAttachment[] {
+  const attachments: ConversationAttachment[] = []
+  for (const block of content) {
+    if (block.type === 'file') {
+      const { attachmentId, name, bytes } = block.attachment
+      attachments.push({ kind: 'file', attachmentId: String(attachmentId), name, bytes })
+    } else if (block.type === 'image') {
+      const { attachment } = block
+      attachments.push({
+        kind: 'image',
+        attachmentId: String(attachment.attachmentId),
+        mediaType: attachment.mediaType,
+        bytes: attachment.bytes,
+        width: attachment.width,
+        height: attachment.height,
+        ...(attachment.name === undefined ? {} : { name: attachment.name }),
+        ...(attachment.originalDimensions === undefined ? {} : { originalDimensions: { width: attachment.originalDimensions.width, height: attachment.originalDimensions.height } }),
+      })
+    }
+  }
+  return attachments
 }
 
 /** The wire key of one step: `<turn>:<step>` (the transcript's `settledSteps` vocabulary). */
@@ -611,8 +621,8 @@ export function foldConversationProjection(
       const rendered = event.data.source.kind === 'user' || event.data.source.kind === 'user-question-reply'
       if (!isAppendSurfaceEvent(event) || !rendered) return state
       const text = bodyText(event.data.content)
-      const images = imagesOf(event.data.content)
-      if (text.trim() === '' && images.length === 0) return state
+      const attachments = attachmentsOf(event.data.content)
+      if (text.trim() === '' && attachments.length === 0) return state
       return appendEntry(state, {
         kind: 'user',
         id: `user:${String(event.seq)}`,
@@ -620,7 +630,7 @@ export function foldConversationProjection(
         updatedSeq: event.seq,
         turn: state.currentTurn,
         text,
-        images,
+        attachments,
       })
     }
     case 'assistant/attempt': {
@@ -837,5 +847,5 @@ export const conversationProjectionDefinition: ConversationProjectionDefinition 
       return view
     },
   },
-  stateVersion: 13,
+  stateVersion: 14,
 }

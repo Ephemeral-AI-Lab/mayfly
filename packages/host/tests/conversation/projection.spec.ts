@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   conversationProjectionDefinition,
+  conversationProjectionStateSchema,
   foldConversationProjection,
   initialConversationState,
   isSpawnToolName,
@@ -13,6 +14,7 @@ import {
   settleKey,
 } from '../../src/conversation/projection.ts'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { conversationProjectionDefinition as privateDefinition } from '../../../mayfly/src/conversation/projection.ts'
 
 /** One session event carrying only the fields the fold reads. */
 function event(type: string, data: object, time = 1, seq = 1, surfaceOp?: string): SessionEvent {
@@ -26,8 +28,31 @@ function run(events: readonly SessionEvent[]): ReturnType<typeof foldConversatio
 
 describe('conversationProjectionDefinition', () => {
   it('pins the facts-paired state version and the conversation key', () => {
-    expect(conversationProjectionDefinition.stateVersion).toBe(13)
+    expect(conversationProjectionDefinition.stateVersion).toBe(14)
     expect(conversationProjectionDefinition.key).toBe('mayflyConversation')
+  })
+
+  it.each([conversationProjectionDefinition, privateDefinition])('preserves safe file metadata, attachment order and checkpoint replay', definition => {
+    const file = { type: 'file', attachment: { attachmentId: 'file-one', name: 'report.txt', bytes: 6, target: '/private/target', path: '/private/path' } }
+    const image = { type: 'image', attachment: { attachmentId: 'image-one', mediaType: 'image/png', bytes: 2, width: 1, height: 1, originalDimensions: { width: 2, height: 2 } } }
+    const first = event('user/message', { source: { kind: 'user' }, content: [file] }, 1, 1, 'append')
+    const initial = definition.apply(definition.init(), first)
+    expect(initial.entries).toMatchObject([{ kind: 'user', text: '', attachments: [{ kind: 'file', attachmentId: 'file-one', name: 'report.txt', bytes: 6 }] }])
+    expect(JSON.stringify(initial)).not.toContain('/private/')
+    file.attachment.name = 'changed-by-native-producer'
+    expect(initial.entries[0]).toMatchObject({ attachments: [{ name: 'report.txt' }] })
+    const checkpoint = definition.stateSchema.parse(JSON.parse(JSON.stringify(initial)))
+    const next = event('user/message', { source: { kind: 'user' }, content: [image, { type: 'text', text: 'body' }, file, image] }, 2, 2, 'append')
+    const resumed = definition.apply(checkpoint, next)
+    const replay = definition.apply(initial, next)
+    expect(resumed).toEqual(replay)
+    const user = resumed.entries[1]
+    expect(user).toMatchObject({ kind: 'user', text: 'body', attachments: [{ kind: 'image' }, { kind: 'file' }, { kind: 'image' }] })
+    const view = definition.wire.view(resumed)
+    expect(definition.wire.viewSchema.safeParse(view).success).toBe(true)
+    expect(definition.wire.view(resumed)).toBe(view)
+    expect(conversationProjectionStateSchema.safeParse(resumed).success).toBe(true)
+    expect(definition.stateVersion).toBe(14)
   })
 })
 
