@@ -38,6 +38,8 @@ describe('actual Remote command catalog', () => {
     expect(commands.find(command => command.name === 'theme')).toEqual({ name: 'theme', description: 'feature theme', aliases: ['color'], input: { hint: '[name]' } })
     expect(commands.find(command => command.name === 'compact')).toMatchObject({ input: { hint: '[instructions]' } })
     expect(commands.map(command => command.name)).toContain('init')
+    expect(commands.find(command => command.name === 'fork')).not.toHaveProperty('input')
+    expect(commands.find(command => command.name === 'rewind')).not.toHaveProperty('input')
     expect(commands.find(command => command.name === 'changelog')).toEqual({ name: 'changelog', description: "Show the release changelog (what's new)" })
     expect(commands.map(command => command.name)).not.toContain('hidden')
     expect(commands.map(command => command.name)).toEqual(commands.map(command => command.name).toSorted())

@@ -56,7 +56,7 @@ async function fixture(options: { sessionless?: boolean, noPaths?: boolean, noOp
     refresh: vi.fn(async () => {}),
     refreshProjections: vi.fn(async (_id: ReturnType<typeof SessionId>) => {}),
     retain: vi.fn(),
-    search: vi.fn(async (_query: string, _signal: AbortSignal) => ({ ok: true as const, value: { items: [] as { sessionId: ReturnType<typeof SessionId>, snippet: string }[], hasMore: false } })),
+    search: vi.fn(async (_query: string, _signal: AbortSignal): Promise<Awaited<ReturnType<HostClient['sessions']['search']>>> => ({ ok: true, value: { items: [], hasMore: false } })),
     subagentAddress: vi.fn((id: ReturnType<typeof SessionId>) => id === 'child' ? { parentSessionId: currentId, childSessionId: id, mode: 'continuable' as const } : undefined),
   }
   const workspaces = {
