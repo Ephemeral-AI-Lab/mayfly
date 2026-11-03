@@ -10,6 +10,7 @@ import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { MayflyHostService } from '../../lib/index.js'
 import { mkdtempTracked, registerTempDirCleanup } from '../../../mayfly/tests/core/temp-dir.ts'
+import { expectFrozenJson } from './frozen-frame.ts'
 
 registerTempDirCleanup()
 const contexts: Context[] = []
@@ -17,7 +18,10 @@ const clientRequire = createRequire(new URL('../../../remote/package.json', impo
 const { TypertRegistry } = await import(pathToFileURL(clientRequire.resolve('@deepseek-ai/dsh-typert-registry')).href)
 const { TypertGatewayService } = await import(pathToFileURL(clientRequire.resolve('@deepseek-ai/dsh-api-gateway')).href)
 type HostService = InstanceType<typeof MayflyHostService>
-afterEach(async () => { await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose())) })
+afterEach(async () => {
+  vi.unstubAllGlobals()
+  await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
+})
 
 class AgentFilesystem extends Service {
   constructor(ctx: Context, implementation: object) { super(ctx, 'fs'); Object.assign(this, implementation) }
@@ -75,6 +79,22 @@ async function host() {
 }
 
 describe('Host Remote composition', () => {
+  it.each([200, 503])('returns an immutable public balance failure for an unusable HTTP %i response', async (status) => {
+    const { ctx, service } = await host()
+    vi.spyOn(ctx.credentials, 'resolve').mockResolvedValue({ value: 'host-only-key' } as never)
+    ctx.settings.describe = (() => []) as typeof ctx.settings.describe
+    const json = vi.fn(async () => ({ balance_infos: [{ currency: 'USD', total_balance: 'invalid' }], detail: 'private response details' }))
+    const fetch = vi.fn(async () => ({ status, ok: status === 200, json }))
+    vi.stubGlobal('fetch', fetch)
+
+    const balance = await service.providerBalance(new AbortController().signal)
+
+    expect(balance).toEqual({ status: 'unavailable', reason: 'network' })
+    expectFrozenJson(balance)
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(json).toHaveBeenCalledTimes(status === 200 ? 1 : 0)
+  })
+
   it('streams a live attributed Workflow replacement through the installed built service', async () => {
     const { ctx, service } = await host()
     const session = ctx.sessions.get(SessionId('parent'))!
