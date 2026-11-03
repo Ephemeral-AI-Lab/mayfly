@@ -71,6 +71,7 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
         env, cols: 100, rows: 35, stub, startupUrl: host.startupUrl, startupReady: splitStartupReadiness(),
         steps: [
           ...markers.map(text => ({ step: 'until', text })),
+          ...imageBetween === undefined ? [] : [{ step: 'until', text: 'diagram.png' }],
           { step: 'checkpoint', name },
           { step: 'resize', cols: 40, rows: 16 },
           { step: 'checkpoint', name: `${name}-narrow` },
@@ -93,10 +94,11 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
       let imageRepresentation
       if (imageBetween !== undefined) {
         const between = wide.slice(wide.indexOf(imageBetween[0]), wide.indexOf(imageBetween[1]))
-        // The real image body can still be loading when its surrounding file
-        // metadata paints. Both states keep the image's native block position.
-        imageRepresentation = between.includes('diagram.png') ? 'metadata-fallback' : between.includes('Loading image…') ? 'pending-loader' : undefined
-        assert.ok(imageRepresentation, 'TUI must retain the image representation between the ordered file blocks')
+        // This PTY offers no image protocol. Native bytes must settle into the
+        // metadata fallback; a cached pending row is never a completed image.
+        assert.ok(between.includes('diagram.png'), 'TUI must settle the image fallback between the ordered file blocks')
+        assert.equal(between.includes('Loading image…'), false, 'Ready image bytes must retire the loader')
+        imageRepresentation = 'metadata-fallback'
       }
       return { exitCode: captured.exitCode, checkpoints: captured.checkpoints.map(checkpoint => checkpoint.name), exit: captured.exit, ...imageRepresentation === undefined ? {} : { imageRepresentation } }
     }
