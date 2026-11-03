@@ -23,6 +23,7 @@ import { FakeTerminal } from './fake-terminal.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { MayflyScreenService } from '../../src/core/screen.ts'
 import { untranslated } from '../../src/core/ui-interaction-locale.ts'
+import { FilesBrowser } from '../../src/interaction/files-browser-model.ts'
 
 class Scope {
   private readonly cleanups: Array<() => void> = []
@@ -328,6 +329,75 @@ it('keeps short editor presentations at their natural content height', async () 
     bench.terminal.resize(80, 30)
     expect(slot.component.render(80)).toHaveLength(rows.length)
     handle.close()
+    slot.dispose()
+  } finally { await bench.dispose() }
+})
+
+it.each([2, 160])('lays out a %s-line preview on its first editor-overlay frame and scrolls on the first key', async count => {
+  const bench = await fixture(80, 24)
+  try {
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', promptStandIn())
+    slot.focus()
+    let preview: string | undefined
+    const view = () => FilesBrowser({
+      files: [{ id: 'file', path: '/workspace/delivered.txt' }], focusedId: 'file', detailMode: true, canOpen: false,
+      detail: { kind: 'delivered', path: '/workspace/delivered.txt', displayPath: 'delivered.txt', fileType: 'file', size: 160, previewable: true, ...preview === undefined ? {} : { preview } },
+    }, untranslated)
+    const handle = bench.open({ id: 'files-preview', presentation: 'editor', capturing: true, render: view })
+    await flush(8)
+    expect(slot.component.render(80).join('\n')).toContain('Name:')
+    preview = Array.from({ length: count }, (_, at) => `PREVIEW ${String(at + 1).padStart(3, '0')}`).join('\n')
+    handle.refresh()
+    await flush(8)
+    const paint = (columns: number) => slot.component.render(columns).map(stripTerminalSequences)
+    let rows = paint(80)
+    expect(rows.join('\n')).toContain('PREVIEW 002')
+    if (count === 160) {
+      expect(rows).toHaveLength(16)
+      expect(rows.join('\n')).toContain('PREVIEW 011')
+      slot.component.handleInput?.('\x1b[B')
+      rows = paint(80)
+      expect(rows.join('\n')).toContain('PREVIEW 012')
+      expect(rows.join('\n')).not.toContain('PREVIEW 001')
+      bench.terminal.resize(120, 40)
+      rows = paint(120)
+      expect(rows).toHaveLength(28)
+      expect(rows.join('\n')).toContain('PREVIEW 023')
+      expect(rows.join('\n')).toContain('options')
+      // The wide browser adds a list before the preview; F5 moves to the next control group.
+      slot.component.handleInput?.('\x1b[15~')
+      slot.component.handleInput?.('\x1b[B')
+      expect(paint(120).join('\n')).toContain('PREVIEW 024')
+      slot.component.handleInput?.('\x1b[F')
+      expect(paint(120).join('\n')).toContain('PREVIEW 160')
+      slot.component.handleInput?.('\x1b[H')
+      expect(paint(120).join('\n')).toContain('PREVIEW 001')
+      bench.terminal.resize(40, 16)
+      rows = paint(40)
+      expect(rows).toHaveLength(11)
+      expect(rows.join('\n')).toContain('PREVIEW 007')
+      // Each responsive branch keeps its own viewport and position.
+      expect(rows.join('\n')).not.toContain('PREVIEW 001')
+      for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(40)
+      slot.component.handleInput?.('\x1b[F')
+      expect(paint(40).join('\n')).toContain('PREVIEW 160')
+      slot.component.handleInput?.('\x1b[H')
+      expect(paint(40).join('\n')).toContain('PREVIEW 001')
+      bench.terminal.resize(80, 24)
+      rows = paint(80)
+      expect(rows).toHaveLength(16)
+      expect(rows.join('\n')).toContain('PREVIEW 011')
+      bench.owner.dispose()
+      await flush(8)
+      expect(slot.component.render(80)).toEqual(['prompt'])
+      bench.mount()
+      await flush(8)
+      expect(paint(80)).toHaveLength(16)
+      expect(paint(80).join('\n')).toContain('PREVIEW 011')
+    }
+    handle.close()
+    await flush(8)
+    expect(slot.component.render(80)).toEqual(['prompt'])
     slot.dispose()
   } finally { await bench.dispose() }
 })

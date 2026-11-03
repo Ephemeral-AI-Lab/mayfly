@@ -3167,15 +3167,20 @@ class CompiledSurface implements MayflyEditorShellComponent {
       if (this.layoutScrolls()) rows = constrainedLayout()
       else {
         rows = this.root.render(safeWidth)
-        const hasList = this.state.controls().some(control => control.kind === 'list' || control.kind === 'event' && control.listEntry !== undefined)
-        if (this.surfaceRuntime.interaction !== undefined && hasList && !this.surfaceRuntime.flow) {
-          let budget = this.viewport.rows
-          while (rows.length > this.viewport.rows && budget > 1) {
-            const next = Math.max(1, budget - (rows.length - this.viewport.rows))
-            budget = next
-            this.surfaceRuntime.setListRowBudget(budget)
-            reconcile(this.state)
-            rows = this.root.render(safeWidth)
+        // A visible deferred branch may admit its scroll during this first render.
+        // Establish its viewport now, before caching the frame or accepting a key.
+        if (this.layoutScrolls()) rows = constrainedLayout()
+        else {
+          const hasList = this.state.controls().some(control => control.kind === 'list' || control.kind === 'event' && control.listEntry !== undefined)
+          if (this.surfaceRuntime.interaction !== undefined && hasList && !this.surfaceRuntime.flow) {
+            let budget = this.viewport.rows
+            while (rows.length > this.viewport.rows && budget > 1) {
+              const next = Math.max(1, budget - (rows.length - this.viewport.rows))
+              budget = next
+              this.surfaceRuntime.setListRowBudget(budget)
+              reconcile(this.state)
+              rows = this.root.render(safeWidth)
+            }
           }
         }
       }
