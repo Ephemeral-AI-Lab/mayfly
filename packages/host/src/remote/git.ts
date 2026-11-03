@@ -74,12 +74,16 @@ export function createGitBadgeCache(cwd: string, run: GitCommandRunner = runGitC
   }
   const probeStatus = async (fetchedAt: number, signal: AbortSignal): Promise<CacheSlots['status']> => {
     const output = await run(['status', '--porcelain', '-b'], cwd, signal)
-    if (output === null) return { value: null, fetchedAt }
     signal.throwIfAborted()
+    if (output === null) return { value: null, fetchedAt }
     const base = readStatusDump(output)
-    const diff = base.dirty
-      ? readNumstatDump(await run(['diff', '--numstat', 'HEAD', '--'], cwd, signal) ?? '')
-      : { added: 0, deleted: 0 }
+    let diff = { added: 0, deleted: 0 }
+    if (base.dirty) {
+      const numstat = await run(['diff', '--numstat', 'HEAD', '--'], cwd, signal)
+      signal.throwIfAborted()
+      if (numstat === null) return { value: null, fetchedAt }
+      diff = readNumstatDump(numstat)
+    }
     return { value: { ...base, diffAdded: diff.added, diffDeleted: diff.deleted }, fetchedAt }
   }
 
