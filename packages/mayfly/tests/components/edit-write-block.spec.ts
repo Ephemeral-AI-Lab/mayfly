@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import { TranscriptView, type StreamRow, type TranscriptViewFacts } from '../../src/components/transcript-view.ts'
 import type { ToolBlockFacts } from '../../src/components/tool-line.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
@@ -16,7 +16,7 @@ import { TranscriptPresentationPolicy, type TranscriptPresentationSnapshot } fro
 import { StreamFacts, type StreamInputs } from '../../src/transcript/stream-facts.ts'
 import { NO_DISCLOSURE, type Disclosure } from '../../src/transcript/disclosure.ts'
 import { callsOf, verboseRow, STANDARD_DIFF_ROWS, VERBOSE_CHANGE_ROWS, OPEN_BODY_ROWS } from '../../src/transcript/tool-calls.ts'
-import { visibleWidth } from '../../src/core/text/width.ts'
+import { visibleWidth } from '../../src/core/width.ts'
 import { fakeMayflyComponents } from '../transcript/helpers.ts'
 import { plainColors, plainText } from '../helpers.ts'
 
@@ -61,7 +61,7 @@ const blockOf = (value: TranscriptViewFacts): ToolBlockFacts & { readonly id: st
 /** The stream drawn at a width, as plain rows. */
 function drawn(value: TranscriptViewFacts, width: number): string[] {
   const compiled = compileMayflyUiNode(TranscriptView(value), {
-    components: fakeMayflyComponents(), colors: plainColors(), getViewport: () => ({ columns: width, rows: 1000 }), bounded: false, emit: () => {},
+    components: fakeMayflyComponents(), colors: plainColors(), getViewport: () => ({ columns: width, rows: 1000 }), screenMode: 'main', emit: () => {},
   })
   return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(width).map(row => plainText(row))
 }

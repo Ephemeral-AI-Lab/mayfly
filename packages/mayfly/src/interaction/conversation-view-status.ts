@@ -9,7 +9,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyConversationsSnapshot, MayflyConversationView } from '../app/conversation-views.ts'
+import type { MayflyConversationsSnapshot } from '../app/conversation-views.ts'
+import { buildConversationStatus } from '../components/conversation-status.ts'
 import { interactionTranslator } from './locale.ts'
 
 /** Stable child-plugin name. */
@@ -20,12 +21,11 @@ export const inject = ['mayflyConversations', 'mayflyStatus']
 /** Register the displayed-conversation chip. */
 export function apply(ctx: Context): void {
   const t = interactionTranslator(ctx)
-  const word = (view: MayflyConversationView): string => view.kind === 'primary' ? t('main') : view.kind === 'btw' ? t('btw') : t('subagent')
   const node = (snapshot: MayflyConversationsSnapshot): MayflyStatusNode | null => {
     const displayed = snapshot.views.find(view => view.id === snapshot.displayedId)
     // With one conversation open there is nothing to tell apart: no chip.
     if (displayed === undefined || snapshot.views.length < 2) return null
-    return { kind: 'rich-text', spans: [{ text: ` ${word(displayed)} `, tone: 'primary', styles: ['strong', 'inverse'] }] }
+    return buildConversationStatus(displayed.kind, t)
   }
   const registration = ctx.mayflyStatus.register({ id: 'mayfly.status.conversation-view', priority: 1 }, node(ctx.mayflyConversations.snapshot()))
   const offView = ctx.mayflyConversations.subscribe((snapshot) => { registration.set(node(snapshot)) })

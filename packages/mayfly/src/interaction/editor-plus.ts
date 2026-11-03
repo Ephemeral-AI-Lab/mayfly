@@ -36,7 +36,7 @@ import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { activeAtToken, formatFileMention, type FileReferenceCandidate } from '@deepseek-ai/dsh-file-reference'
-import { GutterComponent, STREAM_GUTTER } from '../core/text/gutter.ts'
+import { GutterComponent, STREAM_GUTTER } from '../core/gutter.ts'
 import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import {
@@ -49,11 +49,10 @@ import { agentDirectory } from '../internal/session-directory.ts'
 import { ACTION_BACKSPACE, ACTION_CANCEL } from './keys.ts'
 import { extractSkillPrefix, refresh, userInvocableSkills } from './skills-catalog.ts'
 import { commandHint, listCommands } from './sessionless-commands.ts'
-import { sanitizeShellOutput } from './shell-sanitize.ts'
+import { sanitizeShellOutput } from '../core/shell-output.ts'
 import { filterSlashCommands, slashCommandLabel } from './slash-filter.ts'
 import { beginPromptWait } from './prompt-wait.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
-import { formatError } from '../internal/format.ts'
 
 /** Shell echo output caps: both bounds apply, whichever trips first. */
 const SHELL_MAX_LINES = 200
@@ -138,9 +137,10 @@ function rememberMention(
   applied: { readonly lines: readonly string[], readonly cursorLine: number, readonly cursorCol: number },
   mention: string,
 ): void {
-  const before = (applied.lines[applied.cursorLine] ?? '').slice(0, applied.cursorCol)
+  const before = applied.lines[applied.cursorLine]!.slice(0, applied.cursorCol)
   if (!before.endsWith(' ')) return
-  if (mention.length > 1 && mention.startsWith('@')) ctx.mayflyInteractionState.mentions.add(mention)
+  /* This provider's accepted candidates use the native mention formatter. */
+  ctx.mayflyInteractionState.mentions.add(mention)
 }
 
 /**
@@ -182,7 +182,7 @@ function applyMentionCompletion(
   item: MayflyAutocompleteItem,
   prefix: string,
 ): { lines: string[], cursorLine: number, cursorCol: number } {
-  const line = lines[cursorLine] ?? ''
+  const line = lines[cursorLine]!
   const beforePrefix = line.slice(0, cursorCol - prefix.length)
   const afterCursor = line.slice(cursorCol)
   const quotedPrefix = prefix.startsWith('@"')
@@ -302,7 +302,7 @@ function createAutocompleteProvider(
       const slash = /^\/(\S*)$/.exec(line.slice(0, cursorCol))
       if (slash === null || mode() === 'bash') return null
       /* a successful exec always defines the capture group */
-      const query = slash[1] ?? ''
+      const query = slash[1]!
       // The kimi match rule: the canonical name scores first, aliases count
       // only when it misses, and an alias match labels the canonical command
       // with its alias list (`/quit (q, exit)`) so the user sees why it
@@ -498,7 +498,7 @@ function runShell(ctx: Context, command: string, isUnloaded: () => boolean): voi
       mount({
         code: 1,
         stdout: '',
-        stderr: formatError(error),
+        stderr: error instanceof Error ? error.message : String(error),
       })
     },
   )
@@ -554,7 +554,7 @@ function attach(ctx: Context, shared: SharedEditor, isUnloaded: () => boolean): 
     const match = /^\/(\S+)( ?)$/.exec(text)
     if (match === null) return undefined
     /* a successful exec always defines the capture group */
-    const name = match[1] ?? ''
+    const name = match[1]!
     // An alias token (`/q `) resolves to its canonical command for the hint,
     // mirroring the dispatch rewrite — aliases are not registered commands.
     const canonical = aliases.canonicalOf(name) ?? name

@@ -153,6 +153,7 @@ function fakeJobs(initial: readonly JobView[] = []) {
   return {
     service,
     listenerCount: () => listeners.size,
+    capture: () => [...listeners],
     publish(next: readonly JobView[], owner?: SessionId) {
       rows = [...next]
       const event: JobEvent = { type: 'registered', job: job('changed', 'running', owner === undefined ? {} : { owner }) }
@@ -180,6 +181,7 @@ function currentAgentService(initial: Agent | null) {
         return () => { listeners.delete(listener) }
       },
     },
+    capture: () => [...listeners],
     switchTo(agent: Agent | null) {
       current = agent
       for (const listener of listeners) listener(agent, 1)
@@ -324,9 +326,24 @@ describe('mayfly-status-jobs', () => {
     await harness.ctx.plugin({ name: 'item-locale', apply(owner: Context) { const service = new MayflyLocaleService(owner, { systemLocale: 'en' }); owner.effect(() => () => service.dispose()) } })
     harness.ctx.mayflyLocale.setPreference('zh')
     expect(harness.entry().summary).not.toBeNull()
+    const queued = registry.capture()
+    const queuedAgent = harness.selected.capture()
+    const actionEntry = harness.entry()
+    const queuedAction = actionEntry.definition.onEvent!.action!
+    const ticks = vi.spyOn(harness.tick, 'subscribe')
+    registry.publish([])
+    harness.tick.fire(Date.now() + DONE_LINGER_MS + 1_000)
+    registry.publish([job('next', 'running')])
+    const queuedTick = ticks.mock.calls[0]![0]
     await harness.dispose()
     // The registry may still call a listener that outlived its Fiber: it changes nothing.
     expect(() => registry.publish([])).not.toThrow()
+    for (const listener of queued) listener({ type: 'registered', job: job('a', 'running') })
+    for (const listener of queuedAgent) listener(null, 2)
+    queuedTick(Date.now())
+    expect(await queuedAction({ kind: 'activate', pagePath: [], controlId: 'jobs-stop', actionId: 'jobs-stop' }, { surfaceId: actionEntry.id, operationId: 'queued', source: actionEntry.source, revision: actionEntry.revision, signal: new AbortController().signal, report: vi.fn() })).toEqual({ kind: 'cancelled' })
+    expect(harness.tick.subscribers).toBe(0)
+    expect(harness.ctx.mayflyPanes.list()).toEqual([])
   })
 
   it('shows the group a refresh found already settled as its closing line', async () => {

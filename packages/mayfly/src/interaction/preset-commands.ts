@@ -10,7 +10,6 @@ import { panel, ui, type MayflyListItem, type MayflyOverlayHandle, type MayflyUi
 import { openAgentOverlay } from './agent-overlay.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
-import { formatError } from '../internal/format.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 
 export const name = 'mayfly-preset-command'
@@ -26,6 +25,8 @@ export function presetItems(presets: readonly AgentPreset[], current: string | u
     ...preset.id === current ? { current: true } : {},
   }))
 }
+
+function message(error: unknown): string { return error instanceof Error ? error.message : String(error) }
 
 /** A preset selection ready to report: the native identity and its display label. */
 interface PresetChoice { readonly id: string, readonly label: string }
@@ -46,7 +47,7 @@ async function setDefaultPreset(ctx: Context, id: string): Promise<void> {
   try {
     await settings.update(PRESET_SETTINGS_NS, { selectedDefault: id }, entry.revision)
   } catch (error) {
-    throw new Error(formatError(error))
+    throw new Error(message(error))
   }
 }
 export function apply(ctx: Context): void {
@@ -112,8 +113,8 @@ export function apply(ctx: Context): void {
               })
               return { kind: 'accepted', node: view(), source: [], dismiss: true }
             } catch (error) {
-              notifications.report('select', { severity: 'error', message: formatError(error) })
-              return { kind: 'failed', message: formatError(error) }
+              notifications.report('select', { severity: 'error', message: message(error) })
+              return { kind: 'failed', message: message(error) }
             }
           }
           if (event.kind === 'activate' && event.actionId === 'refresh') {
@@ -126,7 +127,7 @@ export function apply(ctx: Context): void {
         }
         }, { signal, reopen: 'focus' })
         return { kind: 'success' }
-      } catch (error) { return signal.aborted || !current(agent) ? { kind: 'success' } : { kind: 'error', text: formatError(error) } }
+      } catch (error) { return signal.aborted || !current(agent) ? { kind: 'success' } : { kind: 'error', text: message(error) } }
     },
   })
 }

@@ -28,13 +28,13 @@ export function apply(ctx: Context): void {
     if (review) ctx.emit('mayfly/decision-requests-changed', 'plan', [{ type: 'plan', toolName: single.header ?? 'plan', ...single.intent?.callId === undefined ? {} : { callId: String(single.intent.callId) } }])
     ctx.emit('mayfly/decision-wait-changed', { kind: review ? 'approval' : 'answer' })
     return requestOverlay(ctx, {
-      id, title: () => review ? single.header ?? t('Plan review') : t('Questions'),
+      id, title: review ? single.header ?? t('Plan review') : t('Questions'),
       ...review ? { dismissal: 'discard', bare: true, contentScroll: true, armMs: decisionArmMs } : { bare: true },
       ...request.agent === undefined ? {} : { agent: request.agent },
       ...request.signal === undefined ? {} : { signal: request.signal },
       view: () => review ? planReviewCard(t) : questionnaireView(questions, t),
       answer: event => review ? planReviewAnswer(single, choices, event) : questionnaireAnswer(questions, event),
-      ...review ? { onAction: async (event, context) => event.kind === 'activate' && event.actionId === 'open' ? openInEditor(ctx, single.detail ?? '', t, context.signal) : planReviewAction(single, event, t) } : {},
+      ...review ? { onAction: async (event, context) => event.kind === 'activate' && event.actionId === 'open' ? openInEditor(ctx, single.detail!, t, context.signal) : planReviewAction(single, event, t) } : {},
       cancelled: (reason) => {
         // `Esc` on a plan review declines it, as the card says; anything else that ends the request is a cancellation.
         if (review && reason === 'dismiss') return { answers: [{ id: single.id, selected: [choices.decline.label] }] }

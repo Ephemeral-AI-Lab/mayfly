@@ -15,8 +15,8 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
 import type SessionQueryEngine from '@deepseek-ai/dsh-session-query'
 import * as commandsPlugin from '../../src/interaction/commands-plugin.ts'
-import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
-import type { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import type {} from '../../src/app/index.ts'
 import { fakeConversations, fakeMayflyContext, KEY, type FakeMayflyComponents } from './fakes.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
@@ -167,6 +167,13 @@ function overlay(ctx: Context, id?: string): SurfaceDriver {
 }
 
 describe('mayfly-commands plugin', () => {
+  it('opens help from the empty-prompt help request', async () => {
+    const { ctx } = await mount()
+    ctx.emit('mayfly/request-help')
+    expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toContain('mayfly.help')
+    expect(overlay(ctx, 'mayfly.help').render(80).join('\n')).toContain('Commands')
+  })
+
   it('/quit requests exit through the launcher appExit hook', async () => {
     const exit = vi.fn()
     const { ctx, agent } = await mount({ appExit: exit })

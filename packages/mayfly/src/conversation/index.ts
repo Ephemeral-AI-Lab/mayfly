@@ -10,7 +10,7 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import { deliverablesProjection } from './deliverables.ts'
 import { conversationFactsProjectionDefinition } from './facts.ts'
 import { conversationProjectionDefinition } from './projection.ts'
-import type { MayflyConversationReady } from './types.ts'
+import type { MayflyConversationReady } from './native-types.ts'
 
 export * from './types.ts'
 export * from './projection.ts'

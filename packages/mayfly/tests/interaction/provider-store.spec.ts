@@ -12,6 +12,7 @@ import {
   providerDirectory,
   providerProfileAt,
   providerValueAt,
+  sameProviderPath,
 } from '../../src/interaction/provider-store.ts'
 
 /** A context whose native LLM registry declares the supplied directory entries. */
@@ -38,6 +39,12 @@ function fakeSettings(entries: readonly unknown[], mutate: (ns: string, ops: unk
 }
 
 describe('provider addressing', () => {
+  it('compares complete native settings addresses including path length', () => {
+    expect(sameProviderPath(['providers', 'custom'], ['providers', 'custom'])).toBe(true)
+    expect(sameProviderPath(['providers'], ['providers', 'custom'])).toBe(false)
+    expect(sameProviderPath(['providers', 'custom'], ['providers', 'other'])).toBe(false)
+  })
+
   it('reads the native configurable-provider directory, or nothing without it', () => {
     const ctx = directoryContext([entry({})])
     expect(providerDirectory(ctx).map(item => item.provider)).toEqual(['route'])
@@ -78,6 +85,11 @@ describe('provider addressing', () => {
       entry({ provider: 'a', settingsNs: 'a-ns', settingsPath: ['providers', 'a'] }),
     ])
     expect(providerContainer(ctx)).toEqual({ ns: 'a-ns', container: ['providers'] })
+    expect(providerContainer(directoryContext([
+      entry({ provider: 'whole', settingsPath: undefined }),
+      entry({ provider: 'z', settingsPath: ['z-routes', 'z'] }),
+      entry({ provider: 'a', settingsPath: ['a-routes', 'a'] }),
+    ]))).toEqual({ ns: 'llm-routes', container: ['a-routes'] })
   })
 })
 

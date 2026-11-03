@@ -36,11 +36,11 @@ import { agentCallLabel, compactElapsedMs } from './agent-presentation.ts'
 import { parseActivationResult, type ActivationResult } from './child-agent-model.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { outputRate } from './output-rate.ts'
-import { formatTokens } from './status-context.ts'
+import { formatTokens } from './status-context-model.ts'
 import { parseToolArguments } from './present.ts'
-import type { ChildSessionFacts } from './session-facts.ts'
+import type { ChildSessionFacts, SessionFactsService } from './session-facts.ts'
+import type { TickSource } from './tick.ts'
 import { itemSummary, viewList } from './view-items.ts'
-import { formatError } from '../internal/format.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-agents'
@@ -369,8 +369,8 @@ function childNative(ctx: Context, childId: string): { readonly timing?: Subagen
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const ti = interactionTranslator(ctx)
-  const tick = ctx.mayflyTick
-  const facts = ctx.mayflySessionFacts
+  const tick = ctx.get('mayflyTick') as TickSource | undefined
+  const facts = ctx.get('mayflySessionFacts') as SessionFactsService
   const lifetime = new AbortController()
   const agents = ctx.agents
   const subagents = ctx.subagents
@@ -388,13 +388,13 @@ export function apply(ctx: Context): void {
   let displayed: string | null = null
 
   const act = async (event: MayflyUiActionEvent, context: MayflyUiEventContext): Promise<MayflyUiActionReply> => {
+    if (unloaded || context.signal.aborted) return { kind: 'cancelled' }
     const agent = currentAgent.current()
     if (agent === null || agent !== owner) return { kind: 'failed', message: t('The agent changed; open it again') }
     const stopping = event.kind === 'activate' && event.actionId === STOP_ID
     if (event.kind !== 'selection-accept' && !stopping) return { kind: 'completed' }
     const chosen = event.kind === 'selection-accept' ? event.selectedIds[0]
-      : event.kind === 'activate' ? event.inputs?.selections?.find(selection => selection.controlId === LIST_ID)?.selectedIds[0]
-        : undefined
+      : event.inputs?.selections?.find(selection => selection.controlId === LIST_ID)?.selectedIds[0]
     const row = rows.find(candidate => candidate.id === chosen)
     if (row === undefined) return { kind: 'failed', message: t('Select a subagent first') }
     if (row.external) return { kind: 'failed', message: stopping ? ti('Only continuable subagents can be stopped') : t('This subagent cannot be opened') }
@@ -402,6 +402,7 @@ export function apply(ctx: Context): void {
     try {
       if (event.kind === 'selection-accept') {
         const entry = (await subagents.listChildren(agent.id, context.signal)).find(candidate => String(candidate.id) === row.childId)
+        if (unloaded || context.signal.aborted || currentAgent.current() !== agent) return { kind: 'cancelled' }
         if (entry === undefined || entry.mode === 'external') return { kind: 'failed', message: t('This subagent cannot be opened') }
         screen.leaveViews()
         opened = conversations.open({ kind: 'subagent', sessionId: row.childId, parentSessionId: String(agent.id), label: entry.label ?? row.label, mode: entry.mode })
@@ -413,7 +414,7 @@ export function apply(ctx: Context): void {
       refresh()
       return { kind: 'completed', feedback: { severity: 'success', message: result.text } }
     } catch (error) {
-      return { kind: 'failed', message: formatError(error) }
+      return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
     }
   }
   const pane = ctx.mayflyPanes.register({ id: 'mayfly.view.agents', placement: 'views', priority: VIEW_PRIORITY, onEvent: { action: act } }, null)

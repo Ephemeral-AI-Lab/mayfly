@@ -6,10 +6,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { MayflyTerminalInfoService } from '../../src/core/terminal/terminal-info.ts'
-import { DARK_COLORS } from '../../src/core/theme/theme-dark.ts'
-import { paletteColors } from '../../src/core/theme/palettes.ts'
-import { apply, inject, name } from '../../src/core/theme/theme-auto.ts'
+import { MayflyTerminalInfoService } from '../../src/core/terminal-info.ts'
+import { DARK_COLORS } from '../../src/core/theme-dark.ts'
+import { paletteColors } from '../../src/core/palettes.ts'
+import { apply, inject, name } from '../../src/core/theme-auto.ts'
 
 const LIGHT_COLORS = paletteColors('light')
 

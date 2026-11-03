@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { MayflyListHighlight } from '../../../ui/src/index.ts'
 import { countMatches, highlightLine, highlightPattern } from '../../src/core/ui-find.ts'
-import { visibleWidth } from '../../src/core/text/width.ts'
+import { visibleWidth } from '../../src/core/width.ts'
 
 const REVERSE_ON = '\x1b[7m'
 const REVERSE_OFF = '\x1b[27m'

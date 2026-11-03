@@ -24,12 +24,13 @@ import * as agentsStatus from '../../src/transcript/status-agents.ts'
 import * as jobsStatus from '../../src/transcript/status-jobs.ts'
 import { footerRows } from './footer-fakes.ts'
 import { composeBannerLines, shortenHome } from '../../src/transcript/banner.ts'
+import { composeSplashLines } from '../../src/transcript/splash.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { bootPanePlugin } from './pane-fakes.ts'
 import { COLORS, fakeAgent } from './status-fakes.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
-import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 
 /** Identity colors satisfy MayflySemanticColors where consumed. */
 const colors = COLORS as MayflySemanticColors
@@ -40,7 +41,7 @@ function renderNode(node: MayflyUiNode, width: number): string[] {
     components: fakeMayflyComponents(),
     colors,
     getViewport: () => ({ columns: width, rows: 24 }),
-    bounded: false,
+    screenMode: 'main',
     emit: () => {},
   })
   return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(width)
@@ -48,6 +49,21 @@ function renderNode(node: MayflyUiNode, width: number): string[] {
 
 describe('transcript width-scan', () => {
   for (const { name, text } of ADVERSARIAL) {
+    it(`splash survives ${name}`, () => {
+      const components = fakeMayflyComponents()
+      for (const width of [1, ...SCAN_WIDTHS]) {
+        expectLinesFit(`Splash/${name}`, composeSplashLines({
+          colors, strong: value => components.strong(value),
+          truncate: (value, target) => components.truncateToWidth(value, target, '…'),
+          visibleWidth: value => components.visibleWidth(value),
+        }, {
+          version: text,
+          labels: { slogan: text, recent: text, more: text, moreFocused: text, empty: text, emptyHint: text },
+          recent: [{ id: 'scan', title: text, project: text, age: 'now', live: true }],
+        }, width, 24), width)
+      }
+    })
+
     it(`workflow pane survives ${name}`, () => {
       const run = {
         id: 'width-run',

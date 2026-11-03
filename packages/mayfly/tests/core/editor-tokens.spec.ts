@@ -4,7 +4,7 @@
  * @module @ephemeral-ai/mayfly/tests/core/editor-tokens
  */
 import { describe, expect, it } from 'vitest'
-import { expandPastes, findTokenRanges, foldSegments, paintTokenRows } from '../../src/core/ui/compile/editor-tokens.ts'
+import { expandPastes, findTokenRanges, foldSegments, paintTokenRows } from '../../src/core/editor-tokens.ts'
 
 const paints = {
   label: (text: string) => `<L>${text}</L>`,
@@ -39,6 +39,16 @@ describe('foldSegments', () => {
 
   it('returns the whole text as plain when no content appears in it', () => {
     expect(foldSegments('plain', ['zzz'])).toEqual([{ paste: false, text: 'plain' }])
+  })
+
+  it('restores multiple pasted blocks in text order even when the paste table lists them backwards', () => {
+    expect(foldSegments('start FIRST between SECOND end', ['SECOND', 'FIRST'])).toEqual([
+      { paste: false, text: 'start ' },
+      { paste: true, text: 'FIRST' },
+      { paste: false, text: ' between ' },
+      { paste: true, text: 'SECOND' },
+      { paste: false, text: ' end' },
+    ])
   })
 })
 
@@ -130,6 +140,11 @@ describe('token edges', () => {
 })
 
 describe('token rows that the token does not continue into', () => {
+  it('keeps an incomplete wrapped token plain until its closing rows arrive', () => {
+    const rows = ['> see [image #1 8', '4 K']
+    expect(paintTokenRows(rows, [IMAGE], 0, paints, CURSOR)).toEqual(rows)
+  })
+
   it('paints nothing of a token cut at the edge when the next row does not continue it', () => {
     const painted = paintTokenRows(['> see [image #1 8', 'zz'], [IMAGE], 0, paints, CURSOR)
     expect(painted[0]).not.toContain('\x1b[7m')

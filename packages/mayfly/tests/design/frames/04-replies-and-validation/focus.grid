@@ -1,0 +1,55 @@
+## start
+grid 76x8 cursor 3,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Add provider
+|
+|  → Name:   e.g. production
+|    Region: us-east
+|   [ Save ]
+|
+|  ↑/↓ fields · Enter submit · Esc close
+styles
+0: 0-75 fg:primary
+1: 2-13 fg:primary b
+3: 2 fg:primary; 4-11 fg:textStrong b; 12-26 fg:muted
+4: 4-18 fg:text
+5: 3-10 fg:primary
+7: 2-4 fg:text; 6-14 fg:textMuted; 15-19 fg:text; 21-29 fg:textMuted; 30-32 fg:text; 34-38 fg:textMuted
+## down
+grid 76x8 cursor 4,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Add provider
+|
+|    Name:   e.g. production
+|  → Region: ‹ us-east ›
+|   [ Save ]
+|
+|  ←/→ adjust · Enter continue · Esc close
+styles
+0: 0-75 fg:primary
+1: 2-13 fg:primary b
+3: 4-11 fg:text; 12-26 fg:muted
+4: 2 fg:primary; 4-11 fg:textStrong b; 12-22 fg:primary
+5: 3-10 fg:primary
+7: 2-4 fg:text; 6-14 fg:textMuted; 15-19 fg:text; 21-31 fg:textMuted; 32-34 fg:text; 36-40 fg:textMuted
+## enter
+grid 76x10 cursor 5,3
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Add provider
+|
+|    Name:   e.g. production
+|      ! Required
+|  → Region: ‹ us-east ›
+|   [ Save ]
+|
+|  ←/→ adjust · Enter continue · Esc close
+|⚠ Fix the highlighted fields
+styles
+0: 0-75 fg:primary
+1: 2-13 fg:primary b
+3: 4-11 fg:text; 12-26 fg:muted
+4: 6-15 fg:error
+5: 2 fg:primary; 4-11 fg:textStrong b; 12-22 fg:primary
+6: 3-10 fg:primary
+8: 2-4 fg:text; 6-14 fg:textMuted; 15-19 fg:text; 21-31 fg:textMuted; 32-34 fg:text; 36-40 fg:textMuted
+9: 0-27 fg:warning

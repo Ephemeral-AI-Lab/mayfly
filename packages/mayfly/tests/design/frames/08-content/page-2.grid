@@ -1,0 +1,27 @@
+## page-2
+grid 100x13 cursor none
+|page 2/7 (Ctrl+N): fields (key/value) and sections (bold title, body; collapsed shows the title
+|only)
+|
+|Provider: DeepSeek
+|Balance:  ¥ 128.40 available
+|Status:   ✓ signed in
+|
+|Connection
+|  Name:     production
+|  Endpoint: https://api.example.com/v1
+|Behaviour
+|  …
+|...
+styles
+0: 0-94 fg:muted
+1: 0-4 fg:muted
+3: 0-8 fg:muted; 10-17 fg:text
+4: 0-8 fg:muted; 10-17 fg:text b; 18-27 fg:muted
+5: 0-8 fg:muted; 10-11 fg:success; 12-20 fg:text
+7: 0-9 fg:primary b
+8: 2-10 fg:muted; 12-21 fg:text
+9: 2-10 fg:muted; 12-37 fg:text
+10: 0-8 fg:primary b
+11: 0-2 fg:muted
+12: 0-2 fg:muted

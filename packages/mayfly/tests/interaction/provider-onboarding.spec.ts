@@ -7,9 +7,8 @@ import z from '@deepseek-ai/schemastery'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
-import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
-import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
-import type { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { MayflySessionStartService } from '../../src/app/session-start.ts'
+import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { DEEPSEEK_KEY } from '../../src/interaction/provider-onboarding.ts'
 import { ONBOARDING_PERMISSION_FIELD, ONBOARDING_PREFERENCES_FORM, ONBOARDING_SIGN_IN, ONBOARDING_STARTUP_FIELD } from '../../src/components/onboarding-wizard.ts'
 import { accountInternals } from '../../src/interaction/provider-account.ts'
@@ -17,6 +16,7 @@ import { setClipboardOsc52Emitter, setClipboardTextWriter } from '../../src/inte
 import { providerFixture } from './provider-fixture.ts'
 import type { MayflyFieldValue, MayflyUiActionEvent } from '../../../ui/src/interaction.ts'
 import { flush } from '../helpers.ts'
+import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 
 const pickerCalls = vi.hoisted(() => [] as Array<string | undefined>)
 const pickerGate = vi.hoisted(() => ({ current: undefined as Promise<void> | undefined }))
@@ -43,7 +43,6 @@ afterEach(async () => {
 async function setup(profiles: Record<string, unknown> = {}, configured = false, llm?: unknown) {
   const ctx = new Context()
   contexts.push(ctx)
-  new InteractionStateService(ctx, DEFAULT_SETTINGS)
   const bench = await providerFixture(ctx, profiles, llm, { onboarding: true })
   if (configured) bench.credentials.values.set(DEEPSEEK_KEY, 'configured')
   const agent = { id: 'root', session: {} } as Agent
@@ -1015,17 +1014,43 @@ describe('provider onboarding defensive edges', () => {
 })
 
 describe('provider onboarding remaining defensive paths', () => {
-  it('shows the sign-in page without a callback port when the server exposes none', async () => {
-    const bench = await setup({}, false, accountLlm)
-    bench.ctx.provide('deepseekAccount', scriptedAccount().service as never)
-    bench.ctx.provide('webServer', {} as never)
+  it('keeps one setup attempt when the native startup service is replaced', async () => {
+    const bench = await setup()
     bench.ctx.mayflyConversations.selectPrimary(bench.agent)
     await flush()
-    await chooseConnection(bench.model()!, 'account')
+    const model = bench.model()!
+    await bench.releaseStartup()
+    await bench.ctx.plugin({ name: 'native-replacement-startup', apply(owner: Context) {
+      const replacement = new MayflySessionStartService(owner, async () => bench.agent)
+      replacement.markBooted()
+    } })
     await flush()
-    const page = JSON.stringify(bench.model()!.node)
-    expect(page).toContain('Copy the link below')
-    expect(page).not.toContain('oauth/callback?…')
+    expect(bench.model()).toBe(model)
+  })
+
+  it('can inspect credentials while the optional settings provider is absent', async () => {
+    const bench = await setup()
+    await Promise.all([...bench.ctx.registry.get(MemorySettings)!.fibers].map(fiber => fiber.dispose()))
+    expect(bench.ctx.get('settings')).toBeUndefined()
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+    await flush()
+    expect(bench.model()).toBeDefined()
+  })
+
+  it('does not open model selection after a key write completes behind frontend unload', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+    await flush()
+    await enterKey(bench.model()!)
+    const entry = onboardingEntry(bench)
+    const gate = Promise.withResolvers<void>()
+    const set = vi.spyOn(bench.credentials, 'set').mockReturnValueOnce(gate.promise)
+    const pending = entry.definition.onEvent!.action!({ kind: 'submit', pagePath: connectPath, controlId: 'onboarding', submission: { actionId: 'onboarding.next.connect', draftRevision: 1, source: [], forms: [{ pagePath: connectPath, formId: 'key-form', draftRevision: 1, fields: [{ id: 'key', value: 'saved-key', change: 'set' }] }] } }, { surfaceId: entry.id, operationId: 'late-key', source: [], revision: entry.revision, signal: new AbortController().signal, report: vi.fn() })
+    await vi.waitFor(() => expect(set).toHaveBeenCalled())
+    await bench.front.dispose()
+    gate.resolve()
+    await pending
+    expect(pickerCalls).toEqual([])
   })
 
   it('does not republish a counting sign-in after the guide was closed', async () => {

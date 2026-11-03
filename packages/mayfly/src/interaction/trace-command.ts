@@ -6,63 +6,19 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { buildSessionEventRecords } from '@deepseek-ai/dsh-session-query'
-import { browser, panel, ui, type MayflyOverlayHandle, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyOverlayHandle, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { copyTextToClipboard, type ClipboardCopyMethod } from './clipboard-write.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
-import { formatTraceAll, formatTraceItem, traceTime, type TraceItem } from './trace-format.ts'
+import { formatTraceAll, formatTraceItem, type TraceItem } from './trace-format.ts'
 import { aggregateTraceItems } from './trace-aggregate.ts'
 import { interactionTranslator, observeInteractionLocale } from './locale.ts'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
-import { formatError } from '../internal/format.ts'
+import type { MayflyTranslate } from '../frontend/locale.ts'
+import { TRACE_BREAKPOINT, tracePanelModel } from './trace-model.ts'
+export { TRACE_BREAKPOINT, traceDetailBody, tracePanelModel, type TracePanelState } from './trace-model.ts'
 
 const ROOT = 'mayfly.trace'
-/** The width from which the list and the JSON detail share the panel; below it they are pages. */
-export const TRACE_BREAKPOINT = 100
-const sequence = (item: TraceItem) => item.lastSeq === item.seq ? `#${item.seq}` : `#${item.seq}-${item.lastSeq}`
+const describe = (error: unknown) => error instanceof Error ? error.message : String(error)
 const copiedVia = (method: ClipboardCopyMethod, t: MayflyTranslate) => method === 'osc52' ? t(' via terminal escape sequence (unverified)') : ''
-
-/** Which page a narrow trace panel shows, and the item its detail describes. */
-export interface TracePanelState {
-  readonly selected?: TraceItem | undefined
-  readonly document?: string | undefined
-  readonly narrow?: 'list' | 'detail' | undefined
-  readonly escapeLabel?: 'close' | 'back' | undefined
-}
-
-/** The JSON detail of one trace item: type and surface fields over the bounded highlighted document. */
-export function traceDetailBody(item: TraceItem, document: string, t: MayflyTranslate = interpolateLocaleMessage): MayflyUiNode {
-  return ui.stack.column([
-    ui.fields([{ label: t('Type'), value: [{ text: item.type }] }, { label: t('Surface'), value: [{ text: item.surface }] }]),
-    ui.child(ui.scroll(ui.code(document, { language: 'json' }), { id: 'trace-document', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
-    ui.actions({ id: 'trace-detail-actions', items: [{ id: 'copy', label: t('Copy trace item'), hintLabel: t('copy'), semantic: 'copy', hidden: true }] }),
-  ])
-}
-
-/** The one trace panel: the event list and the selected item's JSON detail, split above the breakpoint and paged below it. */
-export function tracePanelModel(sessionId: string, items: readonly TraceItem[], t: MayflyTranslate = interpolateLocaleMessage, state: TracePanelState = {}): MayflyUiNode {
-  const list = ui.list({
-    id: 'trace-events', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash',
-    items: items.map(item => ({
-      id: String(item.seq), label: item.title,
-      cells: [
-        { spans: [{ text: traceTime(item.time), tone: 'muted' }], min: 8 },
-        { spans: [{ text: sequence(item), tone: 'muted' }], min: 6 },
-        { spans: [{ text: item.surface, tone: 'muted' }], min: 8, shed: 1 },
-      ],
-      detail: item.summary.replaceAll(/\s+/g, ' ').trim().slice(0, 512),
-      searchText: `${traceTime(item.time)} ${sequence(item)} ${item.title} ${item.type} ${item.surface} ${item.summary}`,
-    })),
-    empty: ui.empty({ title: t('no trace events yet') }),
-  })
-  const detail = state.selected === undefined
-    ? ui.text(t('Trace detail'), { tone: 'muted' })
-    : traceDetailBody(state.selected, state.document ?? '', t)
-  return panel({
-    title: `${t('Trace')} · ${sessionId}`,
-    escapeLabel: state.escapeLabel ?? 'close',
-    body: browser({ list, detail, narrow: state.narrow ?? 'list' }),
-  })
-}
 
 /** The command consumer owns query work; each opened view has an exact-Agent child Fiber. */
 export function registerTraceCommand(ctx: Context): () => void {
@@ -84,7 +40,7 @@ export function registerTraceCommand(ctx: Context): () => void {
     if (query === undefined) return { kind: 'error', text: t('could not read trace: {error}', { error: t('session query is unavailable') }) }
     let events: readonly SessionEvent[]
     try { events = (await query.readSession(agent.id)).events }
-    catch (error) { return current(agent, signal) ? { kind: 'error', text: t('could not read trace: {error}', { error: formatError(error) }) } : { kind: 'success' } }
+    catch (error) { return current(agent, signal) ? { kind: 'error', text: t('could not read trace: {error}', { error: describe(error) }) } : { kind: 'success' } }
     if (!current(agent, signal)) return { kind: 'success' }
     const items = aggregateTraceItems(buildSessionEventRecords(agent.id, events), events)
     const eventBySeq = new Map<number, SessionEvent>(events.map(event => [event.seq, event]))
@@ -98,7 +54,7 @@ export function registerTraceCommand(ctx: Context): () => void {
         if (!current(agent, taskSignal)) return { kind: 'success' }
         return { kind: 'success', text: (item === undefined ? t('copied {count} trace events', { count: items.length }) : t('copied trace item #{seq}', { seq: item.seq })) + copiedVia(method, t) }
       } catch (error) {
-        return current(agent, taskSignal) ? { kind: 'error', text: t('could not copy trace: {error}', { error: formatError(error) }) } : { kind: 'success' }
+        return current(agent, taskSignal) ? { kind: 'error', text: t('could not copy trace: {error}', { error: describe(error) }) } : { kind: 'success' }
       }
     }
     if (input === 'copy all') return copy(undefined, signal)
@@ -131,7 +87,6 @@ export function registerTraceCommand(ctx: Context): () => void {
           if (narrow === 'detail' && columns() < TRACE_BREAKPOINT) { narrow = 'list'; publish(); return { kind: 'completed', dismiss: false } }
           return { kind: 'completed' }
         }
-        if (context.signal.aborted || !current(agent, context.signal)) return { kind: 'cancelled', dismiss: true }
         if (event.kind === 'activate' && event.actionId === 'copy-all') return copyReply(undefined, context.signal)
         if (event.kind === 'activate' && event.actionId === 'copy') return copyReply(selected, context.signal)
         if (event.kind !== 'selection-accept' || event.controlId !== 'trace-events') return { kind: 'completed' }

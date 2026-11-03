@@ -5,13 +5,6 @@
  * @module @ephemeral-ai/mayfly/conversation/types
  */
 
-import type {} from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-session-projection/types'
-
-/** Load-order signal published only after `mayflyConversation` is registered. */
-export interface MayflyConversationReady {
-  readonly key: 'mayflyConversation'
-}
 
 /** Lossless JSON accepted by the Harness session log and projection cache. */
 export type ConversationJson = null | boolean | number | string | ConversationJson[] | { [key: string]: ConversationJson }
@@ -318,21 +311,3 @@ export interface ConversationAgentCall {
 
 /** Plain-JSON state checkpointed for {@link ConversationFacts}. */
 export type ConversationFactsState = ConversationFacts
-
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionMap {
-    mayflyConversation: ConversationProjection
-    mayflyConversationFacts: ConversationFacts
-  }
-
-  interface SessionProjectionStateMap {
-    mayflyConversation: ConversationProjectionState
-    mayflyConversationFacts: ConversationFactsState
-  }
-}
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    mayflyConversationReady: MayflyConversationReady
-  }
-}

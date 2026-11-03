@@ -11,8 +11,8 @@ import {
   reducePrompt,
   type UiPromptIntent,
   type UiPromptModel,
-} from '../../src/core/ui/state/ui-interaction-prompt.ts'
-import { validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
+} from '../../src/core/ui-interaction-prompt.ts'
+import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 
 const address = { pagePath: [], controlId: 'prompt' }
 const admit = (node: MayflyPromptNode): MayflyPromptNode => {

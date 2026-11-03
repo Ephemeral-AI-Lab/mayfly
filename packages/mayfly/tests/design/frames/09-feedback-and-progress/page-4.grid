@@ -1,0 +1,15 @@
+## page 4
+grid 96x7 cursor none
+|page 4/4 (Ctrl+N): empty: what is missing and the next action
+|
+|No sessions found
+|Restore a checkpoint with /rewind
+|
+|No plugins installed
+|press → to browse
+styles
+0: 0-60 fg:muted
+2: 0-16 fg:muted
+3: 0-32 fg:muted
+5: 0-19 fg:muted
+6: 0-16 fg:muted

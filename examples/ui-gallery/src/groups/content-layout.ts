@@ -8,7 +8,7 @@
  */
 import { ui } from '@ephemeral-ai/mayfly-ui'
 
-const path = '~/work/mayfly/packages/mayfly/src/core/ui/compile/ui-compiler.ts'
+const path = '~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts'
 
 /** Content, layout, and motion demos for the pane. */
 export function contentLayoutGroup() {

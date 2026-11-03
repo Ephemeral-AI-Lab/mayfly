@@ -224,6 +224,24 @@ describe('StreamFacts: the remaining decisions', () => {
     expect(userMessageText({ role: 'user', content: [image] } as never)).toBe('[1 image]')
   })
 
+  it('does not confuse an entry id prefix with the exact call whose text is requested', () => {
+    const prefix = { ...user(1, 'prefix prompt'), id: 'read' }
+    const group = { id: 'read:1', kind: 'transcript-read-group', seq: 2, updatedSeq: 2, turn: 1, step: 0,
+      reads: [{ callId: 'r1', activity: 'read', detail: 'a.ts', seq: 2, updatedSeq: 2, turn: 1, step: 0, name: 'read', startedAt: 0, path: 'a.ts', state: 'ok' }],
+    } as unknown as TranscriptEntryModel
+    const stream = new StreamFacts()
+    const built = stream.build(createTranscriptModel('prefixes', [prefix, group]), inputs())
+    const row = built.turns.flatMap(turn => turn.rows).find(candidate => candidate.kind === 'tool' || candidate.kind === 'tools')!
+    expect(stream.textOf(row.id, 'text')).toContain('a.ts')
+    expect(stream.textOf(row.id, 'text')).not.toContain('prefix prompt')
+  })
+
+  it('returns no semantic copy text for a hand-built canonical note', () => {
+    const stream = new StreamFacts()
+    const built = stream.build(createTranscriptModel('notes', [{ kind: 'text', content: 'notice' }]), inputs())
+    expect(stream.textOf(built.turns[0]!.rows[0]!.id, 'text')).toBe('')
+  })
+
   it('draws no turns and no queued messages for a view with no model attached', () => {
     const facts = new StreamFacts().build(null, inputs({ queued: [{ id: 'q1', text: 'later', lane: 'turn' }] }))
     expect(facts.turns).toEqual([])
@@ -355,6 +373,17 @@ describe('StreamFacts: the turn of a view with no turn, the text of a header, an
     expect(facts.turns).toEqual([{ id: 'turn:-1', number: 0, rows: [{ kind: 'note', id: 'node:0', text: 'a notice' }] }])
   })
 
+  it('appends a live turn before its durable entries arrive', () => {
+    const baseline = model([user(1, 'first'), assistant(1, 'done')], [
+      { turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' },
+      { turn: 2, startedAt: NOON + 2 },
+    ], true)
+    const live = { ...baseline, live: { turn: 2, step: 1, entries: [assistant(2, 'new answer', true)] } }
+    const facts = new StreamFacts().build(live, inputs())
+    expect(facts.turns.map(turn => turn.id)).toEqual(['turn:1', 'turn:2'])
+    expect(facts.turns[1]!.rows).toContainEqual(expect.objectContaining({ kind: 'answer', text: 'new answer' }))
+  })
+
   it('reads the text of a turn header as its entries, bracketed in raw form, and of an unknown item as nothing', () => {
     const stream = new StreamFacts()
     stream.build(model([user(1, 'first'), assistant(1, 'answer')], [{ turn: 1, startedAt: NOON, endedAt: NOON + 1, outcome: 'completed' }]), inputs())
@@ -381,6 +410,7 @@ describe('StreamFacts: the turn of a view with no turn, the text of a header, an
     expect(build([user(1, 'q'), compaction({ endedAt: NOON + 1, shadowedTokens: 5_000, trigger: 'manual' })], {}, false).turns[0]).toMatchObject({ after: [{ kind: 'compaction' }] })
     expect(compactionRow(build([user(1, 'q'), compaction({ endedAt: NOON + 1, shadowedTokens: 5_000 })], { contextWindow: 100_000 }, false))).toMatchObject({ facts: { tokens: '~4.9k tokens' } })
     expect(compactionRow(build([user(1, 'q'), compaction({ state: 'running', startedAt: NOON - 4_000, trigger: 'manual' })]))).toMatchObject({ facts: { state: 'running', progress: ['summarizing', expect.any(String)] } })
+    expect(compactionRow(build([user(1, 'q'), compaction({ state: 'running', startedAt: NOON - 4_000 })], { contextWindow: 100_000 }))).toMatchObject({ facts: { state: 'running', percent: expect.any(Number), bar: { labeled: true } } })
   })
 
   it('keeps a compaction that has just landed in its applying state until the bar fills', () => {

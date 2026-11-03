@@ -7,10 +7,11 @@ import type { Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame, type LayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode, type MayflyUiCompilerOptions } from '../../src/core/ui/compile/ui-compiler.ts'
-import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
-import { LOADER_FRAME_MS, UiAnimationClock } from '../../src/core/ui/paint/ui-loader-animation.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
+import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { LOADER_FRAME_MS, UiAnimationClock } from '../../src/core/ui-loader-animation.ts'
 import type { MayflyKeymap, MayflySemanticColors } from '../../src/core/types.ts'
+import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { PROBE_PALETTE, probeComponents } from '../design/probe.ts'
 
 const cleanups: (() => void)[] = []
@@ -21,13 +22,14 @@ afterEach(() => {
 })
 
 interface Opened {
+  readonly counters: ReturnType<typeof createWorkCounters>
   readonly model: UiSurfaceModel
   readonly runtime: MayflyUiSurfaceRuntime
   readonly component: Component
   readonly requestRender: ReturnType<typeof vi.fn>
   readonly requestFrame: ReturnType<typeof vi.fn>
   readonly viewport: { columns: number, rows: number }
-  /** How many palette paints a leaf made during `step`. */
+  /** How many leaves painted during `step`. */
   paints(step: () => void): number
   /** pi-tui laying the surface out itself, as it does for a pane: every component is asked to render, every frame. */
   layout(width?: number, height?: number): LayoutFrame
@@ -35,22 +37,8 @@ interface Opened {
   publish(node: MayflyUiNode): void
 }
 
-/** The probe palette behind a counter: every painted cell reads at least one color, a remembered row reads none. */
-function countedPalette(counter: () => void): MayflySemanticColors {
-  const counted: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(PROBE_PALETTE as unknown as Record<string, unknown>)) {
-    if (typeof value === 'function') {
-      counted[key] = (...args: unknown[]) => { counter(); return (value as (...values: unknown[]) => unknown)(...args) }
-    } else if (Array.isArray(value)) {
-      counted[key] = value.map(ink => typeof ink === 'function' ? (...args: unknown[]) => { counter(); return (ink as (...values: unknown[]) => unknown)(...args) } : ink)
-    } else counted[key] = value
-  }
-  return counted as unknown as MayflySemanticColors
-}
-
 function open(node: MayflyUiNode, extra: Partial<MayflyUiCompilerOptions> = {}): Opened {
-  let painted = 0
-  const colors = countedPalette(() => { painted += 1 })
+  const counters = createWorkCounters()
   const viewport = { columns: 60, rows: 12 }
   let revision = 1
   const events = { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }
@@ -60,13 +48,13 @@ function open(node: MayflyUiNode, extra: Partial<MayflyUiCompilerOptions> = {}):
   const model = new UiSurfaceModel('retained', snapshot(node))
   const requestRender = vi.fn()
   const requestFrame = vi.fn()
-  const clock = new UiAnimationClock()
+  const clock = new UiAnimationClock(counters)
   const runtime = new MayflyUiSurfaceRuntime(model, requestRender, clock, undefined, requestFrame)
   const compile = (): Component => {
     const result = compileMayflyUiSurfaceNode(model.node!, {
-      components: probeComponents(), colors, getViewport: () => viewport, bounded: true,
+      components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => viewport, screenMode: 'alternate',
       // Paint counts are the subject here, so verification (which paints again on every hit) is on only where a case asks.
-      emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime, verifyRetained: false, ...extra,
+      emit: () => {}, contextHints: { enabled: true }, surfaceRuntime: runtime, counters, verifyRetained: false, ...extra,
     })
     if (!result.ok) throw new Error(result.message)
     if (result.value.focusTarget !== null) result.value.focusTarget.focused = true
@@ -77,12 +65,12 @@ function open(node: MayflyUiNode, extra: Partial<MayflyUiCompilerOptions> = {}):
   let component = compile()
   cleanups.push(() => { clock.dispose(); runtime.dispose(); model.dispose() })
   return {
-    model, runtime, requestRender, requestFrame, viewport,
+    counters, model, runtime, requestRender, requestFrame, viewport,
     get component() { return component },
     paints(step) {
-      const before = painted
+      const before = counters.componentRenders
       step()
-      return painted - before
+      return counters.componentRenders - before
     },
     layout: (width = viewport.columns, height = viewport.rows) => renderLayoutFrame(component, width, height, () => {}),
     press(...keys) { for (const key of keys) focus?.handleInput?.(key) },
@@ -137,12 +125,13 @@ describe('retained rows', () => {
   it('remembers six combinations of width and viewport and paints the oldest again once a seventh arrives', () => {
     const view = open(ui.tabs({ id: 'tabs', activeId: 'one', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] }))
     for (const width of [40, 41, 42, 43, 44, 45]) view.layout(width)
-    // The hint row paints at every change of width; the tabs do not.
-    const remembered = view.paints(() => { view.layout(41) })
+    // The hint row keeps one width of its own and paints at every change of width; the tabs do not.
+    const hintAlone = view.paints(() => { view.layout(40) })
+    expect(view.paints(() => { view.layout(41) })).toBe(hintAlone)
     view.layout(46)
-    expect(view.paints(() => { view.layout(41) }), 'width 41 is still remembered').toBe(remembered)
-    // The first width was dropped to make room for the seventh: its tabs paint again.
-    expect(view.paints(() => { view.layout(40) })).toBeGreaterThan(remembered)
+    expect(view.paints(() => { view.layout(41) })).toBe(hintAlone)
+    // The first width was dropped to make room for the seventh.
+    expect(view.paints(() => { view.layout(40) })).toBe(hintAlone + 1)
   })
 
   it('throws when verification finds rows that changed without moving the epoch', () => {
@@ -165,14 +154,10 @@ describe('retained rows', () => {
     const view = open(ui.stack.column([ui.child(list()), ui.child(ui.prompt({ id: 'ask', placeholder: ['Ask'] }))]))
     view.layout()
     // The prompt paints on every frame, for the stack that measures it and for the layout; the list beside it does not.
-    expect(view.paints(() => { view.layout() })).toBeGreaterThan(0)
-    expect(view.paints(() => { view.layout() })).toBeGreaterThan(0)
-    const rows = view.layout().lines
-    expect(view.layout().lines).toEqual(rows)
-    // The same list in a stack with no live engine is remembered between frames.
-    const sibling = open(ui.stack.column([ui.child(list())]))
-    sibling.layout()
-    expect(sibling.paints(() => { sibling.layout() })).toBe(0)
+    const listPaints = view.counters.rowsPainted
+    expect(view.paints(() => { view.layout() })).toBe(2)
+    expect(view.paints(() => { view.layout() })).toBe(2)
+    expect(view.counters.rowsPainted - listPaints).toBe(4)
   })
 
   it('reports a failed paint on every frame instead of remembering it', () => {
@@ -200,8 +185,10 @@ describe('moving cells', () => {
     // The tick asks for a frame and nothing else: an invalidation would repaint every row.
     expect(view.requestFrame).toHaveBeenCalledTimes(1)
     expect(view.requestRender).not.toHaveBeenCalled()
+    expect(view.counters.clockTicks).toBe(1)
     const moved = view.paints(() => { view.layout() })
     expect(moved).toBeGreaterThan(0)
+    expect(moved).toBeLessThanOrEqual(4)
     // Showing the same frame again paints nothing and keeps the surface on the clock.
     expect(view.paints(() => { view.layout() })).toBe(0)
     expect(vi.getTimerCount()).toBe(1)

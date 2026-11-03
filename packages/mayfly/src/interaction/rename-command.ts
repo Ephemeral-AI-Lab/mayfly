@@ -7,12 +7,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-session-title/types'
-import { panel, ui } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
-import { formatError } from '../internal/format.ts'
-
-const RENAME_FORM = 'session-rename'
+import { renamePanelModel } from './rename-model.ts'
 
 /**
  * Register `/rename [<name>]`: a name argument renames the current session
@@ -29,7 +26,7 @@ export function registerRenameCommand(ctx: Context): () => void {
       const accepted = await ctx.sessionController.rename({ sessionId: agent.id, title })
       return { kind: 'success', text: t('renamed session to {title}', { title: accepted.title }) }
     } catch (error) {
-      return { kind: 'error', text: formatError(error) }
+      return { kind: 'error', text: error instanceof Error ? error.message : String(error) }
     }
   }
   return ctx.commands.register({
@@ -55,14 +52,7 @@ export function registerRenameCommand(ctx: Context): () => void {
           const result = await rename(agent, value.trim())
           return result.kind === 'error' ? { kind: 'failed', message: result.text } : { kind: 'completed', dismiss: true }
         } },
-      }, panel({
-        title: t('Rename session'),
-        escapeLabel: 'cancel',
-        body: ui.form({ id: RENAME_FORM, enterSubmits: 'save', fields: [{ kind: 'input', id: 'title', label: t('Session name'), value: currentTitle }] }),
-        footer: ui.actions({ id: 'rename-actions', items: [
-          { id: 'save', label: t('Rename'), hintLabel: t('rename'), hidden: true, read: [{ pagePath: [], formId: RENAME_FORM }] },
-        ] }),
-      }), { reopen: 'focus' })
+      }, renamePanelModel(currentTitle, t), { reopen: 'focus' })
       return { kind: 'success' }
     },
   })

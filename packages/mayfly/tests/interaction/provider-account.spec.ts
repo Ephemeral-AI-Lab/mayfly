@@ -100,6 +100,17 @@ async function bench(initial: AccountView, webServer?: { port: number }) {
 const panelId = 'mayfly.provider-account.deepseek-account'
 
 describe('DeepSeek account panel', () => {
+  it('does not start a watch after an observer closes the initial registration', async () => {
+    const { ctx, account } = await bench(signedOut)
+    const watch = vi.spyOn(account.api, 'watch')
+    ctx.mayflyOverlays.subscribe(delta => {
+      if (delta.kind === 'upsert' && delta.entry.id === panelId) ctx.mayflyOverlays.close(panelId)
+    })
+    expect(await openAccountPanel(ctx, 'deepseek-account')).toBe(true)
+    expect(watch).not.toHaveBeenCalled()
+    expect(ctx.mayflyOverlays.list()).toEqual([])
+  })
+
   it('requires the native account service and the account adapter route', async () => {
     const ctx = new Context()
     contexts.push(ctx)

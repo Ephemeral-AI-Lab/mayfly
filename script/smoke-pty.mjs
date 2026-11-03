@@ -1,0 +1,122 @@
+// Interactive PTY smoke (D48, manual — not in CI): boots the real dsh CLI
+// with the Mayfly plugin under a real pseudo-terminal at a deliberately
+// narrow 40 columns and drives it through the raw-mode key path — a turn
+// against a local mock LLM, followed by a theme switch, and the slash-command dropdown (a WrappingSelectList
+// width seat), double-Escape, and the double-Ctrl-C exit. Green means
+// exit 0 with no width-guard crash and no uncaught frames.
+// Run: pnpm smoke:pty (self-contained: installs its own throwaway profile)
+
+import { createRequire } from 'node:module'
+import {
+  assertDshVersion,
+  cleanOutput,
+  installIntoThrowawayProfile,
+  loadPty,
+  registerCleanup,
+  resolveDshBin,
+  sleep,
+  waiter,
+} from './smoke-lib.mjs'
+
+const require = createRequire(import.meta.url)
+const pty = loadPty()
+
+const dshBin = resolveDshBin()
+assertDshVersion(dshBin)
+const { home, envFor } = installIntoThrowawayProfile(dshBin, 'mayfly-smoke-pty')
+registerCleanup(home)
+
+const PATHOLOGICAL = `unbroken-${'x'.repeat(160)}`
+
+const { startMockLlmServer } = require('@deepseek-ai/dsh-llm-mock-server')
+const server = await startMockLlmServer({
+  port: 0,
+  sequence: ['slow_success'],
+  repeatLast: true,
+  successText: `stream-start\n${PATHOLOGICAL}\nstream-middle\n${PATHOLOGICAL}\nstream-complete`,
+  chunkSize: 6,
+  chunkDelayMs: 50,
+})
+
+console.log('==> PTY boot: dsh --profile mayfly-smoke-pty at 40x24')
+const term = pty.spawn(dshBin, ['--profile', 'mayfly-smoke-pty'], {
+  name: 'xterm-256color',
+  cols: 40,
+  rows: 24,
+  cwd: import.meta.dirname,
+  // A PTY provides its own size; the COLUMNS/LINES carried in the ambient
+  // environment must not win over it.
+  env: envFor({
+    DEEPSEEK_BASE_URL: `${server.baseURL}/v1`,
+    DEEPSEEK_API_KEY: 'mayfly-smoke-key',
+    COLUMNS: undefined,
+    LINES: undefined,
+  }),
+})
+
+let out = ''
+let exitCode = null
+term.onData(data => { out += data })
+term.onExit(({ exitCode: code }) => { exitCode = code })
+
+const waitFor = waiter()
+const clean = () => cleanOutput(out)
+
+try {
+  if (!(await waitFor(() => clean().includes('deepseek-flash'), 'the statusline boot frame'))) throw new Error('boot')
+  term.write('ping\r')
+  if (!(await waitFor(() => clean().includes('stream-start'), 'the first streamed text'))) throw new Error('reply')
+  if (!(await waitFor(() => clean().includes('stream-middle'), 'continued live output'))) throw new Error('stream continuity')
+  if (!(await waitFor(() => clean().includes('stream-complete'), 'the authoritative final response'))) throw new Error('settlement')
+  term.write('/theme light\r')
+  // Theme replacement unloads the command's old renderer before its result
+  // notification can be painted. Query the replacement's actual state.
+  await sleep(500)
+  // Bare /theme opens the choose-list picker; the live row shows the palette's name with the check.
+  term.write('/theme\r')
+  if (!(await waitFor(() => clean().includes('Mayfly Light ✓'), 'the theme picker live row'))) throw new Error('theme')
+  term.write('\x1b')
+  await sleep(300)
+  // /mode is the palette entry for the Shift+Tab plan cycle: it toggles the
+  // native plan selection, so toggle it back off before leaving.
+  term.write('/mode\r')
+  if (!(await waitFor(() => clean().includes('Plan mode on'), 'the /mode plan toggle'))) throw new Error('mode')
+  await sleep(300)
+  term.write('/mode\r')
+  await sleep(400)
+  // The slash dropdown: WrappingSelectList at 40 columns.
+  term.write('/')
+  await waitFor(() => cleanOutput(out.slice(-4000)).includes('/'), 'the command dropdown')
+  await sleep(400)
+  term.write('\x1b')
+  await sleep(250)
+  term.write('\x1b')
+  await sleep(250)
+  // The double-Ctrl-C exit path; a first press can be spent dismissing a
+  // notification or a recalled draft, so press until the session exits.
+  for (let press = 0; press < 4 && exitCode === null; press++) {
+    term.write('\x03')
+    await sleep(700)
+  }
+  if (!(await waitFor(() => exitCode !== null, 'clean exit'))) throw new Error('exit')
+} catch (error) {
+  console.error(`FAIL: ${error.message}`)
+  console.error('--- PTY output tail ---')
+  console.error(clean().slice(-2000))
+  term.kill()
+  await server.close()
+  process.exit(1)
+}
+await server.close()
+
+const final = clean()
+const ok = exitCode === 0
+  && !final.includes('exceeds terminal width')
+  && !final.includes('Uncaught')
+  && !final.includes('pi-crash.log')
+if (!ok) {
+  console.error(`FAIL: exit=${exitCode}`)
+  console.error(final.slice(-2000))
+  process.exit(1)
+}
+console.log(`PTY_SMOKE_PASS exit=${exitCode}`)

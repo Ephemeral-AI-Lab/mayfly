@@ -1,75 +1,154 @@
 #!/usr/bin/env bash
-# install-dev.sh — one-shot local development install of Mayfly into a dsh profile.
+# install-dev.sh — one-shot local development install of split Mayfly:
+# a dsh Host profile carrying the Mayfly Host bundle, plus the independent
+# Remote TUI launcher.
 #
-# Builds the Mayfly workspace and link-installs the product plugin closure into
-# a dev profile (no npm publish).
-# Code changes take effect after `pnpm run build`;
-# re-run this script only when the dependency graph changes.
+# The split deployment needs two things the single-process installer never did:
+#
+#   1. A profile that composes the Web Host bundle AND the Mayfly Host bundle.
+#      `dsh plugin add` maintains `dsh.profile.bundles` itself, but its install
+#      step hard-fails on unreviewed dependency build scripts, so the denied
+#      list must exist before the first install.
+#   2. A launcher for the TUI process. `packages/remote/lib/remote-bin.js` is
+#      the real entry; the published `mayfly` bin is only a hand-off to it.
 #
 # Environment overrides:
-#   DSH_BIN    dsh executable to use        (default: dsh from PATH)
-#   PROFILE    target profile name          (default: mayfly-dev)
-#   DSH_HOME   dsh home directory           (default: dsh's own resolution)
-#   MAYFLY_SKIP_BUILD
-#              1 links the existing lib/ build instead of building first; the
-#              verification gate and the smokes set it after their own build.
-#   PROFILE_INSTALL_FLAGS
-#              extra flags for the profile's `pnpm install` (default: none).
-#              CI consumers pass --no-frozen-lockfile: CI=true flips pnpm's
-#              frozen-lockfile default on, and ensure-loader-entries' package
-#              additions then read as lockfile violations.
+#   DSH_BIN     dsh executable to use            (default: dsh from PATH)
+#   PROFILE     target Host profile name         (default: mayfly-dev)
+#   DSH_HOME    dsh home directory               (default: dsh's own resolution)
+#   DSH_VERSION dsh line to install              (default: the Host manifest's)
+#   MAYFLY_SKIP_BUILD=1  link the existing lib/ build instead of building first
 #
-# Lane rule (D51 aftermath): `mayfly` is the production profile — npm
-# installs only, never link:; `mayfly-dev` links this checkout; a worktree
-# gets its own `mayfly-<tag>`. Never link into `mayfly`: a later npm upgrade
-# half-overwrites the links and boots a Frankenstein tree.
-#
-# Worktree effect testing: run this from a feature worktree with
-# PROFILE=mayfly-<short-branch-tag> to give that checkout its own dogfood
-# profile (packages link from this script's checkout). Remove the profile
-# directory (~/.dsh/profiles/mayfly-<tag>) when the branch merges.
+# After it finishes:
+#   terminal 1:  dsh --profile <PROFILE>            # prints "mayfly host: <url>"
+#   terminal 2:  MAYFLY_DSH_STARTUP_URL='<url>' <REPO>/script/mayfly-remote.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DSH_BIN="${DSH_BIN:-dsh}"
 PROFILE="${PROFILE:-mayfly-dev}"
+PROFILE_DIR="${DSH_HOME:-$HOME/.dsh}/profiles/$PROFILE"
+case "$PROFILE" in
+  mayfly-*) ;;
+  *) printf 'error: use a dedicated mayfly-<tag> profile\n' >&2; exit 1 ;;
+esac
+HOST_PKG="$REPO_ROOT/packages/host"
+REMOTE_BIN="$REPO_ROOT/packages/remote/lib/remote-bin.js"
 
-if ! command -v "$DSH_BIN" >/dev/null 2>&1; then
-  echo "error: '$DSH_BIN' not found on PATH. Install dsh or set DSH_BIN=/path/to/dsh" >&2
-  exit 1
+say() { printf '==> %s\n' "$*"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+command -v "$DSH_BIN" >/dev/null 2>&1 \
+  || die "'$DSH_BIN' not found on PATH. Install dsh or set DSH_BIN=/path/to/dsh"
+
+# The Host bundle pins one exact dsh line; a mismatched runtime refuses the
+# install, and a half-matched one boots half the service graph.
+DSH_VERSION="${DSH_VERSION:-$(node -e "
+  const m = require('$HOST_PKG/package.json')
+  process.stdout.write(m.peerDependencies['@deepseek-ai/dsh-session'])
+")}"
+RUNNING="$("$DSH_BIN" --version 2>/dev/null | tr -d '[:space:]')"
+if [ "$RUNNING" != "$DSH_VERSION" ]; then
+  say "dsh $RUNNING does not match the Host's pinned line $DSH_VERSION"
+  die "use an isolated dsh $DSH_VERSION executable and set DSH_BIN; this installer never changes global packages"
 fi
 
 if [ "${MAYFLY_SKIP_BUILD:-}" = "1" ]; then
-  echo "==> Linking the existing Mayfly build (MAYFLY_SKIP_BUILD=1)"
+  say "Linking the existing build (MAYFLY_SKIP_BUILD=1)"
+  [ -f "$REMOTE_BIN" ] || die "no built Remote entry; run pnpm run build first"
 else
-  echo "==> Building Mayfly workspace"
+  say "Building the workspace"
   pnpm --dir "$REPO_ROOT" run build
 fi
 
-echo "==> Link-installing Mayfly packages into profile '$PROFILE'"
-"$DSH_BIN" plugin --profile "$PROFILE" add \
-  "link:$REPO_ROOT/packages/mayfly" \
-  "link:$REPO_ROOT/packages/ui"
+# A fresh profile inherits the shipped web template, which already lists
+# `dsh-base` and `dsh-web-app` as bundles; an existing one is reused so
+# repeated runs stay cheap and the reviewer keeps its settings.
+if [ ! -f "$PROFILE_DIR/package.json" ]; then
+  say "Creating profile '$PROFILE' from the shipped web template"
+  "$DSH_BIN" --profile "$PROFILE" --from-default-profile web --dump-config >/dev/null \
+    || die "creating the web profile template failed"
+fi
 
-# Harness packages the bundle patch references as loader entries resolve from
-# the profile root at boot; the global CLI bundles only what dsh-base needs.
-# Without this step a fresh profile boot-crashes on entries outside that
-# closure (first hit: dsh-session-title-all-prompts-llm).
-PROFILE_DIR="${DSH_HOME:-$HOME/.dsh}/profiles/$PROFILE"
-echo "==> Ensuring harness loader entries resolve from profile '$PROFILE'"
-node "$REPO_ROOT/script/ensure-loader-entries.mjs" \
-  "$REPO_ROOT/packages/mayfly" "$PROFILE_DIR" "$DSH_BIN"
-# shellcheck disable=SC2086 — PROFILE_INSTALL_FLAGS is a word-split flag list
-pnpm --dir "$PROFILE_DIR" install ${PROFILE_INSTALL_FLAGS:-} >/dev/null
+# `dsh plugin add` runs its own pnpm install, which hard-fails on any dependency
+# build script it has not reviewed. koffi is the Windows-only native boundary
+# and node-pty is not needed by the Host rows, so both are denied up front.
+say "Denying the profile's optional native build scripts"
+node - "$PROFILE_DIR/pnpm-workspace.yaml" <<'NODE'
+const { appendFileSync, readFileSync } = require('node:fs')
+const path = process.argv[2]
+const workspace = readFileSync(path, 'utf8')
+if (!/^allowBuilds:/mu.test(workspace)) {
+  appendFileSync(path, '\nallowBuilds:\n  koffi: false\n  node-pty: false\n')
+}
+NODE
+
+say "Installing the Mayfly Host bundle into the profile"
+"$DSH_BIN" plugin --profile "$PROFILE" add "link:$HOST_PKG" \
+  || die "linking $HOST_PKG failed (see the diagnostics path above)"
+
+say "Verifying the profile registered every bundle layer"
+node - "$PROFILE_DIR/package.json" <<'NODE'
+const { readFileSync } = require('node:fs')
+const manifest = JSON.parse(readFileSync(process.argv[2], 'utf8'))
+const bundles = manifest.dsh?.profile?.bundles ?? []
+for (const name of ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@ephemeral-ai/mayfly-host']) {
+  if (!bundles.includes(name)) {
+    console.error(`error: ${name} is not a profile bundle (got ${JSON.stringify(bundles)})`)
+    process.exit(1)
+  }
+}
+NODE
+
+say "Ensuring harness loader entries resolve from the profile"
+node "$REPO_ROOT/script/ensure-loader-entries.mjs" "$HOST_PKG" "$PROFILE_DIR" "$DSH_BIN"
+
+say "Verifying the composed profile carries the Web runtime and the Mayfly rows"
+COMPOSED="$("$DSH_BIN" --profile "$PROFILE" --dump-config 2>/dev/null)"
+for row in 'id: web-runtime' 'id: connection' 'id: mayfly-host' 'id: mayfly-host-startup'; do
+  [[ "$COMPOSED" == *"$row"* ]] \
+    || die "composed profile is missing '$row' — the bundle layer did not apply"
+done
+
+# Keep Web transport and browser services, but do not orient the model toward
+# a browser GUI when its actual frontend is the independent terminal process.
+MAYFLY_COMPOSED_CONFIG="$COMPOSED" node - "$HOST_PKG" <<'NODE'
+const assert = require('node:assert/strict')
+const { createRequire } = require('node:module')
+const { join } = require('node:path')
+const hostRequire = createRequire(join(process.argv[2], 'package.json'))
+const skillRequire = createRequire(hostRequire.resolve('@deepseek-ai/dsh-skill-filesystem/package.json'))
+const { parse } = skillRequire('yaml')
+const rows = parse(process.env.MAYFLY_COMPOSED_CONFIG, {
+  customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: value => value }],
+})
+const find = (id, entries = rows) => {
+  for (const row of entries) {
+    if (row.id === id) return row
+    if (row.group && Array.isArray(row.config)) {
+      const nested = find(id, row.config)
+      if (nested) return nested
+    }
+  }
+}
+assert.equal(find('web-runtime')?.config?.surfaceContext, false, 'Web-only shell context must be disabled')
+assert.equal(find('harness-dev-context')?.disabled, true, 'Web-only model prompt must be disabled')
+assert.equal(find('preset-mayfly-cordis')?.config?.id, 'mayfly-cordis', 'Mayfly creative preset must be registered')
+NODE
+
+chmod 755 "$REPO_ROOT/script/mayfly-remote.sh"
 
 cat <<EOF
 
-Done. Mayfly is linked into profile '$PROFILE'.
+Done. The split Mayfly is installed as profile '$PROFILE'.
 
-  Run:      $DSH_BIN --profile $PROFILE [task]
-  Resume:   $DSH_BIN --profile $PROFILE --resume <sessionId>
-  Iterate:  edit src -> pnpm --dir "$REPO_ROOT" run build -> re-run dsh
+  terminal 1 (Host):   $DSH_BIN --profile $PROFILE
+                       it prints:  mayfly host: http://127.0.0.1:3080/?token=...
 
-Note: package-level "declares no dsh.bundle" warnings during install are expected —
-only @ephemeral-ai/mayfly contributes a bundle layer.
+  terminal 2 (TUI):    MAYFLY_DSH_STARTUP_URL='<that url>' $REPO_ROOT/script/mayfly-remote.sh
+
+  or export it once:   export MAYFLY_DSH_STARTUP_URL='<that url>'
+                       $REPO_ROOT/script/mayfly-remote.sh
+
+  Iterate: edit src -> pnpm run build -> restart both processes.
 EOF

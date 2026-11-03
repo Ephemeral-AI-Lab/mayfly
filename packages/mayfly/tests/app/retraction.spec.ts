@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, createDeveloperMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import { createMayflyRequestController } from '../../src/app/request-lifecycle.ts'
 import { installRetractionService } from '../../src/app/retraction.ts'
@@ -46,6 +46,27 @@ function enterPrompt(session: Session, text = 'change this') {
 }
 
 describe('message retraction', () => {
+  it('keeps a native replacement that supersedes the turn before queued persistence', async () => {
+    const test = rig()
+    test.requests.begin('main')
+    const message = enterPrompt(test.session)
+    expect(test.service.tryRetract(String(message.id))).toBe(true)
+    test.ctx.on('session/event', (session, event) => {
+      if (session !== test.session || event.type !== 'turn/end') return
+      const nodes = session.surface.nodes
+      session.append('developer/message', { turn: 1, step: 1, message: createDeveloperMessage({ content: [{ type: 'text', text: 'native replacement' }], source: { kind: 'mayfly-retraction' } }) }, {
+        surfaceOp: { op: 'replace', startSeq: nodes[0]!, endSeq: nodes.at(-1)! }, sourceEventSeqs: [...nodes],
+      })
+    })
+    const end = test.session.append('turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } })
+    test.ctx.emit('session/event', test.session, end)
+    await Promise.resolve()
+    expect(test.session.snapshotEvents().filter(event => event.type === 'developer/message')).toHaveLength(1)
+    expect(test.session.deriveMessages()[0]!.content).toEqual([{ type: 'text', text: 'native replacement' }])
+    expect(test.errors).toEqual([])
+    await test.ctx.fiber.dispose()
+  })
+
   it('cancels a text/reasoning-only turn and durably removes it from model history', async () => {
     const test = rig()
     const lifecycle: string[] = []

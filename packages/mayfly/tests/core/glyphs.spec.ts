@@ -1,7 +1,7 @@
 /** The glyph vocabulary's ASCII fallback: one cell per glyph, painted rows, and the locale default. */
 import { describe, expect, it } from 'vitest'
-import { ASCII_GLYPHS, ASCII_SPINNER_FRAMES, asciiText, glyphRows, localeGlyphMode } from '../../src/core/text/glyphs.ts'
-import { visibleWidth } from '../../src/core/text/width.ts'
+import { ASCII_GLYPHS, ASCII_SPINNER_FRAMES, asciiText, glyphRows, localeGlyphMode } from '../../src/core/glyphs.ts'
+import { visibleWidth } from '../../src/core/width.ts'
 
 describe('ASCII glyph fallback', () => {
   it('replaces every table glyph with exactly one printable ASCII cell', () => {

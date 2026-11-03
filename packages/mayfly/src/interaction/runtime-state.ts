@@ -14,7 +14,7 @@ import { DraftStash } from './draft-stash.ts'
 import { SessionlessCommandRegistry } from './sessionless-commands.ts'
 import type { ModelsDevIndex } from './models-dev.ts'
 import type { PromptWaits } from './prompt-wait.ts'
-import type { MayflySettings } from './settings.ts'
+import type { MayflySettings } from '../frontend/settings.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { mayflyInteractionState: InteractionStateService }

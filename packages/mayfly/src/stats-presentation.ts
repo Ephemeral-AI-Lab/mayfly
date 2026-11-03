@@ -1,0 +1,10 @@
+/** Pure rc.2 statistics presentation for independent frontends. @module */
+export { StatsPanel } from './components/stats-panel.ts'
+export type * from './components/stats-panel.ts'
+export { buildStatsFacts, statsSummary, STATS_TABS } from './interaction/stats-facts.ts'
+export type { StatsInput, StatsTab, IndexState } from './interaction/stats-facts.ts'
+export * from './interaction/stats-account-model.ts'
+export { aggregate, RANGES } from './interaction/stats-index/stats.ts'
+export type { StatsRange } from './interaction/stats-index/stats.ts'
+export type { SessionDigest, ModelDay } from './interaction/stats-index/digest.ts'
+export type { ModelTokens, PriceSources, UserPrice } from './interaction/pricing.ts'

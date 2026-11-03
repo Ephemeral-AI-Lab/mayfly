@@ -15,7 +15,7 @@ vi.mock('beautiful-mermaid', async importOriginal => {
   }
 })
 
-import { renderMermaidRows } from '../../src/core/content/rich-document.ts'
+import { renderMermaidRows } from '../../src/core/rich-document.ts'
 
 describe('renderMermaidRows vendor output limits', () => {
   it('normalizes trailing rows and rejects empty, tall, and cell-heavy output', () => {

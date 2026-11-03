@@ -8,11 +8,12 @@ import { ui, type MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as frontend from '../../src/frontend/index.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
-import { visibleWidth } from '../../src/core/text/width.ts'
-import { NodeSlotHost, type MayflyNodeSlotCompiler, type MayflyNodeSlotOptions } from '../../src/core/hosts/node-slot.ts'
+import { visibleWidth } from '../../src/core/width.ts'
+import { NodeSlotHost, type MayflyNodeSlotCompiler, type MayflyNodeSlotOptions } from '../../src/core/node-slot.ts'
 import type { MayflyComponent, MayflyFocusable, MayflyKeymap, MayflyScreenSlot } from '../../src/core/types.ts'
-import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
-import type { MayflyUiImageSource } from '../../src/core/ui/paint/ui-images.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
+import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
 import {
   COMPONENTS,
   DIM_COLORS,
@@ -465,7 +466,7 @@ function bareHost(interaction?: UiInteractionService, extra: Partial<MayflyNodeS
   const service = interaction ?? new UiInteractionService(root)
   let requests = 0
   const compiler: MayflyNodeSlotCompiler & { readonly requests: () => number } = {
-    interaction: service, components: COMPONENTS, colors: PLAIN_COLORS, keymap: { matches: () => false } as unknown as MayflyKeymap, bounded: true,
+    interaction: service, components: COMPONENTS, colors: PLAIN_COLORS, keymap: { matches: () => false } as unknown as MayflyKeymap, mode: 'alternate',
     requestRender: () => { requests += 1 }, requests: () => requests, ...extra,
   }
   const prompts: number[] = []
@@ -549,6 +550,17 @@ describe('node slot lease: routes and re-leases', () => {
     expect(heard).toEqual(['dismiss'])
   })
 
+  it('counts the work of a slot through the compiler\'s counters', async () => {
+    const counters = createWorkCounters()
+    const bare = bareHost(undefined, { counters })
+    const { lease, component } = bare.lease('transcript.conversation', { region: 'content' })
+    lease.set(streamList(streamItems(3)))
+    bare.host.bind(bare.compiler)
+    expect(component.render(80).join('')).toContain('Item number 0')
+    expect(counters.nodesValidated).toBeGreaterThan(0)
+    expect(counters.unitsCompiled).toBeGreaterThan(0)
+  })
+
   it('shows a compile failure as an error row instead of throwing', () => {
     const bare = bareHost(undefined, { components: new Proxy(COMPONENTS, { get: () => { throw new Error('components unavailable') } }) })
     const { lease, component } = bare.lease('transcript.conversation', { region: 'content' })
@@ -560,6 +572,37 @@ describe('node slot lease: routes and re-leases', () => {
 
 describe('node slot lease: tracking, marking, and ended leases', () => {
   const dismiss: MayflyUiEvent = { kind: 'dismiss', pagePath: [] }
+
+  it('reports the painted cursor in content coordinates only while the focused lease is mounted', () => {
+    let start: number | undefined = 5
+    const bare = bareHost(undefined, {}, () => start)
+    const { lease, component } = bare.lease('transcript.conversation', { region: 'content' })
+    expect(lease.cursorRow()).toBeUndefined()
+    lease.set(streamList(streamItems(5)))
+    const unbind = bare.host.bind(bare.compiler)
+    component.render(80)
+    expect(lease.cursorRow()).toBeUndefined()
+    component.focused = true
+    lease.focusRow('stream', 'item-2')
+    component.render(80)
+    expect(lease.cursor('stream')).toBe('item-2')
+    expect(lease.cursorRow()).toBe(7)
+    start = undefined
+    expect(lease.cursorRow()).toBeUndefined()
+    start = 5
+    const dock = bare.lease('editor.prompt', { region: 'dock' })
+    dock.lease.set(streamList(streamItems(3)))
+    dock.component.focused = true
+    dock.component.render(80)
+    expect(dock.lease.cursorRow()).toBeUndefined()
+    unbind()
+    expect(lease.cursorRow()).toBeUndefined()
+    bare.host.bind(bare.compiler)
+    component.render(80)
+    expect(lease.cursorRow()).toBe(7)
+    lease.dispose()
+    expect(lease.cursorRow()).toBeUndefined()
+  })
 
   it('follows a row into the scroll content and reads its line', () => {
     const bare = bareHost(undefined, {}, () => 5)

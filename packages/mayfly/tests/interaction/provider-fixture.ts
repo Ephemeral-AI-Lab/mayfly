@@ -7,8 +7,7 @@ import { CredentialProvider, type CredentialRef, type CredentialKey, type Creden
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
-import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
-import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
+import * as nativeFrontend from '../../src/interaction/native-frontend.ts'
 
 export class MemoryCredentials extends CredentialProvider {
   readonly values = new Map<string, string>([['CUSTOM_KEY', 'stored-secret']])
@@ -45,9 +44,6 @@ export class ProviderCommands extends Service {
 }
 
 export async function providerFixture(ctx: Context, profiles: Record<string, unknown> = {}, llm?: unknown, options?: { readonly registerNamespace?: boolean, readonly onboarding?: boolean }) {
-  // The frontend tree owns this parent service in production; a standalone
-  // fixture mounts it unless the spec already did (onboarding).
-  if (ctx.get('mayflyInteractionState') === undefined) new InteractionStateService(ctx, DEFAULT_SETTINGS)
   await ctx.plugin(MemorySettings)
   await ctx.plugin(MemoryCredentials)
   await ctx.plugin(ProviderCommands)
@@ -74,7 +70,7 @@ export async function providerFixture(ctx: Context, profiles: Record<string, unk
     for (const listener of [...listeners]) listener()
     listeners.clear()
   }
-  ctx.provide('mayflySessionStart', {
+  const releaseStartup = ctx.provide('mayflySessionStart', {
     onBooted: (listener: () => void) => {
       if (booted) { listener(); return () => {} }
       listeners.add(listener)
@@ -83,6 +79,12 @@ export async function providerFixture(ctx: Context, profiles: Record<string, unk
     ensure: async () => null,
     markBooted,
   } as never)
-  const front = await ctx.plugin(frontend)
-  return { ctx, front, namespace, settings: ctx.settings as unknown as MemorySettings, credentials: ctx.credentials as MemoryCredentials, commands: ctx.commands as unknown as ProviderCommands, markBooted }
+  const front = await ctx.plugin({
+    name: 'reference-frontend',
+    apply(owner: Context) {
+      frontend.apply(owner)
+      owner.plugin(nativeFrontend)
+    },
+  })
+  return { ctx, front, namespace, settings: ctx.settings as unknown as MemorySettings, credentials: ctx.credentials as MemoryCredentials, commands: ctx.commands as unknown as ProviderCommands, markBooted, releaseStartup }
 }

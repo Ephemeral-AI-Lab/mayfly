@@ -75,6 +75,18 @@ function mountNetwork(urls: Readonly<Record<string, string | Error>>): { home: s
 }
 
 describe('parseMarketIndex', () => {
+  it('admits a TUI-only surface and rejects an entry with no surface', () => {
+    const document = (surfaces: object) => JSON.stringify({ schemaVersion: 1, entries: [{ ...entry('terminal'), surfaces }] })
+    expect(parseMarketIndex(document({ tui: { contributions: [] } })).entries[0]!.surfaces.tui).toEqual({ contributions: [] })
+    expect(() => parseMarketIndex(document({}))).toThrow('at least one surface is required')
+  })
+
+  it('admits a GitHub-only install row and rejects a row without any package source', () => {
+    const document = (row: object) => JSON.stringify({ schemaVersion: 1, entries: [{ ...entry('terminal'), install: { rows: [{ name: 'dsh-terminal', ...row }] } }] })
+    expect(parseMarketIndex(document({ github: { repo: 'owner/repo', ref: 'main' } })).entries[0]!.install.rows[0]!.github).toMatchObject({ repo: 'owner/repo' })
+    expect(() => parseMarketIndex(document({}))).toThrow('install row needs an npm or github source')
+  })
+
   it('parses a valid document', () => {
     const index = parseMarketIndex(indexJson())
     expect(index.schemaVersion).toBe(1)

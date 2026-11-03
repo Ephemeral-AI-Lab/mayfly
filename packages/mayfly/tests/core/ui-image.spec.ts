@@ -3,10 +3,10 @@ import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { FakeMayflyComponents } from '../interaction/fakes.ts'
-import { UiImagePainter } from '../../src/core/ui/paint/ui-image.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
-import { documentBlocks, documentBlockText } from '../../src/core/ui/state/ui-interaction-document.ts'
-import { MAYFLY_UI_IMAGE_CACHE, MayflyUiImagesService, type MayflyUiImageBytes, type MayflyUiImageLoader } from '../../src/core/ui/paint/ui-images.ts'
+import { UiImagePainter } from '../../src/core/ui-image.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
+import { documentBlocks, documentBlockText } from '../../src/core/ui-interaction-document.ts'
+import { MAYFLY_UI_IMAGE_CACHE, MayflyUiImagesService, type MayflyUiImageBytes, type MayflyUiImageLoader } from '../../src/core/ui-images.ts'
 import {
   MAYFLY_UI_MAX_ATTACHMENT_ID,
   MAYFLY_UI_MAX_IMAGES,
@@ -15,8 +15,9 @@ import {
   validateMayflyStatusNode,
   validateMayflyUiNode,
   createAdmissionCache,
-} from '../../src/core/ui/admit/ui-validator.ts'
+} from '../../src/core/ui-validator.ts'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
+import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
 import { flush, identity } from '../helpers.ts'
 
 const colors = new Proxy({ logoGradient: [identity] }, { get: (target, key) => key === 'logoGradient' ? target.logoGradient : (value: string) => `«${String(key)}:${value}»` }) as unknown as MayflySemanticColors
@@ -74,11 +75,11 @@ describe('image admission', () => {
   it('replays an unchanged image subtree\'s share of the quota from the admission memo', () => {
     const cache = createAdmissionCache()
     const shared = ui.stack.column(Array.from({ length: 5 }, (_, index) => ui.image({ attachmentId: `a${String(index)}`, alt: 'x' })))
-    expect(validateMayflyUiNode(ui.stack.column([shared]), cache)).toMatchObject({ ok: true })
+    expect(validateMayflyUiNode(ui.stack.column([shared]), undefined, cache)).toMatchObject({ ok: true })
     // The memoized subtree still counts its five images against the tree.
     const twice = ui.stack.column([shared, ui.stack.column([ui.image({ attachmentId: 'b0', alt: 'x' }), ui.image({ attachmentId: 'b1', alt: 'x' }), ui.image({ attachmentId: 'b2', alt: 'x' }), ui.image({ attachmentId: 'b3', alt: 'x' })])])
-    expect(validateMayflyUiNode(twice, cache)).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
-    expect(validateMayflyUiNode(ui.stack.column([shared]), cache)).toMatchObject({ ok: true })
+    expect(validateMayflyUiNode(twice, undefined, cache)).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
+    expect(validateMayflyUiNode(ui.stack.column([shared]), undefined, cache)).toMatchObject({ ok: true })
   })
 
   it('refuses images in status rows and editor shells, and admits them in a responsive branch', () => {
@@ -288,14 +289,14 @@ describe('compiled image nodes', () => {
     components: Object.assign(new FakeMayflyComponents(), { imageProtocolActive: true }),
     colors,
     getViewport: () => ({ columns: 80, rows: 24 }),
-    bounded: true,
+    screenMode: 'alternate' as const,
     emit: () => {},
     surfaceRuntime: runtime,
   })
 
   it('paints the alt in a standalone compile, which has no byte source', () => {
     const result = compileMayflyUiNode(ui.stack.column([ui.text('above'), ui.image({ attachmentId: 'a', alt: '[Image #1]' })]), {
-      components: new FakeMayflyComponents(), colors, getViewport: () => ({ columns: 80, rows: 24 }), bounded: true, emit: () => {},
+      components: new FakeMayflyComponents(), colors, getViewport: () => ({ columns: 80, rows: 24 }), screenMode: 'alternate', emit: () => {},
     })
     expect(result.ok && result.value.component.render(40)).toEqual(['«text:above»', '«textMuted:[Image #1]»'])
   })
@@ -305,7 +306,8 @@ describe('compiled image nodes', () => {
     images.provide(async () => PHOTO)
     const repaint = vi.fn()
     const runtime = new MayflyUiSurfaceRuntime(undefined, repaint, undefined, images)
-    const result = compileMayflyUiSurfaceNode(ui.image({ attachmentId: 'a', alt: '[Image #1]' }), base(runtime))
+    const counters = createWorkCounters()
+    const result = compileMayflyUiSurfaceNode(ui.image({ attachmentId: 'a', alt: '[Image #1]' }), { ...base(runtime), counters })
     if (!result.ok) throw new Error(result.message)
     expect(result.value.component.render(40)).toEqual(['«primary:⣾» «text:Loading image…»'])
     await flush()
@@ -313,6 +315,7 @@ describe('compiled image nodes', () => {
     // The renderer's repaint invalidates the surface, as a pane's does, before it paints again.
     result.value.component.invalidate()
     expect(result.value.component.render(40)).toEqual(['[image: image/png]'])
+    expect(counters.rowsPainted).toBe(2)
     result.value.component.invalidate()
     runtime.dispose()
     runtime.repaint()

@@ -1,14 +1,87 @@
 /**
- * The chrome helper layer: the S13 gutter (`padColumns`) and the S14
- * completion polish (`highlightLeadingSlashToken` / `injectGhostHint`) over
- * their branch matrices: gutter indentation, token bounds, and ghost-room
- * accounting.
+ * The chrome helper layer: the S13 panel chrome (`topRule` / `padColumns`)
+ * and the S14 completion polish (`highlightLeadingSlashToken` /
+ * `injectGhostHint`) over their branch matrices: titles, hints, footers,
+ * paints, gutter indentation, token bounds, and ghost-room accounting.
  */
 
 import { visibleWidth } from '@earendil-works/pi-tui'
 import { describe, expect, it } from 'vitest'
-import { highlightLeadingSlashToken, injectGhostHint, padColumns } from '../../src/core/text/chrome.ts'
+import {
+  highlightLeadingSlashToken,
+  injectGhostHint,
+  padColumns,
+  topRule,
+} from '../../src/core/chrome.ts'
 import { identity } from '../helpers.ts'
+
+describe('topRule', () => {
+  it('renders the kimi in-border title with a joiner and dash fill', () => {
+    // `╭ BTW ─ Esc close · ↑↓ scroll ╮` — the title, the `─ ` joiner, and
+    // the hint each paint separately, with the fill taking the remainder.
+    expect(topRule(32, { title: ' BTW ', hint: 'Esc close · ↑↓ scroll ' })).toBe(
+      '╭ BTW ─ Esc close · ↑↓ scroll ─╮',
+    )
+  })
+
+  it('omits the joiner when only one of title and hint is present', () => {
+    expect(topRule(10, { title: ' Todo ' })).toBe('╭ Todo ──╮')
+    expect(topRule(10, { hint: 'ctrl+t ' })).toBe('╭ctrl+t ─╮')
+  })
+
+  it('renders a plain rule when neither title nor hint is present', () => {
+    expect(topRule(6)).toBe('╭' + '────' + '╮')
+  })
+
+  it('paints the title, hint, and chrome separately', () => {
+    const row = topRule(30, {
+      title: ' BTW ',
+      titlePaint: text => `<${text}>`,
+      hint: 'Esc close ',
+      hintPaint: text => `~${text}~`,
+      paint: text => `%${text}%`,
+    })
+    expect(row).toBe('%╭%< BTW >%─ %~Esc close ~' + '%─────%' + '%╮%')
+  })
+
+  it('defaults the paints to identity', () => {
+    // `' t ' + '─ ' + ' h '` joins with a double space in the middle — the
+    // literal `╭ t ─  h ──╮` shape is the joiner plus the hint's lead space.
+    expect(topRule(12, { title: ' t ', hint: ' h ' })).toBe('╭ t ─  h ──╮')
+  })
+
+  it('clips an over-long composite to the inner width, ANSI-safe', () => {
+    const row = topRule(10, {
+      title: 'ab'.repeat(8),
+      titlePaint: text => `\x1b[1m${text}\x1b[22m`,
+      hint: 'cd'.repeat(8),
+    })
+    // The composite is clipped with no ellipsis; the visible width never
+    // exceeds the inner width, no SGR is cut mid-sequence, and the clip
+    // appends a closing reset (pi-tui behavior) so the fill stays clean.
+    expect(visibleWidth(row)).toBe(10)
+    expect(row).toContain('\x1b[0m')
+    expect(row).not.toContain('\x1b[22mcd')
+  })
+
+  it('truncates an overflowing composite with one ellipsis and no dash fill left', () => {
+    // ' BTW ─ Esc close · ↑↓ scroll ' is 29 wide at inner width 28: the tail
+    // makes room for the single `…` and the reset is appended.
+    expect(topRule(30, { title: ' BTW ', hint: 'Esc close · ↑↓ scroll ' })).toBe(
+      '╭ BTW ─ Esc close · ↑↓ scrol\u001b[0m…\u001b[0m╮',
+    )
+  })
+
+  it('exactly fits a composite title with no dash fill', () => {
+    expect(topRule(10, { title: ' t ', hint: ' h ' })).toBe('╭ t ─  h ╮')
+  })
+
+  it('keeps a degenerate width at one inner column', () => {
+    // width 0-1: the inner width clamps to one; the corners still render.
+    expect(visibleWidth(topRule(0, { title: 'x' }))).toBe(3)
+    expect(visibleWidth(topRule(1))).toBe(3)
+  })
+})
 
 describe('padColumns', () => {
   it('prefixes every row with the gutter', () => {

@@ -1,0 +1,52 @@
+/** Shared first-run copy for both native and Remote presentation. @module @ephemeral-ai/mayfly/components/onboarding-labels */
+import type { OnboardingLabels } from './onboarding-wizard.ts'
+
+export function onboardingLabels(t: (key: string, values?: Record<string, string | number>) => string, callbackPort?: number): OnboardingLabels {
+  return {
+      title: t('Connect to DeepSeek'),
+      steps: { preferences: t('Preferences'), connect: t('Connect'), ready: t('Welcome') },
+      preferencesIntro: t('Set up how Mayfly looks and what it may do. You can change all of it later in /settings.'),
+      language: t('Language'),
+      permissions: t('Permissions'),
+      theme: t('Theme'),
+      startup: t('On start'),
+      connectIntro: t('Mayfly needs a DeepSeek connection to start.'),
+      signIn: {
+        starting: t('Getting your sign-in link…'),
+        opening: t('Opening your browser…'),
+        waiting: t('Waiting for you to sign in in your browser'),
+        noBrowser: t('Couldn’t open a browser. Copy the link below and open it yourself, then paste the address it ends on (the page may fail to load).'),
+        otherMachine: t('Open the link below in a browser on another machine, then paste the address it ends on (the page may fail to load).'),
+        finishing: t('Signing you in…'),
+        connected: t('Signed in'),
+        expires: (time: string) => t('expires in {time}', { time }),
+        callbackLabel: t('Callback URL'),
+        callbackPlaceholder: `http://localhost:${String(callbackPort ?? '')}/oauth/callback?…`,
+        retry: t('Try again'),
+        copyLink: t('Copy link'),
+        newLink: t('New link'),
+        otherMachineKey: t('Other machine'),
+        deliver: t('Deliver callback'),
+      },
+      account: t('Sign in with a DeepSeek account'),
+      accountDetail: t('browser sign-in, no API key to manage'),
+      key: t('Enter a DeepSeek API key'),
+      keyDetail: t('paste a key from platform.deepseek.com'),
+      keyNote: t('Your key is saved as a credential, not as a setting.'),
+      keyField: 'DEEPSEEK_API_KEY',
+      keyPlaceholder: t('paste your key'),
+      skip: t('Skip for now'),
+      skipDetail: t('connect later with /provider'),
+      recommended: t('recommended'),
+      readyIntro: t('Welcome to Mayfly — you are all set.'),
+      tryHeading: t('Things to try'),
+      tryItems: [
+        { keys: '/', text: t('run a command, such as /model or /sessions') },
+        { keys: '@', text: t('mention a file to attach it to your message') },
+        { keys: '#', text: t('select a skill (a saved playbook) to guide the agent') },
+        { keys: '!', text: t('run a shell command and share its output') },
+        { keys: 'Shift+Tab', text: t('let the agent plan first; you approve before it acts') },
+      ],
+      start: t('Start chatting'),
+  }
+}

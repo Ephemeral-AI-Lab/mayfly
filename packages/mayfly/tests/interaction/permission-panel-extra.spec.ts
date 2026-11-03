@@ -13,7 +13,7 @@ import {
   registerPermissionsCommand,
   type PermissionPresetsService,
 } from '../../src/interaction/permission-panel.ts'
-import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import { fakeMayflyContext } from './fakes.ts'
 
 const TABLE: readonly PresetSpec[] = [

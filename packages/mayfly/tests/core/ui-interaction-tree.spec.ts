@@ -3,8 +3,8 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { prepareUiForms, uiControlKey, uiDeclarations, visitUiControls } from '../../src/core/ui/state/ui-interaction-tree.ts'
-import { MAYFLY_UI_MAX_COLLECTION, MAYFLY_UI_MAX_DEPTH, materializeDeferredUiNode, validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
+import { prepareUiForms, uiControlKey, uiDeclarations, visitUiControls } from '../../src/core/ui-interaction-tree.ts'
+import { MAYFLY_UI_MAX_COLLECTION, MAYFLY_UI_MAX_DEPTH, materializeDeferredUiNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 
 describe('UI control traversal', () => {
   it('uses structured page addresses and visits all nested passive containers', () => {
@@ -65,8 +65,22 @@ describe('raw declarations', () => {
     expect(controls.find(control => control.address.controlId === 'settings')).toMatchObject({
       kind: 'form', address: { pagePath: [{ controlId: 'pages', itemId: 'one' }] }, fields: new Map([['name', 'input'], ['enabled', 'toggle']]),
     })
-    expect(controls.map(control => control.address.controlId)).toEqual(expect.arrayContaining(['surface', 'scroll', 'list', 'empty', 'actions', 'footer']))
+    expect(controls.map(control => control.address.controlId)).toEqual(['settings', 'scroll', 'list', 'footer'])
     expect(uiDeclarations({ kind: 'stack', children: [{ node: { kind: 'list', id: 'plain-list' } }, { node: { kind: 'empty', id: 'plain-empty' } }] }).complete).toBe(true)
+  })
+
+  it('keeps every draft kind and ignores same-named group and content metadata', () => {
+    const kinds = ['form', 'list', 'prompt', 'slider', 'tabs', 'scroll', 'review']
+    const source = {
+      kind: 'stack', children: kinds.flatMap(kind => [
+        { node: { kind, id: kind, ...kind === 'scroll' ? { child: { kind: 'text' } } : {} } },
+        { node: { kind: 'actions', id: kind } },
+        { node: { kind: 'text', id: kind } },
+      ]),
+    }
+    const result = uiDeclarations(source)
+    expect(result.complete).toBe(true)
+    expect([...result.controls.values()].map(control => [control.kind, control.address.controlId])).toEqual(kinds.map(kind => [kind, kind]))
   })
 
   it.each([

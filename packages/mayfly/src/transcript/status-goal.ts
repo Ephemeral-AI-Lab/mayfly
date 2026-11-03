@@ -12,11 +12,11 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { GoalProjection, GoalView } from '@deepseek-ai/dsh-goal'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { ui, type MayflyInlineSpan, type MayflyPaneSummary, type MayflyTone, type MayflyActionItem, type MayflyUiActionEvent, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyTranslate } from '../frontend/locale.ts'
+import type { MayflyUiActionEvent, MayflyUiEventContext, MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
+import type { TickSource } from './tick.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
-import { itemSummary, viewPanel } from './view-items.ts'
-import { formatError } from '../internal/format.ts'
+import { goalPanel, goalSummary, GOAL_DONE_LINGER_MS, type GoalItemState } from './goal-model.ts'
+export { goalPanel, goalSummary, GOAL_DONE_LINGER_MS, type GoalItemState } from './goal-model.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-goal'
@@ -26,29 +26,6 @@ export const inject = ['mayflyPanes', 'mayflyCurrentAgent', 'mayflyScreen', 'may
 
 /** The goal view's place in the status row: after the model, the chips, the directory, git, agents, and jobs; before todo. */
 const VIEW_PRIORITY = 13
-
-/** How long the finished goal's item stays before it leaves. */
-export const GOAL_DONE_LINGER_MS = 5000
-
-/** The mark and tone of each state the item shows. */
-const MARK = {
-  armed: { text: '●', tone: 'accent' },
-  disarmed: { text: '○', tone: 'muted' },
-  paused: { text: '⏸', tone: 'muted' },
-  blocked: { text: '✕', tone: 'danger' },
-} as const satisfies Record<string, { readonly text: string, readonly tone: MayflyTone }>
-
-type Shown = GoalView & { readonly phase: 'active' | 'paused' | 'blocked' }
-
-/** A goal the item shows: one that is neither absent nor complete. */
-function shown(goal: GoalView | undefined): Shown | undefined {
-  return goal === undefined || goal.phase === 'complete' ? undefined : goal as Shown
-}
-
-function markOf(goal: Shown): MayflyInlineSpan {
-  const mark = MARK[goal.phase === 'active' ? goal.activation === 'armed' ? 'armed' : 'disarmed' : goal.phase]
-  return { text: mark.text, tone: mark.tone }
-}
 
 /**
  * Read one exact Agent's current goal: the durable value from the native
@@ -66,7 +43,7 @@ function readGoal(ctx: Context, agent: Agent): GoalView | undefined {
   try {
     activation = ctx.goals.get(agent)?.activation ?? 'disarmed'
   } catch (error) {
-    ctx.logger.warn(`could not read current goal activation: ${formatError(error)}`)
+    ctx.logger.warn(`could not read current goal activation: ${error instanceof Error ? error.message : String(error)}`)
   }
   return {
     ...projected.goal,
@@ -77,88 +54,18 @@ function readGoal(ctx: Context, agent: Agent): GoalView | undefined {
   }
 }
 
-/** What the item renders from. */
-export interface GoalItemState {
-  /** The current goal, if any. */
-  readonly goal: GoalView | undefined
-  /** The goal that just completed: its rounds over their cap; it leaves the row after {@link GOAL_DONE_LINGER_MS}. */
-  readonly done?: { readonly rounds: number, readonly total: number }
-}
-
-/**
- * The item in the row: its mark, `goal`, and the rounds over their cap: `● goal 2/8`. Just completed it is `✓ goal 2/8`.
- * The objective and the state in words are the panel's.
- * @param state - the goal.
- * @param t - translator for the label.
- * @returns the summary, or `null` for no goal.
- */
-export function goalSummary(state: GoalItemState, t: MayflyTranslate): MayflyPaneSummary | null {
-  if (state.done !== undefined) {
-    const { rounds, total } = state.done
-    return { node: itemSummary({ text: '✓', tone: 'success' }, t('goal'), rounds, total) }
-  }
-  const current = shown(state.goal)
-  if (current === undefined) return null
-  return { node: itemSummary(markOf(current), t('goal'), current.roundsStarted, current.maxGoalRounds) }
-}
-
-/** The id of an action, fenced to the goal revision the panel was built for. */
-const actionId = (verb: GoalVerb, revision: number): string => `goal-${verb}:${String(revision)}`
-
-type GoalVerb = 'resume' | 'pause' | 'edit' | 'clear'
-
-/**
- * The `/goal` subcommands as single letters, none drawn as a button: `r` resume (a goal that waits: paused, blocked, or
- * active but disarmed, while rounds remain), `p` pause (an armed one), `e` edit (the objective, in the prompt), and `c`
- * clear (behind the shared Yes/No). The hint row names the ones that apply.
- * @param goal - the goal the panel shows.
- * @param t - translator for the words.
- * @returns the hidden `actions` node that carries the keys.
- */
-function goalKeys(goal: Shown, t: MayflyTranslate): MayflyUiNode {
-  const waiting = goal.phase !== 'active' || goal.activation === 'disarmed'
-  const resumable = waiting && goal.roundsStarted < goal.maxGoalRounds
-  const keyed = (verb: GoalVerb, key: string, word: string): MayflyActionItem => ({ id: actionId(verb, goal.revision), label: word, hidden: true, key, hintLabel: word })
-  return ui.actions({
-    id: 'goal-actions',
-    items: [
-      ...resumable ? [keyed('resume', 'r', t('resume'))] : [],
-      ...!waiting ? [keyed('pause', 'p', t('pause'))] : [],
-      keyed('edit', 'e', t('edit')),
-      { ...keyed('clear', 'c', t('clear')), confirm: { title: t('Clear the goal?'), detail: t('Its history stays in the session log.'), confirmLabel: t('Clear'), tone: 'danger' } },
-    ],
-  })
-}
-
-/**
- * The panel: the whole objective and a blocked goal's code and reason, in the fixed-length scroll every item shares, with
- * no heading, count, or time, and the goal's keys (`r`, `p`, `e`, `c`) beside the scroll. There is no
- * panel once the goal has completed.
- * @param state - the goal.
- * @param t - translator for the words.
- * @returns the panel node, or `null` for no goal or a finished one.
- */
-export function goalPanel(state: GoalItemState, t: MayflyTranslate): MayflyUiNode | null {
-  const current = shown(state.goal)
-  if (current === undefined) return null
-  return viewPanel('goal-panel', [
-    ui.richText([{ text: `  ${current.objective}` }]),
-    ...current.phase === 'blocked' && current.blockedReason !== undefined
-      ? [ui.richText([{ text: `  ${t('blocked · {code}', { code: current.blockedReason.code })}: `, tone: 'danger' }, { text: current.blockedReason.message, tone: 'muted' }])]
-      : [],
-  ], goalKeys(current, t))
-}
-
 /** Register the Goal item under the calling Fiber. */
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
-  const tick = ctx.mayflyTick
+  const tick = ctx.get('mayflyTick') as TickSource | undefined
+  let unloaded = false
   /**
    * A button of the panel: the `/goal` subcommand of the same name on the exact current Agent and goal. An action built for
    * an older revision (the goal changed under the open panel) is refused, never applied to the newer goal.
    */
-  const act = (event: MayflyUiActionEvent): MayflyUiActionReply => {
+  const act = (event: MayflyUiActionEvent, context: MayflyUiEventContext): MayflyUiActionReply => {
     if (event.kind !== 'activate') return { kind: 'completed' }
+    if (unloaded || context.signal.aborted) return { kind: 'cancelled' }
     const [verb, revision] = event.actionId.replace(/^goal-/u, '').split(':')
     const agent = ctx.mayflyCurrentAgent.current()
     try {
@@ -176,7 +83,7 @@ export function apply(ctx: Context): void {
       } else return { kind: 'failed', message: t('Unknown goal action') }
       return { kind: 'completed' }
     } catch (error) {
-      return { kind: 'failed', message: formatError(error) }
+      return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
     }
   }
   const pane = ctx.mayflyPanes.register({ id: 'mayfly.view.goal', placement: 'views', priority: VIEW_PRIORITY, onEvent: { action: act } }, null)
@@ -197,6 +104,7 @@ export function apply(ctx: Context): void {
     })
   }
   const publish = (): void => {
+    if (unloaded) return
     syncTick()
     const state: GoalItemState = { goal, ...done === undefined ? {} : { done: { rounds: done.rounds, total: done.total } } }
     const summary = goalSummary(state, t)
@@ -208,12 +116,13 @@ export function apply(ctx: Context): void {
     pane.setSummary(summary)
   }
   const derive = (): void => {
+    if (unloaded) return
     const agent = ctx.mayflyCurrentAgent.current()
     let next: GoalView | undefined
     try {
       next = agent === null ? undefined : readGoal(ctx, agent)
     } catch (error) {
-      ctx.logger.warn(`could not read current goal for the goal view: ${formatError(error)}`)
+      ctx.logger.warn(`could not read current goal for the goal view: ${error instanceof Error ? error.message : String(error)}`)
     }
     now = Date.now()
     if (next?.phase === 'complete') {
@@ -229,7 +138,7 @@ export function apply(ctx: Context): void {
   // The projection feed is the durable goal's only source; activation is a
   // process-local edge with no durable projection value.
   const offProjection = ctx.sessionProjections.onChanged((session, key) => {
-    if (key !== 'goal' || session !== ctx.mayflyCurrentAgent.current()?.session) return
+    if (unloaded || key !== 'goal' || session !== ctx.mayflyCurrentAgent.current()?.session) return
     derive()
   })
   const offLocale = observeTranscriptLocale(ctx, () => { published = ''; derive() })
@@ -242,6 +151,7 @@ export function apply(ctx: Context): void {
   })
   derive()
   ctx.effect(() => () => {
+    unloaded = true
     offAgent()
     offProjection()
     offActivation()

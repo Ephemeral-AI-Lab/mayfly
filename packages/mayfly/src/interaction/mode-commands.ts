@@ -14,13 +14,16 @@ import type { PermissionPresetsService } from './permission-panel.ts'
 import type { InteractionFeedbackReporter } from './notifications.ts'
 import { getSharedEditor } from './editor-instance.ts'
 import { interactionTranslator } from './locale.ts'
-import { formatError } from '../internal/format.ts'
 import { registerSessionlessCommand } from './sessionless-commands.ts'
 
 /** Independent native state for plan switching and status display. */
 interface MayflySessionModeSnapshot {
   readonly plan: { readonly active: boolean, readonly pending: boolean } | undefined
   readonly yolo: boolean
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /** Resolve Mayfly's labels from the native plan and permission projections. */
@@ -86,7 +89,7 @@ export async function cycleMode(ctx: Context, reporter?: InteractionFeedbackRepo
     }
     showResult(report, execution.result)
   } catch (error) {
-    ctx.logger.warn(`mode cycle dispatch failed: ${formatError(error)}`)
+    ctx.logger.warn(`mode cycle dispatch failed: ${describe(error)}`)
   }
 }
 

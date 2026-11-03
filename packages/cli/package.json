@@ -1,7 +1,7 @@
 {
   "name": "@ephemeral-ai/mayfly-cli",
-  "description": "The Mayfly launcher with a prepacked, pinned dsh runtime",
-  "version": "0.1.4-rc.1",
+  "description": "The independent Mayfly terminal UI launcher",
+  "version": "0.1.4-rc.2",
   "publishConfig": {
     "access": "public"
   },
@@ -14,7 +14,6 @@
   },
   "files": [
     "lib/bin.js",
-    "runtime-*.tgz",
     "README.md",
     "README.zh.md"
   ],
@@ -29,12 +28,10 @@
     "directory": "packages/cli"
   },
   "engines": {
-    "node": "^22.19.0 || >=24.0.0"
+    "node": ">=24.9.0"
   },
-  "devDependencies": {
-    "@types/proper-lockfile": "4.1.4",
-    "proper-lockfile": "4.1.2",
-    "tar": "7.5.22"
+  "dependencies": {
+    "@ephemeral-ai/mayfly-remote": "0.1.4-rc.2"
   },
   "keywords": [
     "dsh",

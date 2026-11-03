@@ -6,14 +6,14 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { visibleWidth } from '../../src/core/text/width.ts'
+import { visibleWidth } from '../../src/core/width.ts'
 import {
   clampFrame,
   clampFrameFrom,
   createFileOverflowSink,
   defaultOverflowDirectory,
   type FrameOverflowEntry,
-} from '../../src/core/text/frame-clamp.ts'
+} from '../../src/core/frame-clamp.ts'
 import { mkdtempTracked, registerTempDirCleanup } from './temp-dir.ts'
 
 registerTempDirCleanup()

@@ -8,20 +8,19 @@ import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-app
 import { vi, type Mock } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as frontend from '../../src/frontend/index.ts'
+import * as nativeFrontend from '../../src/interaction/native-frontend.ts'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
-import type { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
-import type { MayflyComponents } from '../../src/core/types.ts'
-import { visibleWidth, truncateToWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
+import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import type { MayflyComponents, MayflyMarkdownOptions } from '../../src/core/types.ts'
+import { visibleWidth, truncateToWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from '../core/fake-editor.ts'
-import { FakeMayflyComponents, FakeScreen, FakeTheme } from './fakes.ts'
-import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
-import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
+import { FakeMayflyComponents, FakeMayflyMarkdown, FakeScreen, FakeTheme } from './fakes.ts'
 import { plainColors } from '../helpers.ts'
 
 const colors = plainColors()
-const components = { createEditor: createFakeEditor, visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as unknown as MayflyComponents
+const components = { createEditor: createFakeEditor, createMarkdown: (options: MayflyMarkdownOptions) => new FakeMayflyMarkdown(options), visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as unknown as MayflyComponents
 export const flushRequests = () => new Promise<void>(resolve => { setImmediate(resolve) })
 
 export async function requestFixture(ctx = new Context()) {
@@ -43,10 +42,8 @@ export async function requestFixture(ctx = new Context()) {
   ctx.provide('mayflyScreen', screen as never)
   ctx.provide('mayflyTheme', theme as never)
   ctx.provide('mayflyComponents', fakeComponents as never)
-  // The frontend's command plugins register through the sessionless table, which
-  // the separate interaction tree owns in production; provide it here too.
-  if (ctx.get('mayflyInteractionState') === undefined) new InteractionStateService(ctx, DEFAULT_SETTINGS)
-  const front = await ctx.plugin(frontend)
+  await ctx.plugin(frontend)
+  const front = await ctx.plugin(nativeFrontend)
   await flushRequests()
   const model = (prefix = 'mayfly.questions.') => {
     const entry = ctx.mayflyOverlays.list().findLast(entry => entry.id.startsWith(prefix))
@@ -65,7 +62,7 @@ export function renderRequest(
   runtime = new MayflyUiSurfaceRuntime(model),
 ) {
   const result = compileMayflyUiSurfaceNode(model.decisionNode ?? model.node, {
-    surfaceRuntime: runtime, components, colors, bounded: true, getViewport: () => viewport,
+    surfaceRuntime: runtime, components, colors, screenMode: 'alternate', getViewport: () => viewport,
     emit: event => model.emit(event), onUnhandledEscape: () => model.requestClose(),
   })
   if (!result.ok) throw new Error(result.message)

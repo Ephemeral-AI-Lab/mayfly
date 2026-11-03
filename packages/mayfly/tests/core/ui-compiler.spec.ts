@@ -3,20 +3,23 @@ import { CURSOR_MARKER, HStack, ScrollView, stripTerminalSequences, type Compone
 import { renderLayoutFrame, type LayoutBox, type LayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { describe, expect, it, vi } from 'vitest'
-import { ui } from '../../../ui/src/index.ts'
+import { ui as wireUi } from '@ephemeral-ai/mayfly-ui'
+import { browser, ui } from '../../../ui/src/index.ts'
 import {
   MayflyUiSurfaceRuntime,
   compileMayflyEditorShellNode,
+  compileMayflyStatusNode,
   compileMayflyUiSurfaceNode,
   compileMayflyUiNode,
   type MayflyEditorShellCompilerOptions,
+  type MayflyStatusCompilerOptions,
   type MayflyUiCompilerOptions,
-} from '../../src/core/ui/compile/ui-compiler.ts'
+} from '../../src/core/ui-compiler.ts'
 import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../../src/core/types.ts'
-import { createAdmissionCache } from '../../src/core/ui/admit/ui-validator.ts'
-import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
-import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
-import { choiceSegment } from '../../src/core/ui/state/ui-interaction-choice.ts'
+import { createAdmissionCache } from '../../src/core/ui-validator.ts'
+import { sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
+import { choiceSegment } from '../../src/core/ui-interaction-choice.ts'
 import type { MayflyUiEvent } from '../../../ui/src/index.ts'
 import { ADVERSARIAL, expectLinesFit, SCAN_WIDTHS } from './width-scan.ts'
 import { identity, plainColors } from '../helpers.ts'
@@ -27,6 +30,7 @@ function createTestEditor(): MayflyEditor {
   let value = ''
   let cursor = 0
   const editor = {
+    updateColors: () => {},
     focused: false,
     onSubmit: undefined,
     onChange: undefined,
@@ -93,6 +97,14 @@ const components = {
   wrapText: wrapTextWithAnsi,
   truncateToWidth,
   createEditor: createTestEditor,
+  createMarkdown: (options?: { text?: string }) => {
+    let value = options?.text ?? ''
+    return {
+      setText: (text: string) => { value = text },
+      render: (width: number) => wrapTextWithAnsi(value, width),
+      invalidate: () => {},
+    }
+  },
 } as MayflyComponents
 
 function fixture(overrides: Partial<MayflyUiCompilerOptions> = {}): { options: MayflyUiCompilerOptions, events: unknown[], viewport: { columns: number, rows: number } } {
@@ -105,7 +117,7 @@ function fixture(overrides: Partial<MayflyUiCompilerOptions> = {}): { options: M
       components,
       colors,
       getViewport: () => viewport,
-      bounded: true,
+      screenMode: 'alternate',
       emit: event => events.push(event),
       ...overrides,
     },
@@ -158,6 +170,23 @@ function compiledSurface(value: unknown, options: MayflyUiCompilerOptions, surfa
   expect(result.ok).toBe(true)
   if (!result.ok) throw new Error(result.message)
   return { ...result.value, surfaceRuntime }
+}
+
+function statusOptions(overrides: Partial<MayflyStatusCompilerOptions> = {}): MayflyStatusCompilerOptions {
+  return {
+    components,
+    colors,
+    getViewport: () => ({ columns: 80, rows: 20 }),
+    screenMode: 'alternate',
+    ...overrides,
+  }
+}
+
+function compiledStatus(value: unknown, options: MayflyStatusCompilerOptions = statusOptions()) {
+  const result = compileMayflyStatusNode(value, options)
+  expect(result.ok).toBe(true)
+  if (!result.ok) throw new Error(result.message)
+  return result.value
 }
 
 function compiledEditorShell(value: unknown, editor: MayflyEditor, overrides: Partial<MayflyEditorShellCompilerOptions> = {}) {
@@ -230,7 +259,7 @@ describe('compileMayflyUiNode', () => {
   })
 
   it('keeps complete wrapped leaf content in main mode', () => {
-    const { options } = fixture({ bounded: false })
+    const { options } = fixture({ screenMode: 'main' })
     const result = compiled(ui.richText([{ text: 'abcdefghij' }]), options)
     const rows = result.component.render(2)
     expect(rows).toEqual(['ab', 'cd', 'ef', 'gh', 'ij'])
@@ -354,14 +383,14 @@ describe('compileMayflyUiNode', () => {
     expect(endFrame.lines.map(line => line.trimEnd())).toEqual(['line-7', 'line-8', 'line-9'])
     expect(endScroll).toMatchObject({ primary: false, overscroll: 'contain', scrollTop: 7, viewportHeight: 3 })
 
-    const mainFixture = fixture({ bounded: false })
+    const mainFixture = fixture({ screenMode: 'main' })
     const main = compiled(ui.scroll(content, { follow: 'end' }), mainFixture.options)
     expect((main.component as unknown as { root: unknown }).root).not.toBeInstanceOf(ScrollView)
     expect(main.component.render(20)).toHaveLength(10)
   })
 
   it('leaves passive main-mode scrolling to the outer transcript viewport', () => {
-    const result = compiled(ui.scroll(ui.text('abcdefgh')), fixture({ bounded: false }).options)
+    const result = compiled(ui.scroll(ui.text('abcdefgh')), fixture({ screenMode: 'main' }).options)
     expect(result.focusTarget).toBeNull()
     expect(result.component.render(2)).toEqual(['ab', 'cd', 'ef', 'gh'])
   })
@@ -391,6 +420,132 @@ describe('compileMayflyUiNode', () => {
     expect(paddedFrame.lines.join('\n')).toContain('line-7')
     expect(paddedFrame.lines.join('\n')).toContain('line-9')
     expect(paddedScroll).toMatchObject({ scrollTop: 7, viewportHeight: 3, primary: false })
+  })
+
+  it('passes responsive layout height through to a nested multiline preview', () => {
+    const preview = ui.stack.column([
+      ui.child(ui.scroll(ui.text('Native delivered file\nExact preview 你好 🪰'), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 }),
+    ])
+    const result = compiledSurface(ui.stack.row([
+      ui.child(preview, { grow: 1, when: { maxWidth: 99 } }),
+    ]), fixture({ contextHints: { rows: false } }).options)
+    const frame = layout(result.component as Component, 80, 8)
+    expect(frame.lines.slice(0, 2).map(line => line.trimEnd())).toEqual(['Native delivered file', 'Exact preview 你好 🪰'])
+    expect(scrollViews(frame.root)).toHaveLength(1)
+    expect(scrollViews(frame.root)[0]).toMatchObject({ viewportHeight: 8, scrollTop: 0 })
+    result.surfaceRuntime.dispose()
+  })
+
+  it('lays out responsive leaf fallbacks without admitting hidden invalid content', () => {
+    const f = fixture({ contextHints: { rows: false } })
+    f.viewport.columns = 40
+    const hidden = Object.defineProperty({ kind: 'text' }, 'content', {
+      enumerable: true,
+      get: () => 'must not run',
+    })
+    const result = compiledSurface({ kind: 'stack', direction: 'column', children: [
+      { node: ui.text('first line\n第二行 🪰'), when: { maxWidth: 99 } },
+      { node: hidden, when: { minWidth: 100 } },
+    ] }, f.options)
+    expect(layout(result.component as Component, 40, 4).lines.map(line => line.trimEnd())).toEqual(['first line', '第二行 🪰', '', ''])
+    f.viewport.columns = 120
+    const rejected = layout(result.component as Component, 120, 4).lines.join('\n')
+    expect(rejected).toContain('must be data')
+    expect(rejected).not.toContain('first line')
+    f.viewport.columns = 40
+    expect(layout(result.component as Component, 40, 4).lines[1]).toBe('第二行 🪰')
+    result.surfaceRuntime.dispose()
+  })
+
+  it('keeps responsive direct scrolls in the native layout tree', () => {
+    const f = fixture({ contextHints: { rows: false } })
+    const result = compiledSurface(ui.stack.column([
+      ui.child(ui.scroll(ui.text('first\nsecond\nthird'), { follow: 'end' }), { grow: 1, when: { maxWidth: 99 } }),
+    ]), f.options)
+    const frame = layout(result.component as Component, 80, 2)
+    expect(frame.lines).toEqual(['second', 'third'])
+    expect(scrollViews(frame.root)).toHaveLength(1)
+    expect(scrollViews(frame.root)[0]).toMatchObject({ viewportHeight: 2, scrollTop: 1 })
+    result.surfaceRuntime.dispose()
+  })
+
+  it('keeps browser detail scrolling and list visibility across its breakpoint', () => {
+    const f = fixture({ contextHints: { rows: false } })
+    const detail = ui.stack.column([
+      ui.child(ui.text('Preview'), { basis: 1, shrink: 0 }),
+      ui.child(ui.scroll(ui.text(Array.from({ length: 20 }, (_, at) => `preview ${String(at + 1)}`).join('\n'))), { basis: 0, grow: 1, minSize: 1 }),
+    ])
+    const result = compiledSurface(browser({ list: ui.text('Files list'), detail, narrow: 'detail' }), f.options)
+    result.focusTarget!.focused = true
+    const paint = (width: number): LayoutFrame => {
+      f.viewport.columns = width
+      f.viewport.rows = 5
+      return layout(result.component as Component, width, 5)
+    }
+    let frame = paint(80)
+    expect(frame.lines.map(line => line.trimEnd())).toEqual(['Preview', 'preview 1', 'preview 2', 'preview 3', 'preview 4'])
+    expect(scrollViews(frame.root)[0]).toMatchObject({ viewportHeight: 4, scrollTop: 0 })
+    result.focusTarget!.handleInput?.('\x1b[6~')
+    frame = paint(80)
+    expect(frame.lines.map(line => line.trimEnd())).toEqual(['Preview', 'preview 5', 'preview 6', 'preview 7', 'preview 8'])
+    frame = paint(120)
+    expect(frame.lines[0]).toContain('Files list')
+    expect(frame.lines[0]).toContain('Preview')
+    expect(frame.lines[4]).toContain('preview 4')
+    expect(scrollViews(frame.root)).toHaveLength(1)
+    result.focusTarget!.handleInput?.('\x1b[6~')
+    expect(paint(120).lines[1]).toContain('preview 5')
+    frame = paint(40)
+    expect(frame.lines[0]).toBe('Preview')
+    expect(frame.lines.join('\n')).not.toContain('Files list')
+    expect(frame.lines[1]).toContain('preview 5')
+    result.surfaceRuntime.dispose()
+  })
+
+  it.each(['none', 'end'] as const)('keeps %s-follow layout scroll intent through measurement and focus-only recompiles', follow => {
+    const f = fixture({ contextHints: { rows: false } })
+    const content = (count: number) => ui.scroll(ui.text(Array.from({ length: count }, (_, at) => `line-${String(at)}`).join('\n')), { follow })
+    const snapshot = {
+      id: 'scroll-memory', revision: 0, source: [], scope: { kind: 'app' as const, targetId: 'scroll-memory' },
+      update: { reason: 'data' as const }, node: content(10),
+      events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }, definition: {},
+    }
+    const model = new UiSurfaceModel('scroll-memory', snapshot)
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    const first = compiledSurface(model.node, f.options, runtime)
+    first.focusTarget!.focused = true
+    layout(first.component as Component, 20, 3)
+    first.focusTarget!.handleInput?.('\x1b[F')
+    first.focusTarget!.handleInput?.('\x1b[A')
+    expect(layout(first.component as Component, 20, 3).lines).toEqual(['line-6', 'line-7', 'line-8'])
+    const second = compiledSurface(model.node, f.options, runtime)
+    const repaint = vi.fn()
+    // Measuring with zero rows or enough room for the whole document must not replace the reader's remembered place.
+    for (const height of [0, 20, 3, 20, 3, 20, 3]) renderLayoutFrame(second.component as Component, 20, height, repaint)
+    expect(repaint).not.toHaveBeenCalled()
+    expect(renderLayoutFrame(second.component as Component, 20, 3, repaint).lines).toEqual(['line-6', 'line-7', 'line-8'])
+    second.focusTarget!.handleInput?.('\x1b[B')
+    expect(repaint).toHaveBeenCalled()
+    second.focusTarget!.handleInput?.('\x1b[A')
+    first.focusTarget!.handleInput?.('\x1b[H')
+    expect(first.component.render(20)).toEqual([])
+    expect(layout(second.component as Component, 20, 3).lines[0]).toBe('line-6')
+    model.receive({ ...snapshot, revision: 1, node: content(11) })
+    const replacement = compiledSurface(model.node, f.options, runtime)
+    let frame = layout(replacement.component as Component, 20, 3)
+    expect(frame.lines[0]).toBe(follow === 'end' ? 'line-8' : 'line-0')
+    scrollViews(frame.root)[0]!.scrollTo(3, { disableFollow: true })
+    expect(layout(replacement.component as Component, 20, 3).lines).toEqual(['line-3', 'line-4', 'line-5'])
+    const retained = compiledSurface(model.node, f.options, runtime)
+    frame = layout(retained.component as Component, 20, 3)
+    expect(frame.lines[0]).toBe('line-3')
+    runtime.dispose()
+    retained.focusTarget!.handleInput?.('\x1b[F')
+    expect(retained.component.render(20)).toEqual([])
+    const successor = compiledSurface(model.node, f.options, new MayflyUiSurfaceRuntime(model))
+    expect(layout(successor.component as Component, 20, 3).lines[0]).toBe(follow === 'end' ? 'line-8' : 'line-0')
+    successor.surfaceRuntime.dispose()
+    model.dispose()
   })
 
   it('restores active groups and scroll bindings after a persistent compile failure', () => {
@@ -517,13 +672,13 @@ describe('compileMayflyUiNode', () => {
   })
 
   it('degrades row stacks into MainScreen document order', () => {
-    const { options } = fixture({ bounded: false })
+    const { options } = fixture({ screenMode: 'main' })
     const result = compiled(ui.stack.row([ui.text('first'), ui.text('second'), ui.text('third')]), options)
     expect(result.component.render(20)).toEqual(['first', 'second', 'third'])
   })
 
   it('keeps the complete linear document in MainScreen mode', () => {
-    const { options } = fixture({ bounded: false, getViewport: () => ({ columns: 20, rows: 2 }) })
+    const { options } = fixture({ screenMode: 'main', getViewport: () => ({ columns: 20, rows: 2 }) })
     const result = compiled(ui.stack.column(Array.from({ length: 30 }, (_, index) => ui.text(`line-${String(index)}`))), options)
     expect(result.component.render(20)).toHaveLength(30)
     expect(result.component.render(20).at(-1)).toBe('line-29')
@@ -902,7 +1057,7 @@ describe('compileMayflyUiNode', () => {
   })
 
   it('does not admit a responsive subtree until it becomes visible', () => {
-    const f = fixture({ bounded: false })
+    const f = fixture({ screenMode: 'main' })
     f.viewport.columns = 40
     const hidden = Object.defineProperty({ kind: 'text' }, 'content', {
       enumerable: true,
@@ -929,7 +1084,7 @@ describe('compileMayflyUiNode', () => {
     const runtime = new MayflyUiSurfaceRuntime()
     const editors: MayflyEditor[] = []
     const f = fixture({
-      bounded: false,
+      screenMode: 'main',
       components: {
         ...components,
         createEditor: () => {
@@ -1197,7 +1352,7 @@ describe('compileMayflyUiNode', () => {
     const tabs = compiledSurface(ui.tabs({ id: 'tabs', activeId: 'a', items: [{ id: 'a', label: 'A' }] }), fixture().options, runtime)
     expect(tabs.component.render(40).join('\n')).toContain('A')
 
-    const f = fixture({ bounded: false })
+    const f = fixture({ screenMode: 'main' })
     f.viewport.columns = 120
     const deferred = compiledSurface(ui.stack.column([
       ui.tabs({ id: 'pages', activeId: 'one', items: [{ id: 'one', label: 'One' }] }),
@@ -1427,7 +1582,7 @@ describe('compileMayflyUiNode', () => {
     grid.handleInput?.('\x1b[A')
     expect(grid.captureFocusIdentity?.()).toMatchObject({ controlId: 'a' })
 
-    const main = compiled(ui.actions({ id: 'vertical', items: [{ id: 'first', label: 'First' }, { id: 'second', label: 'Second' }] }), fixture({ bounded: false }).options).focusTarget!
+    const main = compiled(ui.actions({ id: 'vertical', items: [{ id: 'first', label: 'First' }, { id: 'second', label: 'Second' }] }), fixture({ screenMode: 'main' }).options).focusTarget!
     main.handleInput?.('\x1b[B')
     main.handleInput?.('\r')
     expect(main.captureFocusIdentity?.()).toMatchObject({ controlId: 'second' })
@@ -1464,7 +1619,7 @@ describe('compileMayflyUiNode', () => {
     const alternate = compiled(tree, fixture().options)
     expect(alternate.component.render(80).join('\n')).toContain('Fallback')
 
-    const main = compiled(tree, fixture({ bounded: false }).options)
+    const main = compiled(tree, fixture({ screenMode: 'main' }).options)
     expect(main.component.render(80).join('\n')).toContain('done')
   })
 
@@ -1486,7 +1641,7 @@ describe('compileMayflyUiNode', () => {
       viewport.rows = 200
       const alternate = compiled(tree, options)
       alternate.focusTarget!.focused = true
-      const main = compiled(tree, fixture({ bounded: false, getViewport: () => ({ columns: 120, rows: 20 }) }).options)
+      const main = compiled(tree, fixture({ screenMode: 'main', getViewport: () => ({ columns: 120, rows: 20 }) }).options)
       main.focusTarget!.focused = true
       for (const width of SCAN_WIDTHS) {
         expectLinesFit(`${name} alternate patterns`, alternate.component.render(width), width)
@@ -1643,6 +1798,8 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     shell.focusTarget.focused = true
     expect(shell.component.render(80).join('\n')).not.toContain('Enter finish')
 
+    expect(compiledStatus(ui.text('status')).component.render(80)).toEqual(['status'])
+
     const replacement = compileMayflyUiSurfaceNode(ui.text('replacement'), {
       ...f.options,
       surfaceRuntime: persistent.surfaceRuntime,
@@ -1698,7 +1855,7 @@ describe('compileMayflyUiSurfaceNode contextual hints', () => {
     const panel = ui.scroll(ui.stack.column(Array.from({ length: 10 }, (_, index) => ui.text(`row-${String(index)}`))), { id: 'panel', height: 4, expandable: false, more: true })
     expect(focusedHint(panel, [], { onUnhandledEscape: () => {} })).toBe('  ↑/↓ scroll · Esc close')
     expect(focusedHint(panel, ['\x05'], { onUnhandledEscape: () => {} })).toBe('  ↑/↓ scroll · Esc close')
-    const result = compiled(panel, fixture({ bounded: true, getViewport: () => ({ columns: 30, rows: 12 }) }).options)
+    const result = compiled(panel, fixture({ screenMode: 'alternate', getViewport: () => ({ columns: 30, rows: 12 }) }).options)
     const rows = (result.component as Component).render(30).map(stripTerminalSequences).map(row => row.trimEnd())
     // The panel draws its scrollbar beside the rows once they pass its length.
     expect(rows.slice(0, 3).map(row => row.replace(/\s+\S$/u, ''))).toEqual(['row-0', 'row-1', 'row-2'])
@@ -2318,6 +2475,97 @@ describe('compileMayflyEditorShellNode', () => {
   })
 })
 
+describe('compileMayflyStatusNode', () => {
+  it('uses the narrowed validator and exposes no focus, input, or event surface', () => {
+    const invalid = compileMayflyStatusNode(ui.actions({ id: 'bad', items: [] }), statusOptions({ maxRows: 2 }))
+    expect(invalid).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION' })
+    if (invalid.ok) throw new Error('expected failure')
+    expect(invalid.errorComponent.renderStatus(8).rows.length).toBeLessThanOrEqual(2)
+    expect(invalid.errorComponent.render(8).length).toBeLessThanOrEqual(2)
+
+    const status = compiledStatus(ui.text('ready'))
+    expect(status.node).toEqual({ kind: 'text', content: 'ready' })
+    expect(status.component.render(20)).toEqual(['ready'])
+    expect('focused' in status.component).toBe(false)
+    expect('handleInput' in status.component).toBe(false)
+    status.component.invalidate()
+  })
+
+  it('keeps compact row stacks spatial in main mode', () => {
+    const status = compiledStatus(ui.stack.row([
+      ui.child(ui.text('left'), { basis: 4, grow: 0, shrink: 0 }),
+      ui.child(ui.text('right'), { basis: 5, grow: 0, shrink: 0 }),
+    ], { gap: 1 }), statusOptions({ screenMode: 'main' }))
+    const rows = status.component.render(20)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toContain('left')
+    expect(rows[0]).toContain('right')
+  })
+
+  it('bounds status height and reports row and column overflow', () => {
+    const status = compiledStatus(ui.stack.column([
+      ui.text('first'),
+      ui.text('second'),
+      ui.text('third'),
+    ]), statusOptions({ maxRows: 2 }))
+    expect(status.component.renderStatus(20)).toEqual({ rows: ['first', 'second'], overflowed: true })
+    expect(status.component.render(20)).toEqual(['first', 'second'])
+
+    const narrow = compiledStatus(ui.richText([{ text: 'abcdefghij' }]), statusOptions({ maxRows: 1 }))
+    const rendered = narrow.component.renderStatus(4)
+    expect(rendered.rows).toHaveLength(1)
+    expect(rendered.overflowed).toBe(true)
+    expectLinesFit('status overflow', rendered.rows, 4)
+
+    const clamped = compiledStatus(ui.stack.column([ui.text('one'), ui.text('two')]), statusOptions({ maxRows: 99 as never }))
+    expect(clamped.component.renderStatus(20)).toEqual({ rows: ['one'], overflowed: true })
+  })
+
+  it('evaluates status breakpoints against the allocated surface dimensions', () => {
+    const status = compiledStatus({
+      kind: 'stack',
+      direction: 'column',
+      children: [
+        { node: { kind: 'text', content: 'wide' }, when: { minWidth: 20 } },
+        { node: { kind: 'text', content: 'tall' }, when: { minHeight: 4 } },
+        { node: { kind: 'text', content: 'compact' }, when: { maxWidth: 19, maxHeight: 3 } },
+      ],
+    }, statusOptions({ getViewport: () => ({ columns: 80, rows: 24 }), maxRows: 3 }))
+    expect(status.component.renderStatus(18)).toEqual({ rows: ['compact'], overflowed: false })
+    expect(status.component.renderStatus(20)).toEqual({ rows: ['wide'], overflowed: false })
+  })
+
+  it('contains validation, setup, and render failures in the status budget', () => {
+    const invalid = compileMayflyStatusNode({ kind: 'unknown' }, statusOptions({ maxRows: 1 }))
+    if (invalid.ok) throw new Error('expected failure')
+    const rejected = invalid.errorComponent.renderStatus(3)
+    expect(rejected.rows.length).toBeLessThanOrEqual(1)
+    expectLinesFit('status validation failure', rejected.rows, 3)
+    invalid.errorComponent.invalidate()
+
+    const throwingComponents = { ...components, wrapText: () => { throw new Error('status exploded') } } as MayflyComponents
+    const rendered = compiledStatus(ui.richText([{ text: 'safe' }]), statusOptions({ components: throwingComponents, maxRows: 2 })).component.renderStatus(12)
+    expect(rendered.rows.join('')).toContain('Mayfly UI rejected')
+    expect(rendered.rows.length).toBeLessThanOrEqual(2)
+    expect(rendered.runtimeFailure).toBe('status exploded')
+
+    const broken = compiledStatus(ui.text('safe'), statusOptions({ maxRows: 2 })).component as unknown as {
+      surface: { root: { render(width: number): string[] } }
+      renderStatus(width: number): { rows: string[], overflowed: boolean, runtimeFailure?: string }
+    }
+    broken.surface.root.render = () => { throw new Error('status root exploded') }
+    const failed = broken.renderStatus(12)
+    expect(failed.rows.join('')).toContain('Mayfly UI rejected')
+    expect(failed.runtimeFailure).toBe('status root exploded')
+
+    const base = statusOptions()
+    const options = new Proxy(base, { get: (target, key, receiver) => {
+      if (key === 'getViewport') throw new Error('setup')
+      return Reflect.get(target, key, receiver)
+    } })
+    expect(compileMayflyStatusNode(ui.text('x'), options)).toMatchObject({ ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message: 'Mayfly status compilation failed safely' })
+  })
+})
 
 it('animates shared loader frames through the compiler memo without rebuilding the model', () => {
   vi.useFakeTimers()
@@ -2450,7 +2698,7 @@ describe('compiler scroll, diagram, and failure edges', () => {
   })
 
   it('compiles the same diagram node again to the same rows', () => {
-    const node = ui.diagram('graph TD\nA --> B')
+    const node = wireUi.diagram('graph TD\nA --> B')
     // One admission cache hands the same admitted node to both compiles, so the second reads the fence source from the memo.
     const admission = createAdmissionCache()
     const first = compiled(node, fixture({ admission }).options).component.render(40).join('\n')
@@ -2602,7 +2850,73 @@ describe('interactive prompt, slider, and list inputs', () => {
     expect(runtime.flowList(node, 30, flowModel, options)).toBe(first)
     expect(first.row(0)).toContain('A')
     for (let index = 0; index < 33; index += 1) runtime.pagePeaks(`peak-${String(index)}`)
-    expect(runtime.pagePeaks('peak-33')).toBeInstanceOf(Map)
+    const peaks = runtime.pagePeaks('peak-33')
+    expect(peaks).toBeInstanceOf(Map)
+    expect(runtime.pagePeaks('peak-33')).toBe(peaks)
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('keeps measured animation scopes from arming visible clocks', () => {
+    const runtime = new MayflyUiSurfaceRuntime()
+    expect(runtime.measure(() => {
+      expect(runtime.loaderFrame()).toBe(0)
+      runtime.showMoving(new Map())
+      return 'measured'
+    })).toBe('measured')
+    expect(runtime.animationFrame).toBe(0)
+    runtime.dispose()
+  })
+
+  it('keeps a compiled slider inert when its frontend projection is withdrawn before renderer replacement', () => {
+    const node = ui.slider({ id: 'withdrawn', levels: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], selectedId: 'a' })
+    const events = { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) }
+    const { model, runtime, value } = interactive(node, events)
+    const focus = value.focusTarget!
+    focus.focused = true
+    focus.render(40)
+    model.receive({ id: 'interactive', revision: 1, source: [], scope: { kind: 'app', targetId: 'interactive' }, update: { reason: 'replace' }, node: null, definition: {}, events })
+    expect(() => focus.handleInput?.('\x1b[C')).not.toThrow()
+    expect(model.slider({ pagePath: [], controlId: 'withdrawn' })).toBeUndefined()
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('locates a tracked row below a query in a focused nonvirtual flow list', () => {
+    const node = ui.list({ id: 'tracked', role: 'browse', filterable: true, tree: true, selectedIds: [], items: Array.from({ length: 50 }, (_, index) => ({ id: `item-${String(index)}`, label: `Match ${String(index)}` })) })
+    const { model, runtime, value, f } = interactive(node)
+    runtime.flow = true
+    f.viewport.rows = 12
+    model.updateChoice({ pagePath: [], controlId: 'tracked' }, { kind: 'query', query: 'Match' })
+    const focus = value.focusTarget!
+    focus.focused = true
+    runtime.probe.controlId = 'tracked'
+    runtime.probe.itemId = 'item-1'
+    expect(focus.render(60).join('\n')).toContain('Match 1')
+    expect(runtime.probe.line).toBe(2)
+    runtime.probe.itemId = 'absent'
+    value.component.invalidate()
+    value.component.render(60)
+    expect(runtime.probe.line).toBeUndefined()
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('leaves an edited final field for the next group and stays at the outside edges', () => {
+    const node = ui.stack.column([
+      ui.form({ id: 'first', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'before' }] }),
+      ui.actions({ id: 'actions', items: [{ id: 'done', label: 'Done' }] }),
+    ])
+    const { model, runtime, value } = interactive(node)
+    const focus = value.focusTarget!
+    focus.focused = true
+    focus.render(60)
+    focus.handleInput?.('\r')
+    focus.handleInput?.('\x1b[Z')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'name' })
+    focus.handleInput?.('\r')
+    focus.handleInput?.('\t')
+    expect(focus.captureFocusIdentity?.()).toMatchObject({ controlId: 'done' })
     runtime.dispose()
     model.dispose()
   })
@@ -2621,10 +2935,90 @@ describe('interactive prompt, slider, and list inputs', () => {
 })
 
 describe('compiler flow lists and framed surfaces', () => {
+  it('paints a row rule in both glyph modes', () => {
+    for (const glyphs of ['unicode', 'ascii'] as const) {
+      const f = fixture({ components: { ...components, presentation: { glyphs } } as MayflyComponents })
+      const result = compiled(ui.stack.row([ui.text('left'), ui.text('right')], { rule: 'column', gap: 3 }), f.options)
+      expect(stripTerminalSequences(result.component.render(30).join('\n'))).toContain(glyphs === 'ascii' ? '|' : '│')
+    }
+  })
+
+  it('lays out a vertical divider at the row height with its palette and glyph mode', () => {
+    for (const glyphs of ['unicode', 'ascii'] as const) {
+      for (const tone of [undefined, 'warning'] as const) {
+        const f = fixture({ components: { ...components, presentation: { glyphs } } as MayflyComponents })
+        const result = compiled(ui.stack.row([
+          ui.child(ui.text('one\ntwo\nthree'), { grow: 1 }),
+          ui.child(ui.divider({ orientation: 'vertical', ...(tone === undefined ? {} : { tone }) }), { basis: 1, shrink: 0 }),
+          ui.child(ui.text('right'), { grow: 1 }),
+        ]), f.options)
+        const rows = result.component.render(30).map(stripTerminalSequences)
+        expect(rows).toHaveLength(3)
+        expect(rows.every(row => row.includes(glyphs === 'ascii' ? '|' : '│'))).toBe(true)
+        expectLinesFit('vertical divider', rows, 30)
+        result.component.invalidate()
+      }
+    }
+  })
+
+  it('adds the host title to an untitled surface while preserving its body and chrome', () => {
+    const runtime = new MayflyUiSurfaceRuntime()
+    const node = ui.surface({ child: ui.text('body'), chrome: 'overlay' })
+    const result = compileMayflyUiSurfaceNode(node, { ...fixture().options, surfaceRuntime: runtime, title: 'Host title' })
+    if (!result.ok) throw new Error(result.message)
+    const rows = result.value.component.render(40).map(stripTerminalSequences).join('\n')
+    expect(rows).toContain('Host title')
+    expect(rows).toContain('body')
+    // JavaScript consumers can supply a non-string host label; admission still contains it.
+    const invalid = compileMayflyUiSurfaceNode(node, { ...fixture().options, surfaceRuntime: runtime, title: 42 as unknown as string })
+    expect(invalid.ok).toBe(false)
+    runtime.dispose()
+  })
+
+  it('contains a palette failure during eager rich-text source construction', () => {
+    const failing = { ...colors, text: () => { throw new Error('rich palette failed') } }
+    const result = compiled(ui.richText([{ text: 'body' }], { overflow: 'truncate' }), fixture({ colors: failing }).options)
+    expect(result.component.render(40).join('\n')).toContain('rich palette failed')
+  })
+
   it('paints a slider read-only without an interaction model', () => {
     const node = ui.slider({ id: 'level', levels: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], selectedId: 'a' })
-    const result = compiled(node, fixture().options)
+    const result = compiled(node, fixture({ contextHints: { enabled: true } }).options)
     expect(result.component.render(40).join('\n')).toContain('A')
+    expect(result.focusTarget).toBeNull()
+  })
+
+  it('keeps a bodyless row closed and a declared expanded body open without drafts', () => {
+    const node = ui.list({ id: 'declarations', role: 'browse', selectedIds: [], items: [
+      { id: 'missing', label: 'Missing' },
+      { id: 'open', label: 'Open', body: 'visible body', expanded: true },
+    ] })
+    const runtime = new MayflyUiSurfaceRuntime()
+    runtime.flow = true
+    const result = compiledSurface(node, fixture().options, runtime)
+    const rows = result.component.render(40).map(stripTerminalSequences)
+    expect(rows.join('\n')).toContain('visible body')
+    expect(rows.filter(row => row.includes('Missing'))[0]).not.toContain('▾')
+    runtime.dispose()
+  })
+
+  it('keeps a flow list with only disabled rows passive even with expand-focused bodies', () => {
+    const node = ui.list({ id: 'disabled', role: 'browse', selectedIds: [], expandFocused: true, items: [{ id: 'a', label: 'Disabled', disabled: true, body: 'closed' }] })
+    const model = new UiSurfaceModel('disabled', { id: 'disabled', revision: 0, source: [], scope: { kind: 'app', targetId: 'disabled' }, update: { reason: 'replace' }, node, definition: {}, events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) } })
+    const runtime = new MayflyUiSurfaceRuntime(model)
+    runtime.flow = true
+    const result = compiledSurface(node, fixture().options, runtime)
+    expect(result.component.render(40).join('\n')).toContain('Disabled')
+    expect(result.focusTarget).toBeNull()
+    runtime.dispose()
+    model.dispose()
+  })
+
+  it('contains an overwide hosted buffer even when its injected truncation helper is faulty', () => {
+    const editor = createTestEditor()
+    editor.render = () => ['x'.repeat(80)]
+    const { result } = compiledEditorShell({ kind: 'surface', chrome: 'surface', child: { kind: 'prompt', id: 'host' } }, editor, { components: { ...components, truncateToWidth: identity } as MayflyComponents })
+    expectLinesFit('framed hosted backstop', result.component.render(20), 20)
   })
 
   it('paints a flow list from its painter and reports the followed item\'s line', () => {
@@ -2689,7 +3083,7 @@ describe('compiler flow lists and framed surfaces', () => {
   })
 
   it('grows the framed surface body when an interaction model is present', () => {
-    const node = ui.surface({ title: 'Frame', chrome: 'surface', child: ui.text('body') })
+    const node = ui.surface({ title: 'Frame', chrome: 'surface', child: ui.text('body'), footer: ui.text('footer') })
     const model = new UiSurfaceModel('framed', {
       id: 'framed', revision: 0, source: [], scope: { kind: 'app', targetId: 'framed' }, update: { reason: 'replace' },
       node, definition: {}, events: { prepare: async () => ({ reply: { kind: 'completed' as const }, publish: () => true }) },
@@ -2699,6 +3093,7 @@ describe('compiler flow lists and framed surfaces', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error(result.message)
     expect(result.value.component.render(30).join('\n')).toContain('body')
+    expect(result.value.component.render(30).join('\n')).toContain('footer')
     runtime.dispose()
     model.dispose()
   })

@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { commonPrefix, commonSuffix } from '../../src/core/text/text-match.ts'
+import { commonPrefix, commonSuffix } from '../../src/core/text-match.ts'
 
 const naivePrefix = (a: string, b: string, limit: number): number => {
   let length = 0

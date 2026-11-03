@@ -1,8 +1,8 @@
 /** The stream's keys as the controller takes them: `/` and `?` open a search that only highlights while it is typed, `Enter` lands on a match, `n`/`N` and the arrows walk the matches with wrap, and `Esc` ends the search with the cursor where it stood. A fake screen stands in for the slot and the line; no clock is read. */
 import { describe, expect, it, vi } from 'vitest'
 import type { MayflyListNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyNodeSlot } from '../../src/core/hosts/node-slot.ts'
-import type { MayflySearchLine, MayflySearchLineOptions } from '../../src/core/ui/state/search-line.ts'
+import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
+import type { MayflySearchLine, MayflySearchLineOptions } from '../../src/core/search-line.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
 import { STREAM } from '../../src/components/transcript-view.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'

@@ -6,9 +6,9 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  addDecimal, balanceInternals, isLowBalance, parseBalance, readAccountSnapshot,
-  type BalanceResult, type Wallet,
+  balanceInternals, parseBalance, readAccountSnapshot,
 } from '../../src/interaction/stats-account.ts'
+import { addDecimal, isLowBalance, type BalanceResult, type Wallet } from '../../src/interaction/stats-account-model.ts'
 
 const originalFetchBalance = balanceInternals.fetchBalance
 const contexts: Context[] = []

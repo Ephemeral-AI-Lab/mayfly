@@ -8,18 +8,19 @@
  * @module @ephemeral-ai/mayfly/core/tests/markdown-rows
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Markdown, type MarkdownTheme } from '@earendil-works/pi-tui'
-import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content/content-rows.ts'
-import { virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
-import { expandMarkdownRules, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit } from '../../src/core/content/markdown-rows.ts'
-import { renderMermaidRows, splitRichDocument } from '../../src/core/content/rich-document.ts'
-import { CONTENT_SEGMENT_UNITS } from '../../src/core/content/content-segments.ts'
-import { DARK_COLORS } from '../../src/core/theme/theme-dark.ts'
+import { contentNodeSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { virtualRows } from '../../src/core/ui-rows.ts'
+import { expandMarkdownRules, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit } from '../../src/core/markdown-rows.ts'
+import { renderMermaidRows, splitRichDocument } from '../../src/core/rich-document.ts'
+import { CONTENT_SEGMENT_UNITS } from '../../src/core/content-segments.ts'
+import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
-import { isVirtualRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui/paint/ui-rows.ts'
+import { isVirtualRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui-rows.ts'
+import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 
 /** The leaf's rows materialized through its production row source. */
 const contentNodeRows = (node: WindowedContentNode, width: number, env: ContentRowsEnv): string[] =>
@@ -33,16 +34,20 @@ const components = {
 
 interface Env {
   readonly env: ContentRowsEnv
+  readonly counters: MayflyWorkCounters
   readonly cache: MayflyContentCache
 }
 
 function makeEnv(bound?: number, colors: MayflySemanticColors = DARK_COLORS): Env {
+  const counters = createWorkCounters()
   const cache = new MayflyContentCache()
   return {
+    counters,
     cache,
     env: {
       components,
       colors,
+      counters,
       cache,
       bounded: bound !== undefined,
       viewportRows: () => bound ?? 0,
@@ -320,15 +325,15 @@ describe('lazy units', () => {
     const text = Array.from({ length: 40 }, (_, index) => `para ${String(index).padStart(2, '0')} ${'x'.repeat(120)}`).join('\n\n')
     expect(text.length).toBeGreaterThan(CONTENT_SEGMENT_UNITS)
     const env = makeEnv()
-    const put = vi.spyOn(env.cache, 'put')
     const rows = lazyRows(text, 40, env)
-    expect(put).not.toHaveBeenCalled()
+    expect(env.counters.segmentsPainted).toBe(0)
     expect(rows[0]).toContain('para 00')
-    expect(put).toHaveBeenCalledTimes(1)
+    expect(env.counters.segmentsPainted).toBe(1)
     // The estimate may leave the para's second row inside the same unit or the next; read a window and compare.
     const tail = rows.length - 4
     rows.slice(tail)
-    expect(put.mock.calls.length).toBeLessThanOrEqual(4)
+    const painted = env.counters.segmentsPainted
+    expect(painted).toBeLessThanOrEqual(4)
     rows.slice()
     expect(rows.slice()).toEqual(eagerRows(text, 40))
   })
@@ -348,14 +353,13 @@ describe('lazy units', () => {
     const node = { kind: 'markdown' as const, source: Array.from({ length: 50 }, (_, index) => `memo ${String(index)} ${'x'.repeat(80)}`).join('\n\n') }
     expect(node.source.length).toBeGreaterThan(CONTENT_SEGMENT_UNITS)
     const env = makeEnv()
-    const put = vi.spyOn(env.cache, 'put')
     const wide = contentNodeRows(node, 80, env.env)
     const narrow = contentNodeRows(node, 40, env.env)
     expect(rowSourceOf(wide)).not.toBe(rowSourceOf(narrow))
     wide.slice(0, 6)
-    const painted = put.mock.calls.length
+    const painted = env.counters.segmentsPainted
     narrow.slice(0, 6)
-    expect(put.mock.calls.length).toBeGreaterThan(painted)
+    expect(env.counters.segmentsPainted).toBeGreaterThan(painted)
   })
 
   it('degrades an oversized block to raw-line segments and still answers every row', () => {
@@ -374,6 +378,18 @@ describe('lazy units', () => {
 })
 
 describe('mermaid units', () => {
+  it('keeps repeated Markdown and Mermaid slices at their exact source positions', () => {
+    const fence = '```mermaid\ngraph TD; A-->B\n```\n'
+    const text = `repeat\n\n${fence}repeat\n\n${fence}tail\n`
+    const segments = splitRichDocument(text)
+    expect(segments.map(segment => segment.kind === 'mermaid' ? segment.fallback : segment.source).join('')).toBe(text)
+    const scan = scanMarkdown(text)
+    expect(scan.units.filter(unit => unit.kind === 'mermaid').map(unit => unit.start)).toEqual([
+      text.indexOf(fence), text.indexOf(fence, text.indexOf(fence) + fence.length),
+    ])
+    for (const width of WIDTHS) expect(lazyRows(text, width, makeEnv()).slice()).toEqual(eagerRows(text, width))
+  })
+
   it('paints the source fallback of an unrenderable diagram, and leaves an oversized fallback to raw lines', () => {
     const small = '```mermaid\nnot a diagram\n```'
     expect(markdownMermaidRows('not a diagram', small, 40, theme, hr)?.join('\n')).toContain('not a diagram')

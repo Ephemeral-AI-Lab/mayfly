@@ -328,6 +328,18 @@ describe('tabs and actions', () => {
 })
 
 describe('session index', () => {
+  it('fences old progress when observation disposal starts a newer workspace read', async () => {
+    const b = await bench({ records: [record('a')] })
+    const first = observation('a', '/repo', [turnEvent(Date.now())])
+    Object.defineProperty(first, Symbol.dispose, { value: () => { void b.action('workspace') } })
+    b.observeSession.mockResolvedValueOnce(first)
+    await b.run()
+    b.observe({ kind: 'tab-change', tabId: 'history' })
+    await vi.waitFor(() => expect(b.listSessions).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(b.node()).toContain('this workspace'))
+    expect(b.node()).toContain('Sessions')
+  })
+
   it('moves through indexing progress to both stored sessions', async () => {
     const b = await bench({
       records: [record('a'), record('b')],

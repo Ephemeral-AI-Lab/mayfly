@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import type { MayflyNodeSlot } from '../../src/core/hosts/node-slot.ts'
+import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
 import { createTranscriptModel, LIVE_PUBLISH_MS, PUBLISH_INTERVAL_MS, STREAM_WATCHDOG_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
@@ -67,10 +67,70 @@ function bench(initial: TranscriptEntryModel[] | TranscriptModel = [user(1, 'one
   controller.show('main')
   controller.attach(screen)
   published.length = 0
-  return { controller, published, screen, advance, timers, fire, setModel: (next: TranscriptEntryModel[] | TranscriptModel) => { model = Array.isArray(next) ? createTranscriptModel('a', next) : next } }
+  return { controller, published, screen, advance, timers, fire, listeners, setModel: (next: TranscriptEntryModel[] | TranscriptModel) => { model = Array.isArray(next) ? createTranscriptModel('a', next) : next } }
 }
 
 describe('the stream publish window', () => {
+  it('leaves a replacement trailing publish intact when a cancelled callback was already queued', () => {
+    const b = bench()
+    b.controller.refresh()
+    const stale = [...b.timers.values()][0]!.callback
+    b.controller.refresh(true)
+    b.controller.refresh()
+    const count = b.published.length
+    stale()
+    expect(b.published).toHaveLength(count)
+    expect(b.timers.size).toBe(1)
+    b.advance(PUBLISH_INTERVAL_MS)
+    expect(b.published).toHaveLength(count + 1)
+    b.controller.dispose()
+  })
+
+  it('retires the previous screen watchdog before mounting a new live screen', () => {
+    const b = bench(liveModel('first'))
+    const stale = [...b.timers.values()][0]!.callback
+    b.controller.attach(b.screen)
+    const count = b.published.length
+    stale()
+    expect(b.published).toHaveLength(count)
+    expect(b.timers.size).toBe(1)
+    b.setModel(liveModel('missed wake'))
+    b.advance(STREAM_WATCHDOG_MS)
+    expect(b.published).toHaveLength(count + 1)
+    expect(b.timers.size).toBe(1)
+    b.controller.dispose()
+    stale()
+    expect(b.timers.size).toBe(0)
+  })
+
+  it('stops the watchdog when its native model settles without a wake', () => {
+    const b = bench(liveModel('live'))
+    b.setModel([user(1, 'go')])
+    b.advance(STREAM_WATCHDOG_MS)
+    expect(b.published).toHaveLength(1)
+    expect(b.timers.size).toBe(0)
+    b.controller.dispose()
+  })
+
+  it('releases pending-row ticks on screen replacement and when the displayed view leaves', () => {
+    const b = bench([user(1, 'go'), pending('c1')])
+    const stale = [...b.listeners][0]!
+    b.controller.attach(b.screen)
+    expect(b.listeners.size).toBe(1)
+    const count = b.published.length
+    stale(2_000)
+    expect(b.published).toHaveLength(count)
+    expect(b.timers.size).toBe(0)
+    b.fire(2_000)
+    expect(b.published).toHaveLength(count + 1)
+    b.controller.show(undefined)
+    expect(b.listeners.size).toBe(0)
+    const hidden = b.published.length
+    stale(3_000)
+    expect(b.published).toHaveLength(hidden)
+    b.controller.dispose()
+  })
+
   it('publishes the first change at once and the burst behind it once, with the newest model', () => {
     const { controller, published, screen, advance, setModel } = bench()
     // The attach just published: a change inside its window waits for the end of it.

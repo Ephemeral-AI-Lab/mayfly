@@ -8,7 +8,7 @@
  * nothing wraps.
  *
  * When a fresh conversation first shows (startup, `/new`, its alias `/clear`)
- * the mark flies in once (`core/text/quad-mark.ts`): it enters from the right edge,
+ * the mark flies in once (`core/quad-mark.ts`): it enters from the right edge,
  * crosses the status column with the text appearing in its wake, lands, beats
  * its wings twice and rests, in 1.55 s. A conversation that already has turns
  * (a resumed or forked session) shows the mark at rest, and reduced motion
@@ -33,10 +33,10 @@
 import { homedir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { GutterComponent } from '../core/text/gutter.ts'
-import { readPresentation } from '../core/theme/presentation.ts'
-import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS, flyInRows, markColumns, restRows, type MarkTextRun } from '../core/text/quad-mark.ts'
-import type { MayflyColorFn, MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import { GutterComponent } from '../core/gutter.ts'
+import { readPresentation } from '../core/presentation.ts'
+import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS } from '../core/quad-mark.ts'
+import type { MayflyComponent, MayflyComponents } from '../core/types.ts'
 // Empty type import carries the `agentDefaultModel` Context merge this
 // plugin's inject resolves.
 import type {} from '@deepseek-ai/dsh-agent-default-model'
@@ -44,7 +44,9 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-session-projection'
 // Empty type import carries the app-owned session reader service.
 import type {} from '../app/index.ts'
-import { MARK_BEAT, MARK_ROWS } from './banner-art.ts'
+import { composeBannerLines, shortenHome, SLOGAN, type BannerContent, type BannerDeps } from './banner-model.ts'
+export { BANNER_MIN_WIDTH, composeBannerLines, shortenHome } from './banner-model.ts'
+export type { BannerContent, BannerDeps } from './banner-model.ts'
 import { composeSplashLines, SPLASH_RECENT_MAX, type SplashContent, type SplashSession } from './splash.ts'
 import { basename } from 'node:path'
 import { interactionTranslator } from '../interaction/locale.ts'
@@ -69,106 +71,6 @@ export const inject = ['mayflyScreen', 'mayflyCurrentAgent', 'mayflySessionStart
 export interface Config {
   /** Optional profile-local identity shown instead of {@link MAYFLY_VERSION}. */
   readonly displayVersion?: string
-}
-
-/** Below this content width the banner drops the mark and shows its four lines alone. */
-export const BANNER_MIN_WIDTH = 40
-
-/** Blank columns between the mark and the four lines. */
-const MARK_GAP = 2
-
-/** The slogan; brand identity stays English in every locale. */
-const SLOGAN = 'ephemeral agents, enduring works'
-
-/**
- * Shorten a path by replacing the home-directory prefix with `~` — the exact
- * home and anything not under it (or an empty home) passes through.
- * @param path - the path to shorten.
- * @param home - the home directory, already normalized the same way.
- * @returns the shortened path.
- */
-export function shortenHome(path: string, home: string): string {
-  if (home === '') return path
-  if (path === home) return '~'
-  if (path.startsWith(`${home}/`)) return `~/${path.slice(home.length + 1)}`
-  return path
-}
-
-/** The banner's rendered facts. */
-export interface BannerContent {
-  /** The version beside the brand word. */
-  readonly version: string
-  /** The model id for the model line. */
-  readonly model: string
-  /** The provider route for the model line. */
-  readonly provider: string
-  /** The working directory, already home-shortened. */
-  readonly cwd: string
-}
-
-/** The theme and measuring primitives `composeBannerLines` needs. */
-export interface BannerDeps {
-  /** The semantic color table. */
-  readonly colors: MayflySemanticColors
-  /** Renderer-owned strong emphasis. */
-  readonly strong: (text: string) => string
-  /** ANSI-aware truncation to a width, ending in `…` when it cuts. */
-  readonly truncate: (text: string, width: number) => string
-  /** ANSI-aware visible-width measurement. */
-  readonly visibleWidth: (text: string) => number
-  /** ASCII glyph mode: the mark is left out. */
-  readonly ascii?: boolean
-}
-
-/** The version as shown beside the brand word: a release number reads `v0.1.3`, any other identity as it is. */
-function versionLabel(version: string): string {
-  return /^\d/u.test(version) ? `v${version}` : version
-}
-
-/** Styled runs cut to `max` columns; the run that does not fit ends in `…` and the rest are dropped. */
-function fit(deps: BannerDeps, runs: readonly MarkTextRun[], max: number): MarkTextRun[] {
-  const out: MarkTextRun[] = []
-  let room = max
-  for (const run of runs) {
-    if (room <= 0) break
-    // Tabs are one cell to visibleWidth but expand at the terminal; normalize before measuring and emitting.
-    const text = run.text.replace(/\t/gu, '   ')
-    const span = deps.visibleWidth(text)
-    if (span <= room) {
-      out.push(text === run.text ? run : { text, paint: run.paint })
-      room -= span
-      continue
-    }
-    out.push({ text: deps.truncate(text, room), paint: run.paint })
-    room = 0
-  }
-  return out
-}
-
-/**
- * Compose the banner's lines for one width — the pure layout core the painter delegates to. Identity color functions
- * (the spec fakes) yield plain, measurable text.
- * @param deps - colors plus the truncate/measure primitives and the glyph mode.
- * @param content - the banner facts.
- * @param width - the content width in columns.
- * @param flyInAt - milliseconds into the fly-in, or undefined for the mark at rest.
- * @returns the four lines, the mark beside them when the width and glyph mode allow it.
- */
-export function composeBannerLines(deps: BannerDeps, content: BannerContent, width: number, flyInAt?: number): string[] {
-  if (width <= 0) return []
-  const { colors } = deps
-  const withMark = deps.ascii !== true && width >= BANNER_MIN_WIDTH
-  const textWidth = withMark ? width - markColumns(MARK_ROWS) - MARK_GAP : width
-  const brand: MayflyColorFn = text => deps.strong(colors.primary(text))
-  const lines = [
-    [{ text: 'mayfly', paint: brand }, { text: ` ${versionLabel(content.version)}`, paint: colors.textMuted }],
-    [{ text: SLOGAN, paint: colors.accent }],
-    [{ text: `${content.model} · ${content.provider}`, paint: colors.modelHighlight }],
-    [{ text: content.cwd, paint: colors.muted }],
-  ].map(runs => fit(deps, runs, textWidth))
-  if (!withMark) return lines.map(runs => runs.map(run => run.paint(run.text)).join(''))
-  const scene = { rows: MARK_ROWS, beat: MARK_BEAT, inks: colors.logoInks, gap: MARK_GAP, lines, width }
-  return flyInAt === undefined ? restRows(scene) : flyInRows(scene, flyInAt)
 }
 
 /** How long the banner waits for its first conversation before it gives up on a fly-in and shows the mark at rest. */
@@ -219,7 +121,7 @@ class BannerComponent implements MayflyComponent {
     if (splash === 'pending') return []
     if (splash !== undefined) {
       const start = this.state.flyInStart
-      const at = !this.state.greeted && !this.reducedMotion ? 0 : start === undefined ? undefined : performance.now() - start
+      const at = start === undefined ? undefined : performance.now() - start
       return composeSplashLines(this.deps, splash, width, this.rows(), at !== undefined && at < FLY_IN_TOTAL_MS ? at : undefined)
     }
     // Before the first conversation is known: the fly-in's first frame, the four lines held and the mark still off screen.
@@ -242,7 +144,8 @@ class BannerComponent implements MayflyComponent {
 
 /** One blank row opens the banner, under the top of the screen, and one closes it, the gap every turn after it has. */
 function closed(lines: string[]): string[] {
-  return lines.length === 0 ? lines : ['', ...lines, '']
+  /* The gutter admits a positive content width; the banner then has four rows. */
+  return ['', ...lines, '']
 }
 
 /**
@@ -262,6 +165,7 @@ function mountPainter(ctx: Context, state: BannerState): void {
     ascii: components.presentation?.glyphs === 'ascii',
   }, components.presentation?.reducedMotion === true, () => Math.max(1, ctx.mayflyScreen.rows - ctx.mayflyScreen.editorRowsFromBottom))
   let timer: ReturnType<typeof setInterval> | undefined
+  let active = true
   const stop = (): void => {
     if (timer !== undefined) clearInterval(timer)
     timer = undefined
@@ -270,6 +174,7 @@ function mountPainter(ctx: Context, state: BannerState): void {
     if (components.presentation?.reducedMotion === true) state.flyInStart = undefined
     if (state.flyInStart === undefined || timer !== undefined) return
     timer = setInterval(() => {
+      if (!active) return
       const start = state.flyInStart
       if (start === undefined || performance.now() - start >= FLY_IN_TOTAL_MS) {
         stop()
@@ -277,12 +182,13 @@ function mountPainter(ctx: Context, state: BannerState): void {
       }
       ctx.mayflyScreen.requestRender()
     }, FLY_IN_FRAME_MS)
-    timer.unref?.()
+    timer.unref()
   }
   ctx.effect(() => {
     state.onFlyIn = play
     return () => {
-      if (state.onFlyIn === play) state.onFlyIn = undefined
+      active = false
+      state.onFlyIn = undefined
       stop()
     }
   })
@@ -313,7 +219,23 @@ export function apply(ctx: Context, config: Config = {}): void {
     greeted: false,
     flyInStart: undefined,
     onFlyIn: undefined,
-    splash: () => undefined,
+    splash: () => {
+      if (startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return undefined
+      if (!booted) return 'pending'
+      return {
+        version: displayVersion,
+        labels: {
+          slogan: SLOGAN,
+          recent: t('Recent sessions'),
+          more: t('↑ browse · /sessions for all'),
+          moreFocused: t('↵ resume · esc back'),
+          empty: t('No sessions here yet'),
+          emptyHint: t('Describe a task below to start one.'),
+        },
+        recent,
+        focus: ctx.get('mayflyInteractionState')?.splash.focus,
+      }
+    },
   }
   const rederive = (agent: Agent | null): void => {
     const fallback = ctx.agentDefaultModel.currentSelection()
@@ -376,10 +298,10 @@ export function apply(ctx: Context, config: Config = {}): void {
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort())
   /** Hand the editor the ids on show, so `↑` can browse them; a focused row that no longer exists is let go. */
-  const publishBrowse = (): void => {
+  const publishBrowse = (entries: readonly SplashSession[]): void => {
     const browse = ctx.get('mayflyInteractionState')?.splash
-    if (browse === undefined) return
-    browse.ids = recent?.map(entry => entry.id) ?? []
+    if (browse === undefined || startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return
+    browse.ids = entries.map(entry => entry.id)
     if (browse.focus !== undefined && browse.focus >= browse.ids.length) browse.focus = undefined
   }
   /** The list is not on screen (a session took its place, or the setting is off): nothing to browse. */
@@ -394,6 +316,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     if (loading || !booted || startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return
     loading = true
     void refreshSessionList(ctx, listCache, lifetime.signal).then(() => {
+      if (lifetime.signal.aborted) return
       const now = Date.now()
       const cwd = process.cwd()
       const usable = sessionListRows(ctx, listCache)
@@ -410,7 +333,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         live: row.running,
       })
       recent = shown.map(item)
-      publishBrowse()
+      publishBrowse(recent)
     }).catch((error: unknown) => {
       if (lifetime.signal.aborted) return
       ctx.logger.warn(`splash: recent sessions unavailable: ${String(error)}`)
@@ -419,23 +342,6 @@ export function apply(ctx: Context, config: Config = {}): void {
       loading = false
       if (!lifetime.signal.aborted) ctx.mayflyScreen.requestRender()
     })
-  }
-  state.splash = () => {
-    if (startup !== 'splash' || ctx.mayflyCurrentAgent.primary() !== null) return undefined
-    if (!booted) return 'pending'
-    return {
-      version: displayVersion,
-      labels: {
-        slogan: SLOGAN,
-        recent: t('Recent sessions'),
-        more: t('↑ browse · /sessions for all'),
-        moreFocused: t('↵ resume · esc back'),
-        empty: t('No sessions here yet'),
-        emptyHint: t('Describe a task below to start one.'),
-      },
-      recent,
-      focus: ctx.get('mayflyInteractionState')?.splash.focus,
-    }
   }
   const followStartup = (): void => {
     const next = readStartup()
@@ -471,7 +377,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   // A host that never shows a conversation still gets its banner, at rest.
   ctx.effect(() => {
     const wait = setTimeout(() => {
-      if (state.greeted) return
+      if (lifetime.signal.aborted || state.greeted) return
       state.greeted = true
       ctx.mayflyScreen.requestRender()
     }, GREETING_WAIT_MS)

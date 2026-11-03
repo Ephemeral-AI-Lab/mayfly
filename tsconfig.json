@@ -3,6 +3,8 @@
   "references": [
     { "path": "packages/ui" },
     { "path": "packages/mayfly" },
+    { "path": "packages/host" },
+    { "path": "packages/remote" },
     { "path": "packages/cli" },
     { "path": "examples/mayfly-user-kit" },
     { "path": "examples/header" },

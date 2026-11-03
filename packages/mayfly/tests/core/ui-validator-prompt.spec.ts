@@ -6,7 +6,7 @@ import {
   validateMayflyStatusNode,
   validateMayflyUiNode,
   createAdmissionCache,
-} from '../../src/core/ui/admit/ui-validator.ts'
+} from '../../src/core/ui-validator.ts'
 import {
   MAYFLY_UI_MAX_PROMPT_LABEL,
   MAYFLY_UI_MAX_PROMPT_PLACEHOLDERS,
@@ -15,7 +15,7 @@ import {
   MAYFLY_UI_MAX_PROMPT_TOKENS,
   MAYFLY_UI_MAX_PROMPT_TOKEN_TEXT,
   MAYFLY_UI_MAX_DRAFT_TEXT,
-} from '../../src/core/ui/admit/ui-validator-prompt.ts'
+} from '../../src/core/ui-validator-prompt.ts'
 
 const admitted = (value: unknown) => {
   const result = validateMayflyUiNode(value)
@@ -127,9 +127,9 @@ describe('prompt admission', () => {
   it('is never replayed from the admission memo, so every publish counts its text again', () => {
     const cache = createAdmissionCache()
     const shared = ui.stack.column([ui.prompt({ id: 'p', value: 'x'.repeat(MAYFLY_UI_MAX_DRAFT_TEXT - 1) })])
-    expect(validateMayflyUiNode(ui.stack.column([shared]), cache)).toMatchObject({ ok: true })
-    expect(validateMayflyUiNode(ui.stack.column([shared]), cache)).toMatchObject({ ok: true })
+    expect(validateMayflyUiNode(ui.stack.column([shared]), undefined, cache)).toMatchObject({ ok: true })
+    expect(validateMayflyUiNode(ui.stack.column([shared]), undefined, cache)).toMatchObject({ ok: true })
     const second = ui.stack.column([shared, ui.prompt({ id: 'q', value: 'zz' })])
-    expect(validateMayflyUiNode(second, cache)).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
+    expect(validateMayflyUiNode(second, undefined, cache)).toMatchObject({ ok: false, code: 'MAYFLY_LIMIT_EXCEEDED' })
   })
 })

@@ -4,7 +4,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { providerFixture } from './provider-fixture.ts'
-import * as settingsCommand from '../../src/interaction/settings-command.ts'
+import { openSettingsNamespace } from '../../src/interaction/settings-command.ts'
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
 import type { MayflyPagePath } from '../../../ui/src/interaction.ts'
 
@@ -24,16 +24,14 @@ export async function settingsFixture(ctx: Context, schema: Schema = Schema.obje
   // marks the supplied schema the same way so every registered field is live.
   const configurable = schema.meta.volatile === true ? schema : schema.volatile()
   const owner = await ctx.plugin({ name: 'settings-schema-owner', inject: ['settings'], apply(scope: Context) { (scope.settings as unknown as MemorySettings).register('test-settings', configurable, { base, owner: scope }) } })
-  const plugin = await ctx.plugin(settingsCommand)
   const open = async (ns = 'test-settings') => {
-    await bench.commands.entries.get('settings')!.handler({} as never)
+    if (!await openSettingsNamespace(ctx, ns)) throw new Error(`Settings namespace "${ns}" did not open`)
     ctx.mayflyOverlays.focus('mayfly.settings')
-    const model = ctx.mayflyUiInteraction.get('overlay', 'mayfly.settings')
-    if (model === undefined) throw new Error(`Settings namespace "${ns}" did not open`)
-    // The root panel starts on its first namespace; switch its rail page to
-    // the fixture's namespace, just as selecting the tab does.
+    const model = ctx.mayflyUiInteraction.get('overlay', 'mayfly.settings')!
+    // A root panel left on another namespace switches its rail page to the
+    // fixture's namespace, just as opening the namespace does.
     if (model.activeTab({ pagePath: [], controlId: 'namespaces' }) !== ns) model.emit({ kind: 'tab-change', pagePath: [], controlId: 'namespaces', tabId: ns })
     return model
   }
-  return { ...bench, owner, plugin, open }
+  return { ...bench, owner, open }
 }

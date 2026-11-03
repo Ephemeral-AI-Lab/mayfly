@@ -1,2 +1,2 @@
 /** @module @ephemeral-ai/mayfly/theme-dark */
-export * from './core/theme/theme-dark.ts'
+export * from './core/theme-dark.ts'

@@ -12,9 +12,9 @@ import {
   renderedSurfaceEntries,
   type SurfaceContribution,
   type SurfacePlacement,
-} from '../../src/core/hosts/surface-manager.ts'
+} from '../../src/core/surface-manager.ts'
 import type { MayflyComponent } from '../../src/core/types.ts'
-import { visibleWidth } from '../../src/core/text/width.ts'
+import { visibleWidth } from '../../src/core/width.ts'
 
 function component(...rows: string[]): MayflyComponent {
   return { render: () => rows, invalidate: () => {} }

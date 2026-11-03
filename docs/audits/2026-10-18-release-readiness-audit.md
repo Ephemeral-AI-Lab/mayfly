@@ -217,6 +217,10 @@ choice.
 - The two source-scan guard tests and the diff depth-limit test carry a 15 s
   budget; they take 2.2-3.4 s under coverage and no longer collide with the
   default 5 s timeout. The assertions are unchanged.
+- The work-budget spec pins `NO_COLOR=1` (and clears `FORCE_COLOR`) for the
+  frame workloads. The first tag run failed W35 with 9,906 bytes versus the
+  6,666 ceiling because the CI runner had color enabled while the local shell
+  had `NO_COLOR=1`; the byte budget now measures one presentation everywhere.
 
 ## Verification state
 

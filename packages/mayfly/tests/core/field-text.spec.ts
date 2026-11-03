@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { fieldText } from '../../src/core/text/field-text.ts'
+import { fieldText } from '../../src/core/field-text.ts'
 
 describe('fieldText', () => {
   it('joins a frozen chunk list once, however often and from wherever it is read', () => {

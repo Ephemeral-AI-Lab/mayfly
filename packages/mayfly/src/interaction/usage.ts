@@ -44,7 +44,7 @@ export interface CompositionFacts {
  * `transcript/status-context` owner so the `/usage` port and the footer share
  * one rule.
  */
-export { formatTokens } from '../transcript/status-context.ts'
+export { formatTokens } from '../transcript/status-context-model.ts'
 
 /**
  * The usage share of a context window, in whole percents: rounded up so

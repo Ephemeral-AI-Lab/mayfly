@@ -1,0 +1,12 @@
+## page-3
+grid 96x5 cursor none
+|page 3/4 (Ctrl+N): settled forms are static; the retry is a key
+|
+|✓ Discovered 14 models · 2.1s
+|✗ Discovery failed: 401 Unauthorized  r retry
+|⊘ Cancelled
+styles
+0: 0-62 fg:muted
+2: 0-1 fg:success; 2-21 fg:text; 22-28 fg:muted
+3: 0-1 fg:error; 2-35 fg:text; 36-44 fg:muted
+4: 0-10 fg:muted

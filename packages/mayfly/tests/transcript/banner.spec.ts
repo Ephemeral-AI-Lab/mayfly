@@ -28,7 +28,7 @@ import {
 } from '../../src/transcript/banner.ts'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 import { MARK_ROWS } from '../../src/transcript/banner-art.ts'
-import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS, markColumns } from '../../src/core/text/quad-mark.ts'
+import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS, markColumns } from '../../src/core/quad-mark.ts'
 import type { MayflyComponent, MayflyOverlayHandle, MayflyScreen, MayflyScreenSlot } from '../../src/core/types.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 import { fakeMayflyComponents } from './helpers.ts'
@@ -394,6 +394,29 @@ function plainRows(screen: BannerFakeScreen, width = 100): string {
 }
 
 describe('mayfly-banner plugin', () => {
+  it('retires a completed native catalog read before its queued publish resumes', async () => {
+    const bench = await bootBanner({ startup: 'splash', reducedMotion: true, holdList: true, items: [summary('late-publish')] })
+    bench.finishList()
+    // The native read admits its result first; the Fiber unloads before the caller's next continuation.
+    await bench.dispose()
+    await settle()
+    expect(bench.state.browse.ids).toEqual([])
+  })
+
+  it('fences an animation tick and greeting callback queued before unload', async () => {
+    vi.useFakeTimers()
+    const intervals = vi.spyOn(globalThis, 'setInterval')
+    const timeouts = vi.spyOn(globalThis, 'setTimeout')
+    const bench = await bootBanner({ initialAgent: fakeAgent('queued-clock') })
+    const tick = intervals.mock.calls.find(call => call[1] === FLY_IN_FRAME_MS)![0]
+    const greet = timeouts.mock.calls.find(call => call[1] === 1000)![0]
+    await bench.dispose()
+    const requests = bench.screen.renderRequests.length
+    tick()
+    greet()
+    expect(bench.screen.renderRequests.length).toBe(requests)
+  })
+
   it('declares its name and injects', () => {
     expect(name).toBe('mayfly-banner')
     expect(inject).toEqual(['mayflyScreen', 'mayflyCurrentAgent', 'mayflySessionStart', 'sessionProjections', 'agentDefaultModel', 'sessionController'])
@@ -418,7 +441,7 @@ describe('mayfly-banner plugin', () => {
     const named = await bootBanner({ config: { displayVersion: 'next' }, reducedMotion: true })
     expect(plainRows(named.screen)).toContain('mayfly next')
     expect(plainRows(named.screen)).not.toContain('vnext')
-    expect(MAYFLY_VERSION).toBe('0.1.4-rc.1')
+    expect(MAYFLY_VERSION).toBe('0.1.4-rc.2')
   })
 
   it('re-derives the model line on session switches, projections, and fallbacks', async () => {
@@ -547,6 +570,34 @@ describe('mayfly-banner plugin', () => {
 })
 
 describe('mayfly-banner launch screen', () => {
+  it('renders an in-flight splash until its mark settles', async () => {
+    vi.useFakeTimers()
+    let now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    const bench = await bootBanner({ startup: 'splash' })
+    const flying = rowsOf(bench.screen).join('\n')
+    now = FLY_IN_TOTAL_MS + 1
+    await vi.advanceTimersByTimeAsync(FLY_IN_FRAME_MS)
+    const settled = rowsOf(bench.screen).join('\n')
+    expect(settled).toContain('mayfly')
+    expect(settled).not.toBe(flying)
+  })
+
+  it.each(['state', 'setting', 'agent', 'unload'] as const)('does not publish a catalog read after its %s retired', async mode => {
+    const bench = await bootBanner({ startup: 'splash', reducedMotion: true, holdList: true, items: [summary('late-session')] })
+    if (mode === 'state') bench.ctx.set('mayflyInteractionState', undefined)
+    else if (mode === 'setting') {
+      bench.state.settings.startup = 'conversation'
+      bench.ctx.emit('settings/document-updated', 'mayfly' as never, 1)
+    } else if (mode === 'agent') bench.select(fakeAgent('new-primary'))
+    else await bench.dispose()
+    const requests = bench.screen.renderRequests.length
+    bench.finishList()
+    await settle()
+    expect(bench.state.browse.ids).toEqual([])
+    if (mode === 'unload') expect(bench.screen.renderRequests.length).toBe(requests)
+  })
+
   it('paints nothing as pending before the first conversation booted', async () => {
     const bench = await bootBanner({ startup: 'splash', boot: false, reducedMotion: true })
     expect(rowsOf(bench.screen)).toEqual([])

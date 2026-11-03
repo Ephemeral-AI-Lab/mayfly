@@ -1,0 +1,477 @@
+/**
+ * Construction-frozen Host MCP/tool catalogs, responsive browsers, and refresh ownership.
+ * @module @ephemeral-ai/mayfly/remote/features/catalog
+ */
+
+import type { MayflyMcpCatalog, MayflyMcpServer, MayflyToolCatalog, MayflyToolSchema } from '@ephemeral-ai/mayfly-host/types'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiObservationEvent, MayflySubmission } from '@ephemeral-ai/mayfly-ui'
+import type { HostClient } from '../../client/types.ts'
+import type { RemoteFeatureContext } from '../features.ts'
+import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
+import {
+  interactionTranslator,
+  mountInteractionLocale,
+  mcpListNode,
+  mcpServerPageNode,
+  mcpToolNode,
+  mcpResourceNode,
+  mcpResourceBodyNode,
+  toolsBrowserNode,
+  type McpResourceFacts,
+  type McpServerTab,
+} from '@ephemeral-ai/mayfly/command-panels'
+import { isRemoteFeatureSelection } from '../interactions/selection.ts'
+import { unavailableCapability } from './capabilities.ts'
+import { RemoteFeatureLifecycle } from './lifecycle.ts'
+import { remoteErrorMessage } from './official.ts'
+import { loadRemoteMcpResources, readRemoteMcpResource, type RemoteMcpResourceItem } from './mcp-resources.ts'
+
+type McpPage = 'list' | 'server' | 'tool' | 'resource' | 'body'
+
+class RemoteCatalogController {
+  private readonly options: RemoteFeatureContext
+  private readonly t: MayflyTranslate
+  private readonly lifecycle: RemoteFeatureLifecycle
+  private readonly hostListeners = new Map<HostClient, () => void>()
+  private readonly offTopology: () => void
+  private mcp: MayflyMcpCatalog | undefined
+  private tools: MayflyToolCatalog | undefined
+  private mcpError: string | undefined
+  private toolsError: string | undefined
+  private features: readonly string[] | undefined
+  private ticket = 0
+  private operationLifetime = new AbortController()
+  private mcpPanel: RemoteBrowserPanel | undefined
+  private toolsPanel: RemoteBrowserPanel | undefined
+  private mcpPage: McpPage = 'list'
+  private serverId: string | undefined
+  private serverTab: McpServerTab = 'tools'
+  private mcpToolName: string | undefined
+  private focusedTool: string | undefined
+  private toolDetailMode = false
+  private resourceKind: 'resources' | 'templates' = 'resources'
+  private resourceItems: readonly RemoteMcpResourceItem[] = []
+  private resourceCursor: string | undefined
+  private resourceLoaded = false
+  private resourceLoading = false
+  private resourceError: string | undefined
+  private resourceIndex: number | undefined
+  private resourceDetail: { readonly bodyText: string, readonly bodyLabel: string } | undefined
+  private disposed = false
+
+  constructor(options: RemoteFeatureContext) {
+    this.options = options
+    mountInteractionLocale(options.ctx)
+    this.t = interactionTranslator(options.ctx)
+    this.lifecycle = new RemoteFeatureLifecycle(options, this.attach)
+    this.offTopology = options.hosts.subscribe(this.reconcileHosts)
+    this.reconcileHosts()
+    this.lifecycle.start()
+  }
+
+  readonly dispose = (): void => {
+    if (this.disposed) return
+    this.disposed = true
+    this.ticket += 1
+    this.lifecycle.dispose()
+    this.operationLifetime.abort()
+    this.offTopology()
+    for (const dispose of this.hostListeners.values()) dispose()
+    this.hostListeners.clear()
+    this.mcpPanel?.close()
+    this.toolsPanel?.close()
+  }
+
+  private readonly reconcileHosts = (): void => {
+    if (this.disposed) return
+    const attached = new Set(this.options.hosts.list())
+    for (const [client, dispose] of this.hostListeners) {
+      if (attached.has(client)) continue
+      dispose()
+      this.hostListeners.delete(client)
+    }
+    for (const client of attached) {
+      if (this.hostListeners.has(client)) continue
+      this.hostListeners.set(client, client.remote.$on('agent-preset/selected', (sessionId: SessionId) => {
+        const current = this.options.hosts.current()
+        if (current?.client === client && current.ref.sessionId === sessionId) void this.refresh(this.lifecycle.currentGeneration())
+      }))
+    }
+  }
+
+  private readonly attach = (generation: number): void => {
+    this.ticket += 1
+    this.operationLifetime.abort()
+    this.operationLifetime = new AbortController()
+    this.mcp = undefined
+    this.tools = undefined
+    this.mcpError = undefined
+    this.toolsError = undefined
+    this.features = undefined
+    this.mcpPanel?.close()
+    this.toolsPanel?.close()
+    this.mcpPanel = undefined
+    this.toolsPanel = undefined
+    this.mcpPage = 'list'
+    this.serverId = undefined
+    this.serverTab = 'tools'
+    this.mcpToolName = undefined
+    this.focusedTool = undefined
+    this.toolDetailMode = false
+    this.resetResourceState()
+    if (this.lifecycle.selection(generation) !== undefined) void this.refresh(generation)
+  }
+
+  private async refresh(generation: number, parent?: AbortSignal): Promise<void> {
+    const current = this.lifecycle.selection(generation)
+    if (current === undefined) return
+    const ticket = ++this.ticket
+    const signal = parent === undefined ? this.operationLifetime.signal : AbortSignal.any([this.operationLifetime.signal, parent])
+    if (signal.aborted) return
+    try {
+      const capabilities = await current.client.remote.mayflyHost.capabilities()
+      if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
+      this.features = capabilities.ok ? [...capabilities.value.features] : undefined
+      const [mcp, tools] = await Promise.all([
+        capabilities.ok && capabilities.value.features.includes('mcpCatalog')
+          ? current.client.remote.mayflyHost.mcpCatalog({ sessionId: current.ref.sessionId }, signal)
+          : Promise.resolve(undefined),
+        capabilities.ok && capabilities.value.features.includes('toolCatalog')
+          ? current.client.remote.mayflyHost.toolCatalog({ sessionId: current.ref.sessionId }, signal)
+          : Promise.resolve(undefined),
+      ])
+      if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
+      if (!capabilities.ok) {
+        this.mcpError = capabilities.error.message
+        this.toolsError = capabilities.error.message
+        this.tools = undefined
+      } else {
+        if (mcp === undefined) {
+          this.mcp = undefined
+          this.mcpError = unavailableCapability('mcpCatalog')
+        } else if (mcp.ok) {
+          this.mcp = mcp.value
+          this.mcpError = undefined
+        } else {
+          this.mcpError = mcp.error.message
+        }
+        if (tools === undefined) {
+          this.tools = undefined
+          this.toolsError = unavailableCapability('toolCatalog')
+        } else if (tools.ok) {
+          this.tools = tools.value
+          this.toolsError = undefined
+        } else {
+          this.tools = undefined
+          this.toolsError = tools.error.message
+        }
+      }
+    } catch (error) {
+      if (!this.lifecycle.owns(generation) || ticket !== this.ticket || signal.aborted) return
+      const message = remoteErrorMessage(error)
+      this.mcpError = message
+      this.toolsError = message
+    }
+    this.mcpPanel?.refresh()
+    this.toolsPanel?.refresh()
+  }
+
+  private selectedServer(): MayflyMcpServer | undefined {
+    return this.mcp?.servers.find(server => server.entryId === this.serverId)
+  }
+
+  /** Clear every Resources-tab fact without touching the shared operation fence. */
+  private resetResourceState(): void {
+    this.resourceKind = 'resources'
+    this.resourceItems = []
+    this.resourceCursor = undefined
+    this.resourceLoaded = false
+    this.resourceLoading = false
+    this.resourceError = undefined
+    this.resourceIndex = undefined
+    this.resourceDetail = undefined
+  }
+
+  private resourcesEnabled(): boolean {
+    return this.features?.includes('mcpResources') === true
+  }
+
+  private resourcesState(): McpResourceFacts | undefined {
+    if (!this.resourcesEnabled()) {
+      if (this.features === undefined) return undefined
+      return { templates: false, items: [], cursor: undefined, loaded: true, loading: false, error: unavailableCapability('mcpResources') }
+    }
+    if (!this.resourceLoaded && !this.resourceLoading && this.resourceError === undefined) return undefined
+    return {
+      templates: this.resourceKind === 'templates',
+      items: this.resourceItems,
+      cursor: this.resourceCursor,
+      loading: this.resourceLoading,
+      loaded: this.resourceLoaded,
+      error: this.resourceError,
+    }
+  }
+
+  /** Load the first page of the current kind, replacing whatever was listed. */
+  private async reloadResources(parent: AbortSignal): Promise<void> {
+    this.resourceItems = []
+    this.resourceCursor = undefined
+    this.resourceLoaded = false
+    this.resourceError = undefined
+    this.resourceDetail = undefined
+    await this.loadResources(parent)
+  }
+
+  /** Load one page through the Host adapter with the controller's operation fence. */
+  private async loadResources(parent: AbortSignal): Promise<void> {
+    const generation = this.lifecycle.currentGeneration()
+    const current = this.lifecycle.selection(generation)
+    const server = this.selectedServer()
+    if (current === undefined || server === undefined || !this.resourcesEnabled()) return
+    if (this.resourceLoaded && this.resourceCursor === undefined) return
+    const ticket = ++this.ticket
+    const signal = AbortSignal.any([this.operationLifetime.signal, parent])
+    this.resourceLoading = true
+    this.resourceError = undefined
+    this.mcpPanel?.refresh()
+    try {
+      const cursor = this.resourceLoaded ? this.resourceCursor : undefined
+      const page = await loadRemoteMcpResources(current.client, current.ref.sessionId, {
+        serverName: server.serverName,
+        templates: this.resourceKind === 'templates',
+        ...cursor === undefined ? {} : { cursor },
+      }, signal)
+      if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
+      this.resourceItems = this.resourceLoaded ? [...this.resourceItems, ...page.items] : page.items
+      this.resourceCursor = page.nextCursor
+      this.resourceLoaded = true
+    } catch (error) {
+      if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
+      this.resourceError = remoteErrorMessage(error)
+    } finally {
+      if (ticket === this.ticket) this.resourceLoading = false
+      if (!signal.aborted) this.mcpPanel?.refresh()
+    }
+  }
+
+  /** Read the explicitly accepted URI; a template row is not itself a read target. */
+  private async readResource(submission: MayflySubmission | undefined, parent: AbortSignal): Promise<MayflyUiActionReply> {
+    const generation = this.lifecycle.currentGeneration()
+    const current = this.lifecycle.selection(generation)
+    const server = this.selectedServer()
+    const item = this.resourceIndex === undefined ? undefined : this.resourceItems[this.resourceIndex]
+    if (current === undefined || server === undefined || item === undefined || !this.resourcesEnabled()) return { kind: 'failed', message: this.t('The MCP server is no longer available') }
+    const submitted = submission?.forms[0]?.fields.find(field => field.id === 'uri')?.value
+    const uri = typeof submitted === 'string' && submitted.trim() !== '' ? submitted : String(item.uri ?? item.uriTemplate ?? '')
+    if (uri.trim() === '') return { kind: 'failed', message: 'Enter a resource URI' }
+    const ticket = ++this.ticket
+    const signal = AbortSignal.any([this.operationLifetime.signal, parent])
+    try {
+      const body = await readRemoteMcpResource(current.client, current.ref.sessionId, server.serverName, uri, signal)
+      if (signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return { kind: 'cancelled' }
+      this.resourceDetail = { bodyText: body.text, bodyLabel: String(item.name ?? uri) }
+      this.mcpPage = 'body'
+      this.mcpPanel?.refresh()
+      return { kind: 'completed' }
+    } catch (error) {
+      return signal.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket
+        ? { kind: 'cancelled' } : { kind: 'failed', message: remoteErrorMessage(error) }
+    }
+  }
+
+  private mcpView(): ReturnType<typeof mcpListNode> {
+    const server = this.selectedServer()
+    if (this.mcpPage !== 'list' && server !== undefined) {
+      if (this.mcpPage === 'tool') {
+        const schema = server.toolsVisible.find(candidate => candidate.name === this.mcpToolName)
+        if (schema !== undefined) return mcpToolNode(server, schema, this.t)
+      }
+      const resources = this.resourcesState()
+      if (this.mcpPage === 'resource' && resources !== undefined && this.resourceIndex !== undefined && this.resourceItems[this.resourceIndex] !== undefined) return mcpResourceNode(server, resources, this.resourceIndex, this.t)
+      if (this.mcpPage === 'body') return mcpResourceBodyNode(server, this.resourceDetail!, this.t)
+      return mcpServerPageNode(server, this.serverTab, resources, this.t)
+    }
+    this.mcpPage = 'list'
+    return mcpListNode(this.mcp ?? { servers: [], orphanCount: 0 }, this.mcpError === undefined, this.t)
+  }
+
+  private openResources(templates: boolean, signal: AbortSignal): void {
+    if (this.selectedServer() === undefined) return
+    this.mcpPage = 'server'
+    this.serverTab = 'resources'
+    this.mcpToolName = undefined
+    const kind = templates ? 'templates' : 'resources'
+    if (this.resourceKind === kind && (this.resourceLoaded || this.resourceLoading)) { this.mcpPanel?.refresh(); return }
+    this.resetResourceState()
+    this.resourceKind = kind
+    this.mcpPanel?.refresh()
+    void this.loadResources(signal)
+  }
+
+  private openMcp(parent: AbortSignal): void {
+    const current = this.options.hosts.current()
+    if (current === undefined) return
+    if (this.mcpPanel?.closed === false) { this.options.ctx.mayflyOverlays.focus('remote.mcp'); return }
+    this.mcpPage = 'list'
+    this.serverId = undefined
+    this.serverTab = 'tools'
+    this.mcpToolName = undefined
+    this.resetResourceState()
+    const lifetime = new AbortController()
+    const signal = AbortSignal.any([this.operationLifetime.signal, lifetime.signal, parent])
+    this.mcpPanel = openRemoteBrowser(this.options, {
+      id: 'remote.mcp',
+      scope: { kind: 'session', sessionId: current.ref.sessionId }, signal,
+      isCurrent: () => !signal.aborted && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
+      view: () => this.mcpView(),
+      observe: event => this.observeMcp(event, signal),
+      action: (event, context) => this.mcpAction(event, AbortSignal.any([signal, context.signal])),
+      back: () => {
+        if (this.mcpPage === 'body') this.mcpPage = 'resource'
+        else if (this.mcpPage === 'resource') { this.mcpPage = 'server'; this.serverTab = 'resources'; this.resourceIndex = undefined }
+        else if (this.mcpPage === 'tool') { this.mcpPage = 'server'; this.serverTab = 'tools'; this.mcpToolName = undefined }
+        else if (this.mcpPage === 'server') {
+          this.resetResourceState()
+          this.mcpPage = 'list'
+          this.serverId = undefined
+          this.serverTab = 'tools'
+        } else return false
+        this.mcpPanel?.refresh()
+        return true
+      },
+      onClosed: () => { lifetime.abort(); this.mcpPanel = undefined },
+    })
+    void this.refresh(this.lifecycle.currentGeneration(), signal)
+  }
+
+  private observeMcp(event: MayflyUiObservationEvent, signal: AbortSignal): void {
+    if (signal.aborted || event.kind !== 'tab-change' || event.controlId !== 'server-pages' || this.mcpPage !== 'server') return
+    if (event.tabId !== 'tools' && event.tabId !== 'config' && event.tabId !== 'resources') return
+    if (event.tabId === 'resources') { this.openResources(this.resourceKind === 'templates', signal); return }
+    this.serverTab = event.tabId
+    this.mcpPanel?.refresh()
+  }
+
+  private async mcpAction(event: MayflyUiActionEvent, parent: AbortSignal): Promise<MayflyUiActionReply> {
+    if (parent.aborted) return { kind: 'cancelled' }
+    if (event.kind === 'activate' && event.actionId === 'refresh') {
+      await this.refresh(this.lifecycle.currentGeneration(), parent)
+      if (parent.aborted) return { kind: 'cancelled' }
+      if (this.mcpPage === 'server' && this.serverTab === 'resources' && this.resourcesEnabled()) await this.reloadResources(parent)
+      return { kind: parent.aborted ? 'cancelled' : 'completed' }
+    }
+    if (event.kind === 'activate' && event.actionId === 'more' && this.mcpPage === 'server' && this.serverTab === 'resources') {
+      await this.loadResources(parent)
+      return { kind: parent.aborted ? 'cancelled' : 'completed' }
+    }
+    if (event.kind === 'selection-accept' && event.controlId === 'servers') {
+      await this.refresh(this.lifecycle.currentGeneration(), parent)
+      if (parent.aborted) return { kind: 'cancelled' }
+      const id = event.selectedIds[0]
+      const server = this.mcp?.servers.find(candidate => candidate.entryId === id)
+      if (server === undefined) return { kind: 'failed', message: this.t('The MCP server is no longer available') }
+      this.serverId = server.entryId
+      this.mcpPage = 'server'
+      this.serverTab = 'tools'
+      this.mcpToolName = undefined
+      this.resetResourceState()
+      this.mcpPanel?.refresh()
+      return { kind: 'completed' }
+    }
+    if (event.kind === 'selection-accept' && event.controlId === 'tools' && this.mcpPanel !== undefined) {
+      const server = this.selectedServer()
+      const schema = server?.toolsVisible.find(candidate => candidate.name === event.selectedIds[0])
+      if (server === undefined || schema === undefined) return { kind: 'failed', message: this.t('The tool is no longer available') }
+      this.mcpToolName = schema.name
+      this.mcpPage = 'tool'
+      this.mcpPanel.refresh()
+      return { kind: 'completed' }
+    }
+    if (event.kind === 'activate' && (event.actionId === 'resources' || event.actionId === 'templates')) {
+      this.openResources(event.actionId === 'templates', parent)
+      return { kind: 'completed' }
+    }
+    if (event.kind === 'activate' && event.actionId === 'read') return this.readResource(event.inputs, parent)
+    if (event.kind === 'selection-accept' && event.controlId === 'resources') {
+      const index = Number(event.selectedIds[0])
+      if (!Number.isInteger(index) || this.resourceItems[index] === undefined) return { kind: 'cancelled' }
+      this.resourceIndex = index
+      this.mcpPage = 'resource'
+      this.mcpPanel?.refresh()
+      return { kind: 'completed' }
+    }
+    return { kind: 'completed' }
+  }
+
+  private openTools(parent: AbortSignal): void {
+    const current = this.options.hosts.current()
+    if (current === undefined) return
+    if (this.toolsPanel?.closed === false) { this.options.ctx.mayflyOverlays.focus('remote.tools'); return }
+    this.focusedTool = undefined
+    this.toolDetailMode = false
+    const lifetime = new AbortController()
+    const signal = AbortSignal.any([this.operationLifetime.signal, lifetime.signal, parent])
+    this.toolsPanel = openRemoteBrowser(this.options, {
+      id: 'remote.tools',
+      scope: { kind: 'session', sessionId: current.ref.sessionId }, signal,
+      isCurrent: () => !signal.aborted && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
+      view: () => toolsBrowserNode(this.tools?.tools ?? [], this.focusedTool, this.toolDetailMode, this.toolsError === undefined, this.t),
+      action: (event, context) => this.toolsAction(event, AbortSignal.any([signal, context.signal])),
+      back: () => {
+        if (!this.toolDetailMode) return false
+        this.toolDetailMode = false
+        this.toolsPanel?.refresh()
+        return true
+      },
+      onClosed: () => { lifetime.abort(); this.toolsPanel = undefined },
+    })
+    void this.refresh(this.lifecycle.currentGeneration(), signal)
+  }
+
+  private async toolsAction(event: MayflyUiActionEvent, parent: AbortSignal): Promise<MayflyUiActionReply> {
+    if (parent.aborted) return { kind: 'cancelled' }
+    if (event.kind === 'activate' && event.actionId === 'refresh') {
+      await this.refresh(this.lifecycle.currentGeneration(), parent)
+      if (parent.aborted) return { kind: 'cancelled' }
+      return { kind: 'completed' }
+    }
+    if (event.kind !== 'selection-accept' || (event.controlId !== 'tools' && event.controlId !== 'tools-narrow')) return { kind: 'completed' }
+    const name = event.selectedIds[0]
+    if (!this.tools?.tools.some((schema: MayflyToolSchema) => schema.name === name)) return { kind: 'failed', message: this.t('The tool is no longer available') }
+    this.focusedTool = name
+    if (event.controlId === 'tools-narrow') this.toolDetailMode = true
+    this.toolsPanel?.refresh()
+    return { kind: 'completed' }
+  }
+
+  readonly executeMcp = async (_rawInput: string, parent: AbortSignal): Promise<void> => {
+    if (this.disposed || parent.aborted) return
+    this.openMcp(parent)
+  }
+
+  readonly executeTools = async (_rawInput: string, parent: AbortSignal): Promise<void> => {
+    if (this.disposed || parent.aborted) return
+    this.openTools(parent)
+  }
+}
+
+/** Mount one refresh owner for both construction-frozen Host catalogs. */
+export function mountCatalogFeature(options: RemoteFeatureContext): () => void {
+  const controller = new RemoteCatalogController(options)
+  const unregisterMcp = options.commands.register({
+    name: 'mcp',
+    description: 'List the MCP servers the host connects to',
+    execute: controller.executeMcp,
+  })
+  const unregisterTools = options.commands.register({
+    name: 'tools',
+    description: 'List the tools visible to the current session',
+    execute: controller.executeTools,
+  })
+  return () => {
+    unregisterTools()
+    unregisterMcp()
+    controller.dispose()
+  }
+}

@@ -8,14 +8,14 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { MayflyListNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyNodeSlot } from '../../src/core/hosts/node-slot.ts'
-import type { MayflySearchLine, MayflySearchLineOptions } from '../../src/core/ui/state/search-line.ts'
+import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
+import type { MayflySearchLine, MayflySearchLineOptions } from '../../src/core/search-line.ts'
 import { STREAM } from '../../src/components/transcript-view.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import type { TickSource } from '../../src/transcript/tick.ts'
 import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
-import { createTranscriptModel, TranscriptController, type TranscriptControllerOptions, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
+import { appendTranscriptNode, createTranscriptModel, TranscriptController, type TranscriptControllerOptions, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
 const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, images: [] })
 const answer = (turn: number, text: string): TranscriptEntryModel => ({ id: `assistant:${String(turn)}`, kind: 'transcript-assistant', seq: turn, updatedSeq: turn, turn, step: 2, text, streaming: false })
@@ -108,6 +108,16 @@ const compactPolicy = (): TranscriptPresentationPolicy => {
   policy.apply({ transcriptView: 'compact' })
   return policy
 }
+
+describe('building a model by hand', () => {
+  it('appends an entry to a model and keeps its turns, generation, and streaming unless told otherwise', () => {
+    const base = createTranscriptModel('s', [user(1, 'one')], true, 4, [{ turn: 1, startedAt: 0 }])
+    const next = appendTranscriptNode(base, answer(1, 'two'))
+    expect(next).toMatchObject({ id: 's', generation: 4, streaming: true, turns: [{ turn: 1, startedAt: 0 }] })
+    expect(next.entries.map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant'])
+    expect(appendTranscriptNode(base, answer(1, 'two'), false).streaming).toBe(false)
+  })
+})
 
 describe('a controller with nothing to show', () => {
   it('ignores a refresh until a view is displayed and the screen is attached', () => {
@@ -362,6 +372,26 @@ describe('the inputs a published stream reads', () => {
 describe('a search over a view that changes', () => {
   const needles = (): TranscriptEntryModel[] => [user(1, 'go'), answer(1, 'a needle'), user(2, 'needle again'), answer(2, 'last needle')]
 
+  it('ignores queued callbacks from a search line replaced by a new search', () => {
+    const { controller, lines, slot } = harness()
+    controller.setView('main', modelOf(needles()))
+    controller.show('main')
+    controller.beginSearch(true)
+    const old = lines[0]!.options
+    controller.beginSearch(false)
+    lines[1]!.options.onChange('last')
+    const published = slot.published.length
+    old.onChange('needle')
+    old.onAccept()
+    old.onAbandon()
+    expect(slot.published).toHaveLength(published)
+    expect(lines[1]!.disposed).toBe(false)
+    expect(lines[1]!.status.at(-1)).toBe('1 match · Enter to select · Esc to cancel')
+    lines[1]!.options.onAccept()
+    expect(slot.focusRows.at(-1)).toBe('assistant:2')
+    controller.dispose()
+  })
+
   it('ignores the line\'s callbacks once the search has ended', () => {
     const { controller, lines, slot } = harness()
     controller.setView('main', modelOf(needles()))
@@ -456,6 +486,34 @@ describe('a search over a view that changes', () => {
     expect(lines[0]!.status.at(-1)).toBe('2/2 matches')
   })
 
+  it('finishes a search whose only hit belongs to a superseded durable draft', () => {
+    const durable = thought(1, 'durable needle')
+    const live = { ...thought(1, 'current draft'), id: 'thinking:live', streaming: true }
+    const model = { ...modelOf([user(1, 'go'), durable], true), live: { turn: 1, step: 1, entries: [live] } } as TranscriptModel
+    const { controller, lines, slot } = harness()
+    controller.setView('main', model)
+    controller.show('main')
+    controller.beginSearch(true)
+    lines[0]!.options.onChange('needle')
+    lines[0]!.options.onAccept()
+    expect(slot.focusRows).toEqual([])
+    expect(lines[0]!.status.at(-1)).toBe('1/1 match')
+    controller.dispose()
+  })
+
+  it('starts a search from a canonical note that has no searchable semantic part', () => {
+    const { controller, lines, slot, ids } = harness()
+    controller.setView('main', createTranscriptModel('s', [{ kind: 'text', content: 'notice' }, ...needles()]))
+    controller.show('main')
+    slot.cursor = ids().find(id => id.startsWith('node:'))
+    expect(slot.cursor).toBeDefined()
+    controller.beginSearch(true)
+    lines[0]!.options.onChange('needle')
+    lines[0]!.options.onAccept()
+    expect(slot.focusRows.at(-1)).toBe('assistant:2')
+    controller.dispose()
+  })
+
   it('says one match in the singular, while typed and once selected', () => {
     const { controller, lines, slot } = harness()
     controller.setView('main', modelOf([user(1, 'one needle only')]))
@@ -516,7 +574,8 @@ describe('a search over a view that changes', () => {
     slot.cursor = 'user:1'
     lines[0]!.options.onAccept()
     model = modelOf([user(1, 'go')])
-    controller.refresh()
+    controller.refresh(true)
+    expect(lines[0]!.status.at(-1)).toBe('0/0 matches')
     slot.cursor = 'user:1'
     controller.endSearch()
     expect(slot.focusRows.at(-1)).toBe('user:1')

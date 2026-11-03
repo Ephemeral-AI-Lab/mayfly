@@ -37,7 +37,10 @@ export interface Price extends PriceList {
   readonly approx: boolean
 }
 
-/** Off-peak rates read on 2026-10-14 (api-docs.deepseek.com, USD and zh-cn pages); a peak request pays twice. DeepSeek has no cache-write price. */
+/** The date the official DeepSeek table below was read (api-docs.deepseek.com, USD and zh-cn pages). */
+export const DEEPSEEK_PRICES_AS_OF = '2026-10-14'
+
+/** Off-peak rates; a peak request pays twice. DeepSeek has no cache-write price. */
 const DEEPSEEK_OFF_PEAK: Readonly<Record<'flash' | 'pro', Readonly<Record<Currency, PriceList>>>> = {
   flash: {
     USD: { input: 0.15, output: 0.6, cacheRead: 0.003, cacheWrite: 0 },

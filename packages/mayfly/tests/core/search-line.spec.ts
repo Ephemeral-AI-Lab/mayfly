@@ -1,9 +1,9 @@
 /** The search line above the editor: its two rows at 120 and 40 columns (CJK patterns too), the keys it takes while editable, and what freezing it leaves. */
 import { describe, expect, it, vi } from 'vitest'
 import { CURSOR_MARKER } from '@earendil-works/pi-tui'
-import { SearchLine, type MayflySearchLineOptions } from '../../src/core/ui/state/search-line.ts'
-import { ACTION_CANCEL } from '../../src/core/keys/key-actions.ts'
-import { visibleWidth } from '../../src/core/text/width.ts'
+import { SearchLine, type MayflySearchLineOptions } from '../../src/core/search-line.ts'
+import { ACTION_CANCEL } from '../../src/core/key-actions.ts'
+import { visibleWidth } from '../../src/core/width.ts'
 
 const KEY = { enter: '\r', escape: '\x1b', ctrlC: '\x03', backspace: '\x7f' }
 

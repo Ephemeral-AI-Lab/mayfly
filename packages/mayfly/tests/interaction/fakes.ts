@@ -1,8 +1,8 @@
 /**
  * Shared test doubles for the Mayfly interaction suites: fake MayflyScreen,
- * MayflyTheme, MayflyKeymap, and MayflyComponents (in-memory MayflyEditor)
- * implementing the L1 contracts with observable state, plus helpers to mount
- * a context with the fakes provided.
+ * MayflyTheme, MayflyKeymap, and MayflyComponents (in-memory MayflyEditor and
+ * MayflySelectList) implementing the L1 contracts with observable state, plus
+ * helpers to mount a context with the fakes provided.
  */
 
 import { Context } from '@deepseek-ai/cordis'
@@ -16,11 +16,12 @@ import {
 // used to live here were exact only for ASCII, so CJK mis-budgets stayed
 // green in tests while tripping the real width guard. Fakes now delegate to
 // the same implementations the renderer runs.
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
-import type { MayflyAutocompleteProvider, MayflyCompletionView, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
+import { topRule } from '../../src/core/chrome.ts'
+import type { MayflyAutocompleteProvider, MayflyCompletionView, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
 import type { MayflyComponentsService } from '../../src/core/components.ts'
-import type { MayflyKeymapService } from '../../src/core/keys/keymap.ts'
-import type { MayflyScreenService } from '../../src/core/hosts/screen.ts'
+import type { MayflyKeymapService } from '../../src/core/keymap.ts'
+import type { MayflyScreenService } from '../../src/core/screen.ts'
 // MayflyImage/MayflyImageOptions are not root-exported by core yet; source-plane
 // tests import them straight from core's src types.
 import type { MayflyFuzzyMatch, MayflyImage, MayflyImageOptions } from '../../src/core/types.ts'
@@ -214,6 +215,7 @@ export class FakeTheme implements MayflyTheme {
  * synchronously, mirroring the wrapped component's contract.
  */
 export class FakeMayflyEditor implements MayflyEditor {
+  updateColors(_colors: MayflySemanticColors): void {}
   focused = false
   onSubmit: ((text: string) => void) | undefined
   onChange: ((text: string) => void) | undefined
@@ -471,20 +473,105 @@ export class FakeMayflyEditor implements MayflyEditor {
 }
 
 /**
+ * Fake single-select list: Up/Down wrap the highlight, Enter reports the
+ * highlighted entry through `onSelect`, Escape calls `onCancel`.
+ */
+export class FakeMayflySelectList implements MayflySelectList {
+  private index = 0
+
+  /**
+   * @param options - the list options; retained for test inspection.
+   */
+  constructor(readonly options: MayflySelectListOptions) {}
+
+  getSelectedItem(): MayflySelectItem | null {
+    return this.options.items[this.index] ?? null
+  }
+
+  handleInput(data: string): void {
+    const { items } = this.options
+    if (data === KEY.up || data === KEY.down) {
+      if (items.length > 0) {
+        this.index = data === KEY.up
+          ? this.index === 0 ? items.length - 1 : this.index - 1
+          : this.index === items.length - 1 ? 0 : this.index + 1
+      }
+      const selected = this.getSelectedItem()
+      if (selected !== null) this.options.onSelectionChange?.(selected)
+      return
+    }
+    if (data === KEY.enter) {
+      const selected = this.getSelectedItem()
+      if (selected !== null) this.options.onSelect?.(selected)
+      return
+    }
+    if (data === KEY.escape) this.options.onCancel?.()
+  }
+
+  render(width: number): string[] {
+    return this.options.items.map((item, at) => truncateToWidth(
+      `${at === this.index ? '→ ' : '  '}${item.label}`,
+      Math.max(0, width),
+    ))
+  }
+
+  invalidate(): void {}
+}
+
+/** Fake markdown component: settable text, width-wrapped, and invalidatable. */
+export class FakeMayflyMarkdown implements MayflyMarkdown {
+  private text: string
+  invalidations = 0
+
+  constructor(options?: MayflyMarkdownOptions) {
+    this.text = options?.text ?? ''
+  }
+
+  setText(text: string): void {
+    this.text = text
+  }
+
+  render(width: number): string[] {
+    return this.text.split('\n').flatMap(line => wrapTextWithAnsi(line, width))
+  }
+
+  invalidate(): void { this.invalidations += 1 }
+}
+
+/**
  * Fake component factory: deterministic width helpers and recordable
  * editor/select-list creation for test inspection.
  */
 export class FakeMayflyComponents implements MayflyComponents {
   strong(text: string): string { return text }
+  italic(text: string): string { return text }
+  strike(text: string): string { return text }
   /** Every editor created through this factory, in creation order. */
   readonly editors: FakeMayflyEditor[] = []
   /** The options each editor was created with, in creation order. */
   readonly editorOptions: Array<MayflyEditorOptions | undefined> = []
+  /** Every Markdown component created through this factory. */
+  readonly markdowns: FakeMayflyMarkdown[] = []
+  /** Every select list created through this factory, in creation order. */
+  readonly selectLists: FakeMayflySelectList[] = []
+
   createEditor(options?: MayflyEditorOptions): FakeMayflyEditor {
     this.editorOptions.push(options)
     const editor = new FakeMayflyEditor()
     this.editors.push(editor)
     return editor
+  }
+
+  createMarkdown(options?: MayflyMarkdownOptions): MayflyMarkdown {
+    const markdown = new FakeMayflyMarkdown(options)
+    this.markdowns.push(markdown)
+    return markdown
+  }
+
+  createSelectList(options: MayflySelectListOptions): FakeMayflySelectList {
+    const list = new FakeMayflySelectList(options)
+    this.selectLists.push(list)
+    return list
   }
 
   /** Every image created through this factory, in creation order. */
@@ -533,6 +620,10 @@ export class FakeMayflyComponents implements MayflyComponents {
     return truncateToWidth(text, width, ellipsis)
   }
 
+  topRule(width: number, options?: Parameters<MayflyComponents['topRule']>[1]): string {
+    return topRule(width, options)
+  }
+
   /**
    * Subsequence matcher with pi-tui's shape: `matches` plus a lower-is-better
    * score that rewards contiguity (`-2` per character found right where the
@@ -549,6 +640,23 @@ export class FakeMayflyComponents implements MayflyComponents {
       at = found + 1
     }
     return { matches: true, score }
+  }
+
+  fuzzyFilter<T>(items: readonly T[], query: string, getText: (item: T) => string): T[] {
+    const tokens = query.split(/[\s/]+/).filter(token => token.length > 0)
+    return items
+      .map(item => {
+        let total = 0
+        for (const token of tokens) {
+          const match = this.fuzzyMatch(token, getText(item))
+          if (!match.matches) return null
+          total += match.score
+        }
+        return { item, total }
+      })
+      .filter((entry): entry is { item: T, total: number } => entry !== null)
+      .sort((a, b) => a.total - b.total)
+      .map(entry => entry.item)
   }
 }
 

@@ -278,7 +278,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
             failed: summary.failed,
             interrupted: summary.interrupted,
             ...(settled && summary.durationMs !== undefined ? { durationMs: summary.durationMs } : {}),
-            ...(summary.added === undefined ? {} : { added: summary.added, removed: summary.removed ?? 0 }),
+            ...(summary.added === undefined ? {} : { added: summary.added, removed: summary.removed! }),
             hint: inScope && !expandedTurn,
           })
         }

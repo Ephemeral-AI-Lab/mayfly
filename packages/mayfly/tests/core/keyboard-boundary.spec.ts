@@ -10,7 +10,6 @@ import { describe, expect, it } from 'vitest'
 const root = resolve(import.meta.dirname, '../..')
 const audited = [resolve(root, 'src/interaction'), resolve(root, 'src/transcript')]
 const rawOutputSanitizers = new Set([
-  resolve(root, 'src/interaction/shell-sanitize.ts'),
   resolve(root, 'src/interaction/updater/io.ts'),
 ])
 

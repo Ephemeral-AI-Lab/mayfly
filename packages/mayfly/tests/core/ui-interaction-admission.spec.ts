@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { materializeDeferredUiNode, validateMayflyStatusNode, validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
+import { materializeDeferredUiNode, validateMayflyStatusNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 
 const pages = ui.tabs({ id: 'pages', activeId: 'one', items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] })
 const form = () => ui.form({ id: 'config', fields: [{ kind: 'input', id: 'name', label: 'Name', value: 'A' }] })

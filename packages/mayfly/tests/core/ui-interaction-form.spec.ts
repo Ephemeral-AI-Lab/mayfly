@@ -3,9 +3,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { MayflyFormAddress, MayflyFormField, MayflyFormNode, MayflyListNode } from '@ephemeral-ai/mayfly-ui'
-import { createFormState, fieldDecor, fieldDisplayError, formAddressKey, formDirty, inspectForm, reconcileForm, reduceForm, stepNumber, submitForm, validateForm } from '../../src/core/ui/state/ui-interaction-form.ts'
-import { fieldReset } from '../../src/core/ui/state/ui-interaction-field-actions.ts'
-import { choiceError, createChoiceState } from '../../src/core/ui/state/ui-interaction-choice.ts'
+import { createFormState, fieldDecor, fieldDisplayError, formAddressKey, formDirty, inspectForm, reconcileForm, reduceForm, stepNumber, submitForm, validateForm } from '../../src/core/ui-interaction-form.ts'
+import { fieldReset } from '../../src/core/ui-interaction-field-actions.ts'
+import { choiceError, createChoiceState } from '../../src/core/ui-interaction-choice.ts'
 
 const address: MayflyFormAddress = { pagePath: [{ controlId: 'pages', itemId: 'connection' }], formId: 'config' }
 const form = (fields: readonly MayflyFormField[]): MayflyFormNode => ({ kind: 'form', id: 'config', fields, submitActionId: 'save', cancelActionId: 'cancel' })

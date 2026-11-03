@@ -1,0 +1,59 @@
+grid 100x30 cursor none
+|    Enter switches. /theme <key> switches at once: tide, dusk, graphite, obsidian, light, linen,
+|    mist, heather, porcelain, and the ports catppuccin-mocha, catppuccin-latte, rose-pine,
+|    rose-pine-dawn, dracula, nord, tokyo-night, tokyo-night-day, solarized-dark, solarized-light,
+|    gruvbox-dark, gruvbox-light, one-dark, one-light, kanagawa-wave, kanagawa-lotus,
+|    everforest-dark, everforest-light; /theme auto follows the terminal. Narrow the terminal below
+|    42 columns for the banner without its mark. /clear starts a fresh conversation: the mark flies
+|    in again. A /theme switch never replays it.
+|
+|  ✻ Worked for 16s · done 09:00
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+|  Select a theme
+|
+|    (20/33)
+|  ↑ One Dark           Atom's One, blue and purple on slate
+|    Rosé Pine          iris and rose, soho vibes
+|    Rosé Pine Moon     iris and rose, under the moon
+|    Solarized Dark     the classic, deep teal
+|    Tokyo Night        downtown Tokyo at night
+|    Tokyo Night Storm  the same city, a stormier blue
+|  For light terminals
+|  → Mayfly Light       the default on white
+|    Linen              ink on paper
+|    Mist               teal on a pale blue-white
+|    Heather            lilac-grey, a plum brand
+|    Porcelain          high contrast on white
+|    Catppuccin Latte   pastels on cream
+|  ↓ Everforest Light   the forest by day
+|     … +8 more
+|
+|  ↑/↓ options · Enter choose · Esc close
+styles
+0: 4-8 fg:#c9c0f0; 20-31 fg:#c9c0f0; 51-54 fg:#c9c0f0; 57-60 fg:#c9c0f0; 63-70 fg:#c9c0f0; 73-80 fg:#c9c0f0; 83-87 fg:#c9c0f0; 90-94 fg:#c9c0f0
+1: 4-7 fg:#c9c0f0; 10-16 fg:#c9c0f0; 19-27 fg:#c9c0f0; 44-59 fg:#c9c0f0; 62-77 fg:#c9c0f0; 80-88 fg:#c9c0f0
+2: 4-17 fg:#c9c0f0; 20-26 fg:#c9c0f0; 29-32 fg:#c9c0f0; 35-45 fg:#c9c0f0; 48-62 fg:#c9c0f0; 65-78 fg:#c9c0f0; 81-95 fg:#c9c0f0
+3: 4-15 fg:#c9c0f0; 18-30 fg:#c9c0f0; 33-40 fg:#c9c0f0; 43-51 fg:#c9c0f0; 54-66 fg:#c9c0f0; 69-82 fg:#c9c0f0
+4: 4-18 fg:#c9c0f0; 21-36 fg:#c9c0f0; 39-49 fg:#c9c0f0
+5: 48-53 fg:#c9c0f0
+6: 16-21 fg:#c9c0f0
+8: 2-30 fg:#9aa3b8
+9: 0-99 fg:#9a86e6
+10: 2-15 fg:#9a86e6 b
+12: 2-10 fg:#5c6476
+13: 2 fg:#9aa3b8; 4-11 fg:#ededf2; 23-58 fg:#9aa3b8
+14: 4-12 fg:#ededf2; 23-47 fg:#9aa3b8
+15: 4-17 fg:#ededf2; 23-51 fg:#9aa3b8
+16: 4-17 fg:#ededf2; 23-44 fg:#9aa3b8
+17: 4-14 fg:#ededf2; 23-45 fg:#9aa3b8
+18: 4-20 fg:#ededf2; 23-52 fg:#9aa3b8
+19: 2-20 fg:#9aa3b8
+20: 2 fg:#9a86e6 b; 4-15 fg:#f5f5f7 b; 23-42 fg:#9aa3b8
+21: 4-8 fg:#ededf2; 23-34 fg:#9aa3b8
+22: 4-7 fg:#ededf2; 23-47 fg:#9aa3b8
+23: 4-10 fg:#ededf2; 23-46 fg:#9aa3b8
+24: 4-12 fg:#ededf2; 23-44 fg:#9aa3b8
+25: 4-19 fg:#ededf2; 23-38 fg:#9aa3b8
+26: 2 fg:#9aa3b8; 4-19 fg:#ededf2; 23-39 fg:#9aa3b8
+27: 5-13 fg:#9aa3b8
+29: 2-4 fg:#ededf2; 6-15 fg:#5c6476; 16-20 fg:#ededf2; 22-30 fg:#5c6476; 31-33 fg:#ededf2; 35-39 fg:#5c6476

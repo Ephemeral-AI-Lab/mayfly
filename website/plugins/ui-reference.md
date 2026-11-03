@@ -56,7 +56,7 @@ I/O、Agent、Session 或 mutable renderer object 放进节点。
   `memo: true`。`memo` 按引用比较 props，只有每个 prop 都稳定才会命中，包括以
   `MayflyTranslate` 传入的翻译函数；见 [公共 UI kit](/plugins/ui-kit)。
 
-下面的“默认”描述 `0.1.4-rc.1` 当前 Mayfly TUI。wire contract 只承诺字段语义，
+下面的“默认”描述 `0.1.4-rc.2` 当前 Mayfly TUI。wire contract 只承诺字段语义，
 不会承诺具体边框字符、颜色值或按键绑定。
 
 ### 从 alpha.3 迁移
@@ -138,8 +138,8 @@ ui.text(`${label} · ${activity}`, { tone: 'muted', overflow: 'truncate' })
 
 ```ts
 ui.stack.column([
-  ui.text('~/work/mayfly/packages/mayfly/src/core/ui/compile/ui-compiler.ts', { overflow: 'middle' }),
-  ui.text('~/work/mayfly/packages/mayfly/src/core/ui/compile/ui-compiler.ts', { overflow: 'start', styles: ['strong'] }),
+  ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'middle' }),
+  ui.text('~/work/mayfly/packages/mayfly/src/core/ui-compiler.ts', { overflow: 'start', styles: ['strong'] }),
 ])
 ```
 
@@ -1704,117 +1704,159 @@ export function apply(ctx: Context): void {
 它们是命名动作 `ui.focus-next`、`ui.left`/`ui.right` 与 `ui.cancel`，重绑定会同时移动这些键及其提示。可运行的视图见
 [`ui-gallery`](https://github.com/Ephemeral-AI-Lab/mayfly/tree/main/examples/ui-gallery) 示例。
 
-## 组合（Compositions）
+## 模式（Patterns）
 
-`compose`（来自 `@ephemeral-ai/mayfly-ui`）是 Mayfly 自己的面板与插件共用的唯一 surface 层。每个组合都是纯函数：
-返回一棵普通的、深度冻结的 `ui.*` 节点树，没有自己的 renderer，也不发布任何东西，所以结果可以放在任何能放节点的位置
-（pane、overlay 的 snapshot，或回复的 `node`）。`compose` 命名空间是唯一的组合 API。
+`patterns`（来自 `@ephemeral-ai/mayfly-ui`）提供四个由 builder 组合而成的模式，Mayfly 自己的面板用它们，插件也可以用同样的方式调用。
+模式是纯函数：返回一棵普通的、深度冻结的节点树，只由 `ui.*` 调用组成，没有自己的 renderer，也不发布任何东西，
+所以结果可以放在任何能放节点的地方（pane、overlay 的 snapshot、回复的 `node`）。它的 props 就是真实 builder 的形状：
+列表项、span 和 tab 项都是上文记录的那些，模式从不读取宽度。
 
-| 名称 | 用途 |
-| --- | --- |
-| `compose.panel` | 单个命令面板：标题、可选副标题/徽章、主体、页脚。 |
-| `compose.decisionLane` | Agent 请求：approval、plan review、questions、permission。 |
-| `compose.decisionStrip` | 替换当前 surface 主体的用户触发 Yes/No。 |
-| `compose.wizard` | 步骤条、页面和可选的 review 页；本身不是 surface。 |
-| `compose.tabs` | 任意页面之上的水平标签条。 |
-| `compose.rail` | 左侧竖向标签栏，每个标签一页。 |
-| `compose.browser` | 宽布局下列表与详情并排；窄布局一次一页。 |
-| `compose.completionPalette` | 只有行的补全面板；filter、焦点和按键归宿主。 |
-| `compose.statusPage` | 标签条与只读页面。 |
+### `patterns.decisionPanel`
 
-### `compose.panel`
+![`patterns.decisionPanel` 渲染效果](/shots/patterns-decision.svg)
+
+*带预览、选项、备注和隐藏按键的决策卡（宽度 72）。*
 
 ```ts
-compose.panel({
-  title: 'Workspaces',
-  subtitle?: '3 open',
-  badges?: MayflyInlineSpan[],
-  escapeLabel: 'close',             // 必填：提示行里 Esc 的动作
-  body: MayflyUiNode,
-  footer?: MayflyUiNode,
-  hint?: 'auto' | 'none',
+patterns.decisionPanel(props: {
+  id?: string                       // 各控件的前缀，默认 'decision'
+  title: string
+  badges?: MayflyInlineSpan[]
+  preview?: MayflyUiNode[]          // 选项上方的只读上下文
+  options: MayflyListItem[]
+  input?: { id: string, label: string, placeholder?: string }
+  instant?: boolean                 // 即使焦点在备注字段旁，数字键也立即选择
+  accelerators?: Omit<MayflyActionItem, 'hidden'>[]
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'   // 默认 'reject'
+  chrome?: 'none' | 'lane' | 'surface' | 'overlay'                  // 默认 'overlay'
 }): MayflySurfaceNode
 ```
 
-overlay 边框的 surface，标题以节点为准；可带页脚，`Esc` 标签说明关闭动作。按 surface 的用途选择 overlay 的
-presentation（编辑器槽位用 `presentation: 'editor'`）。
+返回 overlay 边框的 surface，其中依次是预览节点、获得焦点的 `choose` 列表（`<id>.options`，带编号）、
+可选的单行表单（`<id>.input`）和所有项都隐藏的 actions 节点（`<id>.keys`）。第一个选项是最常见的授权并持有光标，
+所以 `Enter` 直接选它；数字键按位置选择（列表持有焦点时，设置 `instant` 则在面板任何位置）；`Esc` 表示拒绝。
+加速键在面板上任何位置都会运行，但备注字段持有焦点时除外，此时该键是字段的文本。选择结果以带选项 id 的
+`selection-accept` 事件到达。
 
-### `compose.decisionLane`
-
-```ts
-compose.decisionLane({
-  id?: string,                      // 控件前缀，默认 'decision'
-  title: string,
-  badges?: MayflyInlineSpan[],
-  body?: MayflyUiNode,              // body 与 choices 恰好给一个
-  choices?: MayflyListItem[],
-  note?: { id, label, placeholder? },
-  keys?: MayflyActionItem[],        // 只能是隐藏加速键
-  escapeLabel?: 'reject' | 'cancel' | 'close' | 'no',
-  acceptActionId?: string,          // 默认 `<id>.choose`
-  sendActionId?: string,            // 默认 `<id>.send`
-  coverStatus?: boolean,
-}): MayflySurfaceNode
-```
-
-编辑器槽位的 lane surface。给 `choices` 时第一个选项获得焦点并带编号，`Enter` 直接选它，数字键立即选择；
-选项和 note 作为同一个 action 结算。`coverStatus: true` 占满编辑器槽位并隐藏状态行（Questions 面板如此）。
-主动弹出时用 `armMs: compose.decisionArmMs`（300），误敲的键不会授权。
+主动弹出时请带上预备延迟：`patterns.decisionArmMs` 为 300，卡片弹出时误敲进编辑器的 `1` 或 `Enter` 不会选择任何内容
+（见上文“预备延迟”）。
 
 ```ts
-compose.decisionLane({
+patterns.decisionPanel({
   title: 'Delete branch?',
   badges: [{ text: '1 of 2 waiting', tone: 'muted' }],
-  choices: [
+  preview: [ui.text('feature/old-hero · 3 unmerged commits', { tone: 'muted' })],
+  options: [
     { id: 'keep', label: 'Keep the branch' },
     { id: 'delete', label: 'Delete it', detail: 'cannot be undone' },
   ],
-  note: { id: 'why', label: 'Note', placeholder: 'optional' },
-  keys: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name', hidden: true }],
-  escapeLabel: 'reject',
+  input: { id: 'why', label: 'Note', placeholder: 'optional' },
+  accelerators: [{ id: 'copy', label: 'Copy name', key: 'c', hintLabel: 'copy name' }],
 })
 ```
 
-### `compose.decisionStrip`
+```ts
+api.overlays.open({ id: 'acme.delete', presentation: 'editor', capturing: true, armMs: patterns.decisionArmMs }, card)
+```
+
+### `patterns.railPanel`
+
+![`patterns.railPanel` 渲染效果](/shots/patterns-rail.svg)
+
+*工作区标签栏，右侧是当前标签的实时列表（宽度 72）。*
 
 ```ts
-compose.decisionStrip({
-  title: string,
-  detail?: string,
-  yesLabel?: string,                // 默认 'Yes'
-  noLabel?: string,                 // 默认 'No'
-  danger?: boolean,
-  actionsId?: string,
+patterns.railPanel(props: {
+  title: string
+  badges?: MayflyInlineSpan[]
+  rail: { id: string, activeId: string, items: MayflyTabItem[], hintLabel?: string }
+  content: MayflyUiNode | Record<string, MayflyUiNode>
+  railWidth?: number                // 默认 26
+  escapeLabel?: 'close' | 'back' | 'cancel' | 'reject' | 'leave'
 }): MayflySurfaceNode
 ```
 
-紧凑的 lane，替换当前 surface 的主体：隐藏 `y`/`n`，`Esc` 回答 No。用户触发的确认用它；Agent 请求用
-`decisionLane`。
-
-### `compose.wizard`、`compose.tabs`、`compose.rail`、`compose.browser`
-
-```ts
-compose.wizard({ id?, steps, activeId?, review?, submitActionId?, hintLabel? })
-compose.tabs({ tabs, pages, gap?, pageGrow?, pageMinSize? })
-compose.rail({ rail, pages?, content?, railWidth?, separator? })
-compose.browser({ list, listNarrow?, detail?, narrow?, breakpoint?, listWidth?, separator? })
-```
-
-`wizard` 的每一步有 `body` 和可选的 `forms`/`lists`；review 页读取 surface 草稿并提交。步骤的 Next action id 用
-`compose.wizardNext(id, stepId)`。`tabs` 和 `rail` 用 `tab` 子节点把每个标签关联到一页，切换标签不需要重新发布，
-每页保留自己的状态；`rail` 接受 `pages` 或单个 `content`。`browser` 在 `breakpoint`（默认 100）以上显示
-`listWidth` 列的列表和详情；更窄时由 `narrow`（默认 `list`）决定显示哪页。`separator: false` 去掉列分隔线。
-
-### `compose.completionPalette` 与 `compose.statusPage`
+左侧是竖直的 `tabs` 标签栏（`railWidth` 列，不会被压缩），右侧是内容，两者间隔两列。以标签栏项 id 为键的 record
+让每个标签有自己的页面，并用 `tab` 与标签栏关联，所以切换标签不需要重新发布，每页保留自己的光标和草稿。
+单个节点则是当前标签的内容，由插件根据 `tab-change` 事件重新构建。
 
 ```ts
-compose.completionPalette({ items, wait?, maxRows? })
-compose.statusPage({ tabs, rows?, body?, pages?, footer? })
+patterns.railPanel({
+  title: 'Workspaces',
+  rail: { id: 'rail', activeId: 'work', items: [
+    { id: 'work', label: 'work/mayfly', count: 8 },
+    { id: 'site', label: 'website', count: 5 },
+  ] },
+  content: {
+    work: ui.list({ id: 'ws.work', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'a', label: 'Fix login redirect', right: [{ text: '2h', tone: 'muted' }] }] }),
+    site: ui.list({ id: 'ws.site', role: 'browse', marker: 'selection', selectedIds: [], items: [{ id: 'b', label: 'Docs sync', right: [{ text: '1d', tone: 'muted' }] }] }),
+  },
+})
 ```
 
-`completionPalette` 只画行：焦点箭头、已输入前缀、detail、右侧提示和 problem；filter、焦点和按键归编辑器宿主。
-`statusPage` 包住标签条和只读主体；`rows`、`body`、`pages` 必须给一个，否则抛 `TypeError`。`rows`/`body`
-由插件在 `tab-change` 时重建；`pages` 切换不需要重新发布。
+### `patterns.splitView`
+
+```ts
+patterns.splitView(props: {
+  list: MayflyUiNode
+  detail: MayflyUiNode
+  listWidth?: number                // 默认 58
+  breakpoint?: number               // 默认 100
+}): MayflyStackNode
+```
+
+一个 row：宽度达到 `breakpoint` 列时并排显示列表（`listWidth` 列）和详情，更窄时只显示列表。列表节点在互补的 `when`
+条件下出现两次，所以同一个 id 服务两种布局，缩放后光标也保留。页面需要标题时，把结果放进 `stack.column` 或 surface。
+用 `focus-change` 观察让详情跟随光标。本文的截图无法绘制 `when` 子节点，`ui-gallery` 示例在 pane 中挂载了该模式。
+
+```ts
+patterns.splitView({
+  list: ui.list({ id: 'sv', role: 'browse', marker: 'selection', selectedIds: [], items: [
+    { id: 'a', label: 'Loop', detail: 'official', right: [{ text: '1.4.0', tone: 'muted' }] },
+    { id: 'b', label: 'Git Helper', detail: 'community', right: [{ text: 'update 1.3.0', tone: 'muted' }] },
+  ] }),
+  detail: ui.fields([
+    { label: 'Name', value: [{ text: 'Loop' }] },
+    { label: 'Status', value: [{ text: '✓ installed 1.4.0', tone: 'success' }] },
+  ]),
+})
+```
+
+### `patterns.statusPage`
+
+![`patterns.statusPage` 渲染效果](/shots/patterns-status.svg)
+
+*三个标签下的只读页面（宽度 72）。*
+
+```ts
+patterns.statusPage(props: {
+  title: string
+  badges?: MayflyInlineSpan[]
+  tabs: Omit<MayflyTabsNode, 'kind'>
+  rows?: MayflyField[]              // 键值行
+  body?: MayflyUiNode               // 代替 rows
+  pages?: Record<string, MayflyUiNode>   // 每个 tab id 一页
+  footer?: MayflyUiNode
+}): MayflySurfaceNode
+```
+
+overlay 边框的 surface：标签条、一个空行和页面内容。需要提供 `rows`、`body` 或 `pages` 之一，都不给会抛出 `TypeError`。
+与标签栏一样，`pages` 把一个节点关联到每个标签，切换标签不需要重新发布；`rows` 和 `body` 则由插件在 `tab-change` 时重建。
+
+```ts
+patterns.statusPage({
+  title: 'Status',
+  tabs: { id: 'st', activeId: 'overview', items: [
+    { id: 'overview', label: 'Overview' },
+    { id: 'usage', label: 'Usage' },
+    { id: 'account', label: 'Account', attention: true },
+  ] },
+  rows: [
+    { label: 'Provider', value: [{ text: 'DeepSeek' }] },
+    { label: 'Balance', value: [{ text: '⚠ ¥ 6.20', tone: 'warning' }, { text: ' low balance', tone: 'muted' }] },
+  ],
+})
+```
 
 ## 事件与 snapshot 更新
 

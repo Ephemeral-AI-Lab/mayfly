@@ -11,6 +11,7 @@ import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MayflyDecisionRequest } from '../core/types.ts'
 import { textOf, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { sanitizePluginText } from '../core/plugin-view.ts'
+import { countWork, type MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { materializeTranscriptEntries, type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import { queuedIdOf, type StreamMood, type StreamQueued, type StreamRow, type StreamTurn, type TranscriptViewFacts } from '../components/transcript-view.ts'
@@ -23,7 +24,7 @@ import { kindOf } from './tool-kinds.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize } from './present.ts'
 import { partText, type CopyMode, type RowPart } from './row-text.ts'
-import { contextPercent, formatTokens } from './status-context.ts'
+import { contextPercent, formatTokens } from './status-context-model.ts'
 import { COMPACTION_DRAIN_MS, type CompactionFacts } from '../components/compaction-row.ts'
 import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
 import type { TranscriptCompactionModel } from '../frontend/models.ts'
@@ -38,7 +39,7 @@ type Entry = TranscriptModel['entries'][number]
 
 /** Whether two readonly arrays hold the same elements by identity. */
 function sameIdentities<Value>(left: readonly Value[], right: readonly Value[]): boolean {
-  if (left === right) return true
+  // Each pass constructs the compared turn and queue arrays; their elements retain identity.
   if (left.length !== right.length) return false
   for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) return false
   return true
@@ -149,7 +150,7 @@ function firstLine(text: string, max = PREVIEW_MAX_CHARS): string | undefined {
 function sameValue(x: unknown, y: unknown): boolean {
   if (x === y) return true
   if (typeof x !== 'object' || typeof y !== 'object' || x === null || y === null) return false
-  if (Array.isArray(x) !== Array.isArray(y)) return false
+  // Typed row facts give each field one shape; their discriminants distinguish record variants before recursion.
   const a = x as Record<string, unknown>
   const b = y as Record<string, unknown>
   const keys = Object.keys(a)
@@ -166,15 +167,16 @@ function sameRow(left: StreamRow, right: StreamRow): boolean {
 }
 
 /** What a stream row stands for: the turn it sits in and the entries (or calls of them) it draws. */
-export interface RowOwner {
-  /** `header` and `title` stand for their whole turn. */
-  readonly kind: 'header' | 'title' | 'entries'
-  readonly turn: number | undefined
+export type RowOwner = {
   /** Entry ids, or the ids of calls inside group entries (`<entry>:<call>`). */
   readonly parts: readonly string[]
   /** A run's head or one of its calls: the run's id and the ids of the calls it holds, so Enter opens a call without leaving the run. */
   readonly run?: { readonly head: string, readonly calls: readonly string[] }
-}
+} & (
+  /** Headers and titles always stand for their own turn; canonical entry notes may stand outside one. */
+  | { readonly kind: 'header' | 'title', readonly turn: number }
+  | { readonly kind: 'entries', readonly turn: number | undefined }
+)
 
 /** Builds the facts of one conversation view and keeps the rows of its settled turns by identity. */
 export class StreamFacts {
@@ -189,6 +191,9 @@ export class StreamFacts {
   private index: TurnIndex | undefined
   /** The last facts object, reused when an unchanged pass produced the same turns and queued rows by identity. */
   private lastFacts: { readonly turns: readonly StreamTurn[], readonly queued: readonly StreamQueued[], readonly facts: TranscriptViewFacts } | undefined
+
+  /** @param counters - optional work sink; production constructs without one. */
+  constructor(private readonly counters?: MayflyWorkCounters) {}
 
   /** Forget every kept row (a locale or policy change rewrites texts under the same ids). */
   reset(): void {
@@ -293,6 +298,7 @@ export class StreamFacts {
     runsOf(display, inputs.t, inputs.now, asked).forEach((item, position) => {
       const turn = turnOf(item)
       const built = this.rowsOf(item, inputs, position, asked)
+      countWork(this.counters, 'streamRowsBuilt', built.length)
       const mapped = built.map(row => this.intern(row, kept))
       if (mapped.length === 0) return
       for (const row of mapped) {
@@ -302,7 +308,7 @@ export class StreamFacts {
       }
       if (turn === undefined) {
         // A canonical node belongs with the turn it precedes, or with the last one when none follows.
-        if (buckets.length === 0 || lead.length > 0) lead.push(...mapped)
+        if (buckets.length === 0) lead.push(...mapped)
         else buckets.at(-1)!.rows.push(...mapped)
         return
       }
@@ -315,12 +321,13 @@ export class StreamFacts {
       bucket.rows.push(...mapped)
     })
     if (lead.length > 0) {
-      if (buckets.length === 0) buckets.push({ turn: -1, rows: lead })
-      else buckets.at(-1)!.rows.push(...lead)
+      // Creating the first bucket consumes the lead, so remaining lead rows belong to a view with no semantic turn.
+      buckets.push({ turn: -1, rows: lead })
     }
     // A request that names no call (a hook asked) has no block to become: it is a block of its own at the end of the stream.
     const nameless = inputs.requests?.[0]
     if (nameless !== undefined && nameless.callId === undefined && buckets.length > 0) {
+      countWork(this.counters, 'streamRowsBuilt')
       buckets.at(-1)!.rows.push(this.intern(namelessRequestRow(nameless, inputs.requests!.filter(request => request.type === nameless.type).length, inputs.t), kept))
     }
     return buckets.map(({ turn, rows: all }) => {
@@ -517,8 +524,8 @@ function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, appro
 
 /** What a row stands for: a run, all its calls; any other row, itself (a row's id is its entry's, or its call's). */
 function ownerOf(item: DisplayItem | RunUnit, turn: number | undefined, row: StreamRow): RowOwner {
-  if (item.kind === 'turn-header') return { kind: 'header', turn, parts: [] }
-  if (item.kind === 'process-title') return { kind: 'title', turn, parts: [] }
+  if (item.kind === 'turn-header') return { kind: 'header', turn: item.turn, parts: [] }
+  if (item.kind === 'process-title') return { kind: 'title', turn: item.turn, parts: [] }
   if (item.kind === 'run') return { kind: 'entries', turn, parts: item.calls.map(call => call.id), run: runOf(item) }
   return { kind: 'entries', turn, parts: [row.id] }
 }
@@ -577,7 +584,7 @@ function titleRow(item: ProcessTitleItem, t: MayflyTranslate): StreamRow {
     item.toolCalls === 0 ? undefined : t(item.toolCalls === 1 ? '{count} tool call' : '{count} tool calls', { count: item.toolCalls }),
     item.subagents === 0 ? undefined : t(item.subagents === 1 ? '{count} subagent' : '{count} subagents', { count: item.subagents }),
     item.durationMs === undefined ? undefined : elapsedText(item.durationMs),
-    item.added === undefined ? undefined : diffStat(item.added, item.removed ?? 0),
+    item.added === undefined ? undefined : diffStat(item.added, item.removed!),
   ].filter((part): part is string => part !== undefined)
   return {
     kind: 'title',
@@ -601,7 +608,9 @@ interface RunUnit {
   readonly calls: readonly Call[]
 }
 
-function isToolLike(entry: TranscriptEntryModel): boolean {
+type ToolEntry = Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' | 'transcript-read-group' | 'transcript-search-group' | 'transcript-command-group' }>
+
+function isToolLike(entry: TranscriptEntryModel): entry is ToolEntry {
   return entry.kind === 'transcript-read-group' || entry.kind === 'transcript-search-group' || entry.kind === 'transcript-command-group'
     || entry.kind === 'transcript-tool'
 }
@@ -689,7 +698,7 @@ function goalChangeRow(entry: Extract<TranscriptEntryModel, { readonly kind: 'tr
   }
 }
 
-function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs): StreamRow | undefined {
+function entryRow(item: EntryItem, entry: Exclude<TranscriptEntryModel, ToolEntry>, inputs: StreamInputs): StreamRow | undefined {
   const { t } = inputs
   switch (entry.kind) {
     case 'transcript-user':
@@ -718,11 +727,6 @@ function entryRow(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamIn
       const took = entry.streaming || entry.durationMs === undefined ? '' : ` · ${compactElapsedMs(Math.max(1000, entry.durationMs))}`
       return reasoningRow(item, entry, `${t('Thinking')}${took}`, entry.streaming, t)
     }
-    case 'transcript-tool':
-    case 'transcript-read-group':
-    case 'transcript-search-group':
-    case 'transcript-command-group':
-      return undefined
     case 'transcript-error':
       return { kind: 'error', id: entry.id, text: sanitizePluginText(entry.code === undefined ? entry.message : `${entry.message} (${entry.code})`) }
     case 'transcript-goal-change': return goalChangeRow(entry, t)

@@ -21,8 +21,6 @@ export function checkReleaseReadiness(root, version, { requireChangelog = true }
   }
   const markers = new Map([
     ['packages/mayfly/src/transcript/banner-content.ts', `MAYFLY_VERSION = '${version}'`],
-    ['packages/cli/tests/main.spec.ts', `const PIN = '${version}'`],
-    ['packages/cli/tests/runtime.spec.ts', `const VERSION = '${version}'`],
   ])
   for (const [relativePath, marker] of markers) {
     if (!readFileSync(join(root, relativePath), 'utf8').includes(marker)) problems.push(`${relativePath}: expected ${marker}`)

@@ -16,7 +16,7 @@ import { MayflyStatusService } from '../../../ui/src/provider.ts'
 import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandle, MayflyScreen } from '../../src/core/types.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
-import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 import { ACTION_TOGGLE_COLLAPSE, apply, inject } from '../../src/transcript/index.ts'
@@ -28,7 +28,7 @@ import { fakeAgent, plainColors } from '../helpers.ts'
 import { FakeProjectionService } from './pane-fakes.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 import { setClipboardOsc52Emitter, setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
-import { MayflyUiImagesService } from '../../src/core/ui/paint/ui-images.ts'
+import { MayflyUiImagesService } from '../../src/core/ui-images.ts'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import { STREAM } from '../../src/components/transcript-view.ts'
 import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
@@ -173,6 +173,8 @@ async function bootTranscript(
     readonly tools?: { get(name: string, agent?: Agent): unknown }
     /** Provide the real image byte source, so the stream's image rows can be loaded through it. */
     readonly images?: boolean
+    /** Boot without the session facts bridge, as a host that publishes none. */
+    readonly withoutSessionFacts?: boolean
     /** Provide the interaction notification owner, so the transcript's reports are observable. */
     readonly interaction?: boolean
     /** Replace the children feed of the session facts with one the spec drives: `emit` publishes the facts of the displayed Agent's children. */
@@ -325,16 +327,18 @@ async function bootTranscript(
   for (const [name, value] of Object.entries(services)) ctx.reflect.provide(name, value)
   ctx.on('session/event', (session, event) => projections.emit(session, event))
   const liveStream = new LiveAssistantStreamService(ctx)
-  const facts = new SessionFactsService(ctx, liveStream)
-  const feed = options.children
-  if (feed !== undefined) {
-    facts.subscribeChildren = (listener) => {
-      feed.emit = listener
-      listener([])
-      return () => { feed.emit = undefined }
+  if (options.withoutSessionFacts !== true) {
+    const facts = new SessionFactsService(ctx, liveStream)
+    const feed = options.children
+    if (feed !== undefined) {
+      facts.subscribeChildren = (listener) => {
+        feed.emit = listener
+        listener([])
+        return () => { feed.emit = undefined }
+      }
     }
+    ctx.effect(() => () => facts.dispose())
   }
-  ctx.effect(() => () => facts.dispose())
   ctx.effect(() => () => liveStream.dispose())
 
   await ctx.plugin(Loader)
@@ -350,13 +354,13 @@ function stripGutter(lines: string[]): string[] {
 }
 
 /** One node compiled the way a mounted slot paints it at 80 columns. */
-function paint(node: MayflyUiNode | null | undefined, bounded = false): string[] {
+function paint(node: MayflyUiNode | null | undefined, screenMode: 'main' | 'alternate' = 'main'): string[] {
   if (node === null || node === undefined) return []
   const compiled = compileMayflyUiNode(node, {
     components: fakeMayflyComponents(),
     colors: COLORS,
     getViewport: () => ({ columns: 80, rows: 1000 }),
-    bounded,
+    screenMode,
     emit: () => {},
   })
   return (compiled.ok ? compiled.value.component : compiled.errorComponent).render(80)
@@ -373,7 +377,7 @@ function contentLines(screen: FakeScreen): string[] {
 
 /** The footer: the status row the transcript publishes into the footer node slot, and the bottom children besides it. */
 function footerLines(screen: FakeScreen): string[] {
-  return [...paint(screen.nodes.get('status.footer'), true), ...stripGutter(screen.bottomChildren.flatMap(component => component.render(80)))]
+  return [...paint(screen.nodes.get('status.footer'), 'alternate'), ...stripGutter(screen.bottomChildren.flatMap(component => component.render(80)))]
 }
 
 describe('mayfly-transcript through the real Loader', () => {
@@ -608,6 +612,40 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
   const inboxOf = (agent: FakeAgent): { nextStep: UserMessage[], nextTurn: UserMessage[] } =>
     (agent as unknown as { inbox: { nextStep: UserMessage[], nextTurn: UserMessage[] } }).inbox
 
+  it('routes queued-row keys, cursor teaching and the new-message jump through the mounted slot', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('work')])
+    const { ctx, screen } = await bootTranscript(agent)
+    const steering = queuedMessage('after this step')
+    const next = queuedMessage('after the turn')
+    inboxOf(agent).nextStep.push(steering)
+    inboxOf(agent).nextTurn.push(next)
+    ctx.emit('agent/inbox/inserted', { agent: agent as unknown as Agent, message: next })
+    await vi.waitFor(() => { expect(contentLines(screen).join('\n')).toContain('after the turn') })
+
+    const rows: Array<string | undefined> = []
+    const actions: Array<readonly [string, string | undefined]> = []
+    ctx.on('mayfly/focus-row-changed', row => { rows.push(row) })
+    ctx.on('mayfly/queued-action', (action, id) => { actions.push([action, id]) })
+    const slot = screen.slotOptions.get('transcript.conversation') as unknown as {
+      readonly keys: Readonly<Record<string, string>>
+      readonly onFocusChange: (focused: boolean) => void
+      readonly cursor: { readonly onMove: (id: string) => void }
+      readonly onEvent: (event: unknown) => void
+    }
+    slot.onFocusChange(true)
+    slot.cursor.onMove(`queued.${String(steering.id)}`)
+    screen.cursorRow = `queued.${String(next.id)}`
+    slot.cursor.onMove(screen.cursorRow)
+    for (const key of ['s', 'd', 'e', 'u']) slot.onEvent({ kind: 'activate', pagePath: [], controlId: 'keys', actionId: slot.keys[key] })
+    expect(actions).toEqual([['steer', String(next.id)], ['cancel', String(next.id)], ['edit', String(next.id)], ['undo', undefined]])
+    slot.onFocusChange(false)
+    expect(rows).toEqual(['steering', 'queued', undefined])
+    const followed = screen.follows
+    ctx.emit('mayfly/request-new-messages')
+    expect(screen.follows).toBe(followed + 1)
+  })
+
   it('shows the selected Agent\'s queued messages, and follows only that Agent\'s inbox events', async () => {
     resetSeq()
     const agent = fakeParent([userEvent('work')])
@@ -686,6 +724,18 @@ describe('mayfly-transcript queued messages, facts, images, and row actions', ()
     await vi.waitFor(() => { expect(contentLines(screen).join('\n')).toContain('stopped') })
     children.emit!([child({ phase: 'completed', promptText: 'audit it' }), child({ id: 'child-2', phase: 'running', promptText: 'audit it' })])
     await vi.waitFor(() => { expect(contentLines(screen).join('\n')).not.toContain('running') })
+  })
+
+  it('keeps the transcript working when the host publishes no session facts', async () => {
+    resetSeq()
+    const agent = fakeParent([userEvent('still here'), assistantEvent(1, 1, [{ type: 'text', text: 'answered' }])])
+    const { ctx, screen, projections } = await bootTranscript(agent, { withoutSessionFacts: true })
+    const rendered = contentLines(screen).join('\n')
+    expect(rendered).toContain('still here')
+    expect(rendered).toContain('answered')
+    projections.emitFacts(agent.session, { ...initialConversationFacts(), compactions: [] })
+    ctx.emit('tools/change')
+    expect(contentLines(screen).join('\n')).toContain('answered')
   })
 
   it('loads an attached image through the attachment store for a reference the stream holds, and answers missing otherwise', async () => {

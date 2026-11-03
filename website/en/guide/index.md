@@ -1,7 +1,7 @@
 # Quickstart
 
 ::: info Current release line
-`v0.1.4-rc.1` is the current preview and is published under npm's **`rc`** dist-tag; `latest` stays on the previous release line. Install the exact `@ephemeral-ai/mayfly-cli@0.1.4-rc.1` (or `@rc`); plugins, CI, and reproducible environments should pin Mayfly `0.1.4-rc.1` and Harness `0.2.1-rc.2`. The harness dependency line now tracks the npm RC release channel. This page is the user install path; the contributor development install (checkout, link install, iteration loop) lives in the developer manual under [Contributing to Mayfly](/en/plugins/contributing).
+`v0.1.4-rc.2` is the current preview and is published under npm's **`rc`** dist-tag; `latest` stays on the previous release line. Install the exact `@ephemeral-ai/mayfly-cli@0.1.4-rc.2` (or `@rc`); plugins, CI, and reproducible environments should pin Mayfly `0.1.4-rc.2` and Harness `0.2.1-rc.2`. The harness dependency line now tracks the npm RC release channel. This page is the user install path; the contributor development install (checkout, link install, iteration loop) lives in the developer manual under [Contributing to Mayfly](/en/plugins/contributing).
 :::
 
 ## Prerequisites
@@ -17,7 +17,7 @@
 **Recommended: the integrated `mayfly` launcher.** It carries the pinned Harness closure as common and platform archives, so npm installs one dependency-free package without resolving the Harness graph or running its install scripts:
 
 ```sh
-npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.1
+npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.2
 mayfly
 ```
 
@@ -46,7 +46,7 @@ dsh --profile mayfly
 After installing, follow the two sections below — one key, then a first run; models, providers, themes, and API keys are covered in detail in [Configuration](/en/guide/config).
 
 - This RC does not move npm `latest`; use the exact version above or `@rc`. An omitted dist-tag resolves the previous release line.
-- Upgrading: shell users re-run `npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.1` (reinstalling is the upgrade — the shell calibrates the profile's Mayfly to its own version and pins the host line with it); direct-dsh users type `/update` inside Mayfly (the in-app safe upgrade: pre-flight, snapshot, boot smoke, automatic rollback), or re-run the same `plugin add`.
+- Upgrading: shell users re-run `npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.2` (reinstalling is the upgrade — the shell calibrates the profile's Mayfly to its own version and pins the host line with it); direct-dsh users type `/update` inside Mayfly (the in-app safe upgrade: pre-flight, snapshot, boot smoke, automatic rollback), or re-run the same `plugin add`.
 
 ## One key before you ride
 

@@ -15,7 +15,7 @@ import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 import { COMMON_LOCALE } from '../src/frontend/common-locale.ts'
 import { INTERACTION_LOCALE } from '../src/interaction/locale.ts'
-import { CORE_CONTEXT_HINT_LOCALE } from '../src/core/ui/compile/context-hint-locale.ts'
+import { CORE_CONTEXT_HINT_LOCALE } from '../src/core/context-hint-locale.ts'
 import { ACTIVITY_LOCALE, TRANSCRIPT_LOCALE } from '../src/transcript/locale.ts'
 import { analyzeSource } from './locale-scan.ts'
 

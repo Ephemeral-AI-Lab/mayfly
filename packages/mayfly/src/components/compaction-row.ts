@@ -64,9 +64,9 @@ function lead(facts: CompactionFacts): readonly MayflyInlineSpan[] {
   return [{ text: facts.state === 'ok' ? '✓ ' : '✗ ', tone: STATE_TONE[facts.state] }]
 }
 
-/** The title after the glyph: a failure is the title in `danger`, the rest in text color. */
+/** The wide title after the glyph; failures always use the one-line form. */
 function title(facts: CompactionFacts): MayflyUiNode {
-  return ui.richText([...lead(facts), facts.state === 'error' ? { text: facts.title, tone: 'danger' } : { text: facts.title }])
+  return ui.richText([...lead(facts), { text: facts.title }])
 }
 
 /** The one-line form: the title, then what is known of the change or the stage. */

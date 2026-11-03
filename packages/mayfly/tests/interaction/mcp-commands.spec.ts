@@ -8,12 +8,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { catalogFixture } from './catalog-fixture.ts'
 import { flushRequests, renderRequest } from './request-fixture.ts'
 import { collectMcpServers } from '../../src/interaction/mcp-servers.ts'
-import { serverConfigNode, serverItems } from '../../src/interaction/mcp-commands.ts'
+import { mcpServerNode, serverConfigNode, serverItems } from '../../src/interaction/mcp-commands.ts'
 import { ui, type MayflyUiActionEvent } from '../../../ui/src/index.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 
 const contexts: Context[] = []
-afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+afterEach(async () => { vi.restoreAllMocks(); for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 async function setup() {
   const ctx = new Context(); contexts.push(ctx)
   return catalogFixture(ctx)
@@ -157,11 +157,7 @@ describe('shared MCP browser', () => {
     expect(config).toContain('(not resolved)')
     expect(config).toContain('Transport')
     expect(config).not.toContain('Policy')
-    await bench.run('/mcp')
-    const browser = bench.model('mayfly.mcp')
-    browser.emit(selectServer('a'))
-    await flushRequests()
-    expect(JSON.stringify(browser.node)).toContain('Configuration')
+    expect(JSON.stringify(mcpServerNode(catalog.servers[0]!, key => key))).toContain('Configuration')
   })
 
   it('contains cancelled, wrong-Agent, raced focus, and failed command reads', async () => {
@@ -289,12 +285,17 @@ describe('shared MCP browser', () => {
   })
 })
 
-it('draws the no-tools configuration row', () => {
+it('draws the no-tools row and the no-tools empty title', async () => {
+  const bench = await setup()
   const server = { entryId: 'empty', serverName: 'empty', status: 'no-tools' as const, registeredCount: 0, toolsVisible: [] }
   const t = (key: string, values?: Record<string, unknown>) => values === undefined ? key : `${key} ${JSON.stringify(values)}`
   const config = JSON.stringify(serverConfigNode(server, t))
   expect(config).toContain('No tools registered; connection state is unavailable')
   expect(config).not.toContain('Tools are registered but restricted')
+  const node = JSON.stringify(mcpServerNode(server, t))
+  expect(node).toContain('No tools registered')
+  expect(node).not.toContain('No tools visible to this session')
+  expect(bench).toBeDefined()
 })
 
 it('returns quietly when the Agent changes while the MCP catalog is being read', async () => {
@@ -388,4 +389,191 @@ it('pages and reads a resource inside the server page and returns through it', a
   expect(browser.disposed).toBe(false)
   expect(browser.activeTab({ pagePath: [], controlId: 'server-pages' })).toBe('resources')
   expect(JSON.stringify(browser.node)).toContain('Doc')
+})
+
+async function resourceBrowser(items: Record<string, string>[] = [{ uri: 'test://doc' }]) {
+  const bench = await setup()
+  const tool = await bench.register({ name: 'mcp__demo__one', description: '' })
+  const execute = vi.spyOn(bench.ctx.tools, 'execute').mockImplementation(async call => {
+    const value: { [key: string]: Record<string, string>[] } = call.name === 'read_mcp_resource' ? { contents: [] } : { [call.name === 'list_mcp_resource_templates' ? 'resourceTemplates' : 'resources']: items }
+    return { isError: false, value, content: [] }
+  })
+  await bench.run('/mcp')
+  const entry = rootEntry(bench)
+  const action = (event: MayflyUiActionEvent, signal = new AbortController().signal) => entry.definition.onEvent!.action!(event, eventContext(entry, signal))
+  const act = (id: string) => action({ kind: 'activate', pagePath: [], controlId: 'server-actions', actionId: id })
+  const observe = (event: Parameters<NonNullable<NonNullable<typeof entry.definition.onEvent>['observe']>>[0]) => entry.definition.onEvent!.observe!(event, eventContext(entry))
+  const browser = bench.model('mayfly.mcp')
+  const text = () => JSON.stringify(browser.registration.node)
+  return { ...bench, tool, execute, entry, action, act, observe, browser, text }
+}
+
+describe('MCP resource read boundaries', () => {
+  it('ends observer installation when its native registration is closed during initial admission', async () => {
+    const f = await setup()
+    await f.register({ name: 'mcp__demo__one', description: '' })
+    const off = f.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.mcp') f.ctx.mayflyOverlays.close('mayfly.mcp') })
+    expect((await f.run('/mcp'))?.result).toEqual({ kind: 'success' })
+    off()
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(0)
+    await f.run('/mcp')
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+  })
+
+  it('ignores unrelated observations, invalid tabs, absent selections, and queued controls without a selected server', async () => {
+    const f = await resourceBrowser()
+    expect(await f.action(selectTool())).toMatchObject({ kind: 'failed' })
+    expect(await f.action(selectResource())).toMatchObject({ kind: 'cancelled' })
+    expect(await f.act('read')).toMatchObject({ kind: 'failed' })
+    expect(await f.act('resources')).toMatchObject({ kind: 'completed' })
+    expect(await f.act('more')).toMatchObject({ kind: 'completed' })
+    expect(await f.act('unknown')).toMatchObject({ kind: 'completed' })
+    expect(await f.action({ kind: 'token-remove', pagePath: [], controlId: 'foreign', tokenId: 'unrelated' })).toMatchObject({ kind: 'completed' })
+    await f.observe({ kind: 'tab-change', pagePath: [], controlId: 'server-pages', tabId: 'resources' })
+    await f.action(selectServer())
+    await f.observe({ kind: 'tab-change', pagePath: [], controlId: 'server-pages', tabId: 'unknown' })
+    await f.observe({ kind: 'focus-change', pagePath: [], controlId: 'server-pages' })
+    await f.observe({ kind: 'tab-change', pagePath: [], controlId: 'foreign', tabId: 'tools' })
+    await f.observe({ kind: 'tab-change', pagePath: [], controlId: 'server-pages', tabId: 'resources' })
+    await flushRequests()
+    expect(f.text()).toContain('test://doc')
+    expect(await f.action(selectResource('1.5'))).toMatchObject({ kind: 'cancelled' })
+    expect(await f.action(selectResource('999'))).toMatchObject({ kind: 'cancelled' })
+  })
+
+  it('uses native optional resource metadata, rejects blank URIs, and renders empty native bodies', async () => {
+    const f = await resourceBrowser([{}, { uriTemplate: 'test://{name}', description: 'Template description' }, { uri: 'test://doc' }])
+    await f.action(selectServer())
+    await f.act('resources'); await flushRequests()
+    await f.action(selectResource())
+    expect(await f.act('read')).toMatchObject({ kind: 'failed', message: 'Enter a resource URI' })
+    await f.action({ kind: 'dismiss', pagePath: [] })
+    await f.action(selectResource('1'))
+    expect(f.text()).toContain('Template description')
+    expect(f.text()).toContain('test://{name}')
+    expect(await f.action({ kind: 'activate', pagePath: [], controlId: 'resource-actions', actionId: 'read', inputs: { actionId: 'read', draftRevision: 0, source: f.browser.source, forms: [{ pagePath: [], formId: 'resource-uri', draftRevision: 0, fields: [{ id: 'uri', change: 'set', value: '   ' }] }] } })).toMatchObject({ kind: 'completed' })
+    expect(f.text()).toContain('(no output)')
+    await f.action({ kind: 'dismiss', pagePath: [] })
+    expect(await f.action({ kind: 'activate', pagePath: [], controlId: 'resource-actions', actionId: 'read', inputs: { actionId: 'read', draftRevision: 0, source: f.browser.source, forms: [{ pagePath: [], formId: 'resource-uri', draftRevision: 0, fields: [{ id: 'uri', change: 'unchanged', value: 'test://{name}' }] }] } })).toMatchObject({ kind: 'completed' })
+    expect(f.execute).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'read_mcp_resource', arguments: { server: 'demo', uri: 'test://{name}' } }))
+  })
+
+  it('reports resource catalog and body refusals, keeps templates cached, and refreshes removed tools in place', async () => {
+    const f = await resourceBrowser()
+    await f.action(selectServer())
+    f.execute.mockRejectedValueOnce(new Error('catalog denied'))
+    await f.act('resources'); await flushRequests()
+    expect(f.text()).toContain('catalog denied')
+    await f.act('resources'); await flushRequests()
+    await f.action(selectResource())
+    f.execute.mockRejectedValueOnce('body denied')
+    expect(await f.act('read')).toMatchObject({ kind: 'failed', message: 'body denied' })
+    await f.action({ kind: 'dismiss', pagePath: [] })
+    await f.act('more')
+    const reads = f.execute.mock.calls.length
+    await f.act('resources')
+    expect(f.execute).toHaveBeenCalledTimes(reads)
+    await f.act('templates'); await flushRequests()
+    const templates = f.execute.mock.calls.length
+    await f.observe({ kind: 'tab-change', pagePath: [], controlId: 'server-pages', tabId: 'tools' })
+    await f.observe({ kind: 'tab-change', pagePath: [], controlId: 'server-pages', tabId: 'resources' })
+    expect(f.execute).toHaveBeenCalledTimes(templates)
+    await f.action(selectTool())
+    expect(f.text()).toContain('(no description)')
+    await f.register({ name: 'mcp__demo__two', description: 'retained server' })
+    await f.tool.dispose(); await flushRequests()
+    expect(f.text()).toContain('retained server')
+    expect(f.text()).not.toContain('"title":"mcp__demo__one"')
+  })
+
+  it('reports a native catalog failure while accepting a server selection', async () => {
+    const f = await resourceBrowser()
+    vi.spyOn(f.ctx.tools, 'schemas').mockImplementationOnce(() => { throw new Error('selection refresh failed') })
+    expect(await f.action(selectServer())).toMatchObject({ kind: 'failed', message: 'selection refresh failed' })
+  })
+
+  it('shows a pending next page beside held rows and does not stack duplicate loads', async () => {
+    const f = await resourceBrowser()
+    await f.action(selectServer())
+    f.execute.mockResolvedValueOnce({ isError: false, value: { resources: [{ uri: 'test://one' }], nextCursor: 'two' }, content: [] })
+    await f.act('resources'); await flushRequests()
+    const gate = Promise.withResolvers<Awaited<ReturnType<Context['tools']['execute']>>>()
+    f.execute.mockReturnValueOnce(gate.promise)
+    const pending = f.act('more')
+    expect(f.text()).toContain('test://one')
+    expect(f.text()).toContain('loader')
+    const count = f.execute.mock.calls.length
+    await f.act('more')
+    await f.act('resources')
+    expect(f.execute).toHaveBeenCalledTimes(count)
+    gate.resolve({ isError: false, value: { resources: [{ uri: 'test://two' }] }, content: [] })
+    expect(await pending).toMatchObject({ kind: 'completed' })
+    expect(f.text()).toContain('test://two')
+  })
+
+  it.each(['replacement', 'closure', 'Agent'] as const)('retires resource catalog completions after %s', async ended => {
+    const f = await resourceBrowser()
+    await f.action(selectServer())
+    const gate = Promise.withResolvers<Awaited<ReturnType<Context['tools']['execute']>>>()
+    f.execute.mockReturnValueOnce(gate.promise)
+    await f.act('resources')
+    if (ended === 'replacement') { await f.act('templates'); await flushRequests() }
+    else if (ended === 'closure') f.ctx.mayflyOverlays.close('mayfly.mcp')
+    else f.ctx.mayflyConversations.selectPrimary(f.other)
+    gate.resolve({ isError: false, value: { resources: [{ uri: 'late://retired' }] }, content: [] })
+    await flushRequests()
+    expect(f.text()).not.toContain('late://retired')
+  })
+
+  it.each([false, true])('retires late resource catalog refusals after closure: reject=%s', async reject => {
+    const f = await resourceBrowser()
+    await f.action(selectServer())
+    const gate = Promise.withResolvers<Awaited<ReturnType<Context['tools']['execute']>>>()
+    f.execute.mockReturnValueOnce(gate.promise)
+    await f.act('resources')
+    f.ctx.mayflyOverlays.close('mayfly.mcp')
+    if (reject) gate.reject(new Error('late catalog refusal'))
+    else gate.resolve({ isError: false, value: { resources: [] }, content: [] })
+    await flushRequests()
+    expect(f.browser.disposed).toBe(true)
+  })
+
+  it('cancels a resource body result after the exact Agent changes and ignores queued tab publications after close', async () => {
+    const f = await resourceBrowser()
+    await f.action(selectServer())
+    await f.act('resources'); await flushRequests()
+    await f.action(selectResource())
+    const gate = Promise.withResolvers<Awaited<ReturnType<Context['tools']['execute']>>>()
+    f.execute.mockReturnValueOnce(gate.promise)
+    const pending = f.act('read')
+    f.ctx.mayflyConversations.selectPrimary(f.other)
+    gate.resolve({ isError: false, value: { contents: [{ text: 'late body' }] }, content: [] })
+    expect(await pending).toMatchObject({ kind: 'cancelled' })
+    expect(f.browser.disposed).toBe(true)
+    const live = await resourceBrowser()
+    await live.action(selectServer())
+    live.ctx.mayflyOverlays.close('mayfly.mcp')
+    await live.observe({ kind: 'tab-change', pagePath: [], controlId: 'server-pages', tabId: 'config' })
+    expect(live.browser.disposed).toBe(true)
+  })
+
+  it.each(['caller', 'closure', 'resource', 'page', 'templates', 'late failure'] as const)('keeps a retired resource body from replacing the current page after %s', async ended => {
+    const f = await resourceBrowser([{ uri: 'test://one' }, { uri: 'test://two' }])
+    await f.action(selectServer())
+    await f.act('resources'); await flushRequests()
+    await f.action(selectResource())
+    const gate = Promise.withResolvers<Awaited<ReturnType<Context['tools']['execute']>>>()
+    f.execute.mockReturnValueOnce(gate.promise)
+    const caller = new AbortController()
+    const pending = f.action({ kind: 'activate', pagePath: [], controlId: 'resource-actions', actionId: 'read' }, caller.signal)
+    if (ended === 'caller' || ended === 'late failure') caller.abort()
+    else if (ended === 'closure') f.ctx.mayflyOverlays.close('mayfly.mcp')
+    else if (ended === 'resource') await f.action(selectResource('1'))
+    else if (ended === 'page') await f.act('resources')
+    else { await f.act('templates'); await flushRequests() }
+    if (ended === 'late failure') gate.reject(new Error('retired body refusal'))
+    else gate.resolve({ isError: false, value: { contents: [{ text: 'late body must stay retired' }] }, content: [] })
+    expect(await pending).toMatchObject({ kind: 'cancelled' })
+    expect(f.text()).not.toContain('late body must stay retired')
+  })
 })

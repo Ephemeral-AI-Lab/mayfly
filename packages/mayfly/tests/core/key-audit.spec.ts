@@ -6,18 +6,19 @@
 import { Context } from '@deepseek-ai/cordis'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { MayflyKeymapService } from '../../src/core/keys/keymap.ts'
-import { DEFAULT_ACTION_KEYS, keyActionKeys, printableKey } from '../../src/core/keys/key-actions.ts'
+import { MayflyKeymapService } from '../../src/core/keymap.ts'
+import { DEFAULT_ACTION_KEYS, keyActionKeys, printableKey } from '../../src/core/key-actions.ts'
 import { keyGrammar, type EscapeStep, type GrammarBinding, type GrammarControl, type GrammarState } from '../../src/core/ui-key-grammar.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import { ACTION_IMAGE_PASTE } from '../../src/interaction/paste-image.ts'
 import { ACTION_TOGGLE_COLLAPSE } from '../../src/transcript/index.ts'
 import type { MayflyKeyAction, MayflyKeyScope } from '../../src/core/types.ts'
+import { DEFAULT_KEYMAP } from '../../../../docs/design/prototypes/ui-kit.mjs'
 
 /** Defaults registered inline by their owners; `drift` proves this table still matches the source text. */
 const PRODUCT_KEY_ACTIONS: readonly (MayflyKeyAction & { readonly source: string, readonly handler?: () => void })[] = [
-  { id: 'mayfly.surface.next', keys: 'f6', source: '../../src/core/hosts/surface-renderer.ts', handler: () => {} },
-  { id: 'mayfly.surface.previous', keys: 'shift+f6', source: '../../src/core/hosts/surface-renderer.ts', handler: () => {} },
+  { id: 'mayfly.surface.next', keys: 'f6', source: '../../src/core/surface-renderer.ts', handler: () => {} },
+  { id: 'mayfly.surface.previous', keys: 'shift+f6', source: '../../src/core/surface-renderer.ts', handler: () => {} },
   { id: ACTION_IMAGE_PASTE, keys: 'ctrl+v', source: '../../src/interaction/paste-image.ts' },
   { id: ACTION_TOGGLE_COLLAPSE, keys: 'ctrl+o', source: '../../src/transcript/index.ts', handler: () => {} },
 ]
@@ -105,6 +106,10 @@ describe('default keys', () => {
   })
 
   it('name every navigation and common-meaning action of the kit, with its default keys', () => {
+    // The kit writes `esc`, `pgup`, and `pgdn`; pi-tui's key ids are `escape`, `pageUp`, and `pageDown`.
+    const kitKey = (key: string): string => ({ esc: 'escape', pgup: 'pageUp', pgdn: 'pageDown' } as Record<string, string>)[key] ?? key
+    const shipped = Object.fromEntries(INTERACTION_KEY_ACTIONS.filter(action => action.id.startsWith('ui.')).map(action => [action.id, [action.keys].flat()]))
+    expect(shipped).toEqual(Object.fromEntries(Object.entries(DEFAULT_KEYMAP as Record<string, string[]>).map(([id, keys]) => [id, keys.map(kitKey)])))
     for (const action of defaults()) expect(action.id, action.id).toMatch(/^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$/u)
   })
 

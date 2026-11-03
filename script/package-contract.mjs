@@ -15,7 +15,7 @@ export const REPOSITORY_WEB_URL = 'https://github.com/Ephemeral-AI-Lab/mayfly'
 export const REPOSITORY_URL = `git+${REPOSITORY_WEB_URL}.git`
 export const HOMEPAGE_URL = 'https://may-fly.dev'
 export const BUGS_URL = `${REPOSITORY_WEB_URL}/issues`
-export const NODE_RANGE = '^22.19.0 || >=24.0.0'
+export const NODE_RANGE = '>=24.9.0'
 
 /** Canonical npm provenance metadata for a publishable workspace package. */
 export function releaseRepository(relativeDir) {
@@ -31,6 +31,8 @@ export function releaseDistTags(version) {
 export const RELEASE_PACKAGE_DIRS = [
   'packages/ui',
   'packages/mayfly',
+  'packages/host',
+  'packages/remote',
   'packages/cli',
 ]
 

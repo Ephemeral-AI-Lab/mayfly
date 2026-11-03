@@ -11,7 +11,6 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createDeveloperMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { MayflyRequestController, MayflyRequestRef } from './request-lifecycle.ts'
-import { formatError } from '../internal/format.ts'
 
 /** Identity of one live turn removed from Mayfly's visible conversation. */
 export interface MayflyTurnRetraction {
@@ -101,7 +100,7 @@ export function installRetractionService(
   const persist = (entry: PendingRetraction, endSeq: number): void => {
     queueMicrotask(() => {
       const nodes = entry.session.surface.nodes.filter(seq => seq > entry.startSeq && seq < endSeq)
-      /* a matched human surface message guarantees at least one node before turn/end */
+      /* Another native listener may replace the surface before this queued write. */
       if (nodes.length === 0) return
       try {
         // Harness forbids source citations on assistant messages (they embed
@@ -118,7 +117,7 @@ export function installRetractionService(
           sourceEventSeqs: nodes,
         })
       } catch (error) {
-        report(`could not persist message retraction: ${formatError(error)}`)
+        report(`could not persist message retraction: ${error instanceof Error ? error.message : String(error)}`)
       }
     })
   }

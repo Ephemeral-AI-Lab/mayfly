@@ -4,7 +4,7 @@
  * carries the canvas it was checked against.
  */
 import { describe, expect, it } from 'vitest'
-import { PALETTES } from '../../src/core/theme/palettes.ts'
+import { PALETTES } from '../../src/core/palettes.ts'
 
 /** The palette token each public tone paints with (`paintPluginTone` in core/plugin-view.ts). */
 const TONE_TOKENS = { default: 'text', muted: 'muted', primary: 'primary', accent: 'accent', user: 'roleUser', success: 'success', warning: 'warning', danger: 'error' } as const

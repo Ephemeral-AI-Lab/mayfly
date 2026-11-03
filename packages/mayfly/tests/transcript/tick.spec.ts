@@ -26,6 +26,18 @@ afterEach(() => {
 })
 
 describe('MayflyTickService', () => {
+  it('uses the native wall clock when no clock is supplied', () => {
+    const tick = new MayflyTickService(new Context())
+    const listener = vi.fn()
+    tick.subscribe(listener)
+    const before = Date.now()
+    vi.advanceTimersByTime(TICK_MS)
+    expect(listener).toHaveBeenCalledOnce()
+    expect(listener.mock.calls[0]![0]).toBeGreaterThanOrEqual(before)
+    expect(listener.mock.calls[0]![0]).toBeLessThanOrEqual(Date.now())
+    tick.dispose()
+  })
+
   it('runs no clock until a listener subscribes, and one clock for every listener', () => {
     const clock = clockAt(START)
     const tick = new MayflyTickService(new Context(), clock.now)

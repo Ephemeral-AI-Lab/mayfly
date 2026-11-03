@@ -1,34 +1,137 @@
 # Mayfly architecture
 
-Mayfly is an out-of-tree, ESM-only terminal UI bundle for DeepSeek Harness. It
-is a set of ordinary Cordis sibling plugins on `dsh-base`: it consumes the
-native dsh service graph directly and adds only the contribution points a
-terminal UI needs. There is no second plugin model, no private runtime realm,
-and no compatibility layer.
+Mayfly has one product deployment: a native dsh Host and an independent Remote
+TUI. The Host runs official Harness `0.2.2-alpha.2`, `dsh-base`, `dsh-web-app`,
+and the Mayfly Host bundle. The TUI connects through the official Client API.
+Closing or detaching the TUI releases Client resources and keeps Host work alive.
 
 <!-- BEGIN diagram:mayfly-layers -->
 <!-- single source: docs/diagrams/mayfly-layers.en.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
-    ROOT["one dsh process · one Cordis service graph"]
-    DSH["native dsh services<br/>commands · sessionProjections · tools · agents"]
-    PLUGIN["ordinary Cordis plugins<br/>official Mayfly rows and external siblings"]
-    AGENT["mayflyConversations · mayflyCurrentAgent<br/>primary + side conversations<br/>exact displayed Agent"]
-    UI["direct Mayfly UI services<br/>mayflyPanes · mayflyStatus<br/>mayflyOverlays · mayflyEditorExtensions"]
-    CORE["@ephemeral-ai/mayfly core area<br/>only pi-tui and raw-terminal owner"]
+    HOST["native dsh Host process<br/>dsh-base · dsh-web-app · mayfly-host"]
+    STATE["native Agents · Sessions · models · tools<br/>durable Mayfly projections"]
+    WIRE["official Client HTTP/WebSocket<br/>serializable Remote DTOs · native file routes"]
+    REMOTE["independent Remote TUI process<br/>HostKey + SessionRef selection · local feature state"]
+    UI["four direct Mayfly UI services<br/>panes · status · overlays · editor extensions"]
+    CORE["shared Mayfly core<br/>only pi-tui · ANSI · terminal · width owner"]
     TERM["terminal"]
 
-    ROOT --> DSH
-    ROOT --> PLUGIN
-    DSH --> PLUGIN
-    AGENT --> PLUGIN
-    PLUGIN --> UI
+    HOST --> STATE
+    STATE <--> WIRE
+    WIRE <--> REMOTE
+    REMOTE --> UI
     UI --> CORE
     CORE --> TERM
 ```
 <!-- END diagram:mayfly-layers -->
 
-## Ownership boundaries
+## Package and process ownership
+
+| Package | Responsibility |
+| --- | --- |
+| `@ephemeral-ai/mayfly-host` | Host bundle, settings namespace, durable projections, focused `mayflyHost` Remote namespace, startup URL printer |
+| `@ephemeral-ai/mayfly-remote` | Client transport, multi-Host selection, feature controllers and writes, standalone TUI composition |
+| `@ephemeral-ai/mayfly` | Shared renderer, themes, readonly presentation, editor and transcript controllers; no public root plugin or native composition |
+| `@ephemeral-ai/mayfly-ui` | Renderer-neutral contracts, builders, and four direct UI services/provider |
+| `@ephemeral-ai/mayfly-cli` | Small global launcher with an exact-version Remote dependency; no Host spawning or runtime archive |
+
+The Host and TUI each have their own Cordis tree. Host plugins use documented
+native dsh services in their owning process. TUI plugins contribute through
+`mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and
+`mayflyEditorExtensions`. Cross-process calls use serializable Remote DTOs;
+Agent, Session, tool definitions, callbacks, and renderer objects never cross.
+The shared package's old app, interaction, startup, patch, and preset payload
+are private source/reference fixtures and are excluded from publication.
+
+## State and lifetime
+
+Harness owns Agent, Session, model, tool, persistence, and durable projection
+state. Host registers `mayflyConversation`, `mayflyConversationFacts`, and
+related presentation projections. Remote consumes whole current snapshots;
+its event window only overlays the current assistant attempt. It never folds
+a second durable conversation history or facts store.
+
+Remote owns the selected `HostKey` plus `SessionRef`, startup coordination,
+open side-view descriptors, local drafts, operation feedback, and renderer
+preferences. Every identity and asynchronous write includes the selected Host.
+Only the displayed conversation and its F7 counterpart retain bindings;
+listed descriptors reacquire native bindings when displayed. Passive history
+reads never activate a child. An explicit continuable-child reply resumes it
+through the native addressed-subagent API. Readonly views keep drafts and
+refuse writes.
+
+Startup has no Session unless a task or resume id requires one. Concurrent
+first prompts share Session creation. Pending startup plan intent is admitted
+through the native command before the first prompt; a failed admission sends
+no prompt. `/new` and `/clear` deselect without creating empty Sessions or
+stopping Host work. A detached or replaced generation cannot select a late
+creation result, reopen a panel, acknowledge a stale operation, or send input.
+
+`/btw <question>` inherits the source's whole current native tail, including an
+unfinished first turn. The authorized Host command reads the exact observation
+cursor and supplies it to native Session Controller fork; Harness balances any
+open turn. The returned inherited boundary controls the side view's transcript
+floor. A genuinely empty source uses native creation with the effective Host
+directory and source preset, so it has no inherited floor. Remote restores the
+source model and clears inherited pending Inbox rows before the child prompt.
+Before the source records a model route, Remote reads the native Host default;
+this read does not record a parent selection or pin a default reasoning effort.
+
+Registrations, listeners, timers, requests, and pending acknowledgements belong
+to their Cordis Fiber or explicit frontend owner. Theme/core reload preserves
+valid drafts and selection while discarding terminal handles and compiled
+renderers. Closing a BTW or child view releases its frontend binding; it does
+not implicitly stop the Host Agent. Native cancellation and explicit subagent
+drain remain distinct operations.
+
+## Presentation
+
+Only `packages/mayfly/src/core/` imports pi-tui and owns raw terminal state,
+ANSI, focus, layout, and visible-width calculations. The screen keeps fixed
+prelude, conversation, local activity, editor, and footer hosts. Features lease
+named slots or register readonly UI nodes. UI interaction models own form,
+choice, tab, document, prompt, confirmation, and feedback state outside renderer
+handles. See [interaction-model.md](./interaction-model.md) for the shared key
+grammar and [mayfly-seams.md](./mayfly-seams.md) for extension boundaries.
+
+Shared components cache frozen snapshots by identity and provider revision.
+Durable `updatedSeq` and transient presentation revisions use separate clocks.
+Live attempt settlement follows explicit native settled-step facts. Renderer
+animation timers never measure or decide domain progress. Every component must
+return rows no wider than the supplied `render(width)`.
+
+Goal and Todo views reuse the reference's pure presentation builders over whole
+native projections. `/goal` is dispatched to the native command with its
+parser and objective attachments intact. The status edit action restores the
+native edit command in the prompt; revision-bound controls use native writes.
+
+## Installation and verification
+
+Use the root [installation instructions](../README.md#install-and-run).
+`script/install-dev.sh` builds and links only the Host bundle into a dedicated
+`mayfly-*` profile using the selected exact-line `DSH_BIN`. Start that Host,
+then pass its authenticated readiness URL through `MAYFLY_DSH_STARTUP_URL` to
+`script/mayfly-remote.sh`. Tokens never enter argv or ordinary diagnostics.
+
+The npm `0.1.4-rc.2` artifact is an immutable UI/workflow oracle, not a second
+product deployment. [Split validation](./split-parity-validation.md) requires
+independent reference capture, real HTTP/WebSocket scenarios, PTY teardown,
+and cell-grid comparison. Shared builders and smoke success alone do not
+establish visual parity. The root README lists the four remaining official API
+limitations. The validation document defines the evidence still required for
+acceptance; only genuine official API limitations may remain partial then.
+
+Run the root change-aware gate while iterating and `pnpm run verify:full` before
+architectural acceptance. Public seams require real consumers, exact-Host and
+Session isolation, replay/abort/late-result tests, width coverage, publication
+closure, and a dedicated real Host/TUI profile acceptance.
+
+## Historical composition fixture
+
+The diagram below records the private in-process source fixture used by older
+component and composition tests. It is retained as historical test context;
+it does not describe the current installation, published exports, or runtime.
 
 <!-- BEGIN diagram:mayfly-composition -->
 <!-- single source: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
@@ -51,115 +154,3 @@ flowchart TB
     UI --> PLUGINS
 ```
 <!-- END diagram:mayfly-composition -->
-
-| Package | Responsibility |
-| --- | --- |
-| `@ephemeral-ai/mayfly-ui` | Renderer-neutral wire contracts; `ui.*` builders; `freezeWire`/`isWireSnapshot`; `defineMayflyComponent`; one `compose.*` namespace; the four UI registries and their provider. |
-| `@ephemeral-ai/mayfly` | Frontend, conversation, app, core, transcript, interaction, components, theme, composition rows, and the preset. |
-| `@ephemeral-ai/mayfly-cli` | Dependency-free global launcher; expands and calibrates the bundled dsh runtime. |
-
-`frontend/`, `conversation/`, `app/`, `transcript/`, `interaction/`, and
-`components/` are source-ownership areas and Cordis rows inside
-`@ephemeral-ai/mayfly`, not separate packages.
-
-- `frontend/` owns registration-bound interaction services, images, locales,
-  and the live assistant stream; its state survives a renderer rebuild.
-- `conversation/` owns the transcript history and its presentation facts as
-  two frozen projections, `mayflyConversation` and
-  `mayflyConversationFacts`, over one shared vocabulary.
-- `app/` owns startup, `mayflyConversations`, and `mayflyCurrentAgent`;
-  Harness owns every Agent, Session, tool, and command.
-- `transcript/` owns the conversation controller, views, status, and notices.
-- `interaction/` owns editor, prompt-submit, command, and panel plugins; it
-  registers nodes and answers structured actions, but does not render.
-- `components/` holds pure fact-to-node functions that import only the kit and
-  their siblings; they own no Fiber, width, clock, ANSI, or key binding.
-
-Shared kits keep cross-area helpers single-sourced: `internal/format.ts`
-(numbers, durations, bytes), `errors.ts`, `latest.ts` (generation-fenced latest
-values), `process.ts` (bounded subprocesses), `interaction/panel.ts`,
-`transcript/view-items.ts`, and the locale helpers.
-
-## The UI pipeline
-
-### 1. Admit
-
-A feature publishes a `ui.*` wire tree or a `freezeWire` snapshot. The
-provider admits the definition and initial snapshot before effects, assigns a
-revision to every `set()`, and publishes upsert/remove deltas. Core admission
-validates schema, quotas, control characters, and width; the wire carries no
-renderer, Agent, Promise, callback, focus handle, key binding, ANSI, or
-terminal width. Lists stay ordinary readonly arrays; only the viewport
-neighborhood and visible `when` branches are admitted. Admission memoizes by
-wire identity, and a memo hit replays every quota and duplicate check.
-
-### 2. Compile
-
-Core compiles the visible branch: layout ladders, focusable controls, groups,
-page paths, and the key grammar. Hidden subtrees compile when first visible.
-Compilation memoizes per surface runtime and invalidates on an admission,
-palette change, or layout epoch. The compiler owns geometry and dispatch.
-
-### 3. Paint
-
-Painters turn compiled nodes into rows from the node, width, palette, surface
-model, and keymap revision. The retained-row cache paints once per epoch and
-answers repeat renders from memory until a handled key, focus, viewport, model
-revision, keymap revision, or clock tick moves it. A moving cell reads one
-clock, armed only while it can be on screen. An ordinary surface caches by
-provider revision; the conversation stream keeps row facts by identity while
-their content is equal, so a settled turn republishes the same frozen items.
-
-### 4. Hosts
-
-The Screen Shell mounts fixed hosts: prelude, conversation, local activity,
-EditorDock, and Footer. Features claim named slot leases (`content`, `dock`,
-`footer`), never a new root component. Panes go to the header, side, or bottom
-dock; status entries share one row; overlays and editor presentations use the
-overlay stack and editor host; `views` panes are status-row views. A null
-snapshot occupies no layout. Slot and pane state lives in `mayflyUiInteraction`,
-so a screen teardown revokes the lease but keeps the model.
-
-### 5. Terminal
-
-Only `src/core/` imports pi-tui or owns raw terminal state. Its modules group
-around `ui/admit`, `ui/compile`, `ui/paint`, and `ui/state`, plus `content/`,
-`hosts/`, `terminal/`, `keys/`, `text/`, and `theme/`. These groups own ANSI,
-focus, layout, visible width, the alternate screen, capability probing, and key
-decoding. A new renderer generation rebuilds these objects; they never enter
-public nodes or become a second source for drafts. A core/theme reload
-re-projects the same frontend interaction models.
-
-## Runtime rules
-
-Plugins inject and use native dsh services directly; Mayfly adds only the four
-direct UI services. Events are facts, projections are readonly state, and
-actions are structured writes; a renderer never folds session events into a
-second domain store. `mayflyCurrentAgent.current()` returns the exact displayed
-Agent, or null for a readonly or resumable conversation. Every registration,
-listener, timer, and async continuation belongs to its Cordis Fiber; Fiber
-unload is the entire cleanup mechanism. There are no mutable singletons,
-private realms, capability hosts, facades, manifests, aliases, shims,
-deprecations, or fallback paths.
-
-## Composition
-
-`cordis.patch.yml` inserts ordinary siblings over `dsh-base`: dsh support rows
-plus all Mayfly product rows. YAML order does not imply startup order; ordering
-comes from `inject`. Presets select the native preset registry; Agent Team is
-an optional external plugin under its own preset, not a default mount.
-
-## Verification
-
-`pnpm run check` is the whole gate: build, typecheck, lint, and the full
-vitest suite. The suite runs with `MAYFLY_UI_VERIFY_MEMO=1`, so every
-retained-row hit repaints and a difference fails. Every component row must fit
-`render(width)`; content renderers join the owning `width-scan.spec.ts`.
-`packages/mayfly/tests/e2e.spec.ts` proves whole-tree service access, UI contributions, exact
-Agent scope, Fiber cleanup, and core reload. Distribution and public-surface
-changes also run `check:lib`, `check:examples`, `check:pack`, and
-`check:agent-docs`.
-
-Scenarios are a demo tool: `pnpm run scenario` opens a scripted conversation and
-`pnpm run frame` writes checkpoints as cell grids, text, and SVG. Tests record
-decisions; add them when the owner finalizes an effect.

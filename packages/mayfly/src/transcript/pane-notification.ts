@@ -25,6 +25,8 @@ import { NotificationLine, type NotificationFacts, type NotificationKeyPart, typ
 import type { MayflyFocusMode, MayflyFocusRow } from '../core/types.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { observeTranscriptLocale } from './locale.ts'
+import type { SessionFactsService } from './session-facts.ts'
+import type { TickSource } from './tick.ts'
 
 /** Ticks one group of the running-turn hint stays up before the next replaces it. */
 const HINT_TICKS = 15
@@ -96,7 +98,7 @@ function searchKeys(t: MayflyTranslate): readonly NotificationKeyPart[] {
  */
 export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   const interaction = ctx.get('mayflyUiInteraction')
-  const factsService = ctx.mayflySessionFacts
+  const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
   /** The words of the chip back to the tail of the stream while the view is scrolled away, else `undefined`. */
   let chip: string | undefined
   /** What the prompt awaits (the clipboard, the file search), else `undefined`. */
@@ -146,7 +148,7 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   }
   /** A panel in the editor slot takes the status rows' place: the row stands aside until it closes. */
   let panelOpen = false
-  let shape = JSON.stringify(current() ?? null)
+  let shape = JSON.stringify(current())
   const pane = ctx.mayflyPanes.register({
     id: 'mayfly.pane.notification',
     placement: 'bottom',
@@ -155,28 +157,28 @@ export function mountNotificationPane(ctx: Context, t: MayflyTranslate): void {
   }, NotificationLine(current()))
   const refresh = (): void => {
     const next = current()
-    const key = `${panelOpen ? 'panel' : ''}${JSON.stringify(next ?? null)}`
+    const key = `${panelOpen ? 'panel' : ''}${JSON.stringify(next)}`
     if (key === shape) return
     shape = key
     pane.set(panelOpen ? null : NotificationLine(next))
   }
   /** The rotation runs on the host tick while a turn runs, and starts again from the first group with each turn. */
-  const tick = ctx.mayflyTick
+  const tick = ctx.get('mayflyTick') as TickSource | undefined
   let offTick: (() => void) | undefined
   const syncRunning = (): void => {
-    const next = factsService.currentAgent?.status === 'running'
+    const next = factsService?.currentAgent?.status === 'running'
     if (next === running) return
     running = next
     group = 0
     ticks = 0
-    if (running && offTick === undefined) {
+    if (running) {
       offTick = tick?.subscribe(() => {
         ticks += 1
         if (ticks % HINT_TICKS !== 0) return
         group = (group + 1) % RUNNING_HINTS.length
         refresh()
       })
-    } else if (!running) {
+    } else {
       offTick?.()
       offTick = undefined
     }

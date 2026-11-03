@@ -87,7 +87,7 @@ function latestPromptTokens(state: ConversationFactsState): number | undefined {
   if (key === undefined) return undefined
   const total = state.usageByStep?.[key]
   if (total === undefined) return undefined
-  return Math.max(0, total - (outputByStep[key] ?? 0))
+  return Math.max(0, total - outputByStep[key]!)
 }
 
 /**

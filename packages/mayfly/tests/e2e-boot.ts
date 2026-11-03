@@ -18,19 +18,20 @@ import type {
 } from '../../ui/src/contracts.ts'
 import * as appPlugin from '../src/app/index.ts'
 import * as frontendPlugin from '../src/frontend/index.ts'
+import * as nativeFrontend from '../src/interaction/native-frontend.ts'
 import * as transcriptPlugin from '../src/transcript/index.ts'
 import { initialConversationFacts } from '../src/conversation/facts.ts'
 import type { ConversationProjection } from '../src/conversation/types.ts'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { MayflyCurrentAgentService } from '../src/app/current-agent.ts'
 import { MayflyComponentsService } from '../src/core/components.ts'
-import { MayflyKeymapService } from '../src/core/keys/keymap.ts'
-import { MayflyScreenService } from '../src/core/hosts/screen.ts'
-import { MayflyTerminalInfoService } from '../src/core/terminal/terminal-info.ts'
-import { mountMayflySurfaceRenderer } from '../src/core/hosts/surface-renderer.ts'
-import { startMayflyTerminal } from '../src/core/terminal/terminal.ts'
-import type { MayflyTerminalRuntime } from '../src/core/terminal/terminal.ts'
-import * as themeDarkPlugin from '../src/core/theme/theme-dark.ts'
+import { MayflyKeymapService } from '../src/core/keymap.ts'
+import { MayflyScreenService } from '../src/core/screen.ts'
+import { MayflyTerminalInfoService } from '../src/core/terminal-info.ts'
+import { mountMayflySurfaceRenderer } from '../src/core/surface-renderer.ts'
+import { startMayflyTerminal } from '../src/core/terminal.ts'
+import type { MayflyTerminalRuntime } from '../src/core/terminal.ts'
+import * as themeDarkPlugin from '../src/core/theme-dark.ts'
 import { FakeTerminal } from './core/fake-terminal.ts'
 import { mkdtempTracked, registerTempDirCleanup } from './core/temp-dir.ts'
 import { fakeAgent, type FakeAgent } from './helpers.ts'
@@ -151,7 +152,10 @@ export async function bootDirectMayfly(options: { readonly terminal?: FakeTermin
 
   const hooks: DirectHooks = {
     uiProviderApply: uiProviderPlugin.apply,
-    frontendApply: frontendPlugin.apply,
+    frontendApply(ctx) {
+      frontendPlugin.apply(ctx)
+      ctx.plugin(nativeFrontend)
+    },
     themeApply: themeDarkPlugin.apply,
     appApply: appPlugin.apply,
     appInject: appPlugin.inject,

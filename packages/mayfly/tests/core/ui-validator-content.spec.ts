@@ -1,8 +1,8 @@
 /** Admission of the optional content, layout, and motion fields of slice 1.3. */
 import { describe, expect, it } from 'vitest'
 import { ui, type MayflyUiNode } from '../../../ui/src/index.ts'
-import { validateMayflyEditorShellNode, validateMayflyStatusNode, validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
-import { SCROLL_HEIGHT_MAX } from '../../src/core/ui/admit/ui-validator-content.ts'
+import { validateMayflyEditorShellNode, validateMayflyStatusNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
+import { SCROLL_HEIGHT_MAX } from '../../src/core/ui-validator-content.ts'
 
 function accepted(value: unknown): MayflyUiNode {
   const result = validateMayflyUiNode(value)

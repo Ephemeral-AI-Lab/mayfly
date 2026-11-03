@@ -1,8 +1,8 @@
 /**
  * mayfly-core `apply` terminal ownership (P2-3): the owner effect is
  * registered before the probe acquires anything, so a fiber unloaded while
- * the probe awaits still restores whatever the resumed apply managed to
- * start, and a post-start failure stops the terminal exactly once.
+ * the probe awaits never starts a terminal, and a post-start failure stops
+ * the terminal exactly once.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -30,13 +30,13 @@ vi.mock('@earendil-works/pi-tui', async importOriginal => {
   }
 })
 
-vi.mock('../../src/core/terminal/terminal-info.ts', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../src/core/terminal/terminal-info.ts')>()
+vi.mock('../../src/core/terminal-info.ts', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../src/core/terminal-info.ts')>()
   return { ...actual, probeTerminalBackground: hoisted.probe }
 })
 
-vi.mock('../../src/core/ui/compile/context-hint-locale.ts', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../src/core/ui/compile/context-hint-locale.ts')>()
+vi.mock('../../src/core/context-hint-locale.ts', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../src/core/context-hint-locale.ts')>()
   return { ...actual, mountContextHintLocale: hoisted.mountHints }
 })
 
@@ -49,7 +49,7 @@ beforeEach(() => {
 })
 
 describe('mayfly-core apply terminal ownership', () => {
-  it('restores the terminal exactly once when the fiber unloads during the probe', async () => {
+  it('acquires no terminal when the fiber unloads during the probe', async () => {
     const deferred = Promise.withResolvers<MayflyRgbColor | undefined>()
     hoisted.probe.mockReturnValue(deferred.promise)
     const ctx = new Context()
@@ -60,14 +60,9 @@ describe('mayfly-core apply terminal ownership', () => {
       deferred.resolve(undefined)
       await unloading
       await Promise.resolve(fiber).catch(() => undefined)
-      // Cordis awaits the in-flight apply before unloading the fiber: the
-      // resumed apply's first post-start registration throws on the inactive
-      // context, and the already-registered owner effect still stops the
-      // terminal it just started — the tty is restored exactly once.
-      const terminal = hoisted.terminals[0]!
-      expect(terminal).toBeDefined()
-      expect(terminal.startCount).toBe(1)
-      expect(terminal.stopCount).toBe(1)
+      expect(hoisted.terminals).toEqual([])
+      expect(hoisted.mountHints).not.toHaveBeenCalled()
+      expect(ctx.get('mayflyScreen')).toBeUndefined()
     } finally {
       await ctx.fiber.dispose()
     }

@@ -27,12 +27,13 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { MayflyOverlayHandle, MayflyUiActionReply, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { EffortPicker, formatContextWindow, ModelPicker, type ModelPickerRow } from '../components/model-picker.ts'
+import { modelSwitchNotice, sameModelSelection } from '../components/model-selection.ts'
+import type { ModelPickerItem } from './model-picker-model.ts'
 import { openAgentOverlay } from './agent-overlay.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { interactionTranslator } from './locale.ts'
 import type { InteractionFeedbackReporter } from './notifications.ts'
 import { getSharedEditor } from './editor-instance.ts'
-import { formatError } from '../internal/format.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
@@ -41,15 +42,9 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Native model catalog facts consumed by the shared UI selection controls. */
-interface ModelPickerItem {
-  readonly provider: string
-  readonly providerLabel: string
-  readonly id: string
-  readonly name: string
-  readonly contextWindow?: number | undefined
-  readonly efforts?: readonly string[] | undefined
-  readonly defaultEffort?: string | undefined
+/** Render one failure reason for an error result. */
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -73,46 +68,6 @@ function currentModelSelection(ctx: Context): MayflySessionModelSelection | unde
   if (projections === undefined) return undefined
   const projected = projections.snapshot(agent.session, ['modelSelection']).values.modelSelection
   return projected?.next ?? projected?.lastUsed ?? ctx.get('agentDefaultModel')?.currentSelection()
-}
-
-/**
- * Whether two selections agree on every field.
- * @param a - one selection.
- * @param b - the other selection.
- * @returns `true` when provider, model, and effort all match.
- */
-function sameSelection(a: MayflySessionModelSelection, b: MayflySessionModelSelection): boolean {
-  return a.provider === b.provider && a.model === b.model && a.reasoningEffort === b.reasoningEffort
-}
-
-/**
- * The model-switch notice family (the kimi five-state wording, folded to
- * Mayfly's notice channel): what changed. The persisted-default write rides
- * the Host's own background save inside `selectModel`, so the notice stays
- * silent about it.
- * @param previous - the selection before the switch.
- * @param next - the selection after the switch.
- * @param defaultEffort - the model's provider default level, when known: an unpinned selection names it.
- * @returns the single-line notice text.
- */
-function modelSwitchNotice(
-  previous: MayflySessionModelSelection,
-  next: MayflySessionModelSelection,
-  defaultEffort?: string,
-): string {
-  const modelChanged = previous.provider !== next.provider || previous.model !== next.model
-  const effortChanged = previous.reasoningEffort !== next.reasoningEffort
-  /* The level that runs: the pinned one, else the provider default when the model advertises it. */
-  const effective = next.reasoningEffort === undefined ? defaultEffort : String(next.reasoningEffort)
-  if (modelChanged) {
-    const base = `Switched to ${next.model} (${next.provider})`
-    return effective === undefined ? base : `${base} · thinking ${effective}`
-  }
-  if (effortChanged) {
-    if (next.reasoningEffort !== undefined) return `Thinking set to ${String(next.reasoningEffort)}`
-    return defaultEffort === undefined ? 'Thinking set to provider default' : `Thinking set to provider default (${defaultEffort})`
-  }
-  return `Already using ${next.model} (${next.provider})`
 }
 
 /**
@@ -141,7 +96,7 @@ async function commitModelSelection(
   if ('error' in previous) return { text: previous.error, ok: false }
   let selected: MayflySessionModelSelection
   try {
-    if (sameSelection(previous.read, next)) selected = previous.read
+    if (sameModelSelection(previous.read, next)) selected = previous.read
     else if (agent === null) {
       /* No session exists yet: the pick is the default the first session takes. */
       await defaults!.saveSelection({ provider: next.provider, model: next.model, ...next.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(String(next.reasoningEffort)) } })
@@ -149,7 +104,7 @@ async function commitModelSelection(
       ctx.emit('mayfly/default-model-changed')
     } else selected = (await controller!.selectModel({ sessionId: agent.id, ...next })).selected
   } catch (error) {
-    return { text: formatError(error), ok: false }
+    return { text: describe(error), ok: false }
   }
   if (signal?.aborted || ctx.get('mayflyCurrentAgent')?.current() !== agent) return { text: 'agent changed before model selection completed', ok: false }
   const defaultEffort = await providerDefaultEffort(ctx, selected, signal)
@@ -220,7 +175,7 @@ async function providerModelIds(
     cache.value = { provider, ids, fetchedAt: Date.now() }
     return { ids }
   } catch (error) {
-    return { error: `could not list the provider's models: ${formatError(error)}` }
+    return { error: `could not list the provider's models: ${describe(error)}` }
   }
 }
 
@@ -264,7 +219,7 @@ export async function cycleSessionModel(ctx: Context, cache: ModelListCache, rep
   } catch (error) {
     /* the catch guards only the append-failure loud path
        (the cycleMode discipline); commitModelSelection itself never throws */
-    ctx.logger.warn(`model cycle commit failed: ${formatError(error)}`)
+    ctx.logger.warn(`model cycle commit failed: ${describe(error)}`)
   }
 }
 
@@ -472,7 +427,7 @@ export async function openModelPicker(ctx: Context, signal: AbortSignal, filterP
       commitPickerRow(scope, selectedId === undefined ? undefined : byId.get(selectedId), segmentId, eventSignal, t))
     return { kind: 'success' }
   } catch (error) {
-    return combined.aborted ? { kind: 'success' } : { kind: 'error', text: formatError(error) }
+    return combined.aborted ? { kind: 'success' } : { kind: 'error', text: describe(error) }
   } finally { cleanup() }
 }
 
@@ -548,7 +503,7 @@ export function registerModelCommands(ctx: Context): () => void {
     try {
       info = await llm.resolveModelInfo(current.provider, current.model, signal)
     } catch (error) {
-      return { kind: 'error', text: `could not resolve the current model: ${formatError(error)}` }
+      return { kind: 'error', text: `could not resolve the current model: ${describe(error)}` }
     }
     if (unloaded) return { kind: 'success' }
     const efforts = info.reasoning?.efforts ?? []

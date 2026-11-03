@@ -17,8 +17,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
-import { DECISION_NO, DECISION_YES, decisionStrip, panel, ui, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
+import { DECISION_NO, DECISION_YES, decisionStrip } from '@ephemeral-ai/mayfly-ui'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { interactionTranslator } from './locale.ts'
 import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
@@ -36,76 +35,12 @@ import {
   releaseFacts,
 } from './updater/registry.ts'
 import { resolveOffer, runPreflight } from './updater/preflight.ts'
-import { performSwap, type SwapOutcome, type SwapProgress, type SwapStep } from './updater/swap.ts'
+import { performSwap, type SwapOutcome } from './updater/swap.ts'
 import { isVersion } from './updater/version.ts'
+import { applyUpdateProgress, createUpdateProgressState, updatePanelModel } from './update-model.ts'
+export { applyUpdateProgress, createUpdateProgressState, updatePanelModel } from './update-model.ts'
 import type {} from '../app/index.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
-import { formatError } from '../internal/format.ts'
-
-/** The step rows the panel renders, in execution order. */
-const STEP_ROWS: readonly { step: SwapStep, label: string }[] = [
-  { step: 'snapshot', label: 'snapshot' },
-  { step: 'install', label: 'install' },
-  { step: 'verify', label: 'verify versions' },
-  { step: 'smoke-imports', label: 'smoke: imports' },
-  { step: 'smoke-boot', label: 'smoke: boot' },
-  { step: 'rollback', label: 'rollback' },
-]
-
-/** Renderer-neutral state behind the generic update panel model. */
-interface UpdateProgressState {
-  readonly steps: Map<SwapStep, 'start' | 'ok' | 'fail'>
-  outcome?: SwapOutcome
-  blockedMessage?: string
-}
-
-/** Create empty progress state for one update attempt. */
-export function createUpdateProgressState(): UpdateProgressState {
-  return { steps: new Map() }
-}
-
-/** Fold one swap progress fact into the model state. */
-export function applyUpdateProgress(state: UpdateProgressState, progress: SwapProgress): void {
-  state.steps.set(progress.step, progress.state)
-}
-
-/** Project update progress and outcome into the shared panel vocabulary. */
-export function updatePanelModel(
-  state: UpdateProgressState,
-  fromVersion: string,
-  toVersion: string,
-  t: MayflyTranslate = interpolateLocaleMessage,
-): MayflyUiNode {
-  const stepItems = STEP_ROWS.flatMap(row => {
-    const value = state.steps.get(row.step)
-    if (value === undefined && row.step === 'rollback') return []
-    const mark = value === 'ok' ? '✓' : value === 'fail' ? '✗' : value === 'start' ? '…' : '·'
-    return [{ id: row.step, label: `${mark} ${t(row.label)}`, disabled: true }]
-  })
-  const nodes: MayflyUiNode[] = [
-    { kind: 'divider', label: `v${fromVersion} → v${toVersion}` },
-    { kind: 'list', role: 'browse', id: 'update-steps', selectedIds: [], items: stepItems },
-  ]
-  if (state.outcome !== undefined) {
-    nodes.push(
-      { kind: 'divider', label: t(state.outcome.kind === 'success' ? 'Complete' : 'Failed') },
-      { kind: 'text', content: state.outcome.message },
-      { kind: 'text', content: t('log: {path}', { path: state.outcome.logPath }), tone: 'muted' },
-    )
-  }
-  if (state.blockedMessage !== undefined) {
-    nodes.push(
-      { kind: 'divider', label: t('Blocked') },
-      { kind: 'text', content: state.blockedMessage, tone: 'danger' },
-      { kind: 'text', content: t('nothing was changed'), tone: 'muted' },
-    )
-  }
-  return panel({
-    title: t('Update Mayfly'),
-    escapeLabel: 'close',
-    body: ui.stack.column(nodes),
-  })
-}
 
 /**
  * Mount the shared Yes/No decision and await the answer. `y` confirms, `n`
@@ -199,7 +134,7 @@ async function runSwapPanel(
       kind: 'failed-no-rollback',
       fromVersion: input.fromVersion,
       toVersion: input.toVersion,
-      message: t('the swap crashed: {error}\nthe profile may be in a mixed state — the snapshot is at {path}', { error: formatError(error), path: backupDir(input.root) }),
+      message: t('the swap crashed: {error}\nthe profile may be in a mixed state — the snapshot is at {path}', { error: error instanceof Error ? error.message : String(error), path: backupDir(input.root) }),
       logPath: join(backupDir(input.root), 'update.log'),
     }
   }

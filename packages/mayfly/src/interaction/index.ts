@@ -27,9 +27,8 @@ import * as terminalTitlePlugin from './terminal-title.ts'
 import * as updateCheckPlugin from './updater/check.ts'
 import { PromptEditorController } from './editor-instance.ts'
 import { PromptSubmitPipeline } from './prompt-submit-pipeline.ts'
-import { InteractionStateService } from './runtime-state.ts'
-import { DEFAULT_SETTINGS } from './settings.ts'
 import { mountInteractionLocale } from './locale.ts'
+import * as nativeFrontend from './native-frontend.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-interaction'
@@ -43,8 +42,7 @@ export const inject = ['mayflyCurrentAgent', 'skills']
  */
 export function apply(ctx: Context): void {
   mountInteractionLocale(ctx)
-  const runtimeState = new InteractionStateService(ctx, DEFAULT_SETTINGS)
-  ctx.effect(() => () => runtimeState.dispose())
+  ctx.plugin(nativeFrontend)
   const editorHost = new PromptEditorController(ctx)
   ctx.effect(() => () => editorHost.dispose())
   const promptSubmissions = new PromptSubmitPipeline(ctx)

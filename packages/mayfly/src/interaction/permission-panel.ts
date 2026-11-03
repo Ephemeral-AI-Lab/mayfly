@@ -29,7 +29,6 @@ import { interactionTranslator } from './locale.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { openUiOverlay } from './ui-overlay.ts'
 import { createInteractionNotificationOwner } from './notifications.ts'
-import { formatError } from '../internal/format.ts'
 
 /** The native permission-preset surface this panel consumes. */
 export interface PermissionPresetsService {
@@ -140,7 +139,7 @@ export function openPermissionPanel(ctx: Context): void {
         notifications.report('dispatch', { message: t('Permission preset: {preset}', { preset: presets.optionOf(name).name }), severity: 'success' })
         return { kind: 'completed' as const, dismiss: true }
       } catch (error) {
-        const message = t('permission dispatch failed: {error}', { error: formatError(error) })
+        const message = t('permission dispatch failed: {error}', { error: error instanceof Error ? error.message : String(error) })
         notifications.report('dispatch', { message, severity: 'error' })
         return { kind: 'failed' as const, message }
       }

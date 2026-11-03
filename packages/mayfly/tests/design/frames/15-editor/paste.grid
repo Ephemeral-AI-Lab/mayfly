@@ -1,0 +1,18 @@
+## start
+grid 96x3 cursor none
+|╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+|│ > ▌Ask anything · / commands · @ files · # skills · ! shell                                  │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-65 fg:border; 66-93 fg:textStrong b; 94-95 fg:border
+1: 0 fg:border; 2-3 fg:text; 5-60 fg:textMuted; 95 fg:border
+2: 0-95 fg:border
+## ctrl+v
+grid 96x3 cursor none
+|╭──────────────────────────────────────────────────────────────── Update the landing page hero ╮
+|│ > [Pasted #1 12 lines ×] ▌                                                                   │
+|╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+styles
+0: 0-65 fg:border; 66-93 fg:textStrong b; 94-95 fg:border
+1: 0 fg:border; 2-3 fg:text; 4 fg:muted; 5-13 fg:accent; 14-25 fg:muted; 95 fg:border
+2: 0-95 fg:border

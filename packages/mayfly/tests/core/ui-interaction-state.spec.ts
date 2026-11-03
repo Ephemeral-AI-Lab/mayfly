@@ -7,7 +7,7 @@ import { ui } from '../../../ui/src/index.ts'
 import * as provider from '../../../ui/src/provider.ts'
 import type { MayflyFormAddress, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventHandlers, MayflyUiObservationReply } from '../../../ui/src/contracts.ts'
 import * as frontend from '../../src/frontend/index.ts'
-import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { UiSurfaceModel, type UiSurfaceSnapshot } from '../../src/core/ui-interaction-surface.ts'
 import { flush } from '../helpers.ts'
 
 const cleanups: (() => Promise<unknown>)[] = []
@@ -967,18 +967,21 @@ it('contains stale input snapshots and late endpoint rejection after cancellatio
   ])
   let model!: UiSurfaceModel
   let mode: 'read' | 'wait' = 'read'
+  const read = Promise.withResolvers<{ reply: MayflyUiActionReply, publish: () => boolean }>()
   const rejection = Promise.withResolvers<never>()
-  const direct = directSurface(node, async _event => {
+  const direct = directSurface(node, async event => {
+    if (event.kind === 'value-change') return { reply: { kind: 'completed' }, publish: () => true }
     if (mode === 'wait') return rejection.promise
-    const form = model.form(formAddress)!
-    const forms = (model as unknown as { forms: Map<string, typeof form> }).forms
-    forms.set(forms.keys().next().value!, { ...form, draftRevision: form.draftRevision + 1 })
-    return { reply: { kind: 'completed' }, publish: () => true }
+    return read.promise
   })
   model = direct.model
   model.invoke('read')
+  model.edit({ ...formAddress, fieldId: 'name' }, 'new draft')
+  const publish = vi.fn(() => true)
+  read.resolve({ reply: { kind: 'completed' }, publish })
   await flush()
   expect(model.operationSnapshot()[0]!.phase).toBe('cancelled')
+  expect(publish).not.toHaveBeenCalled()
   mode = 'wait'
   model.invoke('wait')
   await flush()

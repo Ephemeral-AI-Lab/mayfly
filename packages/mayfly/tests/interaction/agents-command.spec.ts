@@ -10,16 +10,16 @@ import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import { describe, expect, it, vi } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as agentsPlugin from '../../src/interaction/agents-command.ts'
-import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
-import type { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import {
   agentMetricsText,
   agentTreeItems,
-  WorkflowLabelCache,
+  formatAgentElapsed,
   type MayflySubagentTreeEntry,
-} from '../../src/interaction/agents-command.ts'
+} from '../../src/interaction/agents-model.ts'
+import { WorkflowLabelCache } from '../../src/interaction/agents-command.ts'
 import { liveAgentDescendantCount } from '../../src/interaction/agents-stop.ts'
-import { compactElapsedMs } from '../../src/transcript/agent-presentation.ts'
 import { FakeMayflyComponents, FakeKeymap, FakeScreen, FakeTheme } from './fakes.ts'
 import { renderRequest, flushRequests } from './request-fixture.ts'
 import type { MayflyComponent } from '../../src/core/types.ts'
@@ -46,9 +46,9 @@ function child(id: string, overrides: Overrides<ChildEntry> = {}): ChildEntry {
 
 describe('agent tree models', () => {
   it('formats elapsed time and optional metrics', () => {
-    expect(compactElapsedMs(-5)).toBe('0s')
-    expect(compactElapsedMs(45_000)).toBe('45s')
-    expect(compactElapsedMs(130_000)).toBe('2m 10s')
+    expect(formatAgentElapsed(-5)).toBe('0s')
+    expect(formatAgentElapsed(45_000)).toBe('45s')
+    expect(formatAgentElapsed(130_000)).toBe('2m 10s')
     expect(agentMetricsText({}, 1_000)).toBe('')
     expect(agentMetricsText({ tokens: 2_048 }, 1_000)).toBe('2k tok')
     expect(agentMetricsText({ toolCount: 1 }, 1_000)).toBe('1 tool')
@@ -318,6 +318,8 @@ describe('mayfly-agents-command', () => {
 
     rig.tree = [child('once', { mode: 'one-shot' })]
     expect(await execute(rig, 'stop once')).toEqual({ kind: 'error', text: 'subagent once is not continuable' })
+    rig.tree = [child('external', { mode: 'external' })]
+    expect(await execute(rig, 'stop external')).toEqual({ kind: 'error', text: 'subagent external is external; it has no local Agent to stop' })
     expect(await execute(rig, 'stop missing')).toEqual({ kind: 'error', text: 'unknown subagent: missing' })
     expect(await execute(rig, 'invalid')).toEqual({ kind: 'error', text: 'usage: /agents [stop <id>]' })
 
@@ -554,6 +556,35 @@ describe('mayfly-agents-command', () => {
     const replaced = await exercise('replace')
     expect(replaced.drain).not.toHaveBeenCalled()
     await replaced.fiber.dispose()
+  })
+
+  it('does not republish a browser closed while the native stop drains', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    await execute(rig)
+    const entry = rig.ctx.mayflyOverlays.list().find(item => item.id === 'mayfly.agents')!
+    const gate = Promise.withResolvers<void>()
+    rig.drain.mockReturnValueOnce(gate.promise)
+    const pending = entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'subagent-actions', actionId: 'stop', inputs: { actionId: 'stop', draftRevision: 1, forms: [], source: [], selections: [{ pagePath: [], controlId: 'subagents', selectedIds: ['child'] }] } }, { surfaceId: entry.id, operationId: 'stop-close', source: entry.source, revision: entry.revision, signal: new AbortController().signal, report: vi.fn() })
+    await vi.waitFor(() => expect(rig.drain).toHaveBeenCalled())
+    rig.ctx.mayflyOverlays.close(entry.id)
+    gate.resolve()
+    expect(await pending).toMatchObject({ kind: 'completed' })
+    expect(rig.ctx.mayflyOverlays.list()).toEqual([])
+    await rig.fiber.dispose()
+  })
+
+  it('does not install browser observers after an initial registration closes', async () => {
+    const rig = await mountCommand()
+    rig.tree = [child('child')]
+    const projections = vi.spyOn(rig.ctx.sessionProjections, 'onChanged')
+    rig.ctx.mayflyOverlays.subscribe(delta => {
+      if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.agents') rig.ctx.mayflyOverlays.close(delta.entry.id)
+    })
+    expect(await execute(rig)).toEqual({ kind: 'success' })
+    expect(projections).not.toHaveBeenCalled()
+    expect(rig.ctx.mayflyOverlays.list()).toEqual([])
+    await rig.fiber.dispose()
   })
 
   it('deduplicates and cancels an open browser stop confirmation', async () => {

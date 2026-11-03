@@ -1,9 +1,9 @@
 /** The status row as one wire node for the footer node slot.
  * @module @ephemeral-ai/mayfly/transcript/status-rows
  */
-import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyStatusEntry, MayflyUiChild, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyStatusEntry, MayflyStatusRegistry, MayflyUiChild, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyScreenService } from '../core/screen.ts'
 
 /** What the footer shows besides the registered entries. */
 export interface StatusFooterState {
@@ -40,7 +40,13 @@ export function buildStatusFooter(entries: readonly MayflyStatusEntry[], state: 
 }
 
 /** What the footer owner asks of the screen: the node slot and the lane's read-only window. */
-type StatusFooterScreen = Pick<Context['mayflyScreen'], 'mountNodeSlot' | 'views'>
+type StatusFooterScreen = Pick<MayflyScreenService, 'mountNodeSlot' | 'views'>
+
+/** The footer needs a registry and a Fiber effect; it does not depend on a Cordis realm. */
+interface StatusFooterOwner {
+  readonly mayflyStatus: Pick<MayflyStatusRegistry, 'list' | 'subscribe'>
+  effect(execute: () => () => void): () => Promise<void>
+}
 
 /**
  * Lease the footer node slot and keep it showing the status row: it publishes again when a registry entry, a lane item, or
@@ -49,7 +55,7 @@ type StatusFooterScreen = Pick<Context['mayflyScreen'], 'mountNodeSlot' | 'views
  * @param ctx - the plugin context; needs `mayflyStatus`.
  * @param screen - the screen that holds the footer slot and the views lane.
  */
-export function mountStatusFooter(ctx: Context, screen: StatusFooterScreen): void {
+export function mountStatusFooter(ctx: StatusFooterOwner, screen: StatusFooterScreen): () => Promise<void> {
   const slot = screen.mountNodeSlot('status.footer', { region: 'footer' })
   const { views } = screen
   let published = ''
@@ -61,7 +67,7 @@ export function mountStatusFooter(ctx: Context, screen: StatusFooterScreen): voi
     published = key
     slot.set(buildStatusFooter(entries, state))
   }
-  ctx.effect(() => {
+  return ctx.effect(() => {
     const offStatus = ctx.mayflyStatus.subscribe(refresh)
     const offViews = views.subscribe(refresh)
     refresh()

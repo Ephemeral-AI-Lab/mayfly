@@ -7,15 +7,22 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { MayflyInlineSpan } from '@ephemeral-ai/mayfly-ui'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MayflyStatusService } from '../../../ui/src/services.ts'
 import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import * as statusPlugin from '../../src/interaction/conversation-view-status.ts'
 import { FakeKeymap } from './fakes.ts'
+import { buildConversationStatus } from '../../src/components/conversation-status.ts'
 
 function agent(id: string): Agent { return { id: SessionId(id) } as Agent }
 
 describe('mayfly-conversation-view-status', () => {
+  it('leaves the shared chip absent while no conversation is displayed', () => {
+    const translate = vi.fn((text: string) => text)
+    expect(buildConversationStatus(undefined, translate)).toBeNull()
+    expect(translate).not.toHaveBeenCalled()
+  })
+
   it('shows the displayed kind, its F7 counterpart, access, and how many more stay open', async () => {
     const ctx = new Context()
     const primary = agent('primary')

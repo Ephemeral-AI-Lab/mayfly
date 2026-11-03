@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { estimateColumns, startColumnWalk, walkColumns } from '../../src/core/text/width-estimate.ts'
-import { visibleWidth } from '../../src/core/text/width.ts'
+import { estimateColumns, startColumnWalk, walkColumns } from '../../src/core/width-estimate.ts'
+import { visibleWidth } from '../../src/core/width.ts'
 import { ADVERSARIAL } from './width-scan.ts'
 
 const estimate = (text: string): number => estimateColumns(text, 0, text.length)

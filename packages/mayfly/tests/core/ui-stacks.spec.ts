@@ -1,11 +1,12 @@
 /**
  * The compiled stacks: the rows are pi-tui's rows, a horizontal stack splices a row once, and every stack places its
  * children so a moving cell can be judged against the scroll view around it.
+ * @module @ephemeral-ai/mayfly/tests/core/ui-stacks
  */
-import { HStack, ScrollView, VStack, type Component } from '@earendil-works/pi-tui'
+import { HStack, ScrollView, VStack, stripTerminalSequences, type Component } from '@earendil-works/pi-tui'
 import { renderLayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
-import { describe, expect, it } from 'vitest'
-import { ColumnStack, ROW_STACK_ENTRIES, RowStack, onScreen, placeChild } from '../../src/core/ui/paint/ui-stacks.ts'
+import { describe, expect, it, vi } from 'vitest'
+import { ColumnStack, PageGroup, PageHold, ROW_STACK_ENTRIES, RowStack, onScreen, placeChild } from '../../src/core/ui-stacks.ts'
 import { lazyRows } from '../helpers.ts'
 
 /** A leaf that counts its renders and answers each width with the same array, as a retained leaf does. */
@@ -119,6 +120,30 @@ describe('RowStack', () => {
     expect(lines[0]).toContain('d')
   })
 
+  it('leaves adjacent columns intact when a named rule has no gap to occupy', () => {
+    const mine = new RowStack([], { gap: 0 })
+    const theirs = new HStack([], { gap: 0 })
+    pair(mine, theirs, [[() => rows('a'), { basis: 2 }], [() => rows('b'), { basis: 2 }]])
+    mine.rule = '│'
+    for (const width of [1, 2, 4, 10]) {
+      expect(mine.render(width)).toEqual(theirs.render(width))
+      expect(mine.render(width).join('')).not.toContain('│')
+    }
+  })
+
+  it('stretches height-aware children to their tallest peer and leaves a zero-width child unpainted', () => {
+    const renderHeight = vi.fn((height: number, width: number) => Array.from({ length: height }, () => '|'.repeat(width)))
+    const divider = { render: () => ['|'], renderHeight, invalidate() {} }
+    const stack = new RowStack()
+    stack.addChild(rows('a', 'b', 'c'), { basis: 3, grow: 0, shrink: 0 })
+    stack.addChild(divider, { basis: 1, grow: 0, shrink: 1 })
+    expect(stack.render(4).map(stripTerminalSequences)).toEqual(['a  |', 'b  |', 'c  |'])
+    expect(renderHeight).toHaveBeenLastCalledWith(3, 1)
+    renderHeight.mockClear()
+    expect(stack.render(3).map(stripTerminalSequences)).toEqual(['a  ', 'b  ', 'c  '])
+    expect(renderHeight).not.toHaveBeenCalled()
+  })
+
   it('does not render a child of fixed basis to measure it, and measures a content-sized child once per rows', () => {
     const fixed = rows('fixed')
     const sized = rows('sized by content')
@@ -176,6 +201,24 @@ describe('RowStack', () => {
     // The short child sits on the last row of six, below a window of two.
     expect(onScreen(tall, 6)).toBe(true)
     expect(onScreen(short, 1)).toBe(false)
+  })
+})
+
+describe('PageHold', () => {
+  it('shares measured heights, remembers the visible page growth, and forwards invalidation to its engine', () => {
+    const group = new PageGroup(new Map(), paint => paint())
+    let pageRows = 2
+    const invalidate = vi.fn()
+    const inner = { render: () => Array.from({ length: pageRows }, () => 'page'), invalidate }
+    const first = new PageHold(inner, group, () => '24')
+    const second = new PageHold(rows('a', 'b', 'c', 'd'), group, () => '24')
+    expect(first.render(40)).toEqual(['page', 'page', '', ''])
+    expect(second.render(40)).toEqual(['a', 'b', 'c', 'd'])
+    pageRows = 6
+    expect(first.render(40)).toHaveLength(6)
+    expect(second.render(40)).toEqual(['a', 'b', 'c', 'd', '', ''])
+    first.invalidate()
+    expect(invalidate).toHaveBeenCalledOnce()
   })
 })
 

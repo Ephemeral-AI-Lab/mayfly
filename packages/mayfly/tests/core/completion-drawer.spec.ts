@@ -4,8 +4,8 @@
  * @module @ephemeral-ai/mayfly/tests/core/completion-drawer
  */
 import { describe, expect, it } from 'vitest'
-import { CompletionDrawer, DRAWER_ROWS, paintDrawer, type DrawerPaint } from '../../src/core/ui/compile/completion-drawer.ts'
-import { truncateToWidth, visibleWidth } from '../../src/core/text/width.ts'
+import { CompletionDrawer, DRAWER_ROWS, paintDrawer, type DrawerPaint } from '../../src/core/completion-drawer.ts'
+import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
 import { plainColors } from '../helpers.ts'
 
 const components = { visibleWidth, truncateToWidth } as never

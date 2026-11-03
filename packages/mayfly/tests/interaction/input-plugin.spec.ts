@@ -26,7 +26,7 @@ import {
 import { registerSubmitTransformer } from '../../src/interaction/prompt-submit-pipeline.ts'
 import { setExternalEditorLauncher, setExternalFileOpener } from '../../src/interaction/external-editor.ts'
 import { fakeMayflyContext, FakeMayflyEditor, KEY, type FakeMayflyComponents, type FakeScreen } from './fakes.ts'
-import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
+import { mountUiRegistryObservers, UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 
 /** One settled-skill double for the catalog seam. */
 function skillOf(name: string): SkillSummary {

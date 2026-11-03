@@ -7,17 +7,18 @@
  * @module @ephemeral-ai/mayfly/core/tests/content-rows
  */
 
-import { describe, expect, it, vi } from 'vitest'
-import { CONTENT_SEGMENT_LINES } from '../../src/core/content/content-segments.ts'
-import { charWrap, contentNodeSource, documentRowsSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content/content-rows.ts'
-import { virtualRows } from '../../src/core/ui/paint/ui-rows.ts'
-import { alignDiffLines, diffModel, paintDiffSegment } from '../../src/core/content/diff-align.ts'
-import { DARK_COLORS } from '../../src/core/theme/theme-dark.ts'
-import { paletteColors } from '../../src/core/theme/palettes.ts'
+import { describe, expect, it } from 'vitest'
+import { CONTENT_SEGMENT_LINES } from '../../src/core/content-segments.ts'
+import { charWrap, contentNodeSource, documentRowsSource, type ContentRowsEnv, type WindowedContentNode } from '../../src/core/content-rows.ts'
+import { virtualRows } from '../../src/core/ui-rows.ts'
+import { alignDiffLines, diffModel, paintDiffRows } from '../../src/core/diff-align.ts'
+import { DARK_COLORS } from '../../src/core/theme-dark.ts'
+import { paletteColors } from '../../src/core/palettes.ts'
 import { MAYFLY_CONTENT_CACHE_BYTES, MayflyContentCache } from '../../src/core/ui-content-cache.ts'
-import { declaredWidthOf, findMarkerRow, isVirtualRows, materializedRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui/paint/ui-rows.ts'
+import { declaredWidthOf, findMarkerRow, isVirtualRows, materializedRows, prepareRows, rowSourceOf, unclampedRows } from '../../src/core/ui-rows.ts'
+import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { plainText } from '../helpers.ts'
 
 const LIGHT_COLORS = paletteColors('light')
@@ -35,19 +36,23 @@ const components = {
 
 interface Env {
   readonly env: ContentRowsEnv
+  readonly counters: MayflyWorkCounters
   readonly cache: MayflyContentCache
   readonly reports: string[]
 }
 
 function makeEnv(bound?: number, colors: MayflySemanticColors = DARK_COLORS): Env {
+  const counters = createWorkCounters()
   const cache = new MayflyContentCache()
   const reports: string[] = []
   return {
+    counters,
     cache,
     reports,
     env: {
       components,
       colors,
+      counters,
       cache,
       bounded: bound !== undefined,
       viewportRows: () => bound ?? 0,
@@ -69,25 +74,23 @@ describe('contentNodeSource', () => {
     // Each line is one row at this width, so row and line indices agree while the document stays past the budget.
     const lines = Array.from({ length: CONTENT_SEGMENT_LINES * 3 }, (_, index) => `line ${String(index)} ${'x'.repeat(30)}`)
     const { rows, env } = source({ kind: 'text', content: lines.join('\n') }, 40)
-    const put = vi.spyOn(env.cache, 'put')
     expect(isVirtualRows(rows)).toBe(true)
-    expect(put).not.toHaveBeenCalled()
+    expect(env.counters.linesEstimated).toBe(lines.length)
+    expect(env.counters.segmentsPainted).toBe(0)
     expect(materializedRows(rows)).toBe(0)
     // Reading one row paints its whole segment, nothing else.
     const at = CONTENT_SEGMENT_LINES + 5
     expect(plainText(rows[at]!)).toContain(`line ${String(at)}`)
-    expect(put).toHaveBeenCalledTimes(1)
+    expect(env.counters.segmentsPainted).toBe(1)
     expect(materializedRows(rows)).toBe(1)
     // The facade retains what it produced; a second read is free.
     expect(rows[at]).toBe(rows[at])
-    expect(put).toHaveBeenCalledTimes(1)
+    expect(env.counters.segmentsPainted).toBe(1)
   })
 
   it('paints a small document eagerly so its row map is exact at once', () => {
-    const env = makeEnv()
-    const put = vi.spyOn(env.cache, 'put')
-    const rows = contentNodeRows({ kind: 'text', content: 'a\nb\nc' }, 10, env.env)
-    expect(put).toHaveBeenCalled()
+    const { rows, env } = source({ kind: 'text', content: 'a\nb\nc' }, 10)
+    expect(env.counters.segmentsPainted).toBeGreaterThan(0)
     expect(rows.length).toBe(3)
     expect(materializedRows(rows)).toBe(0)
   })
@@ -105,19 +108,17 @@ describe('contentNodeSource', () => {
 
   it('indexes a chunked field by joining per-chunk scans, merging open lines across pieces', () => {
     // 'a\nb' + 'c\nd' is 'a\nbc\nd': the second chunk continues the first chunk's open line.
-    let reads = 0
-    const chunk = (text: string) => ({ get text() { reads += 1; return text } })
-    const chunks = [chunk('a\nb'), chunk('c\nd'), chunk('e')]
+    const chunks = [{ text: 'a\nb' }, { text: 'c\nd' }, { text: 'e' }]
     const node: WindowedContentNode = { kind: 'text', content: chunks }
     const { rows, env } = source(node, 40)
+    expect(env.counters.linesEstimated).toBe(3)
     expect(rows.length).toBe(3)
     expect(plainText(rows[0]!)).toBe('a')
     expect(plainText(rows[1]!)).toBe('bc')
     expect(plainText(rows[2]!)).toBe('de')
     // The same node identity re-answers from its own index — the merged scan is not rebuilt.
-    const before = reads
     const more = contentNodeRows(node, 40, env.env)
-    expect(reads).toBe(before)
+    expect(env.counters.linesEstimated).toBe(3)
     expect(more.length).toBe(3)
   })
 
@@ -141,7 +142,7 @@ describe('contentNodeSource', () => {
     expect(reads).toBe(5)
   })
 
-  it('keeps a grown or trimmed stream equal to a fresh index, however older pieces were joined or the head was lost', () => {
+  it('extends the index of a stream it already built, however older pieces were joined or the head was lost', () => {
     // A job feed joins the smallest neighbours in its older half as it grows, so the chunks before the tail change
     // identity on an append; the text and the chunk the last publish ended on are what the next publish shares.
     const piece = (start: number): { text: string } => ({ text: Array.from({ length: 50 }, (_, line) => `step ${String(start + line)} wrote some output`).join('\n') + '\n' })
@@ -153,16 +154,21 @@ describe('contentNodeSource', () => {
       return Array.from({ length: rows.length }, (_, row) => plainText(rows[row]!))
     }
     allRows(feed, 60, made.env)
+    const built = made.counters.linesEstimated
+    expect(built).toBe(200 * 50 + 1)
 
-    // Append one piece after joining two neighbours in the middle: the grown source answers like a fresh index.
+    // Append one piece after joining two neighbours in the middle: only the appended lines are estimated again.
     const joined = { text: feed[99]!.text + feed[100]!.text }
     const grown = [...feed.slice(0, 99), joined, ...feed.slice(101), piece(10_000)]
     const grownRows = allRows(grown, 60, made.env)
+    expect(made.counters.linesEstimated - built).toBeLessThanOrEqual(CONTENT_SEGMENT_LINES + 51)
     expect(grownRows).toEqual(allRows(grown, 60, makeEnv().env))
 
-    // The stream can also lose its head: the trimmed source re-indexes and still matches a fresh index.
+    // The index was handed over: a field that no longer extends it (the head was lost) is indexed from scratch.
+    const before = made.counters.linesEstimated
     const trimmed = grown.slice(10)
     const trimmedRows = allRows(trimmed, 60, made.env)
+    expect(made.counters.linesEstimated - before).toBe(trimmed.map(chunk => chunk.text).join('').split('\n').length)
     expect(trimmedRows).toEqual(allRows(trimmed, 60, makeEnv().env))
   })
 
@@ -200,17 +206,16 @@ describe('contentNodeSource', () => {
   it('serves a repainted segment from the shared cache instead of painting again', () => {
     const text = 'abcdefghij '.repeat(200).trim()
     const node: WindowedContentNode = { kind: 'text', content: text }
-    const env = makeEnv()
-    const put = vi.spyOn(env.cache, 'put')
-    const rows = contentNodeRows(node, 20, env.env)
+    const { rows, env } = source(node, 20)
     prepareRows(rows, 0, 5)
-    expect(put).toHaveBeenCalled()
+    const painted = env.counters.segmentsPainted
+    expect(painted).toBeGreaterThan(0)
     expect(plainText(rows[0]!)).not.toBe('')
-    const painted = put.mock.calls.length
+    expect(env.counters.segmentsPainted).toBe(painted)
     // The same node at the same width answers from the renderer's cache, not a repaint.
     const again = contentNodeRows(node, 20, env.env)
     expect(again[0]).toBe(rows[0])
-    expect(put.mock.calls.length).toBe(painted)
+    expect(env.counters.segmentsPainted).toBe(painted)
   })
 
   it('bounds an outside-window leaf and unclamps inside a scroll', () => {
@@ -343,27 +348,27 @@ describe('contentNodeSource', () => {
     const after = Array.from({ length: 400 }, (_, index) => `new ${String(index)}`).join('\n')
     const node: WindowedContentNode = { kind: 'diff', before, after }
     const { rows, env } = source(node, 40)
-    const put = vi.spyOn(env.cache, 'put')
     const exact = diffModel(alignDiffLines(before, after), {}).length
     expect(rows.length).toBe(exact)
-    expect(put).not.toHaveBeenCalled()
+    expect(env.counters.segmentsPainted).toBe(0)
     // One row read paints its ≤64-line chunk only.
     const at = CONTENT_SEGMENT_LINES + 5
     expect(plainText(rows[at]!)).toContain(`old ${String(at)}`)
-    expect(put).toHaveBeenCalledTimes(1)
-    // The whole materialized facade is row-for-row the eager segment painter's output.
-    const model = diffModel(alignDiffLines(before, after), {})
-    const eager = model.segments.flatMap(segment => paintDiffSegment(segment, model.digits, 40, components, DARK_COLORS, { numbered: true, start: 1, beforeStart: 1 }))
+    expect(env.counters.segmentsPainted).toBe(1)
+    // The whole materialized facade is row-for-row the eager painter's output.
+    const eager = paintDiffRows(alignDiffLines(before, after), 40, components, DARK_COLORS)
     for (const [index, row] of [...rows].entries()) expect(row).toBe(eager[index])
   })
 
-  it('paints a small diff eagerly', () => {
+  it('paints a small diff eagerly and aligns a node once across widths', () => {
     const node: WindowedContentNode = { kind: 'diff', before: 'a\nb\nc', after: 'a\nx\nc' }
-    const env = makeEnv()
-    const put = vi.spyOn(env.cache, 'put')
-    const rows = contentNodeRows(node, 40, env.env)
-    expect(put).toHaveBeenCalled()
+    const { rows, env } = source(node, 40)
+    expect(env.counters.segmentsPainted).toBeGreaterThan(0)
     expect([...rows].map(row => plainText(row).trimEnd())).toEqual(['  1 │   a', '  2 │ − b', '  2 │ + x', '  3 │   c'])
+    // The alignment lives on the node: a second width repaints the same kept rows without re-aligning.
+    const aligned = env.counters.linesEstimated
+    contentNodeRows(node, 60, env.env)
+    expect(env.counters.linesEstimated).toBe(aligned)
   })
 
   it('paints a diff with its language highlighted, its before side numbered from its own start, and its tail below a cut', () => {
@@ -407,6 +412,23 @@ describe('contentNodeSource', () => {
     expect(lifted.offsetOf!(0)).toBe(0)
     expect(lifted.offsetOf!(1)).toBe(3)
     expect(lifted.offsetOf!(2)).toBe(5)
+    const fields = rowSourceOf(source({ kind: 'fields', rows: [{ label: 'Name', value: [{ text: 'abcdefghijklmnop' }] }] }, 10).rows)!
+    expect(fields.rowOf!(12)).toBe(1)
+    expect(fields.offsetOf!(1)).toBe(10)
+    expect(plainText(fields.row(1))).toBe('abcdefghij')
+  })
+
+  it('prepares a labelled code window in body coordinates while leaving earlier segments lazy', () => {
+    const lines = Array.from({ length: CONTENT_SEGMENT_LINES * 3 }, (_, index) => `line ${String(index)}`.padEnd(40, '.'))
+    const made = makeEnv()
+    const rows = contentNodeRows({ kind: 'code', language: 'ts', code: lines.join('\n') }, 80, made.env)
+    expect(made.counters.segmentsPainted).toBe(0)
+    const from = CONTENT_SEGMENT_LINES + 3
+    prepareRows(rows, from + 1, from + 5)
+    expect(made.counters.segmentsPainted).toBe(1)
+    expect(plainText(rows[from + 1]!)).toBe(lines[from])
+    expect(plainText(rows[0]!)).toBe('ts')
+    expect(made.counters.segmentsPainted).toBe(1)
   })
 
   it('answers out-of-range reads with empty rows across the lazy sources', () => {
@@ -540,6 +562,7 @@ describe('contentNodeSource', () => {
     const env: ContentRowsEnv = {
       components,
       colors: { ...DARK_COLORS, diffAdded: () => { throw new Error('no') } },
+      counters: createWorkCounters(),
       cache: new MayflyContentCache(),
       bounded: false,
       viewportRows: () => 0,
@@ -556,11 +579,13 @@ describe('contentNodeSource', () => {
   it('reports a paint failure once, then repaints it after the entry evicts', () => {
     // An hr-expanding palette throws inside every block paint; the error rows land in the cache like any other
     // fragment, so a forced eviction repaints through the deduplicated failure path.
+    const counters = createWorkCounters()
     const cache = new MayflyContentCache(1)
     const reports: string[] = []
     const env: ContentRowsEnv = {
       components,
       colors: { ...DARK_COLORS, mdHr: () => { throw new Error('hr blew') } },
+      counters,
       cache,
       bounded: false,
       viewportRows: () => 0,
@@ -581,9 +606,11 @@ describe('contentNodeSource', () => {
   })
 
   it('paints the fallback message for a failure without an own message', () => {
+    const counters = createWorkCounters()
     const env: ContentRowsEnv = {
       components,
       colors: { ...DARK_COLORS, diffAdded: () => { throw new Error('') } },
+      counters,
       cache: new MayflyContentCache(),
       bounded: false,
       viewportRows: () => 0,
@@ -637,21 +664,20 @@ describe('contentNodeSource', () => {
     const paragraph = (index: number): string => `${'w '.repeat(900)}${String(index)}`
     const settled = [0, 1, 2].map(paragraph).join('\n\n')
     const env = makeEnv()
-    const put = vi.spyOn(env.cache, 'put')
     const first = contentNodeRows({ kind: 'markdown', source: settled }, 80, env.env)
     void [...first]
-    const painted = put.mock.calls.length
+    const painted = env.counters.segmentsPainted
     expect(painted).toBeGreaterThan(1)
     const grown = contentNodeRows({ kind: 'markdown', source: `${settled}\n\n${paragraph(3)}` }, 80, env.env)
     const rows = [...grown].map(plainText)
     expect(rows.some(row => row.includes('w 3'))).toBe(true)
     // Only the unit the append reached was painted again; the rows above it came from the cache.
-    expect(put.mock.calls.length - painted).toBeLessThan(painted)
-    expect(put.mock.calls.length - painted).toBeGreaterThan(0)
+    expect(env.counters.segmentsPainted - painted).toBeLessThan(painted)
+    expect(env.counters.segmentsPainted - painted).toBeGreaterThan(0)
     // The same text at another width is another paint.
-    const before = put.mock.calls.length
+    const before = env.counters.segmentsPainted
     void [...contentNodeRows({ kind: 'markdown', source: settled }, 60, env.env)]
-    expect(put.mock.calls.length).toBeGreaterThan(before)
+    expect(env.counters.segmentsPainted).toBeGreaterThan(before)
   })
 
   it('tells its host when painting a unit moves the row count an estimate had given', () => {
@@ -676,9 +702,11 @@ describe('contentNodeSource', () => {
     void [...first]
     const painted = first.length
     expect(painted).toBeGreaterThan(estimate)
+    const segments = env.counters.segmentsPainted
     // The same text as another node (a streamed answer settling into its message) is exact before a row is read.
     const settled = contentNodeRows({ kind: 'markdown', source: text }, 40, env.env)
     expect(settled.length).toBe(painted)
+    expect(env.counters.segmentsPainted).toBe(segments)
     // Another width paints other rows, so nothing carries over to it.
     const narrow = contentNodeRows({ kind: 'markdown', source: text }, 30, env.env)
     const narrowEstimate = narrow.length
@@ -687,10 +715,12 @@ describe('contentNodeSource', () => {
   })
 
   it('reports a markdown paint failure once per unit', () => {
+    const counters = createWorkCounters()
     const reports: string[] = []
     const env: ContentRowsEnv = {
       components,
       colors: { ...DARK_COLORS, mdHr: () => { throw new Error('') } },
+      counters,
       cache: new MayflyContentCache(),
       bounded: false,
       viewportRows: () => 0,
@@ -840,6 +870,7 @@ describe('contentNodeSource', () => {
     const env: ContentRowsEnv = {
       components: { ...components, wrapText: () => { throw new Error('') } },
       colors: DARK_COLORS,
+      counters: createWorkCounters(),
       cache,
       bounded: false,
       viewportRows: () => 0,
@@ -899,6 +930,7 @@ describe('contentNodeSource', () => {
   })
 
   it('reports a diff paint failure once per chunk, then repaints it after the entry evicts', () => {
+    const counters = createWorkCounters()
     const cache = new MayflyContentCache(1)
     const reports: string[] = []
     const env: ContentRowsEnv = {
@@ -908,6 +940,7 @@ describe('contentNodeSource', () => {
         diffAdded: () => { throw new Error('no') },
         diffRemoved: () => { throw new Error('no') },
       },
+      counters,
       cache,
       bounded: false,
       viewportRows: () => 0,

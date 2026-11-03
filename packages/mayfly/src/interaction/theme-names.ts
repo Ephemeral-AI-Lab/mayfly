@@ -7,7 +7,7 @@
  */
 
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import { isPaletteKey, paletteOf } from '../core/theme/palettes.ts'
+import { isPaletteKey, paletteOf } from '../core/palettes.ts'
 
 /** The display name of `auto`; it is not a palette, so it is translated. */
 const AUTO_NAME = 'Auto'

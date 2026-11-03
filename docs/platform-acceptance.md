@@ -50,7 +50,7 @@ the following real environments and record versions and results:
 | Windows Terminal / ConPTY | No Git Bash, Chinese input method, UTF-8 paste, clipboard image paste (screenshot or copied image files stage through PowerShell into a paste marker; an unavailable powershell.exe is named in the notice), drive-letter and UNC completion, npmrc mirrors, in-app plugin actions |
 | macOS Terminal or iTerm2 | Chinese input method, pbcopy, Finder image/file paste, screenshot/TIFF clipboard image paste (osascript coercion, Chromium TIFF converted through sips; an unavailable osascript or sips is named in the notice), window resize, and terminal restoration after exit |
 
-The `prompt` node keeps the terminal editor's own paste and input-method
+The `prompt` node (roadmap slice 1.9b) keeps the terminal editor's own paste and input-method
 behavior, so each platform also checks it on the UI gallery's prompt pane
 (`example.ui-gallery.prompt`) or a profile that mounts one: a Chinese input method composes in the
 prompt and the placeholder is gone once text commits; a large bracketed paste folds into a

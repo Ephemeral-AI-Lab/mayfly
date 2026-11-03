@@ -16,13 +16,13 @@ import {
   remapDocumentOffset,
   type DocumentResolver,
   type UiDocumentState,
-} from '../../src/core/ui/state/ui-interaction-document.ts'
-import { materializeDeferredUiNode, validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
-import { DARK_COLORS } from '../../src/core/theme/theme-dark.ts'
+} from '../../src/core/ui-interaction-document.ts'
+import { materializeDeferredUiNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
+import { DARK_COLORS } from '../../src/core/theme-dark.ts'
 import { MayflyContentCache } from '../../src/core/ui-content-cache.ts'
-import type { ContentRowsEnv } from '../../src/core/content/content-rows.ts'
+import type { ContentRowsEnv } from '../../src/core/content-rows.ts'
 import type { MayflyComponents } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 
 const env: ContentRowsEnv = {
   components: { visibleWidth, wrapText: wrapTextWithAnsi, truncateToWidth } as MayflyComponents,
@@ -125,6 +125,9 @@ describe('semantic document state', () => {
     // 'abx' -> 'aXYby': 'b' sits in a kept change after an added one, 'x' in the removed tail change.
     expect(remapDocumentOffset('abx', 'aXYby', 1)).toBe(3)
     expect(remapDocumentOffset('abx', 'aXYby', 2)).toBe(4)
+    // A removed middle is skipped before the anchored kept text; a final edit prevents a suffix shortcut.
+    expect(remapDocumentOffset('abXYZcd', 'abcd!', 6)).toBe(3)
+    expect(remapDocumentOffset('abXYZcd', 'abcd!', 5)).toBe(2)
   })
 
   it('keeps admitted nodes as blocks and derives their source text on demand', () => {

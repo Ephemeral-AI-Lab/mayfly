@@ -1,10 +1,12 @@
 # Native-first Harness adaptation
 
-Mayfly targets Harness `0.2.1-rc.2` and follows its native contracts rather
-than carrying a compatibility layer. Native services own session lifecycle,
+Mayfly targets Harness `0.2.2-alpha.2` and follows its native contracts. The
+published Mayfly `0.1.4-rc.2` on Harness `0.2.1-rc.2` remains the immutable
+appearance, key, and workflow reference. Native services own session lifecycle,
 working directories, scheduling, subagent activations, tool execution, and
-plugin management. Mayfly supplies terminal presentation, current-Agent
-selection, and its one transcript history fold. Read
+plugin management. The Mayfly Host supplies durable presentation projections
+and focused serializable queries. The separate TUI owns Host/Session selection
+and presentation, consuming the official React-free Client. Read
 [native-capability-map.md](./native-capability-map.md) for the exact
 projections, services, keys, and command owners.
 
@@ -21,16 +23,18 @@ zone.
 ## Schedule is Host-wide, its tools are preset-scoped
 
 The Schedule capability is the durable Host-wide `ctx.schedule` service.
-Mayfly inserts its row disabled; a profile enables it with `disabled: false`.
+The split Host inherits its enabled row from `dsh-web-app`; a profile may
+disable it independently of an Agent's preset.
 The model-facing `schedule_create`, `schedule_list`, `schedule_update`, and
 `schedule_delete` tools come from the preset-owned `tool-schedule` row:
 `standard`, `ptc`, `cordis`, and `mayfly-cordis` mount it, `minimal` omits it.
 There is no Host attachment that adds these tools to every root Agent.
 
-`/schedule` reads the selected Agent's Session list through the native service,
-observes `schedule/changed`, and checks the exact Agent's tool schemas for
-`schedule_create`. The panel therefore reports the capability as unavailable
-when the service is off or the Agent's preset does not mount the tools.
+`/schedule` reads only the selected Session's active reminders through native
+`remote.schedule.list({ sessionId })` and observes `schedule/changed`. It uses
+the shared rc.2 reminder panel, not a Host-wide task browser. A `minimal` preset
+without reminder tools can still inspect that Session's reminders; a missing
+or failing service renders the panel's unavailable state.
 Delivery is durable: a due reminder resolves its original Session through the
 Session Controller and wakes it even when no Agent is running. Creation and
 cancellation stay in the conversation.
@@ -54,18 +58,27 @@ Mayfly code writes `$DSH_HOME/cordis.patch.yml`.
 
 Every delegation is one managed activation. A start returns a child id
 immediately; the child runs independently and the parent receives the native
-completion notice. It is one mode, with no `run_in_background` argument and no
-`started subagent` acknowledgement to parse.
+completion notice. There is no foreground/background mode, no
+`run_in_background` argument, and no `started subagent` acknowledgement to
+parse.
 
-Mayfly reads the parent's durable `subagentCatalog`, the child's `subagent`
-and `subagentTiming` projections, and the native `subagent/start` /
-`subagent/end` lifecycle. `/agents` and the Agents view list the exact direct
-children; `Enter` opens a local child's conversation, and `x` stops a
-continuable child through `ctx.subagents.drainChildren`. `/btw` is a native
-`fork` activation with its own Agent and history floor; `F7` returns to the
-previous conversation and `F8` closes the displayed one. Browsing a cold child
-reads native addressed history and never activates it; sending a reply is an
-explicit addressed prompt.
+The Host's `subagentTree` reads native `listDescendants`, preserving the complete
+descendant preorder and diagnostics. Exact resident Agents and native
+`subagent`, `subagentTiming`, workflow and passive stream facts supply the
+readonly presentation metrics. `/agents` and the Agents view display that tree;
+`Enter` opens a local child's conversation. `x` or `/agents stop <id>` stops
+only a live continuable leaf. The Host rechecks the current authorized tree and
+waits for `subagents.drainChildren` through that child's exact direct parent.
+External children have no local conversation. Browsing a cold child reads
+native addressed history and never activates it; sending a continuable child a
+reply is an explicit addressed prompt.
+
+`/btw` uses ordinary native Session Controller fork, not a managed subagent
+activation. It inherits the complete observed source tail, including an open
+first turn, and returns the inherited boundary for the frontend's history
+floor. A genuinely empty source uses native create and has no inherited floor.
+`F7` returns to the previous conversation and `F8` closes the displayed view;
+neither operation stops Host work.
 
 ## Sessions are read from the native controller
 
@@ -75,21 +88,29 @@ Workspace registry, and reads a Session's values through
 `migration-required` value carries cached hints and a notice, and Mayfly never
 starts migration on its own. Opening the Session is the explicit migration.
 
-The listing retains only the summary rows one controller read returned, fenced
-by controller instance and read generation. It does not enumerate
+The listing consumes official Client catalog snapshots, fenced by exact Host,
+Client and selection generation. It does not enumerate
 `sessionPersistence`, consult `sessionProjectionCache`, read a cold title log,
-or keep a second session domain store. The one durable-log read is `/save`,
-which flushes the exact Session and opens the persistence handle explicitly to
-write a Markdown export.
+or keep a second session domain store. Ordinary `/save` and `/export` consume
+the Host's whole conversation projection; `full` explicitly reads passive
+native audit pages. Exported files are created on the TUI machine. Host trace
+and statistics queries also use native passive history reads.
 
 ## Commands and surfaces
 
-- `/save [full] [path]` writes the projected transcript, or the full event
-  stream, as Markdown. The native `/export` belongs to the Web download; it is
-  not Mayfly's export.
+- `/save` and `/export` write the projected transcript, or with `full` the
+  native audit stream, on the TUI machine. Relative paths use the TUI working
+  directory; absolute paths are supported, parent directories are created, and
+  existing files are overwritten. Without a path the generated Markdown
+  filename is placed in that same directory. These are not Host filesystem
+  paths or Web downloads.
 - `/permissions` is Mayfly's preset panel; the native `/permission` command
   keeps its name and argument form.
 - `/rename` writes a user-pinned title through the Session Controller.
+- `/goal` retains the native command parser, output, refusals and ordered
+  objective attachments. Goal and Todo displays use shared rc.2 builders over
+  native projections; Goal activation comes from the matching native revision.
+  Its edit action returns `/goal edit <objective>` to the prompt.
 - `/model`, `/effort`, `/provider`, `/context`, `/stats`, `/trace`, `/skills`,
   `/tools`, `/mcp`, `/files`, `/jobs`, `/agents`, `/btw`, `/schedule`,
   `/settings`, and `/plugin` read native services and render terminal panels.
@@ -104,7 +125,7 @@ write a Markdown export.
 
 ## Optional Agent Team
 
-Agent Team is provided by the `agent-team` marketplace entry from
+The process-local reference's Agent Team is provided by the `agent-team` marketplace entry from
 `Ephemeral-AI-Lab/dsh-plugins` (`plugins/mayfly-agent-team`). Install it through
 `/plugin install agent-team`, restart, create a new session, and select the
 `team` preset with `/preset team`. Installation does not change the default or
@@ -112,7 +133,12 @@ existing presets. Only Team-preset roots and their native teammates receive the
 Team tools, policy, `/team`, and Team UI contributions; ordinary presets retain
 upstream delegation.
 
-Ask the Lead explicitly to use Agent Team. `/team` opens members and tasks;
+Its Host-native tools and presets can be installed independently. A TUI
+contribution must also be integrated into the separate frontend's Cordis tree
+and the TUI restarted: installing a Host bundle cannot dynamically mount a
+frontend extension through the current official API. Do not claim `/team`
+parity from Host installation alone. In the reference composition, asking the
+Lead explicitly to use Agent Team makes `/team` open members and tasks;
 wide layouts show both columns, while narrow layouts use tabs with retained
 selection and search. Task details can open the owner's conversation. Closing a
 view does not stop a teammate, and Team write scopes are advisory. Missing Team

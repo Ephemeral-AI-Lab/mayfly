@@ -10,7 +10,7 @@ import {
   ACTION_CANCEL, ACTION_CLEAR_SEARCH, ACTION_END, ACTION_EXPAND, ACTION_FILTER, ACTION_FOCUS_NEXT, ACTION_FOCUS_PREV, ACTION_HOME, ACTION_INTERRUPT, ACTION_MOVE_DOWN,
   ACTION_MOVE_UP, ACTION_NEWLINE, ACTION_NEXT_CONTROL, ACTION_NEXT_TAB, ACTION_PAGE_DOWN, ACTION_PAGE_UP,
   ACTION_PREV_TAB, ACTION_RESET_FIELD, ACTION_SAVE, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SHIFT_TAB, ACTION_SUBMIT, ACTION_TOGGLE, displayKey, printableKey,
-} from './keys/key-actions.ts'
+} from './key-actions.ts'
 
 /** The layer one Escape press leaves, innermost first. */
 export type EscapeStep = 'collapse' | 'cancel' | 'done' | 'end-search' | 'back' | 'close' | 'leave' | 'no'

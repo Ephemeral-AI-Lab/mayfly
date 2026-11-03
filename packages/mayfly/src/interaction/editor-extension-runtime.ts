@@ -1,43 +1,18 @@
-/**
- * Frontend-tree owner for direct editor extensions. It composes passive rows
- * around the Mayfly-owned editor and contains asynchronous plugin callbacks.
- *
- * @module @ephemeral-ai/mayfly/interaction/editor-extension-runtime
- */
-
+/** Native input bindings for the shared editor extension owner. @module interaction/editor-extension-runtime */
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type {
-  MayflyEditorAttachment,
-  MayflyEditorCompletionItem,
-  MayflyEditorCompletionRequest,
-  MayflyEditorDecoration,
-  MayflyEditorExtensionDefinition,
-  MayflyEditorExtensionEntry,
-  MayflyEditorExtensionNode,
-  MayflyEditorSubmitRequest,
-  MayflyFeedback,
-  MayflyUiEvent,
-  MayflyUiNode,
-} from '@ephemeral-ai/mayfly-ui'
-import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponent, MayflyEditor, MayflyEditorSubmitAttempt, MayflyFocusable } from '../core/types.ts'
-import { compileMayflyEditorShellNode } from '../core/ui/compile/ui-compiler.ts'
-import type { MayflyEditorShellNode } from '../core/ui/compile/ui-contracts.ts'
-import { validateMayflyUiNode } from '../core/ui/admit/ui-validator.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import { printableKey } from '../core/keys/key-actions.ts'
+import type { MayflyEditorAttachment, MayflyFeedback, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyEditor } from '../core/types.ts'
+import { EditorExtensionRuntime as SharedEditorExtensionRuntime, type EditorExtensionSubmitCapture } from '../frontend/editor-extension-runtime.ts'
 import { IMAGE_MARKER } from './image-marker.ts'
-import { interactionTranslator } from './locale.ts'
 import { beginPromptWait } from './prompt-wait.ts'
 import type { SubmitTransformation } from './prompt-submit-pipeline.ts'
 
-const MAX_COMPLETIONS = 200
-const MAX_COMPLETION_TEXT = 2_000
-const MAX_SUBMIT_TEXT = 20_000
-const MAX_NOTICE_TEXT = 2_000
-const COMPLETION_TIMEOUT_MS = 5_000
-const SUBMIT_TIMEOUT_MS = 30_000
-const TOKEN_DELIMITERS = new Set([' ', '\t', '"', "'", '='])
+interface NativePreparedSubmit {
+  readonly text: string
+  readonly transformation?: SubmitTransformation
+}
 
 interface AttachmentBinding {
   readonly marker: string
@@ -45,194 +20,21 @@ interface AttachmentBinding {
   readonly public: MayflyEditorAttachment
 }
 
-interface PreparedSubmit {
-  readonly source: string
-  readonly text: string
-  readonly attachments: readonly AttachmentBinding[]
-}
-
-interface CompletionApplication {
-  readonly provider?: MayflyAutocompleteProvider
-  readonly item: MayflyAutocompleteItem
-  readonly prefix: string
-  readonly insertText?: string
-  /** A failed source's row: accepting it changes nothing. */
-  readonly inert?: boolean
-}
-
-interface ExtensionActionBinding {
-  readonly entry: EditorExtensionRuntimeEntry
-  readonly actionId: string
-}
-
-type EditorExtensionRuntimeEntry = Omit<MayflyEditorExtensionDefinition, 'source'> & MayflyEditorDecoration & Pick<MayflyEditorExtensionEntry, 'events' | 'source'>
-
-interface EditorShell {
-  readonly component: MayflyComponent
-  readonly focusTarget: MayflyFocusable
-  readonly extensionActions: ReadonlyMap<string, ExtensionActionBinding>
-}
-
-type CallbackOutcome<Value> =
-  | { readonly kind: 'value', readonly value: Value }
-  | { readonly kind: 'aborted' }
-  | { readonly kind: 'timeout' }
-  | { readonly kind: 'rejected', readonly error: unknown }
-
-type Admission<Value> =
-  | { readonly ok: true, readonly value: Value }
-  | { readonly ok: false, readonly message: string }
-
-/** Construction dependencies retained only for the input Fiber lifetime. */
-interface EditorExtensionRuntimeOptions {
+interface NativeEditorExtensionRuntimeOptions {
   readonly ctx: Context
   readonly editor: MayflyEditor
   readonly report: (id: string, feedback: MayflyFeedback) => void
   readonly footer?: () => MayflyUiNode | undefined
-  /** The editor's frame as a node (the `Editor` component): its one `prompt` is the face of {@link EditorExtensionRuntimeOptions.editor}. */
   readonly frame: (state: { readonly parked: boolean }) => MayflyUiNode
   readonly shouldTransformSubmit: (text: string) => boolean
 }
 
-/** What a compiled shell depends on: the envelope's nodes, its actions, and the focus that mutes the frame. */
-function shapeOf(envelope: { readonly node: MayflyEditorShellNode, readonly actions: ReadonlyMap<string, ExtensionActionBinding> }, focused: boolean): string {
-  return JSON.stringify([envelope.node, [...envelope.actions.keys()], focused])
-}
-
-function failureMessage(value: unknown, fallback: string): string {
-  try {
-    if (typeof value === 'string') return value.trim() || fallback
-    if (typeof value !== 'object' || value === null) return fallback
-    const descriptor = Object.getOwnPropertyDescriptor(value, 'message')
-    return descriptor !== undefined && 'value' in descriptor && typeof descriptor.value === 'string'
-      ? descriptor.value.trim() || fallback
-      : fallback
-  } catch { return fallback }
-}
-
-function boundedMessage(value: unknown, fallback: string): string {
-  return failureMessage(value, fallback).slice(0, MAX_NOTICE_TEXT)
-}
-
-function settleCallback<Value>(
-  callback: () => Value | PromiseLike<Value>,
-  signal: AbortSignal,
-  timeoutMs: number,
-): Promise<CallbackOutcome<Value>> {
-  if (signal.aborted) return Promise.resolve({ kind: 'aborted' })
-  return new Promise(resolve => {
-    let settled = false
-    const finish = (outcome: CallbackOutcome<Value>): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeout)
-      signal.removeEventListener('abort', onAbort)
-      resolve(outcome)
-    }
-    const onAbort = (): void => { finish({ kind: 'aborted' }) }
-    const timeout = setTimeout(() => { finish({ kind: 'timeout' }) }, timeoutMs)
-    signal.addEventListener('abort', onAbort, { once: true })
-    void Promise.resolve().then(callback).then(
-      value => { finish({ kind: 'value', value }) },
-      error => { finish({ kind: 'rejected', error }) },
-    )
-  })
-}
-
-function completionContext(
-  line: string,
-  cursorCol: number,
-  force: boolean | undefined,
-): { request: MayflyEditorCompletionRequest, prefix: string } | undefined {
-  const before = line.slice(0, cursorCol)
-  const slash = /^\/(\S*)$/u.exec(before)
-  /* the mandatory capture exists for every successful match. */
-  if (slash !== null) return { request: { trigger: '/', query: slash[1] ?? '' }, prefix: before }
-  let start = 0
-  for (let index = before.length - 1; index >= 0; index -= 1) {
-    if (TOKEN_DELIMITERS.has(before.charAt(index))) { start = index + 1; break }
-  }
-  const token = before.slice(start)
-  if (token.startsWith('@')) return { request: { trigger: '@', query: token.slice(1) }, prefix: token }
-  if (token.startsWith('#')) return { request: { trigger: '#', query: token.slice(1) }, prefix: token }
-  return force === true ? { request: { trigger: 'manual', query: token }, prefix: token } : undefined
-}
-
-function ownData(object: object, key: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(object, key)
-  if (descriptor === undefined || !('value' in descriptor)) throw new Error(`${key} must be an own data property`)
-  return descriptor.value
-}
-
-function optionalOwnData(object: object, key: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(object, key)
-  if (descriptor === undefined) return undefined
-  if (!('value' in descriptor)) throw new Error(`${key} must be an own data property`)
-  return descriptor.value
-}
-
-function completionItems(result: unknown): Admission<readonly MayflyEditorCompletionItem[]> {
-  try {
-    if (!Array.isArray(result) || result.length > MAX_COMPLETIONS) {
-      throw new Error(`completion callback must return at most ${String(MAX_COMPLETIONS)} items`)
-    }
-    const seen = new Set<string>()
-    const items = result.map((candidate, index): MayflyEditorCompletionItem => {
-      if (typeof candidate !== 'object' || candidate === null) throw new Error(`completion item ${String(index)} must be an object`)
-      const id = ownData(candidate, 'id')
-      const label = ownData(candidate, 'label')
-      const insertText = ownData(candidate, 'insertText')
-      const detail = optionalOwnData(candidate, 'detail')
-      const problem = optionalOwnData(candidate, 'problem')
-      if (typeof id !== 'string' || id.length === 0 || id.length > 128 || seen.has(id)) throw new Error(`completion item ${String(index)} has an invalid or duplicate id`)
-      if (typeof label !== 'string' || label.length > MAX_COMPLETION_TEXT) throw new Error(`completion item ${String(index)} has an invalid label`)
-      if (typeof insertText !== 'string' || insertText.length > MAX_COMPLETION_TEXT) throw new Error(`completion item ${String(index)} has invalid insertText`)
-      if (detail !== undefined && (typeof detail !== 'string' || detail.length > MAX_COMPLETION_TEXT)) throw new Error(`completion item ${String(index)} has an invalid detail`)
-      if (problem !== undefined && (typeof problem !== 'string' || problem.length > MAX_COMPLETION_TEXT)) throw new Error(`completion item ${String(index)} has an invalid problem`)
-      seen.add(id)
-      return Object.freeze({ id, label, insertText, ...(detail === undefined ? {} : { detail }), ...(problem === undefined ? {} : { problem }) })
-    })
-    return { ok: true, value: Object.freeze(items) }
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : 'completion result was rejected' }
-  }
-}
-
-function submitValue(result: unknown): Admission<{ readonly text: string }> {
-  try {
-    if (typeof result !== 'object' || result === null) throw new Error('submit transform must return an object')
-    const text = ownData(result, 'text')
-    if (typeof text !== 'string') throw new Error('submit transform text must be a string')
-    if (text.length > MAX_SUBMIT_TEXT) throw new Error(`submit transform text exceeds ${String(MAX_SUBMIT_TEXT)} characters`)
-    return { ok: true, value: { text } }
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : 'submit transform was rejected' }
-  }
-}
-
-function isPassive(node: MayflyUiNode): node is MayflyEditorExtensionNode {
-  switch (node.kind) {
-    case 'text':
-    case 'rich-text':
-    case 'fields':
-    case 'code':
-    case 'diff':
-    case 'sections':
-    case 'progress':
-    case 'spacer':
-    case 'divider': return true
-    case 'stack': return node.children.every(child => isPassive(child.node))
-    case 'surface': return isPassive(node.child) && (node.footer === undefined || isPassive(node.footer))
-    default: return false
-  }
-}
-
-function captureAttachments(ctx: Context, source: string): { text: string, attachments: readonly AttachmentBinding[] } {
-  const attachments: AttachmentBinding[] = []
+function captureAttachments(ctx: Context, source: string): EditorExtensionSubmitCapture<NativePreparedSubmit> {
+  const bindings: AttachmentBinding[] = []
   const text = source.replace(IMAGE_MARKER, marker => {
     const ref = ctx.mayflyInteractionState.pasteImage.pastedImages.get(marker)
     if (ref === undefined) return marker
-    attachments.push(Object.freeze({
+    bindings.push(Object.freeze({
       marker,
       ref,
       public: Object.freeze({
@@ -244,465 +46,53 @@ function captureAttachments(ctx: Context, source: string): { text: string, attac
     }))
     return ''
   }).trim()
-  return { text, attachments: Object.freeze(attachments) }
+  return {
+    text,
+    attachments: Object.freeze(bindings.map(binding => binding.public)),
+    prepare: transformed => {
+      if (bindings.length === 0) return { text: transformed }
+      const images = ctx.mayflyInteractionState.pasteImage.pastedImages
+      const consumed: AttachmentBinding[] = []
+      for (const binding of bindings) {
+        if (images.get(binding.marker) !== binding.ref) continue
+        images.delete(binding.marker)
+        consumed.push(binding)
+      }
+      const blocks: ContentBlock[] = []
+      if (transformed.length > 0) blocks.push({ type: 'text', text: transformed })
+      for (const binding of consumed) blocks.push({ type: 'image', attachment: binding.ref })
+      let rolledBack = false
+      return {
+        text: transformed,
+        transformation: {
+          blocks,
+          rollback: () => {
+            if (rolledBack) return
+            rolledBack = true
+            for (const binding of consumed) if (!images.has(binding.marker)) images.set(binding.marker, binding.ref)
+          },
+        },
+      }
+    },
+  }
 }
 
-/** Mutable delegate whose outer focus identity survives extension refresh. */
-export class EditorExtensionRuntime implements MayflyFocusable {
-  private ownFocused = false
-  private columns = 80
-  private operationRevision = 0
-  private entries: readonly EditorExtensionRuntimeEntry[] = []
-  private readonly extensionEntries = new Map<string, MayflyEditorExtensionEntry>()
-  private component: MayflyComponent
-  private focusTarget: MayflyFocusable
-  private shell: EditorShell
-  /** The envelope the shell was last compiled from; an unchanged one keeps its component. */
-  private compiledShape: string | undefined
-  private readonly pending = new Set<AbortController>()
-  private actionGeneration = 0
-  private completionLifecycle = new AbortController()
-  private prepared: PreparedSubmit | undefined
-  private initialized = false
-  private disposed = false
-  private readonly unsubscribeExtensions: () => void
-  private readonly unsubscribeHost: () => void
-
-  constructor(private readonly options: EditorExtensionRuntimeOptions) {
-    this.component = options.editor
-    this.focusTarget = options.editor
-    this.shell = this.plainShell()
-    this.unsubscribeExtensions = options.ctx.mayflyEditorExtensions.subscribe(delta => {
-      if (delta.kind === 'remove') this.extensionEntries.delete(delta.id)
-      else this.extensionEntries.set(delta.entry.id, delta.entry)
-      this.entries = [...this.extensionEntries.values()]
-        .sort((left, right) => (left.definition.priority ?? 0) - (right.definition.priority ?? 0) || left.id.localeCompare(right.id))
-        .map(entry => ({ ...entry.definition, source: entry.source, ...entry.decoration, events: entry.events }))
-      if (this.initialized) this.syncExtensions()
-    })
-    this.unsubscribeHost = options.ctx.mayflyPromptEditor.subscribeEditorState(() => {
-      /* the immediate subscription replay intentionally precedes initialization. */
-      if (this.initialized) this.syncAutocomplete()
-    })
-    this.initialized = true
-    this.syncExtensions()
-  }
-
-  get focused(): boolean { return this.ownFocused }
-  set focused(value: boolean) {
-    const changed = this.ownFocused !== value
-    this.ownFocused = value
-    this.focusTarget.focused = value
-    // The frame is muted while keyboard focus is elsewhere, so a focus change recompiles it.
-    if (changed && this.initialized && !this.disposed) this.refreshPresentation()
-  }
-
-  render(width: number): string[] {
-    this.columns = Math.max(1, Number.isFinite(width) ? Math.floor(width) : 1)
-    return this.component.render(this.columns)
-  }
-
-  handleInput(data: string): void { this.focusTarget.handleInput?.(data) }
-  invalidate(): void { this.component.invalidate() }
-  private report(id: string, message: string, severity: MayflyFeedback['severity'] = 'error'): void {
-    try { this.options.report(id, { message, severity }) } catch { /* feedback consumers cannot break editor work */ }
-  }
-  private reportFeedback(id: string, feedback: MayflyFeedback): void {
-    try { this.options.report(id, feedback) } catch { /* feedback consumers cannot break editor work */ }
-  }
-  refreshPresentation(): void {
-    // Typing changes the buffer, which the editor draws itself: the shell is recompiled only when its envelope changes.
-    const envelope = this.extensionEnvelope()
-    const shape = shapeOf(envelope, this.ownFocused)
-    if (shape !== this.compiledShape) {
-      this.compiledShape = shape
-      this.activateShell(this.compileShell(envelope))
-    }
-    this.options.ctx.mayflyScreen.requestRender()
-  }
-
-  /** Consume the successful transform prepared before core cleared the editor. */
-  takePrepared(source: string): { readonly text: string, readonly transformation?: SubmitTransformation } | undefined {
-    const prepared = this.prepared
-    this.prepared = undefined
-    if (prepared === undefined || prepared.source !== source) return undefined
-    if (prepared.attachments.length === 0) return { text: prepared.text }
-    const images = this.options.ctx.mayflyInteractionState.pasteImage.pastedImages
-    const consumed: AttachmentBinding[] = []
-    for (const attachment of prepared.attachments) {
-      if (images.get(attachment.marker) !== attachment.ref) continue
-      images.delete(attachment.marker)
-      consumed.push(attachment)
-    }
-    const blocks: ContentBlock[] = []
-    if (prepared.text.length > 0) blocks.push({ type: 'text', text: prepared.text })
-    for (const attachment of consumed) blocks.push({ type: 'image', attachment: attachment.ref })
-    let rolledBack = false
-    return {
-      text: prepared.text,
-      transformation: {
-        blocks,
-        rollback: () => {
-          if (rolledBack) return
-          rolledBack = true
-          for (const attachment of consumed) if (!images.has(attachment.marker)) images.set(attachment.marker, attachment.ref)
+/** Keep private native submission semantics while sharing the complete renderer and extension lifecycle. */
+export class EditorExtensionRuntime extends SharedEditorExtensionRuntime<NativePreparedSubmit> {
+  constructor(options: NativeEditorExtensionRuntimeOptions) {
+    super({
+      ...options,
+      bindings: {
+        autocomplete: {
+          sources: () => options.ctx.mayflyPromptEditor.listAutocompleteSources(),
+          subscribe: listener => options.ctx.mayflyPromptEditor.subscribeEditorState(listener),
         },
+        beginWait: message => beginPromptWait(options.ctx, message),
+        captureSubmit: source => captureAttachments(options.ctx, source),
+        shouldTransformSubmit: options.shouldTransformSubmit,
       },
-    }
-  }
-
-  dispose(): void {
-    this.disposed = true
-    this.unsubscribeExtensions()
-    this.unsubscribeHost()
-    this.abortPending()
-    this.options.editor.setSubmitBarrier(undefined)
-    this.prepared = undefined
-    this.focusTarget.focused = false
-  }
-
-  /** Fence extension work whose route or current Agent has retired. */
-  invalidateRoute(): void { this.abortPending() }
-  invalidateSession(): void { this.abortPending() }
-
-  private syncExtensions(): void {
-    this.abortPending()
-    const envelope = this.extensionEnvelope()
-    this.compiledShape = shapeOf(envelope, this.ownFocused)
-    this.activateShell(this.compileShell(envelope))
-    const transforms = this.entries.some(entry => entry.transformSubmit !== undefined)
-    this.options.editor.setSubmitBarrier(transforms ? attempt => { this.beginSubmit(attempt) } : undefined)
-    this.installCompletionProvider()
-    this.options.ctx.mayflyScreen.requestRender()
-  }
-
-  private syncAutocomplete(): void {
-    this.completionLifecycle.abort()
-    this.completionLifecycle = new AbortController()
-    this.installCompletionProvider()
-    this.options.ctx.mayflyScreen.requestRender()
-  }
-
-  private abortPending(): void {
-    this.actionGeneration += 1
-    this.completionLifecycle.abort()
-    this.completionLifecycle = new AbortController()
-    for (const controller of this.pending) controller.abort()
-    this.pending.clear()
-    this.prepared = undefined
-  }
-
-  private plainShell(): EditorShell {
-    return { component: this.options.editor, focusTarget: this.options.editor, extensionActions: new Map() }
-  }
-
-  private activateShell(shell: EditorShell): void {
-    /* reactivating the same shell needs no focus handoff. */
-    if (this.shell !== shell) this.focusTarget.focused = false
-    this.shell = shell
-    this.component = shell.component
-    this.focusTarget = shell.focusTarget
-    this.focusTarget.focused = this.ownFocused
-    try { this.component.invalidate() } catch { /* renderer invalidation is contained */ }
-  }
-
-  private extensionEnvelope(): { readonly node: MayflyEditorShellNode, readonly actions: ReadonlyMap<string, ExtensionActionBinding> } {
-    const actions = new Map<string, ExtensionActionBinding>()
-    const children: Array<{ node: MayflyEditorShellNode }> = []
-    for (const entry of this.entries) {
-      if (entry.before === undefined) continue
-      const admitted = validateMayflyUiNode(entry.before)
-      if (admitted.ok && isPassive(admitted.value)) children.push({ node: admitted.value })
-      else this.report('definition', admitted.ok ? 'editor extension before must be passive' : admitted.message.slice(0, MAX_NOTICE_TEXT))
-    }
-    children.push({ node: this.options.frame({ parked: !this.ownFocused }) as MayflyEditorShellNode })
-    // The keymap is snapshotted only when a decoration declares an action: the shell is recompiled on every keystroke.
-    let claimedKeys: Set<string> | undefined
-    const claimed = (): Set<string> => claimedKeys ??= new Set(this.options.ctx.mayflyKeymap.list().flatMap(action => [action.keys].flat()).map(key => key.toLowerCase()))
-    for (const [entryIndex, entry] of this.entries.entries()) {
-      const rows: MayflyUiNode[] = []
-      if (typeof entry.hint === 'string') {
-        const admitted = validateMayflyUiNode({ kind: 'text', content: entry.hint, tone: 'muted' })
-        if (admitted.ok) rows.push(admitted.value)
-        else this.report('definition', admitted.message.slice(0, MAX_NOTICE_TEXT))
-      }
-      if (Array.isArray(entry.diagnostics)) for (const diagnostic of entry.diagnostics) {
-        try {
-          if (typeof diagnostic !== 'object' || diagnostic === null) throw new Error('editor extension diagnostic must be an object')
-          const message = ownData(diagnostic, 'message')
-          const tone = optionalOwnData(diagnostic, 'tone')
-          const admitted = validateMayflyUiNode({ kind: 'text', content: message, ...(tone === undefined ? { tone: 'warning' as const } : { tone }) })
-          if (!admitted.ok) throw new Error(admitted.message)
-          rows.push(admitted.value)
-        } catch (error) { this.report('definition', boundedMessage(error, 'editor extension diagnostic was rejected')) }
-      }
-      /* The editor owns every unmodified key, so a decoration action is reachable only through
-         a modifier accelerator that no Mayfly binding or earlier decoration already claims. */
-      const reachable = Array.isArray(entry.actions) ? entry.actions.filter(action => {
-        const key = (action as { readonly key?: unknown }).key
-        if (typeof key !== 'string' || key.length === 0 || printableKey(key)) {
-          this.report('definition', 'editor extension actions need a modifier key such as ctrl+r or alt+r')
-          return false
-        }
-        if (claimed().has(key.toLowerCase())) {
-          this.report('definition', `editor extension action key "${key}" is already bound`)
-          return false
-        }
-        claimed().add(key.toLowerCase())
-        return true
-      }) : []
-      if (reachable.length > 0) {
-        const admitted = validateMayflyUiNode({ kind: 'actions', id: `extension-actions-${String(entryIndex)}`, items: reachable })
-        if (admitted.ok) {
-          const actionNode = admitted.value as Extract<MayflyUiNode, { readonly kind: 'actions' }>
-          const items = actionNode.items.map((action, actionIndex) => {
-            const id = `extension-${String(entryIndex)}-${String(actionIndex)}`
-            actions.set(id, { entry, actionId: action.id })
-            return { ...action, id }
-          })
-          rows.push({ ...actionNode, items })
-        } else this.report('definition', admitted.message.slice(0, MAX_NOTICE_TEXT))
-      }
-      for (const row of rows) children.push({ node: row })
-      if (entry.after !== undefined) {
-        const admitted = validateMayflyUiNode(entry.after)
-        if (admitted.ok && isPassive(admitted.value)) children.push({ node: admitted.value })
-        else this.report('definition', admitted.ok ? 'editor extension after must be passive' : admitted.message.slice(0, MAX_NOTICE_TEXT))
-      }
-    }
-    const footer = this.options.footer?.()
-    if (footer !== undefined) {
-      const admitted = validateMayflyUiNode(footer)
-      if (admitted.ok && isPassive(admitted.value)) children.push({ node: admitted.value })
-      else this.report('definition', admitted.ok ? 'editor feedback must be passive' : admitted.message.slice(0, MAX_NOTICE_TEXT))
-    }
-    return {
-      node: children.length === 1
-        ? children[0]!.node
-        : { kind: 'stack', direction: 'column', children },
-      actions,
-    }
-  }
-
-  private compileShell(envelope: { readonly node: MayflyEditorShellNode, readonly actions: ReadonlyMap<string, ExtensionActionBinding> }): EditorShell {
-    let shell!: EditorShell
-    const result = compileMayflyEditorShellNode(envelope.node, {
-      editor: this.options.editor,
-      components: this.options.ctx.mayflyComponents,
-      colors: this.options.ctx.mayflyTheme.colors,
-      getViewport: () => this.options.ctx.mayflyScreen.editorViewport,
-      bounded: false,
-      keymap: this.options.ctx.mayflyKeymap,
-      emit: event => { this.dispatchShellEvent(shell, event) },
-    })
-    if (!result.ok) {
-      this.report('definition', result.message.slice(0, MAX_NOTICE_TEXT))
-      return this.plainShell()
-    }
-    shell = {
-      component: result.value.component,
-      focusTarget: result.value.focusTarget,
-      extensionActions: envelope.actions,
-    }
-    result.value.component.focusEditor()
-    return shell
-  }
-
-  private dispatchShellEvent(shell: EditorShell, event: MayflyUiEvent): void {
-    const target = event.kind === 'activate' ? shell.extensionActions.get(event.controlId) : undefined
-    const endpoint = target?.entry.events
-    if (target === undefined || endpoint === undefined) return
-    const revision = ++this.operationRevision
-    const translated: MayflyUiEvent = { kind: 'activate', pagePath: [], controlId: target.actionId, actionId: target.actionId }
-    const controller = new AbortController()
-    this.pending.add(controller)
-    void endpoint.prepare(translated, {
-      surfaceId: target.entry.id,
-      source: target.entry.source,
-      signal: controller.signal,
-      revision,
-      operationId: `${target.entry.id}:${String(revision)}`,
-      report: feedback => { if (!controller.signal.aborted) this.reportFeedback('action', feedback) },
-    }).then(prepared => {
-      if (controller.signal.aborted) return
-      const reply = prepared.reply
-      if (reply?.feedback !== undefined) this.reportFeedback('action', reply.feedback)
-      else if (reply?.kind === 'failed' || reply?.kind === 'conflict') this.report('action', boundedMessage(reply.message, 'editor extension action failed'))
-      prepared.publish()
-    }).catch(error => {
-      if (!controller.signal.aborted) this.report('action', boundedMessage(error, 'editor extension action failed'))
-    }).finally(() => {
-      this.pending.delete(controller)
-      controller.abort()
     })
   }
 
-  /** @internal Dispatch a semantic event against the currently committed shell. */
-  dispatchEvent(event: MayflyUiEvent): void { this.dispatchShellEvent(this.shell, event) }
-
-  private installCompletionProvider(): void {
-    const entries = this.entries
-    const sources = this.options.ctx.mayflyPromptEditor.listAutocompleteSources()
-    const applications = new WeakMap<MayflyAutocompleteItem, CompletionApplication>()
-    const provider: MayflyAutocompleteProvider = {
-      triggerCharacters: [...new Set([...sources.flatMap(source => source.triggerCharacters ?? []), '/', '@', '#'])],
-      getSuggestions: async (lines, cursorLine, cursorCol, completionOptions): Promise<MayflyAutocompleteSuggestions | null> => {
-        const signal = AbortSignal.any([completionOptions.signal, this.completionLifecycle.signal])
-        const line = lines[cursorLine] ?? ''
-        const context = completionContext(line, cursorCol, completionOptions.force)
-        const base = await Promise.all(sources.map(async source => {
-          const deadline = new AbortController()
-          const sourceSignal = AbortSignal.any([signal, deadline.signal])
-          const outcome = await settleCallback(
-            () => source.getSuggestions(lines, cursorLine, cursorCol, { signal: sourceSignal, ...(completionOptions.force === undefined ? {} : { force: completionOptions.force }) }),
-            sourceSignal,
-            COMPLETION_TIMEOUT_MS,
-          )
-          if (outcome.kind === 'timeout') deadline.abort()
-          return { source, result: outcome.kind === 'value' ? outcome.value : null }
-        }))
-        if (signal.aborted) return null
-        const output: MayflyAutocompleteItem[] = []
-        const failures: Array<{ id: string, headline: string, reason: string }> = []
-        let prefix = context?.prefix
-        for (const { source, result } of base) {
-          if (result === null) continue
-          prefix ??= result.prefix
-          for (const item of result.items) {
-            if (output.length >= MAX_COMPLETIONS) break
-            output.push(item)
-            applications.set(item, { provider: source, item, prefix: result.prefix })
-          }
-        }
-        if (context !== undefined) {
-          const revision = ++this.operationRevision
-          const requests = entries.filter(entry => entry.complete !== undefined).map(async entry => {
-            const deadline = new AbortController()
-            const entrySignal = AbortSignal.any([signal, deadline.signal])
-            // A slow extension shows the unified loader with its id; the wait ends with the answer, the deadline, or an abort.
-            const endWait = beginPromptWait(this.options.ctx, interactionTranslator(this.options.ctx)('Waiting for {id}…', { id: entry.id }))
-            try {
-              const outcome = await settleCallback(
-                () => entry.complete!(Object.freeze(context.request), { surfaceId: entry.id, source: entry.source, signal: entrySignal, revision, operationId: `${entry.id}:${String(revision)}`, report: () => {} }),
-                entrySignal,
-                COMPLETION_TIMEOUT_MS,
-              )
-              if (outcome.kind === 'timeout') deadline.abort()
-              return { id: entry.id, outcome }
-            } finally {
-              endWait()
-            }
-          })
-          for (const { id, outcome } of await Promise.all(requests)) {
-            if (signal.aborted || this.entries !== entries) return null
-            if (outcome.kind === 'timeout') { failures.push({ id, headline: 'completion timed out', reason: 'it did not answer in time' }); continue }
-            if (outcome.kind === 'rejected') { failures.push({ id, headline: 'completion failed', reason: boundedMessage(outcome.error, 'completion failed') }); continue }
-            /* an aborted entry necessarily sets the shared signal tested above. */
-            if (outcome.kind !== 'value') return null
-            const result = completionItems(outcome.value)
-            if (!result.ok) { failures.push({ id, headline: 'completion failed', reason: result.message }); continue }
-            for (const candidate of result.value) {
-              if (output.length >= MAX_COMPLETIONS) break
-              const item: MayflyAutocompleteItem = {
-                value: candidate.insertText,
-                label: candidate.label,
-                ...(candidate.detail === undefined ? {} : { description: candidate.detail }),
-                ...(candidate.problem === undefined ? {} : { problem: candidate.problem }),
-                source: id,
-              }
-              output.push(item)
-              applications.set(item, { item, prefix: context.prefix, insertText: candidate.insertText })
-            }
-          }
-          // A source that failed is a row of its own after the rest: a red `!`, and the focused row says why.
-          for (const { id, headline, reason } of failures) {
-            const item: MayflyAutocompleteItem = { value: id, label: id, description: headline, problem: reason }
-            output.push(item)
-            applications.set(item, { item, prefix: context.prefix, inert: true })
-          }
-        }
-        return output.length === 0 ? null : { items: output, prefix: prefix ?? context?.prefix ?? '' }
-      },
-      applyCompletion: (lines, cursorLine, cursorCol, item, prefix) => {
-        const application = applications.get(item)
-        if (application?.provider !== undefined) return application.provider.applyCompletion(lines, cursorLine, cursorCol, application.item, application.prefix)
-        if (application?.inert === true) return { lines: [...lines], cursorLine, cursorCol }
-        const replace = application?.insertText ?? item.value
-        const current = lines[cursorLine] ?? ''
-        const appliedPrefix = application?.prefix ?? prefix
-        const head = current.slice(0, Math.max(0, cursorCol - appliedPrefix.length)) + replace
-        return { lines: lines.map((source, index) => index === cursorLine ? head + current.slice(cursorCol) : source), cursorLine, cursorCol: head.length }
-      },
-      shouldTriggerFileCompletion: (lines, cursorLine, cursorCol) => sources.some(source => {
-        try { return source.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) === true } catch { return false }
-      }),
-    }
-    this.options.editor.setAutocompleteProvider(provider)
-  }
-
-  private beginSubmit(attempt: MayflyEditorSubmitAttempt): void {
-    const entries = this.entries
-    if (!this.options.shouldTransformSubmit(attempt.text)) { attempt.commit(); return }
-    const transforms = entries.filter(entry => entry.transformSubmit !== undefined)
-    if (transforms.length === 0) { attempt.commit(); return }
-    const controller = new AbortController()
-    const abort = (): void => { controller.abort() }
-    attempt.signal.addEventListener('abort', abort, { once: true })
-    controller.signal.addEventListener('abort', () => { attempt.cancel() }, { once: true })
-    this.pending.add(controller)
-    const revision = ++this.operationRevision
-    const captured = captureAttachments(this.options.ctx, attempt.text)
-    const attachments = Object.freeze(captured.attachments.map(attachment => attachment.public))
-    void (async () => {
-      let text = captured.text
-      for (const entry of transforms) {
-        if (controller.signal.aborted || this.entries !== entries) return
-        const request: MayflyEditorSubmitRequest = Object.freeze({ text, attachments })
-        const outcome = await settleCallback(
-          () => entry.transformSubmit!(request, { surfaceId: entry.id, source: entry.source, signal: controller.signal, revision, operationId: `${entry.id}:${String(revision)}`, report: () => {} }),
-          controller.signal,
-          SUBMIT_TIMEOUT_MS,
-        )
-        if (controller.signal.aborted || this.entries !== entries) return
-        if (outcome.kind === 'timeout') {
-          controller.abort()
-          this.report('submit-transform', 'editor extension submit transform timed out')
-          return
-        }
-        if (outcome.kind === 'rejected') {
-          this.report('submit-transform', boundedMessage(outcome.error, 'editor extension submit transform failed'))
-          attempt.cancel()
-          return
-        }
-        /* an aborted transform necessarily aborts the controller tested above. */
-        if (outcome.kind !== 'value') return
-        const result = submitValue(outcome.value)
-        if (!result.ok) {
-          this.report('submit-transform', result.message)
-          if (result.message.includes('exceeds')) {
-            // A transform is advisory: an oversized replacement must never
-            // make the user's original paste impossible to submit.
-            text = captured.text
-            break
-          }
-          attempt.cancel()
-          return
-        }
-        text = result.value.text
-      }
-      if (text.trim().length === 0 && captured.attachments.length === 0) {
-        this.report('submit-transform', 'submit transform produced an empty prompt')
-        attempt.cancel()
-        return
-      }
-      this.prepared = { source: attempt.text, text, attachments: captured.attachments }
-      if (!attempt.commit()) this.prepared = undefined
-    })().catch(error => {
-      if (!controller.signal.aborted) this.report('submit-transform', failureMessage(error, 'submit transform failed'))
-      attempt.cancel()
-    }).finally(() => {
-      attempt.signal.removeEventListener('abort', abort)
-      this.pending.delete(controller)
-    })
-  }
+  override takePrepared(source: string): NativePreparedSubmit | undefined { return super.takePrepared(source) }
 }

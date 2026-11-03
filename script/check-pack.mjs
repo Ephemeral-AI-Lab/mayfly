@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { x as extractTar } from 'tar'
+import { sharedRendererProblems } from './split-publication.mjs'
 import {
   BUGS_URL,
   HOMEPAGE_URL,
@@ -22,7 +23,6 @@ import {
   readManifest,
   releaseRepository,
 } from './package-contract.mjs'
-import { buildCliRuntime } from './pack-cli-runtime.mjs'
 
 const outDir = resolve(process.env.MAYFLY_PACK_DIR ?? join(ROOT, '.artifacts', 'pack'))
 const unpackDir = join(outDir, 'unpacked')
@@ -34,8 +34,6 @@ let libraryBytes = 0
 
 rmSync(outDir, { recursive: true, force: true })
 mkdirSync(unpackDir, { recursive: true })
-
-const cliRuntime = await buildCliRuntime()
 
 function fail(message) {
   problems.push(message)
@@ -96,9 +94,20 @@ function validateManifest(name, manifest, root, relativeDir) {
   }
 }
 
-function verifyExternalUiKit(uiTarball) {
+function verifyExternalConsumers(packageTarballs) {
+  const uiTarball = packageTarballs.get('@ephemeral-ai/mayfly-ui')
+  const remoteTarball = packageTarballs.get('@ephemeral-ai/mayfly-remote')
+  const sharedTarball = packageTarballs.get('@ephemeral-ai/mayfly')
   if (uiTarball === undefined) {
     fail('external UI kit fixture requires the packed UI tarball')
+    return
+  }
+  if (remoteTarball === undefined) {
+    fail('external Client fixture requires the packed Remote tarball')
+    return
+  }
+  if (sharedTarball === undefined) {
+    fail('external editor fixture requires the packed shared tarball')
     return
   }
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'mayfly-ui-kit-pack-'))
@@ -142,14 +151,26 @@ export declare const metric: MayflyComponentFactory<MetricProps>
     writeFileSync(join(consumerRoot, 'package.json'), `${JSON.stringify({
       private: true,
       type: 'module',
+      packageManager: readManifest('.').packageManager,
       dependencies: {
         '@ephemeral-ai/mayfly-ui': `file:${uiTarball}`,
+        '@ephemeral-ai/mayfly': `file:${sharedTarball}`,
+        '@ephemeral-ai/mayfly-remote': `file:${remoteTarball}`,
         '@mayfly-pack-fixture/user-kit': `file:${kitTarball}`,
       },
+      devDependencies: {
+        '@types/node': readManifest('packages/remote').devDependencies['@types/node'],
+        '@types/ws': readManifest('packages/remote').devDependencies['@types/ws'],
+      },
     }, null, 2)}\n`)
-    execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: consumerRoot, stdio: 'ignore' })
+    // The candidate shares rc.2's version until release. Resolve every Mayfly
+    // dependency from these tarballs instead of mixing in the published TUI.
+    writeFileSync(join(consumerRoot, 'pnpm-workspace.yaml'), `packages: []\nallowBuilds: {}\noverrides:\n${[...packageTarballs].map(([name, tarball]) => `  ${JSON.stringify(name)}: ${JSON.stringify(`file:${tarball}`)}\n`).join('')}`)
+    execFileSync('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], { cwd: consumerRoot, stdio: 'ignore' })
     writeFileSync(join(consumerRoot, 'verify.mjs'), `
 import { metric } from '@mayfly-pack-fixture/user-kit'
+import { EditorExtensionRuntime } from '@ephemeral-ai/mayfly/editor-presentation'
+if (typeof EditorExtensionRuntime !== 'function') throw new Error('external editor extension runtime export is unavailable')
 const node = metric.render({ label: 'Context', value: 42 })
 const text = node.children?.[0]?.node
 const progress = node.children?.[1]?.node
@@ -167,18 +188,32 @@ for (const value of [node, node.children, node.children[0], node.children[1], te
     writeFileSync(join(consumerRoot, 'verify.ts'), `
 import { metric, type MetricProps } from '@mayfly-pack-fixture/user-kit'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { createHostClient, HostKey, type HostClient } from '@ephemeral-ai/mayfly-remote/client'
+import { EditorExtensionRuntime, type EditorExtensionRuntimeOptions } from '@ephemeral-ai/mayfly/editor-presentation'
 const props: MetricProps = { label: 'Context', value: 42 }
 const node: MayflyUiNode = metric.render(props)
+const options: Parameters<typeof createHostClient>[0] = {
+  key: HostKey('pack-fixture'),
+  startupUrl: 'http://host.invalid/connect',
+}
+declare const host: HostClient
+void [host.remote.session, host.remote.workspace, host.remote.skills, host.remote.commands]
+void options
 void node
+export function mountInput(options: EditorExtensionRuntimeOptions<{ readonly text: string, readonly receipt: number }>) {
+  const runtime = new EditorExtensionRuntime(options)
+  const prepared: { readonly text: string, readonly receipt: number } | undefined = runtime.takePrepared('source')
+  return { runtime, prepared }
+}
 `)
     writeFileSync(join(consumerRoot, 'tsconfig.json'), `${JSON.stringify({
-      compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2024', strict: true, noEmit: true },
+      compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', target: 'ES2024', strict: true, noEmit: true, skipLibCheck: false, types: ['node'] },
       include: ['verify.ts'],
     }, null, 2)}\n`)
     execFileSync(join(ROOT, 'node_modules', '.bin', 'tsc'), ['-p', '.'], { cwd: consumerRoot, stdio: 'inherit' })
-    console.log('external UI kit: packed install, runtime, and types passed')
+    console.log('external UI kit, editor extensions and Host Client: packed install, runtime, and types passed')
   } catch (error) {
-    fail(`external UI kit fixture failed: ${error instanceof Error ? error.message : String(error)}`)
+    fail(`external consumer fixture failed: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
     rmSync(fixtureRoot, { recursive: true, force: true })
   }
@@ -186,10 +221,16 @@ void node
 
 for (const relativeDir of PACKAGE_DIRS) {
   const sourceManifest = readManifest(relativeDir)
-  const output = execFileSync('pnpm', ['--filter', sourceManifest.name, 'pack', '--json', '--pack-destination', outDir], {
-    cwd: ROOT,
-    encoding: 'utf8',
-  })
+  // The Remote package resolves its own nested graph and is excluded from the
+  // root workspace, so the root filter cannot name it; pack it from its own
+  // workspace instead.
+  const ownWorkspace = existsSync(join(ROOT, relativeDir, 'pnpm-workspace.yaml'))
+  const output = ownWorkspace
+    ? execFileSync('pnpm', ['pack', '--json', '--pack-destination', outDir], { cwd: join(ROOT, relativeDir), encoding: 'utf8' })
+    : execFileSync('pnpm', ['--filter', sourceManifest.name, 'pack', '--json', '--pack-destination', outDir], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    })
   const packed = parsePackOutput(output, sourceManifest.name)
   const tarball = resolve(packed.filename)
   tarballs.set(sourceManifest.name, tarball)
@@ -200,25 +241,30 @@ for (const relativeDir of PACKAGE_DIRS) {
   validateManifest(sourceManifest.name, manifest, packageRoot, relativeDir)
 
   const files = walk(packageRoot)
+  if (sourceManifest.name === '@ephemeral-ai/mayfly') {
+    const artifacts = files.map(file => ({ ...file, ...file.path.endsWith('.js') ? { content: readFileSync(join(packageRoot, file.path), 'utf8') } : {} }))
+    for (const problem of sharedRendererProblems(manifest, artifacts)) fail(`${sourceManifest.name}: ${problem}`)
+  }
   for (const file of files) {
-    if (/\.(?:map|ts|tsx)$/.test(file.path) && !file.path.endsWith('.d.ts')) fail(`${sourceManifest.name}: forbidden packed file ${file.path}`)
+    // A declaration map is the only source map a package may ship: it points
+    // a published .d.ts at the .ts it was emitted from for editor navigation.
+    if (/\.(?:map|ts|tsx)$/.test(file.path) && !/\.d\.ts(?:\.map)?$/.test(file.path)) fail(`${sourceManifest.name}: forbidden packed file ${file.path}`)
     if (file.path.startsWith('src/')) fail(`${sourceManifest.name}: source directory leaked into tarball`)
   }
   if (sourceManifest.name === '@ephemeral-ai/mayfly-cli') {
     const runtime = files.filter(file => file.path.startsWith('lib/'))
     if (runtime.length !== 1 || runtime[0]?.path !== 'lib/bin.js') fail(`${sourceManifest.name}: lib must contain only lib/bin.js`)
-    if ((runtime[0]?.size ?? Infinity) > 400_000) fail(`${sourceManifest.name}: lib/bin.js exceeds the 400 KB budget`)
-    if (Object.keys(manifest.dependencies ?? {}).length > 0) fail(`${sourceManifest.name}: launcher must remain dependency-free`)
-    const payloads = files.filter(file => /^runtime-(?:common|(?:linux|darwin|win32)-(?:x64|arm64))\.tgz$/.test(file.path))
-    if (payloads.length !== cliRuntime.archives.length) fail(`${sourceManifest.name}: expected ${cliRuntime.archives.length} runtime archives, got ${payloads.length}`)
-    const payloadBytes = payloads.reduce((sum, file) => sum + file.size, 0)
-    if (payloadBytes !== cliRuntime.bytes) fail(`${sourceManifest.name}: runtime archives changed after assembly`)
-    // The 0.1.7 host closure carries sharp, koffi, ripgrep, and addon natives
-    // (~130 MB across the seven archives); the office and speech payloads stay
-    // excluded via the seed's ignoredOptionalDependencies. npm publish encodes
-    // the tarball into a ~512 MB string, so the budget must remain well under
-    // the ~400 MB publishable ceiling.
-    if (cliRuntime.bytes > 300_000_000) fail(`${sourceManifest.name}: runtime archives exceed the 300 MB budget`)
+    if ((runtime[0]?.size ?? Infinity) > 32_000) fail(`${sourceManifest.name}: lib/bin.js exceeds the 32 KB launcher budget`)
+    const expectedDependencies = { '@ephemeral-ai/mayfly-remote': manifest.version }
+    if (!isDeepStrictEqual(manifest.dependencies, expectedDependencies)) {
+      fail(`${sourceManifest.name}: dependencies must contain only the exact-version Remote package`)
+    }
+    if (files.some(file => /^runtime-.*\.tgz$/u.test(file.path))) fail(`${sourceManifest.name}: runtime archives are forbidden`)
+    const bin = readFileSync(join(packageRoot, 'lib/bin.js'), 'utf8')
+    if (!bin.includes('@ephemeral-ai/mayfly-remote/remote-bin')) fail(`${sourceManifest.name}: bin must import the Remote bin`)
+    if (/@deepseek-ai\/dsh(?:\/|['"])/u.test(bin) || /@ephemeral-ai\/mayfly-host(?:\/|['"])/u.test(bin) || /@ephemeral-ai\/mayfly(?:\/cordis\.patch\.yml|['"])/u.test(bin)) {
+      fail(`${sourceManifest.name}: bin must not reference the dsh CLI or legacy Host composition`)
+    }
   } else {
     libraryFiles += files.filter(file => file.path.startsWith('lib/')).length
     libraryBytes += files.filter(file => file.path.startsWith('lib/')).reduce((sum, file) => sum + file.size, 0)
@@ -227,13 +273,16 @@ for (const relativeDir of PACKAGE_DIRS) {
   execFileSync(join(ROOT, 'node_modules', '.bin', 'publint'), ['run', tarball, '--strict'], { cwd: ROOT, stdio: 'inherit' })
   if (sourceManifest.name !== '@ephemeral-ai/mayfly-cli') {
     const attwArgs = [tarball, '--profile', 'esm-only', '--quiet']
-    if (sourceManifest.name === '@ephemeral-ai/mayfly') attwArgs.push('--exclude-entrypoints', './cordis.patch.yml')
+    // A composition patch is a dsh profile data file: the loader reads it as
+    // YAML, so it has no module resolution of its own to type-check.
+    const patchExport = Object.keys(sourceManifest.exports ?? {}).find(key => key.endsWith('.patch.yml'))
+    if (patchExport !== undefined) attwArgs.push('--exclude-entrypoints', patchExport)
     execFileSync('pnpm', ['dlx', '--package', '@arethetypeswrong/cli@0.18.5', 'attw', ...attwArgs], { cwd: ROOT, stdio: 'inherit' })
   }
   records.push({ name: manifest.name, version: manifest.version, filename: basename(tarball), files: files.length, bytes: files.reduce((sum, file) => sum + file.size, 0) })
 }
 
-verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
+verifyExternalConsumers(tarballs)
 
 // The consolidated runtime and UI declarations currently occupy about 2.09 MB
 // (the terminal DeepSeek account sign-in panel and its remote-callback
@@ -247,12 +296,15 @@ verifyExternalUiKit(tarballs.get('@ephemeral-ai/mayfly-ui'))
 // panels with aligned cells, the notification row's key parts and tail, and the
 // goal and compaction changes) about 110 KB); retain headroom while still
 // catching accidental entry/chunk growth.
-if (libraryFiles > 260) fail(`library lib output has ${libraryFiles} files; budget is 260`)
+// The split deployment ships three libraries where the single-process TUI
+// shipped two: the Host projections, the independent Remote frontend, and the
+// visual UI kit. The budget tracks that real surface, not the retired layout.
+if (libraryFiles > 340) fail(`library lib output has ${libraryFiles} files; budget is 340`)
 // Phase 4 (the editor frame, tokens, the completion palette, placeholders, and the subagent send) added about 50 KB on top
 // of the Phase 5 budget; the size of the two together is measured at the merge's test session.
 // The native-alignment and Phase 7 merge starts from Phase 7's measured cap; the required full-gate measurement of the
 // merged tree replaces it with that tree's own figure. Keep the check enabled while the cap settles.
-if (libraryBytes > 3_500_000) fail(`library lib output has ${libraryBytes} bytes; budget is 3500000`)
+if (libraryBytes > 5_000_000) fail(`library lib output has ${libraryBytes} bytes; budget is 5000000`)
 
 if (problems.length > 0) {
   console.error(`pack contract failed with ${problems.length} problem(s)`)

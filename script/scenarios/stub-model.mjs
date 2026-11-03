@@ -6,6 +6,9 @@
  */
 
 import { createServer } from 'node:http'
+import { splitProbeInstruction } from './split-cases.mjs'
+import { splitNativeInstruction } from './split-native-fixture.mjs'
+import { splitAgentsInstruction } from './split-agents-fixture.mjs'
 
 const TITLE = 'Replay session'
 const REPLY = 'This is a replay session: the model is a stub. Type nothing; the conversation above is scripted.'
@@ -37,9 +40,9 @@ const spawnOf = body => {
   }
 }
 
-const toolSse = (name, input) => [
+const toolSse = (name, input, id = 'toolu_stub1') => [
   { type: 'message_start', message: { id: 'stub', type: 'message', role: 'assistant', model: 'stub', content: [], usage: { input_tokens: 0, output_tokens: 0 } } },
-  { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_stub1', name, input: {} } },
+  { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id, name, input: {} } },
   { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } },
   { type: 'content_block_stop', index: 0 },
   { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 1 } },
@@ -70,7 +73,7 @@ const BALANCE_STATUS = { rejected: 401, down: 503 }
  * @returns `{ baseURL, inFlight(), close() }`: `inFlight()` counts the requests not answered yet, so a scenario settles
  *   only after the title the product asks for has arrived.
  */
-export async function startStubModel({ balance = 'ok' } = {}) {
+export async function startStubModel({ balance = 'ok', probe = false } = {}) {
   const open = new Set()
   /** Responses held by `hold:<ms>`: a person-sized wait is not a request the runner settles on. */
   const held = new Set()
@@ -90,6 +93,18 @@ export async function startStubModel({ balance = 'ok' } = {}) {
       let body = {}
       try { body = JSON.parse(raw) } catch { /* answered as a prompt */ }
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' })
+      const native = splitAgentsInstruction(body) ?? splitNativeInstruction(body)
+      if (native !== undefined) {
+        response.end(native.completed ? sse(native.reply) : toolSse(native.name, native.input, native.id))
+        return
+      }
+      const instruction = probe ? splitProbeInstruction(body) : undefined
+      if (instruction !== undefined) {
+        if (!instruction.completed && Array.isArray(body.tools) && body.tools.some(tool => tool.name === 'parity_probe')) {
+          response.end(toolSse('parity_probe', { mode: instruction.mode, label: instruction.label }))
+        } else response.end(sse(`Parity probe finished: ${instruction.label}`))
+        return
+      }
       const spawn = Array.isArray(body.tools) && body.tools.some(tool => tool.name === 'subagent') ? spawnOf(body) : undefined
       if (spawn !== undefined) { response.end(toolSse('subagent', spawn)); return }
       const answer = sse(Array.isArray(body.tools) && body.tools.length > 0 ? REPLY : TITLE)

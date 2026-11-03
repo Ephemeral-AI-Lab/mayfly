@@ -1,0 +1,17 @@
+## sparkline
+grid 100x1 cursor none
+|tokens ▃▄▄▇▅█▆▄▄▅▇█
+styles
+0: 0-6 fg:muted; 7-18 fg:accent
+## heatmap
+grid 100x5 cursor none
+|activity
+|     Mon Tue Wed Thu
+|AM   ░░  ▒▒  ██  ██
+|PM   ░░  ▒▒  ██  ▒▒
+|legend: ░░ low  ▒▒ mid  ██ high
+styles
+0: 0-7 fg:muted
+2: 5-6 fg:muted; 9-10 fg:warning; 13-14 fg:success; 17-18 fg:success
+3: 5-6 fg:muted; 9-10 fg:warning; 13-14 fg:success; 17-18 fg:warning
+4: 0-6 fg:muted; 8-9 fg:muted; 16-17 fg:warning; 24-25 fg:success

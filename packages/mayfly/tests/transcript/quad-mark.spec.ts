@@ -19,9 +19,9 @@ import {
   type MarkScene,
   type MarkStage,
   type MarkTextRun,
-} from '../../src/core/text/quad-mark.ts'
+} from '../../src/core/quad-mark.ts'
 import { MARK_BEAT, MARK_ROWS } from '../../src/transcript/banner-art.ts'
-import { visibleWidth } from '../../src/core/text/width.ts'
+import { visibleWidth } from '../../src/core/width.ts'
 
 const QUADRANT = /[▘▝▀▖▌▞▛▗▚▐▜▄▙▟█]/u
 

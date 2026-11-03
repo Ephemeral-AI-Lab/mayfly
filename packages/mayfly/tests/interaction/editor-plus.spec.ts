@@ -14,7 +14,7 @@ import type { SkillSummary } from '@deepseek-ai/dsh-skill'
 import type { MayflyAutocompleteProvider, MayflyComponent } from '../../src/core/types.ts'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
-import { STREAM_GUTTER } from '../../src/core/text/gutter.ts'
+import { STREAM_GUTTER } from '../../src/core/gutter.ts'
 import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import * as inputPlugin from '../../src/interaction/input-plugin.ts'
 import * as editorPlus from '../../src/interaction/editor-plus.ts'
@@ -23,7 +23,7 @@ import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { COMMON_LOCALE } from '../../src/frontend/common-locale.ts'
 import { fakeMayflyContext, FakeMayflyEditor, KEY, type FakeMayflyComponents, type FakeScreen } from './fakes.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
-import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 
 
 registerTempDirCleanup()
@@ -943,6 +943,23 @@ describe('mayfly-editor-plus @ mentions', () => {
     expect(ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(before)
     refs.list.mockRejectedValueOnce(new Error('provider disposed'))
     expect(await provider.getSuggestions(['@zzz'], 0, 4, { signal: signal() })).toBeNull()
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(before)
+  })
+
+  it('discards a native file read that settles after its active completion was cancelled', async () => {
+    const gate = Promise.withResolvers<readonly FileReferenceCandidate[]>()
+    const refs = references([])
+    refs.list.mockReturnValueOnce(gate.promise)
+    const { ctx, editor } = await mount({ references: refs })
+    const provider = editor.autocompleteProvider as MayflyAutocompleteProvider
+    const controller = new AbortController()
+    const before = ctx.mayflyUiInteraction.notificationSnapshot().length
+    const reading = provider.getSuggestions(['@late'], 0, 5, { signal: controller.signal })
+    await vi.waitFor(() => { expect(refs.list).toHaveBeenCalledOnce() })
+    controller.abort()
+    gate.resolve([file('late.txt')])
+    expect(await reading).toBeNull()
+    expect(refs.list.mock.calls[0]![2].aborted).toBe(true)
     expect(ctx.mayflyUiInteraction.notificationSnapshot()).toHaveLength(before)
   })
 })

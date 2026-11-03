@@ -9,7 +9,7 @@ import { vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { MayflySemanticColors } from '../src/core/types.ts'
-import { virtualRows } from '../src/core/ui/paint/ui-rows.ts'
+import { virtualRows } from '../src/core/ui-rows.ts'
 
 /** A colour that returns its text: the paint-nothing palette's role. */
 export const identity = (text: string): string => text

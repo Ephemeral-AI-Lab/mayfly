@@ -2,7 +2,7 @@
 /**
  * Paint a catalog scenario from the real product: the runner boots `dsh` under a PTY with the replay driver, plays the
  * scenario's script, and each checkpoint is written to `.artifacts/frames/<scenario>-<cols>x<rows>/` as a cell grid
- * (`<checkpoint>.grid`), its text (`.txt`), and an SVG (`.svg`). `--png` also renders the product in xterm.js in
+ * (`<checkpoint>.grid`), its text (`.txt`), and an SVG (`.svg`), with the scenario's brief as `brief.md`. `--png` also renders the product in xterm.js in
  * headless Chrome (keys and the mouse through the browser) and writes the real look as `<checkpoint>.png`. `--keys`
  * sends keys after the script and captures the checkpoint `keys`.
  *
@@ -14,6 +14,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { briefMarkdown } from './scenarios/brief.mjs'
 import { scenarioNamed } from './scenarios/catalog.mjs'
 import { maskGrid, runScenario } from './scenarios/runner.mjs'
 import { paintTerminalSvg } from './shots/svg.mjs'
@@ -57,6 +58,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cols, rows] = [run.cols ?? scenario.sizes[0][0], run.rows ?? scenario.sizes[0][1]]
   const dir = join(root, '.artifacts/frames', `${run.scenario}-${String(cols)}x${String(rows)}`)
   mkdirSync(dir, { recursive: true })
+  const brief = briefMarkdown(run.scenario, scenario)
+  if (brief !== '') writeFileSync(join(dir, 'brief.md'), brief)
   const result = await runScenario(run.scenario, {
     root, dshBin, cols, rows, keys: run.keys, env, backend: run.png === true ? 'browser' : 'headless',
     onCheckpoint: async (name, screen, png) => {

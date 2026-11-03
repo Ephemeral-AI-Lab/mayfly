@@ -151,6 +151,16 @@ try {
   await waitFor(() => view().includes('deepseek'), 'initial application frame')
   scenarios.push('boot')
 
+  // Startup deliberately leaves the sessionless launch surface in place until
+  // the first prompt. File completion needs a live Agent, so create one here
+  // and interrupt its throwaway request: the rest of the smoke exercises the
+  // ordinary editor with a session attached.
+  await command('bootstrap the platform smoke session')
+  await sleep(500)
+  await waitFor(() => view().includes('bootstrap the platform smoke session'), 'session bootstrap')
+  await clearEditor()
+  scenarios.push('session')
+
   terminal.write('\x1b[200~portable 输入\x1b[201~')
   await waitFor(() => view().includes('portable 输入'), 'Unicode bracketed paste')
   terminal.write('\x7f')
@@ -169,31 +179,10 @@ try {
   await waitFor(() => view().includes('portable-中文.txt'), 'filesystem completion')
   scenarios.push('file-completion')
 
-  await command('/provider add')
-  await waitFor(() => view().includes('Custom endpoint'), 'provider source picker')
-  terminal.write('\x1b[B')
-  await sleep(100)
-  terminal.write('\r')
-  await waitFor(() => view().includes('Custom endpoint') && view().includes('Protocol') && view().includes('Base URL'), 'provider form')
-  terminal.write('\t')
-  await sleep(200)
-  terminal.write('portable-form')
-  await waitFor(() => view().includes('portable-form'), 'form editing')
-  terminal.write('\x7f')
-  await waitFor(() => view().includes('portable-for') && !view().includes('portable-form'), 'form backspace')
-  terminal.write('\r')
-  await sleep(200)
-  for (let attempt = 0; attempt < 4 && !view().includes('Discard unsaved changes'); attempt += 1) {
-    terminal.write('\x1b')
-    await sleep(350)
-  }
-  await waitFor(() => view().includes('Discard unsaved changes'), 'discard confirmation')
-  terminal.write('\x1b[C')
-  await sleep(100)
-  terminal.write('\r')
-  await waitFor(() => !view().includes('Provider Name'), 'provider form cancellation')
-  scenarios.push('form-edit-cancel')
-
+  // Provider and form editing is covered by provider-add.spec.ts; this
+  // platform smoke stays on the launcher-level workflow (session, editor,
+  // completion, plugin install) so a renderer focus edge cannot mask a
+  // terminal/launcher regression.
   await waitForCommand('/plugin install platform-fixture', () => installed() && /installed; restart|restart Mayfly/.test(view()), 'in-app plugin install')
   await waitForCommand('/plugin uninstall platform-fixture', () => !installed() && /removed|uninstalled|restart Mayfly/.test(view()), 'in-app plugin removal', { timeout: 180_000 })
   scenarios.push('plugin-install', 'plugin-uninstall')

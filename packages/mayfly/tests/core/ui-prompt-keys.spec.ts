@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { ui, type MayflyPromptNode, type MayflyUiEvent, type MayflyUiNode } from '../../../ui/src/index.ts'
 import { createRealSurface, probeComponents, type RealSurface } from '../design/probe.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui/compile/ui-compiler.ts'
-import { UiSurfaceModel } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
+import { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import { PROBE_PALETTE } from '../design/probe.ts'
 import { plainText } from '../helpers.ts'
 
@@ -252,7 +252,7 @@ describe('republishing', () => {
     let runtime = new MayflyUiSurfaceRuntime(model)
     const compile = () => {
       const result = compileMayflyUiSurfaceNode(model.node!, {
-        components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 40 }), bounded: true,
+        components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: width, rows: 40 }), screenMode: 'alternate',
         emit: () => {}, contextHints: { enabled: true }, onUnhandledEscape: () => {}, surfaceRuntime: runtime,
       })
       if (!result.ok) throw new Error(result.message)
@@ -359,7 +359,7 @@ describe('the surface around a prompt', () => {
       events: { prepare: async () => ({ reply: undefined, publish: () => false }) }, definition: {},
     } as never)
     const runtime = new MayflyUiSurfaceRuntime(model)
-    const result = compileMayflyUiSurfaceNode(ui.prompt({ id: 'p', value: 'kept', placeholder: 'Ask' }), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 40, rows: 10 }), bounded: true, emit: () => {}, surfaceRuntime: runtime })
+    const result = compileMayflyUiSurfaceNode(ui.prompt({ id: 'p', value: 'kept', placeholder: 'Ask' }), { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 40, rows: 10 }), screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
     if (!result.ok) throw new Error(result.message)
     expect(result.value.component.render(40).map(plainText)).toEqual(['> kept'])
     runtime.dispose()
@@ -374,7 +374,7 @@ describe('the surface around a prompt', () => {
       events: { prepare: async () => ({ reply: undefined, publish: () => false }) }, definition: {},
     } as never)
     const runtime = new MayflyUiSurfaceRuntime(model)
-    const result = compileMayflyUiSurfaceNode(model.node!, { components: failing, colors: PROBE_PALETTE, getViewport: () => ({ columns: 40, rows: 10 }), bounded: true, emit: () => {}, surfaceRuntime: runtime })
+    const result = compileMayflyUiSurfaceNode(model.node!, { components: failing, colors: PROBE_PALETTE, getViewport: () => ({ columns: 40, rows: 10 }), screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
     if (!result.ok) throw new Error(result.message)
     expect(result.value.component.render(40).map(plainText).join('\n')).toContain('boom')
     result.value.component.invalidate()
@@ -390,7 +390,7 @@ describe('the surface around a prompt', () => {
     const model = new UiSurfaceModel('gone', snapshot(ui.prompt({ id: 'p', value: 'kept' })) as never)
     const runtime = new MayflyUiSurfaceRuntime(model)
     const compile = () => {
-      const result = compileMayflyUiSurfaceNode(model.node!, { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 40, rows: 10 }), bounded: true, emit: () => {}, surfaceRuntime: runtime })
+      const result = compileMayflyUiSurfaceNode(model.node!, { components: probeComponents(), colors: PROBE_PALETTE, getViewport: () => ({ columns: 40, rows: 10 }), screenMode: 'alternate', emit: () => {}, surfaceRuntime: runtime })
       if (!result.ok) throw new Error(result.message)
       return result.value
     }

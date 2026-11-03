@@ -2,6 +2,7 @@
  * @module @ephemeral-ai/mayfly/interaction/stats-command
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { homedir } from 'node:os'
 import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { MayflyOverlayHandle, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
@@ -16,10 +17,10 @@ import { currentMayflySettings } from './settings.ts'
 import { buildStatsFacts, statsSummary, STATS_TABS, type IndexState, type StatsTab } from './stats-facts.ts'
 import { foldDigest, type SessionDigest } from './stats-index/digest.ts'
 import { createStatsIndex, readDigests, refreshStatsIndex } from './stats-index/index.ts'
-import { readAccountSnapshot, type AccountSnapshot } from './stats-account.ts'
+import { readAccountSnapshot } from './stats-account.ts'
+import type { AccountSnapshot } from './stats-account-model.ts'
 import { aggregate, RANGES, type StatsRange } from './stats-index/stats.ts'
 import { openUiOverlay } from './ui-overlay.ts'
-import { formatError } from '../internal/format.ts'
 
 export const name = 'mayfly-stats'
 export const inject = ['commands', 'mayflyOverlays']
@@ -109,7 +110,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           void readAccountSnapshot(owner, route, retire).then(snapshot => {
             if (!retire.aborted) accountCache = snapshot
           }).catch((error: unknown) => {
-            if (!retire.aborted) owner.logger.warn(`stats: account read failed: ${formatError(error)}`)
+            if (!retire.aborted) owner.logger.warn(`stats: account read failed: ${error instanceof Error ? error.message : String(error)}`)
           }).finally(() => {
             if (accountGeneration !== mine || closed) return
             accountLoading = false
@@ -118,6 +119,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         }
         const cwd = (): string | undefined => allWorkspaces ? undefined : agent.session.header.cwd
         const facts = () => buildStatsFacts({
+          home: homedir(),
           t, locale: owner.get('mayflyLocale')?.locale === 'zh' ? 'zh' : 'en', now: Date.now(), tab, range, allWorkspaces,
           session: readSession(), sessionTokens: sessionTokens(), digests: digests(), index: progress, sources: sources(), version,
           account: { snapshot: accountCache?.route === routeOf() ? accountCache : undefined, loading: accountLoading },
@@ -148,12 +150,12 @@ export function apply(ctx: Context, config: Config = {}): void {
             if (generation === mine) { progress = { running: true, ...state }; schedule() }
           }).catch((error: unknown) => {
             if (retire.aborted) return
-            const message = formatError(error)
+            const message = error instanceof Error ? error.message : String(error)
             owner.logger.warn(`stats: index failed: ${message}`)
             if (generation === mine) progress = { running: false, done: 0, total: 0, skipped: 0, failed: 0, error: message }
           }).finally(() => {
             if (generation !== mine || closed) return
-            progress = progress === undefined ? undefined : { ...progress, running: false }
+            progress = { ...progress!, running: false }
             publish()
           })
         }
@@ -170,7 +172,7 @@ export function apply(ctx: Context, config: Config = {}): void {
             const method = await copyTextToClipboard(statsSummary(facts(), tab))
             return { kind: 'completed', feedback: { severity: 'success', message: `${t('copied the stats summary')}${method === 'osc52' ? t(' via terminal escape sequence (unverified)') : ''}` } }
           } catch (error) {
-            return { kind: 'failed', message: t('could not copy: {error}', { error: formatError(error) }) }
+            return { kind: 'failed', message: t('could not copy: {error}', { error: error instanceof Error ? error.message : String(error) }) }
           }
         }
 

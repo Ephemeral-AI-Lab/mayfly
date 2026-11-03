@@ -2,8 +2,8 @@
  * @module @ephemeral-ai/mayfly/tests/core/ui-validator-review
  */
 import { describe, expect, it } from 'vitest'
-import { validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
-import { MAYFLY_UI_MAX_REVIEW_ITEMS } from '../../src/core/ui/admit/ui-validator-review.ts'
+import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
+import { MAYFLY_UI_MAX_REVIEW_ITEMS } from '../../src/core/ui-validator-review.ts'
 
 function accepted(value: unknown) {
   const result = validateMayflyUiNode(value)

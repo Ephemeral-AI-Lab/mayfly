@@ -6,10 +6,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import { SettingsConflictError, type SettingsDescriptor } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-permission-presets'
-import { rail, ui, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { panel, rail, ui, type MayflyOverlayHandle, type MayflySourceStamp, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from './locale.ts'
 import { openUiOverlay } from './ui-overlay.ts'
-import { panelActions, panelFrame } from './panel.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { resolveExternalEditorCommand, runExternalEditor } from './external-editor.ts'
 import { settingsOperations, settingsProjection, type SettingsChoices, type SettingsProjection } from './settings-model.ts'
@@ -39,8 +38,8 @@ async function choices(ctx: Context): Promise<SettingsChoices> {
   return { ...permission === undefined ? {} : { permission }, ...agentPresets === undefined ? {} : { agentPresets } }
 }
 
-/** Open the one settings rail. */
-async function openSettings(ctx: Context, callerSignal?: AbortSignal): Promise<boolean> {
+/** Open the one settings rail, focused on `initialNs` when one is named. */
+async function openSettings(ctx: Context, callerSignal?: AbortSignal, initialNs?: string): Promise<boolean> {
   if (callerSignal?.aborted) return false
   const registry = ctx.mayflyOverlays
   const lifetime = new AbortController()
@@ -51,12 +50,14 @@ async function openSettings(ctx: Context, callerSignal?: AbortSignal): Promise<b
   let dynamic = await choices(ctx)
   if (signal.aborted) { releaseLifetime(); return false }
   const describe = (): readonly SettingsDescriptor[] => settings.describe({ redactSecrets: true })
-  /* An open focuses the live rail instead of stacking a second overlay. */
+  if (initialNs !== undefined && !describe().some(item => String(item.ns) === initialNs)) { releaseLifetime(); return false }
+  /* A namespace open focuses the live rail instead of stacking a second overlay. */
   if (registry.focus(ROOT_ID)) {
     releaseLifetime()
+    if (initialNs !== undefined) ctx.mayflyUiInteraction.get('overlay', ROOT_ID)?.emit({ kind: 'tab-change', pagePath: [], controlId: RAIL_ID, tabId: initialNs })
     return true
   }
-  let active = String(describe()[0]?.ns ?? '')
+  let active = initialNs ?? String(describe()[0]?.ns ?? '')
   let handle!: MayflyOverlayHandle
   let refreshSequence = 0
   const snapshot = (): SettingsSnapshot => {
@@ -73,11 +74,11 @@ async function openSettings(ctx: Context, callerSignal?: AbortSignal): Promise<b
           pages: Object.fromEntries(entries.map(entry => [entry.ns, entry.projection.node])),
         })
     return {
-      node: panelFrame({
+      node: panel({
         title: t('Settings'),
         escapeLabel: 'close',
         body,
-        footer: panelActions({ id: 'settings-global-actions', items: [
+        footer: ui.actions({ id: 'settings-global-actions', items: [
           { id: 'open-file', label: t('Open settings.yaml in $EDITOR'), hintLabel: 'settings.yaml', semantic: 'external', hidden: true, disabled: !settings.writable },
         ] }),
       }),
@@ -139,7 +140,7 @@ async function openSettings(ctx: Context, callerSignal?: AbortSignal): Promise<b
     },
   }, initialSnapshot.node, { signal, reopen: 'focus', onClosed: () => teardown?.() })
   /* no await between the focus check and open; only a re-entrant listener could land a same-id overlay here */
-  if (opened === undefined) { releaseLifetime(); return true }
+  if (opened === undefined || opened.closed) { releaseLifetime(); return true }
   handle = opened
   let scheduled = false
   const schedule = (): void => {
@@ -152,6 +153,13 @@ async function openSettings(ctx: Context, callerSignal?: AbortSignal): Promise<b
   const dynamicFibers = ['permissionPresets', 'agentPresets'].map(name => ctx.inject([name], owner => { schedule(); owner.effect(() => () => schedule()) }))
   teardown = () => { offDocument(); offLocale(); for (const fiber of dynamicFibers) void fiber.dispose(); releaseLifetime() }
   return true
+}
+
+/** Open the settings rail on one namespace; the rail replaces a namespace overlay, so a live panel is focused and switched. */
+export async function openSettingsNamespace(ctx: Context, ns: string, callerSignal?: AbortSignal): Promise<boolean> {
+  if (callerSignal?.aborted) return false
+  if (!ctx.settings.describe({ redactSecrets: true }).some(item => String(item.ns) === ns)) return false
+  return await openSettings(ctx, callerSignal, ns)
 }
 
 async function editDocument(ctx: Context, signal: AbortSignal): Promise<MayflyUiActionReply> {

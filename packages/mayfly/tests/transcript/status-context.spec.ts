@@ -40,7 +40,7 @@ class ContextProjectionFake {
     return () => { this.listeners.delete(listener) }
   }
 
-  emit(session: object, key: 'tokenUsage' | 'contextPressure' | 'contextBreakdown', value: TokenUsageProjection | ContextPressureProjection | ContextBreakdownProjection): void {
+  emit(session: object, key: string, value: unknown): void {
     this.values.set(session, { ...this.values.get(session), [key]: value })
     for (const listener of this.listeners) listener(session, key, value, 0)
   }
@@ -128,6 +128,15 @@ function totals(prompt: number, cacheRead: number): TokenUsageProjection {
 }
 
 describe('mayfly-status-context', () => {
+  it('ignores another native projection key on the exact selected session', async () => {
+    const agent = fakeAgent([])
+    const harness = await bootContext(agent)
+    const reads = harness.projections.reads
+    harness.projections.emit(agent.session, 'sessionStats', { turns: 1, steps: 1 })
+    expect(harness.projections.reads).toBe(reads)
+    await harness.dispose()
+  })
+
   it('renders nothing without a session or without native occupancy', async () => {
     const noSession = await bootStatusPlugin(context)
     expect(noSession.entry.render(80)).toBe('')

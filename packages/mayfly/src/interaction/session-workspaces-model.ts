@@ -5,7 +5,7 @@
  */
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
-import type { MayflyTabItem } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyListItem, MayflyTabItem } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { displayPath, homeRelative } from '../internal/paths.ts'
 
@@ -13,6 +13,16 @@ import { displayPath, homeRelative } from '../internal/paths.ts'
 export interface WorkspaceResolver {
   readonly list: () => readonly Workspace[]
   readonly resolveByPath: (path: string) => Promise<Workspace | undefined>
+}
+
+/** Only display data needed by workspace labels, without native branded identities. */
+export interface SessionWorkspaceLabelFacts {
+  readonly id: string
+  readonly cwd: string | undefined
+  readonly count: number
+  readonly title?: string
+  readonly label?: string
+  readonly current?: boolean
 }
 
 /** One picker row: a registered workspace, or the unregistered fallback. */
@@ -146,6 +156,28 @@ function newest(summaries: readonly SessionSummary[]): number {
 }
 
 /**
+ * One picker row: the native workspace title (or its shortened path), the
+ * session count, and the current flag.
+ * @param workspace - the row.
+ * @param currentCwd - the displayed conversation's cwd, a display-only fallback for the current flag.
+ * @param home - the home directory for path shortening.
+ * @param t - interaction translator.
+ * @returns the list item.
+ */
+export function sessionWorkspaceItem(workspace: SessionWorkspace, currentCwd: string | undefined, home: string, t: MayflyTranslate): MayflyListItem {
+  const label = workspace.label === undefined
+    ? workspace.title ?? sessionWorkspaceLabel(workspace.cwd, home, t)
+    : t(workspace.label)
+  return {
+    id: workspace.id,
+    label,
+    detail: t(workspace.count === 1 ? '1 session' : '{count} sessions', { count: workspace.count }),
+    searchText: workspace.cwd ?? label,
+    ...(workspace.current ?? (workspace.cwd !== undefined && workspace.cwd === currentCwd) ? { current: true } : {}),
+  }
+}
+
+/**
  * One rail label for the sessions panel: the workspace label, its session count,
  * and a `current` suffix on the workspace holding the displayed conversation.
  * @param workspace - the row.
@@ -154,7 +186,7 @@ function newest(summaries: readonly SessionSummary[]): number {
  * @param t - interaction translator.
  * @returns the rail tab item.
  */
-export function sessionWorkspaceTab(workspace: SessionWorkspace, currentCwd: string | undefined, home: string, t: MayflyTranslate): MayflyTabItem {
+export function sessionWorkspaceTab(workspace: SessionWorkspaceLabelFacts, currentCwd: string | undefined, home: string, t: MayflyTranslate): MayflyTabItem {
   const label = workspace.label === undefined
     ? workspace.title ?? sessionWorkspaceLabel(workspace.cwd, home, t)
     : t(workspace.label)

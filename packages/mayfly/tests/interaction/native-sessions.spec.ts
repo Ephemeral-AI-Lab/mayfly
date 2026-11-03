@@ -11,7 +11,7 @@ import { informationFixture } from './information-fixture.ts'
 import { flushRequests } from './request-fixture.ts'
 import { nativeAction, select as selection } from './native-action-fixture.ts'
 import { createSessionListCache } from '../../src/interaction/session-list-reads.ts'
-import { openSessions } from '../../src/interaction/session-workspace-panel.ts'
+import { openSessions } from '../../src/interaction/native-sessions.ts'
 import { interactionTranslator } from '../../src/interaction/locale.ts'
 
 const contexts: Context[] = []

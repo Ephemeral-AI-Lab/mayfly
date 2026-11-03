@@ -11,12 +11,15 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { MayflyConversationView } from './conversation-views.ts'
-import { formatError } from '../internal/format.ts'
 
 /** Outcome of one synchronous interrupt request. */
 interface AgentInterruptResult {
   readonly requested: boolean
   readonly failures: readonly string[]
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -57,7 +60,7 @@ export function interruptAgent(
       agent.cancel({ kind: 'user' }, { keepInbox: true })
     }
   } catch (error) {
-    return { requested: true, failures: [`current Agent: ${formatError(error)}`] }
+    return { requested: true, failures: [`current Agent: ${describe(error)}`] }
   }
   return { requested: true, failures: [] }
 }

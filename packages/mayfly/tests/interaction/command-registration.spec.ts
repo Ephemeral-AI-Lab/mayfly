@@ -8,9 +8,8 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as uiProvider from '../../../ui/src/provider.ts'
 import * as frontend from '../../src/frontend/index.ts'
+import * as nativeFrontend from '../../src/interaction/native-frontend.ts'
 import * as commands from '../../src/interaction/commands-plugin.ts'
-import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
-import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { fakeConversations } from './fakes.ts'
 import { flush } from '../helpers.ts'
 
@@ -37,8 +36,8 @@ async function setup() {
   ctx.provide('sessionController', {} as never)
   ctx.provide('tools', { schemas: () => [] } as never)
   ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
-  await ctx.plugin({ name: 'test-interaction-state', apply(owner: Context) { new InteractionStateService(owner, DEFAULT_SETTINGS) } })
   await ctx.plugin(frontend)
+  await ctx.plugin(nativeFrontend)
   const consumer = await ctx.plugin(commands)
   await flush()
   return { ctx, agent, consumer }

@@ -1,0 +1,21 @@
+## page-4
+grid 100x10 cursor none
+|page 4/6 (Ctrl+N): one answer for five states: every panel and every secondary read looks the same
+|
+|⣾ Loading sessions…
+|empty      No plugins installed — press → to browse
+|✗ Could not reach the market  r retry
+|⚠ offline · showing cached data from 2d ago
+|— not supported by this provider
+|
+|a slow or failed secondary read (a balance, a catalog refresh) never blocks or alters the primary
+|content
+styles
+0: 0-97 fg:muted
+2: 0 fg:primary; 2-18 fg:text
+3: 0-10 fg:muted; 11-50 fg:text
+4: 0-1 fg:error; 2-27 fg:text; 28-36 fg:muted
+5: 0-1 fg:warning; 2-42 fg:text
+6: 0-31 fg:muted
+8: 0-96 fg:muted
+9: 0-6 fg:muted

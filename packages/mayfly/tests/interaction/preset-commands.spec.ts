@@ -128,6 +128,35 @@ describe('native preset selection UI', () => {
     expect(bench.roster.recomposeCalls).not.toHaveBeenCalled()
   })
 
+  it('uses the default preset id when it has no display name and reports native settings conflicts', async () => {
+    const bench = await setup()
+    bench.ctx.mayflyConversations.selectPrimary(null)
+    bench.roster.catalog.push(preset('unnamed'))
+    expect((await bench.run('/preset unnamed'))?.result).toEqual({ kind: 'success', text: 'Default preset: unnamed' })
+    vi.spyOn(bench.settings, 'update').mockRejectedValueOnce(new Error('settings revision changed'))
+    expect((await bench.run('/preset minimal'))?.result).toEqual({ kind: 'error', text: 'settings revision changed' })
+  })
+
+  it.each(['caller', 'selection'] as const)('retires a default-preset write completed after %s changes', async kind => {
+    const bench = await setup()
+    bench.ctx.mayflyConversations.selectPrimary(null)
+    const gate = Promise.withResolvers<void>()
+    vi.spyOn(bench.settings, 'update').mockReturnValueOnce(gate.promise)
+    const caller = new AbortController()
+    const pending = bench.run('/preset minimal', caller.signal).catch(error => {
+      if (error instanceof Error && error.name === 'AbortError') return undefined
+      throw error
+    })
+    await vi.waitFor(() => expect(bench.settings.update).toHaveBeenCalled())
+    if (kind === 'caller') caller.abort()
+    else bench.ctx.mayflyConversations.selectPrimary(bench.agent)
+    gate.resolve()
+    const result = await pending
+    if (kind === 'caller') expect(result).toBeUndefined()
+    else expect(result?.result).toEqual({ kind: 'success' })
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
   it('opens the picker on the default before a session and dismisses with the default notice', async () => {
     const bench = await setup()
     bench.ctx.mayflyConversations.selectPrimary(null)

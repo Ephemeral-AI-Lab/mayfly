@@ -7,11 +7,11 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { apply as applyApi } from '../../../ui/src/provider.ts'
-import { mountMayflySurfaceRenderer } from '../../src/core/hosts/surface-renderer.ts'
-import { startMayflyTerminal } from '../../src/core/terminal/terminal.ts'
-import { MayflyScreenService } from '../../src/core/hosts/screen.ts'
+import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
+import { startMayflyTerminal } from '../../src/core/terminal.ts'
+import { MayflyScreenService } from '../../src/core/screen.ts'
 import type { MayflyComponents, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import * as frontend from '../../src/frontend/index.ts'
 import { AltScreenTerminal } from './alt-screen-terminal.ts'
 import { waitForRender } from './fake-terminal.ts'
@@ -38,7 +38,7 @@ async function bench(keys: string[] = [], hints = true, withGetKeys = true) {
   await root.plugin({ name: 'test-mayfly-ui-provider', apply: applyApi })
   await root.plugin(frontend)
   const terminal = new AltScreenTerminal(40, 10)
-  const runtime = startMayflyTerminal(terminal)
+  const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
   await root.plugin(MayflyScreenService, runtime)
   const owner = new Scope()
   Object.assign(owner, {
@@ -158,7 +158,7 @@ describe('the tail chip', () => {
 
   it('keeps a reader away through a frame in which the content shrinks, and restores their place', async () => {
     const terminal = new AltScreenTerminal(40, 10)
-    const runtime = startMayflyTerminal(terminal)
+    const runtime = startMayflyTerminal(terminal, { screenMode: 'alternate' })
     let length = 40
     runtime.addChild({ render: () => Array.from({ length }, (_, index) => `row-${String(index)}`), invalidate: () => {} })
     runtime.requestRender(true)

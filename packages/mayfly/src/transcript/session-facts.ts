@@ -143,19 +143,6 @@ function inFlightOf(draft: LiveAssistantDraft, durable: ConversationFacts): Conv
   return preparing.length === 0 ? durable.inFlight : [...committed, ...preparing]
 }
 
-/**
- * Whether a live draft belongs to the session and has not fallen behind its
- * durable facts: a settled run, an earlier turn, or an already-completed step
- * outranks the transient stream frame.
- */
-function draftIsCurrent(draft: LiveAssistantDraft | undefined, facts: ConversationFacts, sessionId: string): draft is LiveAssistantDraft {
-  return draft !== undefined && draft.sessionId === sessionId
-    && !(draft.turn < facts.turn || (draft.turn === facts.turn
-      && (facts.runOutcome !== undefined
-        || (facts.currentStep !== undefined && draft.step < facts.currentStep)
-        || (facts.lastCompletedStep !== undefined && draft.step <= facts.lastCompletedStep))))
-}
-
 /** Session-scoped facts bridge for status and dock model producers. */
 export class SessionFactsService extends Service {
   private agent: Agent | null = null
@@ -172,6 +159,7 @@ export class SessionFactsService extends Service {
   private readonly children = new Map<string, ChildRecord>()
   private childList: readonly ChildSessionFacts[] | undefined
   private volatileTimer: ReturnType<typeof setTimeout> | undefined
+  private volatileGeneration = 0
   private readonly offProjection: () => void
   private readonly offAgent: () => void
   private readonly offLive: () => void
@@ -346,7 +334,11 @@ export class SessionFactsService extends Service {
   /** Durable facts overlaid with the current Agent's live streaming draft. */
   private merged(): ConversationFacts {
     const draft = this.live
-    if (this.agent === null || !draftIsCurrent(draft, this.durable, String(this.agent.session.id))) return this.durable
+    if (draft === undefined || this.agent === null || draft.sessionId !== String(this.agent.session.id)) return this.durable
+    if (draft.turn < this.durable.turn || (draft.turn === this.durable.turn
+      && (this.durable.runOutcome !== undefined
+        || (this.durable.currentStep !== undefined && draft.step < this.durable.currentStep)
+        || (this.durable.lastCompletedStep !== undefined && draft.step <= this.durable.lastCompletedStep)))) return this.durable
     return {
       ...this.durable,
       active: true,
@@ -410,17 +402,13 @@ export class SessionFactsService extends Service {
     const record = this.children.get(id)
     if (record === undefined) return
     const projected = projectChildSessionFacts(id, record.facts, record.draft, selection)
-    const change = childChange(record.projected, projected)
-    if (change === 'same') {
+    if (equalChildSessionFacts(record.projected, projected)) {
       this.children.set(id, { ...record, selection, projected: record.projected })
       return
     }
     this.children.set(id, { ...record, selection, projected })
     this.childList = undefined
-    if (change === 'volatile') {
-      this.scheduleChildren()
-      return
-    }
+    // A model selection changes no draft counters, so every changed selection publishes structurally.
     this.pruneChildren()
     this.publishChildren()
   }
@@ -485,7 +473,9 @@ export class SessionFactsService extends Service {
   /** Coalesce streamed-character-only changes into one trailing publish. */
   private scheduleChildren(): void {
     if (this.volatileTimer !== undefined) return
+    const generation = ++this.volatileGeneration
     this.volatileTimer = setTimeout(() => {
+      if (generation !== this.volatileGeneration) return
       this.volatileTimer = undefined
       this.publishChildren()
     }, CHILD_VOLATILE_MS)
@@ -493,6 +483,7 @@ export class SessionFactsService extends Service {
   }
 
   private cancelChildren(): void {
+    this.volatileGeneration += 1
     if (this.volatileTimer === undefined) return
     clearTimeout(this.volatileTimer)
     this.volatileTimer = undefined
@@ -533,7 +524,12 @@ export class SessionFactsService extends Service {
 
 /** Convert one child session's presentation facts and native selection to renderer-neutral card facts. */
 export function projectChildSessionFacts(id: string, facts: ConversationFacts, draft?: LiveAssistantDraft, selection?: ModelSelectionProjection | null): ChildSessionFacts {
-  const liveDraft = draftIsCurrent(draft, facts, id) ? draft : undefined
+  const liveDraft = draft !== undefined && draft.sessionId === id
+    && !(draft.turn < facts.turn || (draft.turn === facts.turn
+      && (facts.runOutcome !== undefined
+        || (facts.currentStep !== undefined && draft.step < facts.currentStep)
+        || (facts.lastCompletedStep !== undefined && draft.step <= facts.lastCompletedStep))))
+    ? draft : undefined
   const phase = facts.active
     ? liveDraft !== undefined && liveDraft.phase !== 'waiting' ? 'running' : facts.phase === 'waiting' ? 'waiting' : 'running'
     // A child whose first turn has not begun has no outcome yet: it is about to work, not finished.

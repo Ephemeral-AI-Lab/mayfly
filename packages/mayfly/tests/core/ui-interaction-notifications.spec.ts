@@ -3,8 +3,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { admitNotificationMessage, feedbackSpans, UiNotificationOwner, UiNotificationStore } from '../../src/core/ui/state/ui-interaction-notifications.ts'
-import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
+import { admitNotificationMessage, feedbackSpans, UiNotificationOwner, UiNotificationStore } from '../../src/core/ui-interaction-notifications.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import { createInteractionNotificationOwner, currentNotificationScope } from '../../src/interaction/notifications.ts'
 
 const app = { kind: 'app' as const, targetId: 'test' }

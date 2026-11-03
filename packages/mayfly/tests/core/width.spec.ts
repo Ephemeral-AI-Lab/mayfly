@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { truncateToWidth, visibleWidth } from '../../src/core/text/width.ts'
+import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
 
 /**
  * Deterministic corpus: every width-interestful input shape, each carrying

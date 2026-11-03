@@ -1,2 +1,10 @@
-/** @module @ephemeral-ai/mayfly/transcript */
-export * from './transcript/index.ts'
+/** Shared transcript presentation and terminal controller. @module @ephemeral-ai/mayfly/transcript */
+export { conversationTranscriptModel } from './transcript/conversation-model.ts'
+export { TranscriptController, createTranscriptModel } from './transcript/transcript-model.ts'
+export type { TranscriptControllerOptions } from './transcript/transcript-model.ts'
+export type { ToolPresentationSource } from './transcript/present.ts'
+export type { ToolPresentationFacts } from './transcript/tool-model.ts'
+export { mountStatusFooter } from './transcript/status-rows.ts'
+export { focusModeNode } from './transcript/status-focus.ts'
+export { TranscriptPresentationPolicy, followPresentationSettings } from './transcript/presentation-policy.ts'
+export { TRANSCRIPT_LOCALE, mountTranscriptLocale, transcriptTranslator, observeTranscriptLocale } from './transcript/locale.ts'

@@ -57,9 +57,9 @@ import type { MayflyEditorToken, MayflyQueuedAction, MayflyScreen, MayflySubmitt
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ui, type MayflyFeedback, type MayflyUiNode, type MayflyUiScope } from '@ephemeral-ai/mayfly-ui'
 import { Editor } from '../components/editor.ts'
-import { CompletionDrawer } from '../core/ui/compile/completion-drawer.ts'
-import { normalizeWheelInput } from '../core/terminal/terminal.ts'
-import { CURSOR_RIGHT_SEQUENCE } from '../core/keys/key-actions.ts'
+import { CompletionDrawer } from '../core/completion-drawer.ts'
+import { normalizeWheelInput } from '../core/terminal.ts'
+import { CURSOR_RIGHT_SEQUENCE } from '../core/key-actions.ts'
 import { parseCommand, type CommandResult } from '@deepseek-ai/dsh-commands'
 import type { PromptContentPart, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -108,7 +108,6 @@ import { cycleMode } from './mode-commands.ts'
 import { rewriteSkillTokens } from './skills-catalog.ts'
 import { filterSlashCommands } from './slash-filter.ts'
 import { listCommands } from './sessionless-commands.ts'
-import { formatError } from '../internal/format.ts'
 
 /** Window for the double Ctrl-C exit: presses farther apart re-arm the hint. */
 const INTERRUPT_DOUBLE_PRESS_MS = 1000
@@ -335,7 +334,7 @@ export function apply(ctx: Context): void {
   ): void {
     transformed.rollback?.()
     restoreSubmission(value, historyText, submitted)
-    showFeedback('subagent-submit', formatError(error), 'error')
+    showFeedback('subagent-submit', error instanceof Error ? error.message : String(error), 'error')
     screen.requestRender()
   }
 
@@ -388,7 +387,7 @@ export function apply(ctx: Context): void {
         ...(transformed.rollback === undefined ? {} : { rollback: transformed.rollback }),
       }
     }, error => {
-      requests.transition(ref, 'failed', formatError(error))
+      requests.transition(ref, 'failed', error instanceof Error ? error.message : String(error))
       if (unloaded || controller.signal.aborted || !stillShown()) {
         transformed.rollback?.()
         return
@@ -568,7 +567,7 @@ export function apply(ctx: Context): void {
       return true
     } catch (error) {
       transformed.rollback?.()
-      showFeedback('prompt-submit', formatError(error), 'error')
+      showFeedback('prompt-submit', error instanceof Error ? error.message : String(error), 'error')
       return false
     }
   }
@@ -604,7 +603,7 @@ export function apply(ctx: Context): void {
         if (unloaded) return
         // Nothing reached a session: the text goes back to the editor unless a newer draft already fills it.
         if (editor.getText() === '') restoreSubmission(value, line, submitted)
-        showFeedback('prompt-submit', t('could not start a session: {error}', { error: formatError(error) }), 'error')
+        showFeedback('prompt-submit', t('could not start a session: {error}', { error: error instanceof Error ? error.message : String(error) }), 'error')
         screen.requestRender()
       },
     )
@@ -624,7 +623,7 @@ export function apply(ctx: Context): void {
       (error: unknown) => {
         if (unloaded) return
         /* execute() normalizes handler rejections to Error before this rejection handler runs */
-        showFeedback('command', formatError(error), 'error')
+        showFeedback('command', error instanceof Error ? error.message : String(error), 'error')
       },
     )
   }
@@ -738,7 +737,7 @@ export function apply(ctx: Context): void {
     } catch (error) {
       // The launcher rejected (spawn failure); resume already ran, so the
       // notice paints on the live screen — unless the fiber went with it.
-      if (!unloaded) showFeedback('external-editor', formatError(error), 'error')
+      if (!unloaded) showFeedback('external-editor', error instanceof Error ? error.message : String(error), 'error')
     } finally {
       externalEditorRunning = false
     }
@@ -886,7 +885,7 @@ export function apply(ctx: Context): void {
         refreshHint()
       })
     } catch (error) {
-      if (!unloaded) showFeedback('external-editor', formatError(error), 'error')
+      if (!unloaded) showFeedback('external-editor', error instanceof Error ? error.message : String(error), 'error')
     } finally {
       externalEditorRunning = false
     }
@@ -912,7 +911,7 @@ export function apply(ctx: Context): void {
     try {
       await screen.suspend(() => openFileInExternalEditor(file, command))
     } catch (error) {
-      if (!unloaded) showFeedback('external-editor', formatError(error), 'error')
+      if (!unloaded) showFeedback('external-editor', error instanceof Error ? error.message : String(error), 'error')
     } finally {
       externalEditorRunning = false
     }
@@ -1084,7 +1083,7 @@ export function apply(ctx: Context): void {
         }
       } catch (error) {
         transformed.rollback?.()
-        showFeedback('steer', formatError(error), 'error')
+        showFeedback('steer', error instanceof Error ? error.message : String(error), 'error')
         return true
       }
       ctx.mayflyRequests.begin(displayed?.kind === 'btw' ? 'btw' : 'main')

@@ -18,7 +18,10 @@ import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { ConversationFacts } from '../conversation/types.ts'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import { createInteractionNotificationOwner } from '../interaction/notifications.ts'
-import { contextPercent } from './status-context.ts'
+import type { SessionFactsService } from './session-facts.ts'
+import { contextPercent } from './status-context-model.ts'
+import type { TickSource } from './tick.ts'
+import { resumedSessionMessage } from './resume-notice.ts'
 
 /** The occupancy from which the context notice shows (the Harness has no threshold of its own to follow). */
 export const CONTEXT_WARN_PERCENT = 92
@@ -31,12 +34,12 @@ const RESUMED = 'notice/resumed'
 const GOAL = 'notice/goal'
 const TRANSPORT = 'notice/transport'
 
-/** The provider-neutral failure code of a live provider error, when it carries the normalized facts. */
-function failureCode(error: unknown): string | undefined {
-  if (error === null || typeof error !== 'object') return undefined
+/** Narrow a live provider failure before reading its optional cause chain. */
+function isTransportFailure(error: unknown): error is { readonly cause?: unknown } {
+  if (error === null || typeof error !== 'object') return false
   const failure = (error as { readonly failure?: { readonly code?: unknown } }).failure
   const code = failure?.code ?? (error as { readonly code?: unknown }).code
-  return typeof code === 'string' ? code : undefined
+  return code === 'TRANSPORT'
 }
 
 /**
@@ -45,10 +48,10 @@ function failureCode(error: unknown): string | undefined {
  * @param error - the live error from `agent/error`.
  * @returns the sanitized chain, or `undefined` when the failure carries none.
  */
-function causeDetail(error: unknown): string | undefined {
+function causeDetail(error: { readonly cause?: unknown }): string | undefined {
   const parts: string[] = []
   const seen = new Set<unknown>()
-  let cause = error !== null && typeof error === 'object' ? (error as { readonly cause?: unknown }).cause : undefined
+  let cause = error.cause
   while (cause !== undefined && parts.length < 3 && !seen.has(cause)) {
     seen.add(cause)
     if (cause instanceof Error) {
@@ -64,10 +67,6 @@ function causeDetail(error: unknown): string | undefined {
   return line === '' ? undefined : line.slice(0, 160)
 }
 
-const MINUTE = 60_000
-const HOUR = 60 * MINUTE
-const DAY = 24 * HOUR
-
 /**
  * The notice of a retry wait: a rate limit by its HTTP status, any other failure as a provider error with its reason. The wait
  * (the countdown and the attempt) ends the message and is its `tail`, so a narrow row cuts the front and keeps the countdown.
@@ -81,14 +80,6 @@ function retryText(retrying: NonNullable<ConversationFacts['retrying']>, now: nu
   return { message: [t(head), ...rateLimited || retrying.reason === undefined ? [] : [retrying.reason], wait].join(' · '), tail: wait }
 }
 
-/** How long ago, as the session list says it (`5m ago`, `2h ago`, `3d ago`). */
-function ageText(ms: number, t: MayflyTranslate): string {
-  if (ms < MINUTE) return t('just now')
-  if (ms < HOUR) return t('{count}m ago', { count: Math.floor(ms / MINUTE) })
-  if (ms < DAY) return t('{count}h ago', { count: Math.floor(ms / HOUR) })
-  return t('{count}d ago', { count: Math.floor(ms / DAY) })
-}
-
 /**
  * Mount the notices under the calling Fiber.
  * @param ctx - plugin context; needs `mayflySessionFacts`, `mayflyUiInteraction`, and `mayflyTick`.
@@ -96,8 +87,9 @@ function ageText(ms: number, t: MayflyTranslate): string {
  * @param clock - the time source the retry countdown and the resume age are measured against.
  */
 export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => number): void {
-  const factsService = ctx.mayflySessionFacts
-  const tick = ctx.mayflyTick
+  const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
+  const tick = ctx.get('mayflyTick') as TickSource | undefined
+  if (factsService === undefined) return
   const owner = createInteractionNotificationOwner(ctx, 'mayfly.notices', 'notices')
   const projections = ctx.get('sessionProjections')
   /** The main sessions this has already looked at: a session is announced as resumed once, not each time the person switches back to it. */
@@ -146,11 +138,9 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
       const announce = agent !== null && (primary === undefined || primary.sessionId === String(agent.id)) && !seen.has(agent)
       if (announce) seen.add(agent)
       if (announce && facts.turn > 0 && !facts.active) {
-        const age = facts.endedAt === undefined ? undefined : Math.max(0, clock() - facts.endedAt)
-        const turns = facts.turn === 1 ? t('1 turn') : t('{count} turns', { count: facts.turn })
         owner.report(RESUMED, {
           severity: 'info',
-          message: [t('Resumed session'), turns, ...age === undefined ? [] : [t('last active {age}', { age: ageText(age, t) })]].join(' · '),
+          message: resumedSessionMessage(facts.turn, facts.endedAt, clock(), t),
         })
       }
     }
@@ -185,7 +175,7 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
   })
   // A transport failure is the one error whose cause never reaches the durable record: report the chain while it is live.
   const offTransport = ctx.on('agent/error', ({ agent, error }) => {
-    if (agent !== factsService.currentAgent || failureCode(error) !== 'TRANSPORT') return
+    if (agent !== factsService.currentAgent || !isTransportFailure(error)) return
     const detail = causeDetail(error)
     owner.report(TRANSPORT, {
       severity: 'error',

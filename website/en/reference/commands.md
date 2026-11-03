@@ -79,7 +79,7 @@ Commands never enter a model turn — success/error text flashes on the editor h
 
 ## Parked commands
 
-These commands exist in the reference products (kimi/Claude Code); Mayfly **deliberately parks** them — waiting on upstream primitives or real demand:
+These commands exist in the reference products (kimi/Claude Code); Mayfly **deliberately parks** them — waiting on upstream primitives or real demand (the full rulings live in the repository roadmap's parked ledger):
 
 - `/reload` `/tasks` — deferred (task management goes through profile/config files)
 - `/archive` `/delete` — upstream persistence has no delete/archive primitive yet

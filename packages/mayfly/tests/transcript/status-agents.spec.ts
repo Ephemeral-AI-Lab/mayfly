@@ -286,6 +286,7 @@ function handFacts(agent: Agent | null) {
     setChildren(next: readonly ChildSessionFacts[]) { kids = next; for (const listener of childListeners) listener(kids) },
     switchTo(next: Agent | null) { for (const listener of agentListeners) listener(next) },
     listenerCount: () => factsListeners.size + childListeners.size + agentListeners.size,
+    captureChildren: () => [...childListeners],
   }
 }
 
@@ -501,8 +502,8 @@ describe('mayfly-status-agents', () => {
     harness.facts.setChildren([child('child-1')])
     harness.catalog.push(entry('child-1', 'continuable', 'task of fg'))
     harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('fg', { startedAt: T0, result: done(activation('child-1')) })] })
-    harness.ctx.emit('agent/disposed', {} as never)
-    harness.ctx.emit('agent/created', {} as never)
+    harness.ctx.emit('agent/disposed', { agent: harness.base } as never)
+    harness.ctx.emit('agent/created', { agent: harness.base, source: 'resume' } as never)
     await new Promise<void>(resolve => { setImmediate(resolve) })
     await harness.dispose()
   })
@@ -522,10 +523,10 @@ describe('mayfly-status-agents', () => {
     const resident = harness.resident.get('child-1')!
     harness.resident.delete('child-1')
     await new Promise<void>(resolve => { setImmediate(resolve) })
-    harness.ctx.emit('agent/disposed', {} as never)
+    harness.ctx.emit('agent/disposed', { agent: resident } as never)
     expect(harness.summaryText()).toMatch(/^✓ agents 1\/1/u)
     harness.resident.set('child-1', resident)
-    harness.ctx.emit('agent/created', {} as never)
+    harness.ctx.emit('agent/created', { agent: resident, source: 'resume' } as never)
     expect(harness.summaryText()).toMatch(/^● agents 0\/1/u)
     await harness.dispose()
   })
@@ -575,6 +576,54 @@ describe('mayfly-status-agents', () => {
 })
 
 describe('mayfly-status-agents edge paths', () => {
+  it('fences a native child-facts callback queued before unload', async () => {
+    const harness = await bootAgents()
+    const queued = harness.facts.captureChildren()
+    await harness.dispose()
+    for (const listener of queued) listener([])
+    expect(harness.ctx.mayflyPanes.list()).toEqual([])
+  })
+
+  it.each(['abort', 'unload', 'selection'] as const)('does not open a native child lookup completed after %s', async mode => {
+    const harness = await bootAgents({ resident: ['child-1'] })
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    const gate = Promise.withResolvers<SubagentCatalogEntry[]>()
+    harness.listChildren.mockReturnValueOnce(gate.promise)
+    const controller = new AbortController()
+    const pending = harness.act({ kind: 'selection-accept', controlId: 'agents-list', selectedIds: ['audit'] }, controller.signal)
+    if (mode === 'abort') controller.abort()
+    else if (mode === 'unload') await harness.dispose()
+    else harness.selected.switchTo(coreFakeAgent('replacement') as unknown as Agent)
+    gate.resolve([entry('child-1', 'continuable')])
+    expect(await pending).toEqual({ kind: 'cancelled' })
+    expect(harness.conversations.service.open).not.toHaveBeenCalled()
+    if (mode !== 'unload') await harness.dispose()
+  })
+
+  it.each(['abort', 'unload'] as const)('refuses a queued subagent action after %s', async mode => {
+    const harness = await bootAgents()
+    const pane = harness.pane()
+    if (mode === 'unload') await harness.dispose()
+    const signal = mode === 'abort' ? AbortSignal.abort() : new AbortController().signal
+    expect(await pane.definition.onEvent!.action!({ kind: 'selection-accept', pagePath: [], controlId: 'agents-list', selectedIds: ['audit'] }, { surfaceId: pane.id, operationId: 'queued', source: pane.source, revision: pane.revision, signal, report: vi.fn() })).toEqual({ kind: 'cancelled' })
+    expect(harness.listChildren).not.toHaveBeenCalled()
+    if (mode !== 'unload') await harness.dispose()
+  })
+
+  it('passes its owning lifetime to the native subagent stop implementation', async () => {
+    const harness = await bootAgents({ resident: ['child-1'] })
+    const native = await vi.importActual<typeof import('../../src/interaction/agents-stop.ts')>('../../src/interaction/agents-stop.ts')
+    stopSubagent.mockImplementationOnce(native.stopSubagent as never)
+    const drain = vi.fn(async () => {})
+    Object.assign(harness.ctx.mayflyCurrentAgent, { primary: () => harness.base })
+    Object.assign(harness.ctx.subagents, { listDescendants: async () => [{ kind: 'child', id: 'child-1', parentId: harness.base.id, depth: 1, mode: 'continuable', createdAt: T0, activity: 'running', hasChildren: false }], drainChildren: drain })
+    Object.assign(harness.ctx.mayflyConversations, { close: vi.fn() })
+    harness.facts.setFacts({ turn: 1, active: true, agentCalls: [call('audit', { startedAt: Date.now(), result: done(activation('child-1')) })] })
+    expect(await harness.key('agents-stop', 'audit')).toMatchObject({ kind: 'completed' })
+    expect(drain).toHaveBeenCalledWith(harness.base, ['child-1'])
+    await harness.dispose()
+  })
+
   it('bounds the spawn-fact cache while keeping every row', () => {
     const calls = Array.from({ length: 520 }, (_, index) => call(`evict-${String(index)}`, { seq: index + 1, arguments: JSON.stringify({ description: `task ${String(index)}` }) }))
     const rows = agentsItem.agentRows(native({ calls }))

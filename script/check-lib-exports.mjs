@@ -129,7 +129,9 @@ for (const pkg of packagesWithExports()) {
   // exports entry names, so the walk above cannot see them. A files list
   // narrower than the built lib/ ships entry points whose first import is a
   // chunk the tarball never carried, and every real install boot-crashes —
-  // a dev-profile link never notices. Every built file must be claimed.
+  // a dev-profile link never notices. Every runtime/declaration must be
+  // claimed. JavaScript maps with an existing runtime sibling are local
+  // coverage/debugging artifacts; check:pack still refuses to publish them.
   const walkLib = (dir, prefix) => {
     for (const entry of readdirSync(dir)) {
       const full = join(dir, entry)
@@ -138,6 +140,7 @@ for (const pkg of packagesWithExports()) {
         walkLib(full, rel)
         continue
       }
+      if (rel.endsWith('.js.map') && existsSync(full.slice(0, -'.map'.length))) continue
       if (!files.some(f => filesEntryMatches(f, `lib/${rel}`))) {
         problems.push(`${pkg.name}: built lib/${rel} is not in the files list — the npm tarball would omit it`)
       }

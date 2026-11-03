@@ -6,6 +6,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { openSettingsNamespace } from '../../src/interaction/settings-command.ts'
 import { setExternalEditorLauncher } from '../../src/interaction/external-editor.ts'
 import { settingsFixture, settingsFieldIn, settingsPage } from './settings-fixture.ts'
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
@@ -32,6 +33,63 @@ const save = (entry: MayflyOverlayEntry, fields: readonly MayflySubmittedField[]
 })
 
 describe('native settings UI', () => {
+  it('ignores a captured command after its owning frontend unloads', async () => {
+    const bench = await setup()
+    const handler = bench.commands.entries.get('settings')!.handler
+    await bench.front.dispose()
+    expect(await handler({} as never)).toEqual({ kind: 'success' })
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('does not open a namespace retired while dynamic choices are loading', async () => {
+    const bench = await setup()
+    const gate = Promise.withResolvers<never[]>()
+    bench.ctx.provide('agentPresets', { list: () => gate.promise } as never)
+    const pending = openSettingsNamespace(bench.ctx, NS)
+    await bench.owner.dispose()
+    gate.resolve([])
+    expect(await pending).toBe(false)
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('opens an empty settings rail when its last namespace has retired', async () => {
+    const bench = await setup()
+    await bench.owner.dispose()
+    expect(await bench.commands.entries.get('settings')!.handler({} as never)).toEqual({ kind: 'success' })
+    expect(JSON.stringify(bench.ctx.mayflyUiInteraction.get('overlay', ROOT)!.node)).toContain('No settings namespaces')
+  })
+
+  it('drops a queued refresh when the settings rail closes before the microtask', async () => {
+    const bench = await setup()
+    await bench.open()
+    await flushRequests()
+    bench.ctx.emit('settings/document-updated', NS as never, 1)
+    bench.ctx.mayflyOverlays.close(ROOT)
+    await flushRequests()
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('uses the environment editor for a queued document action after frontend withdrawal', async () => {
+    const bench = await setup()
+    await bench.open()
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === ROOT)!
+    bench.ctx.provide('mayflyScreen', { suspend: async (task: () => Promise<unknown>) => task() } as never)
+    vi.stubEnv('VISUAL', 'environment-editor')
+    vi.spyOn(bench.settings, 'prepareDocument').mockResolvedValue(undefined as never)
+    await bench.front.dispose()
+    expect(bench.ctx.get('mayflyInteractionState')).toBeUndefined()
+    expect(await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'settings-global-actions', actionId: 'open-file' }, actionContext(entry))).toMatchObject({ kind: 'failed', message: 'settings file unavailable' })
+  })
+
+  it('retires a saved form whose namespace becomes opaque', async () => {
+    const bench = await setup()
+    await bench.open()
+    const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === ROOT)!
+    await bench.owner.dispose()
+    bench.settings.register(NS, Schema.object({ opaque: Schema.any() }).volatile())
+    expect(await entry.definition.onEvent!.action!(save(entry), actionContext(entry))).toMatchObject({ kind: 'cancelled', dismiss: true })
+  })
+
   it('browses the namespace rail without a renderer or current Agent and focuses an existing editor', async () => {
     const bench = await setup()
     await bench.ctx.plugin({ name: 'second-settings', inject: ['settings'], apply(ctx: Context) { (ctx.settings as unknown as MemorySettings).register('second-settings', Schema.object({ value: Schema.string().default('x') }).volatile(), { owner: ctx }) } })
@@ -272,11 +330,11 @@ describe('native settings UI', () => {
     const bench = await setup()
     const gate = Promise.withResolvers<never[]>()
     bench.ctx.provide('agentPresets', { list: () => gate.promise } as never)
-    const pending = bench.commands.entries.get('settings')!.handler({} as never)
-    await flushRequests()
-    await bench.plugin.dispose()
+    const child = await bench.ctx.plugin({ name: 'opener', inject: ['settings', 'mayflyOverlays'], apply(scope: Context) { scope.provide('testOpenSettings', () => openSettingsNamespace(scope, NS)) } })
+    const pending = (bench.ctx.get('testOpenSettings') as () => Promise<boolean>)()
+    await child.dispose()
     gate.resolve([])
-    await expect(pending).resolves.toEqual({ kind: 'success' })
+    await expect(pending).resolves.toBe(false)
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])
   })
 
@@ -298,6 +356,7 @@ describe('native settings UI', () => {
     expect(model.activeTab({ pagePath: [], controlId: 'namespaces' })).toBeUndefined()
     expect(JSON.stringify(model.node)).toContain('No settings namespaces')
     expect(bench.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual([ROOT])
+    await expect(openSettingsNamespace(bench.ctx, 'missing')).resolves.toBe(false)
   })
 
   it.each(['save', 'conflict', 'cancel', 'unload'] as const)('handles external document %s without overwriting a concurrent file', async outcome => {
@@ -324,32 +383,35 @@ describe('native settings UI', () => {
     })
   })
 
-  it('loads dynamic choices and focuses a raced editor open', async () => {
+  it('loads dynamic choices, rejects pre-aborted opens, and focuses a raced editor', async () => {
     const bench = await setup()
+    const aborted = new AbortController()
+    aborted.abort()
+    expect(await openSettingsNamespace(bench.ctx, NS, aborted.signal)).toBe(false)
+
     bench.ctx.provide('permissionPresets', { names: ['safe', 'full'] } as never)
     bench.ctx.provide('agentPresets', { list: async () => [{ id: 'standard' }, { id: 'minimal' }] } as never)
-    await bench.open()
+    expect(await openSettingsNamespace(bench.ctx, NS)).toBe(true)
     expect(bench.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual([ROOT])
     bench.ctx.mayflyOverlays.close(ROOT)
 
     const gate = Promise.withResolvers<{ id: string }[]>()
     bench.ctx.set('agentPresets', { list: () => gate.promise } as never)
-    const invoke = () => bench.commands.entries.get('settings')!.handler({} as never)
-    const first = invoke()
-    const second = invoke()
+    const first = openSettingsNamespace(bench.ctx, NS)
+    const second = openSettingsNamespace(bench.ctx, NS)
     gate.resolve([{ id: 'standard' }])
-    await expect(first).resolves.toEqual({ kind: 'success' })
-    await expect(second).resolves.toEqual({ kind: 'success' })
+    expect(await first).toBe(true)
+    expect(await second).toBe(true)
     expect(bench.ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual([ROOT])
 
     bench.ctx.mayflyOverlays.close(ROOT)
     bench.ctx.set('agentPresets', { list: () => Promise.reject(new Error('roster unavailable')) } as never)
-    await bench.open()
+    expect(await openSettingsNamespace(bench.ctx, NS)).toBe(true)
   })
 
   it('defends rail events, no-op saves, missing forms, and removed descriptors', async () => {
     const bench = await setup()
-    await bench.open()
+    await openSettingsNamespace(bench.ctx, NS)
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === ROOT)!
     const action = entry.definition.onEvent!.action!
     expect(await action({ kind: 'activate', pagePath: [], controlId: 'noop', actionId: 'noop' }, actionContext(entry))).toEqual({ kind: 'completed' })
@@ -367,7 +429,7 @@ describe('native settings UI', () => {
 
   it('contains save cancellation and namespace removal after persistence', async () => {
     const cancelled = await setup()
-    await cancelled.open()
+    await openSettingsNamespace(cancelled.ctx, NS)
     const entry = cancelled.ctx.mayflyOverlays.list().find(item => item.id === ROOT)!
     const original = cancelled.settings.mutate.bind(cancelled.settings)
     const gate = Promise.withResolvers<void>()
@@ -380,14 +442,14 @@ describe('native settings UI', () => {
     expect(await pending).toEqual({ kind: 'cancelled' })
 
     const removed = await setup()
-    await removed.open()
+    await openSettingsNamespace(removed.ctx, NS)
     const removedEntry = removed.ctx.mayflyOverlays.list().find(item => item.id === ROOT)!
     const removedOriginal = removed.settings.mutate.bind(removed.settings)
     vi.spyOn(removed.settings, 'mutate').mockImplementationOnce(async (...args) => { const result = await removedOriginal(...args); await removed.owner.dispose(); return result })
     expect(await removedEntry.definition.onEvent!.action!(save(removedEntry, [{ id: field('name').fieldId, change: 'set', value: 'changed' }]), actionContext(removedEntry))).toMatchObject({ kind: 'cancelled', dismiss: true })
 
     const failed = await setup()
-    await failed.open()
+    await openSettingsNamespace(failed.ctx, NS)
     const failedEntry = failed.ctx.mayflyOverlays.list().find(item => item.id === ROOT)!
     const rejection = Promise.withResolvers<never>()
     const failedMutate = vi.spyOn(failed.settings, 'mutate').mockReturnValueOnce(rejection.promise)
@@ -399,7 +461,7 @@ describe('native settings UI', () => {
     expect(await failedResult).toEqual({ kind: 'cancelled' })
 
     const vanished = await setup()
-    await vanished.open()
+    await openSettingsNamespace(vanished.ctx, NS)
     const vanishedEntry = vanished.ctx.mayflyOverlays.list().find(item => item.id === ROOT)!
     const vanishedRejection = Promise.withResolvers<never>()
     const vanishedMutate = vi.spyOn(vanished.settings, 'mutate').mockReturnValueOnce(vanishedRejection.promise)
@@ -412,7 +474,7 @@ describe('native settings UI', () => {
 
   it('answers a native conflict when the service rejects the commit revision', async () => {
     const bench = await setup()
-    await bench.open()
+    await openSettingsNamespace(bench.ctx, NS)
     const entry = bench.ctx.mayflyOverlays.list().find(item => item.id === ROOT)!
     vi.spyOn(bench.settings, 'mutate').mockRejectedValueOnce(new SettingsConflictError(NS as never, 0, 1))
     expect(await entry.definition.onEvent!.action!(save(entry, [{ id: field('name').fieldId, change: 'set', value: 'changed' }]), actionContext(entry))).toMatchObject({ kind: 'conflict', message: 'Settings changed elsewhere; review before saving' })
@@ -420,7 +482,7 @@ describe('native settings UI', () => {
 
   it('refreshes dynamic providers and contains superseded or closed refreshes', async () => {
     const bench = await setup()
-    await bench.open()
+    await openSettingsNamespace(bench.ctx, NS)
     const first = Promise.withResolvers<{ id: string }[]>()
     const second = Promise.withResolvers<{ id: string }[]>()
     const list = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise).mockResolvedValue([])
@@ -485,8 +547,19 @@ describe('native settings UI', () => {
     bench.ctx.mayflyOverlays.close(entry.id)
   })
 
-  it('closes the settings rail when an initial listener closes it during open', async () => {
+  it('closes the settings rail from caller abort and initial listeners', async () => {
     const bench = await setup()
+    const caller = new AbortController()
+    expect(await openSettingsNamespace(bench.ctx, NS, caller.signal)).toBe(true)
+    caller.abort()
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+
+    const before = vi.spyOn(bench.ctx, 'on')
+    bench.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === ROOT) bench.ctx.mayflyOverlays.close(ROOT) })
+    expect(await openSettingsNamespace(bench.ctx, NS)).toBe(true)
+    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
+    expect(before.mock.calls.filter(call => call[0] === 'settings/document-updated')).toEqual([])
+
     bench.ctx.mayflyOverlays.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === ROOT) bench.ctx.mayflyOverlays.close(ROOT) })
     await expect(bench.commands.entries.get('settings')!.handler({} as never)).resolves.toEqual({ kind: 'success' })
     expect(bench.ctx.mayflyOverlays.list()).toEqual([])

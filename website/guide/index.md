@@ -1,7 +1,7 @@
 # 快速上手
 
 ::: info 当前发布线
-`v0.1.4-rc.1` 是当前预览版，发布在 npm 的 **`rc`** dist-tag；`latest` 仍停在上一发布线。安装请显式锁定 `@ephemeral-ai/mayfly-cli@0.1.4-rc.1`（或 `@rc`）；CI 和可复现环境应锁定 Mayfly `0.1.4-rc.1` 与 Harness `0.2.1-rc.2`。本页是用户安装路径；贡献者的本地开发安装见[贡献本仓库](/plugins/contributing)。
+`v0.1.4-rc.2` 是当前预览版，发布在 npm 的 **`rc`** dist-tag；`latest` 仍停在上一发布线。安装请显式锁定 `@ephemeral-ai/mayfly-cli@0.1.4-rc.2`（或 `@rc`）；CI 和可复现环境应锁定 Mayfly `0.1.4-rc.2` 与 Harness `0.2.1-rc.2`。本页是用户安装路径；贡献者的本地开发安装见[贡献本仓库](/plugins/contributing)。
 :::
 
 ## 前置条件
@@ -17,7 +17,7 @@
 **推荐：一体化 `mayfly` 启动器。** 它把固定的 Harness 闭包封装为公共层和平台层归档，npm 安装时只处理一个无依赖包，不解析 Harness 图，也不运行其中的安装脚本：
 
 ```sh
-npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.1
+npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.2
 mayfly
 ```
 
@@ -46,7 +46,7 @@ dsh --profile mayfly
 安装完成后，按下方「开跑前配一个 key」与「首次运行」两节启动；模型、Provider、主题与密钥的详细配置见[配置：模型、Provider 与主题](/guide/config)。
 
 - 该 RC 不写 npm `latest`；请使用上方的精确版本或 `@rc`。普通安装不写 dist-tag 会得到上一发布线。
-- 升级到新版：壳包用户重跑 `npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.1`（重装即升级——壳按自身版本校准 profile 里的 Mayfly，宿主线随之固定）；dsh 直装用户在 Mayfly 中输入 `/update`（应用内安全升级：预检、快照、装机冒烟、失败自动回滚），或重跑同一条 `plugin add`。
+- 升级到新版：壳包用户重跑 `npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.2`（重装即升级——壳按自身版本校准 profile 里的 Mayfly，宿主线随之固定）；dsh 直装用户在 Mayfly 中输入 `/update`（应用内安全升级：预检、快照、装机冒烟、失败自动回滚），或重跑同一条 `plugin add`。
 
 ## 开跑前配一个 key
 

@@ -1,8 +1,8 @@
 /** Presentation resolution: settings and environment, the monochrome palette, and the theme provider that applies it. */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DARK_COLORS, MayflyThemeService } from '../../src/core/theme/theme-dark.ts'
-import { monochromeColors, noColor, presentedColors, readPresentation, resolvePresentation, samePresentation } from '../../src/core/theme/presentation.ts'
+import { DARK_COLORS, MayflyThemeService } from '../../src/core/theme-dark.ts'
+import { monochromeColors, noColor, presentedColors, readPresentation, resolvePresentation, samePresentation } from '../../src/core/presentation.ts'
 
 afterEach(() => { vi.unstubAllEnvs() })
 

@@ -2,38 +2,35 @@
 
 English | [中文](README.zh.md)
 
-The installable Mayfly terminal UI bundle for dsh. Its flat
-`cordis.patch.yml` composition adds ordinary sibling rows over `dsh-base`:
-a set of dsh support rows and the Mayfly product rows.
+Shared terminal rendering and presentation for the independent Mayfly TUI.
+The package exposes explicit renderer, theme, transcript, editor, configuration,
+and status subpaths. It supplies the candidate UI used by
+`@ephemeral-ai/mayfly-remote`.
 
-## Install
+Run the product as two processes: a native DeepSeek Harness Host carrying
+`@ephemeral-ai/mayfly-host`, and an independent TUI carrying
+`@ephemeral-ai/mayfly-remote`. The global `@ephemeral-ai/mayfly-cli` launcher
+starts the TUI. This shared package has no installable dsh bundle, root plugin
+entry, composition patch, or preset payload.
+
+For this development branch, use the checkout's verified build:
 
 ```sh
-npm i -g @deepseek-ai/dsh
-dsh plugin --profile mayfly add @ephemeral-ai/mayfly
-dsh --profile mayfly
+DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
+/path/to/dsh --profile mayfly-split-accept
+# In another terminal, copy the authenticated URL printed by the Host:
+MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh
 ```
 
-Or use the standalone launcher, which bundles a tested dsh runtime:
+The Host needs official Harness `0.2.2-alpha.2`. Install model credentials on
+the Host. The TUI detaches on exit; Host sessions and running work remain
+owned by Harness. Rebuild the checkout after source changes.
 
-```sh
-npm -g install @ephemeral-ai/mayfly-cli
-mayfly
-```
+Frontend UI plugins contribute renderer-neutral nodes through `mayflyPanes`,
+`mayflyStatus`, `mayflyOverlays`, and `mayflyEditorExtensions`. Host plugins use
+native dsh services in the Host process. Shared presentation accepts readonly
+facts and structured actions; it never retains a native Agent or Session.
 
-Set `DEEPSEEK_API_KEY` before first run.
-
-Plugins inherit native dsh services directly and opt into terminal UI with
-`mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and
-`mayflyEditorExtensions`. The current Agent is available through
-`mayflyCurrentAgent`. Official Mayfly features use those same services.
-
-The `mayfly-cordis` preset includes skills for temporary prototyping, durable
-ordinary Cordis plugin authoring, and composition editing. No special Mayfly
-manifest, capability host, adapter, or plugin-author CLI is required.
-
-Agent Team is an optional marketplace plugin that adds a separate `team`
-preset based on `standard`. Existing presets keep ordinary delegation. Team navigation,
-reminders, delivered files, and MCP resources are documented in
-[Harness features](../../docs/native-harness-adaptation.md).
-`mayfly.transcriptView` replaces the old per-family transcript settings.
+The published `0.1.4-rc.2` package is the immutable UI reference for this
+implementation. Passing a smoke test does not establish visual parity; see
+[split validation](../../docs/split-parity-validation.md).

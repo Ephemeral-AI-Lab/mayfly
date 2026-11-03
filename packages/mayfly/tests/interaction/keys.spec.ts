@@ -5,12 +5,12 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { MayflyKeymapService } from '../../src/core/keys/keymap.ts'
-import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
+import { MayflyKeymapService } from '../../src/core/keymap.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import * as keys from '../../src/interaction/keys.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS, type MayflySettings } from '../../src/interaction/settings.ts'
-import { ACTION_SUBMIT, displayKey, keyActionKeys, matchesKeyAction } from '../../src/core/keys/key-actions.ts'
+import { ACTION_SUBMIT, displayKey, keyActionKeys, matchesKeyAction } from '../../src/core/key-actions.ts'
 
 describe('interaction keys', () => {
   it('normalizes paging, boundary, deletion, and Agent-view keys', () => {
@@ -76,7 +76,7 @@ describe('interaction keys', () => {
   })
 
   describe('saved key bindings', () => {
-    async function mount(saved: Partial<MayflySettings> = {}) {
+    async function mount(saved: Partial<MayflySettings> = {}, settings?: object) {
       const ctx = new Context()
       await ctx.plugin(MayflyKeymapService)
       new UiInteractionService(ctx)
@@ -84,6 +84,7 @@ describe('interaction keys', () => {
       let current: MayflySettings = { ...DEFAULT_SETTINGS, ...saved }
       state.settingsSource = () => current
       ctx.reflect.provide('mayflyConversations', { back: () => true })
+      if (settings !== undefined) ctx.reflect.provide('settings', settings)
       const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
       const fiber = await ctx.plugin(keys)
       return { ctx, fiber, warn, save: (next: Partial<MayflySettings>) => { current = { ...DEFAULT_SETTINGS, ...next } } }
@@ -115,6 +116,41 @@ describe('interaction keys', () => {
       expect(ctx.mayflyKeymap.getKeys('ui.delete')).toEqual([])
       expect(ctx.mayflyKeymap.preferPlain).toBe(false)
       expect(ctx.mayflyKeymap.list().some(action => action.overridden)).toBe(false)
+    })
+
+    it('binds now and writes beside the label through settings.mutate', async () => {
+      const mutate = vi.fn(async () => {})
+      const settings = { writable: true, describe: () => [{ ns: 'mayfly', revision: 7 }], mutate }
+      const { ctx } = await mount({}, settings)
+      expect(await keys.saveKeybinding(ctx, 'ui.delete', ['d'], 'delete')).toBe('saved')
+      expect(ctx.mayflyKeymap.getKeys('ui.delete')).toEqual(['d'])
+      expect(await keys.resetKeybinding(ctx, 'ui.delete')).toBe('saved')
+      expect(ctx.mayflyKeymap.getKeys('ui.delete')).toEqual(['x'])
+      await keys.saveKeybinding(ctx, 'ui.copy', ['y'], 'copy')
+      expect(await keys.resetAllKeybindings(ctx)).toBe('saved')
+      expect(ctx.mayflyKeymap.getKeys('ui.copy')).toEqual(['c'])
+      expect(mutate.mock.calls).toEqual([
+        ['mayfly', [{ op: 'set', path: ['keybindings', 'ui.delete'], value: { keys: ['d'], label: 'delete' } }], 7],
+        ['mayfly', [{ op: 'unset', path: ['keybindings', 'ui.delete'] }], 7],
+        ['mayfly', [{ op: 'set', path: ['keybindings', 'ui.copy'], value: { keys: ['y'], label: 'copy' } }], 7],
+        ['mayfly', [{ op: 'unset', path: ['keybindings'] }], 7],
+      ])
+      await expect(keys.saveKeybinding(ctx, 'ui.copy', ['x'], 'copy')).rejects.toMatchObject({ code: 'KEY_CONFLICT' })
+      expect(mutate).toHaveBeenCalledTimes(4)
+    })
+
+    it('keeps a binding for the session when the settings document cannot take it', async () => {
+      const failing = { writable: true, describe: () => [{ ns: 'mayfly', revision: 1 }], mutate: vi.fn(async () => { throw new Error('revision moved') }) }
+      const failed = await mount({}, failing)
+      expect(await keys.saveKeybinding(failed.ctx, 'ui.delete', ['d'], 'delete')).toBe('session')
+      expect(failed.ctx.mayflyKeymap.getKeys('ui.delete')).toEqual(['d'])
+      expect(failed.warn).toHaveBeenCalledWith(expect.stringContaining('could not save key bindings: Error: revision moved'))
+      const readOnly = await mount({}, { writable: false, describe: () => [{ ns: 'mayfly', revision: 1 }], mutate: vi.fn() })
+      expect(await keys.saveKeybinding(readOnly.ctx, 'ui.delete', ['d'], 'delete')).toBe('session')
+      const unlisted = await mount({}, { writable: true, describe: () => [], mutate: vi.fn() })
+      expect(await keys.resetAllKeybindings(unlisted.ctx)).toBe('session')
+      const none = await mount()
+      expect(await keys.resetKeybinding(none.ctx, 'ui.delete')).toBe('session')
     })
   })
 })

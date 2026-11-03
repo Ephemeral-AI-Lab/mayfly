@@ -60,7 +60,6 @@ import {
   runTool,
 } from './clipboard-probe.ts'
 import { probeDarwin, probeWindows } from './paste-image-native.ts'
-import { formatError } from '../internal/format.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-paste-image'
@@ -460,7 +459,7 @@ async function pasteFlow(ctx: Context, config: Config, shared: SharedEditor, isU
     endWait()
     // An injected reader rejecting degrades to the same notice family.
     if (isUnloaded()) return
-    const message = formatError(error)
+    const message = error instanceof Error ? error.message : String(error)
     report('paste-image', { message: `clipboard read failed: ${message}`, severity: 'error' })
     return
   }
@@ -496,7 +495,7 @@ async function pasteFlow(ctx: Context, config: Config, shared: SharedEditor, isU
     } else report('paste-image', { message: `pasted ${String(refs.length)} image${refs.length === 1 ? '' : 's'}`, severity: 'success' })
   } catch (error) {
     if (isUnloaded()) return
-    const message = formatError(error)
+    const message = error instanceof Error ? error.message : String(error)
     report('paste-image', { message: `image rejected: ${message}`, severity: 'error' })
   }
 }

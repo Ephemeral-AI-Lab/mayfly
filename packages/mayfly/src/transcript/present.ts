@@ -4,7 +4,8 @@
  * Every presenter call is contained —
  * an unknown tool, a missing presenter, or a throwing presenter all yield
  * `undefined` and the generic presentation carries on. The module also owns
- * the shared presentation pure helper {@link ellipsize}.
+ * the shared presentation pure helpers {@link ellipsize} and
+ * {@link summarizeToolCall}.
  *
  * @module @ephemeral-ai/mayfly/transcript/present
  */
@@ -17,8 +18,15 @@ import type {
 
 /** The presenter-bearing face of a tool registry the resolvers read (structural, scope-agnostic). */
 export interface ToolPresentationSource {
-  /** The presenter-bearing definition the source resolves, or `undefined` when none is visible. */
+  /** Resolve a native definition by name without supplying its registry's private scope argument. */
   get(name: string): { readonly presentCall?: (args: unknown) => unknown; readonly presentResult?: (args: unknown, result: ToolResult) => unknown } | undefined
+  /** Resolve an exact per-Session call; a missing result never falls back to another call or native scope. */
+  getForCall?(name: string, callId: string): ReturnType<ToolPresentationSource['get']>
+}
+
+function presenter(tools: ToolPresentationSource, name: string, callId: string | undefined): ReturnType<ToolPresentationSource['get']> {
+  if (tools.getForCall === undefined) return tools.get(name)
+  return callId === undefined ? undefined : tools.getForCall(name, callId)
 }
 
 /**
@@ -30,6 +38,42 @@ export interface ToolPresentationSource {
 export function ellipsize(text: string, maxChars: number): string {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length <= maxChars ? flat : `${flat.slice(0, maxChars - 1)}…`
+}
+
+/** Maximum key/value pairs shown by {@link summarizeToolCall}. */
+export const TOOL_ARG_PAIR_LIMIT = 6
+
+/** Maximum length of one value shown by {@link summarizeToolCall}. */
+export const TOOL_ARG_VALUE_MAX_CHARS = 40
+
+function argumentValueText(value: unknown): string {
+  if (typeof value === 'string') return value
+  // Only JSON.parse output reaches here, so stringify always returns a
+  // string — the undefined-returning shapes (undefined/functions/symbols)
+  // cannot occur in parsed data.
+  return JSON.stringify(value) as string
+}
+
+/**
+ * Render one tool call's raw argument JSON as readable `key: value` lines
+ * instead of a naked JSON dump. Non-object arguments (arrays, scalars) and
+ * unparseable JSON keep the `name(args)` inline form.
+ * @param name - the tool name exactly as the model requested it.
+ * @param args - the raw arguments string.
+ * @returns the first line `name`, then one `  key: value` line per shown
+ *   pair (capped at {@link TOOL_ARG_PAIR_LIMIT}, values flattened at
+ *   {@link TOOL_ARG_VALUE_MAX_CHARS}), plus a `… +N more` line when pairs
+ *   were dropped.
+ */
+export function summarizeToolCall(name: string, args: string): string {
+  const parsed = parseToolArguments(args)
+  if (parsed === undefined || typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return `${name}(${args})`
+  const entries = Object.entries(parsed as Record<string, unknown>)
+  const shown = entries.slice(0, TOOL_ARG_PAIR_LIMIT)
+    .map(([key, value]) => `  ${key}: ${ellipsize(argumentValueText(value), TOOL_ARG_VALUE_MAX_CHARS)}`)
+  const hidden = entries.length - Math.min(entries.length, TOOL_ARG_PAIR_LIMIT)
+  const rows = [name, ...shown, ...(hidden > 0 ? [`  … +${String(hidden)} more`] : [])]
+  return rows.join('\n')
 }
 
 /**
@@ -50,6 +94,7 @@ export function parseToolArguments(raw: string): unknown {
  * @param tools - the host tool registry.
  * @param name - the tool name exactly as the model requested it.
  * @param args - the parsed arguments (`undefined` when parsing failed).
+ * @param callId - the exact per-Session call identity for scoped remote presenters.
  * @returns the call view, or `undefined` when the tool is unknown, declares
  *   no presenter, or its presenter throws.
  */
@@ -57,9 +102,10 @@ export function resolveCallView(
   tools: ToolPresentationSource,
   name: string,
   args: unknown,
+  callId?: string,
 ): ToolCallView | undefined {
   try {
-    return tools.get(name)?.presentCall?.(args) as ToolCallView | undefined
+    return presenter(tools, name, callId)?.presentCall?.(args) as ToolCallView | undefined
   } catch {
     return undefined
   }
@@ -71,6 +117,7 @@ export function resolveCallView(
  * @param name - the tool name exactly as the model requested it.
  * @param args - the parsed arguments (`undefined` when parsing failed).
  * @param result - the reconstructed tool result (`content`, `isError`, `meta`).
+ * @param callId - the exact per-Session call identity for scoped remote presenters.
  * @returns the result view, or `undefined` when the tool is unknown, declares
  *   no presenter, or its presenter throws.
  */
@@ -79,9 +126,10 @@ export function resolveResultView(
   name: string,
   args: unknown,
   result: ToolResult,
+  callId?: string,
 ): ToolResultView | undefined {
   try {
-    return tools.get(name)?.presentResult?.(args, result) as ToolResultView | undefined
+    return presenter(tools, name, callId)?.presentResult?.(args, result) as ToolResultView | undefined
   } catch {
     return undefined
   }

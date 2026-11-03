@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest'
 import { apply as applyApi } from '../../../packages/ui/src/provider.ts'
 import type { MayflyUiNode } from '../../../packages/ui/src/contracts.ts'
 import { MayflyComponentsService } from '../../../packages/mayfly/src/core/components.ts'
-import { DARK_COLORS } from '../../../packages/mayfly/src/core/theme/theme-dark.ts'
-import { compileMayflyUiNode } from '../../../packages/mayfly/src/core/ui/compile/ui-compiler.ts'
+import { DARK_COLORS } from '../../../packages/mayfly/src/core/theme-dark.ts'
+import { compileMayflyUiNode } from '../../../packages/mayfly/src/core/ui-compiler.ts'
 import { ADVERSARIAL, expectLinesFit, SCAN_WIDTHS } from '../../../packages/mayfly/tests/core/width-scan.ts'
 import { ui } from '../../../packages/ui/src/index.ts'
 import * as bottomLog from '../../bottom-log/src/index.ts'
@@ -22,7 +22,7 @@ const components = new MayflyComponentsService(new Context(), { theme: { colors:
 function uiRows(name: string, node: MayflyUiNode): void {
   const viewport = { columns: 120, rows: 20 }
   const result = compileMayflyUiNode(node, {
-    components, colors: DARK_COLORS, getViewport: () => viewport, bounded: true, emit: () => {},
+    components, colors: DARK_COLORS, getViewport: () => viewport, screenMode: 'alternate', emit: () => {},
   })
   expect(result.ok).toBe(true)
   if (!result.ok) throw new Error(result.message)
@@ -66,7 +66,7 @@ describe('example width contracts', () => {
     }
   })
 
-  it('scans the approval card built on compose.decisionLane at every repository width', () => {
+  it('scans the approval card built on patterns.decisionPanel at every repository width', () => {
     for (const fixture of ADVERSARIAL) {
       uiRows(`approval-card:${fixture.name}`, approvalCard.render({ title: fixture.text.slice(0, 400), command: fixture.text.slice(0, 400), detail: fixture.text.slice(0, 400) }))
     }

@@ -1,6 +1,6 @@
 /**
  * The `/theme` command and the provider swap behind it. The command knows
- * the ten built-in palettes of `core/theme/palettes.ts` (the default through
+ * the ten built-in palettes of `core/palettes.ts` (the default through
  * `mayfly-theme-dark`, the rest through `mayfly-theme-builtin` with the palette
  * in its config), `auto`, and `custom`, and switches by disposing the live
  * provider's fibers — `ctx.registry.delete` keys
@@ -18,16 +18,15 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import { panel, ui } from '@ephemeral-ai/mayfly-ui'
-import { PALETTES, paletteOf } from '../core/theme/palettes.ts'
-import * as themeAuto from '../core/theme/theme-auto.ts'
-import * as themeBuiltin from '../core/theme/theme-builtin.ts'
-import * as themeCustom from '../core/theme/theme-custom.ts'
-import * as themeDark from '../core/theme/theme-dark.ts'
+import { PALETTES, paletteOf } from '../core/palettes.ts'
+import * as themeAuto from '../core/theme-auto.ts'
+import * as themeBuiltin from '../core/theme-builtin.ts'
+import * as themeCustom from '../core/theme-custom.ts'
+import * as themeDark from '../core/theme-dark.ts'
 import { interactionTranslator } from './locale.ts'
 import { registerOwnedCommand } from './sessionless-commands.ts'
 import { themeGroup, themeIdea, themeName } from './theme-names.ts'
 import { openUiOverlay } from './ui-overlay.ts'
-import { formatError } from '../internal/format.ts'
 
 /** Usage text returned for malformed `/theme` invocations; bare `/theme` lists every theme with its key. */
 const USAGE = 'usage: /theme [<theme>|auto|custom <path> [<base theme>]]'
@@ -79,8 +78,7 @@ function openThemePicker(ctx: Context): CommandResult {
       if (target === undefined) return { kind: 'failed', message: t('unknown theme "{key}"', { key }) }
       const result = await switchTheme(ctx, target)
       if (result.kind === 'error') return { kind: 'failed', message: result.text }
-      /* switchTheme success always carries the "switched to" text */
-      return { kind: 'completed', dismiss: true, ...(result.text === undefined ? {} : { feedback: { severity: 'success' as const, message: result.text } }) }
+      return { kind: 'completed', dismiss: true, feedback: { severity: 'success', message: result.text } }
     } },
   }, panel({ title: t('Select a theme'), escapeLabel: 'close', body: ui.list({
     id: 'themes', role: 'choose', selectedIds: BUILTIN.has(current) ? [current] : [],
@@ -101,7 +99,7 @@ function openThemePicker(ctx: Context): CommandResult {
  * @param next - the theme to activate, with its config when it takes one.
  * @returns the command outcome.
  */
-async function switchTheme(ctx: Context, next: ThemeTarget): Promise<CommandResult> {
+async function switchTheme(ctx: Context, next: ThemeTarget): Promise<{ readonly kind: 'success' | 'error', readonly text: string }> {
   const t = interactionTranslator(ctx)
   const current = ctx.mayflyInteractionState.currentThemeKey === 'custom'
     ? CUSTOM
@@ -123,7 +121,7 @@ async function switchTheme(ctx: Context, next: ThemeTarget): Promise<CommandResu
     return {
       kind: 'error',
       /* mount failures are Error instances (config validation or service conflicts) */
-      text: t('failed to apply theme "{key}": {error}', { key: next.key, error: formatError(error) }),
+      text: t('failed to apply theme "{key}": {error}', { key: next.key, error: error instanceof Error ? error.message : String(error) }),
     }
   }
   ctx.mayflyInteractionState.currentThemeKey = next.key
@@ -145,7 +143,7 @@ export async function reloadTheme(ctx: Context): Promise<void> {
 }
 
 /** Apply a built-in theme by key for the persisted settings default. */
-export async function applyTheme(ctx: Context, key: string): Promise<CommandResult> {
+export async function applyTheme(ctx: Context, key: string): Promise<{ readonly kind: 'success' | 'error', readonly text: string }> {
   const t = interactionTranslator(ctx)
   const target = BUILTIN.get(key)
   if (target === undefined) {

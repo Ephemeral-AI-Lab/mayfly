@@ -22,8 +22,8 @@ import { isLiveJob, jobHistory, openJobOutput, sortJobs } from '../interaction/j
 import { compactElapsedMs } from './agent-presentation.ts'
 import { observeTranscriptLocale, transcriptTranslator } from './locale.ts'
 import { DONE_LINGER_MS } from './pane-todo.ts'
+import type { TickSource } from './tick.ts'
 import { countSummary, followViewHistory, itemSummary, viewList } from './view-items.ts'
-import { formatError } from '../internal/format.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'mayfly-status-jobs'
@@ -132,7 +132,7 @@ export function jobsPanel(state: JobsState, t: MayflyTranslate, unavailable: (jo
 export function apply(ctx: Context): void {
   const t = transcriptTranslator(ctx, 'transcript')
   const ti = interactionTranslator(ctx)
-  const tick = ctx.mayflyTick
+  const tick = ctx.get('mayflyTick') as TickSource | undefined
   const lifetime = new AbortController()
   let unloaded = false
 
@@ -153,13 +153,13 @@ export function apply(ctx: Context): void {
     job.status === 'running' ? {} : { [STOP_ID]: job.status === 'stopping' ? t('Already stopping') : t('Already finished') }
 
   const act = async (event: MayflyUiActionEvent, context: MayflyUiEventContext): Promise<MayflyUiActionReply> => {
+    if (unloaded || context.signal.aborted) return { kind: 'cancelled' }
     const agent = ctx.mayflyCurrentAgent.current()
     if (agent === null || agent !== owner) return { kind: 'failed', message: t('The agent changed; open it again') }
     const stopping = event.kind === 'activate' && event.actionId === STOP_ID
     if (event.kind !== 'selection-accept' && !stopping) return { kind: 'completed' }
     const chosen = event.kind === 'selection-accept' ? event.selectedIds[0]
-      : event.kind === 'activate' ? event.inputs?.selections?.find(selection => selection.controlId === LIST_ID)?.selectedIds[0]
-        : undefined
+      : event.inputs?.selections?.find(selection => selection.controlId === LIST_ID)?.selectedIds[0]
     const selected = chosen === undefined ? undefined : jobs.find(job => String(job.id) === chosen)
     if (selected === undefined) return { kind: 'failed', message: t('Select a job first') }
     try {
@@ -175,14 +175,13 @@ export function apply(ctx: Context): void {
         })
         return { kind: 'completed' }
       }
-      if (context.signal.aborted || unloaded) return { kind: 'cancelled' }
       if (job.status !== 'running') return { kind: 'failed', message: job.status === 'stopping' ? t('Already stopping') : t('Already finished') }
       ctx.jobs.kill(id, agent.id, STOP_REASON)
       stoppedByUser.add(String(selected.id))
       refresh()
       return { kind: 'completed', feedback: { severity: 'success', message: t('Stopping {job}', { job: job.label }) } }
     } catch (error) {
-      return { kind: 'failed', message: formatError(error) }
+      return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
     }
   }
   const pane = ctx.mayflyPanes.register({ id: 'mayfly.view.jobs', placement: 'views', priority: VIEW_PRIORITY, onEvent: { action: act } }, null)
@@ -216,6 +215,7 @@ export function apply(ctx: Context): void {
     }
   }
   const publish = (): void => {
+    if (unloaded) return
     syncTick()
     const state: JobsState = { jobs, now, history: view.history(), stoppedByUser, ...done === undefined ? {} : { done: { total: done.total, failed: done.failed } } }
     const summary = jobsSummary(state, t)
@@ -237,7 +237,7 @@ export function apply(ctx: Context): void {
       try {
         live = ctx.jobs.list(agent.id)
       } catch (error) {
-        ctx.logger.warn(`could not list background jobs for status: ${formatError(error)}`)
+        ctx.logger.warn(`could not list background jobs for status: ${error instanceof Error ? error.message : String(error)}`)
       }
       const merged = new Map(jobHistory(agent.session).map(job => [String(job.id), job]))
       for (const job of live) merged.set(String(job.id), job)
@@ -250,7 +250,7 @@ export function apply(ctx: Context): void {
   const offJobs = ctx.jobs.events.subscribe({ owners: 'scope' }, (event) => {
     // Output chunks cannot change a row: every status or progress change arrives as its own registered/progress/stopping/
     // settled/removed event, so a chatty background job no longer lists per chunk.
-    if (event.type === 'output') return
+    if (unloaded || event.type === 'output') return
     const current = ctx.mayflyCurrentAgent.current()
     if (event.job.owner === undefined || event.job.owner === current?.id) refresh()
   })

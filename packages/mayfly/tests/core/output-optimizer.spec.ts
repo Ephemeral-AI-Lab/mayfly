@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { TuiAltScreen } from '@earendil-works/pi-tui'
-import { createOutputOptimizer } from '../../src/core/terminal/output-optimizer.ts'
+import { createOutputOptimizer } from '../../src/core/output-optimizer.ts'
 import { FakeTerminal } from './fake-terminal.ts'
 import { VtAltTerminal } from './vt-alt-terminal.ts'
 

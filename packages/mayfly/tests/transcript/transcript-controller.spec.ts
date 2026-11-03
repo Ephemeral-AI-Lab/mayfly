@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { MayflyListNode, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyNodeSlot } from '../../src/core/hosts/node-slot.ts'
+import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
 import type { TranscriptEntryModel } from '../../src/frontend/models.ts'
 import { createTranscriptModel, LIVE_PUBLISH_MS, PUBLISH_INTERVAL_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
@@ -92,6 +92,54 @@ describe('TranscriptController', () => {
     expect(latest()!.items.filter(item => item.gap === true)).toHaveLength(1)
     controller.dropView('main')
     expect(latest()).toBeNull()
+  })
+
+  it('keeps Ctrl+O openings per conversation view', () => {
+    const { screen, latest } = fakeScreen()
+    const controller = new TranscriptController(options)
+    const long = (id: string) => createTranscriptModel(id, [user(1, 'a\nb\nc\nd\ne\nf')], true, 0, [{ turn: 1, startedAt: 0 }])
+    controller.setView('main', long('a'))
+    controller.setView('side', long('b'))
+    controller.show('main')
+    controller.attach(screen)
+    expect(latest()!.items[0]!.wrapMax).toBe(4)
+    controller.toggleRecent()
+    expect(latest()!.items[0]!.wrapMax).toBeUndefined()
+    // Another conversation keeps its own reach; the main view's Ctrl+O does not leak by turn number.
+    controller.show('side')
+    expect(latest()!.items[0]!.wrapMax).toBe(4)
+    controller.toggleRecent()
+    expect(latest()!.items[0]!.wrapMax).toBeUndefined()
+    controller.show('main')
+    expect(latest()!.items[0]!.wrapMax).toBeUndefined()
+    controller.toggleRecent()
+    expect(latest()!.items[0]!.wrapMax).toBe(4)
+    controller.show('side')
+    expect(latest()!.items[0]!.wrapMax).toBeUndefined()
+  })
+
+  it('keeps a turn opened by Enter per conversation view', () => {
+    const { screen, latest } = fakeScreen()
+    const controller = new TranscriptController(options)
+    const long = (id: string) => createTranscriptModel(id, [user(1, 'a\nb\nc\nd\ne\nf')], true, 0, [{ turn: 1, startedAt: 0 }])
+    controller.setView('main', long('a'))
+    controller.setView('side', long('b'))
+    controller.show('main')
+    controller.attach(screen)
+    expect(latest()!.items[0]!.wrapMax).toBe(4)
+    controller.toggleTurn(1)
+    expect(latest()!.items[0]!.wrapMax).toBeUndefined()
+    // The same turn number in another conversation is still the other view's own state.
+    controller.show('side')
+    expect(latest()!.items[0]!.wrapMax).toBe(4)
+    controller.toggleTurn(1)
+    expect(latest()!.items[0]!.wrapMax).toBeUndefined()
+    controller.show('main')
+    expect(latest()!.items[0]!.wrapMax).toBeUndefined()
+    controller.toggleTurn(1)
+    expect(latest()!.items[0]!.wrapMax).toBe(4)
+    controller.show('side')
+    expect(latest()!.items[0]!.wrapMax).toBeUndefined()
   })
 
   it('opens the prompts the Ctrl-O reach covers, republishes the queue, and unmounts on dispose', () => {

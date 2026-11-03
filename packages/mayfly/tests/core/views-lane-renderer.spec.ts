@@ -12,15 +12,15 @@ import type {
 } from '../../../ui/src/contracts.ts'
 import { ui } from '../../../ui/src/index.ts'
 import * as frontend from '../../src/frontend/index.ts'
-import { mountMayflySurfaceRenderer } from '../../src/core/hosts/surface-renderer.ts'
-import type { MayflyContextHints } from '../../src/core/ui/compile/context-hint-locale.ts'
-import { MayflyScreenService } from '../../src/core/hosts/screen.ts'
-import { SurfaceManager, type SurfaceLayout } from '../../src/core/hosts/surface-manager.ts'
+import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
+import type { MayflyContextHints } from '../../src/core/context-hint-locale.ts'
+import { MayflyScreenService } from '../../src/core/screen.ts'
+import { SurfaceManager, type SurfaceLayout } from '../../src/core/surface-manager.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyKeyAction } from '../../src/core/types.ts'
-import type { MayflyTerminalRuntime } from '../../src/core/terminal/terminal.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
+import type { MayflyTerminalRuntime } from '../../src/core/terminal.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
-import type { ViewsLane } from '../../src/core/ui/state/views-lane.ts'
+import type { ViewsLane } from '../../src/core/views-lane.ts'
 import { flush, plain, plainColors } from '../helpers.ts'
 
 const colors = plainColors()
@@ -217,6 +217,23 @@ function lanePanel(views: unknown, width: number): readonly string[] | undefined
 }
 
 describe('views lane through the direct pane renderer', () => {
+  it('allows a core-owned view to enter and leave while no Pane record owns its panel', async () => {
+    const f = await fixture()
+    try {
+      const views = f.runtime.surfaces.views
+      const handle = views.register({ id: 'core-view', summary: item('Core view') })
+      const panel: MayflyFocusable = { focused: false, render: () => ['core-owned panel'], invalidate() {} }
+      handle.setPanel(panel, panel)
+      expect(views.enter('core-view')).toBe(true)
+      await flush(8)
+      expect(lanePanel(views, 40)?.join('')).toContain('core-owned panel')
+      expect(f.root.mayflyPanes.list()).toEqual([])
+      handle.dispose()
+      expect(views.isEntered).toBe(false)
+      expect(f.runtime.focused()).toBe(f.runtime.editor)
+    } finally { await f.dispose() }
+  })
+
   it('takes a views pane into the status row and nowhere else', async () => {
     const f = await fixture()
     try {

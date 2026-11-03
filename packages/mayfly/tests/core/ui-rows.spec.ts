@@ -17,7 +17,7 @@ import {
   unclampedRows,
   virtualRows,
   type RowSource,
-} from '../../src/core/ui/paint/ui-rows.ts'
+} from '../../src/core/ui-rows.ts'
 
 /** A source that counts its reads and answers `row ${index}`. */
 function counting(length: number, extras: Partial<RowSource> = {}): RowSource & { readonly reads: number[] } {

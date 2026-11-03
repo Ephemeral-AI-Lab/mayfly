@@ -9,9 +9,9 @@
 
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { stripEscapeSequences, stripTerminalText, terminalSequenceAt } from '../../src/core/terminal/escape-sequences.ts'
+import { stripEscapeSequences, stripTerminalText, terminalSequenceAt } from '../../src/core/escape-sequences.ts'
 import { sanitizePluginText } from '../../src/core/plugin-view.ts'
-import { validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
+import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 
 /** What each path must produce: the same text with every sequence and unsafe control gone. */
 const CASES: Array<{ readonly name: string, readonly input: string, readonly expected: string }> = [

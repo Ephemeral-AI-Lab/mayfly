@@ -23,12 +23,12 @@ import { type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 // Empty type import carries the app-owned `mayflySession` Context merge and
 // the 'test/session-changed' Events merge the attach helper emits.
 import type {} from '../../src/app/index.ts'
-import * as themeDark from '../../src/core/theme/theme-dark.ts'
-import * as themeBuiltin from '../../src/core/theme/theme-builtin.ts'
-import { paletteColors } from '../../src/core/theme/palettes.ts'
+import * as themeDark from '../../src/core/theme-dark.ts'
+import * as themeBuiltin from '../../src/core/theme-builtin.ts'
+import { paletteColors } from '../../src/core/palettes.ts'
 import * as settingsPlugin from '../../src/interaction/settings.ts'
 import { applyTheme, reloadTheme } from '../../src/interaction/theme-switch.ts'
-import { monochromeColors, readPresentation } from '../../src/core/theme/presentation.ts'
+import { monochromeColors, readPresentation } from '../../src/core/presentation.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { MayflySessionStartService } from '../../src/app/session-start.ts'
 import { MemorySettings } from '../../../../examples/overlay/tests/settings.ts'
@@ -147,6 +147,10 @@ function settle(ms = 30): Promise<void> {
 }
 
 describe('mayfly-settings schema and registration', () => {
+  it('keeps other settings while replacing a removed palette with the baseline', () => {
+    expect(resolveConfig({ theme: 'removed-palette', updateCheck: false })).toEqual({ ...settingsPlugin.DEFAULT_SETTINGS, theme: 'dark', updateCheck: false })
+  })
+
   it('resolves every schema default and starts on the composition defaults', () => {
     const ctx = createContext()
     expect(settingsPlugin.currentMayflySettings(ctx)).toEqual(settingsPlugin.DEFAULT_SETTINGS)

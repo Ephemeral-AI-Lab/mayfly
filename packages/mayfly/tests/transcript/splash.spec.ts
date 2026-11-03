@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { FLY_IN_TOTAL_MS, markColumns, scaleRows } from '../../src/core/text/quad-mark.ts'
+import { FLY_IN_TOTAL_MS, markColumns, scaleRows } from '../../src/core/quad-mark.ts'
 import { MARK_ROWS } from '../../src/transcript/banner-art.ts'
 import {
   SPLASH_LIST_MAX,
@@ -21,7 +21,7 @@ import {
   type SplashLabels,
   type SplashSession,
 } from '../../src/transcript/splash.ts'
-import { truncateToWidth, visibleWidth } from '../../src/core/text/width.ts'
+import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
 import { plainColors } from '../helpers.ts'
 
 const LABELS: SplashLabels = {
@@ -95,7 +95,7 @@ describe('composeSplashLines', () => {
   it('centers a one-column screen without ever measuring below zero', () => {
     const rows = composeSplashLines(deps(), content(), 1, 3)
     expect(rows).toHaveLength(2)
-    expect(rows[0]).toContain('mayfly')
+    expect(visibleWidth(rows[0]!)).toBeLessThanOrEqual(1)
     expect(rows[1]).toContain('.')
     expect(visibleWidth(rows[1]!)).toBeLessThanOrEqual(1)
   })

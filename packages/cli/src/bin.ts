@@ -1,12 +1,8 @@
 #!/usr/bin/env node
 /**
- * The `mayfly` bin entry: nothing but the shebang and the hand-off — every
- * behavior lives in `main.ts` behind seams, so the specs drive the whole
- * launcher without ever executing this file.
+ * The `mayfly` bin is only a hand-off to the independent Remote Frontend.
  * @module @ephemeral-ai/mayfly-cli/bin
  */
-import { main } from './main.ts'
+import { run } from '@ephemeral-ai/mayfly-remote/remote-bin'
 
-// Run-as-binary only: under vitest (source-plane imports) this never fires.
-await main(process.argv.slice(2))
-
+await run()

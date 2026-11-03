@@ -55,6 +55,11 @@ export function armExitEpitaph(text: string | undefined): void {
   }
 }
 
+/** The armed epitaph, for tests. */
+export function armedEpitaph(): string | undefined {
+  return armed
+}
+
 /** Flush the armed epitaph — the `process 'exit'` hook body. */
 export function writeArmedEpitaph(): void {
   if (armed === undefined) return

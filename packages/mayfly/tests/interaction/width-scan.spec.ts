@@ -16,12 +16,20 @@ import Schema from '@deepseek-ai/schemastery'
 import { ui } from '../../../ui/src/index.ts'
 import type { JobView } from '@deepseek-ai/dsh-jobs'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { FilesBrowser, type FilesBrowserFacts } from '../../src/interaction/files-browser-model.ts'
 import { scheduleNode } from '../../src/interaction/schedule-command.ts'
 import { accountPanelNode } from '../../src/interaction/provider-account.ts'
 import { INTERACTION_LOCALE } from '../../src/interaction/locale.ts'
 import { interpolateLocaleMessage, type MayflyLocaleId } from '../../src/frontend/locale.ts'
 import { helpNode, type HelpSection } from '../../src/interaction/help.ts'
+import { rewindNode } from '../../src/interaction/rewind.ts'
+import { renamePanelModel } from '../../src/interaction/rename-model.ts'
+import { agentsPanelModel } from '../../src/interaction/agents-model.ts'
+import { createUpdateProgressState, updatePanelModel } from '../../src/interaction/update-model.ts'
+import { tracePanelModel } from '../../src/interaction/trace-model.ts'
+import { createRealSurface, probeComponents } from '../design/probe.ts'
 import { jobDetailsNode, jobItems, jobOutputNode } from '../../src/interaction/jobs.ts'
+import { sessionWorkspaceItem } from '../../src/interaction/session-workspaces-model.ts'
 import { sessionDetailNode as sessionListDetailNode, sessionListItem } from '../../src/interaction/session-list-model.ts'
 import { FakeKeymap } from './fakes.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
@@ -33,6 +41,8 @@ import * as conversationViewStatus from '../../src/interaction/conversation-view
 import { footerRows } from '../transcript/footer-fakes.ts'
 import { renderRequest, requestFixture } from './request-fixture.ts'
 import { settingsFixture, settingsField } from './settings-fixture.ts'
+import { helpCatalogSections } from './help-catalog-fixture.ts'
+import { plain } from '../helpers.ts'
 
 /** One questionnaire ask whose option label and description are the fixture. */
 function ask(text: string) {
@@ -61,7 +71,62 @@ function planAsk(text: string) {
 }
 
 describe('interaction width-scan', () => {
+  for (const [width, height] of [[120, 40], [40, 16]] as const) {
+    it(`complete Help catalog admits, pages to its last command, and restores the top at ${width}x${height}`, () => {
+      const surface = createRealSurface(helpNode(helpCatalogSections()), width, {
+        components: probeComponents(),
+        overrides: { getViewport: () => ({ columns: width, rows: height }) },
+      })
+      const assertFrame = (rows: string[]): string => {
+        expectLinesFit(`complete-help/${width}x${height}`, rows, width)
+        expect(rows.length).toBeLessThanOrEqual(height)
+        return plain(rows).join('\n')
+      }
+      try {
+        expect(assertFrame(surface.render())).toContain('Commands')
+        expect(assertFrame(surface.render())).toContain('/agents')
+        let bottom = ''
+        for (let page = 0; page < 100 && !bottom.includes('/onboarding'); page += 1) {
+          bottom = assertFrame(surface.press('\x1b[6~'))
+        }
+        expect(bottom).toContain('/onboarding')
+        expect(assertFrame(surface.press('\x1b[H'))).toContain('Commands')
+        expect(assertFrame(surface.press('\x1b[F'))).toContain('/onboarding')
+        expect(assertFrame(surface.press('\x1b[H'))).toContain('/agents')
+      } finally { surface.dispose() }
+    })
+  }
+
   for (const { name, text } of ADVERSARIAL) {
+    it(`Subagent tree and its stop confirmation survive ${name}`, () => {
+      const entries = [
+        { kind: 'child' as const, id: SessionId('branch'), parentId: SessionId('root'), depth: 1, hasChildren: true, mode: 'continuable' as const, activity: 'running' as const, label: text, tokens: 2048, toolCount: 3, activeSince: 0 },
+        { kind: 'child' as const, id: SessionId('nested'), parentId: SessionId('branch'), depth: 2, hasChildren: false, mode: 'one-shot' as const, activity: 'inactive' as const, label: text, stopBlocked: text },
+        { kind: 'diagnostic' as const, id: SessionId('diagnostic'), parentId: SessionId('branch'), depth: 2, reason: 'corrupt' as const },
+      ]
+      for (const width of SCAN_WIDTHS) {
+        const surface = createRealSurface(agentsPanelModel(entries, 65_000, interpolateLocaleMessage), width, { components: probeComponents() })
+        try {
+          expectLinesFit(`agents/${name}`, surface.render(), width)
+          const confirmation = surface.press('x')
+          expectLinesFit(`agents-stop/${name}`, confirmation, width)
+        } finally { surface.dispose() }
+      }
+    })
+    it(`Rename title editor survives ${name}`, () => {
+      for (const width of SCAN_WIDTHS) {
+        const surface = createRealSurface(renamePanelModel(text), width, { components: probeComponents() })
+        try { expectLinesFit(`rename/${name}`, surface.render(), width) } finally { surface.dispose() }
+      }
+    })
+    it(`Trace list and detail survive ${name}`, () => {
+      const item = { seq: 1, lastSeq: 2, eventSeqs: [1, 2], time: 1_000, type: 'assistant/attempt', surface: 'current' as const, title: text, summary: text }
+      for (const narrow of ['list', 'detail'] as const) for (const width of SCAN_WIDTHS) {
+        const surface = createRealSurface(tracePanelModel(text, [item], undefined, { selected: item, document: JSON.stringify({ native: text }), narrow, escapeLabel: 'back' }), width, { components: probeComponents() })
+        try { expectLinesFit(`trace-${narrow}/${name}`, surface.render(), width) } finally { surface.dispose() }
+      }
+    })
+
     for (const kind of ['form', 'multiselect'] as const) it(`shared ${kind} survives ${name}`, async () => {
       const bench = await requestFixture()
       try {
@@ -79,6 +144,45 @@ describe('interaction width-scan', () => {
             const rows = renderer.component.render(width)
             expectLinesFit(`shared-${kind}/${name}/${height}`, rows, width)
             expect(rows.length).toBeLessThanOrEqual(height)
+          }
+        } finally { renderer.runtime.dispose() }
+      } finally { await bench.ctx.fiber.dispose() }
+    })
+
+    it(`Update progress, recovery and blocked panels survive ${name}`, async () => {
+      const bench = await requestFixture()
+      try {
+        const state = createUpdateProgressState()
+        state.steps.set('snapshot', 'ok')
+        state.steps.set('rollback', 'fail')
+        state.blockedMessage = text
+        state.outcome = { kind: 'rollback-incomplete', fromVersion: text, toVersion: text, message: text, logPath: text }
+        bench.ctx.mayflyOverlays.open({ id: 'update-width', capturing: true }, updatePanelModel(state, text, text))
+        const model = bench.ctx.mayflyUiInteraction.get('overlay', 'update-width')!
+        const viewport = { columns: 80, rows: 20 }
+        const renderer = renderRequest(model, viewport)
+        try {
+          for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+            viewport.columns = width
+            viewport.rows = height
+            expectLinesFit(`update/${name}/${height}`, renderer.component.render(width), width)
+          }
+        } finally { renderer.runtime.dispose() }
+      } finally { await bench.ctx.fiber.dispose() }
+    })
+
+    it(`Rewind picker survives ${name}`, async () => {
+      const bench = await requestFixture()
+      try {
+        bench.ctx.mayflyOverlays.open({ id: 'rewind-width', capturing: true }, rewindNode([{ turn: 1, boundarySeq: 1, prompt: text, response: text, discarded: 100 }]))
+        const model = bench.ctx.mayflyUiInteraction.get('overlay', 'rewind-width')!
+        const viewport = { columns: 80, rows: 20 }
+        const renderer = renderRequest(model, viewport)
+        try {
+          for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+            viewport.columns = width
+            viewport.rows = height
+            expectLinesFit(`rewind/${name}/${height}`, renderer.component.render(width), width)
           }
         } finally { renderer.runtime.dispose() }
       } finally { await bench.ctx.fiber.dispose() }
@@ -188,7 +292,7 @@ describe('interaction width-scan', () => {
       const nodes = [
         ui.stack.column([
           ui.loader({ message: 'Loading workspaces…' }),
-          ui.list({ id: 'workspaces', role: 'browse', selectedIds: [], filterable: true, items: [{ id: 'workspace', label: facts.cwd, detail: '1284 sessions' }] }),
+          ui.list({ id: 'workspaces', role: 'browse', selectedIds: [], filterable: true, items: [sessionWorkspaceItem({ id: 'workspace', cwd: facts.cwd, count: 1284, createdAt: 1000 }, facts.cwd, '/home/dev', key => key)] }),
         ]),
         ui.stack.column([
           ui.loader({ message: 'Loading session names… 12/1284' }),
@@ -312,6 +416,36 @@ for (const { name, text } of ADVERSARIAL) it(`native feature catalogs fit ${name
         renderer.runtime.dispose()
       }
       handle.close()
+    }
+  } finally { await bench.ctx.fiber.dispose() }
+})
+
+for (const { name, text } of ADVERSARIAL) it(`Files browser list, detail, preview and diff survive ${name}`, async () => {
+  const bench = await requestFixture()
+  const file = { id: 'delivered', path: text, description: text }
+  const latest = { seq: 3, summary: { turn: 2, cwd: '/host/work', files: [{ path: text, display: text, added: 10, deleted: 1 }], total: 1, added: 10, deleted: 1 } }
+  const base: FilesBrowserFacts = { files: [file], latest, focusedId: file.id, detailMode: false, canOpen: true }
+  const cases: readonly FilesBrowserFacts[] = [
+    base,
+    { ...base, detailMode: true, detail: { kind: 'delivered', path: text, displayPath: text, fileType: 'file', previewable: true, size: 1 } },
+    { ...base, detailMode: true, detail: { kind: 'delivered', path: text, fileType: 'file', previewable: true, preview: text } },
+    { ...base, focusedId: 'changes:3:0', detailMode: true, detail: { kind: 'changed', diff: { kind: 'text', path: text, display: text, before: true, after: true, coarse: true, hunks: [{ oldStart: 100, oldLines: 1, newStart: 100, newLines: 1, lines: [`-${text}`, `+${text}`] }] } } },
+  ]
+  try {
+    for (const [index, facts] of cases.entries()) {
+      const handle = bench.ctx.mayflyOverlays.open({ id: 'files-width', capturing: true }, FilesBrowser(facts, key => key))
+      const model = bench.ctx.mayflyUiInteraction.get('overlay', 'files-width')!
+      const viewport = { columns: 80, rows: 20 }
+      const renderer = renderRequest(model, viewport)
+      try {
+        for (const width of SCAN_WIDTHS) for (const height of [20, 7, 3]) {
+          viewport.columns = width
+          viewport.rows = height
+          const rows = renderer.component.render(width)
+          expectLinesFit(`files-${index}/${name}/${height}`, rows, width)
+          expect(rows.length).toBeLessThanOrEqual(height)
+        }
+      } finally { renderer.runtime.dispose(); handle.close() }
     }
   } finally { await bench.ctx.fiber.dispose() }
 })

@@ -1,0 +1,144 @@
+/** Actual question, Stats, delivered-file/native-diff and descendants acceptance against immutable rc.2. @module */
+const send = text => [{ step: 'type', text }, { step: 'key', name: 'enter' }]
+const checkpoint = name => ({ step: 'checkpoint', name })
+
+export const SPLIT_QUESTION_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' },
+  ...send('native:question:one'), { step: 'until', text: 'Choose a delivery route' },
+  checkpoint('question-one'), { step: 'resize', cols: 40, rows: 16 }, checkpoint('question-one-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('question-one-wide'),
+  { step: 'resize', cols: 80, rows: 24 }, { step: 'key', name: '2' },
+  { step: 'until', text: 'Native question finished: one' }, checkpoint('question-one-answered'),
+  ...send('native:question:wizard'), { step: 'until', text: 'Choose a delivery route' },
+  checkpoint('question-wizard-route'), { step: 'key', name: '1' },
+  { step: 'until', text: 'Choose the scopes' }, checkpoint('question-wizard-scopes'),
+  { step: 'key', name: 'space' }, { step: 'key', name: 'down' }, { step: 'key', name: 'space' }, { step: 'key', name: 'enter' },
+  { step: 'until', text: 'Add a delivery note' }, { step: 'type', text: '保留 native draft 🪰' }, checkpoint('question-wizard-note'),
+  { step: 'key', name: 'enter' }, checkpoint('question-wizard-review'), { step: 'key', name: 'end' }, { step: 'key', name: 'enter' },
+  { step: 'until', text: 'Native question finished: wizard' }, checkpoint('question-wizard-answered'),
+])
+
+export const SPLIT_STATS_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' },
+  ...send('Say one line about the first Stats seed.'), { step: 'until', text: 'the model is a stub' },
+  ...send('/new'), ...send('Say one line about the current Stats seed.'), { step: 'until', text: 'the model is a stub' },
+  ...send('/stats'), { step: 'until', text: 'Stats' }, { step: 'wait', ms: 600 }, checkpoint('stats-session'),
+  { step: 'key', name: 'r' }, { step: 'wait', ms: 350 }, checkpoint('stats-session-refresh'),
+  { step: 'key', name: 'alt+right' }, { step: 'wait', ms: 350 }, checkpoint('stats-account'),
+  { step: 'key', name: 'alt+right' }, { step: 'wait', ms: 600 }, checkpoint('stats-history'),
+  { step: 'key', name: 'r' }, checkpoint('stats-history-range'),
+  { step: 'key', name: 'w' }, { step: 'wait', ms: 600 }, checkpoint('stats-history-workspace'),
+  { step: 'key', name: 'c' }, { step: 'until', text: 'copied the stats summary' }, checkpoint('stats-history-copy'),
+  { step: 'key', name: 'alt+right' }, { step: 'wait', ms: 600 }, checkpoint('stats-models'),
+  { step: 'key', name: 'r' }, checkpoint('stats-models-range'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('stats-models-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('stats-models-wide'),
+  { step: 'key', name: 'esc' }, checkpoint('stats-closed'),
+])
+
+export const SPLIT_FILES_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' }, ...send('native:files:delivered'),
+  { step: 'until', text: 'Native files finished: delivered' }, ...send('/files'),
+  { step: 'until', text: 'Files' }, { step: 'key', name: 'enter' },
+  { step: 'until', text: 'Description:' }, { step: 'until', text: 'Deterministic native delivery' }, { step: 'wait', ms: 500 }, checkpoint('files-delivered-detail'),
+  // The Write card behind this browser already contains the preview text. Its
+  // presence alone cannot prove that the delivered-file preview actually opened.
+  { step: 'key', name: 'p' }, { step: 'until-gone', text: 'Description:' }, { step: 'until', text: 'Exact preview' }, checkpoint('files-delivered-preview'),
+  { step: 'key', name: 'p' }, { step: 'key', name: 'esc' }, { step: 'key', name: 'down' }, { step: 'key', name: 'enter' }, { step: 'wait', ms: 500 }, checkpoint('files-native-diff'),
+  { step: 'resize', cols: 40, rows: 16 }, { step: 'key', name: 'esc' }, checkpoint('files-narrow-list'),
+  { step: 'key', name: 'enter' }, checkpoint('files-narrow-detail'),
+  { step: 'key', name: 'esc' }, checkpoint('files-narrow-back'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('files-wide-diff'),
+  { step: 'key', name: 'esc' }, checkpoint('files-closed'),
+])
+
+/** Native descendants retain their real tree, external boundary, stop confirmation and cold conversation. */
+export const SPLIT_AGENTS_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' }, ...send('Prepare a completed native turn before creating descendants'),
+  { step: 'until', text: 'the model is a stub' }, ...send('native:agents:tree'),
+  { step: 'audit', event: 'agents-fixture-ready', label: 'tree' },
+  ...send('/agents stop'), { step: 'until', text: 'usage: /agents [stop <id>]' }, checkpoint('agents-parser-usage'),
+  ...send('/agents stop missing-native-child'), { step: 'until', text: 'unknown subagent: missing-native-child' }, checkpoint('agents-parser-unknown'),
+  ...send('/agents'), { step: 'until', text: 'Subagents' }, checkpoint('agents-tree'),
+  { step: 'key', name: 'right' }, checkpoint('agents-expanded'),
+  { step: 'key', name: 'left' }, checkpoint('agents-collapsed'), { step: 'key', name: 'right' },
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-tree-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-tree-wide'), { step: 'resize', cols: 80, rows: 24 },
+  { step: 'key', name: '/' }, { step: 'type', text: 'External leaf' }, checkpoint('agents-filter-external'),
+  { step: 'key', name: 'enter' }, { step: 'until', text: 'External subagents have no local conversation' }, checkpoint('agents-external-refusal'),
+  { step: 'key', name: 'esc' }, { step: 'key', name: 'x' }, checkpoint('agents-external-stop-unavailable'),
+  { step: 'key', name: 'ctrl+u' }, { step: 'key', name: '/' }, { step: 'type', text: 'Live leaf' }, checkpoint('agents-filter-live'),
+  { step: 'key', name: 'esc' }, { step: 'key', name: 'x' }, { step: 'until', text: 'Stop selected subagent?' }, checkpoint('agents-stop-confirm'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-stop-confirm-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-stop-confirm-wide'), { step: 'resize', cols: 80, rows: 24 },
+  { step: 'key', name: 'esc' }, checkpoint('agents-stop-cancel'),
+  { step: 'key', name: 'x' }, { step: 'until', text: 'Stop selected subagent?' }, { step: 'key', name: 'y' },
+  { step: 'audit', event: 'agents-live-settled', label: 'tree' }, checkpoint('agents-stopped'),
+  { step: 'key', name: 'esc' }, ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Cold leaf' }, checkpoint('agents-filter-cold'),
+  { step: 'key', name: 'enter' }, { step: 'until-gone', text: 'Subagents' }, checkpoint('agents-cold-selected'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-cold-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-cold-wide'),
+  { step: 'key', name: 'f7' }, { step: 'resize', cols: 80, rows: 24 }, checkpoint('agents-return-primary'),
+])
+
+/** Real live/cold access, addressed continuation, explicit-stop closure and stored-history reopening. */
+export const SPLIT_AGENTS_LIFECYCLE_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' }, ...send('Prepare a completed native turn before creating descendants'),
+  { step: 'until', text: 'the model is a stub' }, ...send('native:agents:tree'),
+  { step: 'audit', event: 'agents-fixture-ready', label: 'tree' },
+  ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Live leaf' }, { step: 'key', name: 'enter' },
+  { step: 'until-gone', text: 'Subagents' }, { step: 'until', text: 'Message Live leaf' }, checkpoint('agents-live-view'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-live-view-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-live-view-wide'), { step: 'resize', cols: 80, rows: 24 },
+  { step: 'key', name: 'f7' }, ...send('/agents stop agents-live'),
+  { step: 'audit', event: 'agents-live-settled', label: 'tree' }, { step: 'until', text: 'stopped subagent agents-live' }, checkpoint('agents-live-stopped-main'),
+  { step: 'key', name: 'f7' }, checkpoint('agents-live-stop-closed-view'),
+  ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Live leaf' }, { step: 'key', name: 'enter' },
+  { step: 'until-gone', text: 'Subagents' }, { step: 'until', text: 'Reply to Live leaf — sending resumes it' }, checkpoint('agents-live-stopped-view'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-live-stopped-view-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-live-stopped-view-wide'), { step: 'resize', cols: 80, rows: 24 },
+  { step: 'key', name: 'f7' }, { step: 'key', name: 'f8' }, ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Cold leaf' }, { step: 'key', name: 'enter' },
+  { step: 'until-gone', text: 'Subagents' }, { step: 'until', text: 'Reply to Cold leaf — sending resumes it' }, checkpoint('agents-cold-before-continuation'),
+  ...send('hold:600000 Continue the cold child through its exact parent'),
+  { step: 'until', text: 'Message Cold leaf' }, checkpoint('agents-cold-continued-live'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-cold-continued-live-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-cold-continued-live-wide'), { step: 'resize', cols: 80, rows: 24 },
+  { step: 'key', name: 'f7' }, ...send('/agents stop agents-cold'), checkpoint('agents-cold-stopped-main'),
+  { step: 'key', name: 'f7' }, checkpoint('agents-cold-stop-closed-view'),
+  ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Cold leaf' }, { step: 'key', name: 'enter' },
+  { step: 'until-gone', text: 'Subagents' }, { step: 'until', text: 'Reply to Cold leaf — sending resumes it' }, checkpoint('agents-cold-stopped-view'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-cold-stopped-view-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-cold-stopped-view-wide'),
+  { step: 'key', name: 'f7' }, { step: 'resize', cols: 80, rows: 24 }, checkpoint('agents-lifecycle-return-primary'),
+])
+
+/** A real naturally completed addressed turn preserves its side descriptor and returns to cold access. */
+export const SPLIT_AGENTS_SETTLEMENT_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' }, ...send('Prepare a completed native turn before creating descendants'),
+  { step: 'until', text: 'the model is a stub' }, ...send('native:agents:tree'),
+  { step: 'audit', event: 'agents-fixture-ready', label: 'tree' },
+  ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Cold leaf' }, { step: 'key', name: 'enter' },
+  { step: 'until-gone', text: 'Subagents' }, { step: 'until', text: 'Reply to Cold leaf — sending resumes it' }, checkpoint('agents-settlement-before'),
+  ...send('Complete one additional addressed cold child turn naturally'),
+  { step: 'until', text: 'Complete one additional addressed cold child turn naturally' },
+  { step: 'until', text: 'Reply to Cold leaf — sending resumes it' }, { step: 'wait', ms: 350 }, checkpoint('agents-settlement-completed'),
+  { step: 'key', name: 'f7' }, checkpoint('agents-settlement-primary'),
+  { step: 'key', name: 'f7' }, { step: 'until', text: 'Reply to Cold leaf — sending resumes it' }, checkpoint('agents-settlement-retained-view'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-settlement-retained-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-settlement-retained-wide'),
+])
+
+export const SPLIT_NATIVE_CASES = Object.freeze({
+  questions: { steps: SPLIT_QUESTION_STEPS, profileTag: 'questions-v1' },
+  stats: { steps: SPLIT_STATS_STEPS, profileTag: 'stats-v1' },
+  files: { steps: SPLIT_FILES_STEPS, fixture: 'native-files', profileTag: 'files-v1' },
+  agents: { steps: SPLIT_AGENTS_STEPS, fixture: 'native-agents', profileTag: 'agents-v1' },
+  'agents-lifecycle': { steps: SPLIT_AGENTS_LIFECYCLE_STEPS, fixture: 'native-agents', profileTag: 'agents-lifecycle-v1' },
+  'agents-settlement': { steps: SPLIT_AGENTS_SETTLEMENT_STEPS, fixture: 'native-agents', profileTag: 'agents-settlement-v1' },
+})

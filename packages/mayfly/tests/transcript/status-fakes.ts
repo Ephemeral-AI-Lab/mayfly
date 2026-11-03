@@ -16,7 +16,7 @@ import { foldConversationFacts, initialConversationFacts } from '../../src/conve
 import type { ConversationFacts } from '../../src/conversation/types.ts'
 import { projectChildSessionFacts, type ChildSessionFacts } from '../../src/transcript/session-facts.ts'
 import type { LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
-import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
+import { compileMayflyStatusNode } from '../../src/core/ui-compiler.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { fakeAgent as sharedFakeAgent, plainColors } from '../helpers.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
@@ -395,17 +395,15 @@ export async function bootStatusPlugin(
     render: width => {
       const model = currentModel()
       if (model === undefined || width <= 0) return ''
-      const full = model.node?.kind === 'shed' ? model.node.node : model.node
-      if (model.definition.overflow === 'hide' && full?.kind === 'text' && typeof full.content === 'string' && components.visibleWidth(full.content) > width) return ''
-      const result = compileMayflyUiNode(model.node!, {
+      const result = compileMayflyStatusNode(model.node!, {
         components,
         colors,
         getViewport: () => ({ columns: width, rows: 1 }),
-        bounded: true,
-        emit: () => {},
+        screenMode: 'main',
       })
-      const rows = result.ok ? result.value.component.render(width) : result.errorComponent.render(width)
-      return rows[0] ?? ''
+      const rendered = result.ok ? result.value.component.renderStatus(width) : result.errorComponent.renderStatus(width)
+      if (model.definition.overflow === 'hide' && rendered.overflowed) return ''
+      return rendered.rows[0] ?? ''
     },
   }
   return {

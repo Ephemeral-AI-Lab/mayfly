@@ -18,7 +18,7 @@
  * @module @ephemeral-ai/mayfly/transcript/splash
  */
 
-import { FLY_IN_TOTAL_MS, markColumns, scaleRows, stageRows } from '../core/text/quad-mark.ts'
+import { FLY_IN_TOTAL_MS, markColumns, scaleRows, stageRows } from '../core/quad-mark.ts'
 import type { MayflyColorFn, MayflySemanticColors } from '../core/types.ts'
 import { MARK_BEAT, MARK_ROWS } from './banner-art.ts'
 
@@ -151,7 +151,7 @@ export function composeSplashLines(deps: SplashDeps, content: SplashContent, wid
   if (width <= 0 || rows <= 0) return []
   const { colors } = deps
   const brand: MayflyColorFn = text => deps.strong(colors.primary(text))
-  const wordmark = center(deps, `${brand('mayfly')} ${colors.textMuted(versionLabel(content.version))}`, width)
+  const wordmark = center(deps, deps.truncate(`${brand('mayfly')} ${colors.textMuted(versionLabel(content.version))}`, width), width)
   const slogan = center(deps, colors.accent(deps.truncate(content.labels.slogan, width)), width)
   const listWidth = Math.min(width - 4, SPLASH_LIST_MAX)
   const withMark = deps.ascii !== true && width >= SPLASH_MIN_WIDTH

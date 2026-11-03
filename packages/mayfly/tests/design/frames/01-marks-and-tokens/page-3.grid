@@ -1,0 +1,27 @@
+## page-3
+grid 100x13 cursor none
+|page 3/6 (Ctrl+N): tones and styles (the whole palette; a monochrome terminal keeps weight and
+|glyphs)
+|
+|default  Sample text in this tone
+|muted    Sample text in this tone
+|primary  Sample text in this tone
+|accent   Sample text in this tone
+|user     Sample text in this tone
+|success  ✓ Saved to clipboard
+|warning  ⚠ permission picker is unavailable
+|danger   ✗ Plan copy failed
+|
+|strong  italic  struck
+styles
+0: 0-93 fg:muted
+1: 0-6 fg:muted
+3: 0-32 fg:text
+4: 0-32 fg:muted
+5: 0-32 fg:primary
+6: 0-32 fg:accent
+7: 0-32 fg:roleUser
+8: 0-28 fg:success
+9: 0-42 fg:warning
+10: 0-26 fg:error
+12: 0-5 fg:text b; 6-7 fg:text; 8-13 fg:text i; 14-15 fg:text; 16-21 fg:muted s

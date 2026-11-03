@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { profileNameFromArgv } from '../../src/internal/profile.ts'
 import {
   armExitEpitaph,
+  armedEpitaph,
   epitaphFor,
   setExitEpitaphWriter,
   writeArmedEpitaph,
@@ -21,6 +22,7 @@ describe('exit epitaph', () => {
     setExitEpitaphWriter(text => { written.push(text) })
     armExitEpitaph('first')
     armExitEpitaph('latest')
+    expect(armedEpitaph()).toBe('latest')
     writeArmedEpitaph()
     armExitEpitaph(undefined)
     writeArmedEpitaph()

@@ -84,7 +84,7 @@ describe('components layering', () => {
     expect(violations("import { readFileSync } from 'node:fs'")).toEqual(['imports node:fs'])
     expect(violations("import { Context } from 'cordis'")).toEqual(['imports cordis'])
     expect(violations("import { width } from '../core/width.ts'")).toEqual(['imports ../core/width.ts'])
-    expect(violations("import { x } from '../conversation/types.ts'")).toEqual(['imports ../conversation/types.ts'])
+    expect(violations("import { x } from '../transcript/types.ts'")).toEqual(['imports ../transcript/types.ts'])
     expect(violations("export * from '@earendil-works/pi-tui'")).toEqual(['imports @earendil-works/pi-tui'])
     expect(violations("const core = await import('../core/screen.ts')")).toEqual(['imports ../core/screen.ts'])
     expect(violations("import './effects.ts'\nimport 'node:path'")).toEqual(['imports node:path'])

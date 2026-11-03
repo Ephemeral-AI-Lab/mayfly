@@ -11,7 +11,7 @@ import type {
   WorkflowResultInfo,
   WorkflowRunInfo,
 } from '@deepseek-ai/dsh-workflow'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as workflow from '../../src/transcript/pane-workflow.ts'
 import { formatWorkflowElapsed, setWorkflowPaneClock, workflowNode } from '../../src/transcript/pane-workflow.ts'
 import { resetSeq, turnStart } from './helpers.ts'
@@ -244,6 +244,7 @@ describe('mayfly-pane-workflow', () => {
 
   it('ticks once for concurrent live runs and stands down after settlement and unload', async () => {
     const rig = await boot()
+    const ticks = vi.spyOn(rig.tick, 'subscribe')
     rig.childIds.push('child-1')
     const first = runInfo()
     startRun(rig.ctx, first, 'child-1')
@@ -263,6 +264,7 @@ describe('mayfly-pane-workflow', () => {
     expect(plain(rig).join('\n')).toContain('✗ Workflow publish-check')
     expect(plain(rig).join('\n')).toContain('⊘ Workflow beta')
     expect(rig.tick.subscribers).toBe(0)
+    for (const [listener] of ticks.mock.calls) listener(clock)
     rig.tick.fire(clock)
     await rig.dispose()
     rig.ctx.emit('workflow/start', runInfo('late'))

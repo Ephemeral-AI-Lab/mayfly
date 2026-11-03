@@ -1,0 +1,26 @@
+# Applied after dsh-base and dsh-web-app in the mayfly-host profile. Keep the
+# complete Web Host services; this layer changes browser/URL handoff, removes
+# the Web-only model context, and adds the Mayfly Host services. Restate the other web-runtime values
+# because a patch replaces the targeted row's whole config.
+
+- id: web-runtime
+  config:
+    openBrowser: false
+    printUrl: false
+    publicUrl: !!js ctx.webStartup.publicUrl
+    surfaceContext: false
+
+# Native Web prompt sections describe a browser GUI and its implementation
+# checkout. They do not apply to an independent terminal frontend.
+- id: harness-dev-context
+  disabled: true
+
+- insert:
+    - id: mayfly-host
+      name: '@ephemeral-ai/mayfly-host'
+
+    - id: mayfly-host-startup
+      name: '@ephemeral-ai/mayfly-host/startup'
+
+    - id: mayfly
+      name: '@ephemeral-ai/mayfly-host/settings'

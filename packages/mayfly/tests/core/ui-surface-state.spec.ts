@@ -3,7 +3,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { Component } from '@earendil-works/pi-tui'
-import { UiControlStore, type UiControlBinding, type UiScrollControl } from '../../src/core/ui/state/ui-surface-state.ts'
+import { UiControlStore, type UiControlBinding, type UiScrollControl } from '../../src/core/ui-surface-state.ts'
 
 const component = { render: () => [] } as unknown as Component
 

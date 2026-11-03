@@ -137,6 +137,8 @@ class GoalProjectionFake {
     return () => { this.listeners.delete(listener) }
   }
 
+  capture() { return [...this.listeners] }
+
   emit(session: object, value: GoalProjection | null): void {
     this.values.set(session, value)
     for (const listener of this.listeners) listener(session, 'goal', value, 0)
@@ -158,6 +160,7 @@ function currentAgentService(initial: Agent | null) {
       },
     },
     listenerCount: () => listeners.size,
+    capture: () => [...listeners],
     switchTo(agent: Agent | null) {
       current = agent
       for (const listener of listeners) listener(agent, 1)
@@ -181,6 +184,47 @@ async function bootGoal(agent: Agent | null, services: Record<string, unknown>, 
 }
 
 describe('mayfly-status-goal', () => {
+  it('retires queued projection, selection and clock callbacks before the owner unloads', async () => {
+    const agent = fakeAgent([]) as unknown as Agent
+    const selected = currentAgentService(agent)
+    const harness = await bootGoal(agent, { mayflyCurrentAgent: selected.service, goals: { get: () => goal('active') } }, goal('active'))
+    const subscribe = vi.spyOn(harness.tick, 'subscribe')
+    harness.projections.emit(agent.session, projectionOf(goal('complete')))
+    const queuedTick = subscribe.mock.calls[0]![0]
+    const queuedProjection = harness.projections.capture()
+    const queuedSelection = selected.capture()
+    await harness.dispose()
+    for (const listener of queuedProjection) listener(agent.session, 'goal', projectionOf(goal('active')), 1)
+    for (const listener of queuedSelection) listener(agent, 1)
+    queuedTick(Date.now())
+    expect(harness.tick.subscribers).toBe(0)
+    expect(harness.ctx.mayflyPanes.list()).toEqual([])
+  })
+
+  it.each([new Error('projection unavailable'), 'projection withdrawn'])('contains a native projection failure: %s', async failure => {
+    const agent = fakeAgent([]) as unknown as Agent
+    const harness = await bootGoal(agent, { mayflyCurrentAgent: currentAgentService(agent).service, goals: { get: () => goal('active') } }, goal('active'))
+    const warn = vi.spyOn(harness.ctx.logger, 'warn').mockImplementation(() => {})
+    vi.spyOn(harness.projections, 'snapshot').mockImplementationOnce(() => { throw failure })
+    harness.projections.emit(agent.session, projectionOf(goal('active')))
+    expect(warn).toHaveBeenCalledWith(`could not read current goal for the goal view: ${failure instanceof Error ? failure.message : failure}`)
+    expect(harness.entry().summary).toBeNull()
+    await harness.dispose()
+  })
+
+  it.each(['abort', 'unload'] as const)('refuses a queued goal action after %s', async mode => {
+    const agent = fakeAgent([]) as unknown as Agent
+    const pause = vi.fn()
+    const harness = await bootGoal(agent, { mayflyCurrentAgent: currentAgentService(agent).service, goals: { get: () => goal('active'), pause } }, goal('active'))
+    const entry = harness.entry()
+    const action = entry.definition.onEvent!.action!
+    if (mode === 'unload') await harness.dispose()
+    const signal = mode === 'abort' ? AbortSignal.abort() : new AbortController().signal
+    expect(await action({ kind: 'activate', pagePath: [], controlId: 'goal-pause:3', actionId: 'goal-pause:3' }, { surfaceId: entry.id, operationId: 'queued', source: entry.source, revision: entry.revision, signal, report: vi.fn() })).toEqual({ kind: 'cancelled' })
+    expect(pause).not.toHaveBeenCalled()
+    if (mode !== 'unload') await harness.dispose()
+  })
+
   it('registers a views pane before todo, with no item until a goal exists, and tracks only the exact current Agent', async () => {
     const first = fakeAgent([]) as unknown as Agent
     const second = fakeAgent([]) as unknown as Agent

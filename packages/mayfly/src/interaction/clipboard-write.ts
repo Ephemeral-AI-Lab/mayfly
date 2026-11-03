@@ -13,9 +13,8 @@
  * @module @ephemeral-ai/mayfly/interaction/clipboard-write
  */
 
-import { emitClipboardOsc52 } from '../core/terminal/terminal-escape.ts'
+import { emitClipboardOsc52 } from '../core/terminal-escape.ts'
 import { failureDetail, runTool } from './clipboard-probe.ts'
-import { formatError } from '../internal/format.ts'
 
 /** How the text was delivered: a verified local clipboard tool, or an
  *  unverified OSC 52 escape the terminal may have honored. */
@@ -56,19 +55,14 @@ async function runClipboardTool(command: string, args: string[], text: string): 
  * (`ENOENT` from spawn) reads as "not installed" instead of the raw spawn
  * error, every other failure keeps its own message (exit code + stderr).
  */
-function toolFailure(command: string, error: unknown): string {
+function toolFailure(command: string, error: Error): string {
   if (
-    error instanceof Error
-    && 'code' in error
+    'code' in error
     && (error as NodeJS.ErrnoException).code === 'ENOENT'
   ) {
     return `${command} not installed`
   }
-  // Every failure this pipeline produces is an Error (spawn errors and the
-  // exit-code classification alike); the String arm only satisfies the
-  // unknown-type contract.
-  /* no non-Error failure can reach this pipeline */
-  return formatError(error)
+  return error.message
 }
 
 /** The default writer: the first probed tool accepting the text wins. */
@@ -79,7 +73,8 @@ const defaultClipboardTextWriter: ClipboardTextWriter = async (text) => {
       await runClipboardTool(command, args, text)
       return
     } catch (error) {
-      failures.push(toolFailure(command, error))
+      // runClipboardTool produces only native spawn or classified Error values.
+      failures.push(toolFailure(command, error as Error))
     }
   }
   // Every platform lists at least one tool, so the loop always leaves a

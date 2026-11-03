@@ -137,10 +137,9 @@ function promptItem(id: string, text: string, open: boolean, suffix?: string): M
  * A row's items as one block: the first is the head the cursor stands on, and the rest belong to it. They sit under the
  * head (the band covers them with it) and the cursor skips them, except the calls of a run, which are rows of their own.
  */
-function asBlock(items: readonly MayflyListItem[], selectable = false): readonly MayflyListItem[] {
+function asBlock(items: readonly [MayflyListItem, ...MayflyListItem[]]): readonly MayflyListItem[] {
   const [head, ...rest] = items
-  if (head === undefined) return items
-  return [head, ...rest.map((item): MayflyListItem => ({ ...item, under: head.id, ...selectable ? {} : { disabled: true } }))]
+  return [head, ...rest.map((item): MayflyListItem => ({ ...item, under: head.id, disabled: true }))]
 }
 
 function rowItems(row: StreamRow): readonly MayflyListItem[] {
@@ -174,7 +173,7 @@ function runItems(row: Extract<StreamRow, { readonly kind: 'tools' }>): readonly
   return [head, ...items]
 }
 
-function rowParts(row: StreamRow): readonly MayflyListItem[] {
+function rowParts(row: Exclude<StreamRow, { readonly kind: 'tools' }>): readonly [MayflyListItem, ...MayflyListItem[]] {
   switch (row.kind) {
     case 'prompt':
       return [
@@ -239,7 +238,6 @@ function rowParts(row: StreamRow): readonly MayflyListItem[] {
       ...(row.markdown === undefined ? [] : [{ id: `${row.id}.markdown`, label: '', body: ui.markdown(row.markdown), bodyAlways: true, bodyLead: [span('  ')] } satisfies MayflyListItem]),
       ...(row.more === undefined ? [] : [line(`${row.id}.more`, ToolMore(row.more))]),
     ]
-    case 'tools': return runItems(row)
     case 'title': return [line(row.id, [span('▸ ', 'muted'), span(row.text, 'muted'), ...(row.failed === undefined ? [] : [span(` · ${row.failed}`, row.partial === true ? 'warning' : 'danger')]), ...(row.interrupted === undefined ? [] : [span(` · ${row.interrupted}`, 'muted')]), ...(row.hint === undefined ? [] : [span(` · ${row.hint}`, 'muted')])])]
     case 'header': return [line(row.id, [span(row.open ? '▾ ' : '▸ ', 'muted'), span(row.label, MOOD_TONE[row.mood]), ...(row.tail === '' ? [] : [span(row.tail, 'muted')])])]
     case 'compaction': return [
@@ -453,8 +451,7 @@ export function TranscriptStream(facts: TranscriptViewFacts, cursor?: StreamCurs
   if (cached !== undefined && cached.cursor === cursorValue && cached.highlight === highlightValue && cached.stream !== undefined) return cached.stream
   const node = TranscriptView(facts, cursor, highlight)
   const stream = ui.stack.column([node, STREAM_KEYS])
-  const entry = viewCache.get(facts)
-  if (entry !== undefined) entry.stream = stream
+  viewCache.get(facts)!.stream = stream
   return stream
 }
 

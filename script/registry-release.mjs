@@ -18,9 +18,11 @@ export function readNpmView(result, spec, field) {
   }
 }
 
-/** Registry-visibility window: npm's ~130 MB CLI tarball regularly needs minutes. */
-const visibilityAttempts = 40
+/** Registry-visibility window: npm's ~130 MB CLI tarball can need well over ten minutes. */
+const visibilityAttempts = 160
 const visibilityIntervalMs = 15_000
+/** A version npm already reports as staged may still be processing; give it the same window before asking for approval. */
+const stagedVisibilityAttempts = visibilityAttempts
 
 /**
  * npm's staged publishing accepts a publish into a queue that an owner with a
@@ -37,10 +39,10 @@ export function stagedApprovalError(packages) {
   return new Error(`staged on npm, awaiting maintainer approval: ${specs}. Run \`npm stage list\` and \`npm stage approve <stage-id>\` (npm 11.15 or newer), then re-run this release`)
 }
 
-async function waitFor(pkg, expected, registry, sleep, log, warn) {
-  // The ~130 MB CLI tarball regularly needs more than five minutes to become
+async function waitFor(pkg, expected, registry, sleep, log, warn, attempts = visibilityAttempts) {
+  // The ~130 MB CLI tarball regularly needs well over ten minutes to become
   // visible after npm accepts it; the window has to outlive that processing.
-  for (let attempt = 1; attempt <= visibilityAttempts; attempt += 1) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const integrity = registry.view(`${pkg.name}@${pkg.version}`, 'dist.integrity')
     if (integrity === expected) {
       const attestations = registry.view(`${pkg.name}@${pkg.version}`, 'dist.attestations')
@@ -49,10 +51,10 @@ async function waitFor(pkg, expected, registry, sleep, log, warn) {
       return
     }
     if (integrity !== undefined) throw new Error(`${pkg.name}@${pkg.version}: registry integrity differs from local tarball`)
-    log(`${pkg.name}@${pkg.version}: not visible yet (${attempt}/${visibilityAttempts})`)
+    log(`${pkg.name}@${pkg.version}: not visible yet (${attempt}/${attempts})`)
     await sleep(visibilityIntervalMs)
   }
-  throw new Error(`${pkg.name}@${pkg.version}: not visible after ${Math.round((visibilityAttempts * visibilityIntervalMs) / 60_000)} minutes; a staged release needs maintainer approval (\`npm stage list\`, \`npm stage approve <stage-id>\`) before it becomes installable`)
+  throw new Error(`${pkg.name}@${pkg.version}: not visible after ${Math.round((attempts * visibilityIntervalMs) / 60_000)} minutes; npm may still be processing it, or a staged release needs maintainer approval (\`npm stage list\`, \`npm stage approve <stage-id>\`) before it becomes installable`)
 }
 
 async function waitForTag(pkg, tag, version, registry, sleep, log) {
@@ -84,7 +86,11 @@ export async function releaseRegistry(mode, packages, { registry, integrity, sle
           registry.publish(pkg, publishTag ?? (testRelease ? 'rc9-test' : 'candidate'))
         } catch (error) {
           if (!isStagedRelease(error)) throw error
-          log(`${pkg.name}@${pkg.version}: accepted into npm's staged queue; awaiting maintainer approval`)
+          // E409 means an earlier attempt was accepted; it may still be in
+          // npm's processing queue rather than waiting for a person. Poll the
+          // registry before asking for approval so a slow large tarball does
+          // not turn a successful publish into a red release.
+          log(`${pkg.name}@${pkg.version}: already staged or processing; waiting for visibility`)
           staged.push(pkg)
           continue
         }
@@ -97,7 +103,15 @@ export async function releaseRegistry(mode, packages, { registry, integrity, sle
       }
       if (!testRelease) await waitFor(pkg, expected, registry, sleep, log, warn)
     }
-    if (staged.length > 0) throw stagedApprovalError(staged)
+    if (staged.length > 0) {
+      for (const pkg of staged) {
+        try {
+          await waitFor(pkg, integrity(pkg), registry, sleep, log, warn, stagedVisibilityAttempts)
+        } catch {
+          throw stagedApprovalError(staged)
+        }
+      }
+    }
     if (testRelease && mode === 'publish') {
       // npm assigns `latest` on a package's first publish even when a custom
       // tag is supplied. Keep production consumers on the previous rc line.

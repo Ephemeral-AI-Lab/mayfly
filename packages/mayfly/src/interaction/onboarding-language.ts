@@ -8,7 +8,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SettingsPathOp } from '@deepseek-ai/dsh-settings'
-import { PALETTE_KEYS } from '../core/theme/palettes.ts'
+import { PALETTE_KEYS } from '../core/palettes.ts'
 import { applyTheme } from './theme-switch.ts'
 import { currentMayflySettings } from './settings.ts'
 

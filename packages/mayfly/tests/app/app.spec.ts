@@ -8,7 +8,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { apply, Config, internals } from '../../src/app/index.ts'
 import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
 import { conversationId, MAX_SIDE_CONVERSATIONS, MayflyConversationsService } from '../../src/app/conversation-views.ts'
-import { armExitEpitaph, setExitEpitaphWriter, writeArmedEpitaph } from '../../src/app/exit-epitaph.ts'
+import { armExitEpitaph, armedEpitaph } from '../../src/app/exit-epitaph.ts'
 import { fakeAgent, type FakeAgent } from '../helpers.ts'
 
 const originalStderr = internals.stderr
@@ -16,7 +16,6 @@ const originalStderr = internals.stderr
 afterEach(() => {
   internals.stderr = originalStderr
   armExitEpitaph(undefined)
-  setExitEpitaphWriter(undefined)
   vi.restoreAllMocks()
 })
 
@@ -305,6 +304,20 @@ describe('mayfly app driver', () => {
     await test.ctx.fiber.dispose()
   })
 
+  it.each(['missing', 'refused', 'rejected'] as const)('keeps the newly selected Agent after a %s plan command', async kind => {
+    const test = bench()
+    await booted(test)
+    if (kind === 'missing') test.ctx.set('commands', undefined)
+    else if (kind === 'refused') test.commands.execute.mockResolvedValueOnce({ commandId: 'plan', result: { kind: 'error', text: 'Preset refused plan mode' } })
+    else test.commands.execute.mockRejectedValueOnce(new Error('Plan command failed'))
+    test.ctx.mayflySessionStart.setPlanActive(true)
+    const agent = await ensureAgent(test)
+    expect(test.ctx.mayflyCurrentAgent.current()).toBe(agent)
+    expect(test.ctx.mayflySessionStart.planActive()).toBe(false)
+    expect(test.errors()).toContain(kind === 'missing' ? 'command service is not mounted' : kind === 'refused' ? 'Preset refused plan mode' : 'Plan command failed')
+    await test.ctx.fiber.dispose()
+  })
+
   it('clears a pending plan selection when leaving the start surface', async () => {
     const test = bench()
     await booted(test)
@@ -401,20 +414,16 @@ describe('mayfly app driver', () => {
   })
 
   it('arms the latest selected non-empty session on disposal', async () => {
-    const written: string[] = []
-    setExitEpitaphWriter(text => { written.push(text) })
     const test = bench()
     const agent = await ensureAgent(test)
     agent.session.events.push({ type: 'user/message' })
     await test.ctx.fiber.dispose()
-    writeArmedEpitaph()
-    expect(written.at(-1)).toContain(`--resume ${String(agent.id)}`)
+    expect(armedEpitaph()).toContain(`--resume ${String(agent.id)}`)
 
     const empty = bench()
     await ensureAgent(empty)
     await empty.ctx.fiber.dispose()
-    writeArmedEpitaph()
-    expect(written).toHaveLength(1)
+    expect(armedEpitaph()).toBeUndefined()
   })
 
   it('retires the stop latch only for an idle selected Agent and keeps it for a running or absent one', async () => {
@@ -432,7 +441,7 @@ describe('mayfly app driver', () => {
     // A latched stop with no selected Agent stays latched.
     test.ctx.mayflyConversations.selectPrimary(null)
     test.ctx.mayflyRequests.requestStop()
-    test.ctx.emit('agent/status', { agent: null, status: 'idle' } as never)
+    test.ctx.emit('agent/status', { agent, status: 'idle' })
     expect(test.ctx.mayflyRequests.stopPending()).toBe(true)
     await test.ctx.fiber.dispose()
   })

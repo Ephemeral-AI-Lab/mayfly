@@ -7,12 +7,12 @@ import { describe, expect, it } from 'vitest'
 import { ui, type MayflyUiEvent } from '../../../ui/src/index.ts'
 import {
   COMMON_MEANINGS, actionHintLabel, actionNamingProblem, actionScopeActive, defaultItemKey, effectiveItemKeys,
-} from '../../src/core/ui/state/ui-actions.ts'
-import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode, type MayflyUiCompilerOptions } from '../../src/core/ui/compile/ui-compiler.ts'
-import { validateMayflyEditorShellNode, validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
+} from '../../src/core/ui-actions.ts'
+import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode, type MayflyUiCompilerOptions } from '../../src/core/ui-compiler.ts'
+import { validateMayflyEditorShellNode, validateMayflyUiNode } from '../../src/core/ui-validator.ts'
 import type { MayflyKeymap } from '../../src/core/types.ts'
 import { probeComponents } from '../design/probe.ts'
-import { MayflyKeymapService } from '../../src/core/keys/keymap.ts'
+import { MayflyKeymapService } from '../../src/core/keymap.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
 import { plainColors } from '../helpers.ts'
 
@@ -36,7 +36,7 @@ function surface(node: unknown, overrides: Partial<MayflyUiCompilerOptions> = {}
     components: probeComponents(),
     colors,
     getViewport: () => ({ columns: 100, rows: 30 }),
-    bounded: true,
+    screenMode: 'alternate',
     emit: event => events.push(event),
     contextHints: { enabled: true },
     ...overrides,

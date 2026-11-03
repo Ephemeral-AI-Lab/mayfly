@@ -10,7 +10,7 @@
  * @module @ephemeral-ai/mayfly/transcript/tool-calls
  */
 
-import { alignDiffLines, diffModel } from '../core/content/diff-align.ts'
+import { alignDiffLines, diffModel } from '../core/diff-align.ts'
 import { sanitizePluginText } from '../core/plugin-view.ts'
 import { argumentDetail } from '../conversation/activity-detail.ts'
 import type { MayflyTranslate } from '../frontend/locale.ts'
@@ -502,12 +502,12 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
       id: entry.id, callId: entry.callId, activity: entry.activity, state, phase: phaseOf(state, false),
       name: t(answered.count === 1 ? 'Answered {count} question' : 'Answered {count} questions', { count: answered.count }),
       label: t(answered.count === 1 ? 'Answered {count} question' : 'Answered {count} questions', { count: answered.count }),
-      outcome, startedAt: entry.startedAt, ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
+      outcome, startedAt: entry.startedAt, endedAt: entry.result!.endedAt,
       input: () => NO_ROWS,
       body: () => ({ rows: answered.rows, total: answered.rows.length }),
     }
   }
-  if (plan) outcome.splice(0, outcome.length, planSteps(planText, t), sentBack ? `"${flat(revision, REASON_MAX_CHARS) ?? ''}"` : undefined)
+  if (plan) outcome.splice(0, outcome.length, planSteps(planText, t), sentBack ? `"${flat(revision, REASON_MAX_CHARS)!}"` : undefined)
   return {
     id: entry.id,
     callId: entry.callId,
@@ -555,7 +555,7 @@ function spawnOf(entry: ToolEntry): NonNullable<Call['spawn']> {
  * finished at once.
  */
 function whileSpawned(call: Call, children: SpawnedChildren | undefined, t: MayflyTranslate, now: number): Call {
-  if (call.spawn?.childId === undefined || children === undefined || call.state !== 'ok' && call.state !== 'pending') return call
+  if (call.spawn?.childId === undefined || children === undefined || call.state !== 'ok') return call
   const child = children.byId.get(call.spawn.childId)
   if (child === undefined) return call
   const { endedAt: _ended, ...open } = call
@@ -695,8 +695,7 @@ function tailHunk(hunk: { readonly before: string, readonly after: string }, cap
 
 /** The diff or code body of a file change within `cap` rows, and the row that says how much is left out (after it, or before it for the end of a change still being written). */
 function changeLayout(call: Call, cap: number, open: boolean, t: MayflyTranslate): { readonly diff?: readonly ToolDiffHunk[], readonly code?: { readonly text: string, readonly language?: string, readonly start?: number }, readonly more?: string, readonly moreBefore?: string } {
-  const content = call.file?.content()
-  if (content === undefined || cap <= 0) return {}
+  const content = call.file!.content()
   const hint = open ? '' : t(' · Ctrl+O')
   const earlier = (count: number): string => `${t('… +{count} earlier', { count })}${hint}`
   if (content.kind === 'code' && content.tail === true) {
@@ -768,7 +767,7 @@ export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 
       : open ? OPEN_BODY_ROWS : VERBOSE_BODY_ROWS
   // A call the Harness cut short has no output, only the reason its line gives; and a failed read or search has only its reason, which the line already gives.
   const quiet = call.interruption !== undefined || (call.state === 'error' && (call.activity === 'read' || call.activity === 'readImage' || call.activity === 'search'))
-  const body: Body = asking ? { rows: call.waiting?.rows ?? [], total: call.waiting?.rows.length ?? 0 } : quiet ? NO_ROWS : running ? call.input() : tier === 'verbose' ? call.body() : NO_ROWS
+  const body: Body = asking ? { rows: call.waiting!.rows, total: call.waiting!.rows.length } : quiet ? NO_ROWS : running ? call.input() : tier === 'verbose' ? call.body() : NO_ROWS
   const rows = body.tail === true ? body.rows.slice(-cap) : body.rows.slice(0, cap)
   const left = body.total - rows.length
   const hint = open ? '' : t(' · Ctrl+O')

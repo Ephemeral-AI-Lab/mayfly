@@ -1,9 +1,9 @@
 /** Canonical chart adapter behavior over simple-ascii-chart. */
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { formatChartNumber, renderChartRows } from '../../src/core/content/chart-renderer.ts'
+import { formatChartNumber, renderChartRows } from '../../src/core/chart-renderer.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { identity, plainColors } from '../helpers.ts'
 
 const colors = plainColors()
@@ -42,6 +42,40 @@ describe('renderChartRows', () => {
       expect(rows.length).toBeGreaterThan(0)
       expect(rows.every(row => visibleWidth(row) <= 80)).toBe(true)
     }
+  })
+
+  it('contains zero and overflow totals in normalized column charts', () => {
+    for (const values of [[0, 0], [Number.MAX_VALUE, Number.MAX_VALUE]]) {
+      const node = ui.chart({ chart: 'bar', layout: 'normalized', categories: ['total'], series: values.map((value, index) => ({ id: `series-${String(index)}`, values: [value] })) })
+      const rows = renderChartRows(node, 40, components, colors)
+      expect(rows.length).toBeGreaterThan(0)
+      expect(rows.every(row => visibleWidth(row) <= 40)).toBe(true)
+      expect(rows.join('\n')).not.toMatch(/NaN|Infinity/u)
+    }
+    const grouped = renderChartRows({ kind: 'chart', chart: 'bar', categories: ['A'], series: [{ id: 'count', values: [1] }] }, 40, components, colors)
+    expect(grouped.join('\n')).toContain('A')
+    expect(grouped.every(row => visibleWidth(row) <= 40)).toBe(true)
+  })
+
+  it('shows the declared endpoints of a ranged heatmap legend', () => {
+    const rows = renderChartRows(ui.chart({ chart: 'heatmap', columns: ['day'], rows: ['load'], values: [[1]],
+      levels: [{ value: 0, label: 'zero' }, { value: 1, label: 'one' }], range: { less: 'Less', more: 'More' },
+    }), 40, components, colors)
+    expect(rows.at(-1)).toContain('Less')
+    expect(rows.at(-1)).toContain('More')
+    expect(rows.every(row => visibleWidth(row) <= 40)).toBe(true)
+  })
+
+  it('contains a failed width dependency and paints the compact retry', () => {
+    let failed = false
+    const guarded = { ...components, visibleWidth: (text: string) => {
+      if (!failed) { failed = true; throw new Error('width provider unavailable') }
+      return visibleWidth(text)
+    } }
+    const rows = renderChartRows(charts[0], 80, guarded, colors)
+    expect(failed).toBe(true)
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.every(row => visibleWidth(row) <= 80)).toBe(true)
   })
 
   it('folds horizontal normalized bars row-major into proportional tone runs', () => {

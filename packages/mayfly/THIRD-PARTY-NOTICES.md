@@ -1,7 +1,7 @@
 # Third-party notices
 
 The built-in palettes of `@ephemeral-ai/mayfly` include ports of ready-made color schemes
-(`src/core/theme/palettes.ts`, the entries with a `family`). Each port uses the scheme's published colors, a few
+(`src/core/palettes.ts`, the entries with a `family`). Each port uses the scheme's published colors, a few
 adjusted in lightness for contrast. The schemes, their authors, and their licenses:
 
 | Scheme | Copyright | License | Source |

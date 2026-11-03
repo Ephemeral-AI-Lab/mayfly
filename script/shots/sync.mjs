@@ -6,10 +6,11 @@
  * 数据源（单一来源）；生成的 SVG 一律由本脚本写入，勿手改。改动场景或渲染器后
  * 运行 `pnpm shots:sync` 重新生成。
  *
- * After the component loop, the app shots are painted from the accepted app-shot
- * goldens of their catalog scenarios (`app.mjs`): the real product at the
- * release-pinned checkpoints. Locale and timezone are pinned so bytes never
- * drift with the host environment.
+ * After the component loop, the app shots are painted from the accepted goldens
+ * of their catalog scenarios (`app.mjs`): the real product, captured by the
+ * scenario runner. Changing one means accepting a new golden first
+ * (`pnpm run scenarios -- --update <scenario>`). Locale and timezone are pinned
+ * so bytes never drift with the host environment.
  *
  * Usage:
  *   node script/shots/sync.mjs          # regenerate every shot
@@ -35,7 +36,7 @@ const uiLibUrl = new URL('../../packages/ui/lib/index.js', import.meta.url)
 if (!existsSync(fileURLToPath(uiLibUrl))) {
   throw new Error('packages/ui/lib is missing — run `pnpm build` before the shots pipeline')
 }
-const { ui, defineMayflyComponent, compose } = await import(uiLibUrl.href)
+const { ui, defineMayflyComponent, patterns } = await import(uiLibUrl.href)
 
 const check = process.argv.includes('--check')
 const outDir = new URL('../../website/public/shots/', import.meta.url)
@@ -62,7 +63,7 @@ function settle(id, svg, size) {
 }
 
 for (const scenario of SCENARIOS) {
-  const { term, cols, rows } = await renderScenario(scenario, ui, defineMayflyComponent, compose)
+  const { term, cols, rows } = await renderScenario(scenario, ui, defineMayflyComponent, patterns)
   settle(scenario.id, await paintTerminalSvg(term, { cols, rows }), `${cols}×${rows}`)
 }
 // App shots: the real product at its scenario checkpoints, painted from their goldens.

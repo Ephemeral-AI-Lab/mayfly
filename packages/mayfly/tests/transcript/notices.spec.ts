@@ -13,8 +13,8 @@ import type { ContextPressureProjection } from '@deepseek-ai/dsh-token-meter'
 import type { GoalProjection } from '@deepseek-ai/dsh-goal'
 import { initialConversationFacts } from '../../src/conversation/facts.ts'
 import type { ConversationFacts } from '../../src/conversation/types.ts'
-import { UiInteractionService } from '../../src/core/ui/state/ui-interaction-state.ts'
-import { UiNotificationStore } from '../../src/core/ui/state/ui-interaction-notifications.ts'
+import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
+import { UiNotificationStore } from '../../src/core/ui-interaction-notifications.ts'
 import { CONTEXT_WARN_PERCENT, mountNotices } from '../../src/transcript/notices.ts'
 import type { TickSource } from '../../src/transcript/tick.ts'
 import { transcriptTranslatorFake } from './notices-fakes.ts'
@@ -28,7 +28,11 @@ class HandPressures {
 
   set(session: object, value: ContextPressureProjection): void {
     this.values.set(session, value)
-    for (const listener of this.listeners) listener(session, 'contextPressure', value, 0)
+    this.notify(session, 'contextPressure', value)
+  }
+
+  notify(session: object, key: string, value: unknown): void {
+    for (const listener of this.listeners) listener(session, key, value, 0)
   }
 
   snapshot(session: object): { readonly asOfSeq: number, readonly values: Record<string, unknown> } {
@@ -51,7 +55,7 @@ interface HandAgent {
 /** A facts source the test drives: the value, its listeners, and the Agent switch listeners. */
 class HandFacts {
   current: ConversationFacts = initialConversationFacts()
-  currentAgent: HandAgent | undefined = { id: 'agent-1', status: 'idle', session: {} }
+  currentAgent: HandAgent | null = { id: 'agent-1', status: 'idle', session: {} }
   currentGoal: GoalProjection | null = null
   private readonly goalListeners = new Set<(goal: GoalProjection | null) => void>()
   private readonly listeners = new Set<(facts: ConversationFacts) => void>()
@@ -63,7 +67,11 @@ class HandFacts {
   }
 
   switchTo(agent: { readonly id: string, readonly status: string }, facts: Partial<ConversationFacts>): void {
-    this.currentAgent = { ...agent, session: {} }
+    this.select({ ...agent, session: {} }, facts)
+  }
+
+  select(agent: HandAgent | null, facts: Partial<ConversationFacts>): void {
+    this.currentAgent = agent
     this.current = { ...initialConversationFacts(), ...facts }
     for (const listener of this.agentListeners) listener(agent)
     for (const listener of this.listeners) listener(this.current)
@@ -111,6 +119,8 @@ interface Harness {
   clock: { now: number }
   /** Publish the current Agent's native context pressure. */
   setPressure(value: ContextPressureProjection): void
+  /** Publish another native projection key or another Session without changing this Session's pressure. */
+  notifyProjection(session: object, key: string, value: unknown): void
   /** The texts of the notices the lane holds, by their producer id. */
   notices(): Record<string, string>
   /** The tails the lane records carry (the end of the message that a narrow row keeps whole), by producer id. */
@@ -119,15 +129,15 @@ interface Harness {
 }
 
 /** Mount the notices under a plugin Fiber, with the lane, facts and tick they read. */
-async function boot(facts = new HandFacts()): Promise<Harness> {
+async function boot(facts = new HandFacts(), provided: { readonly facts?: boolean, readonly tick?: boolean, readonly projections?: boolean } = {}): Promise<Harness> {
   const ctx = new Context()
   const lane = new UiInteractionService(ctx)
   const tick = new HandTick()
   const clock = { now: NOW }
   const pressures = new HandPressures()
-  ctx.reflect.provide('mayflySessionFacts', facts)
-  ctx.reflect.provide('mayflyTick', tick)
-  ctx.reflect.provide('sessionProjections', pressures)
+  if (provided.facts !== false) ctx.reflect.provide('mayflySessionFacts', facts)
+  if (provided.tick !== false) ctx.reflect.provide('mayflyTick', tick)
+  if (provided.projections !== false) ctx.reflect.provide('sessionProjections', pressures)
   const fiber = await ctx.plugin({
     name: 'notices-under-test',
     apply(owner: Context) {
@@ -140,6 +150,7 @@ async function boot(facts = new HandFacts()): Promise<Harness> {
       const session = facts.currentAgent?.session
       if (session !== undefined) pressures.set(session, value)
     },
+    notifyProjection: (session, key, value) => pressures.notify(session, key, value),
     notices: () => Object.fromEntries(lane.notificationSnapshot().map(record => [record.id.replace(/^mayfly\.notices\/\d+\//u, ''), record.message])),
     tails: () => Object.fromEntries(lane.notificationSnapshot().map(record => [record.id.replace(/^mayfly\.notices\/\d+\//u, ''), record.tail])),
     dispose: () => fiber.dispose(),
@@ -211,6 +222,21 @@ describe('notices from the session facts', () => {
     await harness.dispose()
   })
 
+  it('reports a retry once and counts nothing down when the host has no tick', async () => {
+    const harness = await boot(new HandFacts(), { tick: false })
+    harness.facts.set({ retrying: retry(429) })
+    expect(harness.notices()).toEqual({ 'notice/retry': 'Rate limited · retrying in 5s · 1/5' })
+    expect(harness.tick.listeners.size).toBe(0)
+    await harness.dispose()
+  })
+
+  it('raises nothing when the host has no session facts', async () => {
+    const harness = await boot(new HandFacts(), { facts: false })
+    expect(harness.notices()).toEqual({})
+    expect(harness.tick.listeners.size).toBe(0)
+    await harness.dispose()
+  })
+
   it('warns from 92% context occupancy, says how full it is, and clears below the threshold', async () => {
     expect(CONTEXT_WARN_PERCENT).toBe(92)
     const harness = await boot()
@@ -270,6 +296,45 @@ describe('notices from the session facts', () => {
   it('stays silent about the context when the session has no window', async () => {
     const harness = await boot()
     harness.setPressure({ pressureTokens: 900_000 })
+    expect(harness.notices()).toEqual({})
+    await harness.dispose()
+  })
+
+  it('ignores native notifications for another projection key or Session', async () => {
+    const harness = await boot()
+    const session = harness.facts.currentAgent?.session as object
+    harness.notifyProjection(session, 'tokenUsage', { contextWindow: 100, pressureTokens: 99 })
+    harness.notifyProjection({}, 'contextPressure', { contextWindow: 100, pressureTokens: 99 })
+    expect(harness.notices()).toEqual({})
+    harness.setPressure({ contextWindow: 100, pressureTokens: 99 })
+    expect(harness.notices()).toEqual({ 'notice/context': 'Context 99% full · /compact now' })
+    await harness.dispose()
+  })
+
+  it('keeps retry notices usable without native projections or a selected Agent', async () => {
+    const facts = new HandFacts()
+    facts.select(null, {})
+    const harness = await boot(facts, { projections: false })
+    harness.facts.select(null, { turn: 2 })
+    expect(harness.notices()).toEqual({})
+    harness.facts.set({ retrying: retry(429) })
+    expect(harness.notices()).toEqual({ 'notice/retry': 'Rate limited · retrying in 5s · 1/5' })
+    harness.facts.switchTo({ id: 'selected-again', status: 'idle' }, {})
+    expect(harness.notices()).toEqual({})
+    await harness.dispose()
+  })
+
+  it('announces only the primary Agent and remembers an exact Agent when switching back', async () => {
+    const harness = await boot()
+    harness.ctx.reflect.provide('mayflyConversations', { snapshot: () => ({ views: [{ kind: 'side' }, { kind: 'primary', sessionId: 'primary-agent' }] }) })
+    harness.facts.switchTo({ id: 'side-agent', status: 'idle' }, { turn: 2 })
+    expect(harness.notices()).toEqual({})
+    harness.facts.switchTo({ id: 'primary-agent', status: 'idle' }, { turn: 2 })
+    expect(harness.notices()).toEqual({ 'notice/resumed': 'Resumed session · 2 turns' })
+    const primary = harness.facts.currentAgent
+    harness.facts.select(null, {})
+    expect(harness.notices()).toEqual({})
+    harness.facts.select(primary, { turn: 3 })
     expect(harness.notices()).toEqual({})
     await harness.dispose()
   })
@@ -352,6 +417,42 @@ describe('notices from the session facts', () => {
     // The next running turn retires the diagnostic; the durable error row stays in the transcript.
     harness.facts.set({ active: true })
     expect(harness.notices()).toEqual({})
+    await harness.dispose()
+  })
+
+  it('accepts normalized transport facts and ignores malformed or unrelated provider failures', async () => {
+    const harness = await boot()
+    const emit = (error: unknown, agent = harness.facts.currentAgent): void => {
+      harness.ctx.emit('agent/error', { agent: agent as never, turn: 1, step: 0, error: error as never })
+    }
+    for (const error of [null, 'network', {}, { code: 429 }, { failure: { code: 'SERVER' }, code: 'TRANSPORT' }]) emit(error)
+    emit({ code: 'TRANSPORT' }, { id: 'other-agent', status: 'idle', session: {} })
+    expect(harness.notices()).toEqual({})
+    emit({ failure: { code: 'TRANSPORT' } })
+    expect(harness.notices()).toEqual({ 'notice/transport': 'Transport failed' })
+    emit({ code: 'TRANSPORT', cause: new Error('') })
+    expect(harness.notices()).toEqual({ 'notice/transport': 'Transport failed' })
+    emit({ code: 'TRANSPORT', cause: ' \n\t ' })
+    expect(harness.notices()).toEqual({ 'notice/transport': 'Transport failed' })
+    emit({ code: 'TRANSPORT', cause: 'connection\nclosed' })
+    expect(harness.notices()).toEqual({ 'notice/transport': 'Transport failed · connection closed' })
+    await harness.dispose()
+  })
+
+  it('bounds cyclic transport causes and truncates the sanitized diagnostic', async () => {
+    const harness = await boot()
+    const first = new Error('reset')
+    const second = new Error('proxy refused', { cause: first })
+    first.cause = second
+    const emit = (cause: unknown): void => {
+      harness.ctx.emit('agent/error', { agent: harness.facts.currentAgent as never, turn: 1, step: 0, error: Object.assign(new Error('failed'), { code: 'TRANSPORT', cause }) })
+    }
+    emit(first)
+    expect(harness.notices()).toEqual({ 'notice/transport': 'Transport failed · reset · proxy refused' })
+    emit(new Error('one', { cause: new Error('two', { cause: new Error('three', { cause: new Error('four') }) }) }))
+    expect(harness.notices()).toEqual({ 'notice/transport': 'Transport failed · one · two · three' })
+    emit('x'.repeat(200))
+    expect(harness.notices()).toEqual({ 'notice/transport': `Transport failed · ${'x'.repeat(160)}` })
     await harness.dispose()
   })
 

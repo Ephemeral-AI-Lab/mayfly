@@ -8,21 +8,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply as applyApi } from '../../../ui/src/provider.ts'
 import type { MayflyOverlayDefinition, MayflyOverlayHandle, MayflyUiEventContext, MayflyUiNode } from '../../../ui/src/contracts.ts'
 import { ui } from '../../../ui/src/index.ts'
-import { mountMayflySurfaceRenderer } from '../../src/core/hosts/surface-renderer.ts'
-import type { MayflyContextHints } from '../../src/core/ui/compile/context-hint-locale.ts'
-import type { MayflyUiImageSource } from '../../src/core/ui/paint/ui-images.ts'
-import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal/terminal.ts'
+import { mountMayflySurfaceRenderer } from '../../src/core/surface-renderer.ts'
+import type { MayflyContextHints } from '../../src/core/context-hint-locale.ts'
+import type { MayflyUiImageSource } from '../../src/core/ui-images.ts'
+import { startMayflyTerminal, type MayflyTerminalRuntime } from '../../src/core/terminal.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyKeyAction, MayflySemanticColors } from '../../src/core/types.ts'
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/text/width.ts'
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { flush, plainText } from '../helpers.ts'
 
 /** A focusable one-row stand-in for the prompt editor in its dock slot. */
 const promptStandIn = (): MayflyFocusable => ({ focused: false, render: () => ['prompt'], invalidate() {} })
-import { FakeTerminal } from './fake-terminal.ts'
+import { FakeTerminal, waitForRender } from './fake-terminal.ts'
 import * as frontend from '../../src/frontend/index.ts'
-import { MayflyScreenService } from '../../src/core/hosts/screen.ts'
-import { untranslated } from '../../src/core/ui/state/ui-interaction-surface.ts'
+import { MayflyScreenService } from '../../src/core/screen.ts'
+import { untranslated } from '../../src/core/ui-interaction-locale.ts'
+import { FilesBrowser } from '../../src/interaction/files-browser-model.ts'
+import { MayflyUiSurfaceRuntime } from '../../src/core/ui-compiler.ts'
 
 class Scope {
   private readonly cleanups: Array<() => void> = []
@@ -318,8 +320,7 @@ it('keeps short editor presentations at their natural content height', async () 
     })
     await flush(8)
     const rows = slot.component.render(80).map(stripTerminalSequences)
-    // On the alternate screen the action row is horizontal: the frame is its natural content height.
-    expect(rows.length).toBe(8)
+    expect(rows.length).toBe(9)
     expect(rows[0]).toMatch(/^━+$/u)
     expect(rows.join('\n')).toContain('Version')
     expect(rows.join('\n')).toContain('Mayfly')
@@ -331,6 +332,135 @@ it('keeps short editor presentations at their natural content height', async () 
     handle.close()
     slot.dispose()
   } finally { await bench.dispose() }
+})
+
+it.each([2, 160])('lays out a %s-line preview on its first editor-overlay frame and scrolls on the first key', async count => {
+  const bench = await fixture(80, 24)
+  try {
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', promptStandIn())
+    slot.focus()
+    let preview: string | undefined
+    const view = () => FilesBrowser({
+      files: [{ id: 'file', path: '/workspace/delivered.txt' }], focusedId: 'file', detailMode: true, canOpen: false,
+      detail: { kind: 'delivered', path: '/workspace/delivered.txt', displayPath: 'delivered.txt', fileType: 'file', size: 160, previewable: true, ...preview === undefined ? {} : { preview } },
+    }, untranslated)
+    const handle = bench.open({ id: 'files-preview', presentation: 'editor', capturing: true, render: view })
+    await flush(8)
+    expect(slot.component.render(80).join('\n')).toContain('Name:')
+    preview = Array.from({ length: count }, (_, at) => `PREVIEW ${String(at + 1).padStart(3, '0')}`).join('\n')
+    handle.refresh()
+    await flush(8)
+    const paint = (columns: number) => slot.component.render(columns).map(stripTerminalSequences)
+    let rows = paint(80)
+    expect(rows.join('\n')).toContain('PREVIEW 002')
+    if (count === 160) {
+      expect(rows).toHaveLength(16)
+      expect(rows.join('\n')).toContain('PREVIEW 011')
+      slot.component.handleInput?.('\x1b[B')
+      rows = paint(80)
+      expect(rows.join('\n')).toContain('PREVIEW 012')
+      expect(rows.join('\n')).not.toContain('PREVIEW 001')
+      bench.terminal.resize(120, 40)
+      rows = paint(120)
+      expect(rows).toHaveLength(28)
+      expect(rows.join('\n')).toContain('PREVIEW 023')
+      expect(rows.join('\n')).toContain('options')
+      // The wide browser adds a list before the preview; F5 moves to the next control group.
+      slot.component.handleInput?.('\x1b[15~')
+      slot.component.handleInput?.('\x1b[B')
+      expect(paint(120).join('\n')).toContain('PREVIEW 024')
+      slot.component.handleInput?.('\x1b[F')
+      expect(paint(120).join('\n')).toContain('PREVIEW 160')
+      slot.component.handleInput?.('\x1b[H')
+      expect(paint(120).join('\n')).toContain('PREVIEW 001')
+      bench.terminal.resize(40, 16)
+      rows = paint(40)
+      expect(rows).toHaveLength(11)
+      expect(rows.join('\n')).toContain('PREVIEW 007')
+      // Each responsive branch keeps its own viewport and position.
+      expect(rows.join('\n')).not.toContain('PREVIEW 001')
+      for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(40)
+      slot.component.handleInput?.('\x1b[F')
+      expect(paint(40).join('\n')).toContain('PREVIEW 160')
+      slot.component.handleInput?.('\x1b[H')
+      expect(paint(40).join('\n')).toContain('PREVIEW 001')
+      bench.terminal.resize(80, 24)
+      rows = paint(80)
+      expect(rows).toHaveLength(16)
+      expect(rows.join('\n')).toContain('PREVIEW 011')
+      bench.owner.dispose()
+      await flush(8)
+      expect(slot.component.render(80)).toEqual(['prompt'])
+      bench.mount()
+      await flush(8)
+      expect(paint(80)).toHaveLength(16)
+      expect(paint(80).join('\n')).toContain('PREVIEW 011')
+    }
+    handle.close()
+    await flush(8)
+    expect(slot.component.render(80)).toEqual(['prompt'])
+    slot.dispose()
+  } finally { await bench.dispose() }
+})
+
+it('retains responsive preview positions when a settled focus move recompiles the full editor frame', async () => {
+  const bind = vi.spyOn(MayflyUiSurfaceRuntime.prototype, 'bind')
+  const bench = await fixture(80, 24)
+  try {
+    const slot = bench.root.mayflyScreen.mountDockSlot('editor.prompt', promptStandIn())
+    slot.focus()
+    let file = 'delivered.txt'
+    let prefix = 'PREVIEW'
+    const handle = bench.open({
+      id: 'files-settled-preview', presentation: 'editor', capturing: true,
+      render: () => FilesBrowser({
+        files: [{ id: 'file', path: `/workspace/${file}` }], focusedId: 'file', detailMode: true, canOpen: false,
+        detail: { kind: 'delivered', path: `/workspace/${file}`, fileType: 'file', previewable: true, preview: Array.from({ length: 160 }, (_, at) => `${prefix} ${String(at + 1).padStart(3, '0')}`).join('\n') },
+      }, untranslated),
+    })
+    const paint = () => bench.runtime.tui.render(bench.terminal.columns).map(stripTerminalSequences).join('\n')
+    const settle = async () => {
+      await flush(8)
+      bench.runtime.requestRender(true)
+      await waitForRender()
+      return paint()
+    }
+    const key = async (data: string) => { bench.terminal.sendInput(data); return await settle() }
+    expect(await settle()).toContain('PREVIEW 011')
+    expect(await key('\x1b[B')).toContain('PREVIEW 012')
+    expect(await key('\x1b[F')).toContain('PREVIEW 160')
+    expect(await key('\x1b[H')).toContain('PREVIEW 001')
+    bench.terminal.resize(40, 16)
+    expect(await settle()).toContain('PREVIEW 006')
+    expect(await key('\x1b[F')).toContain('PREVIEW 160')
+    bench.terminal.resize(120, 40)
+    expect(await settle()).toContain('PREVIEW 023')
+    const model = bench.root.mayflyUiInteraction.get('overlay', 'files-settled-preview')!
+    const node = model.node
+    const revision = model.revision
+    const compiled = bind.mock.calls.length
+    await key('\x1b[15~')
+    expect(model.node).toBe(node)
+    expect(model.revision).toBeGreaterThan(revision)
+    expect(bind.mock.calls.length).toBeGreaterThan(compiled)
+    expect(await key('\x1b[F')).toContain('PREVIEW 160')
+    expect(await key('\x1b[H')).toContain('PREVIEW 001')
+    bench.terminal.resize(80, 24)
+    expect(await settle()).toContain('PREVIEW 160')
+    expect(await key('\x1b[H')).toContain('PREVIEW 001')
+    expect(await key('\x1b[F')).toContain('PREVIEW 160')
+    file = 'replacement.txt'
+    prefix = 'REPLACEMENT'
+    handle.refresh()
+    const replaced = await settle()
+    expect(replaced).toContain('/workspace/replacement.txt')
+    expect(replaced).toContain('REPLACEMENT 001')
+    expect(replaced).not.toContain('REPLACEMENT 160')
+    handle.close()
+    await settle()
+    expect(slot.component.render(80)).toEqual(['prompt'])
+    slot.dispose()
+  } finally { bind.mockRestore(); await bench.dispose() }
 })
 
 it('keeps the root overlay node title over the registration frame', async () => {
@@ -360,6 +490,45 @@ async function settleInput(component: Component, input: string): Promise<void> {
 afterEach(() => { vi.useRealTimers() })
 
 describe('direct overlay surface renderer', () => {
+  it.each(['ordinary node', 'empty node', 'non-capturing controls'] as const)('contains a real compiler setup failure for %s and accepts a later valid publish', async kind => {
+    let unavailable = false
+    let failedReads = 0
+    let presentationSnapshots = 0
+    const faulty = new Proxy(components, { get(target, key, receiver) {
+      if (key === 'presentation' && unavailable) {
+        // The key hint and action acquire their presentation before the dependency fails for the rejection pane.
+        if (kind === 'non-capturing controls' && presentationSnapshots < 2) presentationSnapshots += 1
+        else { failedReads += 1; throw new Error('presentation unavailable') }
+      }
+      return Reflect.get(target, key, receiver)
+    } })
+    const f = await fixture(80, 24, faulty)
+    try {
+      unavailable = true
+      const action = vi.fn(() => ({ kind: 'completed' as const }))
+      const handle = f.open({
+        id: 'fallback-setup-failure', capturing: false,
+        render: () => kind === 'empty node' ? null : kind === 'ordinary node' ? ui.text('Ready') : ui.actions({ id: 'actions', items: [{ id: 'run', label: 'Run' }] }),
+        onEvent: { action },
+      })
+      await flush(8)
+      unavailable = false
+      expect(failedReads).toBeGreaterThan(0)
+      expect(f.stack()).toHaveLength(1)
+      const component = f.stack()[0]!.component
+      expect(component.render(80).join('')).toContain('Mayfly UI compilation failed safely')
+      for (const width of [1, 12, 40, 80]) for (const row of component.render(width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width)
+      component.handleInput?.('\r')
+      expect(action).not.toHaveBeenCalled()
+      handle.set(ui.text('Recovered'))
+      await flush(8)
+      expect(f.stack()[0]!.component.render(80).join('')).toContain('Recovered')
+      handle.close()
+      await flush(8)
+      expect(f.stack()).toEqual([])
+    } finally { unavailable = false; await f.dispose() }
+  })
+
   it('routes initial and refreshed actions, forwards focus, and bounds non-scroll content', async () => {
     const f = await fixture(80, 4)
     try {
@@ -744,28 +913,16 @@ describe('direct overlay surface renderer', () => {
       await flush(8)
       const component = f.stack()[0]!.component
       const tasks: VoidFunction[] = []
-      // Count only the tasks the action pipeline queues. The alternate screen's own layout queues a settle microtask,
-      // which a frame between the input and the flush may leave pending; it is not part of the refresh this checks.
-      let recording = false
-      const queue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { if (recording) tasks.push(task) })
-      const input = (): void => {
-        recording = true
-        try { component.handleInput?.('\r') } finally { recording = false }
-      }
-      const run = (task: VoidFunction | undefined): void => {
-        if (task === undefined) throw new Error('no queued task')
-        recording = true
-        try { task() } finally { recording = false }
-      }
-      input()
+      const queue = vi.spyOn(globalThis, 'queueMicrotask').mockImplementation(task => { tasks.push(task) })
+      component.handleInput?.('\r')
       await flush(8)
       expect(tasks).toHaveLength(1)
-      run(tasks.shift())
-      input()
+      tasks.shift()!()
+      component.handleInput?.('\r')
       await flush(8)
       expect(tasks).toHaveLength(2)
-      run(tasks.splice(1, 1)[0])
-      run(tasks.shift())
+      tasks.splice(1, 1)[0]!()
+      tasks.shift()!()
       expect(onEvent).toHaveBeenCalledTimes(2)
       queue.mockRestore()
     } finally {

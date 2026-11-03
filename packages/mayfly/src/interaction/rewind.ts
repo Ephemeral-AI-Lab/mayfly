@@ -2,9 +2,17 @@
  * @module @ephemeral-ai/mayfly/interaction/rewind
  */
 
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { panel, ui, type MayflyTranslate, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import { interpolateLocaleMessage } from '../frontend/locale.ts'
 
-interface RewindCandidate {
+/** Validated native event shape used by the readonly rewind presentation. */
+export interface RewindEvent {
+  readonly type: string
+  readonly seq: number
+  readonly data: unknown
+}
+
+export interface RewindCandidate {
   readonly turn: number
   readonly boundarySeq: number
   readonly prompt: string
@@ -28,7 +36,7 @@ function preview(message: MessageLike): string {
 }
 
 /** Return direct-user turn boundaries in newest-first order. */
-export function rewindCandidates(events: readonly SessionEvent[]): readonly RewindCandidate[] {
+export function rewindCandidates(events: readonly RewindEvent[]): readonly RewindCandidate[] {
   const rows: RewindCandidate[] = []
   // Suffix count of conversation messages: `messagesAfter[i]` counts
   // user/assistant events at index i or later, so a boundary at index b
@@ -45,7 +53,7 @@ export function rewindCandidates(events: readonly SessionEvent[]): readonly Rewi
     const event = events[index]
     if (event === undefined) continue
     if (event.type === 'turn/start') {
-      turn = event.data.turn
+      turn = (event.data as { readonly turn: number }).turn
       boundarySeq = event.seq
       boundaryIndex = index
     }
@@ -58,7 +66,7 @@ export function rewindCandidates(events: readonly SessionEvent[]): readonly Rewi
     const end = nextUser < 0 ? events.length : index + 1 + nextUser
     const response = events.slice(index + 1, end)
       .filter(candidate => candidate.type === 'assistant/message')
-      .map(candidate => preview(candidate.data.message as unknown as MessageLike))
+      .map(candidate => preview((candidate.data as { readonly message: MessageLike }).message))
       .find(text => text.length > 0)
     const previous = rows.at(-1)
     if (previous?.boundarySeq === boundarySeq) {
@@ -78,4 +86,12 @@ export function rewindCandidates(events: readonly SessionEvent[]): readonly Rewi
     })
   }
   return rows.reverse()
+}
+
+/** The immutable rc.2 filterable earlier-turn picker; choosing never mutates history. */
+export function rewindNode(candidates: readonly RewindCandidate[], t: MayflyTranslate = interpolateLocaleMessage): MayflyUiNode {
+  return panel({ title: t('Rewind current session'), escapeLabel: 'close', body: ui.stack.column([
+    ui.list({ id: 'rewind-candidates', role: 'choose', selectedIds: candidates.length === 0 ? [] : [String(candidates[0]!.boundarySeq)], filterable: true, items: candidates.map(candidate => ({ id: String(candidate.boundarySeq), label: t('Turn {turn} · {prompt}', { turn: candidate.turn, prompt: candidate.prompt }), detail: `${candidate.response === undefined ? '' : `↳ ${candidate.response} · `}${t('rewinds')} ${t(candidate.discarded === 1 ? '{count} message' : '{count} messages', { count: candidate.discarded })}` })) }),
+    ui.text(t('The original session stays available in /sessions.'), { tone: 'muted' }),
+  ]) })
 }

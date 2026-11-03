@@ -4,8 +4,8 @@
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { withOverrides } from '../fixture-fields.ts'
-import { acknowledgeChoice, choiceError, choicePinned, choiceReportedSegment, choiceRow, choiceSegment, focusableListItem, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, createChoiceState, reconcileChoice, reduceChoice, visibleChoiceIndices } from '../../src/core/ui/state/ui-interaction-choice.ts'
-import { admittedListItem } from '../../src/core/ui/admit/ui-validator.ts'
+import { acknowledgeChoice, choiceError, choicePinned, choiceReportedSegment, choiceRow, choiceSegment, focusableListItem, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, createChoiceState, reconcileChoice, reduceChoice, visibleChoiceIndices } from '../../src/core/ui-interaction-choice.ts'
+import { admittedListItem } from '../../src/core/ui-validator.ts'
 
 const tree = ui.list({ id: 'tree', role: 'choose', tree: true, selectedIds: [], filterable: true, items: [
   { id: 'root', label: 'Root' },

@@ -11,7 +11,7 @@
 // replaceable by the theme plugin family outside this package.
 import type {} from '@deepseek-ai/cordis'
 import type { MayflyPagePath } from '@ephemeral-ai/mayfly-ui'
-import type { MayflyPresentation } from './theme/presentation.ts'
+import type { MayflyPresentation } from './presentation.ts'
 
 /**
  * A renderable Mayfly component. Structurally compatible with pi-tui's
@@ -574,6 +574,11 @@ export interface MayflyCompletionView {
  * component's idiom.
  */
 export interface MayflyEditor extends MayflyFocusable {
+  /**
+   * Repaint the same native editor after a local palette swap, retaining its
+   * cursor, undo, paste, history, and completion state.
+   */
+  updateColors(colors: MayflySemanticColors): void
   /** Called when the user submits; receives the full text. */
   onSubmit?: ((text: string) => void) | undefined
   /**
@@ -815,6 +820,25 @@ export interface MayflyEditorSubmitAttempt {
   cancel(): void
 }
 
+/** Options for {@link MayflyComponents.createMarkdown}. */
+export interface MayflyMarkdownOptions {
+  /** Initial Markdown source; defaults to empty. */
+  text?: string
+  /** Horizontal padding, in columns; defaults to 0. */
+  paddingX?: number
+  /** Vertical padding, in rows; defaults to 0. */
+  paddingY?: number
+}
+
+/** A streamed-Markdown component with internal render caching. */
+export interface MayflyMarkdown extends MayflyComponent {
+  /**
+   * Replace the Markdown source; the next render reflects it.
+   * @param text - the new Markdown source (complete or mid-stream).
+   */
+  setText(text: string): void
+}
+
 /** Options for {@link MayflyComponents.createImage}. */
 export interface MayflyImageOptions {
   /** The encoded image bytes (PNG, JPEG, GIF, or WebP). */
@@ -836,7 +860,7 @@ export interface MayflyImageOptions {
  */
 export type MayflyImage = MayflyComponent
 
-/** One selectable completion entry. */
+/** One entry of a {@link MayflySelectList}. */
 export interface MayflySelectItem {
   /** The value reported to selection callbacks. */
   value: string
@@ -846,12 +870,49 @@ export interface MayflySelectItem {
   description?: string
 }
 
+/** Options for {@link MayflyComponents.createSelectList}. */
+export interface MayflySelectListOptions {
+  /** The entries to choose from. */
+  items: MayflySelectItem[]
+  /** Maximum simultaneously visible entries; defaults to 10. */
+  maxVisible?: number
+  /** Called when the user confirms the highlighted entry. */
+  onSelect?(item: MayflySelectItem): void
+  /** Called when the user dismisses the list. */
+  onCancel?(): void
+  /** Called whenever the highlight moves. */
+  onSelectionChange?(item: MayflySelectItem): void
+}
+
+/** A single-selection list. */
+export interface MayflySelectList extends MayflyComponent {
+  /**
+   * Read the currently highlighted entry.
+   * @returns the highlighted item, or `null` when the list is empty.
+   */
+  getSelectedItem(): MayflySelectItem | null
+}
+
 /** The outcome of a fuzzy subsequence probe; lower scores rank better. */
 export interface MayflyFuzzyMatch {
   /** Whether every query character matched, in order. */
   matches: boolean
   /** The ranking score; lower is better. */
   score: number
+}
+
+/** Renderer-owned options for the bounded top rule used by connected panes. */
+export interface MayflyTopRuleOptions {
+  /** Optional title placed immediately after the opening corner. */
+  readonly title?: string
+  /** Optional title paint applied before clipping. */
+  readonly titlePaint?: MayflyColorFn
+  /** Optional hint joined to the title with a rule segment. */
+  readonly hint?: string
+  /** Optional hint paint applied before clipping. */
+  readonly hintPaint?: MayflyColorFn
+  /** Optional paint for the border corners, rule, and title/hint joiner. */
+  readonly paint?: MayflyColorFn
 }
 
 /**
@@ -868,12 +929,22 @@ export interface MayflyComponents {
   readonly presentation?: MayflyPresentation
   /** Apply renderer-owned strong emphasis without exposing ANSI. */
   strong(text: string): string
+  /** Apply renderer-owned italic emphasis without exposing ANSI. */
+  italic(text: string): string
+  /** Apply renderer-owned strike-through emphasis without exposing ANSI. */
+  strike(text: string): string
   /**
    * Create a multi-line input editor themed from the active palette.
    * @param options - editor options.
    * @returns the editor component.
    */
   createEditor(options?: MayflyEditorOptions): MayflyEditor
+  /**
+   * Create a streamed-Markdown component themed from the active palette.
+   * @param options - markdown options.
+   * @returns the markdown component.
+   */
+  createMarkdown(options?: MayflyMarkdownOptions): MayflyMarkdown
   /**
    * Create an inline image component themed from the active palette. Wraps
    * the underlying renderer's image component; terminals without an image
@@ -895,6 +966,12 @@ export interface MayflyComponents {
    * @returns the pixel dimensions, or `undefined` for undecodable data.
    */
   imageDimensions(data: Uint8Array): { width: number, height: number } | undefined
+  /**
+   * Create a single-selection list themed from the active palette.
+   * @param options - items and selection callbacks.
+   * @returns the list component.
+   */
+  createSelectList(options: MayflySelectListOptions): MayflySelectList
   /**
    * Measure the visible width of styled text in terminal columns.
    * @param text - the text, ANSI styling allowed.
@@ -918,6 +995,13 @@ export interface MayflyComponents {
    */
   truncateToWidth(text: string, width: number, ellipsis?: string): string
   /**
+   * Render a full-width top rule for a connected renderer-owned pane.
+   * @param width - the target visible width.
+   * @param options - optional title, hint, and paint functions.
+   * @returns the ANSI-safe rule row.
+   */
+  topRule(width: number, options?: MayflyTopRuleOptions): string
+  /**
    * Probe a case-insensitive fuzzy subsequence match (the S14 completion
    * primitive). Lower scores rank better; boundaries and consecutive runs
    * are rewarded.
@@ -926,6 +1010,16 @@ export interface MayflyComponents {
    * @returns whether it matched and at what score.
    */
   fuzzyMatch(query: string, text: string): MayflyFuzzyMatch
+  /**
+   * Filter and rank items by a fuzzy query: the query splits on whitespace
+   * and slashes into tokens, every token must match `getText(item)`, and
+   * the survivors sort by ascending summed score (stable on ties).
+   * @param items - the candidates.
+   * @param query - the fuzzy query.
+   * @param getText - extracts the match text from an item.
+   * @returns the matching items, best first.
+   */
+  fuzzyFilter<T>(items: readonly T[], query: string, getText: (item: T) => string): T[]
 }
 
 declare module '@deepseek-ai/cordis' {

@@ -13,7 +13,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import { conversationProjectionSchema } from '../conversation/projection.ts'
 import type { LiveAssistantDraft } from '../conversation/live-stream.ts'
-import { formatError } from '../internal/format.ts'
+import type { ConversationProjection } from '../conversation/types.ts'
 
 /**
  * Live assistant-stream draft source. Harness publishes streaming deltas as
@@ -79,14 +79,10 @@ const LOADING: ConversationFeedState = Object.freeze({ kind: 'loading' })
  */
 function settlesLive(value: unknown, draft: LiveAssistantDraft | undefined): boolean {
   if (draft === undefined || value === null || typeof value !== 'object') return false
-  const record = value as { readonly settledSteps?: unknown, readonly turns?: unknown }
-  if (Array.isArray(record.settledSteps) && record.settledSteps.includes(`${String(draft.turn)}:${String(draft.step)}`)) return true
-  if (!Array.isArray(record.turns)) return false
-  return record.turns.some((turn) => {
-    if (turn === null || typeof turn !== 'object') return false
-    const row = turn as { readonly turn?: unknown, readonly endedAt?: unknown }
-    return row.turn === draft.turn && row.endedAt !== undefined
-  })
+  // The native registry admits complete conversation values through conversationProjectionSchema.
+  const record = value as ConversationProjection
+  if (record.settledSteps.includes(`${String(draft.turn)}:${String(draft.step)}`)) return true
+  return record.turns.some(row => row.turn === draft.turn && row.endedAt !== undefined)
 }
 
 /**
@@ -241,7 +237,7 @@ export class AddressConversationFeed implements ConversationFeed {
       this.current = Object.freeze({ kind: 'failed', reason: 'invalid' })
     } catch (error) {
       if (signal.aborted) return
-      this.current = Object.freeze({ kind: 'failed', reason: 'read-failed', detail: formatError(error) })
+      this.current = Object.freeze({ kind: 'failed', reason: 'read-failed', detail: error instanceof Error ? error.message : String(error) })
     }
     notify()
   }

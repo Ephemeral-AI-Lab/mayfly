@@ -3,11 +3,11 @@ import { CURSOR_MARKER } from '@earendil-works/pi-tui'
 import { describe, expect, it, vi } from 'vitest'
 import { ui, type MayflyPromptNode } from '../../../ui/src/index.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
-import { compileMayflyUiNode } from '../../src/core/ui/compile/ui-compiler.ts'
-import { createPromptModel, reducePrompt, type UiPromptIntent, type UiPromptModel } from '../../src/core/ui/state/ui-interaction-prompt.ts'
-import { UiPromptEditor, paintPrompt, paintTokenStrip, pickPlaceholder, placeholderLadder, type PromptPaint } from '../../src/core/ui/state/ui-prompt.ts'
-import { validateMayflyUiNode } from '../../src/core/ui/admit/ui-validator.ts'
-import { truncateToWidth, visibleWidth } from '../../src/core/text/width.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { createPromptModel, reducePrompt, type UiPromptIntent, type UiPromptModel } from '../../src/core/ui-interaction-prompt.ts'
+import { UiPromptEditor, paintPrompt, paintTokenStrip, pickPlaceholder, placeholderLadder, type PromptPaint } from '../../src/core/ui-prompt.ts'
+import { validateMayflyUiNode } from '../../src/core/ui-validator.ts'
+import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
 import { createFakeEditor } from './fake-editor.ts'
 import { plain } from '../helpers.ts'
 
@@ -248,13 +248,13 @@ describe('a prompt without an interaction model', () => {
         components: { ...components, presentation: { glyphs, monochrome: false, reducedMotion: false } } as never,
         colors,
         getViewport: () => ({ columns: 40, rows: 10 }),
-        bounded: true,
+        screenMode: 'alternate',
       })
       if (!result.ok) throw new Error(result.message)
       return plain(result.value.component.render(40))
     }
     expect(compile('unicode')).toEqual(['> [x ×] draft'])
-    const placeholder = compileMayflyUiNode(ui.prompt({ id: 'p', placeholder: 'Ask anything' }), { emit: () => {}, components, colors, getViewport: () => ({ columns: 40, rows: 10 }), bounded: true })
+    const placeholder = compileMayflyUiNode(ui.prompt({ id: 'p', placeholder: 'Ask anything' }), { emit: () => {}, components, colors, getViewport: () => ({ columns: 40, rows: 10 }), screenMode: 'alternate' })
     expect(placeholder.ok && plain(placeholder.value.component.render(40))).toEqual(['> Ask anything'])
   })
 })

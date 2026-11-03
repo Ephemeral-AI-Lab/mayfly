@@ -1,54 +1,21 @@
 # `@ephemeral-ai/mayfly-cli`
 
-The global `mayfly` launcher is not a Cordis plugin. Its published manifest has
-no runtime dependencies; the pinned Harness graph ships as common and native
-archives. Product arguments and creative-mode preset behavior belong to Mayfly.
+The global `mayfly` launcher is not a Cordis plugin or a dsh Host launcher. Its published runtime dependency is the exact-version `@ephemeral-ai/mayfly-remote`; the package ships one small `lib/bin.js` and no runtime archives.
 
-## Launch and calibration
+## Launch boundary
 
-- `translate.ts` handles version flags, fixes the profile to `mayfly`, and places
-  the profile flag after `plugin` for that subcommand. Forward other arguments;
-  respect the `--` boundary. Do not add an upgrade command or public runtime API.
-- Calibration skips `link:`/`file:` profiles and never downgrades a profile
-  advanced by `/update`. Keep launcher and in-app updater independently owned.
-- Preserve platform-aware pnpm discovery: POSIX ENOENT and Windows ComSpec exit
-  9009 differ. Inconclusive probes defer to install; workspace-root refusal gets
-  one `-w` retry. Keep timeout/error classification and bounded diagnostic tails.
-- Child env `MAYFLY_LAUNCHER` supplies branding; `MAYFLY_DSH_BIN` identifies the
-  exact extracted host for in-app commands. Do not write host preset payloads.
-- Side effects go through `src/internals.ts`; tests restore `cliInternals`.
-  `src/bin.ts` remains a shebang and hand-off.
+- `src/bin.ts` preserves the Node shebang and hands off to `run()` from `@ephemeral-ai/mayfly-remote/remote-bin`. Do not add calibration, extraction, spawning, profile management, or an in-process Host fallback.
+- `packages/remote/src/remote-bin.ts` owns help/version, Remote option parsing, ordinary-terminal diagnostics, and hand-off to `runRemoteFrontend`. The Remote runtime owns TTY restoration, signal handling, Client detachment, and exit completion.
+- `MAYFLY_DSH_STARTUP_URL` is the only authenticated startup-URL input. `MAYFLY_SESSION_ID`, `MAYFLY_CWD`, and `MAYFLY_TASK` are optional defaults; corresponding argv options take precedence.
+- Tokens and cookies never enter argv, logs, or committed files. Reject credential-shaped arguments without echoing them and redact startup credentials from errors. `--host` accepts only a non-secret HTTP(S) URL and still obtains its token from the canonical environment variable.
+- Host launch and termination belong to the separate REAL Loader `mayfly-host` profile. TUI exit detaches Clients only; do not add Host lifecycle RPCs or silently route arguments to the legacy dsh CLI.
 
-## Runtime distribution
+## Distribution
 
-`runtime/` is a private, independently locked seed. `script/pack-cli-runtime.mjs`
-installs it with scripts disabled, a hoisted layout, and
-`package-import-method=copy` — archives carry plain files only, never hardlink
-entries (NTFS fails `fs.link` past 1023 links per file, so store-deduped
-payloads cannot extract on Windows; the pack asserts zero links) — then emits
-common plus six OS/architecture archives. `check:pack` owns payload budgets,
-native sentinels, executable/shebang checks, and the exact Harness line. The seed's
-`ignoredOptionalDependencies` exclude the LibreOffice and sherpa-onnx natives
-the Mayfly composition never mounts; npm publish cannot carry a tarball past
-its ~400 MB base64-string ceiling, so keep the payload budget under it.
+`files` contains `lib/bin.js` and the bilingual README files. Keep Remote as a normal runtime dependency; do not bundle it, `@deepseek-ai/dsh`, the legacy Mayfly Host composition, or platform archives into the launcher. The root development override links the not-yet-published Remote package locally without changing the published version dependency.
 
-Extraction uses bounded synchronous tar reads into a prepared directory under
-`$DSH_HOME/cache/mayfly-cli-runtime/`. Validate the host and native file sizes
-against the generated sentinel manifest, including cache hits. Version and
-locally handled market commands must not extract runtime payloads.
-
-Every publisher acquires the `proper-lockfile` lease and revalidates under it.
-Quarantine a damaged target only after a complete replacement exists; reuse
-concurrent winners. Keep only bounded validation/renames in the critical
-section and delete quarantine after release. Preserve compromise handling and
-bounded retries; the lease cannot fence a process stalled beyond its stale
-interval. Leave other versioned cache directories alone.
+`script/check-pack.mjs` checks the single-file bin, exact Remote dependency, shebang/executable bits, absence of runtime archives, and forbidden Host/dsh references. `script/package-contract.mjs` derives the bin build entry from the manifest. Structural package or build changes require `pnpm run build`; ordinary source emission can use `pnpm run build:changed`.
 
 ## Verification
 
-Cover argument translation, calibration failures, extraction/cache repair,
-concurrent publishers, and process termination using the existing CLI specs.
-Use the shared tracked-temp cleanup for temporary homes/installs. Distribution
-changes require full verification, `pnpm run check:pack`, and launcher/platform
-smoke. Preserve Linux/macOS/Windows CI coverage; desktop clipboard and IME still
-need [platform acceptance](../../docs/platform-acceptance.md).
+Development uses only the incremental or structural build before unified acceptance. Finalization owns focused launcher/Remote-bin behavior coverage, `pnpm run check:pack`, and published-package two-process PTY smoke with a real Host. Preserve Linux/macOS/Windows launcher coverage; desktop clipboard and IME still need [platform acceptance](../../docs/platform-acceptance.md).

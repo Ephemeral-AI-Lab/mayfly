@@ -1,0 +1,14 @@
+diff --git a/lib/types/analyzer.js b/lib/types/analyzer.js
+--- a/lib/types/analyzer.js
++++ b/lib/types/analyzer.js
+@@ -1793,8 +1793,10 @@ class FaceAnalyzer {
+         if (resolved.name !== name)
+             return false;
+         const declaration = preferredDeclaration(resolved);
+         if (declaration === undefined)
+             return false;
++        if (externalModuleIdentityForFile(declaration.getSourceFile().fileName)?.package === '@deepseek-ai/dsh-typert-protocol')
++            return true;
+         const registration = this.registrationForFile(declaration.getSourceFile().fileName);
+         if (registration?.name === '@deepseek-ai/dsh-typert-protocol')
+             return true;

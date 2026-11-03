@@ -14,43 +14,8 @@ import type {} from '@deepseek-ai/dsh-llm'
 import { accountRoute, clientMetadata } from './provider-account.ts'
 import { deriveKeyRef } from './provider-profile.ts'
 import { providerAddress, providerDescriptor, providerProfileAt, providerValueAt } from './provider-store.ts'
-
-export type WalletCurrency = 'CNY' | 'USD'
-
-/** One currency of the balance; amounts are the decimal strings the server sent. */
-export interface Wallet {
-  readonly currency: WalletCurrency
-  readonly total: string
-  readonly toppedUp?: string | undefined
-  readonly granted?: string | undefined
-}
-
-/** Why a balance could not be read. */
-export type UnavailableReason = 'network' | 'rejected' | 'no-key' | 'signed-out'
-
-export type BalanceResult =
-  | { readonly status: 'ready', readonly wallets: readonly Wallet[], readonly available: boolean | undefined }
-  | { readonly status: 'unavailable', readonly reason: UnavailableReason }
-
-export type ProviderKind = 'account' | 'api-key' | 'other'
-
-/** The provider of the current model, as the tab shows it. */
-export interface AccountSnapshot {
-  readonly route: string
-  readonly name: string
-  readonly kind: ProviderKind
-  readonly endpoint?: string | undefined
-  readonly models?: number | undefined
-  readonly key?: { readonly ref: string, readonly configured: boolean } | undefined
-  /** Account route: whether a Platform login is stored. */
-  readonly signedIn?: boolean | undefined
-  readonly profile?: { readonly name: string | null, readonly contact: string | null } | undefined
-  readonly links?: { readonly topUp: string, readonly usage: string } | undefined
-  /** Absent for a provider without a balance source. */
-  readonly balance?: BalanceResult | undefined
-  /** When the read finished. */
-  readonly at: number
-}
+import { addDecimal } from './stats-account-model.ts'
+import type { AccountSnapshot, BalanceResult, Wallet, WalletCurrency } from './stats-account-model.ts'
 
 /** The DeepSeek API key reference and its official route. */
 const DEEPSEEK_KEY = 'DEEPSEEK_API_KEY'
@@ -73,17 +38,6 @@ const decimal = /^\d+(?:\.\d+)?$/u
 const isDecimal = (value: unknown): value is string => typeof value === 'string' && decimal.test(value)
 const isCurrency = (value: unknown): value is WalletCurrency => value === 'CNY' || value === 'USD'
 
-/** Add two non-negative decimal strings without losing precision. */
-export function addDecimal(left: string, right: string): string {
-  const [leftWhole = '0', leftFraction = ''] = left.split('.')
-  const [rightWhole = '0', rightFraction = ''] = right.split('.')
-  const scale = Math.max(leftFraction.length, rightFraction.length)
-  const total = BigInt(leftWhole + leftFraction.padEnd(scale, '0')) + BigInt(rightWhole + rightFraction.padEnd(scale, '0'))
-  if (scale === 0) return String(total)
-  const digits = String(total).padStart(scale + 1, '0')
-  return `${digits.slice(0, -scale)}.${digits.slice(-scale)}`
-}
-
 /** DeepSeek's `/user/balance` answer as wallets, or undefined when its shape is not the documented one. */
 export function parseBalance(body: unknown): { readonly wallets: readonly Wallet[], readonly available: boolean | undefined } | undefined {
   if (body === null || typeof body !== 'object') return undefined
@@ -97,13 +51,6 @@ export function parseBalance(body: unknown): { readonly wallets: readonly Wallet
     wallets.push({ currency, total, ...isDecimal(toppedUp) ? { toppedUp } : {}, ...isDecimal(granted) ? { granted } : {} })
   }
   return { wallets, available: typeof available === 'boolean' ? available : undefined }
-}
-
-/** Whether the balance is low: nothing available, or every currency under its threshold. */
-export function isLowBalance(balance: BalanceResult | undefined, thresholds: Readonly<Record<WalletCurrency, number>>): boolean {
-  if (balance?.status !== 'ready') return false
-  if (balance.available === false) return true
-  return balance.wallets.length > 0 && balance.wallets.every(wallet => Number(wallet.total) < thresholds[wallet.currency])
 }
 
 /** The endpoint of the official route: its native profile, then `$DEEPSEEK_BASE_URL`, then the public API. */

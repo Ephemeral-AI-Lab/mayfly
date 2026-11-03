@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { MayflyKeymapError, MayflyKeymapService, actionOwner } from '../../src/core/keys/keymap.ts'
+import { MayflyKeymapError, MayflyKeymapService, actionOwner } from '../../src/core/keymap.ts'
 import type { MayflyKeyAction } from '../../src/core/types.ts'
 
 describe('MayflyKeymapService', () => {
