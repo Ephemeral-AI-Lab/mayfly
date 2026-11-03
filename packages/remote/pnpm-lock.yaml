@@ -63,6 +63,9 @@ importers:
       '@deepseek-ai/dsh-api-workspace-controller':
         specifier: 0.2.2-alpha.2
         version: 0.2.2-alpha.2(718d8167ff846d06045ffde835c1b326)
+      '@deepseek-ai/dsh-atomic-write':
+        specifier: 0.2.2-alpha.2
+        version: 0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)
       '@deepseek-ai/dsh-attachment':
         specifier: 0.2.2-alpha.2
         version: 0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)(@deepseek-ai/dsh-brand@0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1))
