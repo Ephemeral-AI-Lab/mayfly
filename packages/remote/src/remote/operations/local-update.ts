@@ -65,11 +65,39 @@ export interface LocalUpdateSnapshot {
 /** An interrupted installation retains its original exact Host identity and enablement. */
 export interface PendingLocalUpdate { readonly snapshot: LocalUpdateSnapshot, readonly host: string, readonly enabled: boolean }
 
+/** Canonical frontend release metadata; the Host still verifies an exact install. */
+export interface LocalUpdateReleases {
+  readonly tags: Readonly<Record<string, string>>
+  readonly versions: readonly string[]
+  readonly time: Readonly<Record<string, string>>
+}
+
+/** Reject foreign npm output rather than guessing a channel target. */
+function releaseRecord(value: unknown): Readonly<Record<string, unknown>> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('The frontend registry returned invalid Mayfly release metadata')
+  return value as Readonly<Record<string, unknown>>
+}
+
+/** Keep only the string-valued metadata native npm publishes. */
+function releaseStrings(value: unknown): Readonly<Record<string, string>> {
+  return Object.fromEntries(Object.entries(releaseRecord(value)).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+}
+
 /** Version-gated frontend-local upgrade owner, independent from Host profile management. */
 export class LocalFrontendUpdater {
   private active: LocalUpdateSnapshot | undefined
 
   constructor(private readonly io: LocalUpdateIo = systemLocalUpdateIo()) {}
+
+  /** Resolve the frontend's complete channel table through its own npm configuration. */
+  async releases(signal: AbortSignal): Promise<LocalUpdateReleases> {
+    const output = await this.io.run(this.io.node, [this.io.npm, 'view', CLI, '--json'], signal)
+    const parsed: unknown = JSON.parse(output)
+    const record = releaseRecord(Array.isArray(parsed) && parsed.length === 1 ? parsed[0] : parsed)
+    const versions = record.versions
+    if (!Array.isArray(versions) || !versions.every((version): version is string => typeof version === 'string')) throw new Error('The frontend registry returned invalid Mayfly release metadata')
+    return { tags: releaseStrings(record['dist-tags']), versions, time: releaseStrings(record.time) }
+  }
 
   /** Refuse linked/workspace/non-npm installs before any mutation, as the reference updater does. */
   async preflight(current: string, target: string, signal: AbortSignal): Promise<LocalUpdateSnapshot> {

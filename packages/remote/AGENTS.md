@@ -100,6 +100,12 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   npm staging verifies actual CLI/Remote/shared versions, imports the candidate,
   and starts its real CLI before mutation. Native Host bundle writes retain the
   captured Host even after UI retirement; failures compensate exact versions.
+  The frontend npm catalog owns canonical release-channel resolution; the
+  capped newer-only Host version list never proves that an absent tag is current.
+  Both installations use that same exact release, with native Host compatibility
+  and installation checks. Registry progress and bounded retries retire with
+  their caller and connection; confirmation shows known native publish age and
+  states that the Host enforces its undisclosed release-age setting at install.
   An exclusive local marker retains logs and graphs across interruption;
   `/update recover` requires the original Host and explicit confirmation.
   Linked/read-only or foreign-prefix installs refuse mutation. The official

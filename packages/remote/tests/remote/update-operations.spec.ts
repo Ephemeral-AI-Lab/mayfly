@@ -8,8 +8,10 @@ import { RemoteUpdateController, mountRemoteUpdate } from '../../src/remote/oper
 import type { LocalFrontendUpdater, LocalUpdateSnapshot } from '../../src/remote/operations/local-update.ts'
 
 const opened = vi.hoisted(() => vi.fn())
+const registryDelay = vi.hoisted(() => vi.fn())
 vi.mock('../../src/remote/panels/browser.ts', () => ({ openRemoteBrowser: opened }))
 vi.mock('../../src/remote/features/version.ts', () => ({ remoteClientVersion: () => '1.0.0' }))
+vi.mock('node:timers/promises', () => ({ setTimeout: registryDelay }))
 
 const snapshot: LocalUpdateSnapshot = { current: '1.0.0', target: '1.1.0', root: '/npm/@ephemeral-ai/mayfly-cli', directory: '/tmp/update', logPath: '/tmp/update/update.log', lockPath: '/npm/@ephemeral-ai/.mayfly-update.json' }
 const ok = <T>(value: T) => ({ ok: true as const, value })
@@ -18,6 +20,7 @@ let panels: Array<{ options: RemoteBrowserOptions, refresh: ReturnType<typeof vi
 
 beforeEach(() => {
   panels = []
+  registryDelay.mockReset().mockResolvedValue(undefined)
   opened.mockImplementation((_base, options: RemoteBrowserOptions) => {
     let closed = false
     const panel = { options, refresh: vi.fn(), close: vi.fn(() => { if (closed) return; closed = true; options.onClosed?.() }), get closed() { return closed } }
@@ -47,17 +50,18 @@ function fixture() {
   const locale = { register: vi.fn(), subscribe: vi.fn(() => () => {}), translate: vi.fn((_ns: string, key: string, values: Record<string, unknown> = {}) => key.replace(/\{(\w+)\}/gu, (_match, name: string) => String(values[name] ?? name))) }
   const effect = vi.fn((factory: () => unknown) => { const dispose = factory(); return () => { if (typeof dispose === 'function') dispose() } })
   const settings = { updateChannel: 'latest' }
-  const ctx = { effect, get: (name: string) => name === 'mayflyLocale' ? locale : name === 'mayflyInteractionState' ? { settingsSource: () => settings } : undefined, mayflyLocale: locale, inject: (_deps: readonly string[], callback: (scope: unknown) => void) => { callback({ effect, mayflyLocale: locale }) } }
+  const notifications = { report: vi.fn(), clear: vi.fn(), dispose: vi.fn() }
+  const ctx = { mayflyUiInteraction: { createNotificationOwner: vi.fn(() => notifications) }, effect, get: (name: string) => name === 'mayflyLocale' ? locale : name === 'mayflyInteractionState' ? { settingsSource: () => settings } : undefined, mayflyLocale: locale, inject: (_deps: readonly string[], callback: (scope: unknown) => void) => { callback({ effect, mayflyLocale: locale }) } }
   const notice = { set: vi.fn() }
   const unregister = vi.fn()
   const register = vi.fn(() => unregister)
   const base = { hosts, ctx, notice, commands: { register }, subscribeLocale: vi.fn(() => () => {}) }
   const context = { base } as unknown as RemoteOperationsContext
-  const local = { pending: vi.fn(async (): Promise<import('../../src/remote/operations/local-update.ts').PendingLocalUpdate | undefined> => undefined), begin: vi.fn(async () => {}), finish: vi.fn(async () => {}), preflight: vi.fn(async () => snapshot), stage: vi.fn(async () => {}), install: vi.fn(async () => {}), restore: vi.fn(async () => {}), cleanup: vi.fn(async () => {}) }
+  const local = { releases: vi.fn(async () => ({ tags: { latest: '1.1.0' } as Record<string, string>, versions: ['1.0.0', '1.1.0', '0.9.0'], time: {} as Record<string, string> })), pending: vi.fn(async (): Promise<import('../../src/remote/operations/local-update.ts').PendingLocalUpdate | undefined> => undefined), begin: vi.fn(async () => {}), finish: vi.fn(async () => {}), preflight: vi.fn(async () => snapshot), stage: vi.fn(async () => {}), install: vi.fn(async () => {}), restore: vi.fn(async () => {}), cleanup: vi.fn(async () => {}) }
   const controller = new RemoteUpdateController(context, local as unknown as LocalFrontendUpdater)
   const change = () => { for (const listener of listeners) listener() }
   const reconnect = () => { generation += 1; for (const listener of states) listener() }
-  return { controller, context, local, hosts, notice, client, running, bundle, listBundles, listVersions, updateBundle, installBundle, register, unregister, settings, change, reconnect }
+  return { controller, context, local, hosts, notice, notifications, client, running, bundle, listBundles, listVersions, updateBundle, installBundle, register, unregister, settings, change, reconnect }
 }
 
 function text() { return JSON.stringify(panels.at(-1)?.options.view()) }
@@ -75,6 +79,108 @@ async function accepted(test: ReturnType<typeof fixture>, requested = '') {
 }
 
 describe('split release upgrade', () => {
+  it('resolves complete frontend tags before the capped Host list and never guesses missing or invalid targets', async () => {
+    const test = fixture()
+    try {
+      test.local.releases.mockResolvedValueOnce({ tags: { latest: '0.9.0' }, versions: ['0.9.0'], time: {} })
+      await test.controller.execute('', signal())
+      expect(test.notice.set).toHaveBeenCalledWith('up to date (v1.0.0; latest tag: 0.9.0)', 'info')
+      expect(test.listVersions).not.toHaveBeenCalled()
+      test.local.releases.mockResolvedValueOnce({ tags: { latest: 'not-semver' }, versions: [], time: {} })
+      await test.controller.execute('', signal())
+      expect(test.notice.set).toHaveBeenLastCalledWith('the "latest" tag points at "not-semver", which does not parse as a version', 'error')
+      await test.controller.execute('3.0.0', signal())
+      expect(text()).toContain('version 3.0.0 is not published under @ephemeral-ai/mayfly (registry knows: 1.0.0, 1.1.0, 0.9.0)')
+      test.local.releases.mockResolvedValueOnce({ tags: {}, versions: ['0.0.1'], time: {} })
+      await test.controller.execute('0.0.1', signal())
+      expect(text()).toContain("version 0.0.1 predates Mayfly's first release; pick >= 0.1.0-alpha.1")
+      expect(test.listVersions).not.toHaveBeenCalled()
+      expect(test.local.install).not.toHaveBeenCalled()
+    } finally { test.controller.dispose() }
+  })
+
+  it.each([
+    ['2026-11-01T00:00:00Z', 'published 3d ago', true],
+    ['2026-11-03T16:00:00Z', 'published 8h ago', false],
+    ['2026-11-05T00:00:00Z', 'published 0h ago', true],
+    ['invalid', 'warning: publish time unknown — cooldown cannot be forecast', false],
+  ] as const)('shows native publish-age details for %s while keeping actual Host policy visible', async (stamp, expected, fromHost) => {
+    const test = fixture()
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-04T00:00:00Z'))
+    try {
+      if (fromHost) test.listVersions.mockResolvedValueOnce(ok({ status: 'listed', registry: null, versions: [{ version: '1.1.0', tags: ['latest'], bundle: true, publishedAt: stamp }] }))
+      else test.local.releases.mockResolvedValueOnce({ tags: { latest: '1.1.0' }, versions: ['1.1.0'], time: { '1.1.0': stamp } })
+      const pending = test.controller.execute('', signal())
+      await vi.waitFor(() => { expect(panels.at(-1)?.options.id).toBe('mayfly.update.confirm') })
+      expect(text()).toContain(expected)
+      expect(text()).toContain('The Host enforces its release-age policy during installation; its cooldown setting is not exposed.')
+      await answer(false)
+      await pending
+      expect(test.local.install).not.toHaveBeenCalled()
+    } finally { test.controller.dispose() }
+  })
+
+  it('reports registry progress and both bounded retries, then clears progress before confirmation', async () => {
+    const test = fixture()
+    try {
+      test.local.releases.mockRejectedValueOnce(new Error('first registry failure')).mockRejectedValueOnce(new Error('second registry failure'))
+      const pending = test.controller.execute('', signal())
+      await vi.waitFor(() => { expect(panels.at(-1)?.options.id).toBe('mayfly.update.confirm') })
+      expect(test.notifications.report).toHaveBeenCalledWith('registry', { kind: 'app', targetId: 'profile/one' }, { message: 'checking the registry for @ephemeral-ai/mayfly updates…', severity: 'info', purpose: 'progress' }, 'registry')
+      expect(test.notifications.report).toHaveBeenCalledWith('registry', expect.anything(), { message: 'registry unreachable, retrying (2/3)…', severity: 'warning', purpose: 'progress' }, 'registry')
+      expect(test.notifications.report).toHaveBeenLastCalledWith('registry', expect.anything(), { message: 'registry unreachable, retrying (3/3)…', severity: 'warning', purpose: 'progress' }, 'registry')
+      expect(registryDelay.mock.calls.map(call => call[0])).toEqual([1_500, 4_000])
+      expect(test.local.releases).toHaveBeenCalledTimes(3)
+      expect(test.notifications.clear).toHaveBeenCalledWith('registry')
+      expect(panels.at(-1)?.options.id).toBe('mayfly.update.confirm')
+      await panels.at(-1)!.options.action!({ kind: 'activate', actionId: DECISION_NO } as never, {} as never)
+      await pending
+    } finally { test.controller.dispose() }
+  })
+
+  it('stops exhausted registry retries with one error and retires an aborted retry timer without another read', async () => {
+    const test = fixture()
+    try {
+      test.local.releases.mockRejectedValue(new Error('registry unavailable'))
+      const exhausted = test.controller.execute('', signal())
+      await exhausted
+      expect(test.local.releases).toHaveBeenCalledTimes(3)
+      expect(test.notice.set).toHaveBeenCalledExactlyOnceWith('registry unavailable', 'error')
+      test.notice.set.mockClear()
+      const caller = new AbortController()
+      registryDelay.mockImplementationOnce((_duration: number, _value: unknown, options: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => { reject(new Error('retry cancelled')) }, { once: true })
+      }))
+      const cancelled = test.controller.execute('', caller.signal)
+      await vi.waitFor(() => { expect(registryDelay).toHaveBeenCalledTimes(3) })
+      caller.abort()
+      await cancelled
+      expect(test.local.releases).toHaveBeenCalledTimes(4)
+      expect(test.notice.set).not.toHaveBeenCalled()
+      expect(panels).toEqual([])
+      expect(test.notifications.clear).toHaveBeenCalledWith('registry')
+    } finally { test.controller.dispose() }
+  })
+
+  it.each([false, true])('retires successful or failed canonical release reads after reconnect (reject=%s)', async reject => {
+    const test = fixture()
+    try {
+      const response = Promise.withResolvers<Awaited<ReturnType<typeof test.local.releases>>>()
+      test.local.releases.mockReturnValueOnce(response.promise)
+      const pending = test.controller.execute('', signal())
+      await vi.waitFor(() => { expect(test.local.releases).toHaveBeenCalledOnce() })
+      test.reconnect()
+      expect(test.notifications.clear).toHaveBeenCalledWith('registry')
+      if (reject) response.reject(new Error('retired registry failure'))
+      else response.resolve({ tags: { latest: '1.1.0' }, versions: ['1.1.0'], time: {} })
+      await pending
+      expect(test.listVersions).not.toHaveBeenCalled()
+      expect(test.notice.set).not.toHaveBeenCalled()
+      expect(test.notifications.report).toHaveBeenCalledOnce()
+      expect(panels).toEqual([])
+    } finally { test.controller.dispose() }
+  })
+
   it('stages and smokes both release graphs, installs both exact versions, and leaves a readable pending-restart result', async () => {
     const test = fixture()
     try {
@@ -102,7 +208,7 @@ describe('split release upgrade', () => {
       const pending = test.controller.execute('1.1.0', signal())
       await answer(false)
       await pending
-      expect(test.notice.set).toHaveBeenCalledWith('update cancelled')
+      expect(test.notice.set).toHaveBeenCalledWith('update cancelled', 'info')
       expect(test.local.stage).not.toHaveBeenCalled()
       expect(test.local.cleanup).toHaveBeenCalledWith(snapshot)
       const dismissed = test.controller.execute('', signal())
@@ -118,16 +224,16 @@ describe('split release upgrade', () => {
     try {
       test.running.mockReturnValueOnce({ running: true })
       await test.controller.execute('', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('cannot update while the agent is running')
+      expect(test.notice.set).toHaveBeenCalledWith('the agent is running — wait for the current turn to finish before updating', 'error')
       const stage = Promise.withResolvers<void>()
       test.local.stage.mockReturnValueOnce(stage.promise)
       const pending = test.controller.execute('', signal())
       await answer(true)
       await vi.waitFor(() => { expect(test.local.stage).toHaveBeenCalledOnce() })
       expect(panels.at(-1)!.options.back!()).toBe(true)
-      expect(test.notice.set).toHaveBeenCalledWith('The update is still running')
+      expect(test.notice.set).toHaveBeenCalledWith('The update is still running', 'error')
       await test.controller.execute('', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('an update is already in progress')
+      expect(test.notice.set).toHaveBeenCalledWith('an update is already in progress', 'error')
       stage.resolve()
       await pending
       expect(panels.at(-1)!.options.back!()).toBe(false)
@@ -155,30 +261,28 @@ describe('split release upgrade', () => {
     const test = fixture()
     try {
       await test.controller.execute('not-version', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('The update requires an exact release version')
+      expect(test.notice.set).toHaveBeenCalledWith('\"not-version\" is not a version (try /update 0.1.0-alpha.1)', 'error')
       test.listVersions.mockResolvedValueOnce(ok({ status: 'refused', reason: 'registry offline' }))
       await test.controller.execute('', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('registry offline')
-      test.listVersions.mockResolvedValueOnce(ok({ status: 'listed', registry: null, versions: [] }))
+      expect(test.notice.set).toHaveBeenCalledWith('registry offline', 'error')
+      test.local.releases.mockResolvedValueOnce({ tags: { latest: '1.0.0' }, versions: ['1.0.0'], time: {} })
       await test.controller.execute('', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('up to date (v1.0.0)')
-      await test.controller.execute('1.0.0', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('up to date (v1.0.0)')
+      expect(test.notice.set).toHaveBeenCalledWith('up to date (v1.0.0; latest tag: 1.0.0)', 'info')
       test.settings.updateChannel = 'next'
       await test.controller.execute('', signal())
-      expect(test.notice.set).toHaveBeenLastCalledWith('No matching Mayfly release is published for this channel')
+      expect(test.notice.set).toHaveBeenLastCalledWith('the registry carries no \"next\" tag for @ephemeral-ai/mayfly — pick a version with /update <version>', 'error')
       test.settings.updateChannel = 'latest'
       test.listVersions.mockResolvedValueOnce(ok({ status: 'listed', registry: null, versions: [{ version: '1.1.0', tags: ['latest'], bundle: false }] }))
       await test.controller.execute('', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('The selected release is not a compatible Host bundle')
+      expect(test.notice.set).toHaveBeenCalledWith('The selected release is not a compatible Host bundle', 'error')
       test.listVersions.mockResolvedValueOnce(ok({ status: 'listed', registry: null, versions: [{ version: '1.1.0', tags: ['latest'], bundle: true, incompatible: {} }] }))
       await test.controller.execute('', signal())
       test.listBundles.mockResolvedValueOnce(ok([]))
       await test.controller.execute('', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('Host and TUI versions differ; repair the release set before updating')
+      expect(test.notice.set).toHaveBeenCalledWith('Host and TUI versions differ; repair the release set before updating', 'error')
       test.listBundles.mockRejectedValueOnce(new Error('native failed'))
       await test.controller.execute('', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('native failed')
+      expect(test.notice.set).toHaveBeenCalledWith('native failed', 'error')
     } finally { test.controller.dispose() }
   })
 
@@ -238,7 +342,7 @@ describe('split release upgrade', () => {
       expect(text()).toContain('Host release changed during preparation')
       test.running.mockReturnValueOnce({ running: false }).mockReturnValueOnce({ running: true })
       await accepted(test)
-      expect(text()).toContain('cannot update while the agent is running')
+      expect(text()).toContain('the agent is running — wait for the current turn to finish before updating')
       expect(test.updateBundle).not.toHaveBeenCalled()
     } finally { test.controller.dispose() }
   })
@@ -278,7 +382,7 @@ describe('split release upgrade', () => {
       test.hosts.current.mockReturnValue(undefined)
       test.hosts.active.mockReturnValue(undefined)
       await test.controller.execute('', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('No Host is attached')
+      expect(test.notice.set).toHaveBeenCalledWith('No Host is attached', 'error')
       test.hosts.active.mockReturnValue(test.client)
       test.controller.dispose()
       await test.controller.execute('', signal())
@@ -327,14 +431,14 @@ describe('interrupted update recovery and explicit releases', () => {
       expect(panels.at(-1)!.options.back!()).toBe(false)
       test.local.pending.mockResolvedValueOnce({ ...recovery, host: 'other' })
       await test.controller.execute('recover', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('The interrupted update belongs to a different Host; attach that Host before recovery.')
+      expect(test.notice.set).toHaveBeenCalledWith('The interrupted update belongs to a different Host; attach that Host before recovery.', 'error')
       test.local.pending.mockResolvedValueOnce(undefined)
       await test.controller.execute('recover', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('No interrupted update needs recovery')
+      expect(test.notice.set).toHaveBeenCalledWith('No interrupted update needs recovery', 'info')
       test.bundle.updatable = false
       test.local.pending.mockResolvedValueOnce(undefined)
       await test.controller.execute('recover', signal())
-      expect(test.notice.set).toHaveBeenLastCalledWith('No interrupted update needs recovery')
+      expect(test.notice.set).toHaveBeenLastCalledWith('No interrupted update needs recovery', 'info')
       test.local.pending.mockResolvedValueOnce(recovery)
       const cancelled = test.controller.execute('recover', signal())
       await answer(false)
@@ -423,7 +527,7 @@ describe('upgrade late-result ownership', () => {
     try {
       opened.mockImplementationOnce(() => ({ closed: true, close: vi.fn(), refresh: vi.fn() }))
       await test.controller.execute('', signal())
-      expect(test.notice.set).toHaveBeenCalledWith('update cancelled')
+      expect(test.notice.set).toHaveBeenCalledWith('update cancelled', 'info')
       const pending = test.controller.execute('', signal())
       await vi.waitFor(() => { expect(panels.at(-1)?.options.id).toBe('mayfly.update.confirm') })
       expect(await panels.at(-1)!.options.action!({ kind: 'change' } as never, {} as never)).toEqual({ kind: 'completed' })

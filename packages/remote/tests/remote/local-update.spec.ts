@@ -43,6 +43,33 @@ async function prepared(test: ReturnType<typeof fixture>): Promise<LocalUpdateSn
 }
 
 describe('frontend-local updater', () => {
+  it('reads the complete canonical channel table through the frontend npm configuration, including npm singleton output', async () => {
+    const test = fixture()
+    for (const singleton of [false, true]) {
+      const document = { 'dist-tags': { latest: target, rc: current, invalid: 42 }, versions: [current, target], time: { [target]: '2026-10-01T00:00:00Z', bad: null } }
+      vi.mocked(test.io.run).mockResolvedValueOnce(JSON.stringify(singleton ? [document] : document))
+      const caller = signal()
+      expect(await test.updater.releases(caller)).toEqual({ tags: { latest: target, rc: current }, versions: [current, target], time: { [target]: '2026-10-01T00:00:00Z' } })
+      expect(test.io.run).toHaveBeenLastCalledWith('/node', ['/npm-cli.js', 'view', '@ephemeral-ai/mayfly-cli', '--json'], caller)
+    }
+    expect(test.io.read).not.toHaveBeenCalled()
+    expect(test.io.write).not.toHaveBeenCalled()
+  })
+
+  it('refuses malformed or ambiguous registry metadata rather than inventing a channel target', async () => {
+    const test = fixture()
+    const document = { 'dist-tags': {}, versions: [current], time: {} }
+    for (const value of [null, 42, [], [document, document], { ...document, versions: null }, { ...document, versions: [42] }, { ...document, 'dist-tags': [] }, { ...document, time: null }]) {
+      vi.mocked(test.io.run).mockResolvedValueOnce(JSON.stringify(value))
+      await expect(test.updater.releases(signal())).rejects.toThrow('invalid Mayfly release metadata')
+    }
+    vi.mocked(test.io.run).mockResolvedValueOnce('invalid json')
+    await expect(test.updater.releases(signal())).rejects.toThrow()
+    vi.mocked(test.io.run).mockRejectedValueOnce(new Error('registry unavailable'))
+    await expect(test.updater.releases(signal())).rejects.toThrow('registry unavailable')
+    expect(test.installed()).toBe(current)
+  })
+
   it('stages both pinned graphs, validates exact Remote/presentation dependencies, smokes the real entries and restores offline', async () => {
     const test = fixture()
     const snapshot = await prepared(test)
