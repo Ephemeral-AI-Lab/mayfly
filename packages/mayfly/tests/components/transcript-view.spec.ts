@@ -8,13 +8,26 @@ import { describe, expect, it } from 'vitest'
 import { freezeWire } from '@ephemeral-ai/mayfly-ui'
 import { latestTurnOf, PROMPT_MAX_LINES, streamTarget, TranscriptStream, TranscriptView, type StreamRow, type StreamTurn, type TranscriptViewFacts } from '../../src/components/transcript-view.ts'
 
-const prompt = (id: string, text: string, more: Partial<Extract<StreamRow, { kind: 'prompt' }>> = {}): StreamRow => ({ kind: 'prompt', id, text, images: [], open: false, ...more })
+const prompt = (id: string, text: string, more: Partial<Extract<StreamRow, { kind: 'prompt' }>> = {}): StreamRow => ({ kind: 'prompt', id, text, attachments: [], open: false, ...more })
 const answer = (id: string, text: string): StreamRow => ({ kind: 'answer', id, text })
 const turn = (id: string, rows: readonly StreamRow[], closing?: string): StreamTurn => ({ id, number: Number(id.slice('turn:'.length)), rows, ...(closing === undefined ? {} : { closing }) })
 const facts = (turns: readonly StreamTurn[], queued: TranscriptViewFacts['queued'] = []): TranscriptViewFacts => ({ turns, queued })
 const itemsOf = (value: TranscriptViewFacts) => TranscriptView(value).items
 
 describe('TranscriptView', () => {
+  it('keeps file-only prompts and mixed file/image attachment order without requesting file bytes as images', () => {
+    const items = itemsOf(facts([turn('turn:1', [prompt('files', '', { attachments: [
+      { kind: 'file', attachmentId: 'f1', alt: '[file] report.txt · 12 B' },
+      { kind: 'image', attachmentId: 'i1', alt: '[image] plot.png' },
+      { kind: 'file', attachmentId: 'f2', alt: '[file] data.csv · 20 B' },
+    ] })])]))
+    expect(items.map(item => item.id)).toEqual(['files', 'files.file.0', 'files.image.1', 'files.file.2'])
+    expect(items[1]).toMatchObject({ label: '[file] report.txt · 12 B' })
+    expect(items[1]!.body).toBeUndefined()
+    expect(items[2]!.body).toMatchObject({ kind: 'image', attachmentId: 'i1' })
+    expect(items[3]!.body).toBeUndefined()
+  })
+
   it('is one browse list of the stream', () => {
     const node = TranscriptView(facts([turn('turn:1', [prompt('u1', 'hello')])]))
     expect(node).toMatchObject({ kind: 'list', id: 'stream', role: 'browse', acceptVerb: 'expand', hintLabel: 'stream' })
@@ -46,7 +59,7 @@ describe('TranscriptView', () => {
   })
 
   it('puts each attached image under the prompt as a picture with its text fallback', () => {
-    const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'look', { images: [{ attachmentId: 'att-1', alt: '[image] 1 · 1×1 · 1 KB' }] })])]))
+    const items = itemsOf(facts([turn('turn:1', [prompt('u1', 'look', { attachments: [{ kind: 'image', attachmentId: 'att-1', alt: '[image] 1 · 1×1 · 1 KB' }] })])]))
     expect(items.map(item => item.id)).toEqual(['u1', 'u1.image.0'])
     expect(items[1]).toMatchObject({
       label: '[image] 1 · 1×1 · 1 KB', bodyAlways: true, bodyLead: [{ text: '  ▪ ', tone: 'muted' }],

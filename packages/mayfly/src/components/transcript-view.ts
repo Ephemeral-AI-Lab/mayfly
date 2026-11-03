@@ -39,8 +39,8 @@ export type StreamRow =
     readonly kind: 'prompt'
     readonly id: string
     readonly text: string
-    /** The images attached to the prompt, in block order. */
-    readonly images: readonly StreamImage[]
+    /** The safe attachment metadata attached to the prompt, in block order. */
+    readonly attachments: readonly (StreamImage & { readonly kind: 'image' | 'file' })[]
     /** Whether the prompt shows all its lines. */
     readonly open: boolean
   }
@@ -178,12 +178,14 @@ function rowParts(row: Exclude<StreamRow, { readonly kind: 'tools' }>): readonly
     case 'prompt':
       return [
         promptItem(row.id, row.text, row.open),
-        ...row.images.map((image, index): MayflyListItem => ({
-          id: `${row.id}.image.${String(index)}`,
+        ...row.attachments.map((image, index): MayflyListItem => ({
+          id: `${row.id}.${image.kind}.${String(index)}`,
           label: image.alt,
-          body: ui.image({ attachmentId: image.attachmentId, alt: image.alt, maxRows: PROMPT_IMAGE_MAX_ROWS }),
-          bodyAlways: true,
-          bodyLead: [span('  ▪ ', 'muted')],
+          ...(image.kind === 'file' ? {} : {
+            body: ui.image({ attachmentId: image.attachmentId, alt: image.alt, maxRows: PROMPT_IMAGE_MAX_ROWS }),
+            bodyAlways: true,
+            bodyLead: [span('  ▪ ', 'muted')],
+          }),
         })),
       ]
     // One item holds the whole answer: its Markdown body lays out the blocks and wraps under the `●` that leads it.

@@ -10,7 +10,7 @@ import type { MayflyNodeSlot } from '../../src/core/node-slot.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
 import { createTranscriptModel, LIVE_PUBLISH_MS, PUBLISH_INTERVAL_MS, STREAM_WATCHDOG_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
-const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, images: [] })
+const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, attachments: [] })
 
 /** A call that did not settle: the stream subscribes to the tick while its row is drawn. */
 const pending = (id: string): TranscriptEntryModel => ({

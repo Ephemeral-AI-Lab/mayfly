@@ -4,9 +4,8 @@
  * @module @ephemeral-ai/mayfly/transcript/types
  */
 
-import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { OutputProgress } from '../conversation/types.ts'
+import type { ConversationAttachment, OutputProgress } from '../conversation/types.ts'
 import type { TranscriptTerminalModel } from '../frontend/models.ts'
 
 /** A user prompt rendered in the transcript. */
@@ -18,8 +17,8 @@ export interface TranscriptUserItem {
   readonly turn: number
   /** Visible text joined from the message's text blocks, `\n`-separated. */
   readonly text: string
-  /** The message's image attachments, in block order; empty when none. */
-  readonly images: ImageAttachmentRef[]
+  /** The message's attachments, in block order; empty when none. */
+  readonly attachments: readonly ConversationAttachment[]
 }
 
 /**

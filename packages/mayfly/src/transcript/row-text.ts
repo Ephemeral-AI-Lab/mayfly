@@ -76,7 +76,7 @@ function callText(entry: TranscriptEntryModel, call: NonNullable<RowPart['call']
 /** The text of one entry as a person reads it. */
 function entryText(entry: TranscriptEntryModel): string {
   switch (entry.kind) {
-    case 'transcript-user': return entry.text
+    case 'transcript-user': return join([entry.text, ...entry.attachments.map(attachment => `[${attachment.kind}${attachment.name === undefined ? '' : ` ${attachment.name}`}]`)])
     case 'transcript-assistant': return entry.text
     case 'transcript-thinking': return entry.text
     case 'transcript-tool': return toolText(entry)

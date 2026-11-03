@@ -551,7 +551,8 @@ function entryModel(entry: Exclude<ConversationEntry, ConversationToolEntry>): T
     case 'user':
       return {
         kind: 'transcript-user', id: entry.id, seq: entry.seq, updatedSeq: entry.updatedSeq, turn: entry.turn, text: entry.text,
-        images: entry.images.map(image => ({
+        attachments: entry.attachments.map(image => image.kind === 'file' ? { ...image } : ({
+          kind: 'image',
           attachmentId: image.attachmentId,
           mediaType: image.mediaType,
           bytes: image.bytes,

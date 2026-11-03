@@ -13,7 +13,7 @@ const entry = (value: TranscriptEntryModel): RowPart => ({ entry: value })
 
 describe('partText in text mode', () => {
   it('gives a message as its Markdown, wide characters and all', () => {
-    const user: TranscriptEntryModel = { ...base, id: 'user:1', kind: 'transcript-user', text: '中文 **bold** 😀', images: [] }
+    const user: TranscriptEntryModel = { ...base, id: 'user:1', kind: 'transcript-user', text: '中文 **bold** 😀', attachments: [] }
     const assistant: TranscriptEntryModel = { ...base, id: 'assistant:1', kind: 'transcript-assistant', step: 1, text: '## 标题\n- 项目', streaming: false }
     expect(text(entry(user))).toBe('中文 **bold** 😀')
     expect(text(entry(assistant))).toBe('## 标题\n- 项目')
@@ -126,7 +126,7 @@ describe('partText in text mode', () => {
 
 describe('partText in raw mode', () => {
   it('gives the model JSON of a whole entry, and of one call when the part is a call', () => {
-    const user: TranscriptEntryModel = { ...base, id: 'user:1', kind: 'transcript-user', text: '中文', images: [] }
+    const user: TranscriptEntryModel = { ...base, id: 'user:1', kind: 'transcript-user', text: '中文', attachments: [] }
     expect(partText(entry(user), 'raw')).toBe(JSON.stringify(user, null, 2))
     const command = { callId: 'g1', activity: 'commands', detail: 'x', seq: 1, updatedSeq: 1, turn: 1, step: 0, name: 'bash', startedAt: 0, state: 'ok', command: 'x' }
     const group = { ...base, id: 'cmd:1', kind: 'transcript-command-group', step: 0, commands: [command] } as unknown as TranscriptEntryModel

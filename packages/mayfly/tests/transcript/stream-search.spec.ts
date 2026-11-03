@@ -8,7 +8,7 @@ import { STREAM } from '../../src/components/transcript-view.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { createTranscriptModel, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
-const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, images: [] })
+const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, attachments: [] })
 const answer = (turn: number, text: string): TranscriptEntryModel => ({ id: `assistant:${String(turn)}`, kind: 'transcript-assistant', seq: turn, updatedSeq: turn, turn, step: 2, text, streaming: false })
 const thought = (id: string, turn: number, text: string, streaming = false): TranscriptEntryModel => ({ id, kind: 'transcript-thinking', seq: turn, updatedSeq: turn, turn, step: 1, text, streaming, durationMs: 3_000 })
 

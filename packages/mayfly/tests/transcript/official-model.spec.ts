@@ -163,6 +163,16 @@ function sourceFixture(initial: ConversationProjection | unknown = projection(),
 }
 
 describe('official conversation model mapping', () => {
+  it('maps a file-only durable prompt and detaches ordered attachment metadata across replacement snapshots', () => {
+    const file = { kind: 'file' as const, attachmentId: 'file-1', name: 'report.txt', bytes: 12 }
+    const stored = projection([{ kind: 'user', id: 'file-user', seq: 1, updatedSeq: 1, turn: 1, text: '', attachments: [file] }])
+    const first = conversationTranscriptModel(stored, toolSource())
+    expect(first.entries[0]).toMatchObject({ kind: 'transcript-user', text: '', attachments: [file] })
+    file.name = 'later.txt'
+    expect(first.entries[0]).toMatchObject({ attachments: [{ name: 'report.txt' }] })
+    expect(conversationTranscriptModel(stored, toolSource()).entries[0]).toMatchObject({ attachments: [{ name: 'later.txt' }] })
+  })
+
   it('bounds conversion before freezing a long projection', () => {
     const entries = Array.from({ length: 203 }, (_, index) => ({
       kind: 'assistant' as const,
@@ -181,11 +191,11 @@ describe('official conversation model mapping', () => {
   it('maps every semantic entry and keeps pane-owned channels as process members', () => {
     const model = conversationTranscriptModel(projection([
       {
-        kind: 'user', id: 'user-1', seq: 1, updatedSeq: 1, turn: 1, text: 'hello', images: [{
-          attachmentId: 'image-1', mediaType: 'image/png', bytes: 12, width: 4, height: 3,
+        kind: 'user', id: 'user-1', seq: 1, updatedSeq: 1, turn: 1, text: 'hello', attachments: [{ kind: 'image',
+          kind: 'image', attachmentId: 'image-1', mediaType: 'image/png', bytes: 12, width: 4, height: 3,
           name: 'plot.png', originalDimensions: { width: 8, height: 6 },
         }, {
-          attachmentId: 'image-2', mediaType: 'image/jpeg', bytes: 8, width: 2, height: 2,
+          kind: 'image', attachmentId: 'image-2', mediaType: 'image/jpeg', bytes: 8, width: 2, height: 2,
         }],
       },
       { kind: 'assistant', id: 'assistant-1', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 'answer', streaming: true },
@@ -209,7 +219,7 @@ describe('official conversation model mapping', () => {
     expect(model.streaming).toBe(true)
     expect(model.entries).toHaveLength(9)
     expect(model.entries).toMatchObject([
-      { kind: 'transcript-user', text: 'hello', images: [
+      { kind: 'transcript-user', text: 'hello', attachments: [
         { name: 'plot.png', originalDimensions: { width: 8, height: 6 } },
         { attachmentId: 'image-2', mediaType: 'image/jpeg' },
       ] },
@@ -300,7 +310,7 @@ describe('official conversation model mapping', () => {
     ]
     const kinds = conversationTranscriptModel(projection([
       transcriptTool({ id: 'r1', callId: 'c1', seq: 1 , updatedSeq: 1}),
-      { kind: 'user', id: 'u1', seq: 2, updatedSeq: 2, turn: 2, text: 'more', images: [] },
+      { kind: 'user', id: 'u1', seq: 2, updatedSeq: 2, turn: 2, text: 'more', attachments: [] },
       transcriptTool({ id: 'r2', callId: 'c2', seq: 3, updatedSeq: 3, turn: 2 }),
     ]), readSource())
     expect(kinds.entries.map(entry => entry.kind)).toEqual(['transcript-read-group', 'transcript-user', 'transcript-read-group'])
@@ -947,7 +957,7 @@ describe('OfficialConversationModelSource', () => {
     ], true), 7)
     expect(published.at(-1)).toBe('replacement')
     f.emit('mayflyConversation', projection([
-      { kind: 'user', id: 'u-8', seq: 8, updatedSeq: 8, turn: 0, text: 'user replacement', images: [] },
+      { kind: 'user', id: 'u-8', seq: 8, updatedSeq: 8, turn: 0, text: 'user replacement', attachments: [] },
     ], true), 8)
     expect(published.at(-1)).toBe('empty')
 
@@ -992,9 +1002,9 @@ describe('OfficialConversationModelSource', () => {
 
   it('hides inherited entries after an auxiliary transcript cut while retaining later updates', () => {
     const f = sourceFixture(projection([
-      { kind: 'user', id: 'history-user', seq: 1, updatedSeq: 1, turn: 1, text: 'main history', images: [] },
+      { kind: 'user', id: 'history-user', seq: 1, updatedSeq: 1, turn: 1, text: 'main history', attachments: [] },
       { kind: 'assistant', id: 'history-answer', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 'main answer', streaming: false },
-      { kind: 'user', id: 'btw-user', seq: 3, updatedSeq: 3, turn: 2, text: 'side question', images: [] },
+      { kind: 'user', id: 'btw-user', seq: 3, updatedSeq: 3, turn: 2, text: 'side question', attachments: [] },
       { kind: 'assistant', id: 'btw-answer', seq: 4, updatedSeq: 4, turn: 2, step: 0, text: 'side answer', streaming: true },
     ], true), 4)
     const published: string[][] = []
@@ -1007,9 +1017,9 @@ describe('OfficialConversationModelSource', () => {
       { kind: 'transcript-assistant', text: 'side answer' },
     ])
     f.emit('mayflyConversation', { ...projection([
-      { kind: 'user', id: 'history-user', seq: 1, updatedSeq: 1, turn: 1, text: 'main history', images: [] },
+      { kind: 'user', id: 'history-user', seq: 1, updatedSeq: 1, turn: 1, text: 'main history', attachments: [] },
       { kind: 'assistant', id: 'history-answer', seq: 2, updatedSeq: 2, turn: 1, step: 0, text: 'main answer', streaming: false },
-      { kind: 'user', id: 'btw-user', seq: 3, updatedSeq: 3, turn: 2, text: 'side question', images: [] },
+      { kind: 'user', id: 'btw-user', seq: 3, updatedSeq: 3, turn: 2, text: 'side question', attachments: [] },
       { kind: 'assistant', id: 'btw-answer', seq: 4, updatedSeq: 4, turn: 2, step: 0, text: 'side answer updated', streaming: false },
     ], false), turns: [{ turn: 1, startedAt: 1, endedAt: 2, outcome: 'completed' }, { turn: 2, startedAt: 3, endedAt: 4, outcome: 'completed' }] }, 5)
     // Inherited turns leave the turn times with their entries.
@@ -1180,7 +1190,7 @@ function identityProjection(entries: ConversationProjection['entries']): Convers
 
 describe('incremental conversion', () => {
   const userEntry: ConversationProjection['entries'][number] = {
-    kind: 'user', id: 'user-1', seq: 1, updatedSeq: 1, turn: 1, text: 'hello', images: [],
+    kind: 'user', id: 'user-1', seq: 1, updatedSeq: 1, turn: 1, text: 'hello', attachments: [],
   }
 
   it('returns the same non-tool entry objects across conversions of unchanged entries', () => {

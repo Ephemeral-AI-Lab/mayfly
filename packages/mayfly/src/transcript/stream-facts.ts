@@ -706,9 +706,15 @@ function entryRow(item: EntryItem, entry: Exclude<TranscriptEntryModel, ToolEntr
         kind: 'prompt',
         id: entry.id,
         text: sanitizedOf(entry),
-        images: entry.images.map((image, index) => {
+        attachments: entry.attachments.map((image, index) => {
+          if (image.kind === 'file') return {
+            kind: 'file',
+            attachmentId: image.attachmentId,
+            alt: `${t('[file]')} ${sanitizePluginText(image.name)} · ${String(image.bytes)} B`,
+          }
           inputs.imageRefs?.set(image.attachmentId, { attachmentId: image.attachmentId, mediaType: image.mediaType })
           return {
+            kind: 'image',
             attachmentId: image.attachmentId,
             alt: `${t('[image]')} ${String(index + 1)}${image.name === undefined ? '' : ` · ${sanitizePluginText(image.name)}`} · ${String(image.width)}×${String(image.height)} · ${String(Math.max(1, Math.round(image.bytes / 1024)))} KB`,
           }

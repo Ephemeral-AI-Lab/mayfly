@@ -105,7 +105,7 @@ describe('tool calls at the three tiers', () => {
 
   it('groups consecutive calls of one kind across entries in Standard, splits on another kind or reasoning, and draws a single call as one line', () => {
     const entries: TranscriptEntryModel[] = [
-      { ...base(1), id: 'user:1', kind: 'transcript-user', text: 'go', images: [] },
+      { ...base(1), id: 'user:1', kind: 'transcript-user', text: 'go', attachments: [] },
       tool({ id: 'b1' }),
       tool({ id: 'b2', detail: 'pnpm build', terminal: { command: 'pnpm build', exitCode: 0 } }),
       tool({ id: 'r1', name: 'read', activity: 'read', family: 'read', detail: 'src/a.ts', result: { text: 'x', isError: false, endedAt: 1 } }),
@@ -128,7 +128,7 @@ describe('tool calls at the three tiers', () => {
   it('keeps the identity of an unchanged row across passes, and replaces the row whose content changed', () => {
     const turns = [{ turn: 1, startedAt: NOON, endedAt: NOON + 1_000, outcome: 'completed' }] as TranscriptModel['turns']
     const entries = (answer: string): TranscriptEntryModel[] => [
-      { ...base(1), id: 'user:1', kind: 'transcript-user', text: 'hi', images: [] },
+      { ...base(1), id: 'user:1', kind: 'transcript-user', text: 'hi', attachments: [] },
       tool({ id: 'b1', detail: 'ls', terminal: { command: 'ls', exitCode: 0 } }),
       { ...base(1), id: 'assistant:1', kind: 'transcript-assistant', step: 2, text: answer, streaming: false },
     ]
@@ -525,7 +525,7 @@ describe('calls that wait on the user', () => {
   })
 
   it('takes no calls from an entry that is not a tool, and shows a call in its first second with no time', () => {
-    expect(callsOf({ ...base(1), id: 'user:x', kind: 'transcript-user', text: 'go', images: [] } as TranscriptEntryModel, t, NOW)).toEqual([])
+    expect(callsOf({ ...base(1), id: 'user:x', kind: 'transcript-user', text: 'go', attachments: [] } as TranscriptEntryModel, t, NOW)).toEqual([])
     expect(callsOf(tool({ result: undefined, startedAt: NOW - 400 }), t, NOW)[0]!.outcome).toEqual([undefined])
   })
 })

@@ -20,7 +20,6 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
-import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { TranscriptItem, TranscriptToolItem } from '../transcript/types.ts'
@@ -54,7 +53,7 @@ const ID_PREFIX_LENGTH = 8
 interface ProjectionImage { readonly attachmentId: string; readonly mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; readonly bytes: number; readonly width: number; readonly height: number; readonly name?: string; readonly originalDimensions?: { readonly width: number; readonly height: number } }
 interface ProjectionEntryBase { readonly id: string; readonly seq: number; readonly turn: number }
 type ProjectionEntry =
-  | (ProjectionEntryBase & { readonly kind: 'user'; readonly text: string; readonly images: readonly ProjectionImage[] })
+  | (ProjectionEntryBase & { readonly kind: 'user'; readonly text: string; readonly attachments: readonly ((ProjectionImage & { readonly kind: 'image' }) | { readonly kind: 'file'; readonly attachmentId: string; readonly name: string; readonly bytes: number })[] })
   | (ProjectionEntryBase & { readonly kind: 'assistant'; readonly step: number; readonly text: string; readonly streaming: boolean })
   | (ProjectionEntryBase & { readonly kind: 'thinking'; readonly step: number; readonly text: string; readonly streaming: boolean })
   | (ProjectionEntryBase & { readonly kind: 'tool'; readonly step: number; readonly callId: string; readonly name: string; readonly arguments: string; readonly startedAt: number; readonly result?: { readonly text: string; readonly isError: boolean; readonly endedAt: number } })
@@ -158,10 +157,10 @@ function formatTurnMd(items: readonly TranscriptItem[], turn: number): string {
       if (item.text.trim().length > 0) {
         lines.push(item.text, '')
       }
-      for (const image of item.images) {
+      for (const image of item.attachments) {
         // The kimi exporter's image placeholder: the bytes stay in the
         // session store, the export carries the marker.
-        lines.push(`[image${image.name === undefined ? '' : ` ${image.name}`}]`, '')
+        lines.push(`[${image.kind}${image.name === undefined ? '' : ` ${image.name}`}]`, '')
       }
     } else if (item.kind === 'thinking') {
       if (item.text.trim().length === 0) continue
@@ -385,12 +384,7 @@ function projectionItems(projection: ConversationProjection): TranscriptItem[] {
       case 'user':
         return [{
           kind: 'user', seq: entry.seq, turn: entry.turn, text: entry.text,
-          images: entry.images.map(image => ({
-            attachmentId: AttachmentId(image.attachmentId), mediaType: image.mediaType, bytes: image.bytes,
-            width: image.width, height: image.height,
-            ...(image.name === undefined ? {} : { name: image.name }),
-            ...(image.originalDimensions === undefined ? {} : { originalDimensions: { ...image.originalDimensions } }),
-          })),
+          attachments: entry.attachments.map(attachment => ({ ...attachment })),
         }]
       case 'assistant':
         return [{ kind: 'assistant', seq: entry.seq, turn: entry.turn, step: entry.step, text: entry.text }]
