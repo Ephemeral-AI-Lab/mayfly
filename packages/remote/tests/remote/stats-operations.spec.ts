@@ -190,6 +190,21 @@ describe('rc.2 Remote statistics', () => {
     expect(f.panel().closed).toBe(true); expect(f.streamDispose).toHaveBeenCalledTimes(2)
   })
 
+  it.each(['history', 'models'])('announces a Gateway global-authorization refusal in the %s tab', async tab => {
+    const f = await fixture(); await f.open()
+    const message = 'remote access: mayflyHost/statsHistory: access denied (global statistics permission required)'
+    f.history.mockImplementationOnce(() => Object.assign((async function* () {
+      throw Object.assign(new Error(message), { code: 'remote-access/denied' })
+    })(), { dispose: f.streamDispose }))
+    f.tab(tab); await tick()
+    expect(f.text()).toContain(`Could not read the stored sessions: ${message}`)
+    // The panel's error note is below the initially visible chart viewport;
+    // a denied corpus read must also be announced above the editor.
+    expect(f.options.notice.set).toHaveBeenCalledWith(message, 'error')
+    expect(f.streamDispose).toHaveBeenCalledOnce()
+    expect(f.read).toHaveBeenCalledOnce()
+  })
+
   it('retires prior Session reads and panel owners after replacement and ignores late successes and errors', async () => {
     const f = await fixture(); const wait = Promise.withResolvers<unknown>(); f.read.mockReturnValueOnce(wait.promise)
     await f.open(); expect(f.text()).toContain('Session information unavailable')
