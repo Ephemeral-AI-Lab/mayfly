@@ -329,7 +329,15 @@ export class UiSurfaceModel {
     this.actions.clear()
     /** The wizard steps a driven move left (they count as answered when they hold an answer) and the pages it arrived on (focus starts there, as after any navigation). */
     const drivenSteps: { readonly left: MayflyPagePath, readonly to: MayflyPagePath }[] = []
+    // Exclusive responsive aliases admit independently, but they own one semantic draft.
+    // Replaying both definitions would alternate their identities and publish a change on every walk.
+    const reconciled = new Set<string>()
     visitUiControls(node, (current, pagePath) => {
+      if ('id' in current && current.id !== undefined) {
+        const key = uiControlKey({ pagePath, controlId: current.id })
+        if (reconciled.has(key)) return
+        reconciled.add(key)
+      }
       if (current.kind === 'form') {
         const address = { pagePath, formId: current.id }
         const key = formAddressKey(address)
