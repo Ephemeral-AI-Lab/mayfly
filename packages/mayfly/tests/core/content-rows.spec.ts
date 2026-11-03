@@ -371,6 +371,25 @@ describe('contentNodeSource', () => {
     expect(env.counters.linesEstimated).toBe(aligned)
   })
 
+  it('repaints a shared diff with each palette while retaining its width-independent alignment', () => {
+    const node: WindowedContentNode = { kind: 'diff', before: 'const a = "before"', after: 'const a = "after"', language: 'ts' }
+    const dark = makeEnv()
+    const light = makeEnv(undefined, LIGHT_COLORS)
+    const original = [...contentNodeRows(node, 60, dark.env)]
+    const aligned = dark.counters.linesEstimated
+    expect([...contentNodeRows(node, 60, light.env)]).toEqual([...contentNodeRows({ ...node }, 60, makeEnv(undefined, LIGHT_COLORS).env)])
+    expect([...contentNodeRows(node, 60, light.env)]).not.toEqual(original)
+    expect([...contentNodeRows(node, 60, dark.env)]).toEqual(original)
+    expect([...contentNodeRows(node, 40, dark.env)]).toEqual([...contentNodeRows({ ...node }, 40, makeEnv().env)])
+    expect(dark.counters.linesEstimated).toBe(aligned)
+    expect(light.counters.linesEstimated).toBe(0)
+    for (let variant = 0; variant < 5; variant += 1) {
+      const colors = { ...LIGHT_COLORS }
+      expect([...contentNodeRows(node, 60, makeEnv(undefined, colors).env)]).toEqual([...contentNodeRows({ ...node }, 60, makeEnv(undefined, colors).env)])
+    }
+    expect([...contentNodeRows(node, 60, dark.env)]).toEqual(original)
+  })
+
   it('paints a diff with its language highlighted, its before side numbered from its own start, and its tail below a cut', () => {
     const node: WindowedContentNode = { kind: 'diff', before: 'const a = 1', after: 'const a = 2', language: 'ts', beforeStart: 10, numberWidth: 4, maxRows: 1, tail: 'read on' }
     const { rows } = source(node, 60)

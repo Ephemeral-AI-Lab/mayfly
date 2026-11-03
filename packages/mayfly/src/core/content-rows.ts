@@ -248,26 +248,26 @@ interface PreparedDiff {
   readonly style: DiffStyle
 }
 
+interface DiffLayout {
+  readonly model: DiffModel
+  readonly before: string
+  readonly after: string
+  readonly language: string
+  readonly paints: Map<string, PreparedDiff>
+}
 
-const preparedDiffs = new WeakMap<object, PreparedDiff>()
+const preparedDiffs = new WeakMap<object, DiffLayout>()
 
 function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: 'diff' }>, env: ContentRowsEnv): PreparedDiff {
-  let prepared = preparedDiffs.get(node)
-  if (prepared === undefined) {
+  let layout = preparedDiffs.get(node)
+  if (layout === undefined) {
     const before = sanitizePluginText(requireText(node.before, 'diff before'))
     const after = sanitizePluginText(requireText(node.after, 'diff after'))
     const ops = alignDiffLines(before, after)
     countWork(env.counters, 'linesEstimated', ops.length)
     const language = node.language === undefined ? '' : sanitizePluginText(requireText(node.language, 'diff language'))
-    // The code of each side is highlighted as one block, so a token that spans lines keeps its color; past the byte cap, plain.
-    const lit = highlightable(language) && Buffer.byteLength(before, 'utf8') + Buffer.byteLength(after, 'utf8') <= CODE_HIGHLIGHT_MAX_BYTES
-      ? {
-          before: highlightCodeLines(before, language, codePaints(env)),
-          after: highlightCodeLines(after, language, codePaints(env)),
-        }
-      : undefined
-    prepared = {
-      style: { numbered: node.numbered !== false, start: node.start ?? 1, beforeStart: node.beforeStart ?? node.start ?? 1, ...(lit === undefined ? {} : { lit }) },
+    layout = {
+      before, after, language, paints: new Map(),
       model: diffModel(ops, {
         ...node.start === undefined ? {} : { start: node.start },
         ...node.beforeStart === undefined ? {} : { beforeStart: node.beforeStart },
@@ -278,8 +278,24 @@ function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: '
         ...node.tail === undefined ? {} : { tail: sanitizePluginText(node.tail) },
       }),
     }
-    preparedDiffs.set(node, prepared)
+    preparedDiffs.set(node, layout)
   }
+  const key = paintKey(env)
+  let prepared = layout.paints.get(key)
+  if (prepared !== undefined) return prepared
+  // Alignment is independent of paint; syntax-colored lines belong to the current palette and components.
+  const lit = highlightable(layout.language) && Buffer.byteLength(layout.before, 'utf8') + Buffer.byteLength(layout.after, 'utf8') <= CODE_HIGHLIGHT_MAX_BYTES
+    ? {
+        before: highlightCodeLines(layout.before, layout.language, codePaints(env)),
+        after: highlightCodeLines(layout.after, layout.language, codePaints(env)),
+      }
+    : undefined
+  prepared = {
+    model: layout.model,
+    style: { numbered: node.numbered !== false, start: node.start ?? 1, beforeStart: node.beforeStart ?? node.start ?? 1, ...(lit === undefined ? {} : { lit }) },
+  }
+  if (layout.paints.size >= SHARED_SOURCE_VARIANTS) layout.paints.delete(layout.paints.keys().next().value!)
+  layout.paints.set(key, prepared)
   return prepared
 }
 
