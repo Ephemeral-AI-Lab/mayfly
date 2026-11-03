@@ -126,6 +126,7 @@ export class MayflyUiImagesService extends Service implements MayflyUiImageSourc
     if (!this.live || this.loaders.length === 0) {
       entry.controller = undefined
       entry.state = MISSING
+      if (this.live) this.notify(entry)
       return
     }
     const controller = new AbortController()
@@ -140,10 +141,15 @@ export class MayflyUiImagesService extends Service implements MayflyUiImageSourc
       }
       entry.controller = undefined
       entry.state = image === undefined ? MISSING : Object.freeze({ state: 'ready', image })
-      const listeners = [...entry.listeners]
-      entry.listeners.clear()
-      for (const listener of listeners) listener()
+      this.notify(entry)
     })()
+  }
+
+  /** Publish a settled image state once to every surface waiting on this entry. */
+  private notify(entry: Entry): void {
+    const listeners = [...entry.listeners]
+    entry.listeners.clear()
+    for (const listener of listeners) listener()
   }
 
   private evict(): void {

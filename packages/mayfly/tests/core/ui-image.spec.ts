@@ -170,9 +170,13 @@ describe('MayflyUiImagesService', () => {
     const other = imageService()
     const pending = gate()
     const remove = other.provide(pending.loader)
-    other.read('p', () => {})
+    const removed = vi.fn()
+    other.read('p', removed)
     remove()
     expect(other.read('p', () => {})).toEqual({ state: 'missing' })
+    expect(removed).toHaveBeenCalledOnce()
+    remove()
+    expect(removed).toHaveBeenCalledOnce()
   })
 
   it('keeps the most recently read images and evicts the rest', async () => {
@@ -357,6 +361,59 @@ describe('compiled image nodes', () => {
       expect(component.render(80).join('\n')).toContain('[image] diagram.png')
       expect(component.render(80).join('\n')).not.toContain('Loading image…')
     } finally { runtime.dispose() }
+  })
+
+  it.each(['resolve', 'reject'] as const)('retires a cached flow loader when its provider unloads and ignores a late %s', async settle => {
+    const images = imageService()
+    const pending = gate()
+    const remove = images.provide(pending.loader)
+    let component: { render(width: number): string[], invalidate(): void } | undefined
+    const repaint = vi.fn(() => { component?.invalidate() })
+    const runtime = new MayflyUiSurfaceRuntime(undefined, repaint, undefined, images)
+    runtime.flow = true
+    const result = compileMayflyUiSurfaceNode(ui.list({ id: 'transcript', role: 'browse', items: [
+      { id: 'image', label: 'Image', body: ui.image({ attachmentId: 'a', alt: '[image] provider unavailable' }), bodyAlways: true },
+    ] }), base(runtime))
+    if (!result.ok) throw new Error(result.message)
+    component = result.value.component
+    try {
+      expect(component.render(80).join('\n')).toContain('Loading image…')
+      const request = pending.waiting.get('a')!
+      remove()
+      expect(request.signal.aborted).toBe(true)
+      expect(repaint).toHaveBeenCalledOnce()
+      expect(component.render(80).join('\n')).toContain('[image] provider unavailable')
+      expect(component.render(80).join('\n')).not.toContain('Loading image…')
+      if (settle === 'resolve') request.resolve(PHOTO)
+      else request.reject(new Error('provider closed'))
+      await flush()
+      expect(repaint).toHaveBeenCalledOnce()
+      expect(component.render(80).join('\n')).toContain('[image] provider unavailable')
+      expect(images.read('a', () => {})).toEqual({ state: 'missing' })
+    } finally { runtime.dispose() }
+  })
+
+  it('does not repaint a disposed flow surface when its pending provider unloads', async () => {
+    const images = imageService()
+    const pending = gate()
+    const remove = images.provide(pending.loader)
+    const repaint = vi.fn()
+    const runtime = new MayflyUiSurfaceRuntime(undefined, repaint, undefined, images)
+    runtime.flow = true
+    const result = compileMayflyUiSurfaceNode(ui.list({ id: 'transcript', role: 'browse', items: [
+      { id: 'image', label: 'Image', body: ui.image({ attachmentId: 'a', alt: '[image]' }), bodyAlways: true },
+    ] }), base(runtime))
+    if (!result.ok) throw new Error(result.message)
+    expect(result.value.component.render(80).join('\n')).toContain('Loading image…')
+    const request = pending.waiting.get('a')!
+    runtime.dispose()
+    remove()
+    expect(request.signal.aborted).toBe(true)
+    expect(repaint).not.toHaveBeenCalled()
+    request.resolve(PHOTO)
+    await flush()
+    expect(repaint).not.toHaveBeenCalled()
+    expect(images.read('a', () => {})).toEqual({ state: 'missing' })
   })
 
   it('reads an image as its alt in a document block', () => {
