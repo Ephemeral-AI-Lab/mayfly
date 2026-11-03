@@ -2616,11 +2616,12 @@ export class MayflyUiSurfaceRuntime {
   }
   /**
    * Asks the renderer to paint this surface again: an image's bytes arrived. A list row that holds the image was
-   * painted from its item and key alone, so the memo of painted rows is dropped with the request.
+   * painted from its item and key alone, so both row and flow-block memos are dropped with the request.
    */
   readonly repaint = (): void => {
     if (!this.live) return
     this.rows.clear()
+    this.flowLists.clear()
     this.requestRender?.()
   }
   /** The scroll position a region keeps across publishes. */
