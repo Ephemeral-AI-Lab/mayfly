@@ -5,7 +5,7 @@ import { DECISION_NO, DECISION_YES, decisionStrip, freezeWire } from '@ephemeral
 import type {
   MayflyActionItem, MayflyConfirmation, MayflyFeedback, MayflyFieldError, MayflyFeedbackRecord, MayflyFieldAddress, MayflyFieldValue, MayflyFormAddress,
   MayflyFormNode, MayflyListItem, MayflyListNode, MayflyPagePath, MayflyReviewNode, MayflySnapshotChange, MayflySourceStamp, MayflySubmission,
-  MayflyScrollNode, MayflyTabsNode, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventEndpoint, MayflyUiNode, MayflyUiScope,
+  MayflyPromptNode, MayflyScrollNode, MayflyTabsNode, MayflyUiActionReply, MayflyUiEvent, MayflyUiEventEndpoint, MayflyUiNode, MayflyUiScope,
 } from '@ephemeral-ai/mayfly-ui'
 import { createFormState, formAddressKey, formDirty, inspectForm, reconcileForm, reduceForm, submitForm, validateForm, type UiFormIntent, type UiFormState } from './ui-interaction-form.ts'
 import { createPromptModel, reconcilePrompt, reducePrompt, type UiPromptEffect, type UiPromptIntent, type UiPromptModel } from './ui-interaction-prompt.ts'
@@ -116,6 +116,7 @@ export class UiSurfaceModel {
   private readonly formDefinitions = new Map<string, MayflyFormNode>()
   private readonly choices = new Map<string, UiChoiceState>()
   private readonly prompts = new Map<string, UiPromptModel>()
+  private readonly promptDefinitions = new Map<string, MayflyPromptNode>()
   private readonly sliders = new Map<string, UiSliderModel>()
   private readonly tabs = new Map<string, { readonly definition: MayflyTabsNode, readonly activeId: string, readonly completed: ReadonlyMap<string, string> }>()
   private readonly documents = new Map<string, UiDocumentState>()
@@ -261,7 +262,7 @@ export class UiSurfaceModel {
       this.admissionError = undefined
       this.notifications.clear('snapshot', false)
       this.cancelTasks()
-      this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.prompts.clear(); this.sliders.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
+      this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.prompts.clear(); this.promptDefinitions.clear(); this.sliders.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
       this.decision = undefined
       this.rawNode = null; this.sourceNode = null; this.admittedNode = null; this.reviews.clear(); this.reviewSignature = ''; this.input = snapshot
       this.changed()
@@ -322,7 +323,7 @@ export class UiSurfaceModel {
       }
     }
     for (const [key] of this.choices) if (declarations.complete && declarations.controls.get(key)?.kind !== 'list' && declarations.controls.get(key)?.kind !== 'review') { this.choices.delete(key); changed = true }
-    for (const [key] of this.prompts) if (declarations.complete && declarations.controls.get(key)?.kind !== 'prompt') { this.prompts.delete(key); changed = true }
+    for (const [key] of this.prompts) if (declarations.complete && declarations.controls.get(key)?.kind !== 'prompt') { this.prompts.delete(key); this.promptDefinitions.delete(key); changed = true }
     for (const [key] of this.sliders) if (declarations.complete && declarations.controls.get(key)?.kind !== 'slider') { this.sliders.delete(key); changed = true }
     for (const [key] of this.tabs) if (declarations.complete && declarations.controls.get(key)?.kind !== 'tabs') { this.tabs.delete(key); changed = true }
     for (const [key] of this.documents) if (declarations.complete && declarations.controls.get(key)?.kind !== 'scroll') { this.documents.delete(key); changed = true }
@@ -374,8 +375,9 @@ export class UiSurfaceModel {
         const address = { pagePath, controlId: current.id }
         const key = uiControlKey(address)
         const previous = this.prompts.get(key)
-        const next = previous === undefined ? createPromptModel(address, current) : reconcilePrompt(previous, current)
+        const next = previous === undefined ? createPromptModel(address, current) : this.promptDefinitions.get(key) === current ? previous : reconcilePrompt(previous, current)
         this.prompts.set(key, next)
+        this.promptDefinitions.set(key, current)
         changed ||= next !== previous
       } else if (current.kind === 'slider') {
         const address = { pagePath, controlId: current.id }
@@ -1089,7 +1091,7 @@ export class UiSurfaceModel {
     if (!this.live) return
     this.live = false
     this.cancelTasks()
-    this.tasks.clear(); this.activeKeys.clear(); this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.prompts.clear(); this.sliders.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
+    this.tasks.clear(); this.activeKeys.clear(); this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.prompts.clear(); this.promptDefinitions.clear(); this.sliders.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
     this.operations.clear(); this.notifications.dispose(); this.listeners.clear()
     this.rawNode = null; this.admittedNode = null; this.decision = undefined; this.selectedControl = undefined
     this.publication = undefined

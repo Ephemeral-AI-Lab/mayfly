@@ -7,9 +7,10 @@ import { materializeDeferredUiNode } from '../../src/core/ui-validator.ts'
 const page = (itemId: string) => [{ controlId: 'pages', itemId }]
 
 describe('responsive semantic state', () => {
-  it('settles independently admitted aliases once and retains separate forms, tabs, choices, and documents per page', () => {
+  it('settles independently admitted aliases once and retains separate forms, prompts, tabs, choices, and documents per page', () => {
     const source = ui.stack.column([
       ui.form({ id: 'form', fields: [{ id: 'name', kind: 'input', label: 'Name', value: '' }] }),
+      ui.prompt({ id: 'prompt', value: '' }),
       ui.list({ id: 'list', role: 'browse', selectedIds: [], filterable: true, filterMode: 'slash', items: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }] }),
       ui.tabs({ id: 'tabs', activeId: 'left', items: [{ id: 'left', label: 'Left' }, { id: 'right', label: 'Right' }] }),
       ui.scroll(ui.text('native document'), { id: 'document' }),
@@ -37,6 +38,7 @@ describe('responsive semantic state', () => {
       for (const [itemId, value] of [['one', 'Alpha'], ['two', 'Beta']] as const) {
         const pagePath = page(itemId)
         model.edit({ pagePath, formId: 'form', fieldId: 'name' }, value)
+        model.updatePrompt({ pagePath, controlId: 'prompt' }, { kind: 'edit', value })
         model.updateChoice({ pagePath, controlId: 'list' }, { kind: 'query', query: value })
         model.emit({ kind: 'tab-change', pagePath, controlId: 'tabs', tabId: itemId === 'one' ? 'right' : 'left' })
         model.moveDocument({ pagePath, controlId: 'document' }, { blockId: '[]', offset: itemId === 'one' ? 1 : 2, follow: 'none' })
@@ -48,6 +50,7 @@ describe('responsive semantic state', () => {
         for (const [itemId, value] of [['one', 'Alpha'], ['two', 'Beta']] as const) {
           const pagePath = page(itemId)
           expect(model.form({ pagePath, formId: 'form' })?.fields.name?.value).toBe(value)
+          expect(model.prompt({ pagePath, controlId: 'prompt' })?.text).toBe(value)
           expect(model.choice({ pagePath, controlId: 'list' })).toMatchObject({ query: value, focusedId: itemId === 'one' ? 'a' : 'b' })
           expect(model.activeTab({ pagePath, controlId: 'tabs' })).toBe(itemId === 'one' ? 'right' : 'left')
           expect(model.document({ pagePath, controlId: 'document' })?.anchor?.offset).toBe(itemId === 'one' ? 1 : 2)
