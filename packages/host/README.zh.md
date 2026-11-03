@@ -45,12 +45,12 @@ Host runner 仍保留程序调用的生命周期；`code.host` 在 Host 运行�
 - `skillCatalog` 返回 `{ skills, complete }`，在官方列表数据之外附带原生 `source` 和 `provider` 字段。`modelCatalogDetails` 返回适配器解析的 `provider`、`id`、`name`、`providerLabel`、可选 `contextWindow`、`efforts` 和 `defaultEffort`。`defaultModel` 接受 `{ operation: 'read' }` 或 `{ operation: 'select', provider, model, reasoningEffort? }`，通过 `agentDefaultModel` 返回最终选择，无需 Session。
 - `permissionCatalogDetails` 返回官方选项/默认值以及每行 `sandbox` 和 `approval` 的 `specs` 映射，并为可选 `currentPreset` 计算 `yolo`。`providerBalance` 返回官方 API-key 钱包或 `network`/`rejected`/`no-key`；密钥和 Authorization 请求头始终留在 Host。
 - `retractTurn` 接受 `{ sessionId, messageId }` 并返回是否接纳匹配的、无工具活动的运行中 turn。它通过精确 Agent 取消，并只在权威关闭提交后写入 Mayfly 替换标记，绝不以普通 cancel 或 `updateQueue` 代替。`subagentTree` 接受 `{ sessionId }`，返回完整的原生后代树、诊断和只读的活跃展示指标，不激活冷子 Session。`subagentStop` 接受 `{ sessionId, childSessionId }`，重新检查该根 Session 的当前原生后代与活跃性保护条件，并通过精确的直接父 Agent 等待 `drainChildren` 完成。取消只使响应失效，不会取消原生停止过程。
-- `workspaceChangesSummary` 接受 `{ sessionId, seq }`；`workspaceChangesDiff` 额外接受 `index`。它们返回原生摘要/hunk 或 `null`，不会激活 Session。`workspacePath` 按规范化路径解析现有 workspace，不创建或修改记录。
+- `workspaceChangesSummary` 接受 `{ sessionId, seq }`；`workspaceChangesDiff` 额外接受 `index`。它们返回仍保留的原生摘要/hunk 或 `null`，不会激活 Session。Host 重启或 Session 释放后可能没有可用比较；这些读取不会恢复另一个历史存储。`workspacePath` 按规范化路径解析现有 workspace，不创建或修改记录。
 - `deliveredFile` 接受权威交付记录的 `{ sessionId, deliveryId, preview? }`，通过精确 Agent 的原生文件系统解析，返回元数据和可选的文本预览，上限为 256 KiB。原生文件系统 target 不跨越传输边界。`latestWorkspaceChanges` 读取保留的原生摘要，不激活 Agent。
-- `statsSession` 被动读取一个原生用量摘要及创建元数据。`statsHistory` 接受 `{ sessionId, allWorkspaces }`，流式返回完整进度和摘要快照。`traceCatalog` 读取规范化的被动原生日志时间线；`traceDetail` 接受所选条目的 `{ sessionId, seq, eventSeqs }`，重新检查精确事件身份后返回不可变原始 JSON 和原生替换/来源关系。这些读取都不会激活 Agent。
+- `statsSession` 被动读取一个原生用量摘要及创建元数据。`statsHistory` 接受 `{ sessionId, allWorkspaces }`，流式返回完整进度和摘要快照。两种工作区模式都必须先获得 Host 全局授权，之后才会列出或观察历史；只有 anchor Session 的权限不足，被拒绝时返回 `remote-access/denied`。摘要只在已验证的冷 Session revision 上复用，活跃 Session 每次重新计算。`traceCatalog` 读取规范化的被动原生日志时间线；`traceDetail` 接受所选条目的 `{ sessionId, seq, eventSeqs }`，重新检查精确事件身份后返回不可变原始 JSON 和原生替换/来源关系。这些读取都不会激活 Agent。
 - `listMcpResources` 接受 `{ sessionId, server, kind: 'resources' | 'templates', cursor? }` 并返回 `{ items, cursor? }`，其中 metadata 均为 JSON 安全值。`readMcpResource` 接受 `{ sessionId, server, uri }` 并返回 `{ text }`，保留文本正文并概述二进制内容。只调用三个固定的原生资源工具，不提供任意工具执行 API。
 - `authorize` 是 Remote 操作流。帧类型为 `started`、`notice`、`prompt`、`prompt-ended` 和 `settled`，均携带服务器生成的 `operationId`。上行应答为 `{ type: 'answer', operationId, promptId, value }` 或 `{ type: 'decline', operationId, promptId }`。`cancelAuthorization` 取消该凭据的原生尝试。关闭流会取消操作；秘密应答只从上行传给原生 prompt，绝不记录日志。
-- `readSettingsDocument` 返回 `{ writable, content, revision }`，其中 revision 是原始文档的 SHA-256 哈希。`writeSettingsDocument` 接受 `{ content, expectedRevision }` 并在写入实际 settings 文档前立即重新校验 revision。同一 Host 服务串行处理并发 Remote 写入；过期写入返回 `mayflyHost/settings-conflict`。没有任意文件路径或通用文件 API。
+- `readSettingsDocument` 返回 `{ writable, content, revision }`，其中 revision 是原始文档的 SHA-256 哈希。`writeSettingsDocument` 接受 `{ content, expectedRevision }`，使用原生配置写入方共享的 profile 锁，在锁内比较 revision、原子替换 settings 文档并读取返回文档，从而协调独立 Host 实例与原生配置写入。过期写入返回 `mayflyHost/settings-conflict`。这只是部分冲突保护：不遵守该锁的外部编辑器仍可能在最后一次 revision 检查后并发写入。调用方取消会停止等待锁；已经接纳的原子写入仍可能完成，但取消后的回复会被丢弃。没有任意文件路径或通用文件 API。
 
 领域错误码为 `mayflyHost/capability-unavailable`、`mayflyHost/agent-unavailable`、`mayflyHost/session-stale`、`mayflyHost/session-directory-unavailable`、`mayflyHost/authorization-unavailable`、`mayflyHost/authorization-in-flight`、`mayflyHost/authorization-failed`、`mayflyHost/settings-conflict`、`mayflyHost/settings-read-only`、`mayflyHost/settings-document-unavailable`、`mayflyHost/subagent-tree-unavailable`、`mayflyHost/subagent-stop-unavailable`、`mayflyHost/subagent-stop-unauthorized`、`mayflyHost/mcp-resource-failed` 和 `mayflyHost/delivery-unavailable`。原生解析还可能返回 `session/not-found`、`session/agent-busy` 或 `session/writer-held`；传输和校验使用标准 `gateway/*` 错误码。异步方法同时响应调用方取消和 Host 服务卸载。DTO 及其嵌套值在发出前冻结。
 
@@ -60,7 +60,7 @@ Host runner 仍保留程序调用的生命周期；`code.host` 在 Host 运行�
 
 握手的包版本和所需 Harness 版本取自发布 manifest。可选组合若提供脱敏原生 MCP 服务器目录，可声明 `mcpTransportHealth`；连接中、重连中和已断开服务器的工具可用性标为 `unknown`，不会误报为 `no-tools` 或 `synced`。
 
-dsh `0.2.2-alpha.2` 没有公开已配置 MCP 服务器或传输健康状态的目录：其 `ServerContext` 仅包含 resources 和 instructions。Mayfly 因此只列出可通过已注册工具名称发现的服务器，并将 transport/endpoint 保持为 `null`；不会读取 Loader 条目，也不会发出命令参数、环境变量、请求头、凭据或其他原始 MCP 配置。`synced`/`restricted`/`no-tools` 状态描述工具可见性，而不是连接健康。最小的上游补充是公开的脱敏服务器目录，包含服务器身份、传输、脱敏 endpoint 和连接状态；环境变量和请求头必须排除。这里不复制私有实现。
+dsh `0.2.2-alpha.2` 没有公开已配置 MCP 服务器或传输健康状态的目录：其 `ServerContext` 仅包含 resources 和 instructions。Mayfly 因此只列出可通过已注册工具名称发现的服务器，并将 transport/endpoint 保持为 `null`；不会读取 Loader 条目，也不会发出命令参数、环境变量、请求头、凭据或其他原始 MCP 配置。`synced`/`restricted`/`no-tools` 状态描述工具可见性，而不是连接健康。补充目录必须由 Mayfly Host composition 扩展通过公开 API 和脱敏 DTO 提供，内容限于服务器身份、传输、脱敏 endpoint 和连接状态，排除环境变量和请求头。本项目不向 dsh 上游补齐该能力，也不复制其私有实现。
 
 ## 开发 profile
 

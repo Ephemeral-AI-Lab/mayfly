@@ -292,8 +292,9 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   Exports resolve relative paths against the TUI working directory, accept
   absolute paths, create parent directories, and overwrite existing files. They
   fence the caller, exact Host/Session/binding/connection generation and command
-  owner; a failed or stale write removes a newly created file or restores the
-  original bytes of an overwritten file.
+  owner. Writes queue by normalized target, stage in a temporary sibling file,
+  and recheck ownership before atomic commit. Failure or retirement cleans up
+  only uncommitted temporary files; a committed output is never rolled back.
 - Durable conversation and facts come from whole Host projections.
   `src/conversation/` and `src/transcript/` map their latest snapshots plus a
   bounded current-attempt stream overlay; they never fold a second durable

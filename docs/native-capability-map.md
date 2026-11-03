@@ -39,6 +39,9 @@ subset Mayfly consumes and the rules that keep it native.
    `sessionPersistence` to list sessions, consults no private projection cache,
    and never starts a migration. A `migration-required` read shows cached
    values and a notice; opening the Session is the explicit migration.
+8. **Transport gaps belong to Mayfly Host.** Compose public native services
+   and focused serializable Remote methods locally. Do not add capabilities
+   to dsh upstream or access private native implementation details.
 
 ## Native projections
 
@@ -53,7 +56,7 @@ subset Mayfly consumes and the rules that keep it native.
 | `subagentCatalog` | `@deepseek-ai/dsh-subagent` | native descendant catalog behind Host `subagentTree` |
 | `subagent` | `@deepseek-ai/dsh-subagent` | child identity and mode |
 | `subagentTiming` | `@deepseek-ai/dsh-subagent` | Agents timing and activity |
-| `modelSelection` | `@deepseek-ai/dsh-api-session-controller` | model status, banner, sessions list |
+| `modelSelection` | `@deepseek-ai/dsh-agent` | model status, banner, sessions list; selection writes use Session Controller |
 | `workingDirectory` | `@deepseek-ai/dsh-working-directory` | cwd/git status, file mentions, skills, deliverables |
 | `sessionStats` | `@deepseek-ai/dsh-session-stats` | status, `/context`, sessions detail |
 | `tokenUsage` | `@deepseek-ai/dsh-token-meter` | context status, sessions list |
@@ -151,7 +154,10 @@ A native Host command owns its name. The Remote editor discovers the exact
 selected Session's native catalog and routes frontend commands locally before
 native dispatch. Aliases (`/q`, `/exit`, `/clear`, `/resume`) are frontend
 rewrites. Sessionless `/plan` records startup intent; a selected Session's
-`/plan` uses native admission and ordered image/file attachments.
+`/plan` uses native admission and ordered image/file attachments. Sessionless
+`/plan <message>` is refused until an ordinary message creates a Session.
+`/fork` ignores extra arguments and uses the native current fork boundary;
+`/rewind` owns explicit earlier-turn selection.
 
 | Owner | Commands |
 |---|---|

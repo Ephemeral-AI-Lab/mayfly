@@ -62,9 +62,9 @@ The shared layout contains the conversation, activity and notification rows, edi
 
 | Workflow | Commands and behavior |
 | --- | --- |
-| Session navigation | `/sessions` (`/resume`) opens the workspace/session browser; an id resumes directly. `/rename <title>` renames the selected Session. `/fork [atSeq]` creates and selects a branch; `/rewind` opens the reference earlier-turn picker with prompt/response previews and creates a selected branch while preserving the original Session. |
+| Session navigation | `/sessions` (`/resume`) opens the workspace/session browser; an id resumes directly. `/rename <title>` renames the selected Session. `/fork` creates and selects a branch at the current native fork boundary; extra arguments are ignored. `/rewind` opens the reference earlier-turn picker with prompt/response previews and creates a selected branch while preserving the original Session. |
 | Models and configuration | `/model [name]`, `/effort [level]` (`/thinking`), `/provider`, `/preset [name]`, `/permissions`, and `/settings` use native Host catalogs and writes. Before a Session exists, model and preset choices set Host defaults. |
-| Plan mode | `/plan` enters plan mode, `/plan off` leaves it, and `/mode` or Shift+Tab toggles it. `/plan <message>` admits a native plan prompt and can create the first Session. A sessionless mode choice is admitted before the first ordinary prompt; a failed admission sends no prompt. Alt+M cycles models within the current provider. |
+| Plan mode | `/plan` enters plan mode, `/plan off` leaves it, and `/mode` or Shift+Tab toggles it. `/plan <message>` sends a native plan prompt in an existing Session; without a Session it asks you to send an ordinary message first. A sessionless mode choice is admitted before the first ordinary prompt; a failed admission sends no prompt. Alt+M cycles models within the current provider. |
 | Information | `/context`, `/stats`, `/skills`, `/tools`, `/mcp`, `/files`, `/changes [seq]`, `/trace [copy <seq>\|copy all]`, and `/version` inspect native state or readonly Host projections. |
 | Work and side conversations | `/jobs`, `/goal`, and `/schedule` use the enabled Host services. `/goal` keeps the native parser, status output and objective attachments; its status-row edit action puts the objective back in the prompt. `/schedule` shows the selected Session's reminders. `/btw <question>` opens a side conversation inheriting the complete current history, including an unfinished first turn; `/agents` browses the complete native descendant tree. F7 returns to the previous conversation and F8 closes its view. Closing a view keeps Host work running. |
 | Local output and exit | `/copy` writes to the TUI machine's clipboard; `/export [full] [<path>]` (`/save`) writes on the TUI machine: relative paths use its working directory, absolute paths are supported, parent directories are created, and existing files are overwritten. `/quit` (`/q`, `/exit`) detaches and exits. |
@@ -74,9 +74,11 @@ Enter queues a prompt and Ctrl+Enter steers it through the official Client. Read
 
 Attachment-capable native commands receive images and uploaded file receipts in their original order. A refusal before admission restores the draft and attachments. An admitted command consumes them even when its native result reports an error. `/skills` shows the selected Session's native source/provider metadata and catalog completeness; a Host without the optional Mayfly catalog capability explicitly identifies the missing metadata.
 
+`/changes [seq]` reads comparisons still retained by the native Host service without activating a Session. After a Host restart or Session disposal, the comparison may be unavailable and the browser shows an empty state.
+
 ## Partial behavior and upstream limits
 
-These rows describe the remaining official API limits:
+These rows describe the remaining official API limits. Additional capabilities belong in Mayfly Host composition and serializable Remote methods, using public native APIs; this project does not extend dsh upstream to fill them.
 
 | Area | Implemented behavior and remaining boundary |
 | --- | --- |
@@ -85,7 +87,9 @@ These rows describe the remaining official API limits:
 | Cold child tool cards and controls | Passive native history and projections work. Without a live child Agent, custom presenters use generic durable tool cards and Agent-scoped controls report unavailable. Browsing never activates a child or borrows its parent's Agent. An explicit continuable-child reply uses the native addressed path. |
 | `/update` Host startup check | `/update [<version>]` stages and checks the exact frontend release graph, confirms, upgrades both installations, verifies versions, and compensates failed changes. `/update recover` restores an interrupted transaction on its original Host. The official Host API provides no isolated Host boot check; the confirmation and result explicitly require restarting both processes and checking Host startup. Linked/read-only and non-npm frontend installations use their original installer. |
 
-`/plugin` installs, updates, removes, and enables Host bundles through the native plugin manager. `/settings` supports revision-bound form changes and a local external editor for the actual Host settings document. These features have native APIs and are implemented. Plugin changes report their restart boundary; a cancelled or stale write is never silently retried. `/schedule` and other optional features state when their Host service is absent.
+`/plugin` installs, updates, removes, and enables Host bundles through the native plugin manager. `/settings` supports revision-bound form changes and a local external editor for the actual Host settings document. Raw-document saves acquire the native profile lock, compare the revision under that lock, and replace the file atomically. This is partial conflict protection: an external editor that ignores the lock can still race after the final revision check. A conflict preserves the edited draft for review. Plugin changes report their restart boundary; a cancelled or stale write is never silently retried. `/schedule` and other optional features state when their Host service is absent.
+
+`/stats` history requires Host-wide authorization even when limited to the current workspace, because it can expose sibling Sessions. Permission for the selected Session alone allows only its own statistics; a denied history request reports that boundary without starting a history scan.
 
 Updates hold one cross-process lock through staging, installation, verification, and compensation. An interrupted transaction retains its recovery marker and log. Recovery refuses while an earlier npm writer is still alive; an unconfirmed worker startup reports the marker path and requires manual inspection before repair.
 
