@@ -82,9 +82,63 @@ export const SPLIT_AGENTS_STEPS = Object.freeze([
   { step: 'key', name: 'f7' }, { step: 'resize', cols: 80, rows: 24 }, checkpoint('agents-return-primary'),
 ])
 
+/** Real live/cold access, addressed continuation, explicit-stop closure and stored-history reopening. */
+export const SPLIT_AGENTS_LIFECYCLE_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' }, ...send('Prepare a completed native turn before creating descendants'),
+  { step: 'until', text: 'the model is a stub' }, ...send('native:agents:tree'),
+  { step: 'audit', event: 'agents-fixture-ready', label: 'tree' },
+  ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Live leaf' }, { step: 'key', name: 'enter' },
+  { step: 'until-gone', text: 'Subagents' }, { step: 'until', text: 'Message Live leaf' }, checkpoint('agents-live-view'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-live-view-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-live-view-wide'), { step: 'resize', cols: 80, rows: 24 },
+  { step: 'key', name: 'f7' }, ...send('/agents stop agents-live'),
+  { step: 'audit', event: 'agents-live-settled', label: 'tree' }, { step: 'until', text: 'stopped subagent agents-live' }, checkpoint('agents-live-stopped-main'),
+  { step: 'key', name: 'f7' }, checkpoint('agents-live-stop-closed-view'),
+  ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Live leaf' }, { step: 'key', name: 'enter' },
+  { step: 'until-gone', text: 'Subagents' }, { step: 'until', text: 'Reply to Live leaf — sending resumes it' }, checkpoint('agents-live-stopped-view'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-live-stopped-view-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-live-stopped-view-wide'), { step: 'resize', cols: 80, rows: 24 },
+  { step: 'key', name: 'f7' }, { step: 'key', name: 'f8' }, ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Cold leaf' }, { step: 'key', name: 'enter' },
+  { step: 'until-gone', text: 'Subagents' }, { step: 'until', text: 'Reply to Cold leaf — sending resumes it' }, checkpoint('agents-cold-before-continuation'),
+  ...send('hold:600000 Continue the cold child through its exact parent'),
+  { step: 'until', text: 'Message Cold leaf' }, checkpoint('agents-cold-continued-live'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-cold-continued-live-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-cold-continued-live-wide'), { step: 'resize', cols: 80, rows: 24 },
+  { step: 'key', name: 'f7' }, ...send('/agents stop agents-cold'), checkpoint('agents-cold-stopped-main'),
+  { step: 'key', name: 'f7' }, checkpoint('agents-cold-stop-closed-view'),
+  ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Cold leaf' }, { step: 'key', name: 'enter' },
+  { step: 'until-gone', text: 'Subagents' }, { step: 'until', text: 'Reply to Cold leaf — sending resumes it' }, checkpoint('agents-cold-stopped-view'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-cold-stopped-view-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-cold-stopped-view-wide'),
+  { step: 'key', name: 'f7' }, { step: 'resize', cols: 80, rows: 24 }, checkpoint('agents-lifecycle-return-primary'),
+])
+
+/** A real naturally completed addressed turn preserves its side descriptor and returns to cold access. */
+export const SPLIT_AGENTS_SETTLEMENT_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' }, ...send('Prepare a completed native turn before creating descendants'),
+  { step: 'until', text: 'the model is a stub' }, ...send('native:agents:tree'),
+  { step: 'audit', event: 'agents-fixture-ready', label: 'tree' },
+  ...send('/agents'), { step: 'until', text: 'Subagents' },
+  { step: 'key', name: '/' }, { step: 'type', text: 'Cold leaf' }, { step: 'key', name: 'enter' },
+  { step: 'until-gone', text: 'Subagents' }, { step: 'until', text: 'Reply to Cold leaf — sending resumes it' }, checkpoint('agents-settlement-before'),
+  ...send('Complete one additional addressed cold child turn naturally'),
+  { step: 'until', text: 'Complete one additional addressed cold child turn naturally' },
+  { step: 'until', text: 'Reply to Cold leaf — sending resumes it' }, { step: 'wait', ms: 350 }, checkpoint('agents-settlement-completed'),
+  { step: 'key', name: 'f7' }, checkpoint('agents-settlement-primary'),
+  { step: 'key', name: 'f7' }, { step: 'until', text: 'Reply to Cold leaf — sending resumes it' }, checkpoint('agents-settlement-retained-view'),
+  { step: 'resize', cols: 40, rows: 16 }, checkpoint('agents-settlement-retained-narrow'),
+  { step: 'resize', cols: 120, rows: 40 }, checkpoint('agents-settlement-retained-wide'),
+])
+
 export const SPLIT_NATIVE_CASES = Object.freeze({
   questions: { steps: SPLIT_QUESTION_STEPS, profileTag: 'questions-v1' },
   stats: { steps: SPLIT_STATS_STEPS, profileTag: 'stats-v1' },
   files: { steps: SPLIT_FILES_STEPS, fixture: 'native-files', profileTag: 'files-v1' },
   agents: { steps: SPLIT_AGENTS_STEPS, fixture: 'native-agents', profileTag: 'agents-v1' },
+  'agents-lifecycle': { steps: SPLIT_AGENTS_LIFECYCLE_STEPS, fixture: 'native-agents', profileTag: 'agents-lifecycle-v1' },
+  'agents-settlement': { steps: SPLIT_AGENTS_SETTLEMENT_STEPS, fixture: 'native-agents', profileTag: 'agents-settlement-v1' },
 })
