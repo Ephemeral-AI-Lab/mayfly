@@ -388,7 +388,7 @@ export interface MayflyPermissionSpec {
   readonly approval: 'ask' | 'never'
 }
 
-/** Permission rows and their resolved bundles, plus yolo state for an optional current value. */
+/** Permission rows and bundles, plus the exact Session or future-Session default yolo state. */
 export interface MayflyPermissionCatalogDetails {
   readonly options: readonly { readonly value: string, readonly name: string, readonly description?: string | undefined }[]
   readonly defaultOptions: readonly { readonly value: string, readonly name: string, readonly description?: string | undefined }[]
@@ -397,9 +397,9 @@ export interface MayflyPermissionCatalogDetails {
   readonly yolo: boolean
 }
 
-/** Optional current-preset input for yolo evaluation. */
+/** Exact passive Session read; omission reads the native default for future Sessions. */
 export interface MayflyPermissionCatalogRequest {
-  readonly currentPreset?: string | undefined
+  readonly sessionId?: SessionId | undefined
 }
 
 /** One API wallet, preserving decimal strings exactly as the provider returned them. */

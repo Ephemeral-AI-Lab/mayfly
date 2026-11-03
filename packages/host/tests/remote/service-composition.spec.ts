@@ -45,7 +45,9 @@ async function host() {
     authorization: { describe: () => undefined, cancel: vi.fn() },
     credentials: { resolve: async () => undefined },
     llm: { listProviders: () => [] },
-    permissionPresets: { catalog: () => ({ options: [], defaultOptions: [], defaultPreset: 'safe' }) },
+    permissionPresets: { defaultPreset: 'safe', resolve: () => ({ sandbox: 'workspace-write', approval: 'ask' }), catalog: () => ({ options: [], defaultOptions: [], defaultPreset: 'safe' }) },
+    shell: { sandboxMode: 'workspace-write' },
+    approval: { config: { policy: 'ask' } },
     sessionController: { resolveAgent: async () => { throw new Error('unexpected activation') }, fork: async () => ({ sessionId: SessionId('btw-child') }) },
     sessionProjections: {
       snapshot: () => ({ values: { workingDirectory: '/host', mayflyWorkflow: { sessionId: session.id, runs: [] }, mayflyDeliverables: [{ id: 'delivery', path: 'report.md' }] } }),
@@ -103,7 +105,7 @@ describe('Host Remote composition', () => {
     const { service } = await host()
     const methods = new Map(remoteMethods(service).map(method => [method.method, method]))
     const sessionId = SessionId('authorized-session')
-    for (const name of ['btwFork', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'listMcpResources', 'readMcpResource', 'subagentTree']) {
+    for (const name of ['btwFork', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'listMcpResources', 'readMcpResource', 'subagentTree', 'permissionCatalogDetails']) {
       const reader = methods.get(name)?.resources?.['session']
       expect(reader, `${name} must declare Session authorization`).toBeTypeOf('function')
       expect(reader?.({ sessionId })).toBe(sessionId)
@@ -113,6 +115,44 @@ describe('Host Remote composition', () => {
     expect(presentations?.({ entries: [{ sessionId }, { sessionId }, { sessionId: 'second' }] })).toEqual([sessionId, 'second'])
     expect(methods.get('subagentStop')?.resources?.['session']?.({ sessionId, childSessionId: 'child' })).toEqual([sessionId, 'child'])
     expect(methods.get('statsHistory')?.resources?.['session']?.({ sessionId })).toBeUndefined()
+    expect(methods.get('permissionCatalogDetails')?.resources?.['session']?.({})).toBeUndefined()
+  })
+
+  it('authorizes exact permission reads before observing cold history and requires global access for defaults', async () => {
+    const { ctx } = await host()
+    new TypertRegistry(ctx)
+    ctx.typert.resources.register('session', { field: 'sessionId' })
+    const decide = vi.fn(({ resources }: { resources: readonly { kind: string, id?: string }[] }) =>
+      resources.every(resource => resource.kind === 'session' && resource.id === 'parent')
+        ? { kind: 'allow' } : { kind: 'deny', reason: 'only parent is authorized' })
+    ctx.provide('remoteAccess', { decide })
+    const gateway = new TypertGatewayService(ctx, {})
+    const peer = { id: 'permissions-test', ctx, principal: { kind: 'global' }, signal: new AbortController().signal, interactions: 'none', dispose: async () => {} }
+    const observe = vi.spyOn(ctx.sessionQuery, 'observeSession')
+    for (const request of [{ sessionId: 'forbidden-cold-child' }, {}]) {
+      await expect(gateway.invoke({ namespace: 'mayflyHost', method: 'permissionCatalogDetails', args: { request }, peer }))
+        .rejects.toMatchObject({ code: 'remote-access/denied' })
+    }
+    expect(decide).toHaveBeenLastCalledWith(expect.objectContaining({ resources: [{ kind: 'global' }] }))
+    expect(observe).not.toHaveBeenCalled()
+    await expect(gateway.invoke({ namespace: 'mayflyHost', method: 'permissionCatalogDetails', args: { request: { sessionId: 'parent' } }, peer }))
+      .resolves.toMatchObject({ yolo: false })
+    expect(observe).toHaveBeenCalledExactlyOnceWith('parent', expect.objectContaining({ projectionMode: 'none' }))
+    expect(decide).toHaveBeenLastCalledWith(expect.objectContaining({ resources: [{ kind: 'session', id: 'parent' }] }))
+  })
+
+  it('retires an in-flight passive permission observation on service unload', async () => {
+    const { ctx, service, unload } = await host()
+    const observation = Promise.withResolvers<Awaited<ReturnType<Context['sessionQuery']['observeSession']>>>()
+    const dispose = vi.fn()
+    let received: AbortSignal | undefined
+    vi.spyOn(ctx.sessionQuery, 'observeSession').mockImplementation(async (_id, options) => { received = options?.signal; return observation.promise })
+    const pending = service.permissionCatalogDetails({ sessionId: SessionId('parent') }, new AbortController().signal)
+    await unload()
+    expect(received?.aborted).toBe(true)
+    observation.resolve({ events: [], [Symbol.dispose]: dispose } as never)
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(dispose).toHaveBeenCalledOnce()
   })
 
   it.each([false, true])('requires global Gateway access before any history read, allWorkspaces=%s', async allWorkspaces => {
@@ -174,7 +214,7 @@ describe('Host Remote composition', () => {
     await expect(service.retractTurn({ ...request, messageId: 'missing' }, signal)).resolves.toBe(false)
     await expect(service.modelCatalogDetails({}, signal)).resolves.toEqual({ items: [] })
     await expect(service.defaultModel({ operation: 'read' }, signal)).resolves.toEqual({ provider: 'fixture', model: 'one' })
-    expect(service.permissionCatalogDetails({}, signal)).toMatchObject({ options: [], yolo: false })
+    await expect(service.permissionCatalogDetails({}, signal)).resolves.toMatchObject({ options: [], yolo: false })
     await expect(service.providerBalance(signal)).resolves.toEqual({ status: 'unavailable', reason: 'no-key' })
     const document = await service.readSettingsDocument(signal)
     await expect(service.writeSettingsDocument({ content: '{"ok":true}', expectedRevision: document.revision }, signal)).resolves.toMatchObject({ content: '{"ok":true}' })

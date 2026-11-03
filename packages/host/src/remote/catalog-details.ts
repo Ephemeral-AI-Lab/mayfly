@@ -1,9 +1,12 @@
 /** Session skill details, adapter model details, and resolved permission bundles. @module */
-import type { Context } from '@deepseek-ai/cordis'
+import { symbols, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-skill'
+import type {} from '@deepseek-ai/dsh-shell'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
+import type {} from '@deepseek-ai/dsh-user-approval'
 import type { MayflyDefaultModelRequest, MayflyModelCatalogDetails, MayflyModelSelection, MayflyPermissionCatalogDetails, MayflyPermissionCatalogRequest, MayflyPermissionSpec, MayflySkillCatalog, MayflySkillSummary } from '../types.ts'
 import { frozen } from './json.ts'
 import { requireExactAgent, resolveExactAgent, sessionDirectory } from './session.ts'
@@ -91,23 +94,34 @@ export async function defaultModel(ctx: Context, request: MayflyDefaultModelRequ
   })
 }
 
-/** Resolve every permission option's native sandbox/approval bundle and optional current yolo value. */
-export function permissionCatalogDetails(ctx: Context, request: MayflyPermissionCatalogRequest, signal: AbortSignal): MayflyPermissionCatalogDetails {
+/** Read exact native permission knobs without activating an Agent or inferring them from a preset name. */
+export async function permissionCatalogDetails(ctx: Context, request: MayflyPermissionCatalogRequest, signal: AbortSignal): Promise<MayflyPermissionCatalogDetails> {
   signal.throwIfAborted()
+  let yolo: boolean
+  if (request.sessionId === undefined) {
+    const spec = ctx.permissionPresets.resolve(ctx.permissionPresets.defaultPreset)
+    yolo = spec.sandbox === 'danger-full-access' && spec.approval === 'never'
+  } else {
+    const source = ctx.sessionQuery
+    using observation = await source.observeSession(request.sessionId, { signal, projectionMode: 'none' })
+    signal.throwIfAborted()
+    const current = ctx.get('sessionQuery')
+    if ((Reflect.get(source, symbols.original) ?? source) !== (current === undefined ? undefined : Reflect.get(current, symbols.original) ?? current)) {
+      throw new RemoteError('mayflyHost/session-stale', 'Permission source changed during the read', { sessionId: request.sessionId })
+    }
+    let sandbox = ctx.shell.sandboxMode
+    let approval = ctx.approval.config.policy ?? 'ask'
+    for (const event of observation.events) {
+      if (event.type === 'sandbox/mode') sandbox = event.data.mode
+      if (event.type === 'approval/policy') approval = event.data.policy
+    }
+    yolo = sandbox === 'danger-full-access' && approval === 'never'
+  }
   const catalog = ctx.permissionPresets.catalog()
   const specs = Object.create(null) as Record<string, MayflyPermissionSpec>
   for (const option of catalog.options) {
     const spec = ctx.permissionPresets.resolve(option.value)
     specs[option.value] = { sandbox: spec.sandbox, approval: spec.approval }
-  }
-  let yolo = false
-  if (request.currentPreset !== undefined) {
-    try {
-      const spec = ctx.permissionPresets.resolve(request.currentPreset)
-      yolo = spec.sandbox === 'danger-full-access' && spec.approval === 'never'
-    } catch {
-      // A withdrawn or derived current value is not a yolo bundle.
-    }
   }
   return frozen({ ...catalog, specs, yolo })
 }
