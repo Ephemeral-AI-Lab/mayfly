@@ -8,6 +8,7 @@ import { parseArgs } from 'node:util'
 import { launchSplitHost } from './split-profile.mjs'
 import { startStubModel } from './stub-model.mjs'
 import { builtSplitRuntime, persistedSplitEvidence } from './split-evidence.mjs'
+import { captureSplitTerminal, splitStartupReadiness } from './split-terminal.mjs'
 
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC'
 
@@ -46,6 +47,51 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
       { type: 'file', receiptId: uploads[0].receiptId },
     ]
     const journal = async id => value(await client.remote.session.events({ address: { kind: 'session', sessionId: id }, maxMessages: 100 })).records.map(record => record.event)
+    const conversation = async () => {
+      await client.sessions.refreshProjections(sessionId)
+      const snapshot = client.sessions.list.getSnapshot().projectionsBySession[sessionId]
+      assert.equal(snapshot?.state, 'ready')
+      const projection = snapshot.values.mayflyConversation
+      assert.ok(Array.isArray(projection?.entries), 'Host conversation projection must be available')
+      return projection
+    }
+    const fileMetadata = upload => ({ kind: 'file', attachmentId: upload.file.attachmentId, name: upload.file.name, bytes: upload.file.bytes })
+    const captureAttachments = async (name, markers) => {
+      const dir = join(artifacts, name)
+      mkdirSync(dir, { recursive: true })
+      const env = {
+        ...host.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8', TZ: 'UTC',
+        MAYFLY_DSH_STARTUP_URL: host.startupUrl, MAYFLY_CWD: host.cwd, MAYFLY_SESSION_ID: sessionId,
+        MAYFLY_SPLIT_CLOCK_RELEASE: host.clockRelease,
+        NODE_OPTIONS: `--import=${new URL('./split-clock.mjs', import.meta.url).href}`,
+      }
+      for (const key of ['CI', 'COLUMNS', 'LINES', 'NO_COLOR', 'FORCE_COLOR', 'MAYFLY_TASK']) delete env[key]
+      const captured = await captureSplitTerminal({
+        bin: process.execPath, args: [join(root, 'packages/remote/lib/remote-bin.js')], cwd: host.cwd,
+        env, cols: 100, rows: 35, stub, startupUrl: host.startupUrl, startupReady: splitStartupReadiness(),
+        steps: [
+          ...markers.map(text => ({ step: 'until', text })),
+          { step: 'checkpoint', name },
+          { step: 'resize', cols: 40, rows: 16 },
+          { step: 'checkpoint', name: `${name}-narrow` },
+        ],
+        alive: () => { assert.equal(host.child.exitCode, null, 'Host must outlive the attached TUI') },
+        onCheckpoint: checkpoint => writeFileSync(join(dir, `${checkpoint.name}-${checkpoint.cols}x${checkpoint.rows}.grid`), checkpoint.grid),
+        beforeExit: async () => { writeFileSync(host.clockRelease, 'release') },
+      })
+      writeFileSync(join(dir, 'remote.ansi'), captured.output)
+      writeFileSync(join(dir, 'exit.json'), `${JSON.stringify(captured.exit ?? null, null, 2)}\n`)
+      assert.deepEqual(captured.failures, [], `${name} real TUI capture must succeed`)
+      assert.equal(host.child.exitCode, null, 'Detaching the TUI must not stop the Host')
+      const wide = captured.checkpoints[0].grid
+      let previous = -1
+      for (const marker of markers) {
+        const index = wide.indexOf(marker, previous + 1)
+        assert.ok(index > previous, `TUI must display ${marker} in native attachment order`)
+        previous = index
+      }
+      return { exitCode: captured.exitCode, checkpoints: captured.checkpoints.map(checkpoint => checkpoint.name), exit: captured.exit }
+    }
     const before = await journal(sessionId)
     const refusal = value(await client.remote.commands.execute(sessionId, '/plan off', attachments))
     assert.equal(refusal.result.kind, 'error')
@@ -65,15 +111,38 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
     assert.equal(message.content[1].attachment.name, 'diagram.png')
     assert.deepEqual(message.content[2].attachment, uploads[0].file)
     assert.equal(message.content[3].text, 'Inspect ordered native attachments')
-    report.cases.orderedFilesAndImage = { execution: admitted, message }
+    const orderedProjection = await conversation()
+    const orderedEntry = orderedProjection.entries.findLast(entry => entry.kind === 'user')
+    report.cases.orderedFilesAndImage = { execution: admitted, message, projection: orderedEntry }
+    assert.equal(orderedEntry.text, message.content[3].text)
+    assert.ok(Array.isArray(orderedEntry.attachments), 'Host projection must retain ordered file/image attachment metadata')
+    assert.deepEqual(orderedEntry.attachments.map(attachment => attachment.kind), ['file', 'image', 'file'])
+    assert.deepEqual(orderedEntry.attachments[0], fileMetadata(uploads[1]))
+    assert.equal(orderedEntry.attachments[1].name, 'diagram.png')
+    assert.deepEqual(orderedEntry.attachments[2], fileMetadata(uploads[0]))
+    report.cases.orderedFilesAndImage.tui = await captureAttachments('ordered-attachments', ['second.txt', 'diagram.png', 'first.txt'])
 
-    const attachmentOnly = value(await client.remote.commands.execute(sessionId, '/plan', [attachments[0]]))
+    const onlyUpload = value(await client.fileUpload.upload(sessionId, new TextEncoder().encode('only native file'), 'attachment-only.txt'))
+    uploads.push(onlyUpload)
+    const attachmentOnly = value(await client.remote.commands.execute(sessionId, '/plan', [{ type: 'file', receiptId: onlyUpload.receiptId }]))
     assert.equal(attachmentOnly.result.kind, 'success')
     value(await client.remote.session.wait({ sessionId, timeoutMs: 10_000 }))
     const afterOnly = await journal(sessionId)
     const onlyMessage = afterOnly.findLast(event => event.type === 'user/message' && event.data.source.kind === 'user').data
-    assert.deepEqual(onlyMessage.content, [{ type: 'file', attachment: uploads[1].file }])
-    report.cases.attachmentOnly = { execution: attachmentOnly, message: onlyMessage }
+    assert.deepEqual(onlyMessage.content, [{ type: 'file', attachment: onlyUpload.file }])
+    const onlyProjection = await conversation()
+    const onlyEntry = onlyProjection.entries.findLast(entry => entry.kind === 'user')
+    report.cases.attachmentOnly = { execution: attachmentOnly, message: onlyMessage, projection: onlyEntry }
+    assert.equal(onlyEntry.text, '')
+    assert.deepEqual(onlyEntry.attachments, [fileMetadata(onlyUpload)])
+    assert.deepEqual(Object.keys(onlyEntry.attachments[0]).sort(), ['attachmentId', 'bytes', 'kind', 'name'])
+    report.cases.attachmentOnly.tui = await captureAttachments('file-only', ['[file] attachment-only.txt'])
+
+    await client.detach()
+    client = await createHostClient({ key: HostKey('native-command-files-reconnected'), startupUrl: host.startupUrl })
+    const reconnected = await conversation()
+    assert.deepEqual(reconnected, onlyProjection, 'Reconnected Client must receive the same whole Host projection')
+    report.cases.reconnectedProjection = reconnected
 
     const wrongSession = value(await client.remote.commands.execute(otherSessionId, '/plan Wrong Session', [attachments[0]]))
     assert.equal(wrongSession.result.kind, 'error')
