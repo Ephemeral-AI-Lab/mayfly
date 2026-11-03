@@ -51,14 +51,47 @@ T06 真实图片读取进一步定位到既存 flow 渲染缓存缺陷：HTTP 45
 
 ## 组合验证与验收
 
-- `0c236c3e` 已完成全量 build，冻结给独立验证运行 T06/T08；其实际 runtime hash 由场景 report 记录。
-- 首次组合源码测试：9,137 项通过，两个旧架构断言需跟随 T23 的 DTO owner/包声明调整，已修正，针对测试与源码/测试类型检查通过；最终全量覆盖率仍需组合门禁确认。
-- `fd6a8a46` 稳定构建下的完整源码覆盖率：529 个套件通过、2 个既有套件跳过；9,153 项测试通过、2 项既有测试跳过。可执行代码的 statements/branches/functions/lines 全部达到逐文件 100%，未放宽阈值或排除源码。日志 `/tmp/mayfly-remediation-coverage-stable.log`。
-- 完整 repository workflow：180 项通过、1 项既有跳过、0 失败。`e20ddaad` 将按键审计的影响图断言跟随到实际纯定义文件。日志 `/tmp/mayfly-remediation-workflow-final.log`。
-- 严格 T06 真实证据：`/home/x/dev/mayfly-remediation-verify/.artifacts/remediation-t06/candidate-b3c23959-settled-image/report.json`，runtime before/after hash 均为 `233fa4fcd8ef864cb994615059f2fb56451b579d5a88121d4efeef8d1fa219c4`；两个 TUI 干净退出，4 个宽/窄 checkpoint 通过，图像明确完成到 metadata fallback。
-- Root Website 严格 build 通过（19.25 秒），14 个受影响预览路由 HTTP 200；仍需人工视觉/内容验收。
-- 首轮 `verify:changed` 的 coverage 曾被集成者并行安装构建短暂删除 `lib/` 干扰，部分入口解析失败；该轮 coverage 无效，不作为产品回归或验收通过证据。随后稳定构建重跑的完整 coverage 如上，最终 `verify:full` 仍将串行运行。
-- `verify:changed -- --plan` 已执行。`verify:changed`、`verify:full`、最终 pack/examples/agent-docs 与专用 profile/Website 验收结果将在完成后追加。
-- T08 独立真实证据：`/home/x/dev/mayfly-remediation-verify/.artifacts/remediation-t08/candidate-0c236c3e-final/report.json`。重启后原生 comparison 不再保留；普通 TUI resume 会激活 Session，已将被动 RPC 与 resume UI 证据分别记录，未把后者称为 passive。
-- Website 预览持续保留于 `http://192.168.8.188:4193/`，中文与英文 guide/config、plugins/seams、quickstart、reference/commands、features、theme 等页面待人工验收。
-- 最终报告必须保留基线 `panels/stats/files` 等未审查红项，以及任何未完成的图片内容读取、真实 TUI 或人工验收，不得只凭局部测试宣布完整验收通过。
+最终完整门禁运行在 `23c106c8`（运行时代码最后修改于 `fd6a8a46`），命令为 `COREPACK_HOME=/home/x/.cache/node/corepack pnpm run verify:full`。显式使用本机已缓存的固定版本 pnpm，避免隔离 HOME 反复下载 Corepack；没有修改依赖版本。原始结果为 **FAIL**，不得宣称完整严格 parity 已通过。
+
+- Workflow、typecheck、lint、diagrams、build、lib exports、agent docs、examples、pack 均通过。五个 tarball 的外部安装、公开 runtime 和严格类型消费检查通过。
+- 529 个套件通过、2 个既有套件跳过；9,153 项测试通过、2 项既有测试跳过。583 个可执行文件的 statements/branches/functions/lines 均为逐文件 100%，未放宽阈值或排除运行时代码。最终完整门禁再次确认了稳定构建下的独立覆盖率结果。
+- CLI registry smoke 首次安装遇到上游请求超时及原生浮动 peer 警告，在 300 秒期限内未完成；原始门禁保留该失败。同一批 tarball、同一检查独立复测通过，日志 `/tmp/mayfly-remediation-cli-registry-retry.log` 含 `CLI_LOCAL_REGISTRY_SMOKE_PASS`。独立对照确认 Host → native Web/app-boot 的依赖链在审计基线中已经存在，本轮没有新增该闭包，没有修改 pins 或接受 fatal peer 错误。
+- 完整 21 个 split 场景均尝试执行：16 个 strict pass，共 228 个检查点；network 的 3 个真实恢复检查点通过，保持 behavior-only 标签。实际运行的 20 个 candidate 场景（包含产生差异的场景）before/after hash 全部相同且 `stable=true`，统一为 `614e8cd63952bd2c4a781481b45358bd12ecdd8d7fc4e179ac5d78c83ed695f4`；files 在 reference 阶段失败，没有 candidate fingerprint。
+- `changelog`（4 个检查点）和 `focus-resize`（9 个检查点）本轮均 strict pass，原先退出时序红项不再出现。
+- 原始报告与日志保留于 `.artifacts/verify/{report.json,summary.md,split.json,steps/}`。
+
+仍保留以下严格 parity 红项，没有重写 reference 或屏蔽失败：
+
+| 场景 | 最终证据 | 分类 |
+| --- | --- | --- |
+| panels | 10 个检查点；4 条失败与审计基线逐字一致 | 已有 context/token/version、preset、model 和键提示原生差异 |
+| stats | 12 个检查点；2 条失败与审计基线逐字一致 | 已有 Session context `977k`/`1M` 与 Harness 版本差异 |
+| files | published reference 预览显示 `cannot get property "fs" without inject`，随后等待 `Description:` 消失失败，未进入 candidate | 去除 checkout 路径和行号后失败堆栈与基线语义一致；已有 immutable reference 缺陷，不宣称此场景通过 |
+| editor-feedback | 9 个检查点中仅 `editor-empty-help` 有差异，其余 8 个一致 | T08 新增 `/changes` 帮助条目，后续命令下移一行；本轮有意的 UI 差异，不归入旧基线 |
+
+`verify:changed -- --plan` 已执行。首轮 `verify:changed` 的源码测试被集成者同时启动的安装构建短暂删除 `lib/` 干扰，随后部分隔离场景又遇到 Corepack CDN 下载超时；该轮不作为覆盖率或完整验收证据。日志原样保存在 `.artifacts/verify-changed-initial/`，随后独立完整源码覆盖率及上述串行 `verify:full` 重新验证全部检查和 split 场景。
+
+独立真实证据另行保留：
+
+- T06：`/home/x/dev/mayfly-remediation-verify/.artifacts/remediation-t06/candidate-b3c23959-settled-image/report.json`。真实 HTTP/WebSocket、file-only、有序 file/image/file、错误 Session receipt 拒绝、重连恢复通过；100×35 和 40×16 共 4 个检查点、两次干净退出及终端恢复通过。最终明确显示 `second.txt → diagram.png → first.txt`，无残留 loader。runtime before/after hash 均为 `233fa4fcd8ef864cb994615059f2fb56451b579d5a88121d4efeef8d1fa219c4`。PTY 无内联图片协议，因此证据为原生字节读取与最终 metadata fallback。
+- T08：`/home/x/dev/mayfly-remediation-verify/.artifacts/remediation-t08/candidate-0c236c3e-final/report.json`。实际 turn 的 seq 42/77、latest、无效 seq/索引、warm 8 个 PTY 检查点通过。重启后原生比较不再保留，被动 RPC 保持 `active=false` 且不追加事件；普通 TUI resume 会激活 Session，另有 4 个空比较 UI 检查点，浏览不追加事件，未把 resume UI 称作 passive。
+- 独立验收 profile：`mayfly-split-fix` 已通过 `script/install-dev.sh` 安装。`.artifacts/acceptance-split-fix/report.json` 记录真实提交一轮对话、`/changes` 空态、40×16 窄窗口、同一 Session 重连恢复；4 个检查点与两次干净退出/终端恢复通过，TUI 退出后 Host 继续存活。runtime before/after hash 均为 `614e8cd63952bd2c4a781481b45358bd12ecdd8d7fc4e179ac5d78c83ed695f4`。
+- Website：root 严格 build 通过（19.25 秒），14 个受影响预览路由 HTTP 200。预览持续保留于 `http://192.168.8.188:4193/`，仍需人工视觉/内容验收。
+
+## 人工验收入口
+
+在两个终端依次运行：
+
+```sh
+dsh --profile mayfly-split-fix
+```
+
+```sh
+MAYFLY_DSH_STARTUP_URL='<Host 输出的完整 URL>' /home/x/dev/mayfly-remediation/script/mayfly-remote.sh
+```
+
+主要流程：正常提交与恢复会话，检查有序附件和 plan+yolo 状态组合；在产生原生 workspace comparison 后检查 `/changes [seq]` 与 `/files`。窄窗口和生命周期：缩至 40×16、断开重连、正常退出；附件不残留 loader，Host 不随 TUI 退出。原生比较随 Session disposal 或 Host 重启消失时，应显示安全空态。
+
+Website 中英文验收入口：`/guide/`、`/en/guide/`、`/guide/config`、`/en/guide/config`、`/plugins/seams`、`/en/plugins/seams`、`/plugins/quickstart`、`/en/plugins/quickstart`、`/reference/commands`、`/en/reference/commands`、`/features/`、`/en/features/`、`/guide/theme`、`/en/guide/theme`。
+
+依据根 `AGENTS.md` 的 “Wait for all applicable human acceptance before merging, stopping previews, or removing profiles.”，当前保留 worktrees、profile 和预览，不合入 main，不清理验收入口。T05 保持用户确认的部分修复边界；本记录不等同于人工验收通过。
