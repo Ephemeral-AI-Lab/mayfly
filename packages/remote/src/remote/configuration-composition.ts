@@ -86,7 +86,7 @@ export function mountRemoteConfigurationComposition(
         if (client === undefined) return
         const input = rawInput.trim()
         if (input === 'add') { await features.providers.openAdd(client, signal); return }
-        if (input.startsWith('edit ')) { await features.providers.openEditor(client, input.slice(5).trim(), signal); return }
+        if (input.startsWith('edit ')) { await features.providers.edit(client, input.slice(5).trim(), signal); return }
         if (input.startsWith('switch ')) { await features.providers.openModels(client, input.slice(7).trim(), signal); return }
         if (input !== '') throw usage('provider')
         await features.providers.open(client, signal)

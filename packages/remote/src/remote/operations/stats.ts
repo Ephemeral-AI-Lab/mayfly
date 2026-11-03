@@ -141,7 +141,7 @@ class RemoteStatsController {
         loadAccount()
         publish()
       } catch (error) {
-        if (valid() && !retire.aborted) { base.notice.set(remoteErrorMessage(error)); publish() }
+        if (valid() && !retire.aborted) { base.notice.set(remoteErrorMessage(error), 'error'); publish() }
       }
     }
     const startIndex = (): void => {

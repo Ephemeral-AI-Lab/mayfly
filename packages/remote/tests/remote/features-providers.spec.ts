@@ -66,6 +66,40 @@ function fixture(options: { readonly custom?: boolean, readonly writable?: boole
 }
 
 describe('reference provider roster and editors', () => {
+  it('routes edit to a native profile or account and reports unavailable configuration as an error', async () => {
+    const test = fixture()
+    const caller = new AbortController()
+    await test.controller.edit(test.client, 'deepseek', caller.signal)
+    expect(test.browser().id).toContain('mayfly.provider.')
+    expect(test.notice.set).not.toHaveBeenCalled()
+    await test.controller.edit(test.client, 'deepseek-account', caller.signal)
+    expect(test.account).toHaveBeenCalledExactlyOnceWith(test.client, caller.signal)
+    await test.controller.edit(test.client, 'missing', caller.signal)
+    expect(test.notice.set).toHaveBeenCalledExactlyOnceWith('The provider has no editable configuration', 'error')
+    const bare = fixture({ bare: true })
+    await bare.controller.edit(bare.client, 'deepseek-account', caller.signal)
+    expect(bare.notice.set).toHaveBeenCalledExactlyOnceWith('The provider has no editable configuration', 'error')
+    caller.abort()
+    const count = test.configurable.mock.calls.length
+    await test.controller.edit(test.client, 'missing', caller.signal)
+    expect(test.configurable).toHaveBeenCalledTimes(count)
+    test.controller.dispose()
+    await test.controller.edit(test.client, 'missing', new AbortController().signal)
+    expect(test.configurable).toHaveBeenCalledTimes(count)
+  })
+
+  it('keeps a late failed edit silent after its exact Host changes', async () => {
+    const test = fixture()
+    const gate = deferred<unknown>()
+    test.configurable.mockReturnValueOnce(gate.promise)
+    const pending = test.controller.edit(test.client, 'missing', new AbortController().signal)
+    test.reconnect()
+    gate.resolve({ ok: true, value: [] })
+    await pending
+    expect(test.notice.set).not.toHaveBeenCalled()
+    expect(test.account).not.toHaveBeenCalled()
+  })
+
   it('refuses cancelled provider entrypoints before focusing or issuing native reads', async () => {
     const test = fixture()
     const caller = new AbortController(); caller.abort()
@@ -211,10 +245,12 @@ describe('reference provider roster and editors', () => {
   it('uses native provider route/name matching for the shared filtered model picker', async () => {
     const test = fixture()
     await test.controller.openModels(test.client, 'DEEPSEEK')
+    test.listProviders.mockResolvedValueOnce({ ok: true, value: [{ id: 'other', name: 'Pretty Name' }] })
+    await test.controller.openModels(test.client, 'Pretty Name')
+    expect(test.created.mock.calls).toEqual([['deepseek', undefined], ['other', undefined]])
     await test.controller.openModels(test.client, 'OAuth')
-    expect(test.created.mock.calls).toEqual([['deepseek', undefined], ['oauth', undefined]])
     await test.controller.openModels(test.client, 'missing')
-    expect(test.notice.set).toHaveBeenCalledWith('Unknown provider')
+    expect(test.notice.set).toHaveBeenCalledWith('Unknown provider', 'error')
     const late = deferred<unknown>()
     test.listProviders.mockReturnValueOnce(late.promise)
     const pending = test.controller.openModels(test.client, 'deepseek')

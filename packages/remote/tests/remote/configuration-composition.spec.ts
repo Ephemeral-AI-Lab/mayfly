@@ -7,7 +7,7 @@ import { RemoteFeatureCommandRegistry } from '../../src/remote/features/commands
 
 const feature = vi.hoisted(() => ({
   models: { open: vi.fn(async () => {}), effort: vi.fn(async () => {}), cycle: vi.fn(async () => {}) },
-  providers: { open: vi.fn(async () => {}), openAdd: vi.fn(async () => {}), openEditor: vi.fn(async () => {}), openModels: vi.fn(async () => {}) },
+  providers: { open: vi.fn(async () => {}), openAdd: vi.fn(async () => {}), edit: vi.fn(async () => {}), openModels: vi.fn(async () => {}) },
   account: { open: vi.fn(async () => {}) }, settings: { open: vi.fn(async () => {}) }, permissions: { open: vi.fn(async () => {}) }, presets: { open: vi.fn(async () => {}) },
   preferences: { openTheme: vi.fn(), applyTheme: vi.fn(async () => {}), applyCustomTheme: vi.fn(async () => {}), openLocale: vi.fn(), applyLocale: vi.fn(async () => {}) },
   onboarding: { open: vi.fn() }, dispose: vi.fn(), ioDispose: vi.fn(), ioConstructor: vi.fn(), hostConstructor: vi.fn(), create: vi.fn(),
@@ -103,7 +103,7 @@ describe('Remote configuration composition', () => {
     const abort = new AbortController(); abort.abort()
     await f.run('providers', '', abort.signal); expect(feature.providers.open).not.toHaveBeenCalled()
     await f.run('providers', ' add '); expect(feature.providers.openAdd).toHaveBeenCalledWith(f.current, f.signal)
-    await f.run('providers', 'edit  provider-id  '); expect(feature.providers.openEditor).toHaveBeenCalledWith(f.current, 'provider-id', f.signal)
+    await f.run('providers', 'edit  provider-id  '); expect(feature.providers.edit).toHaveBeenCalledWith(f.current, 'provider-id', f.signal)
     await f.run('providers', 'switch  provider-id  '); expect(feature.providers.openModels).toHaveBeenCalledWith(f.current, 'provider-id', f.signal)
     await f.run('providers'); expect(feature.providers.open).toHaveBeenCalledWith(f.current, f.signal)
     await expect(f.run('providers', 'unexpected')).rejects.toThrow('Usage: /provider')

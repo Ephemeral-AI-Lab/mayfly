@@ -99,9 +99,14 @@ export class RemoteAgentPresetsController extends RemoteFeatureController {
               selected = preset.name ?? preset.id
             } else selected = await remoteValue(client.remote.agentPresets.select(selection.ref.sessionId, preset.id))
             if (!operation.valid() || context.signal.aborted) return { kind: 'cancelled' }
-            this.context.notice.set(t(selection === undefined ? 'Default preset: {preset}' : 'Preset switched to {preset}', { preset: selected }))
+            this.context.notice.set(t(selection === undefined ? 'Default preset: {preset}' : 'Preset switched to {preset}', { preset: selected }), 'success')
             return { kind: 'accepted', node: view(), source: [], dismiss: true }
-          } catch (error) { return operation.valid() && !context.signal.aborted ? { kind: 'failed', message: remoteErrorMessage(error) } : { kind: 'cancelled' } }
+          } catch (error) {
+            if (!operation.valid() || context.signal.aborted) return { kind: 'cancelled' }
+            const message = remoteErrorMessage(error)
+            this.context.notice.set(message, 'error')
+            return { kind: 'failed', message }
+          }
         },
         onClosed: () => operation.dispose(),
       })
@@ -110,7 +115,7 @@ export class RemoteAgentPresetsController extends RemoteFeatureController {
         operation.onDispose(selection.binding.session.projections.faceOf('agentPreset').subscribe(() => { if (operation.valid()) mounted?.refresh() }))
         operation.onDispose(client.remote.$on('agent-preset/selected', sessionId => { if (operation.valid() && sessionId === selection.ref.sessionId) mounted?.refresh() }))
       }
-    } catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error)); operation.dispose() }
+    } catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error), 'error'); operation.dispose() }
   }
 
   /** Select one exact Session preset through the official turn-boundary guard. */
@@ -136,6 +141,6 @@ export class RemoteAgentPresetsController extends RemoteFeatureController {
         onClosed: () => operation.dispose(),
       })
       operation.onDispose(() => { mounted.close() })
-    } catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error)); operation.dispose() }
+    } catch (error) { if (operation.valid()) this.context.notice.set(remoteErrorMessage(error), 'error'); operation.dispose() }
   }
 }

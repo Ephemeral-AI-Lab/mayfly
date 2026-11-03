@@ -1426,7 +1426,7 @@ describe('RemoteApp', () => {
     expect(fixture.sessionListeners.size).toBe(0)
   })
 
-  it('routes rename and fork writes to the exact selected Session, validates boundaries, and retains the source on fork failure', async () => {
+  it('routes rename and fork to the exact Session, ignores fork arguments, and retains the source on failure', async () => {
     const fixture = clientFixture(HostKey('http://host/'))
     const { conversation, status, panels } = appFixture()
     const rename = vi.fn(async (title: string) => ({ ok: true as const, value: { title } }))
@@ -1445,7 +1445,10 @@ describe('RemoteApp', () => {
     await app.execute('/rename Denied')
     expect(status.set).toHaveBeenLastCalledWith('rename denied', 'error')
     for (const argument of ['-1', 'bad', '1.5', '9007199254740992']) {
-      await expect(app.execute(`/fork ${argument}`)).rejects.toThrow('Usage: /fork [atSeq]')
+      fork.mockRejectedValueOnce('native fork denied')
+      await app.execute(`/fork ${argument}`)
+      expect(fork).toHaveBeenLastCalledWith({ sessionId: 'shared-session' })
+      expect(status.set).toHaveBeenLastCalledWith('native fork denied', 'error')
     }
     fork.mockRejectedValueOnce(new Error('fork-unavailable'))
     await app.execute('/fork')
@@ -1455,7 +1458,7 @@ describe('RemoteApp', () => {
     await app.execute('/fork 0')
     expect(status.set).toHaveBeenLastCalledWith('native fork denied', 'error')
     await app.execute('/fork 12')
-    expect(fork).toHaveBeenLastCalledWith({ sessionId: 'shared-session', atSeq: 12 })
+    expect(fork).toHaveBeenLastCalledWith({ sessionId: 'shared-session' })
     expect(app.registry.current?.sessionId).toBe('forked')
     expect(status.set).toHaveBeenCalledWith('forking the current session', 'info')
     await app.execute('/fork')
@@ -1638,12 +1641,17 @@ describe('RemoteApp rewind', () => {
     expect(test.fork).toHaveBeenCalledOnce()
   })
 
-  it('preserves explicit sequence support and reports invalid, empty, busy and failed branches', async () => {
+  it('ignores command arguments and reports empty, busy and failed picker branches', async () => {
     const test = rewindFixture()
     await expect(test.app.execute('/rewind')).rejects.toThrow('no active session')
     await test.app.attach('http://one.test/')
     await test.app.selectOrCreate('shared-session')
-    await expect(test.app.execute('/rewind invalid')).rejects.toThrow('Usage: /rewind [seq]')
+    for (const argument of ['invalid', '0', '-1', '1.5']) {
+      await test.app.execute(`/rewind ${argument}`)
+      expect(test.fork).not.toHaveBeenCalled()
+    }
+    expect(test.panels.showRewind).toHaveBeenCalledTimes(4)
+    vi.mocked(test.panels.showRewind!).mockClear()
     test.session.getSnapshot.mockReturnValueOnce({ running: true })
     await test.app.execute('/rewind')
     expect(test.status.set).toHaveBeenCalledWith('cannot rewind while the agent is running', 'error')
@@ -1652,13 +1660,13 @@ describe('RemoteApp rewind', () => {
     expect(test.status.set).toHaveBeenCalledWith('no user turns to rewind', 'info')
     test.fork.mockRejectedValueOnce(new Error('fork-unavailable'))
     await test.app.execute('/rewind 0')
-    expect(test.status.set).toHaveBeenCalledWith(expect.stringContaining('Nothing to fork yet'), 'error')
-    await test.app.execute('/rewind')
     const choose = vi.mocked(test.panels.showRewind!).mock.calls[0]![1]
+    await choose(1)
+    expect(test.status.set).toHaveBeenCalledWith(expect.stringContaining('Nothing to fork yet'), 'error')
     test.session.getSnapshot.mockReturnValueOnce({ running: true })
     await choose(1)
     expect(test.fork).toHaveBeenCalledTimes(1)
-    await test.app.execute('/rewind 1')
+    await choose(1)
     expect(test.app.registry.current?.sessionId).toBe('child')
   })
 
@@ -1685,7 +1693,8 @@ describe('RemoteApp rewind', () => {
     await test.app.selectOrCreate('shared-session')
     const fork = Promise.withResolvers<SessionId>()
     test.fork.mockReturnValueOnce(fork.promise)
-    const branching = test.app.execute('/rewind 1')
+    await test.app.execute('/rewind 1')
+    const branching = vi.mocked(test.panels.showRewind!).mock.lastCall![1](1)
     test.app.clearSession()
     fork.resolve(SessionId('late-child'))
     await branching
@@ -1698,7 +1707,8 @@ describe('RemoteApp rewind', () => {
     await test.app.selectOrCreate('shared-session')
     const native = Promise.withResolvers<SessionId>()
     test.fork.mockReturnValueOnce(native.promise)
-    const pending = test.app.execute('/rewind 1')
+    await test.app.execute('/rewind 1')
+    const pending = vi.mocked(test.panels.showRewind!).mock.lastCall![1](1)
     test.app.clearSession()
     native.reject(new Error('retired fork rejection'))
     await pending

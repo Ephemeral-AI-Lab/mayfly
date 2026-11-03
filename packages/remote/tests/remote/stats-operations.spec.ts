@@ -196,10 +196,10 @@ describe('rc.2 Remote statistics', () => {
     const old = f.panel(); await f.open(); expect(old.closed).toBe(true)
     wait.resolve(good({ ...initial, cwd: '/stale' })); await tick(); expect(f.text()).not.toContain('/stale')
     f.read.mockResolvedValueOnce(bad('native failed')); await f.act('refresh'); await tick()
-    expect(f.options.notice.set).toHaveBeenCalledWith('native failed')
+    expect(f.options.notice.set).toHaveBeenCalledWith('native failed', 'error')
     const error = Promise.withResolvers<unknown>(); f.read.mockReturnValueOnce(error.promise)
     await f.act('refresh'); f.reconnect(); error.reject(new Error('late failure')); await tick()
-    expect(f.options.notice.set).not.toHaveBeenCalledWith('late failure')
+    expect(f.options.notice.set).not.toHaveBeenCalledWith('late failure', 'error')
     expect(old.options.isCurrent()).toBe(false)
   })
 

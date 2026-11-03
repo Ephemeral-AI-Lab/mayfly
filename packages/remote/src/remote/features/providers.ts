@@ -216,14 +216,24 @@ export class RemoteProvidersController extends RemoteFeatureController {
     const operation = this.hostOperation(client, parent)
     if (operation === undefined) return
     try {
-      const directory = await this.directory(client)
-      if (directory === undefined || !operation.valid()) return
-      const entries = [...directory.live.map(provider => ({ id: provider.id, name: provider.name })), ...directory.configurable.map(provider => ({ id: provider.provider, name: provider.displayName }))]
+      const entries = await remoteValue(client.remote.llm.listProviders())
+      if (!operation.valid()) return
       const query = name.toLowerCase()
       const match = entries.find(entry => entry.id.toLowerCase() === query) ?? entries.find(entry => entry.name.toLowerCase() === query)
-      if (match === undefined) { this.context.notice.set(this.context.t('Unknown provider')); return }
+      if (match === undefined) { this.context.notice.set(this.context.t('Unknown provider'), 'error'); return }
       // The model picker keeps the invocation after this resolver disposes.
       await this.onCreated?.(match.id, parent)
+    } finally { operation.dispose() }
+  }
+
+  /** Resolve the public edit command and preserve its native refusal feedback. */
+  async edit(client: HostClient, route: string, parent: AbortSignal): Promise<void> {
+    const operation = this.hostOperation(client, parent)
+    if (operation === undefined) return
+    try {
+      if (await this.openEditor(client, route, parent) || !operation.valid()) return
+      if (route === ACCOUNT_PROVIDER && this.openAccount !== undefined) await this.openAccount(client, parent)
+      else this.context.notice.set(this.context.t('The provider has no editable configuration'), 'error')
     } finally { operation.dispose() }
   }
 

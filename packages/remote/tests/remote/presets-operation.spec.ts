@@ -202,7 +202,7 @@ describe('mountRemotePresetOperations', () => {
       [{ op: 'set', path: ['selectedDefault'], value: 'alpha' }],
       7,
     )
-    expect(f.notice.set).toHaveBeenCalledWith('Default preset: alpha', 'info')
+    expect(f.notice.set).toHaveBeenCalledWith('Default preset: Alpha', 'info')
     expect(host.remote.agentPresets.select).not.toHaveBeenCalled()
     dispose()
   })
@@ -220,7 +220,7 @@ describe('mountRemotePresetOperations', () => {
     const f = fixture()
     const dispose = mountRemotePresetOperations(f.context)
     await f.execute('alpha')
-    expect(f.notice.set).toHaveBeenCalledWith('No Host is attached')
+    expect(f.notice.set).toHaveBeenCalledWith('No Host is attached', 'error')
     dispose()
   })
 
@@ -228,7 +228,7 @@ describe('mountRemotePresetOperations', () => {
     const f = fixture()
     const dispose = mountRemotePresetOperations(f.context)
     await f.execute('')
-    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('No Host is attached')
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('No Host is attached', 'error')
     const execute = f.definition().execute
     const cancelled = new AbortController(); cancelled.abort()
     await execute('alpha', cancelled.signal)
@@ -245,10 +245,10 @@ describe('mountRemotePresetOperations', () => {
     const dispose = mountRemotePresetOperations(f.context)
     f.commands.execute.mockResolvedValueOnce(false)
     await f.execute('')
-    expect(f.notice.set).toHaveBeenCalledWith('Preset browsing is unavailable in this build')
+    expect(f.notice.set).toHaveBeenCalledWith('Preset browsing is unavailable in this build', 'error')
     f.commands.execute.mockRejectedValueOnce(new Error('roster dispatch failed'))
     await f.execute('')
-    expect(f.notice.set).toHaveBeenCalledWith('roster dispatch failed')
+    expect(f.notice.set).toHaveBeenCalledWith('roster dispatch failed', 'error')
     const late = Promise.withResolvers<boolean>()
     f.commands.execute.mockReturnValueOnce(late.promise)
     const pending = f.execute('')
@@ -321,7 +321,7 @@ describe('mountRemotePresetOperations', () => {
     const dispose = mountRemotePresetOperations(f.context)
     host.remote.settings.describe.mockResolvedValueOnce({ ok: true, value: { writable: !readonly, namespaces: readonly ? [{ ns: 'agent-preset-registry', revision: 7 }] : [] } })
     await f.execute('alpha')
-    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('preset selection is unavailable')
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('preset selection is unavailable', 'error')
     expect(host.remote.settings.mutate).not.toHaveBeenCalled()
     dispose()
   })

@@ -55,16 +55,16 @@ class RemotePresetOperationsController {
   /** Forward the listing to `/presets`, which already owns the roster panel. */
   private async openRoster(signal: AbortSignal): Promise<void> {
     if (this.context.base.hosts.current() === undefined && this.context.base.hosts.list().length === 0) {
-      this.context.base.notice.set(this.t('No Host is attached'))
+      this.context.base.notice.set(this.t('No Host is attached'), 'error')
       return
     }
     try {
       const handled = await this.context.base.commands.execute('presets', '', signal)
       if (!handled && !this.disposed && !signal.aborted) {
-        this.context.base.notice.set(this.t('Preset browsing is unavailable in this build'))
+        this.context.base.notice.set(this.t('Preset browsing is unavailable in this build'), 'error')
       }
     } catch (error) {
-      if (!this.disposed && !signal.aborted) this.context.base.notice.set(remoteErrorMessage(error))
+      if (!this.disposed && !signal.aborted) this.context.base.notice.set(remoteErrorMessage(error), 'error')
     }
   }
 
@@ -72,7 +72,7 @@ class RemotePresetOperationsController {
     const selection = this.context.base.hosts.current()
     const client = selection?.client ?? this.context.base.hosts.active?.() ?? this.context.base.hosts.list()[0]
     if (client === undefined) {
-      this.context.base.notice.set(this.t('No Host is attached'))
+      this.context.base.notice.set(this.t('No Host is attached'), 'error')
       return
     }
     const operation = new RemoteFeatureOperation(this.context.base, client, selection, AbortSignal.any([signal, this.lifetime.signal]))
@@ -94,7 +94,7 @@ class RemotePresetOperationsController {
         return
       }
       if (selection === undefined) {
-        await this.setDefault(client, match.id, operation)
+        await this.setDefault(client, match.id, match.name ?? match.id, operation)
         return
       }
       const selected = await remoteValue(client.remote.agentPresets.select(selection.ref.sessionId, match.id))
@@ -106,12 +106,12 @@ class RemotePresetOperationsController {
   }
 
   /** Persist the preset a later blank Session takes, bound to the descriptor revision. */
-  private async setDefault(client: HostClient, id: string, operation: RemoteFeatureOperation): Promise<void> {
+  private async setDefault(client: HostClient, id: string, label: string, operation: RemoteFeatureOperation): Promise<void> {
     const settings = await remoteValue(client.remote.settings.describe())
     if (this.disposed || !operation.valid()) return
     const descriptor = settings.namespaces.find(candidate => candidate.ns === PRESET_SETTINGS_NS)
     if (descriptor === undefined || !settings.writable) {
-      this.context.base.notice.set(this.t('preset selection is unavailable'))
+      this.context.base.notice.set(this.t('preset selection is unavailable'), 'error')
       return
     }
     await remoteValue(client.remote.settings.mutate(
@@ -120,7 +120,7 @@ class RemotePresetOperationsController {
       descriptor.revision,
     ))
     if (this.disposed || !operation.valid()) return
-    this.context.base.notice.set(this.t('Default preset: {preset}', { preset: id }), 'info')
+    this.context.base.notice.set(this.t('Default preset: {preset}', { preset: label }), 'info')
   }
 }
 

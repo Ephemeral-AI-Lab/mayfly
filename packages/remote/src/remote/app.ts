@@ -393,15 +393,11 @@ export class RemoteApp {
     }
     if (name === 'fork') {
       const { ref, binding, current } = this.captureSelection(signal)
-      const atSeq = input === '' ? undefined : Number(input)
-      if (atSeq !== undefined && (!Number.isSafeInteger(atSeq) || atSeq < 0)) {
-        throw new Error('Usage: /fork [atSeq]')
-      }
       if (binding.session.getSnapshot().running) { this.notice.set('cannot fork while the agent is running', 'error'); return { exit: false } }
       this.notice.set('forking the current session', 'info')
       // A fork needs a completed turn to cut at, which an empty or entirely
       // failed Session never has; report that instead of failing the submit.
-      const child = await this.actions.fork(ref, atSeq === undefined ? {} : { atSeq })
+      const child = await this.actions.fork(ref, {})
         .catch((error: unknown) => {
           if (current()) this.notice.set(describeSessionSplitFailure(error), 'error')
           return undefined
@@ -413,7 +409,7 @@ export class RemoteApp {
       return { exit: false }
     }
     if (name === 'rewind') {
-      await this.rewind(input, signal)
+      await this.rewind(signal)
       return { exit: false }
     }
     if (name === 'init') {
@@ -633,7 +629,7 @@ export class RemoteApp {
     return { ref, binding, client, current }
   }
 
-  private async rewind(input: string, signal?: AbortSignal): Promise<void> {
+  private async rewind(signal?: AbortSignal): Promise<void> {
     const ref = this.registry.current
     const binding = this.registry.currentReference?.binding
     if (ref === undefined || binding === undefined) throw new Error('no active session')
@@ -655,12 +651,6 @@ export class RemoteApp {
       await this.selectOrCreate(child.sessionId, this.cwd, signal)
     }
     if (binding.session.getSnapshot().running) { this.notice.set('cannot rewind while the agent is running', 'error'); return }
-    if (input !== '') {
-      const atSeq = Number(input)
-      if (!Number.isSafeInteger(atSeq) || atSeq < 0) throw new Error('Usage: /rewind [seq]')
-      await choose(atSeq)
-      return
-    }
     const lifetime = new AbortController()
     const invalidate = (): void => { if (!current()) lifetime.abort() }
     const offApp = this.subscribeTopology(invalidate)
