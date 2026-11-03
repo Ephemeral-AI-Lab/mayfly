@@ -23,16 +23,18 @@ zone.
 ## Schedule is Host-wide, its tools are preset-scoped
 
 The Schedule capability is the durable Host-wide `ctx.schedule` service.
-Mayfly inserts its row disabled; a profile enables it with `disabled: false`.
+The split Host inherits its enabled row from `dsh-web-app`; a profile may
+disable it independently of an Agent's preset.
 The model-facing `schedule_create`, `schedule_list`, `schedule_update`, and
 `schedule_delete` tools come from the preset-owned `tool-schedule` row:
 `standard`, `ptc`, `cordis`, and `mayfly-cordis` mount it, `minimal` omits it.
 There is no Host attachment that adds these tools to every root Agent.
 
-`/schedule` reads the selected Agent's Session list through the native service,
-observes `schedule/changed`, and checks the exact Agent's tool schemas for
-`schedule_create`. The panel therefore reports the capability as unavailable
-when the service is off or the Agent's preset does not mount the tools.
+`/schedule` reads only the selected Session's active reminders through native
+`remote.schedule.list({ sessionId })` and observes `schedule/changed`. It uses
+the shared rc.2 reminder panel, not a Host-wide task browser. A `minimal` preset
+without reminder tools can still inspect that Session's reminders; a missing
+or failing service renders the panel's unavailable state.
 Delivery is durable: a due reminder resolves its original Session through the
 Session Controller and wakes it even when no Agent is running. Creation and
 cancellation stay in the conversation.
@@ -60,15 +62,23 @@ completion notice. There is no foreground/background mode, no
 `run_in_background` argument, and no `started subagent` acknowledgement to
 parse.
 
-Remote reads the parent's durable `subagentCatalog`, the child's `subagent`
-and `subagentTiming` projections, and Host-projected presentation facts.
-`/agents` and the Agents view list the exact direct children; `Enter` opens a
-child's conversation, and `x` stops a continuable child through the Host's
-guarded native `subagents.drainChildren` operation. `/btw` is a native
-`fork` activation with its own Agent and history floor; `F7` returns to the
-previous conversation and `F8` closes the displayed one. Browsing a cold child
-reads native addressed history and never activates it; sending a reply is an
-explicit addressed prompt.
+The Host's `subagentTree` reads native `listDescendants`, preserving the complete
+descendant preorder and diagnostics. Exact resident Agents and native
+`subagent`, `subagentTiming`, workflow and passive stream facts supply the
+readonly presentation metrics. `/agents` and the Agents view display that tree;
+`Enter` opens a local child's conversation. `x` or `/agents stop <id>` stops
+only a live continuable leaf. The Host rechecks the current authorized tree and
+waits for `subagents.drainChildren` through that child's exact direct parent.
+External children have no local conversation. Browsing a cold child reads
+native addressed history and never activates it; sending a continuable child a
+reply is an explicit addressed prompt.
+
+`/btw` uses ordinary native Session Controller fork, not a managed subagent
+activation. It inherits the complete observed source tail, including an open
+first turn, and returns the inherited boundary for the frontend's history
+floor. A genuinely empty source uses native create and has no inherited floor.
+`F7` returns to the previous conversation and `F8` closes the displayed view;
+neither operation stops Host work.
 
 ## Sessions are read from the native controller
 
@@ -89,11 +99,18 @@ and statistics queries also use native passive history reads.
 ## Commands and surfaces
 
 - `/save` and `/export` write the projected transcript, or with `full` the
-  native audit stream, under local `mayfly-exports/`. Bare filenames stay on
-  the TUI machine; they are not Host filesystem paths or Web downloads.
+  native audit stream, on the TUI machine. Relative paths use the TUI working
+  directory; absolute paths are supported, parent directories are created, and
+  existing files are overwritten. Without a path the generated Markdown
+  filename is placed in that same directory. These are not Host filesystem
+  paths or Web downloads.
 - `/permissions` is Mayfly's preset panel; the native `/permission` command
   keeps its name and argument form.
 - `/rename` writes a user-pinned title through the Session Controller.
+- `/goal` retains the native command parser, output, refusals and ordered
+  objective attachments. Goal and Todo displays use shared rc.2 builders over
+  native projections; Goal activation comes from the matching native revision.
+  Its edit action returns `/goal edit <objective>` to the prompt.
 - `/model`, `/effort`, `/provider`, `/context`, `/stats`, `/trace`, `/skills`,
   `/tools`, `/mcp`, `/files`, `/jobs`, `/agents`, `/btw`, `/schedule`,
   `/settings`, and `/plugin` read native services and render terminal panels.

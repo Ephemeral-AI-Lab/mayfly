@@ -50,7 +50,7 @@ subset Mayfly consumes and the rules that keep it native.
 | `plan` | `@deepseek-ai/dsh-plan-mode` | mode status, plan questions |
 | `permissions` | `@deepseek-ai/dsh-permission-presets` | mode status, permissions panel |
 | `userQuestions` | `@deepseek-ai/dsh-user-questions` | question panel |
-| `subagentCatalog` | `@deepseek-ai/dsh-subagent` | Agents item, `/agents` |
+| `subagentCatalog` | `@deepseek-ai/dsh-subagent` | native descendant catalog behind Host `subagentTree` |
 | `subagent` | `@deepseek-ai/dsh-subagent` | child identity and mode |
 | `subagentTiming` | `@deepseek-ai/dsh-subagent` | Agents timing and activity |
 | `modelSelection` | `@deepseek-ai/dsh-api-session-controller` | model status, banner, sessions list |
@@ -94,7 +94,7 @@ fallback only when no working-directory service is composed.
 | Goal | `ctx.goals` / `/goal` | display projection; write through service/command |
 | Jobs | `ctx.jobs` | list/get/readAt/kill; durable `job/registered`/`job/settled` |
 | Subagents | `ctx.subagents` | `startActivation`, `listChildren`/`listDescendants`, `drainChildren`, catalog/control |
-| Schedule | `ctx.schedule` | `list`/`catalog`/`history`; tasks are Host-wide and Session-bound |
+| Schedule | `ctx.schedule` | selected Session's `list`; tasks are Host-wide and Session-bound |
 | Settings | `ctx.settings` / `ctx.settingsController` | describe/mutate; never patch YAML |
 | Models | `ctx.llm` / `ctx.agentDefaultModel` | catalog/defaults; selection through the controller |
 | Credentials/account | `ctx.credentials*`, `ctx.authorization`, `ctx.deepseekAccount` | sign-in UI and redacted views |
@@ -123,11 +123,12 @@ profile file.
 
 `tool-schedule` is a preset row, not a Host attachment. The shipped
 `standard`, `ptc`, `cordis`, and `mayfly-cordis` presets mount it; `minimal`
-does not. The Host `schedule` service stays Host-wide and is inserted
-disabled in Mayfly's bundle. `/schedule` reads the exact Agent's Session list
-and checks `ctx.tools.schemas(agent)` for `schedule_create`, so an Agent with
-no preset tool sees the capability as unavailable even when the service is
-mounted.
+does not. The Host `schedule` service stays Host-wide and comes enabled from
+the composed `dsh-web-app` row; a profile can disable it. `/schedule` reads the
+selected Session's active reminders through native `remote.schedule.list`
+and refreshes on `schedule/changed`. The readonly panel does not require
+`schedule_create` in that preset. Reminder creation and cancellation remain in
+the conversation; the TUI does not add an `all` task-browser mode.
 
 ## Mayfly-owned keys
 

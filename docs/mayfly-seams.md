@@ -19,7 +19,9 @@ presets, and Session operations remain native Remote calls. The focused
 `mayflyHost` namespace supplies serializable presentation data and writes
 missing from those native transport surfaces: custom tool presentation,
 workflow follow, sanitized catalogs, model/permission details, settings-document
-revision writes, guarded retraction/drain, and workspace/resource reads. It is
+revision writes, guarded turn retraction, native descendant-tree facts and
+completed descendant stops, passive statistics and traces, and workspace,
+recorded-file and MCP-resource reads. It is
 not a generic filesystem, arbitrary-tool, or Host lifecycle API. Its generated
 DTO contract lives in `packages/host/src/types.ts` and the Host package README.
 

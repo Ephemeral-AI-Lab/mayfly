@@ -85,6 +85,8 @@ node script/split-parity.mjs --scenario transcript-search
 node script/split-parity.mjs --scenario focus-resize
 node script/split-parity.mjs --scenario editor-feedback
 node script/split-parity.mjs --scenario local-shell
+node script/split-parity.mjs --scenario agents
+node script/split-parity.mjs --scenario rename
 ```
 
 `smoke` covers startup, help, Unicode draft, an actual model turn and `/new`.
@@ -126,6 +128,20 @@ and captures 80×24, 40×16 and 120×40 frames, for 99 checkpoints. `questions`,
 question answers, usage panels, delivered previews and workspace diffs. A
 reference failure remains a failed case; it does not silently remove that
 workflow from the full gate.
+
+`agents` admits real native descendant activations through a fixture tool,
+including a nested child, a cold local child, an external process and a live
+continuable leaf. Its 21 checkpoints cover parser refusals, tree expansion and
+collapse, filtering, external-conversation refusal, stop confirmation/cancel,
+completed native teardown, cold history, F7 return, and narrow/wide layouts.
+The fixture audits native descendant and completion facts independently of UI
+text; it supplies no replacement tree or renderer state.
+
+`rename` drives the original title editor through the actual command and native
+Session Controller. Its 15 checkpoints cover Unicode prefill, clean cancel,
+edit/save/reopen, dirty-discard confirmation and draft retention, empty-title
+refusal, persistence and narrow/wide layouts. The test exercises the same
+published reference workflow rather than substituting a local form.
 
 The input cases also run in the default full gate. `transcript-search` enters
 the real conversation with Alt+Up, searches in both directions, walks matches
@@ -213,9 +229,31 @@ HEAD is explicitly labelled as an observation, without inferring a build
 commit. Reference captures retain a separate `native-evidence-<run-id>.json`
 linkage file; the immutable reference manifest and screen bytes remain intact.
 
+## Published reference failures
+
+The published artifact has reproducible defects in two exercised workflows:
+
+- `/files` delivered-file detail accesses `agent.ctx.fs` without declaring that
+  service in its owning injection list. The immutable capture shows
+  `cannot get property "fs" without inject`, `File unavailable` and unknown
+  size; its preview cannot open, so the eight-checkpoint reference capture does
+  not complete.
+- The independent Trace search/reopen/resize capture reaches a duplicate
+  `trace-events` control rejection at 120×40 and cannot open the selected
+  `user/message` detail. A second capture of the unchanged published artifact
+  reproduces the error; its six-checkpoint reference manifest does not complete.
+
+Keep the original ANSI, verified tarball/runtime hashes and passive native
+evidence for these failures. Neither is a missing official API or an additional
+partial command. Candidate workflows still require independent real-runtime
+validation. Successful candidate behavior cannot complete the failed reference
+manifest, create replacement goldens or turn `strictParityVerified: false` into
+strict parity. Any acceptance decision about these baseline defects must remain
+explicit and separate from the four API limits in the root README.
+
 ## Remaining acceptance coverage
 
-The initial split backend is infrastructure, not a completed parity claim.
+Implemented split handlers and shared builders are not a completed parity claim.
 The rc.2 catalog includes startup/sessionless flows, all themes, narrow/short
 terminals, mouse interaction, streaming, approvals, tools and side views.
 Cases above cover part of that matrix. All other checkpoints must be driven
@@ -224,10 +262,11 @@ intermediate frames and real-time PTY review. In-flight detach, same-SessionId
 multi-Host isolation and stale replies require additional protocol scenarios.
 
 Commands must retain rc.2 canonical names: `/model`, `/provider`, `/preset`
-and `/plugin` are singular. The split branch's plural local names do not by
-themselves satisfy these contracts. Inventory must include native Host
-commands and aliases, not only frontend command registrations. An untested
-command remains unverified even if its handler exists.
+and `/plugin` are singular. Current Remote registrations use those names;
+static registration alone does not establish the workflow. Inventory must
+include native Host commands and aliases, not only frontend command
+registrations. An untested command remains unverified even if its handler
+exists.
 
 `node script/split-parity.mjs --inventory` prints the frozen source registrations,
 aliases and source locations. Its `candidateNameMentioned` field is only a

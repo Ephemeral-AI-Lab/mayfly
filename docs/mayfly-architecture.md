@@ -101,6 +101,11 @@ Live attempt settlement follows explicit native settled-step facts. Renderer
 animation timers never measure or decide domain progress. Every component must
 return rows no wider than the supplied `render(width)`.
 
+Goal and Todo views reuse the reference's pure presentation builders over whole
+native projections. `/goal` is dispatched to the native command with its
+parser and objective attachments intact. The status edit action restores the
+native edit command in the prompt; revision-bound controls use native writes.
+
 ## Installation and verification
 
 Use the root [installation instructions](../README.md#install-and-run).
@@ -113,9 +118,9 @@ The npm `0.1.4-rc.2` artifact is an immutable UI/workflow oracle, not a second
 product deployment. [Split validation](./split-parity-validation.md) requires
 independent reference capture, real HTTP/WebSocket scenarios, PTY teardown,
 and cell-grid comparison. Shared builders and smoke success alone do not
-establish visual parity. API limitations and unfinished implementation are
-listed separately in the root README; only genuine official API limitations
-may remain partial at acceptance.
+establish visual parity. The root README lists the four remaining official API
+limitations. The validation document defines the evidence still required for
+acceptance; only genuine official API limitations may remain partial then.
 
 Run the root change-aware gate while iterating and `pnpm run verify:full` before
 architectural acceptance. Public seams require real consumers, exact-Host and
