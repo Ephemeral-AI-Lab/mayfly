@@ -141,6 +141,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   `/jobs` uses the distinct reference browser list, detail and output pages in
   one overlay; its status view retains its own roster and independent output
   overlay. Output observations retain the native ring's complete returned text.
+  Both output entry paths await the native anchor's complete initial retained
+  window before showing output; an initial read failure returns an action
+  failure and keeps the current page. Retirement settles this pending admission,
+  while later catch-up failures preserve the held document.
   Only native loss replaces an older retained window; the frontend never adds
   a length cutoff or invents a retention-loss marker.
 - `/rewind` reads the primary Session through passive native journal pages,

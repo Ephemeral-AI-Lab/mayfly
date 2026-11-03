@@ -179,8 +179,7 @@ class RemoteJobsController {
       if (signal.aborted) return { kind: 'cancelled' }
       return error === undefined ? { kind: 'completed', feedback: { severity: 'success', message: this.t('Stopping {job}', { job: job.label }) } } : { kind: 'failed', message: error }
     }
-    this.openReader(job)
-    return { kind: 'completed' }
+    return await this.openReader(job, signal)
   }
 
   private async refreshRoster(): Promise<void> {
@@ -251,8 +250,18 @@ class RemoteJobsController {
         if (current === undefined) return { kind: 'cancelled' }
         const reader = new RemoteJobFollowReader(current.client, current.ref, job, () => this.browser?.refresh())
         this.browserReader = reader
+        const lifetime = AbortSignal.any([signal, this.operationLifetime.signal])
+        const cancel = () => { void reader.dispose() }
+        lifetime.addEventListener('abort', cancel, { once: true })
+        await reader.start()
+        lifetime.removeEventListener('abort', cancel)
+        if (lifetime.aborted || this.browserReader !== reader) {
+          if (this.browserReader === reader) this.closeBrowserReader()
+          return { kind: 'cancelled' }
+        }
+        const error = reader.snapshot().error
+        if (error !== undefined) { this.closeBrowserReader(); return { kind: 'failed', message: error } }
         this.page = { kind: 'output', id: job.id }
-        reader.start()
         this.browser?.refresh()
         return { kind: 'completed' }
       }
@@ -293,7 +302,7 @@ class RemoteJobsController {
       action: (event, context) => this.browserAction(event, AbortSignal.any([signal, context.signal])),
       back: () => {
         if (this.page.kind === 'output') { this.page = { kind: 'detail', id: this.page.id }; this.closeBrowserReader() }
-        else if (this.page.kind === 'detail') this.page = { kind: 'list' }
+        else if (this.page.kind === 'detail') { this.page = { kind: 'list' }; this.closeBrowserReader() }
         else return false
         this.browser?.refresh()
         return true
@@ -302,16 +311,28 @@ class RemoteJobsController {
     })
   }
 
-  private openReader(job: JobView): void {
+  private async openReader(job: JobView, parent: AbortSignal): Promise<MayflyUiActionReply> {
     const current = this.options.hosts.current()
-    if (current === undefined) return
+    if (current === undefined) return { kind: 'cancelled' }
     this.closeReader()
     const reader = new RemoteJobFollowReader(current.client, current.ref, job, () => {
       this.readerPanel?.refresh()
     })
     this.reader = reader
+    const signal = AbortSignal.any([parent, this.operationLifetime.signal])
+    const cancel = () => { void reader.dispose() }
+    signal.addEventListener('abort', cancel, { once: true })
+    await reader.start()
+    signal.removeEventListener('abort', cancel)
+    if (signal.aborted || this.reader !== reader) {
+      if (this.reader === reader) this.closeReader()
+      return { kind: 'cancelled' }
+    }
+    const error = reader.snapshot().error
+    if (error !== undefined) { this.closeReader(); return { kind: 'failed', message: error } }
     this.readerPanel = openRemoteBrowser(this.options, {
       id: 'remote.jobs.output',
+      signal: parent,
       scope: { kind: 'session', sessionId: current.ref.sessionId },
       isCurrent: () => this.reader === reader && isRemoteFeatureSelection(this.options.hosts.current(), current.client, current.ref),
       view: () => {
@@ -324,7 +345,7 @@ class RemoteJobsController {
         void reader.dispose()
       },
     })
-    reader.start()
+    return { kind: 'completed' }
   }
 
   private closeReader(): void {

@@ -58,20 +58,26 @@ export class RemoteJobFollowReader {
     return this.client === client && this.ref.host === ref.host && this.ref.sessionId === ref.sessionId
   }
 
-  /** Start a fresh observation or resume a reconnect from the accepted cursor. */
-  start(): void {
-    if (this.disposed) return
+  /** Start observation and settle once its initial retained window is read, failed or retired. */
+  start(): Promise<void> {
+    if (this.disposed) return Promise.resolve()
     const generation = ++this.generation
     this.controller?.abort(new Error('Job output generation replaced'))
     const controller = new AbortController()
     this.controller = controller
     this.current = { ...this.current, streaming: true, error: undefined }
     this.changed()
-    const task = this.consume(controller, generation)
+    const ready = Promise.withResolvers<void>()
+    const settled = () => ready.resolve()
+    controller.signal.addEventListener('abort', settled, { once: true })
+    const task = this.consume(controller, generation, settled)
     this.task = task
     void task.finally(() => {
+      controller.signal.removeEventListener('abort', settled)
+      settled()
       if (this.task === task) this.task = undefined
     })
+    return ready.promise
   }
 
   /** Stop only observation; the Host Job continues running. */
@@ -84,14 +90,17 @@ export class RemoteJobFollowReader {
     await this.task
   }
 
-  private async consume(controller: AbortController, generation: number): Promise<void> {
+  private async consume(controller: AbortController, generation: number, ready: () => void): Promise<void> {
     const cursor = this.current.cursor
+    let initialTotal: number | undefined
     try {
       const stream = this.adapter.open(this.client, this.ref, this.current.job.id, cursor === 0 ? undefined : cursor, controller.signal)
       try {
         for await (const frame of stream) {
           if (this.disposed || generation !== this.generation || controller.signal.aborted) return
           this.accept(frame)
+          if (frame.type === 'opened') initialTotal = frame.job.output.total
+          if (frame.type === 'status' || initialTotal !== undefined && this.current.cursor >= initialTotal) ready()
         }
       } finally {
         if ('dispose' in stream && typeof stream.dispose === 'function') await stream.dispose()

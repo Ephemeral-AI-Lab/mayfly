@@ -46,6 +46,7 @@ async function fixture(selected = true) {
   const generation = { generation: 1 }
   const streams: Array<ReturnType<typeof channel<{ value: JobListFrame, accept: () => void }>>> = []
   const follow: Array<ReturnType<typeof channel<JobFollowFrame>>> = []
+  let automaticOpen = true
   let check: readonly JobView[] | undefined = [job()]
   const list = vi.fn((_request: unknown, _signal: AbortSignal) => ({
     dispose: vi.fn(async () => {}),
@@ -53,7 +54,7 @@ async function fixture(selected = true) {
   }))
   const kill = vi.fn(async () => ({ ok: true as const, value: { outcome: 'stopping' } }))
   const client = { key: ref.host, state: { getSnapshot: () => generation, subscribe: (fn: () => void) => { states.add(fn); return () => { states.delete(fn) } } }, remote: {
-    job: { list, kill, follow: vi.fn(() => { const stream = channel<JobFollowFrame>(); follow.push(stream); return { ...stream, dispose: async () => { stream.end() } } }) },
+    job: { list, kill, follow: vi.fn(() => { const stream = channel<JobFollowFrame>(); if (automaticOpen) stream.push({ type: 'opened', job: job(), from: 0 }); follow.push(stream); return { ...stream, dispose: async () => { stream.end() } } }) },
     $stream: vi.fn(() => { const stream = channel<{ value: JobListFrame, accept: () => void }>(); streams.push(stream); return { ...stream, dispose: async () => { stream.end() } } }),
   } } as unknown as HostClient
   const original = { client, ref, binding: { session: { projections: { faceOf: (key: string) => { expect(key).toBe('mayflyJobs'); return history } } } } } as unknown as RemoteFeatureSelection
@@ -82,6 +83,7 @@ async function fixture(selected = true) {
     clearSelection: () => { current = undefined },
     replaceSelection: () => { current = { ...original, ref: { ...original.ref, sessionId: 'other' as typeof ref.sessionId } }; notify() },
     check: (rows: readonly JobView[] | undefined) => { check = rows },
+    deferFollow: () => { automaticOpen = false },
     reconnect: () => { generation.generation += 1; for (const fn of states) fn() },
   }
 }
@@ -89,6 +91,67 @@ async function fixture(selected = true) {
 const panelText = (f: Awaited<ReturnType<typeof fixture>>) => JSON.stringify(f.panels.at(-1)?.options.view())
 
 describe('Job whole-snapshot feature ownership', () => {
+  it('reads the complete initial native window before entering output and leaves native read failures on detail', async () => {
+    const f = await fixture(); await f.emit([job()]); await f.run(); f.deferFollow()
+    const panel = f.panels.at(-1)!
+    const act = (event: MayflyUiActionEvent, signal = new AbortController().signal) => panel.options.action!(event, { signal } as never)
+    await act(browserSelect())
+    const reading = act(action('read'))
+    f.follow[0]!.push({ type: 'opened', job: job({ output: { earliest: 0, total: 8 } }), from: 0 })
+    f.follow[0]!.push({ type: 'output', next: 4, chunks: [{ at: 0, text: 'read' }] }); await flush()
+    expect(panel.options.view()).toEqual(remoteJobDetailsNode(job(), t))
+    f.follow[0]!.push({ type: 'output', next: 8, chunks: [{ at: 4, text: ' all' }] })
+    expect(await reading).toEqual({ kind: 'completed' })
+    expect(panelText(f)).toContain('read all')
+    panel.options.back!()
+    const failed = act(action('read'))
+    f.follow[1]!.fail(new Error('native read failed'))
+    expect(await failed).toEqual({ kind: 'failed', message: 'native read failed' })
+    expect(panel.options.view()).toEqual(remoteJobDetailsNode(job(), t))
+    expect(f.options.notice.set).not.toHaveBeenCalled()
+  })
+
+  it('keeps an independent status reader closed until its native read succeeds and returns initial failures', async () => {
+    const f = await fixture(); await f.emit([job()]); f.deferFollow()
+    const failed = f.dispatch(select())
+    f.follow[0]!.fail('native output unavailable')
+    expect(await failed).toEqual({ kind: 'failed', message: 'native output unavailable' })
+    expect(f.panels).toHaveLength(0)
+    const reading = f.dispatch(select())
+    f.follow[1]!.push({ type: 'opened', job: job({ output: { earliest: 0, total: 4 } }), from: 0 }); await flush()
+    expect(f.panels).toHaveLength(0)
+    f.follow[1]!.push({ type: 'output', next: 4, chunks: [{ at: 0, text: 'kept' }] })
+    expect(await reading).toEqual({ kind: 'completed' })
+    expect(f.panels).toHaveLength(1)
+    expect(panelText(f)).toContain('kept')
+  })
+
+  it.each(['browser', 'status'] as const)('retires pending %s output reads on cancellation, replacement and connection change', async kind => {
+    for (const retirement of ['caller', 'replacement', 'connection'] as const) {
+      const f = await fixture(); await f.emit([job()]); f.deferFollow()
+      const caller = new AbortController()
+      if (kind === 'browser') await f.run()
+      const panel = f.panels.at(-1)
+      if (panel !== undefined) await panel.options.action!(browserSelect(), { signal: caller.signal } as never)
+      const read = () => kind === 'browser'
+        ? panel!.options.action!(action('read'), { signal: caller.signal } as never)
+        : f.dispatch(select(), caller.signal)
+      const pending = read()
+      let replacement: Promise<unknown> | undefined
+      if (retirement === 'caller') caller.abort()
+      else if (retirement === 'connection') f.reconnect()
+      else replacement = read()
+      expect(await pending).toEqual({ kind: 'cancelled' })
+      if (replacement !== undefined) {
+        f.follow.at(-1)!.push({ type: 'opened', job: job(), from: 0 })
+        expect(await replacement).toEqual({ kind: 'completed' })
+      }
+      for (const stream of f.follow) stream.end()
+      await flush()
+      expect(f.options.notice.set).not.toHaveBeenCalled()
+    }
+  })
+
   it('refuses cancelled and retained unloaded commands and keeps output children on the original invocation', async () => {
     const f = await fixture(); await f.emit([job()])
     const cancelled = new AbortController(); cancelled.abort()
@@ -294,7 +357,7 @@ describe('Job whole-snapshot feature ownership', () => {
     const staleBrowser = f.panels.find(panel => panel.options.id === 'remote.jobs')!
     f.clearSelection()
     await staleBrowser.options.action!(select(), { signal: new AbortController().signal } as never)
-    expect(await f.dispatch(select())).toEqual({ kind: 'completed' })
+    expect(await f.dispatch(select())).toEqual({ kind: 'cancelled' })
     expect(await f.dispatch(stopping)).toMatchObject({ message: 'The agent changed; open it again' })
   })
 

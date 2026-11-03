@@ -133,6 +133,22 @@ function readerFixture(status: JobView['status'] = 'running') {
 }
 
 describe('native Job output reader', () => {
+  it('settles initial readiness only after the opened native retained window is complete', async () => {
+    const f = readerFixture()
+    let ready = false
+    const opening = f.reader.start().then(() => { ready = true })
+    f.queues[0]!.push({ type: 'opened', job: job({ output: { earliest: 0, total: 8 } }), from: 0 })
+    f.queues[0]!.push({ type: 'output', next: 4, chunks: [{ at: 0, text: 'part' }] }); await flush()
+    expect(ready).toBe(false)
+    f.queues[0]!.push({ type: 'output', next: 8, chunks: [{ at: 4, text: ' all' }] }); await opening
+    expect(f.reader.snapshot().text).toBe('part all')
+    const restarting = f.reader.start()
+    const replacement = f.reader.start()
+    await restarting
+    f.queues[2]!.push({ type: 'status', job: job({ status: 'completed' }) })
+    await replacement
+  })
+
   it('passes exact native follow addresses and resumes from the accepted absolute cursor', async () => {
     const f = readerFixture()
     expect(f.reader.matches(f.client, ref)).toBe(true)
