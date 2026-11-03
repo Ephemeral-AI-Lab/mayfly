@@ -14,6 +14,7 @@ import {
   groupRows,
   inTab,
   MAYFLY_PACKAGE,
+  isMayflyProductPackage,
   marketEntryInstallBlock,
   MARKET_TABS,
   newerVersion,
@@ -167,6 +168,25 @@ describe('buildRows', () => {
     const removed = entry({ id: 'gone', displayName: 'Gone', status: 'removed' })
     expect(buildRows([removed], [])).toEqual([])
     expect(buildRows([removed], [bundle('dsh-loop')])[0]).toMatchObject({ id: 'gone', state: 'removed', installed: true })
+  })
+
+  it('protects the exact product release set in native installed rows and indexed entries', () => {
+    const names = ['@ephemeral-ai/mayfly-host', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly-cli']
+    expect(MAYFLY_PACKAGE).toBe('@ephemeral-ai/mayfly-host')
+    for (const name of names) {
+      expect(isMayflyProductPackage(name)).toBe(true)
+      const product = entry({ install: { rows: [{ name, npm: { spec: `${name}@2.0.0` } }] } })
+      expect(currentProfileInstallBlock(product)).toBe('Manage Mayfly packages with /update')
+      for (const removable of [false, true]) {
+        expect(buildRows([], [bundle(name, { removable })])).toEqual([])
+        expect(buildRows([product], [bundle(name, { removable })])).toEqual([])
+      }
+      expect(buildRows([product], [])).toEqual([])
+    }
+    expect(isMayflyProductPackage('@scope/mayfly-host')).toBe(false)
+    expect(buildRows([], [bundle('@scope/mayfly-host')])).toMatchObject([{ state: 'unlisted', removable: true }])
+    const mixed = entry({ install: { rows: [{ name: '@scope/addon' }, { name: MAYFLY_PACKAGE }] } })
+    expect(buildRows([mixed], [bundle('@scope/addon'), bundle(MAYFLY_PACKAGE)]).map(row => row.id)).toEqual([`${UNLISTED_GROUP}:@scope/addon`])
   })
 
   it('appends installed bundles the index does not own, except Mayfly and its protected packages', () => {

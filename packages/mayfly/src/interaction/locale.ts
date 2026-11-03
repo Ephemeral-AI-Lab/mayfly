@@ -381,6 +381,7 @@ const zh: Readonly<Record<string, string>> = {
   'updated; restart Mayfly and start a new session to apply': '已更新；重启 Mayfly 并新建会话后生效',
   'removed; restart Mayfly and start a new session to apply': '已移除；重启 Mayfly 并新建会话后生效',
   'web-only plugin: it contributes nothing in this terminal frontend': '仅 Web 插件：在终端前端无作用',
+  'Manage Mayfly packages with /update': '请使用 /update 管理 Mayfly 软件包',
   'automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile': '仅自动化使用的 ACP Server 会独占 stdio；请安装到独立的非 Mayfly 配置目录',
   'refreshing plugin catalog...': '正在刷新插件目录…',
   'no plugins installed': '尚未安装插件',
