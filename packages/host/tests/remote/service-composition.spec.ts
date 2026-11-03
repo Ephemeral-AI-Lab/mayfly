@@ -7,7 +7,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { MayflyHostService } from '../../lib/index.js'
 import { mkdtempTracked, registerTempDirCleanup } from '../../../mayfly/tests/core/temp-dir.ts'
 
@@ -31,6 +31,7 @@ async function host() {
   const settingsFile = join(mkdtempTracked('mayfly-host-service-'), 'settings.json')
   await writeFile(settingsFile, '{}', 'utf8')
   const services: Record<string, unknown> = {
+    profileContext: { dir: dirname(settingsFile) },
     fs: { resolve: async () => ({ targetKey: 'opaque', displayPath: '~/host/report.md' }), stat: async () => ({ type: 'file', size: 6 }), processPath: () => '/host/report.md', readBytes: async () => new TextEncoder().encode('report') },
     sessionQuery: {
       readSession: async () => ({ events: [{ type: 'custom/event', seq: 0, time: 1, data: { text: 'trace fact' } }] }),

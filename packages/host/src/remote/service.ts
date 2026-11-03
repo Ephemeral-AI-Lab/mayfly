@@ -45,7 +45,7 @@ declare module '@deepseek-ai/cordis' {
 export class MayflyHostService extends TypertRemoteService {
   static inject = [
     'agentDefaultModel', 'agents', 'authorization', 'credentials', 'llm', 'permissionPresets',
-    'sessionController', 'sessionQuery', 'sessionProjections', 'sessions', 'settings', 'skills', 'subagents',
+    'profileContext', 'sessionController', 'sessionQuery', 'sessionProjections', 'sessions', 'settings', 'skills', 'subagents',
     'tools', 'workspaceChanges', 'workspaceRegistry',
   ]
 

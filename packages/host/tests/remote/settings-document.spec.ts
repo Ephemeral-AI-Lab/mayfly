@@ -5,11 +5,20 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
-import { readFile, writeFile, rm } from 'node:fs/promises'
+import { fork } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { once } from 'node:events'
+import { readFile, writeFile, rm, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import * as atomic from '@deepseek-ai/dsh-atomic-write'
 import { readSettingsDocument, SettingsDocumentCoordinator, writeSettingsDocument } from '../../src/remote/settings-document.ts'
 import { mkdtempTracked, registerTempDirCleanup } from '../../../mayfly/tests/core/temp-dir.ts'
+
+vi.mock('@deepseek-ai/dsh-atomic-write', async importOriginal => {
+  const actual = await importOriginal<typeof atomic>()
+  return { ...actual, writeFileAtomic: vi.fn(actual.writeFileAtomic) }
+})
 
 registerTempDirCleanup()
 
@@ -24,6 +33,7 @@ afterEach(async (): Promise<void> => {
   if (temporary !== undefined) await rm(temporary, { recursive: true, force: true })
   temporary = undefined
   vi.unstubAllEnvs()
+  vi.restoreAllMocks()
 })
 
 /** A context whose settings document is one temp file. */
@@ -32,6 +42,7 @@ async function documentContext(initial: string, writable = true): Promise<{ ctx:
   const file = join(temporary, 'settings.json')
   await writeFile(file, initial, 'utf8')
   const ctx = {
+    profileContext: { dir: temporary },
     settings: {
       writable,
       prepareDocument: async (): Promise<string> => file,
@@ -101,37 +112,99 @@ describe('writeSettingsDocument', () => {
     expect(await readFile(file, 'utf8')).toBe('next')
   })
 
-  it('preserves the conflict code if another writer changes the document during validation', async () => {
-    const { file } = await documentContext('one')
-    let prepares = 0
-    const raced = { settings: { writable: true, prepareDocument: async () => {
-      if (++prepares === 2) await writeFile(file, 'external', 'utf8')
-      return file
-    } } } as unknown as Context
-    await expect(writeSettingsDocument(raced, { expectedRevision: revisionOf('one'), content: 'mine' }, new AbortController().signal))
+  it('detects an uncooperative edit present before the locked revision read', async () => {
+    const { ctx, file } = await documentContext('one')
+    ctx.settings.prepareDocument = async () => { await writeFile(file, 'external', 'utf8'); return file }
+    await expect(writeSettingsDocument(ctx, { expectedRevision: revisionOf('one'), content: 'mine' }, new AbortController().signal))
       .rejects.toMatchObject({ code: 'mayflyHost/settings-conflict', details: { actualRevision: revisionOf('external') } })
     expect(await readFile(file, 'utf8')).toBe('external')
   })
 
   it('uses a public failure code when the validated document cannot be written', async () => {
-    const { file } = await documentContext('one')
-    let prepares = 0
-    const context = { settings: { writable: true, prepareDocument: async () => ++prepares === 3 ? temporary! : file } } as unknown as Context
-    await expect(writeSettingsDocument(context, { expectedRevision: revisionOf('one'), content: 'two' }, new AbortController().signal))
+    const { ctx, file } = await documentContext('one')
+    vi.spyOn(atomic, 'writeFileAtomic').mockRejectedValueOnce(new Error('disk failure'))
+    await expect(writeSettingsDocument(ctx, { expectedRevision: revisionOf('one'), content: 'two' }, new AbortController().signal))
       .rejects.toMatchObject({ code: 'mayflyHost/settings-document-unavailable' })
     expect(await readFile(file, 'utf8')).toBe('one')
   })
 
-  it('does not write when cancelled after revision checks but before native path preparation settles', async () => {
-    const { file } = await documentContext('one')
+  it('does not write when cancelled while native path preparation settles', async () => {
+    const { ctx, file } = await documentContext('one')
     const controller = new AbortController()
-    let prepares = 0
-    const context = { settings: { writable: true, prepareDocument: async () => {
-      if (++prepares === 3) controller.abort(new Error('cancelled before write'))
+    ctx.settings.prepareDocument = async () => {
+      controller.abort(new Error('cancelled before write'))
       return file
-    } } } as unknown as Context
-    await expect(writeSettingsDocument(context, { expectedRevision: revisionOf('one'), content: 'two' }, controller.signal)).rejects.toThrow('cancelled before write')
+    }
+    await expect(writeSettingsDocument(ctx, { expectedRevision: revisionOf('one'), content: 'two' }, controller.signal)).rejects.toThrow('cancelled before write')
     expect(await readFile(file, 'utf8')).toBe('one')
+  })
+
+  it('coordinates independent services through the native profile writer lock', async () => {
+    const { ctx, file } = await documentContext('one')
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const prepare = vi.spyOn(ctx.settings, 'prepareDocument').mockImplementationOnce(async () => {
+      entered.resolve(); await release.promise; return file
+    })
+    const first = new SettingsDocumentCoordinator().write(ctx, { expectedRevision: revisionOf('one'), content: 'two' }, new AbortController().signal)
+    await entered.promise
+    expect(await readFile(join(temporary!, 'package.json.lock'), 'utf8')).toContain(String(process.pid))
+    const second = new SettingsDocumentCoordinator().write(ctx, { expectedRevision: revisionOf('one'), content: 'three' }, new AbortController().signal)
+    expect(prepare).toHaveBeenCalledOnce()
+    release.resolve()
+    await expect(first).resolves.toMatchObject({ content: 'two' })
+    await expect(second).rejects.toMatchObject({ code: 'mayflyHost/settings-conflict' })
+    expect(await readFile(file, 'utf8')).toBe('two')
+    expect((await stat(file)).mode & 0o777).toBe(0o600)
+    expect(await readdir(temporary!)).toEqual(['settings.json'])
+  })
+
+  it('waits for a real other-process native writer and preserves its committed content', async () => {
+    const { ctx, file } = await documentContext('one')
+    const modulePath = createRequire(import.meta.url).resolve('@deepseek-ai/dsh-atomic-write')
+    const child = fork(new URL('./settings-writer.mjs', import.meta.url), [modulePath, join(temporary!, 'package.json'), file], { execArgv: [], stdio: ['ignore', 'ignore', 'pipe', 'ipc'] })
+    try {
+      await once(child, 'message')
+      const prepare = vi.spyOn(ctx.settings, 'prepareDocument')
+      const pending = writeSettingsDocument(ctx, { expectedRevision: revisionOf('one'), content: 'mine' }, new AbortController().signal)
+      expect(prepare).not.toHaveBeenCalled()
+      child.send('release')
+      await expect(pending).rejects.toMatchObject({ code: 'mayflyHost/settings-conflict' })
+      expect(await readFile(file, 'utf8')).toBe('external')
+    } finally {
+      child.kill()
+    }
+  })
+
+  it('retires lock acquisition on cancellation and checks writability again after waiting', async () => {
+    const { ctx, file } = await documentContext('one')
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const holder = atomic.withFileLock(join(temporary!, 'package.json'), async () => { entered.resolve(); await release.promise })
+    await entered.promise
+    const controller = new AbortController()
+    const cancelled = writeSettingsDocument(ctx, { expectedRevision: revisionOf('one'), content: 'cancelled' }, controller.signal)
+    controller.abort(new Error('cancelled lock acquisition'))
+    await expect(cancelled).rejects.toThrow('cancelled lock acquisition')
+    const next = writeSettingsDocument(ctx, { expectedRevision: revisionOf('one'), content: 'next' }, new AbortController().signal)
+    Object.defineProperty(ctx.settings, 'writable', { value: false })
+    release.resolve(); await holder
+    await expect(next).rejects.toMatchObject({ code: 'mayflyHost/settings-read-only' })
+    expect(await readFile(file, 'utf8')).toBe('one')
+  })
+
+  it('lets an admitted atomic write finish when the caller retires and releases its lock', async () => {
+    const { ctx, file } = await documentContext('one')
+    const controller = new AbortController()
+    const native = await vi.importActual<typeof atomic>('@deepseek-ai/dsh-atomic-write')
+    vi.spyOn(atomic, 'writeFileAtomic').mockImplementationOnce(async (...args) => {
+      controller.abort(new Error('retired after admission'))
+      await native.writeFileAtomic(...args)
+    })
+    await expect(writeSettingsDocument(ctx, { expectedRevision: revisionOf('one'), content: 'committed' }, controller.signal))
+      .rejects.toThrow('retired after admission')
+    expect(await readFile(file, 'utf8')).toBe('committed')
+    expect(await readdir(temporary!)).toEqual(['settings.json'])
   })
   it('writes the new content only when the revision matches, and returns the next revision', async () => {
     const { ctx, file } = await documentContext('one')
