@@ -307,7 +307,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     })
     panels = new RemotePanelController(screen, () => editor?.focus(), true, ctx.mayflyComponents)
     app = new RemoteApp(conversation, editor.notice, new RemotePlainPanels(ctx), undefined, options.cwd ?? process.cwd(), {
-      open: (client, current, select) => { sessionsBrowser!.open(client, current, select) },
+      open: (client, current, select, signal) => { sessionsBrowser!.open(client, current, select, signal) },
     }, () => {
       const selected = sideViews?.selected()
       return selected === undefined ? undefined : { ref: selected.ref, access: selected.facts.access, binding: selected.binding, presentation: displayedFacts() }

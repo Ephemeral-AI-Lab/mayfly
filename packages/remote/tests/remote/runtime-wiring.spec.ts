@@ -454,7 +454,10 @@ describe('standalone Remote runtime wiring', () => {
     wiring.editorOptions!.selection!(); const off = wiring.editorOptions!.subscribeSelection!(vi.fn()); off()
     wiring.editorOptions!.startupKey!('x', 'x'); expect(wiring.handleInput).toHaveBeenCalledWith('x', 'x')
     const open = wiring.appArgs[5] as { open: (...args: unknown[]) => void }
-    open.open(client, ref, vi.fn()); expect(wiring.sessionsOpen).toHaveBeenCalled()
+    const selectSession = vi.fn()
+    const browserCaller = new AbortController()
+    open.open(client, ref, selectSession, browserCaller.signal)
+    expect(wiring.sessionsOpen).toHaveBeenCalledWith(client, ref, selectSession, browserCaller.signal)
     const displayed = wiring.appArgs[6] as () => unknown
     expect(displayed()).toMatchObject({ ref: child, presentation: wiring.defaultFacts })
     wiring.side = undefined; expect(displayed()).toBeUndefined()
