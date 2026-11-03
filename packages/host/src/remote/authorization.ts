@@ -54,7 +54,7 @@ function authorizationKey(value: string): ReturnType<typeof credentialKey> {
 }
 
 /** Run one native authorization operation; secret answers travel only from uplink to the native prompt. */
-export async function* authorize(ctx: Context, request: MayflyAuthorizationRequest, signal: AbortSignal): RemoteStream<MayflyAuthorizationFrame> {
+export async function* authorize(ctx: Context, request: MayflyAuthorizationRequest, callerSignal: AbortSignal): RemoteStream<MayflyAuthorizationFrame> {
   const key = authorizationKey(request.key)
   const entry = ctx.authorization.describe(key)
   if (entry === undefined || request.method !== undefined && !entry.methods.some(method => method.id === request.method)) throw unavailable(key)
@@ -63,6 +63,8 @@ export async function* authorize(ctx: Context, request: MayflyAuthorizationReque
   if (invocation === undefined) throw new RemoteError('gateway/internal', 'authorization requires a Remote invocation', {})
   const uplink = invocation.uplink<MayflyAuthorizationAnswer>()
   const iterator = uplink[Symbol.asyncIterator]()
+  const lifetime = new AbortController()
+  const signal = AbortSignal.any([callerSignal, lifetime.signal])
   const operationId = randomUUID()
   const frames = new ChangeQueue<MayflyAuthorizationFrame>(signal)
   const pending = new Map<string, PendingPrompt>()
@@ -127,7 +129,9 @@ export async function* authorize(ctx: Context, request: MayflyAuthorizationReque
     }
     await task
   } finally {
-    ctx.authorization.cancel(key)
+    // A settled native attempt releases its key before this stream closes.
+    // Withdraw only this invocation, never a newer attempt that reused its key.
+    lifetime.abort()
     for (const prompt of pending.values()) prompt.reject(new Error('Authorization operation closed'))
     pending.clear()
     frames.finish()

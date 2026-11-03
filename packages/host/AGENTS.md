@@ -41,6 +41,10 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
 - Handshake versions come from the published package manifest. Raw settings
   writes are serialized by the service-owned `SettingsDocumentCoordinator`;
   stale content revisions remain conflicts, including during validation.
+  Authorization streams retire through their own native request signal. A
+  settled or refused stream must never cancel a different attempt that reused
+  its credential key; key-wide cancellation belongs only to the explicit
+  `cancelAuthorization` action.
 - `btwFork` obtains the complete native observation cursor and passes that
   explicit inclusive cut to `sessionController.fork`, including an open first
   turn. Native fork composition owns synthetic closers, preset and workspace
