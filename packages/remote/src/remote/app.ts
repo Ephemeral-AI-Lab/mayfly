@@ -4,6 +4,7 @@ import { collectRemoteSessionEvents } from './operations/support.ts'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import { HostKey, type SessionRef } from '../client/types.ts'
+import { canonicalHostBaseUrl } from '../client/auth.ts'
 import type { HostClient } from '../client/types.ts'
 import { HostActions } from '../frontend/host-actions.ts'
 import { RemoteBtwService } from '../frontend/btw.ts'
@@ -161,7 +162,7 @@ export class RemoteApp {
     // Credentials and query parameters identify authentication, not the Host.
     // Scheme and mount path do identify distinct backends behind one authority.
     const key = hostId === undefined
-      ? HostKey(`${url.origin}${url.pathname.replace(/\/+$/u, '')}/`)
+      ? HostKey(canonicalHostBaseUrl(url).href)
       : HostKey(hostId)
     const generation = ++this.defaultModelGeneration
     const previous = this.registry.get(key)

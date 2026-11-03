@@ -887,6 +887,28 @@ describe('RemoteApp', () => {
     app.dispose()
   })
 
+  it.each(['', 'mount/'])('shares one Host Client, connection generation and displayed lease for root and connect paths under %s', async mount => {
+    const { conversation, status, panels } = appFixture()
+    const f = clientFixture(HostKey(`https://same.test/${mount}`))
+    const attach = vi.fn(() => f.client)
+    const app = new RemoteApp(conversation, status, panels, attach)
+    await app.attach(`https://same.test/${mount}?token=first`)
+    await app.selectOrCreate(undefined, '/workspace')
+    const generation = f.client.state.getSnapshot().generation
+    const binding = app.registry.currentReference?.binding
+    for (const path of [`${mount}connect`, `${mount}connect/`, mount.replace(/\/$/u, '')]) {
+      await app.attach(`https://same.test/${path}?token=changed&query=other#fragment`)
+      expect(app.activeClient).toBe(f.client)
+      expect(app.registry.currentReference?.binding).toBe(binding)
+      expect(f.client.state.getSnapshot().generation).toBe(generation)
+    }
+    expect(app.registry.list()).toEqual([f.client])
+    expect(attach).toHaveBeenCalledOnce()
+    expect(f.client.sessions.retain).toHaveBeenCalledOnce()
+    expect(f.reference.release).not.toHaveBeenCalled()
+    app.dispose()
+  })
+
   it('separates schemes and reverse-proxy mount paths without putting credentials in Host keys', async () => {
     const { conversation, status, panels } = appFixture()
     const attach = vi.fn(async (key: HostKey) => clientFixture(key).client)
