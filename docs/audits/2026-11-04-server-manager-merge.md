@@ -70,3 +70,18 @@ The two dedicated Hosts were stopped and login startup disabled. Profiles
 and their exact systemd user units were removed from this task's isolated
 data roots. The port 4187 Website preview was stopped. Evidence and worktrees
 remain available; production Mayfly and global dsh profiles were not changed.
+
+## Development install and owner acceptance
+
+The main checkout was installed locally as `mayfly-dev`, with launcher
+`~/.local/bin/mayfly-dev`, default profile `mayfly-dev` and isolated data root
+`~/.local/share/mayfly-dev`. Startup, status, stop, restart, automatic Host
+startup when launching the TUI with the Host stopped, 100×30/40×24 resize and
+clean TUI exit with the Host still running passed. The personal development
+Host remains available with login startup disabled; it is separate from the
+removed acceptance profiles.
+
+On 2026-11-04 the owner explicitly confirmed “验收通过，推送到gitea和github”.
+This accepts the installed development version and authorizes pushing main to
+both configured remotes. The full-gate failures and outstanding native
+Windows/macOS verification described above remain recorded as limitations.
