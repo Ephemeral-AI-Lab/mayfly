@@ -105,10 +105,12 @@ it('refuses to overwrite an alive owner whose control identity cannot be verifie
 })
 
 it('reports a native crash for system service restart and a clean native exit as stopped', async () => {
-  Object.defineProperty(process, 'platform', { value: 'linux' })
   let task = supervise('work')
   await running()
-  exit(children[0]!, 2)
+  // Only the synchronous crash-policy decision belongs to the simulated OS.
+  // Keep actual filesystem writes on Windows using native replacement retries.
+  Object.defineProperty(process, 'platform', { value: 'linux' })
+  try { exit(children[0]!, 2) } finally { Object.defineProperty(process, 'platform', { value: platform }) }
   await task
   expect(process.exitCode).toBe(1)
   expect(await readJson(p.record)).toMatchObject({ state: 'failed' })
