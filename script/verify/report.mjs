@@ -48,6 +48,7 @@ export function renderSummary(report) {
   lines.push(scope.join(' · '))
   if (report.reasons.length > 0) lines.push('', `Full gate: ${report.reasons.join('; ')}`)
   if (report.manualAcceptance.length > 0) lines.push('', `Manual acceptance still owed: ${report.manualAcceptance.join(', ')}`)
+  if (report.splitReview !== undefined) lines.push('', `Published-reference review: ${report.splitReview.status}. Raw strict parity: ${report.splitReview.strictParityVerified}; ${report.splitReview.strictFailures.length} raw failures retained in split.json. Exact checkpoints, reviewed release rows and baseline defects are recorded separately in split-review.json.`)
   if (report.steps.length > 0) {
     lines.push('', '| Step | Result | Time |', '| --- | --- | --- |')
     for (const step of report.steps) lines.push(`| ${step.name} | ${step.status === 'pass' ? '✓' : step.status === 'fail' ? '✗' : 'skipped'} | ${step.status === 'skip' ? '' : seconds(step.durationMs)} |`)

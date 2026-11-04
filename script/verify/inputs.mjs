@@ -9,6 +9,7 @@
 export const GLOBAL = [
   { pattern: /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig(?:\.[^/]+)?\.json|tsdown\.config\.ts|vitest\.config\.ts|\.oxlintrc\.json)$/u, reason: 'repository configuration' },
   { pattern: /^script\/package-contract\.mjs$/u, reason: 'the package and build contract' },
+  { pattern: /^script\/scenarios\/split-release-policy\.json$/u, reason: 'the exact published-reference release decisions' },
   { pattern: /^\.github\/workflows\//u, reason: 'a CI workflow' },
   { pattern: /^packages\/mayfly\/(?:cordis\.patch\.yml|presets\/)/u, reason: 'the shipped composition contract' },
 ]
@@ -28,6 +29,7 @@ export const CHECKS = {
 
 /** Reads the scanner cannot see (a path joined at run time), as `[reader, read]`: a change to `read` reaches `reader`. */
 export const DATA_READS = [
+  ['script/scenarios/split-release-review.mjs', 'script/scenarios/split-release-policy.json'],
   // The agent-doc scanner walks instruction files rather than importing them.
   ...['AGENTS.md', 'packages/ui/AGENTS.md', 'packages/mayfly/AGENTS.md', 'packages/host/AGENTS.md', 'packages/remote/AGENTS.md', 'packages/cli/AGENTS.md', 'examples/AGENTS.md'].map(file => ['script/check-agent-docs.mjs', file]),
   ['packages/mayfly/tests/bundle.spec.ts', 'packages/mayfly/package.json'],

@@ -40,6 +40,13 @@ For a release manifest change, the full plan includes `check:pack`; otherwise
 run `pnpm run check:pack` before using the artifact preflight. The full gate
 also builds and checks exports, examples, and tests; it does not check screenshots
 or the Website.
+The split step keeps raw strict comparison results in `split.json` and validates
+the explicit, source-bound release decisions separately in `split-review.json`.
+Only a successful release review satisfies this step; it never relabels raw
+differences as strict parity. Missing checkpoints, unknown text/style changes,
+runtime failures and unreviewed reference failures still block publication.
+See [split-parity-validation.md](./split-parity-validation.md#release-decisions-in-the-full-gate)
+before reviewing or changing a release policy.
 `release:preflight` checks release metadata before building; its `--artifact`
 form additionally checks the packed package set. These commands do not
 publish or replace the registry-install matrix.

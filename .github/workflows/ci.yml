@@ -113,3 +113,18 @@ jobs:
           name: verify-report
           path: .artifacts/verify/
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: split-reference-evidence
+          path: |
+            .artifacts/split-parity/all/**/*.grid
+            .artifacts/split-parity/all/**/report.json
+            .artifacts/split-parity/all/**/reference.json
+            .artifacts/split-parity/all/**/capture-evidence.json
+            .artifacts/split-parity/all/**/native-evidence-*.json
+            .artifacts/split-parity/all/**/*.ansi
+            .artifacts/split-parity/all/**/exit.json
+            .artifacts/split-parity/all/**/session.v4.jsonl.zstd
+            .artifacts/split-parity/all/**/storages/session_projcache/sessions/*.json
+          if-no-files-found: ignore

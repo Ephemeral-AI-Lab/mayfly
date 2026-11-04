@@ -55,7 +55,7 @@ test('the full tier runs one vitest coverage/work-budget pass and actual split p
   assert.ok(!scripts.includes('website:build') && !scripts.includes('shots:check'), 'a release checks the Website, not the gate')
   const vitest = steps.filter(step => step.args.includes('vitest'))
   assert.equal(vitest.length, 1)
-  assert.deepEqual(steps.find(step => step.kind === 'split').args, ['script/split-parity.mjs', '--scenario', 'all', '--results', '.artifacts/verify/split.json'])
+  assert.deepEqual(steps.find(step => step.kind === 'split').args, ['script/split-parity.mjs', '--scenario', 'all', '--review-release', '--review-results', '.artifacts/verify/split-review.json', '--results', '.artifacts/verify/split.json'])
   assert.ok(vitest[0].args.includes('--coverage'))
   assert.ok(steps.findIndex(step => step.name === 'build') < steps.findIndex(step => step.kind === 'split'))
   assert.ok(scripts.indexOf('build') < scripts.indexOf('typecheck'), 'clean checkouts need generated Host declarations and refreshed Remote packages')

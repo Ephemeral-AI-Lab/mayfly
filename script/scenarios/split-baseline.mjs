@@ -129,7 +129,18 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
   mkdirSync(captureDir, { recursive: true })
   writeFileSync(join(captureDir, 'reference.ansi'), captured.output)
   writeFileSync(join(captureDir, 'exit.json'), `${JSON.stringify(captured.exit ?? null, null, 2)}\n`)
-  if (captured.failures.length > 0) throw new Error(`Published reference capture failed:\n${captured.failures.join('\n')}`)
+  const evidence = persistedSplitEvidence(run)
+  const captureEvidence = { ...SPLIT_REFERENCE, harness: HARNESS_REFERENCE_VERSION, ...evidence,
+    failures: captured.failures, checkpoints: captured.checkpoints.map(checkpoint => checkpoint.name),
+    ansiSha256: createHash('sha256').update(captured.output).digest('hex'),
+    interactionSha256: createHash('sha256').update(readFileSync(join(acquired.install, 'node_modules/@ephemeral-ai/mayfly/lib/interaction.js'))).digest('hex'),
+  }
+  writeFileSync(join(captureDir, 'capture-evidence.json'), JSON.stringify(captureEvidence, null, 2) + '\n')
+  if (captured.failures.length > 0) {
+    const error = new Error(`Published reference capture failed:\n${captured.failures.join('\n')}`)
+    error.captureDirectory = captureDir
+    throw error
+  }
   const file = join(captureDir, 'reference.json')
   const provenance = { ...SPLIT_REFERENCE, harness: HARNESS_REFERENCE_VERSION, dependencyLockSha256: acquired.lockHash, profileLockSha256: createHash('sha256').update(readFileSync(join(profile, 'pnpm-lock.yaml'))).digest('hex'), stepsSha256: createHash('sha256').update(JSON.stringify(steps)).digest('hex'), ...startup === undefined ? {} : { startup }, ...fixture === undefined ? {} : { fixture }, ...workspace === undefined ? {} : { workspace }, ...profileTag === undefined ? {} : { profileTag } }
   const manifest = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { ...provenance, checkpoints: {} }
@@ -143,8 +154,9 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
     manifest.checkpoints[name] = hash
   }
   writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n')
+  captureEvidence.referenceManifestSha256 = createHash('sha256').update(readFileSync(file)).digest('hex')
+  writeFileSync(join(captureDir, 'capture-evidence.json'), JSON.stringify(captureEvidence, null, 2) + '\n')
   // Keep capture/run linkage outside the immutable screen/provenance manifest.
-  const evidence = persistedSplitEvidence(run)
   writeFileSync(join(captureDir, `native-evidence-${basename(run)}.json`), JSON.stringify({ referenceManifestSha256: createHash('sha256').update(readFileSync(file)).digest('hex'), ...evidence }, null, 2) + '\n')
   return captureDir
 }

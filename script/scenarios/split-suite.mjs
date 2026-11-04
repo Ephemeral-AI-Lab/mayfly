@@ -12,7 +12,7 @@ import { runSplitScenario, SPLIT_SMOKE_STEPS } from './split-runner.mjs'
 export const SPLIT_SCENARIOS = Object.freeze({ smoke: { steps: SPLIT_SMOKE_STEPS }, ...SPLIT_CASES, ...SPLIT_EXTENDED_CASES, ...SPLIT_NATIVE_CASES, ...SPLIT_INPUT_CASES })
 
 /** Keep reference capture failures visible and continue unrelated cases to maximize useful acceptance evidence. */
-export async function runSplitSuite({ root, dshBin, artifacts, cols = 80, rows = 24, scenarios = ['smoke'], smokeOnly = false, captureReferenceOnly = false, referenceDir, resultsFile, log = console.log }) {
+export async function runSplitSuite({ root, dshBin, artifacts, cols = 80, rows = 24, scenarios = ['smoke'], smokeOnly = false, captureReferenceOnly = false, referenceDir, resultsFile, log = console.log, captureReference = capturePublishedReference, runScenario = runSplitScenario }) {
   mkdirSync(artifacts, { recursive: true })
   const results = []
   for (const scenario of scenarios) {
@@ -22,14 +22,21 @@ export async function runSplitSuite({ root, dshBin, artifacts, cols = 80, rows =
     const caseArtifacts = scenarios.length === 1 ? artifacts : join(artifacts, scenario)
     let baseline = referenceDir
     try {
+      let referenceFailure
       if (!smokeOnly && !descriptor.splitOnly && baseline === undefined) {
         log(`Capturing published rc.2 reference: ${scenario}`)
-        baseline = await capturePublishedReference({ root, dir: join(artifacts, 'published-reference'), cols, rows, ...descriptor, caseName: scenario })
+        try {
+          baseline = await captureReference({ root, dir: join(artifacts, 'published-reference'), cols, rows, ...descriptor, caseName: scenario })
+        } catch (error) {
+          if (captureReferenceOnly) throw error
+          referenceFailure = { message: error instanceof Error ? error.stack ?? error.message : String(error), captureDirectory: error.captureDirectory }
+          log(`Reference failed; still exercising candidate: ${scenario}`)
+        }
       }
       if (captureReferenceOnly) continue
       log(`Running real split case: ${scenario}${descriptor.splitOnly ? ' (behavior only)' : ''}`)
-      const result = await runSplitScenario({ root, dshBin, artifacts: caseArtifacts, cols, rows, ...descriptor, scenario, referenceDir: baseline })
-      results.push(result)
+      const result = await runScenario({ root, dshBin, artifacts: caseArtifacts, cols, rows, ...descriptor, scenario, referenceDir: baseline })
+      results.push(referenceFailure === undefined ? result : { ...result, status: 'failed', parityVerified: false, referenceFailure, candidateStatus: result.status, failures: [referenceFailure.message, ...result.failures] })
       log(`${scenario}: ${result.status}; ${result.checkpoints.length} checkpoints; parityVerified=${result.parityVerified}`)
     } catch (error) {
       results.push({ scenario, status: 'failed', parityVerified: false, checkpoints: [], failures: [error instanceof Error ? error.stack ?? error.message : String(error)] })

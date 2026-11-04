@@ -55,6 +55,12 @@ The split-parity implementation is authorized to develop and test in parallel.
 The immutable npm 0.1.4-rc.2 release defines UI, keys, themes, and workflows.
 Do not rewrite reference goldens from candidate output. Only documented native
 Harness API gaps may be delivered as explicitly labelled partial behavior.
+Full/PR gates retain raw strict results and separately validate the source-bound
+release decisions in `script/scenarios/split-release-policy.json`. A reviewed
+release result is not strict parity. New versions, changed reviewed sources,
+unknown rows/styles and runtime failures require fresh review; never expand
+the policy to make an unexplained failure pass. Reference defects still run
+the complete candidate workflow and retain their original failure evidence.
 
 The integrator owns package contracts, manifests, locks, public entries, and
 runtime composition. Host, Remote, and independent validation workers use

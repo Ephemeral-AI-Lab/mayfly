@@ -26,8 +26,9 @@ export const VITEST_RESULTS = `${OUTPUT}/vitest.json`
 export const SCENARIO_RESULTS = `${OUTPUT}/scenarios.json`
 export const PERF_RESULTS = `${OUTPUT}/perf.json`
 export const SPLIT_RESULTS = `${OUTPUT}/split.json`
+export const SPLIT_REVIEW_RESULTS = `${OUTPUT}/split-review.json`
 
-const split = (scenario, smokeOnly = false) => ({ name: smokeOnly ? 'split Host/Remote smoke' : 'published rc.2 parity and split recovery', kind: 'split', command: 'node', args: ['script/split-parity.mjs', '--scenario', scenario, ...(smokeOnly ? ['--smoke-only'] : []), '--results', SPLIT_RESULTS] })
+const split = (scenario, smokeOnly = false) => ({ name: smokeOnly ? 'split Host/Remote smoke' : 'published rc.2 comparison and release review', kind: 'split', command: 'node', args: ['script/split-parity.mjs', '--scenario', scenario, ...(smokeOnly ? ['--smoke-only'] : ['--review-release', '--review-results', SPLIT_REVIEW_RESULTS]), '--results', SPLIT_RESULTS] })
 
 const pnpm = (name, ...args) => ({ name, command: 'pnpm', args })
 const vitest = (name, kind, args) => ({ name, kind, command: 'pnpm', args: ['exec', 'vitest', 'run', ...args, '--reporter=dot', '--reporter=json', `--outputFile.json=${VITEST_RESULTS}`, '--silent=passed-only'] })

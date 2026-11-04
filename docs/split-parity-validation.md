@@ -228,10 +228,56 @@ the captured command UI. It cannot approve a note that exists only in docs.
 The result separates `exactCheckpoints` from `reviewedDifferences`. Its status
 is `strict-exact`, `reviewed-native-differences`, or `rejected`; the original
 `strictStatus`, `strictParityVerified` and `strictFailures` remain visible.
-The strict parity CLI and full code gate keep their original failure exit
-semantics. Automated or agent review does not replace the owner's final human
+The strict parity CLI keeps its original failure exit semantics. Automated or
+agent review does not replace the owner's final human
 acceptance. A successful review neither rewrites raw artifacts nor upgrades
 native differences to exact parity. New captures need new reviewed hashes.
+
+## Release decisions in the full gate
+
+Full and PR runtime gates run the real suite with `--review-release`. This
+produces two reports: `split.json` retains every raw strict failure and
+`parityVerified`; `split-review.json` records the separate release decision.
+Plain `node script/split-parity.mjs --scenario all` still exits unsuccessfully
+for any raw difference. There is no update or skip-reference option.
+
+`script/scenarios/split-release-policy.json` records the owner's accepted
+0.1.5 differences against rc.2. It is a release adjudication, not a claim of
+equal-input renderer equivalence; the independent native-review command above
+retains its same-facts proof requirement. The policy pins Mayfly/Harness versions
+and owning source checksums. Its 59 row decisions name the scenario, checkpoint,
+dimensions, row, exact before/after text, full style runs and reason. They cover
+the release notes at three widths, the version panel, native context/model
+facts, the explicit hot-load limitation, and the added `/changes` help entry.
+They are not complete candidate screens and cannot supply a missing reference.
+
+Banner/splash versions use a narrow transformation instead of copying every
+theme's output: only the recognized version label may change, preserving the
+reference cell attributes and the splash's prescribed centering. The reviewer
+checks all remaining cells, styles, dimensions and cursor exactly. Native
+panel decisions also re-read both captures' checksum-bound persisted projections
+and compressed request journals. The model window, system-token display bucket,
+selection version, effective effort and adapter-default provenance must match
+the recorded facts. Source or native-data changes require review even if the
+terminal text would look the same.
+
+Every expected semantic checkpoint and its dimensions must be present. A
+nonvisual runtime failure, changed build during capture, a different current
+build, tampered reference, unknown row, recoloring, or missing native evidence
+rejects the release review. A policy change itself selects the full gate.
+Raw results and immutable reference bytes are never rewritten. An accepted
+result is labelled `passed-with-reviewed-differences`, with exact checkpoints,
+reviewed rows, split-only behavior and reference defects reported separately.
+
+Reference capture failures no longer skip the candidate. The only current
+release decision for a reference defect is rc.2's missing `fs` injection in
+delivered-file preview. It requires the exact immutable implementation checksum,
+one specific wait failure after the delivered-detail checkpoint, and checksum-bound
+ANSI showing that injection error. The complete eight-checkpoint candidate
+workflow must still succeed, including preview, diff, resize, back navigation,
+terminal restoration and Host survival. It is reported as
+`behavior-passed-reference-defect`, never as strict parity. Any other reference
+failure remains blocking.
 
 New candidate reports include before/after hashes of emitted runtime JavaScript
 and persisted native journal/projection files. The observed source checkout

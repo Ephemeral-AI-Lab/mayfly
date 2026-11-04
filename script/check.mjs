@@ -20,7 +20,7 @@ import { collectChangedFiles, defaultBase } from './change-files.mjs'
 import { changedLines, uncoveredChangedLines } from './verify/coverage-diff.mjs'
 import { vitestFailures, writeReport } from './verify/report.mjs'
 import { classifyChanges, promoteToFull, repositoryGraph } from './verify/select.mjs'
-import { OUTPUT, PERF_RESULTS, SCENARIO_RESULTS, SPLIT_RESULTS, TIERS, VITEST_RESULTS, stepsFor } from './verify/steps.mjs'
+import { OUTPUT, PERF_RESULTS, SCENARIO_RESULTS, SPLIT_RESULTS, SPLIT_REVIEW_RESULTS, TIERS, VITEST_RESULTS, stepsFor } from './verify/steps.mjs'
 
 /**
  * Parse the command line.
@@ -121,6 +121,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const failures = []
     let stopped = false
     let perf
+    let splitReview
     for (const [index, step] of steps.entries()) {
       if (stopped) { results.push({ name: step.name, status: 'skip', durationMs: 0, command: shell(step) }); continue }
       const log = join(output, 'steps', `${String(index + 1).padStart(2, '0')}-${slug(step.name)}.log`)
@@ -128,12 +129,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const scenarioResults = join(root, SCENARIO_RESULTS)
       const perfResults = join(root, PERF_RESULTS)
       const splitResults = join(root, SPLIT_RESULTS)
-      if (step.kind !== undefined) { rmSync(vitestResults, { force: true }); rmSync(scenarioResults, { force: true }); rmSync(perfResults, { force: true }); rmSync(splitResults, { force: true }) }
+      // Preserve each kind's evidence when a later step runs (especially full coverage before PTY).
+      const stepResults = { specs: vitestResults, coverage: vitestResults, scenarios: scenarioResults, perf: perfResults, split: splitResults }[step.kind]
+      if (stepResults !== undefined) rmSync(stepResults, { force: true })
+      if (step.kind === 'split') rmSync(join(root, SPLIT_REVIEW_RESULTS), { force: true })
       const begin = performance.now()
       const code = await runStep(step, { root, log, verbose: options.verbose })
       const durationMs = Math.round(performance.now() - begin)
       const status = code === 0 ? 'pass' : 'fail'
       results.push({ name: step.name, status, durationMs, command: shell(step), log: relative(root, log) })
+      if (step.kind === 'split' && existsSync(join(root, SPLIT_REVIEW_RESULTS))) splitReview = JSON.parse(readFileSync(join(root, SPLIT_REVIEW_RESULTS), 'utf8'))
       if (step.kind === 'perf' && existsSync(perfResults)) {
         const measured = JSON.parse(readFileSync(perfResults, 'utf8'))
         perf = { mode: measured.mode, baseline: measured.baseline, regressions: measured.regressions ?? [], improvements: measured.improvements ?? [] }
@@ -141,7 +146,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       process.stdout.write(`${status === 'pass' ? '✓' : '✗'} ${step.name} (${seconds(durationMs)})${status === 'fail' ? ` — ${relative(root, log)}` : ''}\n`)
       if (status === 'pass') continue
       const specFailures = step.kind === 'split'
-        ? existsSync(splitResults) ? splitFailures(JSON.parse(readFileSync(splitResults, 'utf8'))) : []
+        ? splitReview !== undefined ? splitReview.failures.map(message => ({ kind: 'split-review', message })) : existsSync(splitResults) ? splitFailures(JSON.parse(readFileSync(splitResults, 'utf8'))) : []
         : step.kind === 'perf'
         ? existsSync(perfResults) ? perfFailures(JSON.parse(readFileSync(perfResults, 'utf8'))) : []
         : step.kind === 'scenarios'
@@ -167,7 +172,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const verdict = results.some(result => result.status === 'fail') ? 'fail' : 'pass'
     writeReport(output, {
       tier, base, verdict, durationMs: Math.round(performance.now() - started), files: plan.files, reasons: plan.reasons,
-      manualAcceptance: plan.manualAcceptance, steps: results, tests: plan.tests, failures, uncovered, rerun, perf,
+      manualAcceptance: plan.manualAcceptance, steps: results, tests: plan.tests, failures, uncovered, rerun, perf, splitReview,
     })
     for (const failure of failures.filter(entry => entry.file !== undefined).slice(0, 10)) process.stdout.write(`  ✗ ${failure.file} › ${failure.test}\n`)
     process.stdout.write(`check: ${verdict === 'pass' ? 'PASS' : 'FAIL'} (${tier}, ${seconds(performance.now() - started)}) — ${relative(root, join(output, 'summary.md'))}\n`)
