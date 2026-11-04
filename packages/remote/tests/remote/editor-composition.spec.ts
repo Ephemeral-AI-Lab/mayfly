@@ -92,7 +92,7 @@ describe('Remote editor composition', () => {
     expect(f.native.stat).toHaveBeenCalledWith(f.ref.sessionId, 'native.txt', signal)
     await options.files.readBytes(f.ref.sessionId, 'native.txt', signal)
     expect(f.native.readBytes).toHaveBeenCalledWith(f.ref.sessionId, 'native.txt', {}, signal)
-    const data = new Uint8Array([1, 2])
+    const data = new Blob([new Uint8Array([1, 2])])
     await options.upload(f.ref.sessionId, data, 'upload.txt', signal)
     expect(f.upload).toHaveBeenCalledWith(f.ref.sessionId, data, 'upload.txt', signal)
     await options.upload(f.ref.sessionId, data)

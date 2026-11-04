@@ -164,9 +164,10 @@ describe('reversible structured submission attachments', () => {
     const bytes = new Uint8Array([1, 2, 3])
     const lifetime = new AbortController().signal
     expect(await f.attachments.stageFile(f.host.selected, bytes, 'notes.txt', lifetime)).toBe(receipt)
-    expect(f.upload).toHaveBeenCalledWith(f.host.selected.ref.sessionId, bytes, 'notes.txt', lifetime)
-    const sentBytes = f.upload.mock.calls[0]![1]
-    expect(sentBytes).not.toBe(bytes)
+    expect(f.upload).toHaveBeenCalledWith(f.host.selected.ref.sessionId, expect.any(Blob), 'notes.txt', lifetime)
+    const body = f.upload.mock.calls[0]![1]
+    bytes[0] = 99
+    expect(new Uint8Array(await body.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
     const marker = f.attachments.addFile(receipt, f.host.selected)
     expect(f.attachments.capture(marker).pending).toEqual([{ type: 'file', value: receipt.file }])
     f.upload.mockResolvedValueOnce(denied('upload refused') as never)

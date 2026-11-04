@@ -124,10 +124,10 @@ export interface EditorLocalAdapter {
   clipboardBackend?(): 'auto' | 'wayland' | 'x11'
 }
 
-/** Official Uint8Array upload transport supplied by the foundation's Client assembly. */
+/** Official binary HTTP upload transport supplied by the foundation's Client assembly. */
 export type EditorUpload = (
   sessionId: SessionId,
-  data: Uint8Array,
+  data: Blob,
   name?: string,
   signal?: AbortSignal,
 ) => Promise<RemoteResult<FileUploadValue>>

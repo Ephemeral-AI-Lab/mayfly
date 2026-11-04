@@ -30,14 +30,28 @@ The model-facing `schedule_create`, `schedule_list`, `schedule_update`, and
 `standard`, `ptc`, `cordis`, and `mayfly-cordis` mount it, `minimal` omits it.
 There is no Host attachment that adds these tools to every root Agent.
 
-`/schedule` reads only the selected Session's active reminders through native
-`remote.schedule.list({ sessionId })` and observes `schedule/changed`. It uses
+`/schedule` reads the complete native `remote.schedule.catalog()` and filters
+active tasks by the exact selected Session in `involvedSessionIds`; it observes `schedule/changed`. It uses
 the shared rc.2 reminder panel, not a Host-wide task browser. A `minimal` preset
 without reminder tools can still inspect that Session's reminders; a missing
 or failing service renders the panel's unavailable state.
 Delivery is durable: a due reminder resolves its original Session through the
 Session Controller and wakes it even when no Agent is running. Creation and
 cancellation stay in the conversation.
+
+## File uploads use native binary HTTP
+
+The TUI copies local file bytes into a Blob and calls the official Client
+`fileUpload.upload` method. Its Node carrier sends the authenticated binary HTTP
+route; the Host owns upload receipts, Session scope, and durable attachment data.
+Cancellation and stale-selection checks apply before and after upload.
+
+Harness `0.2.2-alpha.3` has a Client injection gap in the Uint8Array Remote
+fallback: it accesses `remote.fileUploads` while declaring only `remote`.
+Mayfly's TUI uses the supported Blob HTTP path for every file upload. Headless
+consumers of the unchanged official `HostClient.fileUpload` service should use
+Blob or ReadableStream inputs on this Harness line. Mayfly does not patch the
+native plugin or provide a second upload protocol.
 
 ## Plugins are installed by the native manager
 

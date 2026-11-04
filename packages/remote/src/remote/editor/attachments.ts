@@ -269,7 +269,7 @@ export class EditorAttachments {
     }
   }
 
-  /** Stage ordinary Node bytes through the exact official fileUpload Uint8Array method. */
+  /** Stage copied Node bytes through the official binary HTTP upload carrier. */
   async stageFile(
     selected: EditorFeatureSession,
     data: Uint8Array,
@@ -277,7 +277,7 @@ export class EditorAttachments {
     signal: AbortSignal,
   ): Promise<FileUploadValue> {
     signal.throwIfAborted()
-    const result = await this.upload(selected.ref.sessionId, new Uint8Array(data), name, signal)
+    const result = await this.upload(selected.ref.sessionId, new Blob([new Uint8Array(data)]), name, signal)
     signal.throwIfAborted()
     if (!result.ok) throw new Error(result.error.message)
     this.uploads.set(result.value.receiptId, result.value)

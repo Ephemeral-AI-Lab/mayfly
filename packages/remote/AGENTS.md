@@ -326,7 +326,8 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   generation and mount must still own the result before publishing a notice.
 - Slash commands submit ordered native encoded images and uploaded file
   receipts through `commands.execute`; markers stay in the reversible draft
-  and are removed from the command line. File receipts retain their exact
+  and are removed from the command line. File bytes use the official Blob binary
+  HTTP upload carrier. File receipts retain their exact
   Host, Client, Session binding and generation; a changed scope refuses dispatch.
   Pre-admission refusal restores the original draft and attachments before
   reporting feedback, so the restored editor cannot clear that notice. A local

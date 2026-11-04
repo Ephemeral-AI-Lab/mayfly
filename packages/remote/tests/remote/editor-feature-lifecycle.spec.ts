@@ -720,7 +720,7 @@ describe('mounted editor routes and ownership', () => {
     expect(f.controller.imageLimits()).toEqual(limits)
     const bytes = new Uint8Array([1, 2, 3])
     expect(await f.controller.stageFile(bytes, 'notes.txt')).toBe(uploadValue)
-    expect(f.upload).toHaveBeenCalledWith(f.host.selected.ref.sessionId, bytes, 'notes.txt', expect.any(AbortSignal))
+    expect(f.upload).toHaveBeenCalledWith(f.host.selected.ref.sessionId, expect.any(Blob), 'notes.txt', expect.any(AbortSignal))
     expect(f.editor.getText()).toContain('[file #1 notes.txt]')
     expect(await f.controller.readHostFile('file')).toEqual({ absolutePath: '/host/file', version: 'r1', text: 'Host file' })
     f.upload.mockResolvedValueOnce(denied('upload refused') as never)

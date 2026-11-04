@@ -38,7 +38,7 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
     report.command = plan
     const uploads = []
     for (const [name, text] of [['first.txt', 'first native file'], ['second.txt', 'second native file']]) {
-      uploads.push(value(await client.fileUpload.upload(sessionId, new TextEncoder().encode(text), name)))
+      uploads.push(value(await client.fileUpload.upload(sessionId, new Blob([text]), name)))
     }
     report.uploads = uploads
     const attachments = [
@@ -130,7 +130,7 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
     assert.deepEqual(orderedEntry.attachments[0], fileMetadata(uploads[1]))
     assert.equal(orderedEntry.attachments[1].name, 'diagram.png')
     assert.deepEqual(orderedEntry.attachments[2], fileMetadata(uploads[0]))
-    const onlyUpload = value(await client.fileUpload.upload(sessionId, new TextEncoder().encode('only native file'), 'attachment-only.txt'))
+    const onlyUpload = value(await client.fileUpload.upload(sessionId, new Blob(['only native file']), 'attachment-only.txt'))
     uploads.push(onlyUpload)
     const attachmentOnly = value(await client.remote.commands.execute(sessionId, '/plan', [{ type: 'file', receiptId: onlyUpload.receiptId }]))
     assert.equal(attachmentOnly.result.kind, 'success')

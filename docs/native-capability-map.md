@@ -128,7 +128,8 @@ profile file.
 `standard`, `ptc`, `cordis`, and `mayfly-cordis` presets mount it; `minimal`
 does not. The Host `schedule` service stays Host-wide and comes enabled from
 the composed `dsh-web-app` row; a profile can disable it. `/schedule` reads the
-selected Session's active reminders through native `remote.schedule.list`
+complete native `remote.schedule.catalog()` and keeps active tasks whose
+`involvedSessionIds` include the exact selected Session
 and refreshes on `schedule/changed`. The readonly panel does not require
 `schedule_create` in that preset. Reminder creation and cancellation remain in
 the conversation; the TUI does not add an `all` task-browser mode.
