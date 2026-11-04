@@ -151,7 +151,9 @@ export class CordisRemoteLocalPresentation implements RemoteLocalPresentation {
     const previous = await themeTarget(current, this.customTheme)
     const next = await themeTarget(theme, custom)
     if (this.disposed) return
-    const runtime = this.context.ctx.registry.delete(previous.module)
+    // Dispose each live Fiber once and await that call. registry.delete()
+    // starts disposal itself; calling dispose() again does not join its work.
+    const runtime = this.context.ctx.registry.get(previous.module)
     if (runtime !== undefined) await Promise.all([...runtime.fibers].map(fiber => fiber.dispose()))
     if (this.disposed) return
     try {

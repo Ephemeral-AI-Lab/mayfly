@@ -14,7 +14,7 @@ function fixture(theme = 'dark') {
   const mounted = { dispose: vi.fn(async () => {}) }
   const plugin = vi.fn(async (_module: unknown, _config?: unknown) => mounted)
   const runtime = (): { readonly fibers: readonly (typeof old)[] } | undefined => ({ fibers: [old] })
-  const registry = { get: vi.fn(runtime), delete: vi.fn(runtime) }
+  const registry = { get: vi.fn(runtime) }
   const offLocale = vi.fn()
   const services = new Map<string, unknown>([['mayflyInteractionState', state], ['mayflyLocale', locale]])
   let onLocale = () => {}
@@ -53,7 +53,7 @@ describe('Remote local presentation lifecycle', () => {
     expect(test.plugin).not.toHaveBeenCalled()
     test.registry.get.mockReturnValueOnce(undefined)
     await test.presentation.reloadTheme()
-    test.registry.delete.mockReturnValueOnce(undefined)
+    test.registry.get.mockReturnValueOnce(undefined)
     await test.presentation.applyTheme('light')
     expect(test.plugin).toHaveBeenCalledOnce()
     test.presentation.dispose()
@@ -90,10 +90,10 @@ describe('Remote local presentation lifecycle', () => {
     await test.presentation.reloadTheme()
     expect(test.registry.get).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }))
     await test.presentation.applyCustomTheme('/local/second.json')
-    expect(test.registry.delete).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }))
+    expect(test.registry.get).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }))
     expect(test.plugin).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }), { path: '/local/second.json', base: 'dark' })
     await test.presentation.applyTheme('light')
-    expect(test.registry.delete).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }))
+    expect(test.registry.get).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'custom' }))
     expect(test.state.currentThemeKey).toBe('light')
     test.presentation.dispose()
     await test.presentation.applyCustomTheme('/local/ignored.json')
@@ -116,7 +116,7 @@ describe('Remote local presentation lifecycle', () => {
     test.presentation.dispose()
     await Promise.all([first, second, test.presentation.reloadTheme()])
     expect(test.plugin).not.toHaveBeenCalled()
-    expect(test.registry.delete).not.toHaveBeenCalled()
+    expect(test.registry.get).not.toHaveBeenCalled()
     test.presentation.setLocale('zh')
     await test.presentation.applyTheme('tide')
     expect(test.locale.setPreference).not.toHaveBeenCalled()
@@ -178,7 +178,6 @@ describe('Remote local presentation lifecycle', () => {
     await pending
     expect(test.plugin).not.toHaveBeenCalled()
     expect(test.registry.get).not.toHaveBeenCalled()
-    expect(test.registry.delete).not.toHaveBeenCalled()
   })
 
   it.each(['restart', 'dispose'] as const)('does not continue after an in-flight provider %s is retired', async kind => {
