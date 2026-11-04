@@ -94,4 +94,6 @@ MAYFLY_DSH_STARTUP_URL='<Host 输出的完整 URL>' /home/x/dev/mayfly-remediati
 
 Website 中英文验收入口：`/guide/`、`/en/guide/`、`/guide/config`、`/en/guide/config`、`/plugins/seams`、`/en/plugins/seams`、`/plugins/quickstart`、`/en/plugins/quickstart`、`/reference/commands`、`/en/reference/commands`、`/features/`、`/en/features/`、`/guide/theme`、`/en/guide/theme`。
 
-依据根 `AGENTS.md` 的 “Wait for all applicable human acceptance before merging, stopping previews, or removing profiles.”，当前保留 worktrees、profile 和预览，不合入 main，不清理验收入口。T05 保持用户确认的部分修复边界；本记录不等同于人工验收通过。
+用户于 2026-11-04 明确确认“验收通过，合并到主分支”，上述运行与 Website 验收范围已获接受。验收时披露的原始门禁红项、`/changes` 帮助条目差异及 T05 部分修复边界保持原样，不改写成全量严格 parity 通过。
+
+依据根 `AGENTS.md` 的 “After acceptance and merge, rebuild main when runtime output changed, stop previews, remove worktree profiles, and record exercised routes/scenarios.”，合并后重建主工作区，停止 4193 验收预览并移除临时 `mayfly-split-fix` profile；原始验证产物继续保留供审计。上文列出的自动化与人工验收范围共同构成本轮验收记录。
