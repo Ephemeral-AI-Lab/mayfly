@@ -134,16 +134,20 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         screen.requestRender()
       },
     })
+    // A queued paint can run while native theme replacement withdraws services.
+    // Publish the next complete provider pair from the injected owner below.
+    let bannerColors = ctx.mayflyTheme.colors
+    let bannerComponents = ctx.mayflyComponents
     const bannerSlot = screen.mountContentSlot('transcript.prelude', new RemoteBannerComponent(
-      ctx.mayflyTheme.colors,
-      ctx.mayflyComponents,
+      bannerColors,
+      bannerComponents,
       displayedFacts,
       {
         identity: () => app?.activeClient,
         home: () => app?.activeClient?.remote.$host.home ?? '',
         directory: () => options.cwd ?? process.cwd(),
-        colors: () => ctx.mayflyTheme.colors,
-        components: () => ctx.mayflyComponents,
+        colors: () => bannerColors,
+        components: () => bannerComponents,
         flyInAt: () => startup?.flyInAt(),
         splash: () => startup?.splash(),
         rows: () => Math.max(1, screen.rows - screen.editorRowsFromBottom),
@@ -459,6 +463,8 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       name: 'mayfly-remote-retained-renderers',
       inject: ['mayflyTheme', 'mayflyComponents'],
       apply(owner: Context) {
+        bannerColors = owner.mayflyTheme.colors
+        bannerComponents = owner.mayflyComponents
         editor!.retheme(owner.mayflyComponents, owner.mayflyTheme.colors)
         editorComposition!.controller.retheme(owner.mayflyComponents, owner.mayflyTheme.colors)
         completionDrawer?.dispose()

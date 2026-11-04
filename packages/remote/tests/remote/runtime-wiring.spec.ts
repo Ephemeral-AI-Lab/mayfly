@@ -21,6 +21,8 @@ type ContextOptions = ConstructorParameters<typeof import('../../src/transcript/
 
 const wiring = vi.hoisted(() => ({
   ctx: undefined as Context | undefined,
+  withdrawTheme: undefined as (() => unknown) | undefined,
+  withdrawComponents: undefined as (() => unknown) | undefined,
   keyActions: [] as MayflyKeyAction[],
   localeChanged: undefined as (() => void) | undefined,
   policyChanged: undefined as (() => void) | undefined,
@@ -203,14 +205,14 @@ vi.mock('@ephemeral-ai/mayfly/core', () => ({ name: 'core', Config: undefined, i
   wiring.ctx = ctx
   ctx.provide('mayflyUiInteraction', { createNotificationOwner: () => wiring.keyNotices } as never)
   ctx.provide('mayflyScreen', { rows: 30, editorRowsFromBottom: 4, mountContentSlot: () => ({ dispose() {} }), requestRender: wiring.requestRender, suspend: wiring.suspend, leaveViews: wiring.leaveViews } as never)
-  ctx.provide('mayflyComponents', {} as never)
+  wiring.withdrawComponents = ctx.provide('mayflyComponents', {} as never)
   ctx.provide('mayflyKeymap', {
     register(actions: MayflyKeyAction[]) {
       wiring.keyActions.push(...actions)
       return () => { wiring.keyActions = wiring.keyActions.filter(action => !actions.includes(action)) }
     }, getKeys: () => ['f7'],
   } as never)
-  ctx.provide('mayflyTheme', { colors: {} } as never)
+  wiring.withdrawTheme = ctx.provide('mayflyTheme', { colors: {} } as never)
   ctx.provide('mayflyUiImages', { provide(provider: typeof wiring.image) { wiring.image = provider; return () => {} } } as never)
 } }))
 vi.mock('@ephemeral-ai/mayfly/frontend', () => ({ name: 'frontend', Config: undefined, inject: [], apply() {}, interpolateLocaleMessage: (key: string) => key }))
@@ -298,6 +300,28 @@ describe('standalone Remote runtime wiring', () => {
     expect(wiring.rethemeEditor).toHaveBeenCalledWith(wiring.ctx!.mayflyComponents, wiring.ctx!.mayflyTheme.colors)
     expect(wiring.controller.retheme).toHaveBeenCalledWith(wiring.ctx!.mayflyComponents, wiring.ctx!.mayflyTheme.colors)
     expect(wiring.rethemeEditor.mock.invocationCallOrder[0]).toBeLessThan(wiring.controller.retheme.mock.invocationCallOrder[0]!)
+  })
+
+  it('keeps the last live banner dependencies while providers are withdrawn and adopts their replacement', async () => {
+    await start()
+    const owner = wiring.ctx!
+    const colors = owner.mayflyTheme.colors
+    const components = owner.mayflyComponents
+    await Promise.all([wiring.withdrawTheme!(), wiring.withdrawComponents!()])
+    expect(wiring.banner!.colors!()).toBe(colors)
+    expect(wiring.banner!.components!()).toBe(components)
+    const replacementColors = { ...colors }
+    const replacementComponents = { ...components }
+    owner.provide('mayflyComponents', replacementComponents)
+    await flush()
+    expect(wiring.banner!.colors!()).toBe(colors)
+    expect(wiring.banner!.components!()).toBe(components)
+    owner.provide('mayflyTheme', { colors: replacementColors } as never)
+    await vi.waitFor(() => { expect(wiring.banner!.colors!()).toBe(replacementColors) })
+    expect(wiring.banner!.components!()).toBe(replacementComponents)
+    wiring.actions!.exit()
+    await running
+    expect(wiring.banner!.colors!()).toBe(replacementColors)
   })
 
   it('restores native status edits to the prompt only while their exact owner remains current', async () => {
