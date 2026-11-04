@@ -1,7 +1,7 @@
 /** Real official Client uploads and command-file admission against an isolated dsh Host. @module script/scenarios/split-command-files */
 
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -68,7 +68,7 @@ export async function runSplitCommandFiles({ root, dshBin = 'dsh', artifacts }) 
       for (const key of ['CI', 'COLUMNS', 'LINES', 'NO_COLOR', 'FORCE_COLOR', 'MAYFLY_TASK']) delete env[key]
       const captured = await captureSplitTerminal({
         bin: process.execPath, args: [join(root, 'packages/remote/lib/remote-bin.js')], cwd: host.cwd,
-        env, cols: 100, rows: 35, stub, startupUrl: host.startupUrl, startupReady: splitStartupReadiness(),
+        env, cols: 100, rows: 35, stub, startupUrl: host.startupUrl, startupReady: splitStartupReadiness(JSON.parse(readFileSync(join(root, 'packages/remote/package.json'), 'utf8')).version),
         steps: [
           ...markers.map(text => ({ step: 'until', text })),
           ...imageBetween === undefined ? [] : [{ step: 'until', text: 'diagram.png' }],

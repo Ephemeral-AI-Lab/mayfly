@@ -44,8 +44,10 @@ function child(): FakeChild {
   return value
 }
 async function until<T>(read: () => Promise<T | undefined>): Promise<T> {
-  const end = Date.now() + 3000
-  while (Date.now() < end) { const value = await read(); if (value) return value; await new Promise(resolve => setImmediate(resolve)) }
+  const end = performance.now() + 3000
+  // Yield between filesystem observations so Windows has a handle-free window
+  // for atomic replacement. Crash-policy tests deliberately control Date.now.
+  while (performance.now() < end) { const value = await read(); if (value) return value; await new Promise(resolve => setTimeout(resolve, 10)) }
   throw new Error('Supervisor fixture did not settle')
 }
 async function running(): Promise<RecordState> {

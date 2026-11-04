@@ -1,7 +1,7 @@
 /** Real HTTP/WebSocket Host plus an independently spawned Remote terminal. @module script/scenarios/split-runner */
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { launchSplitHost } from './split-profile.mjs'
@@ -46,7 +46,7 @@ export async function runSplitScenario({ root, dshBin, artifacts, cols = 80, row
     for (const name of ['CI', 'COLUMNS', 'LINES', 'NO_COLOR', 'FORCE_COLOR', 'MAYFLY_SESSION_ID', 'MAYFLY_TASK']) delete env[name]
     const captured = await captureSplitTerminal({
       bin: process.execPath, args: [join(root, 'packages/remote/lib/remote-bin.js')], cwd: host.cwd,
-      env, cols, rows, steps, stub, startupUrl, startupReady: splitStartupReadiness(),
+      env, cols, rows, steps, stub, startupUrl, startupReady: splitStartupReadiness(JSON.parse(readFileSync(join(root, 'packages/remote/package.json'), 'utf8')).version),
       audit: step => awaitProbeAudit(host.auditLog, step),
       network: action => {
         if (forwarding === undefined || !['drop', 'restore'].includes(action)) throw new Error(`Invalid network action ${action}`)

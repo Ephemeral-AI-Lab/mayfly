@@ -4,14 +4,14 @@ import { createRequire } from 'node:module'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { keyBytes } from './input.mjs'
 import { createScreen } from './screen.mjs'
-import { normalizeSplitGrid, redactSplitOutput, SPLIT_REFERENCE } from './split-reference.mjs'
+import { normalizeSplitGrid, redactSplitOutput } from './split-reference.mjs'
 
 const require = createRequire(import.meta.url)
 
 /** The native model can appear in the banner or responsive footer of either isolated fixture. */
-export function splitStartupReadiness() {
+export function splitStartupReadiness(version) {
   return [
-    { text: `mayfly v${SPLIT_REFERENCE.version}` },
+    { text: `mayfly v${version}` },
     { text: 'deepseek-flash' },
   ]
 }

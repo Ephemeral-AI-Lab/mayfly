@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { createScreen } from '../scenarios/screen.mjs'
+import { SPLIT_REFERENCE } from '../scenarios/split-reference.mjs'
 import { captureSplitTerminal, exitSplitTerminal, settleSplitScreen, splitStartupReadiness } from '../scenarios/split-terminal.mjs'
 
 function fixture(t, cols = 80, rows = 24) {
@@ -30,7 +31,16 @@ const editor = '\u001b[22;1HAsk anything'
 
 test('the isolated native startup needs both the release banner and the configured default model', () => {
   const conversation = [{ text: 'mayfly v0.1.4-rc.2' }, { text: 'deepseek-flash' }]
-  assert.deepEqual(splitStartupReadiness(), conversation)
+  assert.deepEqual(splitStartupReadiness(SPLIT_REFERENCE.version), conversation)
+})
+
+test('a candidate release settles against its own banner while the reference remains fixed', async t => {
+  const state = fixture(t)
+  const candidateVersion = '0.1.5'
+  assert.notEqual(candidateVersion, SPLIT_REFERENCE.version)
+  state.screen.feed(`\u001b[2;1Hmayfly v${candidateVersion}${footer}${editor}`)
+  await settleSplitScreen({ ...state, ready: splitStartupReadiness(candidateVersion) })
+  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(SPLIT_REFERENCE.version), timeoutMs: 400 }), /missing visible text: mayfly v0\.1\.4-rc\.2/u)
 })
 
 test('a stable early editor and banner do not admit semantic input before the native model arrives', async t => {
@@ -44,7 +54,7 @@ test('a stable early editor and banner do not admit semantic input before the na
     if (time === 700) bannerOnlyStable = true
     if (time === 800) state.screen.feed(footer)
   })
-  await settleSplitScreen({ ...state, ready: splitStartupReadiness() })
+  await settleSplitScreen({ ...state, ready: splitStartupReadiness(SPLIT_REFERENCE.version) })
   assert.equal(earlyEditorStable, true)
   assert.equal(bannerOnlyStable, true)
   assert.ok(state.now() >= 1060)
@@ -55,7 +65,7 @@ test('a native model alone cannot admit the still hidden startup banner', async 
   const state = fixture(t)
   state.screen.feed(editor + footer)
   state.tick(time => { if (time === 600) state.screen.feed(banner) })
-  await settleSplitScreen({ ...state, ready: splitStartupReadiness() })
+  await settleSplitScreen({ ...state, ready: splitStartupReadiness(SPLIT_REFERENCE.version) })
   assert.ok(state.now() >= 860)
 })
 
@@ -64,7 +74,7 @@ test('the startup barrier accepts the real abbreviated model footer at 40 column
     const state = fixture(t, cols, 16)
     state.screen.feed(banner)
     state.tick(time => { if (time === 600) state.screen.feed('\u001b[16;1Hdeepseek-flash  ~/workspace') })
-    await settleSplitScreen({ ...state, ready: splitStartupReadiness() })
+    await settleSplitScreen({ ...state, ready: splitStartupReadiness(SPLIT_REFERENCE.version) })
     assert.ok(state.now() >= 860)
     assert.deepEqual(state.screen.wrappedRows(), [])
   }
@@ -77,7 +87,7 @@ test('readiness must be present in the same final visible frame, not in earlier 
     if (time === 200) state.screen.feed('\u001b[2J' + footer)
     if (time === 800) state.screen.feed(banner)
   })
-  await settleSplitScreen({ ...state, ready: splitStartupReadiness() })
+  await settleSplitScreen({ ...state, ready: splitStartupReadiness(SPLIT_REFERENCE.version) })
   assert.ok(state.now() >= 1060)
 })
 
@@ -89,14 +99,14 @@ test('synchronized paints and native model work must drain after all ready text 
     if (time === 500) state.screen.feed('\u001b[?2026l')
     if (time === 900) state.pending(0)
   })
-  await settleSplitScreen({ ...state, ready: splitStartupReadiness() })
+  await settleSplitScreen({ ...state, ready: splitStartupReadiness(SPLIT_REFERENCE.version) })
   assert.equal(state.now(), 900)
 })
 
 test('a missing native ready marker fails at the 30 second deadline instead of capturing a partial startup', async t => {
   const state = fixture(t)
   state.screen.feed(editor + banner)
-  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(), timeoutMs: 30_000 }), /startup did not become ready within 30000ms; missing visible text: deepseek-flash/u)
+  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(SPLIT_REFERENCE.version), timeoutMs: 30_000 }), /startup did not become ready within 30000ms; missing visible text: deepseek-flash/u)
   assert.equal(state.now(), 30_000)
 })
 
@@ -104,7 +114,7 @@ test('native process exit or an unsettled frame remains a failure after ready te
   const state = fixture(t)
   state.screen.feed(banner + footer)
   state.screen.state.openSync = 1
-  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(), timeoutMs: 400 }), /Terminal did not settle/u)
+  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(SPLIT_REFERENCE.version), timeoutMs: 400 }), /Terminal did not settle/u)
   await assert.rejects(settleSplitScreen({ ...state, check: () => { throw new Error('Host exited') } }), /Host exited/u)
 })
 
@@ -116,9 +126,9 @@ test('the real long-workspace frame needs native model facts while the responsiv
   const paint = lines => state.screen.feed('\u001b[2J\u001b[H' + lines.map((line, row) => `\u001b[${row + 1};1H${line}`).join(''))
   // Before native attach, the banner's model/provider facts are both default.
   paint(actual.lines.map(line => line.replace('deepseek-flash · deepseek-official', 'default · default')))
-  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(), timeoutMs: 400 }), /deepseek-flash/u)
+  await assert.rejects(settleSplitScreen({ ...state, ready: splitStartupReadiness(SPLIT_REFERENCE.version), timeoutMs: 400 }), /deepseek-flash/u)
   state.tick(time => { if (time === 800) paint(actual.lines) })
-  await settleSplitScreen({ ...state, ready: splitStartupReadiness() })
+  await settleSplitScreen({ ...state, ready: splitStartupReadiness(SPLIT_REFERENCE.version) })
   assert.ok(state.now() >= 1060)
   assert.equal(state.screen.grid().lines.at(-1), actual.lines.at(-1))
 })
