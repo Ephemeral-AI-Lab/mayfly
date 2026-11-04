@@ -1,7 +1,7 @@
 # 快速开始
 
 先确定插件运行在哪个进程。当前使用 Node `>=24.9.0`、仓库锁定的 pnpm 和
-Harness `0.2.2-alpha.3`；Cordis 版本与所选 Host/Remote release 的 peer 保持一致。
+Harness `0.2.2-rc.1`；Cordis 版本与所选 Host/Remote release 的 peer 保持一致。
 
 ## Host 插件
 

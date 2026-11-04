@@ -30,7 +30,7 @@ const RELEASE_VERSION = '0.1.5'
 /** The harness prerelease line the legacy dsh pins ride. */
 const HARNESS_LINE = '0.2.1-rc.2'
 /** The independent Host/Client and archived CLI runtime line. */
-const CLI_HARNESS_LINE = '0.2.2-alpha.3'
+const CLI_HARNESS_LINE = '0.2.2-rc.1'
 
 /** One workspace package manifest. */
 interface Manifest {

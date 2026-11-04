@@ -8,7 +8,7 @@ current product uses `mayfly-host` in a native dsh profile and an independent
 and official Harness versions. `mayfly server` manages the background Host;
 `mayfly` automatically starts and connects to its local instance. Follow the [split quickstart](/en/guide/).
 Published `v0.1.4-rc.2` is the immutable UI reference; current development targets
-Harness `0.2.2-alpha.3` and requires matching verified build artifacts.
+Harness `0.2.2-rc.1` and requires matching verified build artifacts.
 
 ## The install resolves an older release?
 

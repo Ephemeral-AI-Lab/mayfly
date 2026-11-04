@@ -27,7 +27,7 @@ exist only in the frontend.
 
 ## Current dynamic-prototype limits
 
-Harness `0.2.2-alpha.3` exposes only the two inspection model tools above.
+Harness `0.2.2-rc.1` exposes only the two inspection model tools above.
 There are no supplied `cordis_mount`, `cordis_define`, `cordis_run`,
 `cordis_stop`, or `cordis_undefine` model tools. Do not tell the user that such
 a tool ran, or replace it with an unreviewed helper tool.

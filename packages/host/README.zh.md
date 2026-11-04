@@ -21,7 +21,7 @@ isolate 分组，添加说明两个进程边界的 persona，并从已发布的 
 preset 或进程内组合。
 
 创造模式可以检查原生服务，编写普通持久 Host bundle 和 Agent preset。
-Harness `0.2.2-alpha.3` 的 Cordis 模型工具只有 `cordis_inspect_list` 和
+Harness `0.2.2-rc.1` 的 Cordis 模型工具只有 `cordis_inspect_list` 和
 `cordis_inspect_query`，已不再提供创建、挂载、运行、停止或移除动态包的模型工具。
 Host runner 仍保留程序调用的生命周期；`code.host` 在 Host 运行，`code.client`
 面向原生浏览器 runner。
@@ -60,12 +60,12 @@ Host runner 仍保留程序调用的生命周期；`code.host` 在 Host 运行�
 
 握手的包版本和所需 Harness 版本取自发布 manifest。可选组合若提供脱敏原生 MCP 服务器目录，可声明 `mcpTransportHealth`；连接中、重连中和已断开服务器的工具可用性标为 `unknown`，不会误报为 `no-tools` 或 `synced`。
 
-dsh `0.2.2-alpha.3` 没有公开已配置 MCP 服务器或传输健康状态的目录：其 `ServerContext` 仅包含 resources 和 instructions。Mayfly 因此只列出可通过已注册工具名称发现的服务器，并将 transport/endpoint 保持为 `null`；不会读取 Loader 条目，也不会发出命令参数、环境变量、请求头、凭据或其他原始 MCP 配置。`synced`/`restricted`/`no-tools` 状态描述工具可见性，而不是连接健康。补充目录必须由 Mayfly Host composition 扩展通过公开 API 和脱敏 DTO 提供，内容限于服务器身份、传输、脱敏 endpoint 和连接状态，排除环境变量和请求头。本项目不向 dsh 上游补齐该能力，也不复制其私有实现。
+dsh `0.2.2-rc.1` 没有公开已配置 MCP 服务器或传输健康状态的目录：其 `ServerContext` 仅包含 resources 和 instructions。Mayfly 因此只列出可通过已注册工具名称发现的服务器，并将 transport/endpoint 保持为 `null`；不会读取 Loader 条目，也不会发出命令参数、环境变量、请求头、凭据或其他原始 MCP 配置。`synced`/`restricted`/`no-tools` 状态描述工具可见性，而不是连接健康。补充目录必须由 Mayfly Host composition 扩展通过公开 API 和脱敏 DTO 提供，内容限于服务器身份、传输、脱敏 endpoint 和连接状态，排除环境变量和请求头。本项目不向 dsh 上游补齐该能力，也不复制其私有实现。
 
 ## 开发 profile
 
 使用 Node `>=24.9.0`、锁定的 pnpm `11.7.0`，以及独立安装的官方 dsh
-`0.2.2-alpha.3` 可执行文件。从仓库根目录运行：
+`0.2.2-rc.1` 可执行文件。从仓库根目录运行：
 
 ```sh
 pnpm install --frozen-lockfile

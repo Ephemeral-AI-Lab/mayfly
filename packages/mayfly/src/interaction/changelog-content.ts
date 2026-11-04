@@ -23,12 +23,12 @@ export interface ChangelogEntry {
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
     version: '0.1.5',
-    summary: 'Run Mayfly as a native background Host and an independent terminal frontend, with one command for startup and service management, aligned with Harness 0.2.2-alpha.3.',
+    summary: 'Run Mayfly as a native background Host and an independent terminal frontend, with one command for startup and service management, aligned with Harness 0.2.2-rc.1.',
     highlights: [
       'Split runtime - the Host owns Agents, Sessions and durable projections; the independent TUI uses official HTTP and WebSocket Client transport and can detach without stopping remote work.',
       'Unified command - mayfly opens the TUI and starts its local Host when needed; mayfly server starts in the background and supports start, stop, restart, status, logs, enable, disable and explicit profile upgrade.',
       'Native supervision - Linux uses systemd user services, macOS uses LaunchAgents, and Windows uses the Mayfly hidden supervisor with authenticated local control and bounded crash recovery. Login startup is opt-in.',
-      'Harness 0.2.2-alpha.3 - update the complete Host and Client dependency line and consume the native task catalog with exact involved-Session filtering.',
+      'Harness 0.2.2-rc.1 - update the complete Host and Client dependency line and consume the native task catalog with exact involved-Session filtering.',
       'Release verification - build clean split artifacts before typechecking, invoke pnpm without platform shell shims, keep all five package dependencies exact, and exercise background lifecycle with native PTY and ConPTY.',
     ],
     knownIssues: [

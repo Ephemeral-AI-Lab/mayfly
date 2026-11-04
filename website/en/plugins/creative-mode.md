@@ -1,7 +1,7 @@
 # Creative mode walkthrough
 
 `mayfly-cordis` is a native Agent preset registered by Host. It uses Harness
-`0.2.2-alpha.3` Cordis tools and services and explains the Host/Remote process
+`0.2.2-rc.1` Cordis tools and services and explains the Host/Remote process
 boundary.
 
 1. Find service, event, and tool providers with `cordis_inspect_list`.

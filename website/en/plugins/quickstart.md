@@ -1,7 +1,7 @@
 # Quickstart
 
 Choose the process where the plugin runs. Use Node `>=24.9.0`, the repository's
-pinned pnpm, and Harness `0.2.2-alpha.3`; match Cordis peers to the selected
+pinned pnpm, and Harness `0.2.2-rc.1`; match Cordis peers to the selected
 Host/Remote release.
 
 ## Host plugin

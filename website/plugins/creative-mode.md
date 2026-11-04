@@ -1,7 +1,7 @@
 # 创造模式实战
 
 `mayfly-cordis` 是 Host 注册的原生 Agent preset。它使用 Harness
-`0.2.2-alpha.3` 的 Cordis 工具与服务，并说明 Host/Remote 的进程边界。
+`0.2.2-rc.1` 的 Cordis 工具与服务，并说明 Host/Remote 的进程边界。
 
 1. 用 `cordis_inspect_list` 查找当前 service、event 与 tool provider。
 2. 用 `cordis_inspect_query` 检查精确公开 method schema。

@@ -77,10 +77,10 @@ describe('Host creative preset composition', () => {
       expect(content).toContain('Host')
       expect(content).toContain('Remote')
     }
-    expect(manifest.dependencies['@deepseek-ai/dsh-skill-filesystem']).toBe('0.2.2-alpha.3')
+    expect(manifest.dependencies['@deepseek-ai/dsh-skill-filesystem']).toBe('0.2.2-rc.1')
     for (const match of readFileSync(join(root, 'presets/mayfly-cordis.patch.yml'), 'utf8').matchAll(/name: '(@deepseek-ai\/[^']+)'/gu)) {
       const packageName = match[1]!.split('/').slice(0, 2).join('/')
-      expect(manifest.dependencies[packageName], packageName).toBe('0.2.2-alpha.3')
+      expect(manifest.dependencies[packageName], packageName).toBe('0.2.2-rc.1')
     }
   })
 

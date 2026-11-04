@@ -4,7 +4,7 @@ The split runtime publishes five packages in lockstep:
 `@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`,
 `@ephemeral-ai/mayfly-host`, `@ephemeral-ai/mayfly-remote`, and
 `@ephemeral-ai/mayfly-cli`. The exact release order lives in
-`script/package-contract.mjs`. The supported Harness line is `0.2.2-alpha.3`.
+`script/package-contract.mjs`. The supported Harness line is `0.2.2-rc.1`.
 The published `@ephemeral-ai/mayfly@0.1.4-rc.2` remains an immutable parity
 reference; choose a new, unpublished version before releasing the split packages.
 

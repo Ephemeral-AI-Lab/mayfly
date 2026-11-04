@@ -1,6 +1,6 @@
 # Native-first Harness adaptation
 
-Mayfly targets Harness `0.2.2-alpha.3` and follows its native contracts. The
+Mayfly targets Harness `0.2.2-rc.1` and follows its native contracts. The
 published Mayfly `0.1.4-rc.2` on Harness `0.2.1-rc.2` remains the immutable
 appearance, key, and workflow reference. Native services own session lifecycle,
 working directories, scheduling, subagent activations, tool execution, and
@@ -46,7 +46,7 @@ The TUI copies local file bytes into a Blob and calls the official Client
 route; the Host owns upload receipts, Session scope, and durable attachment data.
 Cancellation and stale-selection checks apply before and after upload.
 
-Harness `0.2.2-alpha.3` has a Client injection gap in the Uint8Array Remote
+Harness `0.2.2-rc.1` has a Client injection gap in the Uint8Array Remote
 fallback: it accesses `remote.fileUploads` while declaring only `remote`.
 Mayfly's TUI uses the supported Blob HTTP path for every file upload. Headless
 consumers of the unchanged official `HostClient.fileUpload` service should use

@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "version": "0.1.5",
-  "harness": "0.2.2-alpha.3",
+  "harness": "0.2.2-rc.1",
   "reference": "sha512-KsNwfM4EN2rizHkPKVoHUXrRH2+WppR7zor6VnEhAJrO11AY6h/02tt5I0BOX04r8+CUfbqTvh5zmLoXl9kj8w==",
-  "decision": "Owner accepted the 0.1.5 runtime and Website on 2026-11-04. These are explicit release differences, never strict parity or replacement reference goldens.",
+  "decision": "Owner accepted the 0.1.5 runtime and Website on 2026-11-04. Harness rc.1 promotes the accepted alpha.3 runtime; only explicit version text changes are reviewed again. These are release differences, never strict parity or replacement reference goldens.",
   "sources": {
     "packages/mayfly/src/transcript/banner-content.ts": "9fb9ebd4c023b27538b665adb7ac905ef8d9988f7de78f0a8b7ac261ae193ff8",
-    "packages/mayfly/src/interaction/changelog-content.ts": "292f0a47c9e75c7edae9f4974af4cb272163aaafe02a82f916f39f42ff935121",
+    "packages/mayfly/src/interaction/changelog-content.ts": "f9083276119a4c719386b4e842bad41c7c9d53f6959474893e4276a227495dea",
     "packages/mayfly/src/interaction/session-info-model.ts": "3357e21a17de6b371f7cd39631260efd2a807b339640336a1862ae0cb142fdf4",
     "packages/mayfly/src/interaction/stats-facts.ts": "3d3f28fce00915b81cc4bbc51345affba06ec5626f80c32c3f612be7178ba0ea",
     "packages/mayfly/src/transcript/status-context-model.ts": "3e4348f741721107da084b4f0604a5dea6b86ac11a8c1c6894782143fb9b6845",
@@ -69,7 +69,7 @@
       "rows": 24,
       "row": 12,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "  Context window: 32 / 977k (1%)",
         "styles": [
@@ -108,7 +108,7 @@
       "rows": 24,
       "row": 21,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "  ░░░░░░░░░░░░░░░░░░░░    System prompt:        █ 747 (0.1%)",
         "styles": [
@@ -167,7 +167,7 @@
       "rows": 24,
       "row": 20,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "  Mayfly:  v0.1.4-rc.2",
         "styles": [
@@ -206,7 +206,7 @@
       "rows": 24,
       "row": 21,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "  Harness: 0.2.1-rc.2",
         "styles": [
@@ -223,7 +223,7 @@
         ]
       },
       "candidate": {
-        "text": "  Harness: 0.2.2-alpha.3",
+        "text": "  Harness: 0.2.2-rc.1",
         "styles": [
           {
             "from": 2,
@@ -232,7 +232,7 @@
           },
           {
             "from": 11,
-            "to": 23,
+            "to": 20,
             "style": "fg:#ededf2"
           }
         ]
@@ -284,7 +284,7 @@
       "rows": 24,
       "row": 18,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "  → 1. DeepSeek/DeepSeek-V4.1-Flash ✓  977k context",
         "styles": [
@@ -353,7 +353,7 @@
       "rows": 24,
       "row": 19,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "    2. DeepSeek/DeepSeek-V4-Pro        977k context",
         "styles": [
@@ -402,7 +402,7 @@
       "rows": 24,
       "row": 21,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "    ● Thinking: high",
         "styles": [
@@ -451,7 +451,7 @@
       "rows": 24,
       "row": 23,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "  Enter choose · Delete use default · Esc close",
         "styles": [
@@ -629,11 +629,11 @@
         ]
       },
       "candidate": {
-        "text": "  with Harness 0.2.2-alpha.3.",
+        "text": "  with Harness 0.2.2-rc.1.",
         "styles": [
           {
             "from": 2,
-            "to": 28,
+            "to": 25,
             "style": "fg:#ededf2"
           }
         ]
@@ -1113,11 +1113,11 @@
         ]
       },
       "candidate": {
-        "text": "  service management, aligned with Harness 0.2.2-alpha.3.",
+        "text": "  service management, aligned with Harness 0.2.2-rc.1.",
         "styles": [
           {
             "from": 2,
-            "to": 56,
+            "to": 53,
             "style": "fg:#ededf2"
           }
         ]
@@ -1346,7 +1346,7 @@
         ]
       },
       "candidate": {
-        "text": "  Highlights:   Harness 0.2.2-alpha.3 - update the complete Host and Client dependency line and consume the native",
+        "text": "  Highlights:   Harness 0.2.2-rc.1 - update the complete Host and Client dependency line and consume the native task",
         "styles": [
           {
             "from": 2,
@@ -1380,11 +1380,11 @@
         ]
       },
       "candidate": {
-        "text": "  task catalog with exact involved-Session filtering.",
+        "text": "  catalog with exact involved-Session filtering.",
         "styles": [
           {
             "from": 2,
-            "to": 52,
+            "to": 47,
             "style": "fg:#ededf2"
           }
         ]
@@ -1785,7 +1785,7 @@
       "rows": 24,
       "row": 16,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "  Context:           1% · 32 / 977k",
         "styles": [
@@ -1824,7 +1824,7 @@
       "rows": 24,
       "row": 21,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "  Version:           Mayfly 0.1.4-rc.2 · Harness 0.2.1-rc.2",
         "styles": [
@@ -1841,7 +1841,7 @@
         ]
       },
       "candidate": {
-        "text": "  Version:           Mayfly 0.1.5 · Harness 0.2.2-alpha.3",
+        "text": "  Version:           Mayfly 0.1.5 · Harness 0.2.2-rc.1",
         "styles": [
           {
             "from": 2,
@@ -1850,7 +1850,7 @@
           },
           {
             "from": 21,
-            "to": 56,
+            "to": 53,
             "style": "fg:#ededf2"
           }
         ]
@@ -1863,7 +1863,7 @@
       "rows": 24,
       "row": 16,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "  Context:           1% · 32 / 977k",
         "styles": [
@@ -1902,7 +1902,7 @@
       "rows": 24,
       "row": 21,
       "category": "native-fact",
-      "reason": "The native Harness 0.2.2-alpha.3 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
         "text": "  Version:           Mayfly 0.1.4-rc.2 · Harness 0.2.1-rc.2",
         "styles": [
@@ -1919,7 +1919,7 @@
         ]
       },
       "candidate": {
-        "text": "  Version:           Mayfly 0.1.5 · Harness 0.2.2-alpha.3",
+        "text": "  Version:           Mayfly 0.1.5 · Harness 0.2.2-rc.1",
         "styles": [
           {
             "from": 2,
@@ -1928,7 +1928,7 @@
           },
           {
             "from": 21,
-            "to": 56,
+            "to": 53,
             "style": "fg:#ededf2"
           }
         ]

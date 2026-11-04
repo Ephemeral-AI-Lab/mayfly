@@ -3,7 +3,7 @@
 The immutable visual reference is the published
 `@ephemeral-ai/mayfly@0.1.4-rc.2`, source commit
 `f148e7045cc22a66e62c0cd5203f8eeca1368081`, running Harness `0.2.1-rc.2`.
-The split candidate uses the installed official Harness `0.2.2-alpha.3`.
+The split candidate uses the installed official Harness `0.2.2-rc.1`.
 The comparison below comes from actual native Session events and persisted
 projection values after the same isolated one-turn workflow. It does not infer
 behavior from branch descriptions, a hand-written projection, or a screenshot.

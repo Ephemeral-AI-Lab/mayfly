@@ -1,6 +1,6 @@
 # Upgrades and existing data
 
-Mayfly 0.1.5 uses one CLI to manage a background Host and an independent TUI. It pins official Harness `0.2.2-alpha.3` and requires Node `>=24.9.0`. The installer installs all five matching packages without changing a separately installed global `dsh`.
+Mayfly 0.1.5 uses one CLI to manage a background Host and an independent TUI. It pins official Harness `0.2.2-rc.1` and requires Node `>=24.9.0`. The installer installs all five matching packages without changing a separately installed global `dsh`.
 
 ## Upgrade an existing split development installation
 

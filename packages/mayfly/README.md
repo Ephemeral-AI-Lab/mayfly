@@ -22,7 +22,7 @@ DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
 MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh
 ```
 
-The Host needs official Harness `0.2.2-alpha.3`. Install model credentials on
+The Host needs official Harness `0.2.2-rc.1`. Install model credentials on
 the Host. The TUI detaches on exit; Host sessions and running work remain
 owned by Harness. Rebuild the checkout after source changes.
 

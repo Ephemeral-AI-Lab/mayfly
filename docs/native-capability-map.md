@@ -1,7 +1,7 @@
 # Native Harness capability map
 
 This map describes the split Mayfly runtime on DeepSeek Harness
-`0.2.2-alpha.3`. The immutable UI reference uses `0.2.1-rc.2`; its native values
+`0.2.2-rc.1`. The immutable UI reference uses `0.2.1-rc.2`; its native values
 and old process-local composition do not define the candidate's wire contract.
 The Host reads native services and publishes presentation projections. The
 independent TUI reads official Client snapshots and sends native Remote writes.

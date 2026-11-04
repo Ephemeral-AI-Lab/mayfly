@@ -19,7 +19,7 @@ English | [中文](README.zh.md)
 
 Mayfly is an independent terminal frontend for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The product runs as two processes: a native dsh **Host** and a **Remote TUI** connected through the official HTTP/WebSocket Client. The Host owns Agents, models, tools, and Sessions; the TUI owns input, themes, panels, and terminal rendering. Closing the TUI detaches it while Host work continues.
 
-This development branch targets official Harness `0.2.2-alpha.3`. The published Mayfly `0.1.4-rc.2` is the immutable reference for appearance, keys, and workflows. Shared presentation is being carried into the split runtime; complete visual parity still requires the acceptance described in [split validation](docs/split-parity-validation.md).
+This development branch targets official Harness `0.2.2-rc.1`. The published Mayfly `0.1.4-rc.2` is the immutable reference for appearance, keys, and workflows. Shared presentation is being carried into the split runtime; complete visual parity still requires the acceptance described in [split validation](docs/split-parity-validation.md).
 
 ## Unified command
 
@@ -39,7 +39,7 @@ Upgrade the external CLI after stopping the old Host and backing up `MAYFLY_HOME
 
 ## Native development startup
 
-Use Node `>=24.9.0`, pinned pnpm `11.7.0`, and an isolated official dsh `0.2.2-alpha.3` executable. These split packages are development artifacts; install from this checkout or verified release tarballs. The installer checks the dsh version and keeps the global installation unchanged.
+Use Node `>=24.9.0`, pinned pnpm `11.7.0`, and an isolated official dsh `0.2.2-rc.1` executable. These split packages are development artifacts; install from this checkout or verified release tarballs. The installer checks the dsh version and keeps the global installation unchanged.
 
 ```sh
 pnpm install --frozen-lockfile

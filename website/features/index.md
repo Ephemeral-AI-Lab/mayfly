@@ -1,6 +1,6 @@
 # 功能总览
 
-Mayfly 在 Harness `0.2.2-alpha.3` 上运行原生 dsh Host 与独立 Remote TUI，
+Mayfly 在 Harness `0.2.2-rc.1` 上运行原生 dsh Host 与独立 Remote TUI，
 各自拥有 Cordis tree。已发布的 `0.1.4-rc.2` 是外观、按键与工作流的不可改写参照。
 
 ## 数据与交互

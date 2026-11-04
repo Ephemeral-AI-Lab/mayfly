@@ -20,7 +20,7 @@ DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
 MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh
 ```
 
-Host 需要官方 Harness `0.2.2-alpha.3`，模型凭据设置在 Host 上。
+Host 需要官方 Harness `0.2.2-rc.1`，模型凭据设置在 Host 上。
 TUI 退出时解除连接，session 与运行中的工作仍由 Harness 持有。
 修改源码后重新构建工作区。
 

@@ -19,7 +19,7 @@
 
 Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的独立终端前端。产品由两个进程组成：原生 dsh **Host** 和通过官方 HTTP/WebSocket Client 连接的 **Remote TUI**。Host 持有 Agent、模型、工具和 Session；TUI 持有输入、主题、面板与终端渲染。关闭 TUI 只解除连接，Host 上的工作继续运行。
 
-当前开发分支面向官方 Harness `0.2.2-alpha.3`。已发布的 Mayfly `0.1.4-rc.2` 是外观、按键和工作流不可改写的参照。分体实现复用共享展示层；完整视觉一致性仍须按照[分体式验证](docs/split-parity-validation.md)完成验收。
+当前开发分支面向官方 Harness `0.2.2-rc.1`。已发布的 Mayfly `0.1.4-rc.2` 是外观、按键和工作流不可改写的参照。分体实现复用共享展示层；完整视觉一致性仍须按照[分体式验证](docs/split-parity-validation.md)完成验收。
 
 ## 统一命令
 
@@ -39,7 +39,7 @@ node packages/cli/lib/bin.js server stop --profile mayfly-dev
 
 ## 原生开发启动
 
-使用 Node `>=24.9.0`、锁定的 pnpm `11.7.0` 和独立安装的官方 dsh `0.2.2-alpha.3` 可执行文件。分体包目前是开发产物，应从本工作区或经过验证的发布 tarball 安装。安装器会检查 dsh 版本，不修改全局安装。
+使用 Node `>=24.9.0`、锁定的 pnpm `11.7.0` 和独立安装的官方 dsh `0.2.2-rc.1` 可执行文件。分体包目前是开发产物，应从本工作区或经过验证的发布 tarball 安装。安装器会检查 dsh 版本，不修改全局安装。
 
 ```sh
 pnpm install --frozen-lockfile

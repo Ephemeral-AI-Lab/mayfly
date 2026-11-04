@@ -1,7 +1,7 @@
 # Mayfly architecture
 
 Mayfly has one product deployment: a native dsh Host and an independent Remote
-TUI. The Host runs official Harness `0.2.2-alpha.3`, `dsh-base`, `dsh-web-app`,
+TUI. The Host runs official Harness `0.2.2-rc.1`, `dsh-base`, `dsh-web-app`,
 and the Mayfly Host bundle. The TUI connects through the official Client API.
 Closing or detaching the TUI releases Client resources and keeps Host work alive.
 
