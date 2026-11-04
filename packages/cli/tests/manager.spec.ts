@@ -119,7 +119,7 @@ it('reports safe status with conventional exit codes and action output', async (
   current = undefined
   await manage(parse(['server', 'start', '--print-startup-url']), '/bin', output)
   expect(output).toHaveBeenCalledWith(`${record.url}\n`)
-  expect(ownBin()).toMatch(/\/bin\.js$/u)
+  expect(ownBin()).toMatch(/[/\\]bin\.js$/u)
 })
 
 it('stops idempotently and changes enablement without starting a Host', async () => {

@@ -1,6 +1,7 @@
 /** Private local service records, authenticated control and serialized management. @module */
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, writeFile, rename, rm, lstat, chmod, link } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, rm, lstat, chmod, link } from 'node:fs/promises'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createConnection } from 'node:net'
@@ -23,7 +24,7 @@ export function paths(profile: string): Paths {
   const dir = join(home, 'run', profile)
   const key = createHash('sha256').update(dir).digest('hex').slice(0, 24)
   return { home, dir, config: join(dir, 'config.json'), record: join(dir, 'connection.json'),
-    socket: process.platform === 'win32' ? `\\\\.\\pipe\\mayfly-${key}` : join(dir, 'control.sock'),
+    socket: process.platform === 'win32' ? `\\\\.\\pipe\\mayfly-${key}` : join('/tmp', `mayfly-${process.getuid!()}`, `${key}.sock`),
     log: join(home, 'logs', profile, 'server.log'), lock: join(dir, 'operation.lock') }
 }
 
@@ -40,7 +41,7 @@ export async function privateDirectory(path: string): Promise<void> {
       + '$acl=New-Object System.Security.AccessControl.DirectorySecurity; '
       + '$acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false); '
       + '$rule=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,"FullControl","ContainerInherit,ObjectInherit","None","Allow"); '
-      + '$acl.AddAccessRule($rule); Set-Acl -LiteralPath $env:MAYFLY_ACL_PATH -AclObject $acl'
+      + '$acl.AddAccessRule($rule); [System.IO.Directory]::SetAccessControl($env:MAYFLY_ACL_PATH,$acl)'
     await execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
       env: { ...process.env, MAYFLY_ACL_PATH: path },
     })
@@ -52,11 +53,7 @@ export async function privateDirectory(path: string): Promise<void> {
 
 /** Atomically replace a private JSON record. */
 export async function writeJson(path: string, value: unknown): Promise<void> {
-  const temporary = `${path}.${randomUUID()}.tmp`
-  try {
-    await writeFile(temporary, `${JSON.stringify(value)}\n`, { mode: 0o600, flag: 'wx' })
-    await rename(temporary, path)
-  } finally { await rm(temporary, { force: true }) }
+  await writeFileAtomic(path, `${JSON.stringify(value)}\n`, { mode: 0o600, dirMode: 0o700 })
 }
 
 /** Read optional state, treating malformed records as errors rather than overwriting them. */

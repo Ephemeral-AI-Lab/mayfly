@@ -181,6 +181,9 @@ importers:
       '@deepseek-ai/dsh':
         specifier: 0.2.2-alpha.3
         version: 0.2.2-alpha.3(2a98dab3a701115e2b37bddede7f6b44)
+      '@deepseek-ai/dsh-atomic-write':
+        specifier: 0.2.2-alpha.3
+        version: 0.2.2-alpha.3(@deepseek-ai/cordis@4.0.6-alpha.2)
       '@ephemeral-ai/mayfly-host':
         specifier: link:../host
         version: link:../host

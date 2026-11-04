@@ -91,22 +91,8 @@ jobs:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # The happy smoke boots the real dsh CLI. The CLI is NOT a workspace
-      # devDependency on purpose: its subtree reshapes hoisting and breaks the
-      # S34 /mcp e2e's bare-specifier resolution, so CI installs it globally
-      # and the smoke pins its version against HARNESS_LINE.
-      #
-      # npm, not `pnpm add -g`: action-setup installs pnpm itself under
-      # /home/runner/setup-pnpm, and with no PNPM_HOME set `pnpm add -g`
-      # resolves the global bin dir next to the pnpm binary and refuses
-      # ("configured global bin directory ... is not in PATH" — the red
-      # run 32548149673). npm's global bin is setup-node's prefix, already
-      # on PATH for the smoke's `command -v dsh`.
-      # The version is derived from HARNESS_LINE via script/harness-line.mjs
-      # (single-sourced) — keep it that way: a literal here would drift off
-      # the version.spec gate AND an automation push touching a workflow
-      # file is rejected by GitHub (GITHUB_TOKEN cannot update workflows).
-      - run: npm install -g "@deepseek-ai/dsh@$(node script/harness-line.mjs)"
+      # Split verification resolves the exact packaged CLI runtime; the immutable
+      # reference installs its own historical Harness in an isolated graph.
       # A pull request also reports the changed source lines no selected spec
       # ran (advice, not a gate). The perf slack scales the ceilings for a shared runner.
       - name: pnpm run check

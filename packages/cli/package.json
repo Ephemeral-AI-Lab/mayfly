@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.2-alpha.3",
+    "@deepseek-ai/dsh-atomic-write": "0.2.2-alpha.3",
     "@ephemeral-ai/mayfly-host": "0.1.5",
     "@ephemeral-ai/mayfly-remote": "0.1.5"
   },

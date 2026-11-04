@@ -1,5 +1,6 @@
 /** CLI for immutable reference comparisons and explicitly separate real split behavior cases. @module script/split-parity */
 
+import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { referenceCommandInventory } from './scenarios/split-commands.mjs'
@@ -42,7 +43,7 @@ if (scenario !== 'all' && !Object.hasOwn(SPLIT_SCENARIOS, scenario)) throw new E
 if (scenario === 'all' && referenceDir !== undefined) throw new Error('--reference selects one scenario only')
 artifacts ??= resolve(root, '.artifacts/split-parity', scenario)
 const scenarios = scenario === 'all' ? Object.keys(SPLIT_SCENARIOS).filter(name => !captureReferenceOnly || !SPLIT_SCENARIOS[name].splitOnly) : [scenario]
-const report = await runSplitSuite({ root, dshBin: process.env.MAYFLY_DSH_BIN ?? process.env.DSH_BIN ?? 'dsh', artifacts, resultsFile, cols, rows, scenarios, smokeOnly, captureReferenceOnly, referenceDir })
+const report = await runSplitSuite({ root, dshBin: process.env.MAYFLY_DSH_BIN ?? process.env.DSH_BIN ?? createRequire(resolve(root, 'packages/cli/package.json')).resolve('@deepseek-ai/dsh/lib/bin.js'), artifacts, resultsFile, cols, rows, scenarios, smokeOnly, captureReferenceOnly, referenceDir })
 for (const failure of report.failures) console.error(failure)
 console.log(`Report: ${resultsFile ?? resolve(artifacts, 'suite.json')}`)
 process.exitCode = report.failures.length === 0 ? 0 : 1

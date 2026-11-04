@@ -13,7 +13,8 @@ import { execute, paths, privateDirectory } from '../src/state.ts'
 
 registerTempDirCleanup()
 const platform = process.platform
-afterEach(() => { Object.defineProperty(process, 'platform', { value: platform }); vi.restoreAllMocks(); vi.unstubAllEnvs() })
+const uid = process.getuid
+afterEach(() => { Object.defineProperty(process, 'getuid', { value: uid, configurable: true }); Object.defineProperty(process, 'platform', { value: platform }); vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
 it('resolves defaults and Windows pipes and installs an exact current-user ACL', async () => {
   vi.stubEnv('MAYFLY_HOME', '')
@@ -29,6 +30,7 @@ it('resolves defaults and Windows pipes and installs an exact current-user ACL',
 })
 
 it('refuses a directory owned by a different POSIX user', async () => {
-  vi.spyOn(process, 'getuid').mockReturnValue(process.getuid!() + 1)
+  Object.defineProperty(process, 'platform', { value: 'linux' })
+  Object.defineProperty(process, 'getuid', { value: () => 0x7fffffff, configurable: true })
   await expect(privateDirectory(mkdtempTracked('mayfly-owner-'))).rejects.toThrow('another user')
 })

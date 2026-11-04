@@ -57,7 +57,7 @@ describe('remote-bin environment entry', () => {
     for (const option of ['--version', '-V']) {
       process.argv = [...originalArgv.slice(0, 2), option]
       await main()
-      expect(write).toHaveBeenLastCalledWith('mayfly 0.1.4-rc.2\n')
+      expect(write).toHaveBeenLastCalledWith(`mayfly ${JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version}\n`)
     }
     vi.mocked(readFileSync).mockReturnValueOnce('{"version":null}')
     await expect(main()).rejects.toThrow('Mayfly Remote package has no version')

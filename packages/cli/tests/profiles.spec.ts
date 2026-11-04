@@ -27,8 +27,8 @@ const composed = ['web-runtime', 'connection', 'mayfly-host', 'mayfly-host-start
 it('uses packaged dsh and a dedicated data root without exporting remote credentials', () => {
   vi.stubEnv('MAYFLY_DSH_STARTUP_URL', 'secret')
   expect(hostEnvironment(paths('work')).MAYFLY_DSH_STARTUP_URL).toBeUndefined()
-  expect(hostEnvironment(paths('work')).DSH_HOME).toContain('/harness')
-  expect(dshBin()).toMatch(/\/lib\/bin\.js$/u)
+  expect(hostEnvironment(paths('work')).DSH_HOME).toBe(join(paths('work').home, 'harness'))
+  expect(dshBin()).toMatch(/[/\\]lib[/\\]bin\.js$/u)
   expect(packageManifest('@ephemeral-ai/mayfly-host').version).toBeTruthy()
 })
 
@@ -43,7 +43,7 @@ it('initializes a missing profile, pre-denies native builds and records only com
   expect(progress).toHaveBeenCalledTimes(2)
   expect(await readFile(join(dir, 'pnpm-workspace.yaml'), 'utf8')).toContain('koffi: false')
   expect(await readFile(join(dir, 'mayfly-install.json'), 'utf8')).toContain(packageManifest('@ephemeral-ai/mayfly-host').version)
-  expect(execute).toHaveBeenCalledWith(process.execPath, expect.arrayContaining(['plugin', '--profile', 'work', 'add']), expect.objectContaining({ env: expect.objectContaining({ DSH_HOME: expect.stringContaining('/harness') }) }))
+  expect(execute).toHaveBeenCalledWith(process.execPath, expect.arrayContaining(['plugin', '--profile', 'work', 'add']), expect.objectContaining({ env: expect.objectContaining({ DSH_HOME: join(paths('work').home, 'harness') }) }))
 })
 
 it('preserves existing build policy, skips matching installs and refuses mismatched releases', async () => {

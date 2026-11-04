@@ -19,6 +19,7 @@ export async function supervise(profile: string): Promise<void> {
   await privateDirectory(p.home)
   await privateDirectory(p.dir)
   await privateDirectory(dirname(p.log))
+  if (process.platform !== 'win32') await privateDirectory(dirname(p.socket))
   const previous = await readJson<RecordState>(p.record)
   if (previous && previous.state !== 'stopped' && alive(previous.pid)) {
     const existing = await request(p, previous, 'status').catch(() => undefined)

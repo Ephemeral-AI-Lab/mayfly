@@ -1,13 +1,13 @@
 /** Native user service definitions and platform command contracts. @module */
 import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mkdtempTracked, registerTempDirCleanup } from '../../mayfly/tests/core/temp-dir.ts'
 
 vi.mock('../src/state.ts', async original => {
   const actual = await original<typeof import('../src/state.ts')>()
-  return { ...actual, execute: vi.fn(), privateDirectory: vi.fn(actual.privateDirectory) }
+  return { ...actual, execute: vi.fn(), privateDirectory: vi.fn(async (path: string) => { await mkdir(path, { recursive: true }) }) }
 })
 vi.mock('node:child_process', async original => ({ ...await original<typeof import('node:child_process')>(), spawn: vi.fn() }))
 vi.mock('node:os', async original => ({ ...await original<typeof import('node:os')>(), homedir: vi.fn() }))
@@ -19,14 +19,16 @@ import { definition, isEnabled, register, removeSocket, serviceId, setEnabled, s
 
 registerTempDirCleanup()
 const platform = process.platform
+const uid = process.getuid
 function on(value: string): void { Object.defineProperty(process, 'platform', { value }) }
 beforeEach(() => {
+  Object.defineProperty(process, 'getuid', { value: () => 0, configurable: true })
   const home = mkdtempTracked('mayfly-platform-')
   vi.mocked(homedir).mockReturnValue(home)
   vi.stubEnv('MAYFLY_HOME', join(home, 'mayfly'))
   vi.mocked(execute).mockReset().mockResolvedValue({ stdout: '', stderr: '' } as never)
 })
-afterEach(() => { on(platform); vi.restoreAllMocks(); vi.unstubAllEnvs() })
+afterEach(() => { Object.defineProperty(process, 'getuid', { value: uid }); on(platform); vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
 it('escapes native definitions and distinguishes data roots and profiles', () => {
   const p = paths('work')

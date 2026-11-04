@@ -106,6 +106,7 @@ try {
   assert.notEqual(readRecord().url, startupUrl)
   startupUrl = readRecord().url
   scenarios.push('restart-rotates-credentials')
+  await cli(['stop'])
 
   screen = new Terminal({ cols: 100, rows: 30, allowProposedApi: true })
   terminal = pty.spawn(process.execPath, [entry, '--profile', profile, '--cwd', workspace], { name: 'xterm-256color', cols: 100, rows: 30, cwd: workspace, env })
@@ -113,6 +114,17 @@ try {
   screen.onData(data => terminal.write(data))
   terminal.onExit(event => { exitCode = event.exitCode })
   await waitFor(() => output.includes('\x1b[?2004h') && view().includes('deepseek'), 'split TUI frame')
+  await sleep(1000)
+  // A user-service Host does not inherit this test process's API key. Exercise
+  // dismissal of first-run preferences before writing into the ordinary editor.
+  if (view().includes('Connect to DeepSeek')) {
+    terminal.write('\x1b')
+    await waitFor(() => !view().includes('Connect to DeepSeek'), 'first-run dismissal')
+    scenarios.push('first-run-dismissal')
+  }
+  startupUrl = readRecord().url
+  await cli(['status'])
+  scenarios.push('tui-auto-starts-host')
   terminal.write('\x1b[200~portable 输入\x1b[201~')
   await waitFor(() => view().includes('portable 输入'), 'Unicode bracketed paste')
   terminal.write('\x7f')
@@ -151,6 +163,7 @@ try {
   screen?.dispose()
   await cli(['stop']).catch(() => {})
   await cli(['disable']).catch(() => {})
+  try { writeFileSync(join(artifactRoot, 'server.log'), redact(readFileSync(join(home, 'logs', profile, 'server.log'), 'utf8'))) } catch {}
   writeFileSync(join(artifactRoot, 'terminal.log'), redact(output))
   writeFileSync(join(artifactRoot, 'commands.json'), JSON.stringify(commands, null, 2))
   writeFileSync(join(artifactRoot, 'result.json'), JSON.stringify({ platform: process.platform, arch: process.arch, passed, scenarios, exitCode }, null, 2))

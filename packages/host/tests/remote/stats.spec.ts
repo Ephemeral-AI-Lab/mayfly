@@ -1,4 +1,5 @@
 /** Passive statistics, immutable reference digests, bounded scans and retirement. @module */
+import { readFileSync } from 'node:fs'
 import { Context, symbols } from '@deepseek-ai/cordis'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -47,7 +48,7 @@ describe('Host rc.2 statistics digests', () => {
   it('reads a passive current Session and releases the observation at success and late cancellation', async () => {
     const f = fixture()
     const result = await statsSession(f.ctx, f.request, new AbortController().signal)
-    expect(result).toMatchObject({ createdAt: 100, cwd: '/work', status: 'idle', harnessVersion: '0.2.2-alpha.2' })
+    expect(result).toMatchObject({ createdAt: 100, cwd: '/work', status: 'idle', harnessVersion: JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).peerDependencies['@deepseek-ai/dsh-session'] })
     expect(f.dispose).toHaveBeenCalledTimes(1)
     expect(f.observe).toHaveBeenCalledWith(id, expect.objectContaining({ projectionMode: 'none' }))
     f.ctx.set('agents', { get: () => ({ status: 'running' }) })

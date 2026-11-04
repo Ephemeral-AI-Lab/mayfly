@@ -89,6 +89,8 @@ jobs:
           exit 1
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: recheck newest official Harness before publication
+        run: node script/check-harness-latest.mjs
       - run: node script/release-packages.mjs publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -185,6 +187,8 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ inputs.source_run_id || github.run_id }}
       - run: node script/release-preflight.mjs --artifact "${RELEASE_VERSION#v}"
+      - name: recheck newest official Harness before promotion
+        run: node script/check-harness-latest.mjs
       - run: node script/release-packages.mjs promote
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

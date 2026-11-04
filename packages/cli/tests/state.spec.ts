@@ -2,7 +2,7 @@
 import { createServer } from 'node:net'
 import * as fs from 'node:fs/promises'
 import { mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { mkdtempTracked, registerTempDirCleanup } from '../../mayfly/tests/core/temp-dir.ts'
 vi.mock('node:fs/promises', async original => {
@@ -29,13 +29,15 @@ it('isolates profiles and creates private atomic records without leftover tempor
   await writeJson(p.record, { value: 1 })
   await writeJson(p.record, { value: 2 })
   expect(await readJson(p.record)).toEqual({ value: 2 })
-  expect((await stat(p.record)).mode & 0o777).toBe(0o600)
-  expect((await stat(p.dir)).mode & 0o777).toBe(0o700)
+  if (process.platform !== 'win32') {
+    expect((await stat(p.record)).mode & 0o777).toBe(0o600)
+    expect((await stat(p.dir)).mode & 0o777).toBe(0o700)
+  }
   expect(await readJson(join(p.dir, 'absent'))).toBeUndefined()
   await writeFile(p.record, '{broken')
   await expect(readJson(p.record)).rejects.toThrow('Cannot read Mayfly state')
-  await expect(writeJson(join(p.dir, 'absent', 'file'), {})).rejects.toThrow()
-  await symlink(p.dir, join(p.home, 'alias'))
+  await expect(writeJson(p.dir, {})).rejects.toThrow()
+  await symlink(p.dir, join(p.home, 'alias'), 'junction')
   await expect(privateDirectory(join(p.home, 'alias'))).rejects.toThrow('real directory')
   await writeFile(join(p.home, 'plain'), '')
   await expect(privateDirectory(join(p.home, 'plain'))).rejects.toThrow()
@@ -122,6 +124,7 @@ it('authenticates requests and rejects incorrect, truncated and oversized superv
   await privateDirectory(p.dir)
   const record: RecordState = { generation: 'generation', secret: 'secret', pid: process.pid, profile: 'work', version: '1', state: 'running' }
   let response = `${JSON.stringify(record)}\n`
+  if (process.platform !== 'win32') await privateDirectory(dirname(p.socket))
   const server = createServer(socket => {
     socket.on('error', () => {})
     socket.on('data', data => {

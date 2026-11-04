@@ -1,4 +1,5 @@
 /** Real presenter cache integration without a running terminal. @module tests/host-composition */
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { HostKey } from '../../src/client/types.ts'
 import type { HostClient, SessionRef } from '../../src/client/types.ts'
@@ -11,7 +12,11 @@ vi.mock('@ephemeral-ai/mayfly-host/remote', () => ({ TYPERT_REMOTE: {} }))
 
 import { attachMayflyHostClient, resolveMayflyToolPresentation } from '../../src/remote/host-composition.ts'
 
-function host(version = '0.1.4-rc.2') {
+const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string, dependencies: Record<string, string> }
+const release = manifest.version
+const harness = manifest.dependencies['@deepseek-ai/dsh-agent']!
+
+function host(version = release) {
   const presentTools = vi.fn(async () => ({ ok: true, value: { presentations: { session: { call: { updatedSeq: 1 } } } } }))
   const detach = vi.fn(async () => {})
   const client = {
@@ -20,7 +25,7 @@ function host(version = '0.1.4-rc.2') {
       $mount: vi.fn(async () => {}),
       mayflyHost: {
         capabilities: vi.fn(async () => ({ ok: true, value: {
-          protocolVersion: 1, hostVersion: version, requiredDshVersion: '0.2.2-alpha.2',
+          protocolVersion: 1, hostVersion: version, requiredDshVersion: harness,
           features: ['mayflyConversation', 'presentTools'],
         } })),
         presentTools,
@@ -33,9 +38,9 @@ function host(version = '0.1.4-rc.2') {
 describe('validated Host presenter lifetime', () => {
   it.each([
     ['capability refusal', { ok: false, error: { code: 'missing', message: 'not composed' } }, 'capabilities request failed: not composed'],
-    ['protocol mismatch', { ok: true, value: { protocolVersion: 2, hostVersion: '0.1.4-rc.2', requiredDshVersion: '0.2.2-alpha.2', features: ['mayflyConversation', 'presentTools'] } }, 'protocol 2 (required 1)'],
-    ['Harness mismatch', { ok: true, value: { protocolVersion: 1, hostVersion: '0.1.4-rc.2', requiredDshVersion: '0.2.1-rc.2', features: ['mayflyConversation', 'presentTools'] } }, 'dsh version 0.2.1-rc.2'],
-    ['missing presentation', { ok: true, value: { protocolVersion: 1, hostVersion: '0.1.4-rc.2', requiredDshVersion: '0.2.2-alpha.2', features: [] } }, 'missing features: mayflyConversation, presentTools'],
+    ['protocol mismatch', { ok: true, value: { protocolVersion: 2, hostVersion: release, requiredDshVersion: harness, features: ['mayflyConversation', 'presentTools'] } }, 'protocol 2 (required 1)'],
+    ['Harness mismatch', { ok: true, value: { protocolVersion: 1, hostVersion: release, requiredDshVersion: '0.2.1-rc.2', features: ['mayflyConversation', 'presentTools'] } }, 'dsh version 0.2.1-rc.2'],
+    ['missing presentation', { ok: true, value: { protocolVersion: 1, hostVersion: release, requiredDshVersion: harness, features: [] } }, 'missing features: mayflyConversation, presentTools'],
   ])('releases the Client after %s', async (_label, result, message) => {
     const { client, detach } = host()
     vi.mocked(client.remote.mayflyHost.capabilities).mockResolvedValueOnce(result as never)
