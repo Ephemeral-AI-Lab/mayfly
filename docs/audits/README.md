@@ -4,6 +4,14 @@ Each file is a dated record of one investigation or acceptance round. A record s
 define current behavior; the code and the [architecture docs](../README.md) do. Read a record's closeout or status note
 first, when it has one.
 
+## Unified CLI and background Host merge (2026-11-04)
+
+Record: [2026-11-04-server-manager-merge.md](2026-11-04-server-manager-merge.md).
+Implementation `59297aa9`, main merge `0239d5da`. Records the owner's merge
+authorization, native Linux and packed TUI checks, full coverage, main rebuild
+and acceptance-resource cleanup. Existing published-reference failures and
+pending Windows/macOS native acceptance remain explicitly recorded.
+
 ## Split remediation tasks (2026-11-04)
 
 Record: [2026-11-04-split-remediation-tasks.md](2026-11-04-split-remediation-tasks.md).
