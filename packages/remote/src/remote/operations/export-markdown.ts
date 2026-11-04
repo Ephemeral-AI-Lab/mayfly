@@ -78,7 +78,9 @@ function formatTurn(items: readonly ExportItem[], turn: number): string {
         userHeaderWritten = true
       }
       if (item.text.trim().length > 0) lines.push(item.text, '')
-      for (const image of item.images) lines.push(`[image${image.name === undefined ? '' : ` ${image.name}`}]`, '')
+      for (const attachment of item.attachments) lines.push(attachment.kind === 'image'
+        ? `[image${attachment.name === undefined ? '' : ` ${attachment.name}`}]`
+        : `[file ${attachment.name} (${attachment.bytes} bytes)]`, '')
     } else if (item.kind === 'thinking') {
       if (item.text.trim().length === 0) continue
       lines.push('<details><summary>Thinking</summary>', '', item.text, '', '</details>', '')
@@ -183,6 +185,9 @@ function formatContentBlocksFull(content: unknown): string {
       if (text.trim().length > 0) parts.push(text)
     } else if (block['type'] === 'image') {
       parts.push('[image]')
+    } else if (block['type'] === 'file') {
+      const name = stringAt(block, 'name') ?? ''
+      parts.push(`[file ${name}${typeof block['bytes'] === 'number' ? ` (${block['bytes']} bytes)` : ''}]`)
     } else {
       parts.push(`[${String(block['type'])}]`)
     }

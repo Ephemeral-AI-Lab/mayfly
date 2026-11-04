@@ -8,7 +8,7 @@ import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 import { symbols, type Context } from '@deepseek-ai/cordis'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { ui } from '../../ui/src/index.ts'
-import { INTERACTION_KEY_ACTIONS } from '../src/interaction/keys.ts'
+import { INTERACTION_KEY_ACTIONS } from '../src/interaction/key-definitions.ts'
 import { waitForRender } from './core/fake-terminal.ts'
 import {
   bootDirectMayfly,

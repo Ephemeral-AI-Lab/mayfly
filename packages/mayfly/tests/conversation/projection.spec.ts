@@ -145,7 +145,7 @@ describe('mayflyConversation projection', () => {
     expect(state.active).toBe(false)
     expect(state.pendingReasoning).toBe('')
     expect(state.entries).toMatchObject([
-      { kind: 'user', turn: 2, text: 'hello', images: [] },
+      { kind: 'user', turn: 2, text: 'hello', attachments: [] },
       { kind: 'thinking', turn: 2, step: 0, text: 'final thought', streaming: false },
       { kind: 'assistant', turn: 2, step: 0, text: 'final answer', streaming: false },
       {
@@ -198,7 +198,8 @@ describe('mayflyConversation projection', () => {
       kind: 'user',
       // The attachment rows own the `[image]` marker; the body stays empty.
       text: '',
-      images: [{
+      attachments: [{
+        kind: 'image',
         attachmentId: 'image-1',
         mediaType: 'image/png',
         bytes: 12,
@@ -207,7 +208,7 @@ describe('mayflyConversation projection', () => {
         name: 'plot.png',
         originalDimensions: { width: 8, height: 6 },
       }, {
-        attachmentId: 'image-2', mediaType: 'image/png', bytes: 12, width: 4, height: 3,
+        kind: 'image', attachmentId: 'image-2', mediaType: 'image/png', bytes: 12, width: 4, height: 3,
       }],
     }))
     expect(state.entries[1]).toEqual(expect.objectContaining({ kind: 'assistant', text: '[image]' }))
@@ -529,7 +530,7 @@ describe('mayflyConversation projection', () => {
     expect(conversationProjectionSchema.safeParse({ entries: [], streaming: 'yes' }).success).toBe(false)
     expect(conversationProjectionStateSchema.safeParse(state).success).toBe(true)
     expect(conversationProjectionStateSchema.safeParse({ ...state, finalizedSteps: [1] }).success).toBe(false)
-    expect(conversationProjectionDefinition.stateVersion).toBe(13)
+    expect(conversationProjectionDefinition.stateVersion).toBe(14)
   })
 
   it('covers final-only replay, mid-stream settling, nested result text, and defensive restored ids', () => {
@@ -854,7 +855,7 @@ describe('mayflyConversation projection over a long history', () => {
     // settled history counts its reads, so a lookup that starts at the head shows as thousands of them.
     let reads = 0
     const history: ConversationProjectionState['entries'][number][] = Array.from({ length: 5_000 }, (_, turn) => {
-      const entry = { kind: 'user' as const, id: `user:${String(turn)}`, seq: turn, updatedSeq: turn, turn, text: 'earlier', images: [] }
+      const entry = { kind: 'user' as const, id: `user:${String(turn)}`, seq: turn, updatedSeq: turn, turn, text: 'earlier', attachments: [] }
       return Object.defineProperty({ ...entry }, 'id', { get() { reads += 1; return entry.id }, enumerable: true })
     })
     let state: ConversationProjectionState = { ...initialConversationState(), currentTurn: 4_999, entries: history }
@@ -897,7 +898,7 @@ describe('SessionProjectionRegistry integration', () => {
     expect(changes).toEqual([2, 3])
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
-    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 13, seq: 3 })
+    expect(checkpoint.mayflyConversation).toMatchObject({ ver: 14, seq: 3 })
     const obsolete = { ...checkpoint, mayflyConversation: { ...checkpoint.mayflyConversation!, ver: 4 } }
     expect(ctx.sessionProjections.restoreFloor(obsolete)).toBe(0)
     expect(ctx.sessionProjections.viewCheckpoint(obsolete)).not.toHaveProperty('mayflyConversation')
@@ -971,7 +972,7 @@ describe('mayflyConversation projection stale and defensive folds', () => {
     const end = event('compaction/end', { compactionId: 'cmp-lost' as never, turn: null })
     const missing = { ...state, entries: [] }
     expect(foldConversationProjection(missing, end)).toBe(missing)
-    const wrongKind = { ...state, entries: state.entries.map(entry => entry.kind === 'compaction' ? { ...entry, kind: 'user' as const, text: 'not a compaction', images: [] } : entry) }
+    const wrongKind = { ...state, entries: state.entries.map(entry => entry.kind === 'compaction' ? { ...entry, kind: 'user' as const, text: 'not a compaction', attachments: [] } : entry) }
     expect(foldConversationProjection(wrongKind, end)).toBe(wrongKind)
     const settled = { ...state, entries: state.entries.map(entry => entry.kind === 'compaction' ? { ...entry, state: 'ok' as const } : entry) }
     expect(foldConversationProjection(settled, end)).toBe(settled)

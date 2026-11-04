@@ -228,18 +228,129 @@ test('a disappeared warning can start a fresh pair only in a still interactive U
     if (writes.length === 2) state.screen.feed('\u001b[?2026h\u001b[2;1H\u001b[2Kdriver ready again\u001b[?2026l')
     if (writes.length === 4) exited = true
   } }
-  assert.equal(await exitSplitTerminal({ ...state, terminal, isExited: () => exited }), true)
+  assert.equal((await exitSplitTerminal({ ...state, terminal, isExited: () => exited })).exited, true)
   assert.equal(writes.length, 4)
   assert.ok(writes[2] - writes[1] >= 5000)
   assert.ok(writes[1] - writes[0] < 1000)
   assert.ok(writes[3] - writes[2] < 1000)
 })
 
-test('a missing interrupt acknowledgment fails at the deadline without queuing blind extra signals', async t => {
+test('a missing interrupt acknowledgment does not queue extra signals before its bounded retry interval', async t => {
   const state = fixture(t)
   state.screen.feed('\u001b[?25l\u001b[?1000h\u001b[?2026hdriver ready\u001b[?2026l')
   const writes = []
-  assert.equal(await exitSplitTerminal({ ...state, terminal: { write: bytes => writes.push(bytes) }, isExited: () => false, timeoutMs: 1000 }), false)
+  const result = await exitSplitTerminal({ ...state, terminal: { write: bytes => writes.push(bytes) }, isExited: () => false, timeoutMs: 1000 })
+  assert.equal(result.exited, false)
+  assert.equal(result.failure.code, 'warning-not-observed')
   assert.equal(state.now(), 1000)
   assert.deepEqual(writes, ['\u0003'])
+})
+
+test('a lost first interrupt with no new frame gets one bounded retry and completes the normal confirmation', async t => {
+  const state = fixture(t)
+  state.screen.feed('\u001b[?25l\u001b[?1000h\u001b[?2026hdriver ready\u001b[?2026l')
+  const writes = []
+  let exited = false
+  const terminal = { write: bytes => {
+    assert.equal(bytes, '\u0003')
+    writes.push(state.now())
+    if (writes.length === 2) state.screen.feed('\u001b[?2026h\u001b[2;1Hpress Ctrl+C again to exit\u001b[?2026l')
+    if (writes.length === 3) {
+      state.screen.feed('\u001b[?1000l\u001b[?25h')
+      exited = true
+    }
+  } }
+  const result = await exitSplitTerminal({ ...state, terminal, isExited: () => exited })
+  assert.equal(result.exited, true)
+  assert.equal(result.failure, undefined)
+  assert.equal(writes.length, 3)
+  assert.ok(writes[1] - writes[0] >= 2000)
+  assert.ok(writes[2] - writes[1] < 1000)
+  assert.equal(result.interrupts[1].reason, 'unacknowledged-retry')
+  assert.equal(result.terminal.cursorVisible, true)
+})
+
+test('a terminal that never paints or acknowledges exits the driver after one retry with useful diagnostics', async t => {
+  const state = fixture(t)
+  state.screen.feed('\u001b[?25l\u001b[?1000h\u001b[?2026hdriver ready\u001b[?2026l')
+  const writes = []
+  const result = await exitSplitTerminal({ ...state, terminal: { write: bytes => writes.push(bytes) }, isExited: () => false })
+  assert.equal(result.exited, false)
+  assert.equal(result.failure.code, 'warning-not-observed')
+  assert.equal(state.now(), 4000)
+  assert.deepEqual(writes, ['\u0003', '\u0003'])
+  assert.equal(result.interrupts.length, 2)
+  assert.equal(result.terminal.frames, 1)
+  assert.equal(result.terminal.openSync, 0)
+  assert.equal(result.terminal.mouse, 'vt200')
+})
+
+test('an acknowledged confirmation that never exits is distinguished from a missing first warning', async t => {
+  const state = fixture(t)
+  state.screen.feed('\u001b[?25l\u001b[?1000h\u001b[?2026hdriver ready\u001b[?2026l')
+  const writes = []
+  const terminal = { write: bytes => {
+    writes.push(bytes)
+    if (writes.length === 1) state.screen.feed('\u001b[?2026h\u001b[2;1Hpress Ctrl+C again to exit\u001b[?2026l')
+  } }
+  const result = await exitSplitTerminal({ ...state, terminal, isExited: () => false, timeoutMs: 6000 })
+  assert.equal(result.exited, false)
+  assert.equal(result.failure.code, 'confirmation-not-exited')
+  assert.equal(state.now(), 6000)
+  assert.equal(writes.length, 2)
+  assert.equal(result.interrupts.at(-1).reason, 'confirm-warning')
+})
+
+test('repeated acknowledged cancellation paints have a fixed interrupt budget', async t => {
+  const state = fixture(t)
+  state.screen.feed('\u001b[?25l\u001b[?1000h\u001b[?2026hdriver ready\u001b[?2026l')
+  let count = 0
+  const terminal = { write: () => {
+    count += 1
+    state.screen.feed(`\u001b[?2026h\u001b[2;1Hcancelled ${count}\u001b[?2026l`)
+  } }
+  const result = await exitSplitTerminal({ ...state, terminal, isExited: () => false })
+  assert.equal(result.exited, false)
+  assert.equal(result.failure.code, 'warning-not-observed')
+  assert.equal(count, 6)
+  assert.ok(state.now() < 30_000)
+})
+
+test('an unfinished synchronized paint prevents a blind missing-ack retry', async t => {
+  const state = fixture(t)
+  state.screen.feed('\u001b[?25l\u001b[?1000h\u001b[?2026hdriver ready\u001b[?2026l')
+  let count = 0
+  const terminal = { write: () => {
+    count += 1
+    state.screen.feed('\u001b[?2026h')
+  } }
+  const result = await exitSplitTerminal({ ...state, terminal, isExited: () => false })
+  assert.equal(result.exited, false)
+  assert.equal(result.failure.code, 'warning-not-observed')
+  assert.equal(result.terminal.openSync, 1)
+  assert.equal(count, 1)
+})
+
+test('normal two-interrupt exit preserves terminal restoration checks and diagnoses each unrecovered mode', async t => {
+  for (const mode of ['none', 'cursor', 'mouse', 'sgr']) {
+    const state = fixture(t)
+    state.screen.feed('\u001b[?25l\u001b[?1000h\u001b[?1006h\u001b[?2026hdriver ready\u001b[?2026l')
+    let count = 0
+    let exited = false
+    const terminal = { write: () => {
+      count += 1
+      if (count === 1) state.screen.feed('\u001b[?2026h\u001b[2;1Hpress Ctrl+C again to exit\u001b[?2026l')
+      else {
+        state.screen.feed('\u001b[?1000l\u001b[?1006l\u001b[?25h')
+        if (mode === 'cursor') state.screen.feed('\u001b[?25l')
+        if (mode === 'mouse') state.screen.feed('\u001b[?1000h')
+        if (mode === 'sgr') state.screen.feed('\u001b[?1006h')
+        exited = true
+      }
+    } }
+    const result = await exitSplitTerminal({ ...state, terminal, isExited: () => exited })
+    assert.equal(result.exited, true)
+    assert.equal(count, 2)
+    assert.equal(result.failure?.code, mode === 'none' ? undefined : 'modes-not-restored')
+  }
 })

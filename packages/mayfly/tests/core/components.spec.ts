@@ -11,6 +11,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import * as cliHighlight from 'cli-highlight'
 import {
   CURSOR_MARKER,
   stripTerminalSequences,
@@ -131,6 +132,37 @@ function createSgrService(tui: TuiMainScreen): MayflyComponentsService {
 }
 
 describe('MayflyComponentsService registration', () => {
+  it('isolates syntax caches across Contexts and clears colors on owner unload and reload', async () => {
+    const { tui, stop } = bootTui()
+    const contexts = [new Context(), new Context()]
+    const highlight = vi.spyOn(cliHighlight, 'highlight')
+    try {
+      const theme = taggedTheme()
+      const services = contexts.map(ctx => new MayflyComponentsService(ctx, { theme, tui }))
+      const text = '```js\nconst owner = 1\n```'
+      const render = (service: MayflyComponentsService): string[] => service.createMarkdown({ text }).render(50)
+      const first = render(services[0]!)
+      render(services[0]!)
+      expect(highlight).toHaveBeenCalledTimes(1)
+      expect(render(services[1]!)).toEqual(first)
+      expect(highlight).toHaveBeenCalledTimes(2)
+      await contexts[0]!.fiber.dispose()
+      render(services[0]!)
+      expect(highlight).toHaveBeenCalledTimes(3)
+      render(services[1]!)
+      expect(highlight).toHaveBeenCalledTimes(3)
+      const reloadContext = new Context()
+      contexts.push(reloadContext)
+      const reloaded = new MayflyComponentsService(reloadContext, { theme: sgrTheme(), tui })
+      expect(render(reloaded)).not.toEqual(first)
+      expect(highlight).toHaveBeenCalledTimes(4)
+    } finally {
+      for (const ctx of contexts) await ctx.fiber.dispose()
+      highlight.mockRestore()
+      stop()
+    }
+  })
+
   it('registers as ctx.mayflyComponents and unregisters when the fiber disposes', async () => {
     const { tui, stop } = bootTui()
     const ctx = new Context()

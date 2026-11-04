@@ -163,7 +163,11 @@ class RemoteStatsController {
             schedule()
           }
         } catch (error) {
-          if (valid() && !retire.aborted) progress = { running: false, done: 0, total: 0, skipped: 0, failed: 0, error: remoteErrorMessage(error) }
+          if (valid() && !retire.aborted) {
+            const message = remoteErrorMessage(error)
+            progress = { running: false, done: 0, total: 0, skipped: 0, failed: 0, error: message }
+            base.notice.set(message, 'error')
+          }
         } finally {
           stream.dispose()
           if (valid() && !retire.aborted) { progress = { ...progress!, running: false }; publish() }

@@ -9,7 +9,7 @@ import { StreamFacts, type StreamInputs } from '../../src/transcript/stream-fact
 
 const t = interpolateLocaleMessage
 const base = (turn: number) => ({ seq: 1, updatedSeq: 1, turn })
-const user: TranscriptEntryModel = { ...base(1), id: 'user:1', kind: 'transcript-user', text: 'go', images: [] }
+const user: TranscriptEntryModel = { ...base(1), id: 'user:1', kind: 'transcript-user', text: 'go', attachments: [] }
 const answer: TranscriptEntryModel = { ...base(1), id: 'assistant:1', kind: 'transcript-assistant', step: 2, text: 'done', streaming: false }
 const web = (id: string, query: string): TranscriptEntryModel => ({
   ...base(1), id, kind: 'transcript-tool', step: 1, callId: id, name: 'web_search', family: 'web', activity: 'webSearch', detail: query, arguments: '{}', startedAt: 0,

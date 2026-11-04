@@ -62,9 +62,9 @@ script/mayfly-remote.sh --cwd /path/on/host '运行相关检查'
 
 | 工作流 | 命令与行为 |
 | --- | --- |
-| Session 导航 | `/sessions`（`/resume`）打开 workspace/session 浏览器，带 id 时直接恢复。`/rename <title>` 重命名所选 Session；`/fork [atSeq]` 创建并切换到分支；`/rewind` 打开参照中的早期轮次选择器，显示 prompt/response 预览，创建并切换到分支，保留原 Session。 |
+| Session 导航 | `/sessions`（`/resume`）打开 workspace/session 浏览器，带 id 时直接恢复。`/rename <title>` 重命名所选 Session；`/fork` 在当前原生分叉边界创建并切换到分支，忽略额外参数；`/rewind` 打开参照中的早期轮次选择器，显示 prompt/response 预览，创建并切换到分支，保留原 Session。 |
 | 模型与配置 | `/model [name]`、`/effort [level]`（`/thinking`）、`/provider`、`/preset [name]`、`/permissions` 与 `/settings` 使用 Host 原生目录与写入。Session 尚不存在时，模型和 preset 选择设置 Host 默认值。 |
-| 计划模式 | `/plan` 进入，`/plan off` 退出，`/mode` 或 Shift+Tab 切换。`/plan <message>` 通过原生命令发送计划 prompt，也可创建首个 Session。启动界面的模式选择会在第一条普通 prompt 前完成原生接纳；接纳失败不会发送 prompt。Alt+M 在当前 provider 内循环切换模型。 |
+| 计划模式 | `/plan` 进入，`/plan off` 退出，`/mode` 或 Shift+Tab 切换。`/plan <message>` 在已有 Session 中通过原生命令发送计划 prompt；尚无 Session 时会提示先发送普通消息。启动界面的模式选择会在第一条普通 prompt 前完成原生接纳；接纳失败不会发送 prompt。Alt+M 在当前 provider 内循环切换模型。 |
 | 信息查看 | `/context`、`/stats`、`/skills`、`/tools`、`/mcp`、`/files`、`/changes [seq]`、`/trace [copy <seq>\|copy all]` 与 `/version` 查看原生状态或只读 Host 投影。 |
 | 工作与旁支会话 | `/jobs`、`/goal` 与 `/schedule` 使用 Host 已启用的服务。`/goal` 保留原生解析、状态输出与目标附件；状态栏的编辑操作把目标放回输入框。`/schedule` 显示所选 Session 的提醒。`/btw <question>` 打开继承当前完整历史的旁支会话，包括尚未完成的首个 turn；`/agents` 浏览完整的原生后代树。F7 返回上一个会话，F8 关闭当前视图；关闭视图不停止 Host 工作。 |
 | 本地输出与退出 | `/copy` 写入 TUI 所在机器的剪贴板；`/export [full] [<path>]`（`/save`）写入 TUI 所在机器：相对路径以其工作目录为基准，支持绝对路径，自动创建父目录并覆盖已有文件。`/quit`（`/q`、`/exit`）解除连接并退出。 |
@@ -74,9 +74,11 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 
 支持附件的原生命令会按原始顺序接收图片和已上传文件的 receipt。接纳前的拒绝会恢复草稿和附件；已接纳的命令会消费草稿和附件，即使其原生结果报告错误。`/skills` 显示当前 Session 的原生来源、provider 元数据和目录完整性；Host 未提供可选的 Mayfly 目录能力时，会明确标注缺失的元数据。
 
+`/changes [seq]` 只读原生 Host 服务仍保留的比较，不激活 Session。Host 重启或 Session 释放后，比较可能不可用，此时浏览器显示空态。
+
 ## 部分实现与上游限制
 
-以下是尚存的官方 API 限制：
+以下是尚存的官方 API 限制。补充能力归 Mayfly Host composition 及可序列化 Remote 方法所有，并使用公开原生 API；本项目不向 dsh 上游补齐这些能力。
 
 | 范围 | 已实现行为与剩余边界 |
 | --- | --- |
@@ -85,7 +87,9 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 | 冷子会话工具卡片与控制 | 原生历史和投影可被动读取。没有活跃子 Agent 时，自定义 presenter 降级为通用持久工具卡片，依赖 Agent 的控制报告不可用。浏览不会激活子 Agent 或借用父 Agent；明确的 continuable 子会话回复走原生寻址路径。 |
 | `/update` Host 启动检查 | `/update [<version>]` 先准备并检查前端精确发布依赖图，经确认后升级两端、验证版本，并在失败时补偿恢复。`/update recover` 在原 Host 上恢复中断的事务。官方 Host API 没有独立 Host 启动检查；确认页和结果页会明确要求重启两进程并验证 Host 启动。链接、只读或非 npm 前端安装使用原安装方式升级。 |
 
-`/plugin` 已通过原生 plugin manager 安装、更新、移除和启停 Host bundle；`/settings` 已支持绑定 revision 的表单写入，以及用本地外部编辑器修改实际 Host settings 文档。这些功能具有原生 API，已实现。插件修改会说明重启边界；取消或过期写入不会静默重试。`/schedule` 等可选功能会说明所需 Host 服务是否缺失。
+`/plugin` 已通过原生 plugin manager 安装、更新、移除和启停 Host bundle；`/settings` 已支持绑定 revision 的表单写入，以及用本地外部编辑器修改实际 Host settings 文档。原始文档保存会取得原生 profile 锁，在锁内比较 revision，再原子替换文件。这只是部分冲突保护：不遵守该锁的外部编辑器仍可能在最后一次 revision 检查后并发写入。冲突时保留编辑草稿供用户检查。插件修改会说明重启边界；取消或过期写入不会静默重试。`/schedule` 等可选功能会说明所需 Host 服务是否缺失。
+
+`/stats` 历史即使只查看当前工作区，也需要 Host 全局授权，因为它可能暴露其他 Session。只有所选 Session 的权限时，只允许读取该 Session 自身的统计；历史请求被拒绝时会明确说明，并且不会开始扫描。
 
 更新从准备依赖到安装、验证和补偿恢复，全程持有同一个跨进程锁。中断的事务保留恢复标记和日志。旧 npm 写入进程仍存活时，恢复会被拒绝；无法确认写入进程是否已启动时，会给出标记文件路径，要求先人工检查再修复。
 

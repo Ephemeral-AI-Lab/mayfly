@@ -22,7 +22,7 @@ import { outputProgressSchema } from './output-progress.ts'
 import type { ApprovalMark, CompactionMark, ConversationAgentCall, ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
 import { argumentDetail } from './activity-detail.ts'
-import { isSpawnToolName } from './projection.ts'
+import { isSpawnToolName } from '../transcript/tool-names.ts'
 
 /** Runtime schema for the persisted presentation facts state. */
 export const conversationFactsSchema = z.object({

@@ -11,6 +11,9 @@
   "references": [
     {
       "path": "../ui"
+    },
+    {
+      "path": "../host/tsconfig.client.json"
     }
   ]
 }

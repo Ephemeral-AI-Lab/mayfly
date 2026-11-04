@@ -10,7 +10,8 @@
  */
 import { equalPaneSummary, type MayflyStatusEntry, type MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/locale.ts'
-import { displayKey, keyActionKeys, matchesKeyAction, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT } from './key-actions.ts'
+import { displayKey, keyActionKeys, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT } from './key-actions.ts'
+import { matchesKeyAction } from './key-matching.ts'
 import type { MayflyGlyphMode } from './glyphs.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
 import { concatRows, mapRows, sliceRows } from './ui-rows.ts'

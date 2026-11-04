@@ -27,6 +27,7 @@ const flush = async (): Promise<void> => { await new Promise<void>(resolve => se
 /** Wire fixtures provide only official Client operations; all orchestration and lease ownership are production classes. */
 async function fixture() {
   const references: SessionReference[] = []
+  const readiness = new Map<SessionId, Promise<SessionBinding>>()
   const operations: string[] = []
   let model: unknown = { next: { provider: 'provider', model: 'model', reasoningEffort: 'high' } }
   let cwd: unknown = '/host/workspace'
@@ -54,7 +55,7 @@ async function fixture() {
       projections: { faceOf: (key: string) => ({ getSnapshot: () => key === 'modelSelection' ? model : key === 'workingDirectory' ? cwd : key === 'inbox' ? inbox : undefined }) },
     })
     const binding = { sessionId: id, session, eventSource: { getSnapshot: () => ({ entries: history }) } } as unknown as SessionBinding
-    const reference: SessionReference = { sessionId: id, binding, ready: Promise.resolve(binding), release: vi.fn(), [Symbol.dispose]: () => { reference.release() } }
+    const reference: SessionReference = { sessionId: id, binding, ready: readiness.get(id) ?? Promise.resolve(binding), release: vi.fn(), [Symbol.dispose]: () => { reference.release() } }
     references.push(reference)
     return reference
   }
@@ -79,6 +80,7 @@ async function fixture() {
   const btw = new RemoteBtwService(actions, registry)
   return {
     btw, actions, registry, client, references, operations, prompt, cancel, queue, fork, refresh, defaultModel, selectModel, address, subagentPrompt,
+    setReady: (id: SessionId, ready: Promise<SessionBinding> | undefined) => { if (ready === undefined) readiness.delete(id); else readiness.set(id, ready) },
     setChildCatalogued: (value: boolean) => { childCatalogued = value },
     setGeneration: (value: number) => { generation = value },
     setModel: (value: unknown) => { model = value },
@@ -90,6 +92,120 @@ async function fixture() {
 }
 
 describe('RemoteBtwService', () => {
+  it.each(['parent', 'child'] as const)('retires a never-ready %s acquisition immediately for close, replacement, caller abort and dispose', async phase => {
+    for (const action of ['close', 'replacement', 'caller', 'dispose'] as const) {
+      const f = await fixture()
+      const ready = deferred<SessionBinding>()
+      if (phase === 'parent') f.setReady(parentId, ready.promise)
+      else f.selectModel.mockImplementationOnce(async () => { f.setReady(childId, ready.promise); return { ok: true, value: {} } })
+      const caller = new AbortController()
+      const asked = f.btw.ask(ref(), 'stalled question', { signal: caller.signal })
+      const retired = expect(asked).rejects.toBeInstanceOf(action === 'caller' ? DOMException : RemoteBtwSupersededError)
+      await flush()
+      const held = f.references.at(-1)!
+      expect(held.sessionId).toBe(phase === 'parent' ? parentId : childId)
+      const parent = f.references[1]!
+      f.setReady(parentId, undefined)
+      f.setReady(childId, undefined)
+      let second: ReturnType<typeof f.btw.ask> | undefined
+      if (action === 'close') f.btw.close()
+      if (action === 'replacement') second = f.btw.ask(ref(), 'new question')
+      if (action === 'caller') caller.abort()
+      const disposal = action === 'dispose' ? f.btw.dispose() : undefined
+      expect(parent.release).toHaveBeenCalledOnce()
+      expect(held.release).toHaveBeenCalledOnce()
+      await retired
+      await disposal
+      if (second !== undefined) expect((await second).ok).toBe(true)
+      else expect(f.prompt).not.toHaveBeenCalled()
+      // The ready promise has not settled: retirement and newer work are already complete.
+      expect(f.actions.current).toEqual(ref())
+      expect(f.cancel).not.toHaveBeenCalled()
+      if (action === 'close' || action === 'replacement') ready.resolve(held.binding)
+      else ready.reject(new Error('late acquisition refusal'))
+      await flush()
+      expect(held.release).toHaveBeenCalledOnce()
+      await f.btw.dispose()
+      await f.registry.detach(HostKey('one'))
+    }
+  })
+
+  it.each(['parent', 'child'] as const)('releases only its refcount for a shared pending %s lease', async phase => {
+    const f = await fixture()
+    const ready = deferred<SessionBinding>()
+    let shared: ReturnType<typeof f.actions.retainView>
+    if (phase === 'parent') {
+      f.setReady(parentId, ready.promise)
+      shared = f.actions.retainView(ref(), 'btw-parent')
+    } else {
+      f.setChildCatalogued(true)
+      f.selectModel.mockImplementationOnce(async () => {
+        f.setReady(childId, ready.promise)
+        shared = f.actions.retainView(ref('one', childId), 'btw')
+        return { ok: true, value: {} }
+      })
+    }
+    const asked = f.btw.ask(ref(), 'pending shared view')
+    const retired = expect(asked).rejects.toBeInstanceOf(RemoteBtwSupersededError)
+    await flush()
+    f.btw.close()
+    await retired
+    expect(shared!.reference.release).not.toHaveBeenCalled()
+    expect(f.registry.viewKeys()).toEqual([shared!.key])
+    shared!.release()
+    expect(shared!.reference.release).toHaveBeenCalledOnce()
+    ready.reject(new Error('late shared readiness failure'))
+    await flush()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('retains independent listed BTW views with their default or explicit view role', async () => {
+    const f = await fixture()
+    f.setChildCatalogued(true)
+    const child = ref('one', childId)
+    const first = f.btw.retainBtwView(child)
+    const second = f.btw.retainBtwView(child, 'listed-child')
+    expect(first.key).toEqual({ ref: child, role: 'btw-retained' })
+    expect(second.key).toEqual({ ref: child, role: 'listed-child' })
+    first.release()
+    second.release()
+    expect(f.actions.current).toEqual(ref())
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('releases an acquisition whose native readiness refuses before retirement', async () => {
+    const f = await fixture()
+    const ready = deferred<SessionBinding>()
+    f.setReady(parentId, ready.promise)
+    const asked = f.btw.ask(ref(), 'unavailable parent')
+    const failed = expect(asked).rejects.toThrow('native ready failed')
+    await flush()
+    ready.reject(new Error('native ready failed'))
+    await failed
+    expect(f.references.at(-1)!.release).toHaveBeenCalledOnce()
+    expect(f.registry.viewKeys()).toEqual([])
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
+  it('handles abort during synchronous acquisition before beginning the ready wait', async () => {
+    const f = await fixture()
+    const caller = new AbortController()
+    const retain = f.actions.retainView.bind(f.actions)
+    vi.spyOn(f.actions, 'retainView').mockImplementationOnce((...args) => {
+      const lease = retain(...args)
+      caller.abort()
+      return lease
+    })
+    await expect(f.btw.ask(ref(), 'retired acquisition', { signal: caller.signal })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(f.references.at(-1)!.release).toHaveBeenCalledOnce()
+    expect(f.fork).not.toHaveBeenCalled()
+    await f.btw.dispose()
+    await f.registry.detach(HostKey('one'))
+  })
+
   it('forks once, restores exact model, removes inherited queue rows and prompts only the child', async () => {
     const f = await fixture()
     const result = await f.btw.ask(ref(), 'side question', { atSeq: 12 as SessionSeq, allowMigration: true })

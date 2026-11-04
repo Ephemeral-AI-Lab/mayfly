@@ -1,18 +1,27 @@
 /** Host Remote entry routing and Fiber lifetime with the built decorators. @module */
 import { Context, Service } from '@deepseek-ai/cordis'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { MayflyHostService } from '../../lib/index.js'
 import { mkdtempTracked, registerTempDirCleanup } from '../../../mayfly/tests/core/temp-dir.ts'
+import { expectFrozenJson } from './frozen-frame.ts'
 
 registerTempDirCleanup()
 const contexts: Context[] = []
+const clientRequire = createRequire(new URL('../../../remote/package.json', import.meta.url))
+const { TypertRegistry } = await import(pathToFileURL(clientRequire.resolve('@deepseek-ai/dsh-typert-registry')).href)
+const { TypertGatewayService } = await import(pathToFileURL(clientRequire.resolve('@deepseek-ai/dsh-api-gateway')).href)
 type HostService = InstanceType<typeof MayflyHostService>
-afterEach(async () => { await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose())) })
+afterEach(async () => {
+  vi.unstubAllGlobals()
+  await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
+})
 
 class AgentFilesystem extends Service {
   constructor(ctx: Context, implementation: object) { super(ctx, 'fs'); Object.assign(this, implementation) }
@@ -26,6 +35,7 @@ async function host() {
   const settingsFile = join(mkdtempTracked('mayfly-host-service-'), 'settings.json')
   await writeFile(settingsFile, '{}', 'utf8')
   const services: Record<string, unknown> = {
+    profileContext: { dir: dirname(settingsFile) },
     fs: { resolve: async () => ({ targetKey: 'opaque', displayPath: '~/host/report.md' }), stat: async () => ({ type: 'file', size: 6 }), processPath: () => '/host/report.md', readBytes: async () => new TextEncoder().encode('report') },
     sessionQuery: {
       readSession: async () => ({ events: [{ type: 'custom/event', seq: 0, time: 1, data: { text: 'trace fact' } }] }),
@@ -39,7 +49,9 @@ async function host() {
     authorization: { describe: () => undefined, cancel: vi.fn() },
     credentials: { resolve: async () => undefined },
     llm: { listProviders: () => [] },
-    permissionPresets: { catalog: () => ({ options: [], defaultOptions: [], defaultPreset: 'safe' }) },
+    permissionPresets: { defaultPreset: 'safe', resolve: () => ({ sandbox: 'workspace-write', approval: 'ask' }), catalog: () => ({ options: [], defaultOptions: [], defaultPreset: 'safe' }) },
+    shell: { sandboxMode: 'workspace-write' },
+    approval: { config: { policy: 'ask' } },
     sessionController: { resolveAgent: async () => { throw new Error('unexpected activation') }, fork: async () => ({ sessionId: SessionId('btw-child') }) },
     sessionProjections: {
       snapshot: () => ({ values: { workingDirectory: '/host', mayflyWorkflow: { sessionId: session.id, runs: [] }, mayflyDeliverables: [{ id: 'delivery', path: 'report.md' }] } }),
@@ -67,6 +79,22 @@ async function host() {
 }
 
 describe('Host Remote composition', () => {
+  it.each([200, 503])('returns an immutable public balance failure for an unusable HTTP %i response', async (status) => {
+    const { ctx, service } = await host()
+    vi.spyOn(ctx.credentials, 'resolve').mockResolvedValue({ value: 'host-only-key' } as never)
+    ctx.settings.describe = (() => []) as typeof ctx.settings.describe
+    const json = vi.fn(async () => ({ balance_infos: [{ currency: 'USD', total_balance: 'invalid' }], detail: 'private response details' }))
+    const fetch = vi.fn(async () => ({ status, ok: status === 200, json }))
+    vi.stubGlobal('fetch', fetch)
+
+    const balance = await service.providerBalance(new AbortController().signal)
+
+    expect(balance).toEqual({ status: 'unavailable', reason: 'network' })
+    expectFrozenJson(balance)
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(json).toHaveBeenCalledTimes(status === 200 ? 1 : 0)
+  })
+
   it('streams a live attributed Workflow replacement through the installed built service', async () => {
     const { ctx, service } = await host()
     const session = ctx.sessions.get(SessionId('parent'))!
@@ -97,7 +125,7 @@ describe('Host Remote composition', () => {
     const { service } = await host()
     const methods = new Map(remoteMethods(service).map(method => [method.method, method]))
     const sessionId = SessionId('authorized-session')
-    for (const name of ['btwFork', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'statsHistory', 'listMcpResources', 'readMcpResource', 'subagentTree']) {
+    for (const name of ['btwFork', 'followWorkflow', 'gitStatus', 'mcpCatalog', 'toolCatalog', 'skillCatalog', 'retractTurn', 'workspaceChangesSummary', 'workspaceChangesDiff', 'deliveredFile', 'latestWorkspaceChanges', 'traceCatalog', 'traceDetail', 'statsSession', 'listMcpResources', 'readMcpResource', 'subagentTree', 'permissionCatalogDetails']) {
       const reader = methods.get(name)?.resources?.['session']
       expect(reader, `${name} must declare Session authorization`).toBeTypeOf('function')
       expect(reader?.({ sessionId })).toBe(sessionId)
@@ -106,6 +134,88 @@ describe('Host Remote composition', () => {
     expect(presentations?.({ entries: [] })).toBeUndefined()
     expect(presentations?.({ entries: [{ sessionId }, { sessionId }, { sessionId: 'second' }] })).toEqual([sessionId, 'second'])
     expect(methods.get('subagentStop')?.resources?.['session']?.({ sessionId, childSessionId: 'child' })).toEqual([sessionId, 'child'])
+    expect(methods.get('statsHistory')?.resources?.['session']?.({ sessionId })).toBeUndefined()
+    expect(methods.get('permissionCatalogDetails')?.resources?.['session']?.({})).toBeUndefined()
+  })
+
+  it('authorizes exact permission reads before observing cold history and requires global access for defaults', async () => {
+    const { ctx } = await host()
+    new TypertRegistry(ctx)
+    ctx.typert.resources.register('session', { field: 'sessionId' })
+    const decide = vi.fn(({ resources }: { resources: readonly { kind: string, id?: string }[] }) =>
+      resources.every(resource => resource.kind === 'session' && resource.id === 'parent')
+        ? { kind: 'allow' } : { kind: 'deny', reason: 'only parent is authorized' })
+    ctx.provide('remoteAccess', { decide })
+    const gateway = new TypertGatewayService(ctx, {})
+    const peer = { id: 'permissions-test', ctx, principal: { kind: 'global' }, signal: new AbortController().signal, interactions: 'none', dispose: async () => {} }
+    const observe = vi.spyOn(ctx.sessionQuery, 'observeSession')
+    for (const request of [{ sessionId: 'forbidden-cold-child' }, {}]) {
+      await expect(gateway.invoke({ namespace: 'mayflyHost', method: 'permissionCatalogDetails', args: { request }, peer }))
+        .rejects.toMatchObject({ code: 'remote-access/denied' })
+    }
+    expect(decide).toHaveBeenLastCalledWith(expect.objectContaining({ resources: [{ kind: 'global' }] }))
+    expect(observe).not.toHaveBeenCalled()
+    await expect(gateway.invoke({ namespace: 'mayflyHost', method: 'permissionCatalogDetails', args: { request: { sessionId: 'parent' } }, peer }))
+      .resolves.toMatchObject({ yolo: false })
+    expect(observe).toHaveBeenCalledExactlyOnceWith('parent', expect.objectContaining({ projectionMode: 'none' }))
+    expect(decide).toHaveBeenLastCalledWith(expect.objectContaining({ resources: [{ kind: 'session', id: 'parent' }] }))
+  })
+
+  it('retires an in-flight passive permission observation on service unload', async () => {
+    const { ctx, service, unload } = await host()
+    const observation = Promise.withResolvers<Awaited<ReturnType<Context['sessionQuery']['observeSession']>>>()
+    const dispose = vi.fn()
+    let received: AbortSignal | undefined
+    vi.spyOn(ctx.sessionQuery, 'observeSession').mockImplementation(async (_id, options) => { received = options?.signal; return observation.promise })
+    const pending = service.permissionCatalogDetails({ sessionId: SessionId('parent') }, new AbortController().signal)
+    await unload()
+    expect(received?.aborted).toBe(true)
+    observation.resolve({ events: [], [Symbol.dispose]: dispose } as never)
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
+  it.each([false, true])('requires global Gateway access before any history read, allWorkspaces=%s', async allWorkspaces => {
+    const { ctx } = await host()
+    new TypertRegistry(ctx)
+    // Native sessionController registers a default resolver. The corpus method
+    // must override it even though its request carries the selected Session.
+    ctx.typert.resources.register('session', { field: 'sessionId' })
+    const decide = vi.fn(({ resources }: { resources: readonly { kind: string, id?: string }[] }) =>
+      resources.every(resource => resource.kind === 'session' && resource.id === 'parent')
+        ? { kind: 'allow' } : { kind: 'deny', reason: 'only parent is authorized' })
+    ctx.provide('remoteAccess', { decide })
+    const gateway = new TypertGatewayService(ctx, {})
+    const controller = new AbortController()
+    const peer = { id: 'history-test', ctx, principal: { kind: 'global' }, signal: controller.signal, interactions: 'none', dispose: async () => {} }
+    const observe = vi.spyOn(ctx.sessionQuery, 'observeSession')
+    const list = vi.spyOn(ctx.sessionQuery, 'listSessions')
+    await expect(gateway.stream({ namespace: 'mayflyHost', method: 'statsHistory', args: { request: { sessionId: 'parent', allWorkspaces } }, peer }))
+      .rejects.toMatchObject({ code: 'remote-access/denied' })
+    expect(decide).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'mayflyHost/statsHistory', resources: [{ kind: 'global' }] }))
+    expect(list).not.toHaveBeenCalled()
+    expect(observe).not.toHaveBeenCalled()
+    await expect(gateway.invoke({ namespace: 'mayflyHost', method: 'statsSession', args: { request: { sessionId: 'parent' } }, peer }))
+      .resolves.toMatchObject({ createdAt: 10 })
+    expect(decide).toHaveBeenLastCalledWith(expect.objectContaining({ resources: [{ kind: 'session', id: 'parent' }] }))
+    decide.mockReturnValue({ kind: 'allow' })
+    const records = [
+      { header: { id: 'parent', cwd: '/host', createdAt: 10 } },
+      { header: { id: 'forbidden-sibling', cwd: '/host', createdAt: 20 } },
+      { header: { id: 'other-workspace', cwd: '/other', createdAt: 30 } },
+    ]
+    list.mockResolvedValue(records as never)
+    observe.mockImplementation(async id => ({
+      header: records.find(record => record.header.id === id)!.header,
+      events: [{ type: 'turn/start', seq: 1, time: 1, data: { turn: 1 } }],
+      revision: 'cold-one', [Symbol.dispose]: () => {},
+    }) as never)
+    const frames = []
+    for await (const frame of await gateway.stream({ namespace: 'mayflyHost', method: 'statsHistory', args: { request: { sessionId: 'parent', allWorkspaces } }, peer })) frames.push(frame)
+    expect(frames.at(-1)).toMatchObject({ running: false, total: allWorkspaces ? 3 : 2, digests: allWorkspaces
+      ? [{ id: 'other-workspace' }, { id: 'forbidden-sibling' }, { id: 'parent' }]
+      : [{ id: 'forbidden-sibling' }, { id: 'parent' }] })
+    expect(list).toHaveBeenCalledOnce()
   })
 
   it('routes every capability through the service installed by Cordis', async () => {
@@ -124,7 +234,7 @@ describe('Host Remote composition', () => {
     await expect(service.retractTurn({ ...request, messageId: 'missing' }, signal)).resolves.toBe(false)
     await expect(service.modelCatalogDetails({}, signal)).resolves.toEqual({ items: [] })
     await expect(service.defaultModel({ operation: 'read' }, signal)).resolves.toEqual({ provider: 'fixture', model: 'one' })
-    expect(service.permissionCatalogDetails({}, signal)).toMatchObject({ options: [], yolo: false })
+    await expect(service.permissionCatalogDetails({}, signal)).resolves.toMatchObject({ options: [], yolo: false })
     await expect(service.providerBalance(signal)).resolves.toEqual({ status: 'unavailable', reason: 'no-key' })
     const document = await service.readSettingsDocument(signal)
     await expect(service.writeSettingsDocument({ content: '{"ok":true}', expectedRevision: document.revision }, signal)).resolves.toMatchObject({ content: '{"ok":true}' })

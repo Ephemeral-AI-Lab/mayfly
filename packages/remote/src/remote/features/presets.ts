@@ -92,6 +92,7 @@ export class RemoteAgentPresetsController extends RemoteFeatureController {
           const preset = roster.presets.find(preset => preset.id === id && preset.broken === undefined)
           if (preset === undefined) return { kind: 'failed', message: t('The preset is no longer available') }
           try {
+            operation.assertWritable()
             let selected: string
             if (selection === undefined) {
               const revision = this.settings.revision(descriptor!, described!.writable)
@@ -124,7 +125,7 @@ export class RemoteAgentPresetsController extends RemoteFeatureController {
     if (selection === undefined || selection.ref.host !== ref.host || selection.ref.sessionId !== ref.sessionId) return undefined
     const operation = this.sessionOperation(selection)
     if (operation === undefined) return undefined
-    try { const selected = await remoteValue(selection.client.remote.agentPresets.select(selection.ref.sessionId, id)); return operation.valid() ? selected : undefined }
+    try { operation.assertWritable(); const selected = await remoteValue(selection.client.remote.agentPresets.select(selection.ref.sessionId, id)); return operation.valid() ? selected : undefined }
     finally { operation.dispose() }
   }
 

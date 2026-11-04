@@ -17,7 +17,7 @@ import type { TickSource } from '../../src/transcript/tick.ts'
 import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
 import { appendTranscriptNode, createTranscriptModel, TranscriptController, type TranscriptControllerOptions, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
-const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, images: [] })
+const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, attachments: [] })
 const answer = (turn: number, text: string): TranscriptEntryModel => ({ id: `assistant:${String(turn)}`, kind: 'transcript-assistant', seq: turn, updatedSeq: turn, turn, step: 2, text, streaming: false })
 const thought = (turn: number, text: string): TranscriptEntryModel => ({ id: `thinking:${String(turn)}`, kind: 'transcript-thinking', seq: turn, updatedSeq: turn, turn, step: 1, text, streaming: false, durationMs: 3_000 })
 const bash = (id: string, turn: number, done = true): TranscriptEntryModel => ({
@@ -630,9 +630,9 @@ describe('showing views', () => {
 
   it('passes the byte references of the images to the stream', () => {
     const imageRefs = new Map<string, { readonly attachmentId: string, readonly mediaType: string }>()
-    const image = { attachmentId: 'att-1', mediaType: 'image/png', bytes: 10, width: 1, height: 1 }
+    const image = { kind: 'image' as const, attachmentId: 'att-1', mediaType: 'image/png', bytes: 10, width: 1, height: 1 }
     const { controller } = harness({ imageRefs })
-    controller.setView('main', modelOf([{ ...user(1, 'look'), images: [image] } as never]))
+    controller.setView('main', modelOf([{ ...user(1, 'look'), attachments: [image] } as never]))
     controller.show('main')
     expect(imageRefs.get('att-1')).toEqual({ attachmentId: 'att-1', mediaType: 'image/png' })
   })

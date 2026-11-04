@@ -139,7 +139,10 @@ export function apply(ctx: Context): void {
   }) ?? (() => {})))
   // The row under the stream's cursor goes to the clipboard or to $EDITOR; the outcome is a notice on the notification pane.
   mountFocusModeStatus(ctx, t)
-  const rowNotices = createInteractionNotificationOwner(ctx, 'mayfly.transcript.rows', 'transcript-rows')
+  const rowNotices = createInteractionNotificationOwner(ctx, 'mayfly.transcript.rows', () => {
+    const agent = ctx.get('mayflyCurrentAgent')?.current()
+    return agent == null ? { kind: 'app', targetId: 'transcript-rows' } : { kind: 'session', sessionId: String(agent.id) }
+  })
   const rows: StreamRowActions = {
     copy: (text, mode) => {
       copyTextToClipboard(text).then(

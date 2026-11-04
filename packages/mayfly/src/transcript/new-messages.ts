@@ -79,6 +79,7 @@ export class NewMessages {
   private visibleMs = 0
   private shownSince = 0
   private timer: unknown
+  private generation = 0
   /** The turn the marker was last put into, and what came of it: the same turn and boundary give the same result. */
   private inserted: { readonly source: StreamTurn, readonly boundary: string, readonly marker: MarkerRow, readonly result: StreamTurn } | undefined
 
@@ -159,7 +160,9 @@ export class NewMessages {
     if (row < tail.top) {
       // The layout that found it is still painting: the stream changes after it.
       const away = tail.away
-      queueMicrotask(() => { if (this.boundary !== undefined) this.dismiss(away) })
+      const boundary = this.boundary
+      const generation = this.generation
+      queueMicrotask(() => { if (this.generation === generation && this.boundary === boundary) this.dismiss(away) })
     } else if (row < tail.top + tail.viewport) this.resume()
     else this.pause()
   }
@@ -192,6 +195,7 @@ export class NewMessages {
   }
 
   private clear(): void {
+    this.generation += 1
     this.stop()
     this.boundary = undefined
     this.visibleMs = 0

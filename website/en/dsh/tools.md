@@ -64,7 +64,7 @@ The catalog of dsh's built-in tools, grouped by purpose. Which tools actually ap
 | Tool | Description |
 | --- | --- |
 | `run_code` | execute a TypeScript program (async function body) calling other tools through bindings — the reserved transport under `tools.mode: code/both` |
-| `cordis_*` (opt-in) | `cordis_define` / `cordis_inspect_*` / `cordis_run` / `cordis_stop` / `cordis_undefine`: define, inspect, activate, and remove dynamic Cordis plugins at runtime |
+| `cordis_*` (opt-in) | `cordis_inspect_list` / `cordis_inspect_query`: inspect public Cordis providers and schemas on alpha.2; no model-facing define/run/stop/remove tools |
 
 ::: tip Full schemas
 Every tool's parameter schema is maintained in the official generated [tool catalog](https://deepseek-harness.github.io/deepseek-harness/reference/tool-catalog) — this page is the purpose cheat sheet; field details live there. How tool calls render in a Mayfly session is covered in [Streaming transcript & tool cards](/en/features/streaming).

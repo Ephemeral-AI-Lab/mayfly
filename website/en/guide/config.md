@@ -1,216 +1,75 @@
 # Configuration: models, providers, and themes
 
-Mayfly's configuration lives on two layers: **in-app slash commands** (the everyday surface) and **dsh's file system** (`settings.yaml`, `.credentials.yaml`, profile patches — the persistent source of truth). The in-app commands write to those same files; the two layers never fight. This page walks both.
+The split implementation uses Harness `0.2.2-alpha.2`. Host owns native
+configuration, credentials, model defaults, permissions, and Sessions. Theme
+application, clipboard, exports, and external editor processes run on the
+Remote TUI machine.
 
-| What you want | In-app | Where it lands |
+| Configuration | UI entry | Owner |
 | --- | --- | --- |
-| API key | `/provider add`, the Providers panel's edit form | `~/.dsh/.credentials.yaml` |
-| Display language | the first `locale` group in `/settings` | `locale.preference` in `settings.yaml` (omit to follow the system) |
-| Default model / thinking effort | `/model`, `/effort`, `Alt+M` | the `agent-default-model:` section of `settings.yaml` |
-| New provider / custom gateway | `/provider add` | the `llm-pi-ai:` section of `settings.yaml` + the credentials file |
-| DeepSeek official endpoint tuning | — (files only) | the `llm-deepseek:` section of `settings.yaml` |
-| Theme | `/theme` (session-level); `/settings` or the file for the persisted default | the `mayfly:` section of `settings.yaml` ([Theming](/en/guide/theme)) |
-| Mayfly preferences (update check, fold defaults, …) | `/settings` | the `mayfly:` section of `settings.yaml` |
-| Plugin rows / composition | — | the profile's `cordis.patch.yml` ([Profiles & directories](/en/dsh/profiles)) |
+| Providers and credentials | `/provider`, `/provider add` | Native Host provider/credentials controllers |
+| Model and reasoning effort | `/model`, `/effort`, `Alt+M` | Native Host catalogs, defaults, and Session Controller |
+| Agent preset | `/preset` | Native Host preset registry |
+| Sandbox and approval | `/permissions`, native `/permission` | Native Host permission services |
+| Locale and persistent theme default | `/settings` | Host settings; TUI applies presentation locally |
+| Current theme | `/theme`, `/theme custom <path> [<base theme>]` | TUI; custom files are local |
+| Host bundles | `/plugin` | Native Host plugin manager |
 
-## Minimal setup: one DEEPSEEK_API_KEY
+## Models and providers
 
-The out-of-the-box assembly talks to the **DeepSeek official API** (provider route `deepseek-official`, endpoint `https://api.deepseek.com`, default model `deepseek-v4-flash`, thinking on at effort `high`). So getting from zero to your first reply takes exactly one key:
+Configure `DEEPSEEK_API_KEY` in the Host process, or use `/provider` for native
+credential flows. Keys never enter projections or returned settings forms;
+a blank secret field does not contain the saved value.
 
-```sh
-export DEEPSEEK_API_KEY=sk-...
-dsh --profile mayfly
-```
+`/model` and `/effort` open their pickers without arguments and request native
+writes with arguments. Sessionless selections update Host defaults for the
+first Session. Native `@deepseek-ai/dsh-agent` owns the Session's
+`modelSelection` projection; writes go through Session Controller. `Alt+M`
+cycles within the current provider while preserving the draft.
 
-To skip the export every time, write the key into `~/.dsh/.credentials.yaml` — the whole document is a plain reference → value mapping and nothing else:
+Host public APIs own provider setup, configurable catalogs, model metadata,
+and validation. Follow the [Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)
+and the current Host for configuration formats and persistence paths. Old
+`settings.yaml` and old Mayfly patches do not define alpha.2's configuration
+contract.
 
-```yaml
-DEEPSEEK_API_KEY: sk-...
-```
+## Settings forms and the raw document
 
-One key can sit in four places, in **priority order**:
+`/settings` lists namespaces and opens their field forms. Forms preserve
+descriptor/field revisions and save through native settings writes. A conflict
+requires a refresh and user review; it is never silently retried. Readonly or
+missing services explain the refusal.
 
-| Priority | Source | Use it for |
-| --- | --- | --- |
-| 1 | Process environment (`DEEPSEEK_API_KEY=… dsh …`) | Per-run override: CI secrets, a temporary key |
-| 2 | `~/.dsh/.credentials.yaml` | The normal home; keys stored by `/provider add` land here |
-| 3 | `./.env` in the launch directory | Project-level |
-| 4 | `~/.dsh/.env` | User-level fallback |
+The whole-document editor reads the actual Host settings document and opens
+a local temporary copy using `$VISUAL`, `$EDITOR`, or the configured editor
+command on the TUI machine. It sends edits back to Host without opening a Host
+filesystem path locally. Cancellation, launch failure, and conflicts retain
+the appropriate draft and feedback.
 
-::: tip First-run setup is built in
-Once the session is ready, Mayfly checks the credentials for every registered provider. If none has a usable key, it opens a DeepSeek quick-setup form. Enter only `DEEPSEEK_API_KEY`; Mayfly uses the `deepseek-official` route at `https://api.deepseek.com`. Press Esc to skip setup for this run and use `/provider add` for another provider. Mayfly prompts again on the next launch while no usable key exists.
+Raw saves acquire the shared native profile lock, compare the SHA-256 revision,
+atomically replace the file, and read the returned document under the lock.
+This coordinates independent Host writers and native configuration writes.
+Conflict protection remains partial: an external editor ignoring the lock can
+write after the final revision check, so it is not a full CAS guarantee.
 
-Keys still resolve **per request**, so adding or rotating one while Mayfly is running needs no restart. `MISSING_CREDENTIAL` remains the fallback when a credential is removed or becomes unavailable.
-:::
+## Locale and themes
 
-`~/.dsh` is the Harness home; `DSH_HOME` relocates it (full directory table in [Profiles & directories](/en/dsh/profiles)).
+`/language` or `/settings` selects English, Simplified Chinese, or the system
+default. `/settings` persists the default theme; `/theme` changes only the current
+presentation. Core/theme reload preserves frontend forms, selection, editor
+caret, undo, history, pastes, and completion state. Custom palette files remain
+on the TUI machine. See [themes](/en/guide/theme).
 
-## In-app configuration (the everyday surface)
+## Startup and modes
 
-### Model and thinking effort
+Without a task or resume id, startup creates no Session. `/model`, `/effort`,
+and `/preset` set Host defaults; `/plan`, `/plan off`, `/mode`, and `Shift+Tab`
+set pending plan mode. The first ordinary prompt creates a Session, admits
+plan mode, and only then sends the prompt. Failed admission sends no prompt.
+Sessionless `/plan <message>` refuses and asks for an ordinary message first.
 
-- **`/model`** — no argument opens the model picker; with an id it switches directly. The panel's `Set as default` action persists the selection.
-- **`Alt+M`** — cycles models without opening the panel.
-- **`Use for this session`** (panel action) — switch the next step immediately without persisting a new default.
-- **`/effort`** (alias `/thinking`) — switch the current model's thinking effort; `default` restores the provider default.
-
-`/model` persistence lands in the `agent-default-model:` section of settings.yaml (shape [below](#the-three-core-settings-yaml-sections)).
-
-### Providers: list, switch, add
-
-```
-/provider                  # open the Providers panel (configured routes + Add)
-/provider list             # list providers and the current route
-/provider switch <name>    # switch routes
-/provider add              # the add-provider wizard
-```
-
-Selecting a configured route in the Providers panel opens its **edit form**: display name, baseURL, and key (empty keeps the stored value). `Ctrl+D` opens a deletion confirmation; Yes deletes, while No or Esc returns to editing with the draft preserved. The built-in `deepseek-official` route has no stored profile to edit (the panel says "nothing to edit") — tune it through the `llm-deepseek:` section of `settings.yaml`.
-
-`/provider add` branches two ways:
-
-- **Known provider** (anthropic, openai, …) — pick a vendor from the host's configurable directory and enter only the key. Base URL is not editable; the host catalog's vendor endpoint is always used.
-- **Custom endpoint** (self-hosted gateways, any OpenAI-compatible surface) — declare protocol and address:
-  - one of three protocols: `anthropic-messages` / `openai-completions` / `openai-responses`;
-  - baseURL conventions: the anthropic protocol takes **no trailing** `/v1` (the client appends `/v1/messages` itself); the openai protocols **need** the `/v1`;
-  - the wizard interrogates the endpoint live for its model list (`GET /models`) for you to pick from, then enriches context windows and efforts from the [models.dev](https://models.dev) catalog — whatever it cannot describe, it asks you once (both fields skippable with Enter);
-  - the key goes into the credentials file under a ref derived from the route id: `my-gateway` → `MY_GATEWAY_API_KEY`.
-
-After the add completes, the new route's model picker opens; cancelling it keeps the provider (visible via `/provider list`).
-
-Routes live in the **Harness home's user-level `~/.dsh/cordis.patch.yml`** (`llm-pi-ai:` row): the npm production profile (`mayfly`) and development profiles (`mayfly-dev` / `mayfly-<tag>`) share one provider set, so switching profiles no longer loses it. Saving mirrors the same value into the active profile's `cordis.patch.yml`, so a running session applies it live.
-
-## The file system: settings.yaml and credentials
-
-Beyond the in-app commands, all of dsh's configuration sits in a handful of files under the Harness home, and **external edits hot-apply** (the watcher is on by default):
-
-| File | Contents |
-| --- | --- |
-| `~/.dsh/settings.yaml` | Every plugin's settings section (one document, all namespaces) |
-| `~/.dsh/.credentials.yaml` | Credentials (enforced mode `0600` under a `0700` directory) |
-| `~/.dsh/.env` | User-level environment layer |
-| `~/.dsh/cordis.patch.yml` | The home-level user overlay; Mayfly stores provider routes here so every profile sees them |
-| `~/.dsh/profiles/<name>/cordis.patch.yml` | The profile's composition overlay (see [Profiles & directories](/en/dsh/profiles)) |
-
-A document that exists but fails to parse fails boot (loud); an invalid edit while running keeps the last good snapshot and warns. Hand edits to settings.yaml keep their comments (writes diff at the leaf level).
-
-### locale: display language
-
-Mayfly supports English and Simplified Chinese. With no explicit preference it follows `LC_ALL`, `LC_MESSAGES`, `LANG`, then `Intl`; every `zh-*` variant uses Simplified Chinese and unsupported locales fall back to English. The first `/settings` group cycles Follow system, 中文, and English, applying immediately while preserving the open panel's selection and form draft.
-
-For a manual override, write the preference below; remove it to follow the system again:
-
-```yaml
-locale:
-  preference: zh  # zh | en; omit to follow the system
-```
-
-### The three core settings.yaml sections
-
-```yaml
-# Default model — /model and /effort write here
-agent-default-model:
-  provider: deepseek-official
-  model: deepseek-v4-flash
-  reasoningEffort: high      # optional
-
-# DeepSeek official endpoint (the llm-deepseek adapter) — every field optional
-llm-deepseek:
-  apiKeyEnv: DEEPSEEK_API_KEY    # credential ref (this is the default)
-  baseURL: https://api.deepseek.com
-  thinking: enabled              # enabled | disabled (disabled locks effort to off)
-  reasoningEffort: high          # off | high | max
-  maxTokens: 256000              # per-request output cap
-  defaultContextWindow: 1000000  # fallback when a model declares no capacity
-  models:                        # omit for the built-in V4 Flash / V4 Pro pair
-    - id: deepseek-v4-flash
-      name: DeepSeek-V4-Flash
-      contextWindow: 1000000
-
-# Custom provider routes (the pi-ai adapter) — /provider add writes here
-llm-pi-ai:
-  providers:
-    my-gateway:
-      displayName: Company gateway
-      api: openai-completions          # anthropic-messages | openai-completions | openai-responses
-      baseURL: https://gw.example.com/v1
-      apiKeyEnv: MY_GATEWAY_API_KEY    # credential ref — the key in .credentials.yaml
-      models:
-        - id: glm-5.3
-          contextWindow: 1000000       # capacity the catalog/endpoint did not declare
-          maxTokens: 131072
-          reasoningEfforts:            # offered efforts → their wire spellings
-            low: low
-            high: high
-            max: max
-```
-
-Notes:
-
-- **`llm-deepseek:` and `llm-pi-ai:` are two independent adapters**: the former owns the `deepseek-official` route to the official API; the latter registers arbitrary routes from its `providers:` dict (the route name is the dict key, lowercase kebab-case). They coexist fine.
-- A user settings section overrides the composition baseline (the bundle's defaults) **field by field**; omitted fields keep the baseline value.
-- pi-ai routes take further fields: `modelOverrides:` (reshape one catalog model without replacing the list), `compat:` (reasoning-parameter format switches), `defaultContextWindow:` / `defaultMaxTokens:` (route-wide fallbacks), and more — the complete list lives in the [upstream config catalog](https://deepseek-harness.github.io/deepseek-harness/reference/).
-- List fields (like `models:`) **replace wholesale**, they never merge entry by entry.
-
-### mayfly: Mayfly's own settings section
-
-The `/settings` panel writes the fields below. Every key is optional; defaults are shown:
-
-```yaml
-mayfly:
-  updateCheck: true        # the boot update check (false is the offline switch)
-  updateChannel: latest    # the dist-tag the update check follows
-  theme: dark              # persisted default theme: a built-in palette key (dark, light, tide, …) or auto (applied at startup)
-  transcriptView: standard # compact | standard | detailed | verbose
-  windowTurns: 15          # transcript window: only the newest N completed turns stay mounted
-  expandTurns: 3           # ctrl+o expansion scope (turns counted from the end)
-  userFoldLines: 10        # long user message fold threshold (lines)
-  userFoldChars: 1000      # long user message fold threshold (chars)
-  editorCommand: ''        # external editor command (empty = auto-detect via $VISUAL/$EDITOR)
-  pasteImageBackend: auto  # Linux clipboard backend: auto | wayland | x11
-  glyphs: auto             # auto (from the locale's charset) | unicode | ascii (one-cell fallback glyphs)
-  monochrome: false        # weight only, no color (NO_COLOR also turns it on)
-  reducedMotion: false     # freeze every animation on its first frame
-  startup: conversation    # what a start without a session shows: conversation (the banner above an empty conversation) | splash (the launch screen: the mark and recent sessions)
-```
-
-`transcriptView` keeps the Harness Chat work-details mode names (see [Streaming transcript](/en/features/streaming#work-details)). Live status belongs to the activity row; the transcript shows only what has happened. Compact shows the conversation alone while a turn runs. Standard adds file-change diff cards and past-tense group titles, and its activity row names the running command, path, query, or reasoning. Detailed shows every card while the turn runs. Compact, Standard, and Detailed fold a completed turn behind its `Took 38s` header, keeping the final answer (and, from Standard up, the file changes) visible; Verbose keeps every card open. Ctrl+O expands the most recent `expandTurns` turns. The old per-family `transcript` settings and `recentStepsRetention` are no longer interpreted.
-
-The panel is two-level: level one starts with `locale` and groups rows by namespace (host sections like `shell:`, `agent-loop:`, and `web-search-deepseek:` included), Enter steps into level two's per-key rows, and `Enter`/`Space` there steps the preset value with every change landing on disk; language and `mayfly.theme` changes both apply live (`/theme` stays the session-level switch — see [Theming](/en/guide/theme)), and `transcriptView` and number changes apply to the running session just as immediately (an active Ctrl-O expansion still dominates). Level one's last row opens the whole settings.yaml in `$EDITOR`.
-
-`startup` only decides the screen a start shows: Mayfly creates no session at launch and creates one when the first message is sent, so neither value leaves an empty session in the store. `--resume <id>` and a `[task]` argument still start a session at once, and `/new` and `/clear` return to the start screen. While no session exists `/theme`, `/settings`, `/sessions`, `/help`, `/quit`, `/new`, `/clear`, `/provider`, `/plugin` and `/update` run, as do `/model`, `/effort`, `/preset`, `/plan`, `/plan off` and `/mode`: the model, effort, and preset choices are the defaults the first session takes, and plan mode waits as `plan…` until that session starts. Any other command asks for a message first. The first-run guide's Preferences step offers the choice; change it later under `mayfly` in `/settings`.
-
-### Verifying your edits
-
-```sh
-dsh --profile mayfly --dump-config        # print the fully assembled plugin tree
-```
-
-settings.yaml effects show up right in the UI: the `/model` panel lists each route's models, `/status` shows the current route and model.
-
-## Themes
-
-`/theme <key>` (for example `/theme tide`) or `/theme auto` switches instantly; `/theme custom <path>` mounts a custom JSON palette — hot switches never lose your draft. `/theme` is the session-level switch; the persisted default theme is set through the `/settings` panel or `mayfly.theme` in settings.yaml (applied at startup). The full semantic token table and the custom file format are in [Theming](/en/guide/theme).
-
-## Other configuration surfaces
-
-- **Permissions & sandbox**: permission presets (workspace-write / danger-full-access) and approval policies, see [Modes & permissions](/en/dsh/modes). `/permission` controls YOLO; `Shift+Tab` toggles only normal ↔ plan, and before a session it sets the next one's plan mode. Planning and permissions remain independent.
-- **Agent presets** — `/preset` switches tool surface and persona across upstream shipped `standard` / `minimal` / `ptc` / `cordis` and Mayfly's `mayfly-cordis`. On a blank session it switches that session; with no session it writes the default the first session takes (and later new sessions keep). Mayfly does not provide the old `code` alias.
-- **Skills** — user-level skills live under `~/.dsh/skills/`, see [Skills](/en/dsh/skills).
-- **MCP** — wiring MCP servers is covered in [MCP setup](/en/dsh/mcp).
-
-## Environment variable quick reference
-
-| Variable | Purpose | Default behavior |
-| --- | --- | --- |
-| `DEEPSEEK_API_KEY` | DeepSeek official API key (the default `apiKeyEnv` ref of `llm-deepseek`) | Missing → first request fails with `MISSING_CREDENTIAL` |
-| `DEEPSEEK_BASE_URL` | DeepSeek official endpoint fallback | `https://api.deepseek.com` |
-| `DSH_HOME` | Harness home directory | `~/.dsh` |
-| `DSH_PERMISSION_MODE` | Process-level permission fallback: `read-only` / `workspace-write` / `danger-full-access` (the last also skips approvals) | `workspace-write` |
-| `DSH_TELEMETRY_DISABLED` | Any non-empty value (including `'0'` / `'false'`) hard-disables session telemetry | Telemetry is off by default (`DISABLED`) |
-| `DSH_MAYFLY_ATTACHMENT_DIR` | Mayfly attachment storage | `$DSH_HOME/attachments/` |
-| `DSH_AGENTS_HOME` | Shared agent config root (the `~/.agents` layer of skill discovery) | `~/.agents` |
-
-::: warning What cannot live in .env
-`DEEPSEEK_API_KEY` resolves from all four layers (`.env` included), but `DEEPSEEK_BASE_URL` and **every `DSH_*`-prefixed variable** are bootstrap variables — a `.env` file entry is rejected outright (with an "export it instead" notice); set them in the launching environment. Credential environment variables always beat the file layers — to swap a key for one run: `DEEPSEEK_API_KEY=sk-… dsh --profile mayfly`.
-:::
+Plan and permissions are independent. `Shift+Tab` toggles only planning. YOLO
+means the actual current `danger-full-access` sandbox and `never` approval
+policy and may remain active alongside plan. It comes from native current
+permission facts, including custom or withdrawn presets, rather than a guess
+from the preset name.

@@ -10,7 +10,7 @@
  */
 
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools'
-import { isSpawnToolName } from '../conversation/projection.ts'
+import { isSpawnToolName } from './tool-names.ts'
 import type { ProcessActivity } from '../frontend/models.ts'
 
 const COMMAND_TOOLS = new Set(['bash', 'pwsh', 'exec_command', 'write_stdin'])

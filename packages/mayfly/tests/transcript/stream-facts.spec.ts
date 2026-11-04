@@ -15,7 +15,7 @@ import { NO_DISCLOSURE } from '../../src/transcript/disclosure.ts'
 
 let seq = 0
 const base = (turn: number) => ({ seq: (seq += 1), updatedSeq: seq, turn })
-const user = (turn: number, text: string): TranscriptEntryModel => ({ ...base(turn), id: `user:${String(seq + 1)}`, kind: 'transcript-user', text, images: [] })
+const user = (turn: number, text: string): Extract<TranscriptEntryModel, { kind: 'transcript-user' }> => ({ ...base(turn), id: `user:${String(seq + 1)}`, kind: 'transcript-user', text, attachments: [] })
 const assistant = (turn: number, text: string, streaming = false): TranscriptEntryModel => ({ ...base(turn), id: `assistant:${String(seq + 1)}`, kind: 'transcript-assistant', step: 1, text, streaming })
 const thinking = (turn: number, text: string, streaming = false): TranscriptEntryModel => ({ ...base(turn), id: `thinking:${String(seq + 1)}`, kind: 'transcript-thinking', step: 1, text, streaming, durationMs: 4_000 })
 const tool = (turn: number, name: string, detail: string, done = true): TranscriptEntryModel => ({
@@ -31,6 +31,24 @@ const model = (entries: TranscriptEntryModel[], turns: TranscriptModel['turns'],
 const rowsOf = (turn: StreamTurn | undefined): StreamRow[] => [...(turn?.rows ?? [])]
 
 describe('StreamFacts', () => {
+  it('keeps duplicate semantic occurrences distinct for ownership, disclosure, copy and repaint', () => {
+    const first = { ...user(1, 'first'), id: 'repeat' }
+    const second = { ...user(1, 'second'), id: 'repeat' }
+    const stored = model([first, second], [{ turn: 1, startedAt: NOON }], true)
+    const stream = new StreamFacts()
+    const options = inputs({ disclosure: { ...NO_DISCLOSURE, rows: new Set(['repeat~2']) } })
+    const facts = stream.build(stored, options)
+    expect(rowsOf(facts.turns[0]).map(row => row.id)).toEqual(['repeat', 'repeat~2'])
+    expect(rowsOf(facts.turns[0])[1]).toMatchObject({ open: true })
+    expect(stream.locate('repeat~2.body')).toMatchObject({ parts: ['repeat~2'] })
+    expect(stream.rowOf('repeat~2')).toBe('repeat~2')
+    expect(stream.textOf('repeat', 'text')).toBe('first')
+    expect(stream.textOf('repeat~2', 'text')).toBe('second')
+    expect(stream.build(stored, options)).toBe(facts)
+    const reserved = stream.build(model([first, second, { ...first, id: 'repeat~2' }], [], true), inputs())
+    expect(rowsOf(reserved.turns[0]).map(row => row.id)).toEqual(['repeat', 'repeat~2~', 'repeat~2'])
+  })
+
   it('formats a turn start as the local HH:MM', () => {
     const local = new Date(NOON)
     expect(clockTime(NOON)).toBe(`${String(local.getHours()).padStart(2, '0')}:${String(local.getMinutes()).padStart(2, '0')}`)
@@ -107,12 +125,30 @@ describe('StreamFacts', () => {
   })
 
   it('keeps each prompt image as an attachment id with its fallback text, and remembers the reference for the loader', () => {
-    const image = { attachmentId: 'att-1', mediaType: 'image/png' as const, bytes: 2048, width: 4, height: 3, name: 'shot.png' }
-    const entry = { ...user(1, 'look'), images: [image] }
+    const image = { kind: 'image' as const, attachmentId: 'att-1', mediaType: 'image/png' as const, bytes: 2048, width: 4, height: 3, name: 'shot.png' }
+    const entry = { ...user(1, 'look'), attachments: [image] }
     const imageRefs = new Map<string, { readonly attachmentId: string, readonly mediaType: string }>()
     const facts = new StreamFacts().build(model([entry], [{ turn: 1, startedAt: NOON }], true), inputs({ imageRefs }))
-    expect(rowsOf(facts.turns[0])[0]).toMatchObject({ kind: 'prompt', images: [{ attachmentId: 'att-1', alt: '[image] 1 · shot.png · 4×3 · 2 KB' }] })
+    expect(rowsOf(facts.turns[0])[0]).toMatchObject({ kind: 'prompt', attachments: [{ kind: 'image', attachmentId: 'att-1', alt: '[image] 1 · shot.png · 4×3 · 2 KB' }] })
     expect(imageRefs.get('att-1')).toEqual({ attachmentId: 'att-1', mediaType: 'image/png' })
+  })
+
+  it('preserves file-only metadata and ordered mixed attachments while registering only image reads', () => {
+    const entry: TranscriptEntryModel = { ...user(1, ''), attachments: [
+      { kind: 'file', attachmentId: 'file-1', name: 'report.txt', bytes: 12 },
+      { kind: 'image', attachmentId: 'image-1', mediaType: 'image/png', bytes: 1024, width: 2, height: 3 },
+      { kind: 'file', attachmentId: 'file-2', name: 'data.csv', bytes: 20 },
+    ] }
+    const imageRefs = new Map<string, { readonly attachmentId: string, readonly mediaType: string }>()
+    const stream = new StreamFacts()
+    const facts = stream.build(model([entry], [{ turn: 1, startedAt: NOON }], true), inputs({ imageRefs }))
+    expect(rowsOf(facts.turns[0])[0]).toMatchObject({ kind: 'prompt', text: '', attachments: [
+      { kind: 'file', attachmentId: 'file-1', alt: '[file] report.txt · 12 B' },
+      { kind: 'image', attachmentId: 'image-1' },
+      { kind: 'file', attachmentId: 'file-2', alt: '[file] data.csv · 20 B' },
+    ] })
+    expect([...imageRefs.keys()]).toEqual(['image-1'])
+    expect(stream.textOf(entry.id, 'text')).toBe('[file report.txt]\n[image]\n[file data.csv]')
   })
 
   it('shows a message that sits twice in the inbox once', () => {
@@ -467,9 +503,9 @@ describe('StreamFacts: the compact title, the live call, and the plain entries',
   it('draws neither a blank answer nor an image with no name by name', () => {
     const blank = new StreamFacts().build(model([user(1, 'q'), assistant(1, '   ')], [{ turn: 1, startedAt: NOON }], true), inputs())
     expect(rowsOf(blank.turns[0]).map(row => row.kind)).toEqual(['prompt'])
-    const image = { attachmentId: 'att-2', mediaType: 'image/png' as const, bytes: 1024, width: 2, height: 2 }
-    const named = new StreamFacts().build(model([{ ...user(1, 'look'), images: [image] } as TranscriptEntryModel], [{ turn: 1, startedAt: NOON }], true), inputs())
-    expect(rowsOf(named.turns[0])[0]).toMatchObject({ images: [{ alt: '[image] 1 · 2×2 · 1 KB' }] })
+    const image = { kind: 'image' as const, attachmentId: 'att-2', mediaType: 'image/png' as const, bytes: 1024, width: 2, height: 2 }
+    const named = new StreamFacts().build(model([{ ...user(1, 'look'), attachments: [image] } as TranscriptEntryModel], [{ turn: 1, startedAt: NOON }], true), inputs())
+    expect(rowsOf(named.turns[0])[0]).toMatchObject({ attachments: [{ kind: 'image', alt: '[image] 1 · 2×2 · 1 KB' }] })
   })
 
   it('shows every line of an opened reasoning block that carries more than its rows, without the Ctrl-O hint', () => {

@@ -356,7 +356,7 @@ describe('reviews built from the drafts', () => {
     return { model: surface(tree, completed, extra.translated === true ? { translate: (key, values) => `${key}${values?.count === undefined ? '' : `:${String(values.count)}`}` } : {}).model, tree }
   }
 
-  it('lists every answer behind the longest label, marking skipped rows', () => {
+  it('lists every semantic answer and marks skipped rows', () => {
     const { model } = reviewSurface()
     const address = { pagePath: [], controlId: 'pick' }
     model.edit({ pagePath: one, formId: 'name', fieldId: 'text' }, 'Ada')
@@ -372,6 +372,21 @@ describe('reviews built from the drafts', () => {
     model.updateChoice({ ...address, pagePath: one }, { kind: 'input', id: 'b', text: 'typed answer' })
     expect(JSON.stringify(model.node)).toContain('typed answer')
     model.dispose()
+  })
+
+  it('derives review labels for a renderer without retaining its layout or stale state', () => {
+    const { model } = reviewSurface()
+    const semantic = model.node
+    const revision = model.revision
+    const projected = model.rendererNode(labels => labels.map(label => `<renderer:${label}>`))
+    expect(JSON.stringify(projected)).toContain('<renderer:Name>')
+    expect(model.node).toBe(semantic)
+    expect(model.revision).toBe(revision)
+    expect(JSON.stringify(model.node)).not.toContain('<renderer:')
+    model.edit({ pagePath: one, formId: 'name', fieldId: 'text' }, 'fresh answer')
+    expect(JSON.stringify(model.rendererNode(labels => labels))).toContain('fresh answer')
+    model.dispose()
+    expect(model.rendererNode(labels => labels)).toBeNull()
   })
 
   it('returns to a step from its review row and submits from the last row', async () => {

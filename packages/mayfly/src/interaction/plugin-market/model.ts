@@ -57,6 +57,7 @@ const DEDICATED_PROFILE_PACKAGES = new Set(['@deepseek-ai/dsh-acp'])
 
 /** Why an entry cannot be activated inside the current Mayfly profile. */
 export function currentProfileInstallBlock(entry: MarketEntry): string | undefined {
+  if (entry.install.rows.some(row => isMayflyProductPackage(row.name))) return 'Manage Mayfly packages with /update'
   if (!entry.install.rows.some(row => DEDICATED_PROFILE_PACKAGES.has(row.name))) return undefined
   return 'automation-only ACP server owns stdio; install it in a dedicated non-Mayfly profile'
 }
@@ -70,7 +71,7 @@ export function marketEntryInstallBlock(entry: MarketEntry): string | undefined 
 }
 
 /** The bundle that ships Mayfly itself; `/plugin` never lists or manages it. */
-export const MAYFLY_PACKAGE = '@ephemeral-ai/mayfly'
+export const MAYFLY_PACKAGE = '@ephemeral-ai/mayfly-host'
 
 export interface MarketRow {
   /** The entry id, or `unlisted:<package>` for a bundle the index does not list. */
@@ -92,7 +93,12 @@ export interface MarketRow {
 }
 
 /** Packages the profile needs to run at all; `/plugin` never lists them as plugins. */
-const PROTECTED_PACKAGES = new Set([MAYFLY_PACKAGE, '@ephemeral-ai/mayfly-ui', '@deepseek-ai/dsh-base'])
+const PRODUCT_PACKAGES: readonly string[] = Object.freeze([MAYFLY_PACKAGE, '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly-cli'])
+
+/** Exact Mayfly release packages use the coordinated product updater. */
+export function isMayflyProductPackage(name: string): boolean {
+  return PRODUCT_PACKAGES.includes(name)
+}
 
 const SOURCE_ORDER = ['official', 'dsh', 'community'] as const
 
@@ -169,6 +175,7 @@ export function buildRows(entries: readonly MarketEntry[], bundles: readonly Bun
   const rows: MarketRow[] = []
   const claimed = new Set<string>()
   for (const entry of entries) {
+    if (entry.install.rows.some(row => isMayflyProductPackage(row.name))) continue
     for (const row of entry.install.rows) claimed.add(row.name)
     const present = entry.install.rows.filter(row => names.has(row.name)).length
     const any = present > 0
@@ -193,7 +200,7 @@ export function buildRows(entries: readonly MarketEntry[], bundles: readonly Bun
     })
   }
   for (const bundle of bundles) {
-    if (claimed.has(bundle.name) || PROTECTED_PACKAGES.has(bundle.name) || !bundle.installed) continue
+    if (claimed.has(bundle.name) || isMayflyProductPackage(bundle.name) || bundle.name === '@deepseek-ai/dsh-base' || !bundle.installed) continue
     rows.push({
       id: `${UNLISTED_GROUP}:${bundle.name}`, bundle, state: 'unlisted', installed: true, partial: false,
       ...(bundle.version === undefined ? {} : { version: bundle.version }), enabled: bundle.enabled, removable: bundle.removable,

@@ -1,81 +1,69 @@
 # Quickstart
 
-::: info Current release line
-`v0.1.4-rc.2` is the current preview and is published under npm's **`rc`** dist-tag; `latest` stays on the previous release line. Install the exact `@ephemeral-ai/mayfly-cli@0.1.4-rc.2` (or `@rc`); plugins, CI, and reproducible environments should pin Mayfly `0.1.4-rc.2` and Harness `0.2.1-rc.2`. The harness dependency line now tracks the npm RC release channel. This page is the user install path; the contributor development install (checkout, link install, iteration loop) lives in the developer manual under [Contributing to Mayfly](/en/plugins/contributing).
+::: info Current development line and reference
+The split implementation targets Harness `0.2.2-alpha.2` and runs a native Host
+plus an independent Remote TUI. Published Mayfly `v0.1.4-rc.2` is the immutable
+UI, key, and workflow reference; it does not mean the split artifacts below
+have been published. Install development artifacts from this workspace or a
+verified matching tarball set.
 :::
 
 ## Prerequisites
 
 | Dependency | Version |
 | --- | --- |
-| Node | `^22.19.0 \|\| >=24.0.0` |
-| pnpm | 11 (needed for first assembly, upgrades, and `plugin` management; an already-calibrated profile does not check it on every boot. Run `npm i -g pnpm@11`, or `corepack enable && corepack prepare pnpm@11.7.0 --activate`) |
-| dsh CLI | the recommended `mayfly` launcher includes exactly `0.2.1-rc.2`; only the direct-dsh path below installs it separately |
+| Node | `>=24.9.0` |
+| pnpm | Repository-pinned `11.7.0` |
+| dsh CLI | Independently installed official `0.2.2-alpha.2` executable |
 
-## Install (preview)
+## Install a dedicated Host profile
 
-**Recommended: the integrated `mayfly` launcher.** It carries the pinned Harness closure as common and platform archives, so npm installs one dependency-free package without resolving the Harness graph or running its install scripts:
-
-```sh
-npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.2
-mayfly
-```
-
-If the first run reports missing pnpm or a non-11 major:
+From the repository root:
 
 ```sh
-npm i -g pnpm@11
-# or: corepack enable && corepack prepare pnpm@11.7.0 --activate
+pnpm install --frozen-lockfile
+DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
 ```
 
-The launcher npm install writes the shell and compressed runtime layers. The first command that needs dsh expands only the common and current-platform layers into a user cache with bounded memory and no network request. The first `mayfly` run still assembles the Mayfly profile through `dsh plugin add` and pnpm; that separate operation downloads the Mayfly plugin closure and can be resumed from pnpm's cache. On slow or metered networks in China, point both registries at a mirror:
+The installer builds the workspace, creates a dedicated profile from the native
+Web template, and adds Mayfly Host. It checks dsh's version without changing the
+global installation and refuses shared `mayfly` and `default` profiles. Shared
+`@ephemeral-ai/mayfly` provides renderer and presentation subpaths; it is not an
+installable Host bundle.
+
+## Launch two processes
 
 ```sh
-pnpm config set registry https://registry.npmmirror.com
-npm config set registry https://registry.npmmirror.com   # /update's version check goes through npm
+# Terminal 1: Host; configure the model key in this process
+DEEPSEEK_API_KEY='<your key>' /path/to/dsh --profile mayfly-split-accept
+
+# Terminal 2: TUI; copy the authenticated URL printed by Host
+MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh
 ```
 
-**Or install over your own dsh** (bring your own host — for existing dsh users):
+Supply the authenticated URL only through the environment. Keep it out of argv,
+logs, and commits. Host owns credentials, providers, permissions, and Sessions.
+Closing the TUI detaches it while Host work continues.
 
-```sh
-npm i -g @deepseek-ai/dsh
-dsh plugin --profile mayfly add @ephemeral-ai/mayfly
-dsh --profile mayfly
-```
+Without a task or resume id, the first ordinary message creates the Session.
+Use `script/mayfly-remote.sh 'explain this repository'` for an initial task,
+`--resume <session-id>` to resume, or `--cwd <path>` for a Host directory.
+`/new` and `/clear` return to startup without creating an empty Session.
 
-After installing, follow the two sections below — one key, then a first run; models, providers, themes, and API keys are covered in detail in [Configuration](/en/guide/config).
+## Start using it
 
-- This RC does not move npm `latest`; use the exact version above or `@rc`. An omitted dist-tag resolves the previous release line.
-- Upgrading: shell users re-run `npm -g install @ephemeral-ai/mayfly-cli@0.1.4-rc.2` (reinstalling is the upgrade — the shell calibrates the profile's Mayfly to its own version and pins the host line with it); direct-dsh users type `/update` inside Mayfly (the in-app safe upgrade: pre-flight, snapshot, boot smoke, automatic rollback), or re-run the same `plugin add`.
+- Type `/` or `/help` for the actual Host and frontend command catalog.
+- Configure native providers through `/provider`; choose a model with `/model` and `/effort`.
+- `/theme` changes the current TUI theme; `/settings` persists defaults. Theme changes preserve the editor draft.
+- Sessionless `/plan` sets the next Session's mode; `/plan <message>` needs an existing Session.
+- `/quit` detaches and exits the TUI, leaving Host work running.
 
-## One key before you ride
+Rebuild after source edits and reinstall the dedicated profile after dependency
+changes. See [configuration](/en/guide/config) and
+[contributing](/en/plugins/contributing) for validation and plugin integration.
 
-**A single `DEEPSEEK_API_KEY` is all it takes to start using Mayfly** — the out-of-the-box default talks to the DeepSeek official API (route `deepseek-official`, default model `deepseek-v4-flash`); nothing else to configure:
-
-```sh
-export DEEPSEEK_API_KEY=sk-...        # or store it in ~/.dsh/.credentials.yaml, once and for all
-```
-
-Switching models, wiring custom gateways, theming, and more: [Configuration](/en/guide/config).
-
-## First run
-
-```sh
-mayfly                        # interactive: welcome banner + input editor
-mayfly fix the null deref on the login page    # run a task directly
-# direct-dsh users: dsh --profile mayfly (the two are equivalent — the shell
-# just manages the host and the profile for you)
-```
-
-A few things to try first:
-
-- type `/` to see slash-command autocomplete, `/help` for the command and key overview;
-- ask something and watch the streaming reply and tool cards;
-- `/theme` lists the 32 built-in palettes (Mayfly's own and ports of Catppuccin, Dracula, Nord, Tokyo Night, …) by name, grouped for dark and for light terminals, with Auto and the current one checked; `/theme tide` hot-swaps and your draft survives. The Theme row in the `/settings` panel cycles the same palettes live and persists the default;
-- on exit, the last line is the **session epitaph**: the session id and a one-line resume command (a triple-click selects exactly it) — pick the conversation right back up next time.
-
-## Interface preview
+## Interface reference
 
 <p align="center">
-  <img src="/shots/app-conversation.svg" width="720" alt="Mayfly terminal with a live transcript, tool card, editor, and status bar">
+  <img src="/shots/app-conversation.svg" width="720" alt="Mayfly terminal transcript, tool card, editor, and status bar reference">
 </p>

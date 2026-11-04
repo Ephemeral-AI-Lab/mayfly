@@ -1,43 +1,41 @@
 # Core concepts
 
-## One Cordis graph
+## Two Cordis trees
 
-Mayfly does not create a nested plugin system. External plugins, official Mayfly
-rows, and native dsh services are members of one Cordis tree. `inject` is both
-an activation dependency and a reload boundary.
+The native Host owns Agents, Sessions, and domain services. The independent
+Remote TUI owns Client connections, HostKey + SessionRef selection, interaction
+state, and terminal rendering. Plugins in each process use ordinary Cordis
+injection; `inject` defines activation dependencies and reload boundaries.
 
 ## Fiber is lifecycle
 
 Command, pane, status, overlay, and editor-extension registrations belong to
-the caller's Fiber. They disappear on unload. Bind other subscriptions, timers,
-and external listeners through `ctx.effect()` or an explicit disposer.
+the caller's Fiber. Other subscriptions, timers, external listeners, and async
+work also need disposal and fences against results arriving after abort,
+selection change, same-name reopen, or unload.
 
-## Native domain, Mayfly UI
+## Native domain, Mayfly presentation
 
-Reuse dsh behavior directly. Mayfly does not copy command, tool, projection,
-setting, or Agent APIs. Mayfly seams exist only for terminal UI.
+Host plugins consume public dsh services directly. Native command handlers get
+the exact invocation Agent from `invocation.agent`; Agent-scoped operations use
+that Agent without borrowing a parent or global tool view.
 
-Inject `mayflyCurrentAgent` when native Agent-scoped behavior needs the current
-selection:
+The TUI consumes official Client whole projections and native Remote writes.
+Remote retains selection identities, without cross-process Agent or Session
+objects. The shared renderer exposes no current-Agent facade, and renderers
+never create a second durable domain store. Additional transport methods belong
+to Mayfly Host and carry serializable DTOs.
 
-```ts
-const agent = ctx.mayflyCurrentAgent.current()
-if (agent !== null) {
-  const snapshot = ctx.sessionProjections.snapshot(agent.session, ['myProjection'])
-}
-```
+## Renderer-neutral nodes
 
-Do not retain Agent or Session across selection revisions.
-
-## Renderer-neutral
-
-UI contributions return `MayflyUiNode`. Plugins do not import pi-tui, assemble
-ANSI, or read terminal width. Core owns validation, layout, theme, focus, and
-terminal safety.
+UI contributions return readonly `MayflyUiNode` values. Plugins do not import
+pi-tui, assemble ANSI, or read terminal width. Core owns validation, layout,
+theme, focus, and terminal safety.
 
 ## Failure semantics
 
-Native dsh services keep their own result and exception behavior. Mayfly
-registries throw for invalid ids, missing callbacks, and duplicate ids.
-Registration handles expose `set()/dispose()`; overlays also expose
-`close()`.
+Native services keep their results and exceptions. Mayfly registries throw for
+invalid ids, missing callbacks, and duplicate ids. Observations report facts;
+actions return structured replies, admitting acknowledgements before native
+requests settle. Registration handles expose `set()/dispose()`; overlays also
+expose `close()`.

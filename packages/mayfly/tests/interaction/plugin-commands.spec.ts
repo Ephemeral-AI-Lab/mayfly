@@ -348,10 +348,15 @@ async function openInfo(world: World, id: string): Promise<UiSurfaceModel> {
 describe('/plugin install through the native manager', () => {
   it('installs the catalog row through pluginManager and never spawns a CLI', async () => {
     const world = await mountWorld({ index: [entry()] })
+    world.ctx.provide('testSession', { current: world.agent, modelRef: undefined })
     expect(await world.run('/plugin install loop')).toEqual({ kind: 'success' })
     expect(world.calls.install).toEqual([{ spec: 'dsh-loop', options: { enabled: true } }])
     expect(world.spawns).toHaveLength(0)
     expect(world.notices.at(-1)).toBe('installed; restart Mayfly and start a new session to apply')
+    expect(world.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([expect.objectContaining({
+      scope: { kind: 'session', sessionId: String(world.agent.id) },
+      severity: 'success', message: world.notices.at(-1),
+    })])
     world.dispose()
   })
 

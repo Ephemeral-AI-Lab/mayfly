@@ -838,8 +838,11 @@ describe('/update confirm and swap', () => {
     const world = await mountWorld()
     const notices: string[] = []
     const off = world.ctx.mayflyUiInteraction.subscribe(() => {
-      const message = world.ctx.mayflyUiInteraction.notificationSnapshot().find(item => item.operationId === 'registry')?.message
-      if (message !== undefined && notices.at(-1) !== message) notices.push(message)
+      const record = world.ctx.mayflyUiInteraction.notificationSnapshot().find(item => item.operationId === 'registry')
+      if (record !== undefined) {
+        expect(record.scope).toEqual({ kind: 'app', targetId: 'profile/mayfly' })
+        if (notices.at(-1) !== record.message) notices.push(record.message)
+      }
     })
     const stub = updaterInternals.spawnOnce
     let npmFailures = 2

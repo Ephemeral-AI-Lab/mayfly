@@ -22,7 +22,7 @@ interface KeymapBinding {
   handler(): void
 }
 
-function fixture(options: { readonly session?: boolean, readonly plan?: unknown } = {}) {
+function fixture(options: { readonly session?: boolean, readonly plan?: unknown, readonly access?: 'interactive' | 'resumable' | 'readonly' } = {}) {
   let snapshot: unknown = options.plan
   const projectionListeners = new Set<() => void>()
   const unsubscribeProjection = vi.fn()
@@ -37,21 +37,39 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
     getSnapshot: vi.fn(() => snapshot),
     subscribe: subscribeProjection,
   }
+  const permissionsListeners = new Set<() => void>()
+  const permissionsProjection = { getSnapshot: () => ({ currentValue: 'custom' }), subscribe: (listener: () => void) => { permissionsListeners.add(listener); return () => { permissionsListeners.delete(listener) } } }
+  const events = new Map<string, Set<(...args: unknown[]) => void>>()
+  const stateListeners = new Set<() => void>()
+  let connection = 1
+  const permissionDetails = vi.fn(async (_request: unknown, _signal?: AbortSignal): Promise<unknown> => ({ ok: true, value: { yolo: false, specs: {} } }))
   const executeNative = vi.fn(async (_id: unknown, _line: string, _attachments: readonly unknown[], _signal: AbortSignal): Promise<unknown> => ({ ok: true, value: { result: { kind: 'success' } } }))
   const client = {
     key: HostKey('local'),
-    state: { getSnapshot: () => ({ generation: 1 }), subscribe: vi.fn(() => () => {}) },
-    remote: { commands: { execute: executeNative } },
+    state: { getSnapshot: () => ({ generation: connection }), subscribe: vi.fn((listener: () => void) => { stateListeners.add(listener); return () => { stateListeners.delete(listener) } }) },
+    remote: { commands: { execute: executeNative },
+      mayflyHost: { capabilities: async () => ({ ok: true, value: { features: ['permissionCatalogDetails'] } }), permissionCatalogDetails: permissionDetails },
+      $on: (event: string, listener: (...args: unknown[]) => void) => {
+        const listeners = events.get(event) ?? new Set<(...args: unknown[]) => void>()
+        events.set(event, listeners)
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
+      },
+    },
   } as unknown as HostClient
   const selection: RemoteFeatureSelection = {
+    access: options.access,
     ref: { host: HostKey('local'), sessionId: SessionId('session-1') },
     client,
-    binding: { session: { command: executeNative, projections: { faceOf: vi.fn(() => projection) } } },
+    binding: { session: { command: executeNative, projections: { faceOf: vi.fn((key: string) => key === 'permissions' ? permissionsProjection : projection) } } },
   } as unknown as RemoteFeatureSelection
   let selected: RemoteFeatureSelection | undefined = options.session === false ? undefined : selection
   let topology: (() => void) | undefined
+  let clients: readonly HostClient[] = [client]
+  let active: HostClient | undefined = client
   const hosts = {
-    list: vi.fn((): readonly HostClient[] => [client]),
+    list: vi.fn((): readonly HostClient[] => clients),
+    active: () => active,
     current: vi.fn((): RemoteFeatureSelection | undefined => selected),
     subscribe: vi.fn((listener: () => void) => {
       topology = listener
@@ -91,6 +109,7 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
     mayflyStatus: { register: registerStatus },
     mayflyKeymap: { register: registerKeymap },
   }
+  const localeListeners = new Set<() => void>()
   let pendingPlan: boolean | undefined = false
   const startupPlan = { pending: () => pendingPlan, set: vi.fn((active: boolean) => { pendingPlan = active; topology?.() }) }
   const context = {
@@ -100,7 +119,7 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
     notice,
     commands: { register: registerCommand },
     t: vi.fn((key: string) => key),
-    subscribeLocale: vi.fn(() => () => {}),
+    subscribeLocale: vi.fn((listener: () => void) => { localeListeners.add(listener); return () => { localeListeners.delete(listener) } }),
   } as unknown as RemoteFeatureContext
   /** Resolve the single command registered under `name`. */
   const command = (name: string): CommandDefinition => {
@@ -128,6 +147,18 @@ function fixture(options: { readonly session?: boolean, readonly plan?: unknown 
   const keymapBinding = (): KeymapBinding => registerKeymap.mock.calls[0]![0][0]!
   return {
     context,
+    client,
+    permissionDetails,
+    permissionsListeners,
+    events,
+    stateListeners,
+    localeListeners,
+    emitLocale: () => { for (const listener of localeListeners) listener() },
+    emitPermissions: () => { for (const listener of permissionsListeners) listener() },
+    event: (name: string, ...args: unknown[]) => { for (const listener of events.get(name) ?? []) listener(...args) },
+    reconnect: () => { connection += 1; for (const listener of stateListeners) listener() },
+    select: (next: RemoteFeatureSelection | undefined) => { selected = next; topology?.() },
+    hosts: (next: readonly HostClient[], nextActive?: HostClient) => { clients = next; active = nextActive; topology?.() },
     startupPlan,
     clearPending: () => { pendingPlan = undefined; topology?.() },
     command,
@@ -158,6 +189,123 @@ beforeEach(() => {
 })
 
 describe('mountPlanFeature', () => {
+  it('shows independent plan and yolo badges immediately for readonly custom permissions without opening a picker', async () => {
+    const f = fixture({ plan: { active: true, pending: false }, access: 'readonly' })
+    f.permissionDetails.mockResolvedValue({ ok: true, value: { yolo: true, specs: {} } })
+    const dispose = mountPlanFeature(f.context)
+    await flush()
+    expect(f.permissionDetails).toHaveBeenCalledExactlyOnceWith({ sessionId: 'session-1' }, expect.any(AbortSignal))
+    expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'stack', direction: 'row', gap: 1, children: [
+      { node: { kind: 'text', content: 'plan', tone: 'accent' } }, { node: { kind: 'text', content: 'yolo', tone: 'warning' } },
+    ] })
+    f.emitPlan({ active: false, pending: false })
+    expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'text', content: 'yolo', tone: 'warning' })
+    f.permissionDetails.mockResolvedValue({ ok: true, value: { yolo: false, specs: {} } })
+    f.emitPermissions()
+    await flush()
+    expect(f.status.set).toHaveBeenLastCalledWith(null)
+    expect(f.executeNative).not.toHaveBeenCalled()
+    dispose()
+    expect(f.permissionsListeners.size + f.stateListeners.size + f.localeListeners.size).toBe(0)
+    expect([...f.events.values()].every(listeners => listeners.size === 0)).toBe(true)
+  })
+
+  it('reads sessionless native defaults and refreshes mode status for catalog, default settings and locale updates', async () => {
+    const f = fixture({ session: false })
+    f.permissionDetails.mockResolvedValue({ ok: true, value: { yolo: true, specs: {} } })
+    const dispose = mountPlanFeature(f.context)
+    await flush()
+    expect(f.permissionDetails).toHaveBeenLastCalledWith({}, expect.any(AbortSignal))
+    expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'text', content: 'yolo', tone: 'warning' })
+    await f.command('plan').execute('')
+    await flush()
+    expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'stack', direction: 'row', gap: 1, children: [
+      { node: { kind: 'text', content: 'plan…', tone: 'accent' } }, { node: { kind: 'text', content: 'yolo', tone: 'warning' } },
+    ] })
+    const count = f.permissionDetails.mock.calls.length
+    for (const ns of ['other', 'permission', 'shell', 'approval']) f.event('settings/document-updated', ns, 2)
+    f.event('permission-presets/catalog-changed')
+    await flush()
+    expect(f.permissionDetails).toHaveBeenCalledTimes(count + 4)
+    f.emitLocale()
+    expect(f.status.set).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'stack' }))
+    dispose()
+  })
+
+  it('uses newest confirmed permission facts across projection and withdrawn-catalog refreshes', async () => {
+    const f = fixture()
+    const first = Promise.withResolvers<unknown>()
+    f.permissionDetails.mockReturnValueOnce(first.promise)
+    const dispose = mountPlanFeature(f.context)
+    await flush()
+    f.permissionDetails.mockResolvedValueOnce({ ok: true, value: { yolo: false, specs: {} } })
+    f.event('permission-presets/catalog-changed')
+    await flush()
+    const paints = f.status.set.mock.calls.length
+    first.resolve({ ok: true, value: { yolo: true, specs: {} } })
+    await flush()
+    expect(f.status.set).toHaveBeenCalledTimes(paints)
+    expect(f.status.set).toHaveBeenLastCalledWith(null)
+    dispose()
+  })
+
+  it.each(['session', 'host', 'connection', 'unload'] as const)('retires old permission reads and queued observers after %s replacement', async change => {
+    const f = fixture({ plan: { active: false, pending: false } })
+    const answer = Promise.withResolvers<unknown>()
+    f.permissionDetails.mockReturnValueOnce(answer.promise)
+    const dispose = mountPlanFeature(f.context)
+    await flush()
+    const projection = [...f.permissionsListeners][0]!
+    const catalog = [...f.events.get('permission-presets/catalog-changed')!][0]!
+    const locale = [...f.localeListeners][0]!
+    const signal = f.permissionDetails.mock.calls[0]![1]!
+    if (change === 'session') f.select({ ...f.selection, ref: { ...f.selection.ref, sessionId: SessionId('second') } })
+    if (change === 'host') { f.select(undefined); f.hosts([], undefined) }
+    if (change === 'connection') f.reconnect()
+    if (change === 'unload') dispose()
+    expect(signal.aborted).toBe(true)
+    await flush()
+    const paints = f.status.set.mock.calls.length
+    const reads = f.permissionDetails.mock.calls.length
+    answer.resolve({ ok: true, value: { yolo: true, specs: {} } })
+    projection(); catalog()
+    if (change === 'unload') locale()
+    await flush()
+    expect(f.status.set).toHaveBeenCalledTimes(paints)
+    expect(f.permissionDetails).toHaveBeenCalledTimes(reads)
+    expect(f.notice.set).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('reads the newly selected Host rather than retaining another Host yolo value', async () => {
+    const f = fixture()
+    const other = fixture()
+    Object.assign(other.client, { key: HostKey('other') })
+    other.permissionDetails.mockResolvedValue({ ok: true, value: { yolo: true, specs: {} } })
+    const dispose = mountPlanFeature(f.context)
+    await flush()
+    f.select({ ...other.selection, client: other.client, ref: { host: other.client.key, sessionId: SessionId('other-session') } })
+    f.hosts([f.client, other.client], other.client)
+    await flush()
+    expect(other.permissionDetails).toHaveBeenLastCalledWith({ sessionId: 'other-session' }, expect.any(AbortSignal))
+    expect(f.status.set).toHaveBeenLastCalledWith({ kind: 'text', content: 'yolo', tone: 'warning' })
+    dispose()
+  })
+
+  it('refuses readonly /plan, /mode and Shift+Tab writes without changing startup intent', async () => {
+    const f = fixture({ access: 'readonly', plan: { active: false, pending: false } })
+    const dispose = mountPlanFeature(f.context)
+    await f.command('plan').execute('')
+    await f.command('plan').execute('off')
+    await f.command('plan').execute('message')
+    await f.command('mode').execute('')
+    f.keymapBinding().handler()
+    await flush()
+    expect(f.executeNative).not.toHaveBeenCalled()
+    expect(f.startupPlan.set).not.toHaveBeenCalled()
+    expect(f.notice.set).toHaveBeenLastCalledWith('This conversation is read-only', 'error')
+    dispose()
+  })
   it.each(['investigate', 'OFF', 'off extra'])('runs the actual sessionless /plan %s parser without creating or prompting a Session', async input => {
     const f = fixture({ session: false })
     const dispose = mountPlanFeature(f.context)

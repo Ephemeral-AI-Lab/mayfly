@@ -90,7 +90,10 @@ export function mountNotices(ctx: Context, t: MayflyTranslate, clock: () => numb
   const factsService = ctx.get('mayflySessionFacts') as SessionFactsService | undefined
   const tick = ctx.get('mayflyTick') as TickSource | undefined
   if (factsService === undefined) return
-  const owner = createInteractionNotificationOwner(ctx, 'mayfly.notices', 'notices')
+  const owner = createInteractionNotificationOwner(ctx, 'mayfly.notices', () => {
+    const agent = ctx.get('mayflyCurrentAgent')?.current()
+    return agent == null ? { kind: 'app', targetId: 'notices' } : { kind: 'session', sessionId: String(agent.id) }
+  })
   const projections = ctx.get('sessionProjections')
   /** The main sessions this has already looked at: a session is announced as resumed once, not each time the person switches back to it. */
   const seen = new WeakSet<object>()

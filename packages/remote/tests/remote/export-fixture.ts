@@ -3,12 +3,12 @@ import type { ConversationEntry, ConversationProjection } from '@ephemeral-ai/ma
 import type { SessionWireEvent } from '@deepseek-ai/dsh-api-session-controller/types'
 
 const base = { id: 'entry', seq: 1, updatedSeq: 1, turn: 0 }
-const image = { attachmentId: 'image', mediaType: 'image/png' as const, bytes: 1, width: 1, height: 1 }
+const image = { kind: 'image' as const, attachmentId: 'image', mediaType: 'image/png' as const, bytes: 1, width: 1, height: 1 }
 
 export const projection: ConversationProjection = {
   streaming: false, settledSteps: [], turns: [],
   entries: [
-    { ...base, kind: 'user', text: 'first question', images: [image, { ...image, name: 'sample.png' }] },
+    { ...base, kind: 'user', text: 'first question', attachments: [image, { ...image, name: 'sample.png' }] },
     { ...base, id: 'thinking', kind: 'thinking', step: 0, text: 'reasoning trail', streaming: false },
     { ...base, id: 'answer', kind: 'assistant', step: 0, text: '**answer** text', streaming: false },
     { ...base, id: 'tool-a', kind: 'tool', step: 0, callId: 'a', channel: 'transcript', name: 'read', arguments: '{"file_path":"a.ts"}', startedAt: 1, result: { text: 'result A', content: [], isError: false, endedAt: 2 } },

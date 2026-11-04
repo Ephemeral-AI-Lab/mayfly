@@ -1,216 +1,60 @@
 # 配置：模型、Provider 与主题
 
-Mayfly 的配置分两层：**界面内的斜杠命令**（日常切换，推荐）与 **dsh 的文件体系**（`settings.yaml`、`.credentials.yaml`、profile patch——持久化真相就在这些文件里）。界面命令写下去的也是文件；两层从不打架。本页把两层串成一条路。
+当前分体实现使用 Harness `0.2.2-alpha.2`。原生配置、凭据、模型默认值、权限与
+Session 属于 Host；主题应用、剪贴板、导出和外部编辑器进程属于 Remote TUI 所在机器。
 
-| 想配什么 | 界面内 | 落盘位置 |
+| 配置 | 界面入口 | 所有者 |
 | --- | --- | --- |
-| API key | `/provider add`、Providers 面板编辑 | `~/.dsh/.credentials.yaml` |
-| 界面语言 | `/settings` 的首个 `locale` 分组 | `settings.yaml` 的 `locale.preference`（省略即跟随系统） |
-| 默认模型 / 思考力度 | `/model`、`/effort`、`Alt+M` | `settings.yaml` 的 `agent-default-model:` 段 |
-| 新增 provider / 自定义网关 | `/provider add` | `settings.yaml` 的 `llm-pi-ai:` 段 + 凭据文件 |
-| DeepSeek 官方端点微调 | —（文件专属） | `settings.yaml` 的 `llm-deepseek:` 段 |
-| 主题 | `/theme`（会话级）；`/settings` 或文件写持久默认 | `settings.yaml` 的 `mayfly:` 段（[主题](/guide/theme)） |
-| 更新检查 / 折叠默认等 Mayfly 偏好 | `/settings` | `settings.yaml` 的 `mayfly:` 段 |
-| 插件行 / 装配 | — | profile 的 `cordis.patch.yml`（[Profile 与目录](/dsh/profiles)） |
+| Provider 与凭据 | `/provider`、`/provider add` | Host 原生 provider/credentials controller |
+| 模型与思考力度 | `/model`、`/effort`、`Alt+M` | Host 原生模型目录、默认值与 Session Controller |
+| Agent preset | `/preset` | Host 原生 preset registry |
+| 沙箱与审批 | `/permissions`、原生 `/permission` | Host 原生 permission service |
+| 界面语言与持久主题默认值 | `/settings` | Host settings；TUI 本地应用展示 |
+| 当前主题 | `/theme`、`/theme custom <path> [<base theme>]` | TUI；custom 文件从本地读取 |
+| Host bundle | `/plugin` | Host 原生 plugin manager |
 
-## 最小可用：一个 DEEPSEEK_API_KEY
+## 模型与 Provider
 
-开箱即用的默认装配是 **DeepSeek 官方 API**（provider 路由 `deepseek-official`，端点 `https://api.deepseek.com`，默认模型 `deepseek-v4-flash`，思考默认开启、力度 `high`）。所以从零到第一句对话，只需要一个 key：
+在 Host 进程配置 `DEEPSEEK_API_KEY`，或通过 `/provider` 的原生凭据流程配置其他
+provider。密钥不会进入投影或返回的 settings 表单；留空的 secret 不是读取到的旧值。
 
-```sh
-export DEEPSEEK_API_KEY=sk-...
-dsh --profile mayfly
-```
+`/model` 与 `/effort` 无参数时打开选择面板，带参数时请求对应原生写入。
+Sessionless 选择更新 Host 默认值，由首个 Session 采用。Session 的 `modelSelection`
+projection 由原生 `@deepseek-ai/dsh-agent` 持有，写入通过 Session Controller。
+`Alt+M` 在当前 provider 内循环切换模型并保留草稿。
 
-不想每次 export，就把 key 写进凭据文件 `~/.dsh/.credentials.yaml`（整份文件就是一个「引用名 → 值」的映射，没有别的结构）：
+Provider 向导、可配置目录、模型元数据和验证由 Host 的公开原生 API 提供。
+配置格式与 Host 持久化目录以[Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)
+及当前 Host 为准，不把旧 `settings.yaml` 或旧 Mayfly patch 当成 alpha.2 的配置契约。
 
-```yaml
-DEEPSEEK_API_KEY: sk-...
-```
+## Settings 表单与原始文档
 
-同一个 key 有四种放置方式，按**优先级从高到低**：
+`/settings` 先按命名空间列出可编辑值，再进入字段表单。表单保留 descriptor/field
+revision，保存走原生 settings 写入；冲突需要用户刷新并检查，不会静默重试。
+readonly 或缺少服务时，界面说明原因并拒绝写入。
 
-| 优先级 | 来源 | 说明 |
-| --- | --- | --- |
-| 1 | 进程环境变量（`export DEEPSEEK_API_KEY=… dsh …`） | 单次覆盖：CI secret、临时换 key |
-| 2 | `~/.dsh/.credentials.yaml` | 常规存放处；`/provider add` 存的 key 也在这里 |
-| 3 | 当前目录 `./.env` | 项目级 |
-| 4 | `~/.dsh/.env` | 用户级兜底 |
+整份文档编辑器读取 Host 的实际 settings 文档，通过 TUI 所在机器的 `$VISUAL`、
+`$EDITOR` 或配置的 editor command 打开本地临时副本，再把修改传回 Host。编辑器
+不会直接打开 Host 文件系统路径。取消、启动失败或冲突时保留应有的草稿和错误反馈。
 
-::: tip 首次启动会引导配置
-Mayfly 在会话就绪后检查所有已注册 provider 的凭据。若一个可用 key 都没有，会直接弹出 DeepSeek 快速配置框；只需填入 `DEEPSEEK_API_KEY`，Mayfly 使用 `deepseek-official` 的官方端点 `https://api.deepseek.com`。按 Esc 可跳过本次引导，进入 Mayfly 后用 `/provider add` 配置其他 provider；在仍无可用 key 时，下次启动会再次提示。
+原始保存会取得原生 profile 共享锁，在锁内比较 SHA-256 revision、原子替换文件，
+并读取返回值。它协调多个 Host writer 与原生配置写入，但只有部分冲突保护：
+不遵守锁的外部编辑器仍可在最后一次 revision 检查后写入，因此不保证完整 CAS。
 
-key 仍在**每次请求时**解析，因此运行期间补充或轮换凭据无需重启；`MISSING_CREDENTIAL` 保留为凭据被移除或失效时的兜底错误。
-:::
+## 语言与主题
 
-`~/.dsh` 称为 Harness home，可用 `DSH_HOME` 改址（目录全表见 [Profile 与目录](/dsh/profiles)）。
+`/language` 或 `/settings` 选择英文、简体中文及系统默认。主题持久默认值通过
+`/settings` 保存；`/theme` 只改变当前展示。Core/theme reload 保留前端表单、选择、
+编辑器 caret、撤销、历史、粘贴与补全状态。自定义 palette 文件保留在 TUI 机器，
+不会成为 Host 配置或凭据。详见[主题](/guide/theme)。
 
-## 界面内配置（日常推荐）
+## 启动界面与模式
 
-### 模型与思考力度
+不带任务或恢复 id 时，启动不创建 Session。`/model`、`/effort`、`/preset` 设置 Host
+默认值；`/plan`、`/plan off`、`/mode` 与 `Shift+Tab` 设置待定计划模式。
+第一条普通 prompt 创建 Session 后，先完成计划模式接纳再发送 prompt；接纳失败不发送。
+尚无 Session 时 `/plan <message>` 会拒绝并提示先发送普通消息。
 
-- **`/model`** —— 无参数打开模型选择面板；带 id 直接切换。面板内选择 `Set as default` 会持久化为新默认。
-- **`Alt+M`** —— 不开面板直接循环切换模型。
-- **`Use for this session`**（面板 action）—— 下一步路由立即切换，但不写回持久默认。
-- **`/effort`**（别名 `/thinking`）—— 切换当前模型的思考力度；`default` 恢复 provider 默认。
-
-`/model` 的持久化写入 settings.yaml 的 `agent-default-model:` 段（形状见[下文](#settings-yaml-三个核心段)）。
-
-### Provider：列出、切换、新增
-
-```
-/provider                  # 打开 Providers 面板（列出已配置路由 + Add 入口）
-/provider list             # 命令行列出可用 provider 与当前路由
-/provider switch <name>    # 切换路由
-/provider add              # 新增 provider 向导
-```
-
-Providers 面板里**选中一个已配置的路由即进入编辑**：可改显示名、baseURL、key（留空保留原值），`Ctrl+D` 打开删除确认，选择 Yes 才删除；No 或 Esc 返回编辑并保留草稿。内置的 `deepseek-official` 路由没有可编辑的存储档案（面板会提示 nothing to edit）——调整它走 `settings.yaml` 的 `llm-deepseek:` 段。
-
-`/provider add` 有两条分支：
-
-- **Known provider**（anthropic、openai 等）—— 从宿主的可配置目录里挑一家，只填 key；Base URL 不可编辑，始终使用宿主目录提供的厂商默认端点。
-- **Custom endpoint**（自建网关、任意 OpenAI 兼容端点）—— 声明协议与地址：
-  - 协议三选一：`anthropic-messages` / `openai-completions` / `openai-responses`；
-  - baseURL 约定：anthropic 协议**不带**尾缀 `/v1`（客户端自己拼 `/v1/messages`）；openai 系协议**要带** `/v1`；
-  - 向导会现场向端点拉取模型列表（`GET /models`）让你勾选，并用 [models.dev](https://models.dev) 目录自动补全上下文窗口与思考力度，补不全的再问你一次（两项都可回车跳过）；
-  - key 存进凭据文件，引用名按路由 id 大写折叠推导：`my-gateway` → `MY_GATEWAY_API_KEY`。
-
-新增完成后弹出新路由的模型选择器；取消选择不会撤销新增（provider 留在原处，`/provider list` 可见）。
-
-路由档案写在 **Harness home 的用户级 `~/.dsh/cordis.patch.yml`** 的 `llm-pi-ai:` 行：npm 安装的生产 profile（`mayfly`）与开发 profile（`mayfly-dev` / `mayfly-<tag>`）共享同一份 provider 配置，切换 profile 不再丢失。保存时同一份配置也会镜像进当前 profile 的 `cordis.patch.yml`，运行中的会话即时生效。
-
-## 文件体系：settings.yaml 与凭据
-
-界面命令之外，dsh 的全部配置落在 Harness home 的几个文件里，**外部编辑实时热生效**（watcher 默认开启）：
-
-| 文件 | 内容 |
-| --- | --- |
-| `~/.dsh/settings.yaml` | 所有插件的设置段（一个文档承载全部命名空间） |
-| `~/.dsh/.credentials.yaml` | 凭据（权限强制 `0600`，目录 `0700`） |
-| `~/.dsh/.env` | 用户级环境变量层 |
-| `~/.dsh/cordis.patch.yml` | home 级用户装配覆盖层；Mayfly 的 provider 路由存在这里，对所有 profile 生效 |
-| `~/.dsh/profiles/<name>/cordis.patch.yml` | profile 的装配覆盖层（见 [Profile 与目录](/dsh/profiles)） |
-
-启动时文档已存在但格式非法 → 启动失败（fail loud）；运行中的非法编辑 → 保留上一份好快照并告警。手工编辑 settings.yaml 的注释会尽量保留（写入按叶子级 diff 落笔）。
-
-### locale：界面语言
-
-Mayfly 支持英文与简体中文。没有显式设置时按 `LC_ALL`、`LC_MESSAGES`、`LANG`、`Intl` 的顺序跟随操作系统；所有 `zh-*` 变体使用简体中文，不支持的语言回退英文。可在 `/settings` 的首个 `locale` 分组中选择“跟随系统”“中文”或“English”，切换立即生效，并保留已打开面板的选择与表单草稿。
-
-手工配置只需写显式偏好；删除 `preference` 即恢复跟随系统：
-
-```yaml
-locale:
-  preference: zh  # zh | en；省略即跟随系统
-```
-
-### settings.yaml 三个核心段
-
-```yaml
-# 默认模型——/model、/effort 写到这里
-agent-default-model:
-  provider: deepseek-official
-  model: deepseek-v4-flash
-  reasoningEffort: high      # 可省略
-
-# DeepSeek 官方端点（llm-deepseek 适配器）——全部字段可省略
-llm-deepseek:
-  apiKeyEnv: DEEPSEEK_API_KEY    # 凭据引用名（默认值就是它）
-  baseURL: https://api.deepseek.com
-  thinking: enabled              # enabled | disabled（disabled 锁死 off）
-  reasoningEffort: high          # off | high | max
-  maxTokens: 256000              # 每请求输出上限
-  defaultContextWindow: 1000000  # 模型未声明容量时的兜底
-  models:                        # 省略则内置 V4 Flash / V4 Pro 两条
-    - id: deepseek-v4-flash
-      name: DeepSeek-V4-Flash
-      contextWindow: 1000000
-
-# 自定义 provider 路由（pi-ai 适配器）——/provider add 写到这里
-llm-pi-ai:
-  providers:
-    my-gateway:
-      displayName: 公司网关
-      api: openai-completions          # anthropic-messages | openai-completions | openai-responses
-      baseURL: https://gw.example.com/v1
-      apiKeyEnv: MY_GATEWAY_API_KEY    # 凭据引用名，对应 .credentials.yaml 里的键
-      models:
-        - id: glm-5.3
-          contextWindow: 1000000       # 目录/端点都没声明时的容量声明
-          maxTokens: 131072
-          reasoningEfforts:            # 模型支持的思考力度 → 线上拼写
-            low: low
-            high: high
-            max: max
-```
-
-要点：
-
-- **`llm-deepseek:` 与 `llm-pi-ai:` 是两个独立适配器**：前者独占 `deepseek-official` 路由直连官方 API；后者按 `providers:` 字典注册任意路由（路由名就是字典键，小写 kebab-case）。两者可并存。
-- 用户 settings 段**逐字段覆盖**装配基线（bundle 带来的默认），没有的字段继续用基线值。
-- pi-ai 路由还有进阶字段：`modelOverrides:`（按模型 id 微调目录模型而不替换整个列表）、`compat:`（推理参数格式开关）、`defaultContextWindow:` / `defaultMaxTokens:`（整路由兜底）等，完整清单见[上游配置目录](https://deepseek-harness.github.io/deepseek-harness/reference/)。
-- 列表类字段（如 `models:`）是**整体替换**而非逐条合并。
-
-### mayfly: Mayfly 自己的设置段
-
-`/settings` 面板会写入下列字段。所有字段都可省略，默认值如下：
-
-```yaml
-mayfly:
-  updateCheck: true        # 启动时的 Mayfly 更新检查（false 即离线开关）
-  updateChannel: latest    # 更新检查跟踪的 dist-tag
-  theme: dark              # 持久默认主题：任一内置调色板的键（dark、light、tide……）或 auto（启动时应用）
-  transcriptView: standard # compact | standard | detailed | verbose
-  windowTurns: 15          # transcript 窗口：只挂载最近 N 个已完成回合
-  expandTurns: 3           # ctrl+o 展开的作用范围（自末尾起的回合数）
-  userFoldLines: 10        # 长用户消息折叠阈值（行数）
-  userFoldChars: 1000      # 长用户消息折叠阈值（字符数）
-  editorCommand: ''        # 外部编辑器命令（空 = 按 $VISUAL/$EDITOR 自动探测）
-  pasteImageBackend: auto  # Linux 剪贴板后端：auto | wayland | x11
-  glyphs: auto             # auto（按 locale 字符集）| unicode | ascii（单格回退字形）
-  monochrome: false        # 只保留字重、不着色（设置 NO_COLOR 时也会开启）
-  reducedMotion: false     # 所有动画停在第一帧
-  startup: conversation    # 无会话启动时显示什么：conversation（横幅加空对话）| splash（启动页：标志与最近会话）
-```
-
-`transcriptView` 沿用 Harness Chat 的四种工作详情模式名（见[流式会话](/features/streaming#工作详情)）。实时状态由 activity 行负责，会话记录只显示已经发生的事。回合运行中，Compact 只显示对话；Standard 另外显示文件修改的 diff 卡片与过去时分组标题，其 activity 行还会显示正在运行的命令、路径、查询或思考内容；Detailed 实时显示所有卡片。Compact、Standard 与 Detailed 把已完成回合折叠到 `用时 38s` 标题下，最终回答（从 Standard 起还有文件修改）保持可见；Verbose 逐卡展开。Ctrl+O 展开最近 `expandTurns` 个回合。原有按类型配置的 `transcript` 设置与 `recentStepsRetention` 不再生效。
-
-面板分两级：第一级从 `locale` 开始，并按命名空间分组（`mayfly`、`shell`、`agent-loop`、`web-search-deepseek:` 等宿主段在内），Enter 进入第二级逐行调整，`Enter`/`Space` 步进预设值、每次改动即落盘；语言切换与 `mayfly.theme` 都实时生效（`/theme` 仍是会话级切换，见[主题](/guide/theme)），`transcriptView`与数值项的改动同样立即作用于当前会话（Ctrl-O 的全局展开状态优先）。第一级末行可在 `$EDITOR` 里打开整份 settings.yaml。
-
-`startup` 只决定启动时的画面：Mayfly 启动时不创建会话，发出第一条消息时才创建，所以两种取值都不会在会话目录里留下空会话。`--resume <id>` 与 `[task]` 参数仍立即启动会话；`/new` 与 `/clear` 回到启动画面。尚无会话时，`/theme`、`/settings`、`/sessions`、`/help`、`/quit`、`/new`、`/clear`、`/provider`、`/plugin`、`/update` 可用，`/model`、`/effort`、`/preset` 设置的默认值会由第一个会话采用，`/plan`、`/plan off` 与 `/mode` 则以 `plan…` 等待该会话启动。其余命令提示先发一条消息。首次引导的「偏好」一步可选择此项，之后在 `/settings` 的 `mayfly` 中修改。
-
-### 改完怎么验证
-
-```sh
-dsh --profile mayfly --dump-config        # 打印实际组装的完整插件树
-```
-
-settings.yaml 的效果则直接在界面里看：`/model` 面板列出各路由的模型、`/status` 显示当前路由与模型。
-
-## 主题
-
-`/theme <键>`（如 `/theme tide`）或 `/theme auto` 一键切换，`/theme custom <path>` 挂载自定义 JSON 调色板——热切换不丢输入草稿。`/theme` 是会话级切换；持久默认主题用 `/settings` 面板或 settings.yaml 的 `mayfly.theme` 设置（启动时应用）。完整语义 token 表与 custom 文件格式见[主题](/guide/theme)。
-
-## 更多配置面
-
-- **权限与沙箱** —— 权限预设（workspace-write / danger-full-access）、审批策略，见[权限与模式](/dsh/modes)；`/permission` 控制 YOLO，`Shift+Tab` 只切换 normal ↔ plan，尚无会话时设置下一个会话的计划模式。计划与权限独立生效。
-- **Agent 预设** —— `/preset` 在上游 shipped `standard` / `minimal` / `ptc` / `cordis` 与 Mayfly 的 `mayfly-cordis` 间切换工具面与人格。空会话上切换当前会话；尚无会话时写入第一个会话采用的默认值，之后的新会话继续沿用。Mayfly 不提供旧 `code` alias。
-- **Skills** —— 用户级技能放 `~/.dsh/skills/`，见 [Skills](/dsh/skills)。
-- **MCP** —— MCP server 的接入配置见 [MCP 配置](/dsh/mcp)。
-
-## 环境变量速查
-
-| 变量 | 作用 | 默认行为 |
-| --- | --- | --- |
-| `DEEPSEEK_API_KEY` | DeepSeek 官方 API key（`llm-deepseek` 的 `apiKeyEnv` 默认引用名） | 未设置时首次请求报 `MISSING_CREDENTIAL` |
-| `DEEPSEEK_BASE_URL` | DeepSeek 官方端点地址兜底 | `https://api.deepseek.com` |
-| `DSH_HOME` | Harness home 目录 | `~/.dsh` |
-| `DSH_PERMISSION_MODE` | 进程级权限回退：`read-only` / `workspace-write` / `danger-full-access`（后者连审批都跳过） | `workspace-write` |
-| `DSH_TELEMETRY_DISABLED` | 任意非空值（含 `'0'`、`'false'`）即硬禁用会话遥测 | 遥测默认已关闭（`DISABLED`） |
-| `DSH_MAYFLY_ATTACHMENT_DIR` | Mayfly 附件存储位置 | `$DSH_HOME/attachments/` |
-| `DSH_AGENTS_HOME` | 共享 agent 配置根（技能发现的 `~/.agents` 层） | `~/.agents` |
-
-::: warning 哪些变量不能写进 .env
-`DEEPSEEK_API_KEY` 四层都认（含 `.env`），但 `DEEPSEEK_BASE_URL` 与**一切 `DSH_*` 前缀变量**属于 bootstrap 变量——`.env` 文件里出现会被直接拒绝（提示 export 它），只能在启动环境里设置。凭据类环境变量永远赢过文件层——想临时换 key，`DEEPSEEK_API_KEY=sk-… dsh --profile mayfly` 即可。
-:::
+计划状态与权限独立：`Shift+Tab` 只切换计划模式。YOLO 表示当前实际的
+`danger-full-access` 沙箱和 `never` 审批策略，可与 plan 同时生效。它依据原生当前
+权限事实，包含 custom 或已撤回 preset 的情况，而不是从 preset 名字猜测。

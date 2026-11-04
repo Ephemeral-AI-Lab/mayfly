@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { providerBalance } from '../../src/remote/balance.ts'
+import { expectFrozenJson } from './frozen-frame.ts'
 
 /** A context answering one credential and an optional llm-deepseek namespace. */
 /** One credential resolution: absent rejects, present answers its value. */
@@ -69,6 +70,7 @@ describe('providerBalance', () => {
     const { seen } = fetchAnswer({})
     const balance = await providerBalance(ctx(undefined), new AbortController().signal)
     expect(balance).toEqual({ status: 'unavailable', reason: 'no-key' })
+    expectFrozenJson(balance)
     expect(seen()).toBeUndefined()
   })
 
@@ -76,6 +78,7 @@ describe('providerBalance', () => {
     const { seen, url } = fetchAnswer({ is_available: true, balance_infos: [{ currency: 'CNY', total_balance: '42.50' }] })
     const balance = await providerBalance(ctx('sk-secret'), new AbortController().signal)
     expect(balance).toMatchObject({ status: 'ready', available: true, wallets: [{ currency: 'CNY', total: '42.50' }] })
+    expectFrozenJson(balance)
     expect(url()).toContain('https://api.deepseek.com/user/balance')
     expect((seen()?.headers as Record<string, string> | undefined)?.authorization).toBe('Bearer sk-secret')
   })
@@ -97,9 +100,23 @@ describe('providerBalance', () => {
 
   it('reports rejected credentials and network failures as unavailable, never guessing a wallet', async () => {
     fetchAnswer({}, 401)
-    expect(await providerBalance(ctx('sk-bad'), new AbortController().signal)).toEqual({ status: 'unavailable', reason: 'rejected' })
+    const rejected = await providerBalance(ctx('sk-bad'), new AbortController().signal)
+    expect(rejected).toEqual({ status: 'unavailable', reason: 'rejected' })
+    expectFrozenJson(rejected)
     vi.stubGlobal('fetch', vi.fn(async (): Promise<never> => { throw new Error('socket down') }))
-    expect(await providerBalance(ctx('sk'), new AbortController().signal)).toEqual({ status: 'unavailable', reason: 'network' })
+    const failed = await providerBalance(ctx('sk'), new AbortController().signal)
+    expect(failed).toEqual({ status: 'unavailable', reason: 'network' })
+    expectFrozenJson(failed)
+  })
+
+  it('detaches wallet values before the response producer changes them', async () => {
+    const wallet = { currency: 'CNY', total_balance: '4.00' }
+    fetchAnswer({ balance_infos: [wallet] })
+    const balance = await providerBalance(ctx('sk'), new AbortController().signal)
+    wallet.total_balance = '9.00'
+    expect(balance).toMatchObject({ wallets: [{ total: '4.00' }] })
+    expectFrozenJson(balance)
+    expect(Object.isFrozen(wallet)).toBe(false)
   })
 
   it('refuses a malformed document rather than inventing wallets', async () => {

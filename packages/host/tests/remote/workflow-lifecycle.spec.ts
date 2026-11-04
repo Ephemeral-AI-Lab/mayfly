@@ -6,6 +6,7 @@ import type { WorkflowRunInfo } from '@deepseek-ai/dsh-workflow'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MayflyWorkflowSnapshot } from '../../src/types.ts'
 import { followWorkflow, mayflyWorkflowProjectionDefinition as definition, mayflyWorkflowSnapshotSchema, WorkflowLiveCatalog } from '../../src/remote/workflow.ts'
+import { expectFrozenJson } from './frozen-frame.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose())) })
@@ -57,7 +58,13 @@ describe('durable Workflow lifecycle', () => {
       expect(mayflyWorkflowSnapshotSchema.safeParse({ ...snapshot, runs: [{ ...snapshot.runs[0], phases: [phase] }] }).success).toBe(false)
     }
     const valid = { ...snapshot, runs: [{ ...snapshot.runs[0], phases: [{ title: 'p' }, { title: 'q', detail: 'd', provider: 'a', model: 'b' }] }] }
-    expect(mayflyWorkflowSnapshotSchema.parse(valid)).toEqual(valid)
+    const parsed = mayflyWorkflowSnapshotSchema.parse(valid)
+    expect(parsed).toEqual(valid)
+    expect(parsed.runs[0]!.phases![0]).not.toBe(valid.runs[0]!.phases[0])
+    valid.runs[0]!.phases[0]!.title = 'producer changed'
+    expect(parsed.runs[0]!.phases![0]!.title).toBe('p')
+    const extended = { ...snapshot, runs: [{ ...snapshot.runs[0], phases: [{ title: 'p', renderer: () => 'private' }] }] }
+    expect(mayflyWorkflowSnapshotSchema.parse(extended).runs[0]!.phases).toEqual([{ title: 'p' }])
     expect(definition.wire.view(initial())).toEqual(initial())
   })
 
@@ -168,21 +175,47 @@ describe('native Workflow live catalog', () => {
 })
 
 describe('native Workflow replacement stream', () => {
+  it('detaches native phase metadata before enqueue without freezing the producer', async () => {
+    const { ctx, parent, catalog } = await harness()
+    parent.append('tool-workflow/run-start', { runId: 'r' as never, name: 'r' })
+    const iterator = followWorkflow(ctx, catalog, parent.id, new AbortController().signal)[Symbol.asyncIterator]()
+    await iterator.next()
+    const phases = [{ title: 'initial' }]
+    ctx.emit('workflow/start', info('r', phases))
+    expect(Object.isFrozen(phases)).toBe(false)
+    expect(Object.isFrozen(phases[0])).toBe(false)
+    phases[0]!.title = 'native producer changed after enqueue'
+    phases.push({ title: 'late phase' })
+    const replacement = (await iterator.next()).value
+    expect(replacement).toMatchObject({ type: 'replacement', value: { runs: [{ phases: [{ title: 'initial' }] }] } })
+    expectFrozenJson(replacement)
+    await iterator.return?.(undefined as never)
+  })
+
   it('filters foreign changes, deduplicates equal snapshots and cleans listeners on caller abort', async () => {
     const { ctx, parent, foreign, child, catalog, agent } = await harness()
     const control = new AbortController()
     const iterator = followWorkflow(ctx, catalog, parent.id, control.signal)[Symbol.asyncIterator]()
-    expect((await iterator.next()).value).toMatchObject({ type: 'baseline', value: { runs: [] } })
+    const baseline = (await iterator.next()).value
+    expect(baseline).toMatchObject({ type: 'baseline', value: { runs: [] } })
+    expectFrozenJson(baseline)
     ctx.emit('workflow/start', info('unrelated'))
     foreign.append('tool-workflow/run-start', { runId: 'foreign' as never, name: 'foreign' })
     ctx.emit('agent/disposed', { agent: { ...agent } } as never)
     ctx.emit('session/event', parent, event('user/message', {}))
     const pending = iterator.next()
     parent.append('tool-workflow/run-start', { runId: 'r' as never, name: 'r' })
-    expect((await pending).value).toMatchObject({ type: 'replacement', value: { runs: [{ id: 'r' }] } })
+    const replacement = (await pending).value
+    expect(replacement).toMatchObject({ type: 'replacement', value: { runs: [{ id: 'r' }] } })
+    expectFrozenJson(replacement)
     parent.append('turn/start', { turn: 1 })
-    ctx.emit('workflow/agent-start', info('r'), { seq: 1, childId: child.id, label: 'a' } as never)
-    expect((await iterator.next()).value).toMatchObject({ type: 'replacement', value: { runs: [{ agents: [{ seq: 1 }] }] } })
+    const native = { seq: 1, childId: child.id, label: 'a' }
+    ctx.emit('workflow/agent-start', info('r'), native as never)
+    native.label = 'mutated after enqueue'
+    const agentFrame = (await iterator.next()).value
+    expect(agentFrame).toMatchObject({ type: 'replacement', value: { runs: [{ agents: [{ seq: 1, label: 'a' }] }] } })
+    expectFrozenJson(agentFrame)
+    expect(Object.isFrozen(native)).toBe(false)
     const waiting = iterator.next()
     control.abort(new Error('caller closed'))
     await expect(waiting).rejects.toThrow('caller closed')

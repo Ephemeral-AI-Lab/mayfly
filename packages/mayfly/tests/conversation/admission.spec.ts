@@ -41,7 +41,7 @@ describe('identityAdmission', () => {
 
 describe('conversation wire view', () => {
   const schema = conversationProjectionDefinition.wire.viewSchema
-  const user: ConversationEntry = { kind: 'user', id: 'user:1', seq: 1, updatedSeq: 1, turn: 1, text: 'hi', images: [] }
+  const user: ConversationEntry = { kind: 'user', id: 'user:1', seq: 1, updatedSeq: 1, turn: 1, text: 'hi', attachments: [] }
 
   it('returns the view itself and rejects malformed views', () => {
     const view = conversationProjectionDefinition.wire.view({ ...initialConversationState(), entries: [user] })

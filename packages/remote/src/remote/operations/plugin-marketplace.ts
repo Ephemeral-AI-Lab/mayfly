@@ -9,7 +9,7 @@ import { ui } from '@ephemeral-ai/mayfly-ui'
 import { currentMayflySettings } from '@ephemeral-ai/mayfly/settings'
 import {
   DEFAULT_MARKET_INDEX_URL, loadMarketCatalog, buildRows, defaultInstallSource, entrySupportsSource,
-  GROUP_MODES, groupRows, MARKET_TABS, marketEntryInstallBlock, newerVersion, rowName, rowSpec, tabRows,
+  GROUP_MODES, groupRows, MARKET_TABS, marketEntryInstallBlock, isMayflyProductPackage, newerVersion, rowName, rowSpec, tabRows,
   usefulInTui, detailFacts, groupModeLabel, tabFacts, listId, MARKET_BREAKPOINT,
   PluginMarketplace, PluginMarketplaceLoading, PluginMarketplaceOffline, PluginMarketplaceUnavailable,
   interactionTranslator, mountInteractionLocale, observeInteractionLocale,
@@ -678,6 +678,10 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
         if (!isCurrent(signal)) return { kind: 'success' }
         if (bundles === undefined) await refreshBundles(manager, signal)
         if (!isCurrent(signal)) return { kind: 'success' }
+        const productEntry = entries().find(candidate => candidate.id === id || candidate.install.rows.some(item => item.name === id))
+        if (productEntry?.install.rows.some(item => isMayflyProductPackage(item.name)) === true) {
+          return { kind: 'error', text: t('Manage Mayfly packages with /update') }
+        }
         const row = findRow(id)
         if (row === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
         const tab = MARKET_TABS.find(candidate => tabRows(rows(), candidate).some(item => item.id === row.id)) ?? 'browse'
@@ -687,6 +691,7 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
         if (id === undefined) {
           return { kind: 'error', text: t('usage: /plugin {verb} <id> [--source npm|github]', { verb }) }
         }
+        if (isMayflyProductPackage(id)) return { kind: 'error', text: t('Manage Mayfly packages with /update') }
         const sourceIndex = tokens.indexOf('--source')
         const requestedSource = sourceIndex === -1 ? undefined : tokens[sourceIndex + 1]
         if (sourceIndex !== -1 && requestedSource !== 'npm' && requestedSource !== 'github') {
@@ -698,6 +703,10 @@ function createMarketplace(context: RemoteOperationsContext, client: HostClient)
         if (!isCurrent(signal)) return { kind: 'success' }
         if (bundles === undefined) await refreshBundles(manager, signal)
         if (!isCurrent(signal)) return { kind: 'success' }
+        const productEntry = entries().find(candidate => candidate.id === id || candidate.install.rows.some(item => item.name === id))
+        if (productEntry?.install.rows.some(item => isMayflyProductPackage(item.name)) === true) {
+          return { kind: 'error', text: t('Manage Mayfly packages with /update') }
+        }
         const row = findRow(id)
         if (row === undefined) return { kind: 'error', text: t('unknown plugin: {id}', { id }) }
         if (verb === 'uninstall' && !row.installed) {

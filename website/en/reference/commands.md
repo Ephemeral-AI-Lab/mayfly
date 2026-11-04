@@ -6,39 +6,40 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 
 | Command | Aliases | Arguments | Description | Source |
 | --- | --- | --- | --- | --- |
-| `/quit` | `/q` `/exit` | — | Exit Mayfly | `mayfly-commands` |
-| `/new` | `/clear` | `[preset]` | Return to the start screen; the next message creates the new session (optionally under a chosen agent preset) | `mayfly-commands` |
-| `/fork` | — | — | Fork the current session into a new one | `mayfly-commands` |
-| `/rewind` | — | — | Create a safe branch from an earlier user turn | `mayfly-commands` |
-| `/sessions` | `/resume` | `[<session-id>]` | Browse sessions by workspace (cwd), then open a conversation; an id resumes directly | `mayfly-commands` |
-| `/rename` | — | `[<name>]` | Rename the current session (no name opens an editor) | `mayfly-commands` |
-| `/btw` | — | `<question>` | Create a temporary side Agent and switch the complete UI to it; empty input closes | `mayfly-btw-command` |
-| `/agents` | — | `[stop <id>]` | Browse the subagent tree, view a child, or stop a continuable child | `mayfly-agents-command` |
-| `/jobs` | — | — | Browse the current Agent's background jobs (list, detail, Read output) | `mayfly-jobs` |
-| `/help` | — | — | Show available commands and key bindings | `mayfly-commands` |
-| `/mode` | — | — | Toggle plan mode (same as `Shift+Tab`; before a session, sets the next one) | `mayfly-commands` |
+| `/quit` | `/q` `/exit` | — | Exit Mayfly | Remote frontend |
+| `/new` | `/clear` | `[preset]` | Return to the start screen; the next message creates the new session (optionally under a chosen agent preset) | Remote frontend |
+| `/fork` | — | — | Fork at the current native boundary; extra arguments are ignored | Remote frontend |
+| `/rewind` | — | — | Create a safe branch from an earlier user turn | Remote frontend |
+| `/sessions` | `/resume` | `[<session-id>]` | Browse sessions by workspace (cwd), then open a conversation; an id resumes directly | Remote frontend |
+| `/rename` | — | `[<name>]` | Rename the current session (no name opens an editor) | Remote frontend |
+| `/btw` | — | `<question>` | Create a temporary side Agent and switch the complete UI to it; empty input closes | Remote frontend |
+| `/agents` | — | `[stop <id>]` | Browse the subagent tree, view a child, or stop a continuable child | Remote frontend |
+| `/jobs` | — | — | Browse the current Agent's background jobs (list, detail, Read output) | Remote frontend |
+| `/help` | — | — | Show available commands and key bindings | Remote frontend |
+| `/mode` | — | — | Toggle plan mode (same as `Shift+Tab`; before a session, sets the next one) | Remote frontend |
 | `/plan` | — | `[off]` before a session | Native plan command; with no session, `/plan` and `/plan off` set the pending plan mode (a message argument needs a session) | `dsh-plan-mode` (native) |
-| `/model` | — | `[id]` | Switch the session model (no argument opens the picker) | `mayfly-commands` (model-commands) |
-| `/effort` | `/thinking` | `[level]` | Switch the thinking effort (no argument opens the selector) | `mayfly-commands` (model-commands) |
-| `/provider` | — | `[list \| switch <name> \| add]` | List providers, switch the route, or add one | `mayfly-commands` (model-commands) |
-| `/preset` | — | `[name]` | List agent presets, switch a blank session, or set the default before one starts | `mayfly-commands` (preset-commands) |
+| `/model` | — | `[id]` | Switch the session model (no argument opens the picker) | Remote frontend (model-commands) |
+| `/effort` | `/thinking` | `[level]` | Switch the thinking effort (no argument opens the selector) | Remote frontend (model-commands) |
+| `/provider` | — | `[list \| switch <name> \| add]` | List providers, switch the route, or add one | Remote frontend (model-commands) |
+| `/preset` | — | `[name]` | List agent presets, switch a blank session, or set the default before one starts | Remote frontend (preset-commands) |
 | `/permission` | — | `[name]` | Native permission command: list or switch the sandbox/approval preset | `dsh-permission-presets` (native) |
-| `/permissions` | — | — | Open Mayfly's permission-preset panel for the current Agent | `mayfly-commands` (`permission-panel`) |
-| `/tools` | — | — | List the tools visible to the current session | `mayfly-commands` (tools-commands) |
-| `/mcp` | — | — | Browse the MCP servers the host connects to and their tools | `mayfly-commands` (mcp-commands, S34) |
-| `/skills` | — | — | List available skills (the `#` prompt invokes one) | `mayfly-commands` (skills-command) |
-| `/theme` | see [Theming](/en/guide/theme) | | List or switch themes | `mayfly-commands` (theme-switch) |
-| `/init` | — | — | Analyze the codebase and write `AGENTS.md` | `mayfly-commands` (session-init) |
-| `/stats` | — | — | Show this session, the history of your sessions (activity heatmap, streaks), and the usage and cost per model | `mayfly-commands` (stats-command) |
-| `/context` | — | — | Show token usage and the context window | `mayfly-commands` (session-commands) |
-| `/version` | — | — | Show the Mayfly and harness versions and the live model | `mayfly-commands` (session-commands) |
-| `/changelog` | — | — | Show the release changelog (what's new, one section per release, the running version badged `· current`) | `mayfly-commands` (session-commands) |
-| `/trace` | — | `[copy <seq> \| copy all]` | Inspect the current session's execution timeline; copy one item or the full trace | `mayfly-commands` (trace-command) |
-| `/update` | — | `[version]` | Safely update Mayfly (pre-flight, snapshot, boot smoke, automatic rollback; a bare call is a read-only check) | `mayfly-commands` (update-command, D52) |
-| `/settings` | — | — | Edit user settings by namespace (two-level panel, every change writes through; see [Configuration](/en/guide/config)) | `mayfly-commands` (settings-command) |
-| `/plugin` | — | `[install <id> [--source npm\|github] \| uninstall <id> \| info <id> \| list \| refresh]` | Browse, install, and remove marketplace plugins (official, dsh, and community tiers; cache-first with stale serving offline; see the [marketplace repository](https://github.com/Ephemeral-AI-Lab/dsh-plugins)) | `mayfly-commands` (plugin-commands) |
-| `/save` | — | `[full] [<path>]` | Save the current session as a Markdown file (the projected transcript, or the full event stream with `full`) | `mayfly-commands` (session-export) |
-| `/copy` | — | — | Copy the last assistant message to the clipboard | `mayfly-commands` (session-export) |
+| `/permissions` | — | — | Open Mayfly's permission-preset panel for the current Agent | Remote frontend (`permission-panel`) |
+| `/tools` | — | — | List the tools visible to the current session | Remote frontend (tools-commands) |
+| `/mcp` | — | — | Browse the MCP servers the host connects to and their tools | Remote frontend (mcp-commands, S34) |
+| `/skills` | — | — | List available skills (the `#` prompt invokes one) | Remote frontend (skills-command) |
+| `/theme` | see [Theming](/en/guide/theme) | | List or switch themes | Remote frontend (theme-switch) |
+| `/init` | — | — | Analyze the codebase and write `AGENTS.md` | Remote frontend (session-init) |
+| `/stats` | — | — | Show this session, the history of your sessions (activity heatmap, streaks), and the usage and cost per model | Remote frontend (stats-command) |
+| `/context` | — | — | Show token usage and the context window | Remote frontend (session-commands) |
+| `/version` | — | — | Show the Mayfly and harness versions and the live model | Remote frontend (session-commands) |
+| `/changelog` | — | — | Show the release changelog (what's new, one section per release, the running version badged `· current`) | Remote frontend (session-commands) |
+| `/trace` | — | `[copy <seq> \| copy all]` | Inspect the current session's execution timeline; copy one item or the full trace | Remote frontend (trace-command) |
+| `/changes` | — | `[seq]` | Browse workspace changes still retained by the native Host | Remote frontend |
+| `/update` | — | `[version]` | Safely update Mayfly (pre-flight, snapshot, boot smoke, automatic rollback; a bare call is a read-only check) | Remote frontend (update-command, D52) |
+| `/settings` | — | — | Edit user settings by namespace (two-level panel, every change writes through; see [Configuration](/en/guide/config)) | Remote frontend (settings-command) |
+| `/plugin` | — | `[install <id> [--source npm\|github] \| uninstall <id> \| info <id> \| list \| refresh]` | Browse, install, and remove marketplace plugins (official, dsh, and community tiers; cache-first with stale serving offline; see the [marketplace repository](https://github.com/Ephemeral-AI-Lab/dsh-plugins)) | Remote frontend (plugin-commands) |
+| `/save` | — | `[full] [<path>]` | Save the current session as a Markdown file (the projected transcript, or the full event stream with `full`) | Remote frontend (session-export) |
+| `/copy` | — | — | Copy the last assistant message to the clipboard | Remote frontend (session-export) |
 
 ## Sessions and models
 
@@ -53,12 +54,12 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
   ![Conversations inside a workspace](/shots/app-session-workspace.svg)
 
 - **`/rename [<name>]`** — rename the current session: an argument renames directly, a bare call opens a one-field editor prefilled with the current name. A user name pins the title, so automatic titling no longer replaces it; the name shows on the editor's top border and in `/sessions`.
-- **`/fork`** — returns `cannot fork while the agent is running` while the agent is not idle.
+- **`/fork`** — ignores extra arguments and uses the current native fork boundary; returns `cannot fork while the agent is running` while the agent is not idle.
 - **`/rewind`** — lists the current session's direct user turns in one level. Selecting a turn creates an ordinary child session from the complete boundary before it; the parent is never truncated or deleted and remains resumable through `/sessions`. A running agent is refused.
 - **`/btw` / `/agents`** — open side conversations beside main; several can stay open, and a new BTW replaces the previous one. Every conversation renders in the transcript pane: a live BTW/continuable child drives the complete layout and editor, while a one-shot or cold child is read from native history and marked `read-only` or `reply to resume`. The status bar explicitly shows `F7 switch · F8 close`. `/agents stop <id>` accepts only live continuable children without live descendants, while browser stops require selecting Yes in a Yes / No confirmation; cold/inactive children are not falsely reported as stopped, and parents must be stopped leaf-first so Harness recursive teardown cannot widen the operation.
 - **`/model` / `/effort`** — no argument opens the model picker or horizontal effort selector. Non-wrapping `←` `→` moves provider/effort tabs, `Enter` descends, and content-level Tab reaches actions. `Enter` commits **`Set as default`**: switch and persist as the new default. With an argument they switch directly and persist. The panel-free shortcut **`Alt+M`** cycles through the current provider's models (draft preserved; see the [key reference](/en/reference/keys)).
 - **`/provider`** — three subcommands: `list` shows providers and the current route; `switch <name>` switches; `add` starts the add-provider flow.
-- **`/preset`** — switches the agent composition over the thin-host roster (upstream `standard` / `minimal` / `ptc` / `cordis`, plus Mayfly `mayfly-cordis`): a session's tool surface, persona, and plan mode come from its preset. There is no `code` alias. A **blank session** switches that session, while with no session the pick writes the default the first and later new sessions take. A started session returns `cannot switch presets: this session has already started`; before one starts, a picker selection is reported as `Default preset: <name>`. Reminder tools (`schedule_*`) are preset-scoped: `standard`, `ptc`, `cordis`, and `mayfly-cordis` mount `tool-schedule`; `minimal` omits it. The Host-wide `schedule` service is inserted disabled, so enable that row in profile files to use reminders at all.
+- **`/preset`** — switches the agent composition over the thin-host roster (upstream `standard` / `minimal` / `ptc` / `cordis`, plus Mayfly `mayfly-cordis`): a session's tool surface, persona, and plan mode come from its preset. There is no `code` alias. A **blank session** switches that session, while with no session the pick writes the default the first and later new sessions take. A started session returns `cannot switch presets: this session has already started`; before one starts, a picker selection is reported as `Default preset: <name>`. Reminder tools (`schedule_*`) are preset-scoped: `standard`, `ptc`, `cordis`, and `mayfly-cordis` mount `tool-schedule`; `minimal` omits it. The Host-wide `schedule` service is enabled by the native Web composition unless the profile disables it.
 
 ## Modes and approval
 
@@ -69,22 +70,29 @@ Typing `/` triggers fuzzy autocomplete and discovery hints (see [Input editor](/
 
 ## Info and saving
 
+`/stats` history requires global Host authorization in both workspace modes;
+Session-only authorization permits only that Session's own digest. Rejection
+is shown before other history is read. Raw settings saves share the native
+profile lock and atomically replace the document after comparing its revision;
+editors ignoring that lock receive only partial conflict protection.
+
+- **`/changes [seq]`** — reads workspace comparisons still retained by the native Host; without an argument it uses the latest comparison. A Host restart or Session disposal may leave no record available, producing an empty state. Browsing never activates a Session or restores a separate history store.
 - **`/save [full] [<path>]`** — saves the current session as Markdown: the projected transcript by default, or the full event stream with `full`; without a path it writes the default filename `mayfly-export-{id8}-{YYYYMMDD-HHMMSS}.md`.
 - **`/copy`** — the last assistant message's text goes to the clipboard: OSC 52 first (the escape sequence travels over stdout to the local terminal emulator, so **SSH sessions still reach the local clipboard**), with a fallback pipeline behind it.
 - **`/trace`** — reads the current execution timeline through the harness's official session query; Up/Down selects an item, Enter opens full JSON, PageUp/PageDown scrolls details, `c` copies one item, and `a` copies the complete trace.
 - **`/theme`** — full usage `usage: /theme [<theme>|auto|custom <path> [<base theme>]]`, see [Theming](/en/guide/theme).
-- **`/quit`** — before the agent attaches it shows `no active session` (see the [FAQ](/en/guide/faq)).
+- **`/quit`** — detaches and exits the frontend, including before a Session exists. Host work continues.
 
-Commands never enter a model turn — success/error text flashes on the editor hint line. Commands registered by downstream plugins through `ctx.commands` appear automatically in the completion menu and `/help`; aliases are not registered as commands — the input layer rewrites them to the canonical name before dispatch (the kimi `aliases` port). `/permission` is the native command registered by `dsh-permission-presets`; Mayfly adds `/permissions` as a separate panel name, so neither command shadows the other.
+Frontend commands run locally; native commands are discovered for the selected Session and sent through official Client transport. Host handlers return serializable results, while native commands such as `/plan <message>` keep their own prompt-admission semantics. Without a Session, `/plan` and `/plan off` only set pending mode; `/plan <message>` refuses and asks for an ordinary message first. Aliases are frontend rewrites. `/permission` remains native, with `/permissions` as the frontend panel name.
 
 ## Parked commands
 
-These commands exist in the reference products (kimi/Claude Code); Mayfly **deliberately parks** them — waiting on upstream primitives or real demand (the full rulings live in the repository roadmap's parked ledger):
+These names are not registered frontend commands in the current release. Any future capability belongs in Mayfly Host/Remote composition using public native APIs:
 
 - `/reload` `/tasks` — deferred (task management goes through profile/config files)
-- `/archive` `/delete` — upstream persistence has no delete/archive primitive yet
+- `/archive` `/delete` — no frontend commands; `/sessions` provides native archive actions
 - `/import` — session-format version strictness undecided
 - `/diff` (uncommitted-changes panel) and the full-screen approval diff preview — re-evaluated with dogfood feedback after release
-- `/debug` — needs an upstream diagnostics-export surface
+- `/debug` — no frontend diagnostics-export command
 
-After installing the Agent Team plugin and selecting its `team` preset, `/team` inspects the readonly roster and task board. `/schedule` lists the current Agent's native session reminders (overdue first, readonly; the Host `schedule` service is enabled in profile files and the preset's `tool-schedule` row supplies the reminder tools). `/files` opens recorded file deliveries. Cold continuable child history offers `i` to reply through the native child address; browsing does not activate it. See [Team configuration](/en/features/team).
+After installing the Agent Team plugin and selecting its `team` preset, `/team` inspects the readonly roster and task board. `/schedule` lists the current Agent's native session reminders (overdue first, readonly; the Host `schedule` service must be available and the preset's `tool-schedule` row supplies the reminder tools). `/files` opens recorded file deliveries. Cold continuable child history offers `i` to reply through the native child address; browsing does not activate it. See [Team configuration](/en/features/team).

@@ -4,6 +4,7 @@ import { collectRemoteSessionEvents } from './operations/support.ts'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import { HostKey, type SessionRef } from '../client/types.ts'
+import { canonicalHostBaseUrl } from '../client/auth.ts'
 import type { HostClient } from '../client/types.ts'
 import { HostActions } from '../frontend/host-actions.ts'
 import { RemoteBtwService } from '../frontend/btw.ts'
@@ -68,13 +69,20 @@ export class RemoteApp {
   private readonly topologyListeners = new Set<() => void>()
   private activeHost: HostKey | undefined
   private defaultModelGeneration = 0
+  private attachmentWait: AbortController | undefined
   private readonly hostVersions = new WeakMap<HostClient, {
     readonly generation: number
     readonly pending: Promise<string | undefined>
   }>()
   private selectionGeneration = 0
   private disposed = false
-  private creating: Promise<SessionRef> | undefined
+  private creating: {
+    readonly host: HostKey
+    readonly client: HostClient
+    readonly selectionGeneration: number
+    readonly connectionGeneration: number
+    readonly promise: Promise<SessionRef>
+  } | undefined
   private pendingPlan = false
   private pendingPlanExplicit = false
   private pendingPreset: string | undefined
@@ -134,6 +142,7 @@ export class RemoteApp {
     if (this.disposed) return
     this.disposed = true
     this.defaultModelGeneration += 1
+    this.attachmentWait?.abort()
     this.clearSession()
     this.topologyListeners.clear()
   }
@@ -155,9 +164,12 @@ export class RemoteApp {
     // Credentials and query parameters identify authentication, not the Host.
     // Scheme and mount path do identify distinct backends behind one authority.
     const key = hostId === undefined
-      ? HostKey(`${url.origin}${url.pathname.replace(/\/+$/u, '')}/`)
+      ? HostKey(canonicalHostBaseUrl(url).href)
       : HostKey(hostId)
     const generation = ++this.defaultModelGeneration
+    this.attachmentWait?.abort()
+    const waiting = new AbortController()
+    this.attachmentWait = waiting
     const previous = this.registry.get(key)
     this.endpoints.set(key, startupUrl)
     const client = await this.registry.attach(key)
@@ -172,15 +184,26 @@ export class RemoteApp {
     // The native inventory includes full management metadata. Warm this read
     // during startup so the local version panel does not wait for it on Enter.
     void this.harnessVersion(client).catch(() => {})
-    if (generation === this.defaultModelGeneration) this.activeHost = key
+    if (generation === this.defaultModelGeneration) {
+      if (this.activeHost !== undefined && this.activeHost !== key
+        && this.registry.current === undefined && this.displayedView?.() === undefined) this.clearSession()
+      this.activeHost = key
+    }
     this.publishTopology()
+    const owner = (): boolean => !this.disposed && signal?.aborted !== true && generation === this.defaultModelGeneration
+      && this.registry.get(key) === client
+    const ready = await this.waitForConnection(client, signal === undefined ? waiting.signal : AbortSignal.any([waiting.signal, signal])).catch(error => {
+      if (owner()) throw error
+      return false
+    }).finally(() => { if (this.attachmentWait === waiting) this.attachmentWait = undefined })
     const connection = client.state.getSnapshot().generation
-    const current = (): boolean => !this.disposed && signal?.aborted !== true && generation === this.defaultModelGeneration
-      && this.registry.get(key) === client && client.state.getSnapshot().generation === connection
-    const result = await Promise.all([client.sessions.refresh(), this.actions.modelCatalog(key)]).catch(error => {
+    const current = (): boolean => owner() && client.state.getSnapshot().generation === connection
+    // Native connection establishment replaces any earlier Session-list pull.
+    // Join that generation's refresh only after its opening callbacks ran.
+    const result = ready && owner() ? await Promise.all([client.sessions.refresh(), this.actions.modelCatalog(key)]).catch(error => {
       if (current()) throw error
       return undefined
-    })
+    }) : undefined
     if (current() && result !== undefined) {
       const catalog = result[1]
       if (!catalog.ok) throw catalog.error
@@ -193,6 +216,24 @@ export class RemoteApp {
       this.publishTopology()
     }
     return client
+  }
+
+  private async waitForConnection(client: HostClient, signal: AbortSignal): Promise<boolean> {
+    let check!: () => void
+    const ready = new Promise<boolean>((resolve, reject) => {
+      check = (): void => {
+        if (signal.aborted) { resolve(false); return }
+        const state = client.state.getSnapshot()
+        if (state.status === 'authentication-required' || state.status === 'failed') { reject(state.error); return }
+        if (state.status === 'detached') { reject(new Error('Host Client is detached')); return }
+        if (client.connection.generation.getSnapshot() !== undefined) resolve(true)
+      }
+    })
+    const offGeneration = client.connection.generation.subscribe(check)
+    const offState = client.state.subscribe(check)
+    signal.addEventListener('abort', check, { once: true })
+    try { check(); return await ready }
+    finally { signal.removeEventListener('abort', check); offGeneration(); offState() }
   }
 
   async selectOrCreate(sessionId?: string, cwd = this.cwd, signal?: AbortSignal): Promise<SessionRef> {
@@ -245,7 +286,6 @@ export class RemoteApp {
   ensureSession(cwd = this.cwd, signal?: AbortSignal): Promise<SessionRef> {
     if (this.disposed) return Promise.reject(new Error('Mayfly frontend is disposed'))
     if (signal?.aborted === true) return Promise.reject(signal.reason)
-    if (this.creating !== undefined) return this.creating
     const displayed = this.displayedView?.()
     if (displayed !== undefined) {
       if (displayed.access === 'readonly') return Promise.reject(new Error('This conversation is read-only'))
@@ -253,12 +293,19 @@ export class RemoteApp {
     }
     const current = this.registry.current
     if (current !== undefined) return Promise.resolve(current)
-    const creating = this.selectOrCreate(undefined, cwd, signal)
+    const host = this.requireHost()
+    const client = this.registry.get(host)!
+    const connectionGeneration = client.state.getSnapshot().generation
+    if (this.creating?.host === host && this.creating.client === client
+      && this.creating.selectionGeneration === this.selectionGeneration
+      && this.creating.connectionGeneration === connectionGeneration) return this.creating.promise
+    const promise = this.selectOrCreate(undefined, cwd, signal)
+    const creating = { host, client, selectionGeneration: this.selectionGeneration, connectionGeneration, promise }
     this.creating = creating
-    void creating.finally(() => {
+    void promise.finally(() => {
       if (this.creating === creating) this.creating = undefined
     }).catch(() => {})
-    return creating
+    return promise
   }
 
   /** Finish one initial mode write; an explicit plan command supersedes an unstarted startup selection. */
@@ -447,6 +494,7 @@ export class RemoteApp {
         this.creating = undefined
         this.planPreparation = undefined
         this.defaultModelGeneration += 1
+        this.attachmentWait?.abort()
         this.conversation.setModelCatalog(host, undefined)
         this.conversation.setDefaultModel(undefined)
         this.conversation.attach(null)

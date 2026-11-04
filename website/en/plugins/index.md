@@ -1,39 +1,29 @@
 # Mayfly plugin development
 
-A Mayfly plugin is an ordinary Cordis plugin. It consumes native dsh services
-directly and injects one of Mayfly's four UI services only when it needs terminal
-UI.
+Mayfly has two independent Cordis trees: the native dsh Host and the Remote TUI.
+Plugins remain ordinary `name / inject / apply(ctx)` entries; their dependencies
+must exist in the process where they run.
 
-```text
-native dsh services
-commands · sessionProjections · tools · settings · ...
-                         │
-                ordinary Cordis plugin
-                         │
-Mayfly UI services
-mayflyPanes · mayflyStatus · mayflyOverlays · mayflyEditorExtensions
-```
+| Location | Services | Installation and execution |
+| --- | --- | --- |
+| Host | Native commands, sessionProjections, tools, settings, and other services | Native Host bundles and plugin manager |
+| Remote TUI | Official Client, frontend state, and four Mayfly UI services | Currently requires source integration into Remote composition, a build, and a TUI restart |
 
-Official Mayfly packages and external plugins are structurally identical:
-`name / inject / apply(ctx)`, one service graph, and the same Fiber unload
-behavior. There is no special manifest, capability request, adapter facade, or
-plugin-author CLI.
+TUI features read Host data through official Client/Remote calls and serializable
+DTOs. Agent, Session, Tool Definition, callback, and renderer objects do not cross
+processes. Mayfly Host supplies additional transport capabilities through public
+native APIs; this project does not modify dsh upstream to provide them.
+
+A static UI plugin integrated into Remote composition looks like this:
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-commands'
-import type {} from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 
 export const name = '@acme/build-health'
-export const inject = ['commands', 'mayflyPanes']
+export const inject = ['mayflyPanes']
 
 export function apply(ctx: Context): void {
-  ctx.commands.register({
-    name: 'health',
-    description: 'Show build health',
-    handler: () => ({ kind: 'success', text: 'healthy' }),
-  })
   ctx.mayflyPanes.register({
     id: 'acme.build-health',
     placement: 'right',
@@ -42,6 +32,10 @@ export function apply(ctx: Context): void {
 }
 ```
 
-Use the [quickstart](/en/plugins/quickstart) to create a package. The
-[Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)
-defines native dsh APIs; [service seams](/en/plugins/seams) covers Mayfly UI.
+Installing a Host plugin does not mount a TUI contribution. Shared
+`@ephemeral-ai/mayfly` provides the renderer and readonly presentation subpaths;
+it publishes no root plugin, Host patch, or preset.
+
+Use the [quickstart](/en/plugins/quickstart) for the Host or TUI integration path.
+The [Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)
+defines native APIs; [service seams](/en/plugins/seams) covers Mayfly UI.

@@ -136,7 +136,7 @@ describe('compaction rows in the stream', () => {
   const t = (key: string, values?: Record<string, unknown>): string => key.replace(/\{(\w+)\}/gu, (_, name: string) => String(values?.[name] ?? ''))
   let seq = 0
   const base = (turn: number) => ({ seq: (seq += 1), updatedSeq: seq, turn })
-  const user = (turn: number): TranscriptEntryModel => ({ ...base(turn), id: `user:${String(seq + 1)}`, kind: 'transcript-user', text: 'go', images: [] })
+  const user = (turn: number): TranscriptEntryModel => ({ ...base(turn), id: `user:${String(seq + 1)}`, kind: 'transcript-user', text: 'go', attachments: [] })
   const compaction = (turn: number, overrides: Partial<Extract<TranscriptEntryModel, { kind: 'transcript-compaction' }>> = {}): TranscriptEntryModel => ({
     ...base(turn), id: `compaction:${String(seq + 1)}`, kind: 'transcript-compaction', state: 'running', trigger: 'auto', startedAt: NOW, compactionId: 'c1', ...overrides,
   } as TranscriptEntryModel)

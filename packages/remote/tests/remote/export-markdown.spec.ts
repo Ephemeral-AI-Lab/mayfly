@@ -33,9 +33,21 @@ describe('frozen rc.2 export samples', () => {
 })
 
 describe('readable projection export', () => {
+  it.each(['', 'attached documents'] as const)('retains file-only and text/file messages with ordered file and image metadata: %s', text => {
+    const attachments = [
+      { kind: 'file', attachmentId: 'file-a', name: '报告.txt', bytes: 12 },
+      { kind: 'image', attachmentId: 'image-a', mediaType: 'image/png', bytes: 1, width: 2, height: 3, name: 'diagram.png' },
+      { kind: 'file', attachmentId: 'file-b', name: 'second.pdf', bytes: 24 },
+    ]
+    const markdown = buildRemoteExportMarkdown({ ...facts, items: remoteExportItems({ ...projection, entries: [entry({ kind: 'user', text, attachments })] }) })
+    expect(markdown).toContain('message_count: 1')
+    expect(markdown).toContain('[file 报告.txt (12 bytes)]\n\n[image diagram.png]\n\n[file second.pdf (24 bytes)]')
+    if (text !== '') expect(markdown.indexOf(text)).toBeLessThan(markdown.indexOf('[file'))
+    expect(markdown).not.toContain('file-a')
+  })
   it('retains empty-message rules, named images, codeless failures and pending tools', () => {
     const items = [
-      entry({ kind: 'user', text: '', images: [] }), entry({ kind: 'user', text: 'second user', images: [] }),
+      entry({ kind: 'user', text: '', attachments: [] }), entry({ kind: 'user', text: 'second user', attachments: [] }),
       entry({ kind: 'thinking', step: 0, streaming: false, text: '  ' }),
       entry({ kind: 'assistant', step: 0, streaming: false, text: '' }),
       entry({ kind: 'tool', callId: 'c', channel: 'transcript', step: 0, startedAt: 1, name: 'read', arguments: 'invalid JSON' }),
@@ -52,7 +64,7 @@ describe('readable projection export', () => {
   })
 
   it('bounds the first nonempty topic and keeps an empty overview when no user text exists', () => {
-    const long = entry({ kind: 'user', text: `${'x'.repeat(200)}\nmore`, images: [] })
+    const long = entry({ kind: 'user', text: `${'x'.repeat(200)}\nmore`, attachments: [] })
     expect(buildRemoteExportMarkdown({ ...facts, items: remoteExportItems({ ...projection, entries: [long] }) })).toContain(`Topic**: ${'x'.repeat(80)}…`)
     const empty = buildRemoteExportMarkdown({ ...facts, items: [] })
     expect(empty).toContain('Topic**: (empty)')
@@ -62,6 +74,18 @@ describe('readable projection export', () => {
 
 describe('full wire audit export', () => {
   const full = (...rows: Parameters<typeof wire>[]): string => buildRemoteFullExportMarkdown({ ...facts, workDir: undefined, events: rows.map(([type, data], index) => wire(type, data, index)) })
+
+  it('preserves ordered file metadata while excluding opaque filesystem targets from the readable full document', () => {
+    const markdown = full(['user/message', { source: { kind: 'user' }, content: [
+      { type: 'text', text: 'files follow' },
+      { type: 'file', attachmentId: 'first', name: '报告.txt', bytes: 12, target: '/private/opaque' },
+      { type: 'image' },
+      { type: 'file', attachmentId: 'second', name: 'empty', bytes: 0 },
+      { type: 'file' },
+    ] }])
+    expect(markdown).toContain('files follow\n\n[file 报告.txt (12 bytes)]\n\n[image]\n\n[file empty (0 bytes)]\n\n[file ]')
+    expect(markdown).not.toContain('/private/opaque')
+  })
 
   it('handles opaque or incomplete data without inventing message text or usage', () => {
     for (const type of ['turn/start', 'step/start', 'user/message', 'assistant/message', 'tool/call', 'tool/result', 'turn/end']) {

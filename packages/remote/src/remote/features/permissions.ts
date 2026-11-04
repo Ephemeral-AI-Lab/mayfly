@@ -25,7 +25,7 @@ export interface RemotePermissionCatalogDetails {
 
 /** Per-Host resolved detail source; a Host without the DTO contributes none. */
 export interface RemotePermissionDetailSource {
-  resolve(client: HostClient, currentPreset?: string, parent?: AbortSignal): Promise<RemotePermissionCatalogDetails | undefined>
+  resolve(client: HostClient, selection?: SessionRef, parent?: AbortSignal): Promise<RemotePermissionCatalogDetails | undefined>
 }
 
 /** Read the official permissions projection. */
@@ -70,7 +70,7 @@ export class RemotePermissionsController extends RemoteFeatureController {
       const current = selection === undefined ? undefined : remotePermissionSelection(selection.binding.session.projections.faceOf('permissions').getSnapshot())
       const [catalog, details, settings] = await Promise.all([
         remoteValue(client.remote.permissionPresets.catalog()),
-        this.loadDetails(operation, client, current),
+        this.loadDetails(operation, client, selection?.ref),
         selection === undefined ? remoteValue(client.remote.settings.describe()) : undefined,
       ])
       if (!operation.valid()) { operation.dispose(); return }
@@ -102,9 +102,9 @@ export class RemotePermissionsController extends RemoteFeatureController {
     finally { operation.dispose() }
   }
 
-  private async loadDetails(operation: RemoteFeatureOperation, client: HostClient, currentPreset: string | undefined): Promise<RemotePermissionCatalogDetails | undefined> {
+  private async loadDetails(operation: RemoteFeatureOperation, client: HostClient, selection: SessionRef | undefined): Promise<RemotePermissionCatalogDetails | undefined> {
     if (this.source === undefined) return undefined
-    try { return await this.source.resolve(client, currentPreset, operation.signal) }
+    try { return await this.source.resolve(client, selection, operation.signal) }
     catch { return undefined }
   }
 
@@ -151,7 +151,7 @@ export class RemotePermissionsController extends RemoteFeatureController {
       try {
         const [next, nextDetails] = await Promise.all([
           remoteValue(operation.client.remote.permissionPresets.catalog()),
-          this.loadDetails(operation, operation.client, current),
+          this.loadDetails(operation, operation.client, selection?.ref),
         ])
         if (!operation.valid() || mounted?.closed !== false || sequence !== readSequence) return
         catalog = next
@@ -170,6 +170,7 @@ export class RemotePermissionsController extends RemoteFeatureController {
         if (value === undefined || !options.some(option => option.value === value)) return { kind: 'completed' }
         if (context.signal.aborted || !operation.valid()) return { kind: 'cancelled', dismiss: true }
         try {
+          operation.assertWritable()
           await select(value, context.signal)
           if (context.signal.aborted || !operation.valid()) return { kind: 'cancelled', dismiss: true }
           this.context.notice.set(t('Permission preset: {preset}', { preset: options.find(option => option.value === value)!.name }), 'success')
@@ -193,8 +194,10 @@ export class RemotePermissionsController extends RemoteFeatureController {
   }
 
   private async selectInOperation(operation: RemoteFeatureOperation, selection: RemoteFeatureSelection, value: string, signal?: AbortSignal): Promise<void> {
+    operation.assertWritable()
     const catalog = await remoteValue(selection.client.remote.permissionPresets.catalog())
     if (!operation.valid() || signal?.aborted) return
+    operation.assertWritable()
     if (!catalog.options.some(option => option.value === value)) throw new Error(this.translate('permission command is unavailable'))
     const result = await selection.client.remote.commands.execute(selection.ref.sessionId, `/permission ${value}`, [], signal === undefined ? operation.signal : AbortSignal.any([operation.signal, signal]))
     if (!operation.valid() || signal?.aborted) return

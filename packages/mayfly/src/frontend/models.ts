@@ -5,6 +5,9 @@ export type Action = Readonly<{ readonly kind: string; readonly [key: string]: u
 export interface ToolPresentationModel { readonly kind: 'tool'; readonly id: string; readonly name: string; readonly call?: MayflyUiNode; readonly result?: MayflyUiNode; readonly expanded?: boolean; readonly action?: Action }
 export interface ThemeModel { readonly kind: 'theme'; readonly id: string; readonly name: string; readonly colors: Readonly<Record<string, string>>; readonly dark: boolean }
 export interface TranscriptImageModel { readonly attachmentId: string; readonly mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; readonly bytes: number; readonly width: number; readonly height: number; readonly name?: string | undefined; readonly originalDimensions?: Readonly<{ readonly width: number; readonly height: number }> | undefined }
+export type TranscriptAttachmentModel =
+  | Readonly<TranscriptImageModel & { readonly kind: 'image' }>
+  | Readonly<{ readonly kind: 'file', readonly attachmentId: string, readonly name: string, readonly bytes: number }>
 interface TranscriptEntryBase {
   readonly id: string
   readonly seq: number
@@ -13,7 +16,7 @@ interface TranscriptEntryBase {
   /** Presentation revision independent of the durable event sequence. */
   readonly renderRevision?: string
 }
-interface TranscriptUserModel extends TranscriptEntryBase { readonly kind: 'transcript-user'; readonly text: string; readonly images: readonly TranscriptImageModel[] }
+interface TranscriptUserModel extends TranscriptEntryBase { readonly kind: 'transcript-user'; readonly text: string; readonly attachments: readonly TranscriptAttachmentModel[] }
 interface TranscriptAssistantModel extends TranscriptEntryBase { readonly kind: 'transcript-assistant'; readonly step: number; readonly text: string; readonly streaming: boolean }
 interface TranscriptThinkingModel extends TranscriptEntryBase {
   readonly kind: 'transcript-thinking'

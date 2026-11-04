@@ -203,21 +203,80 @@ describe('native selection catalogs', () => {
     expect(currentSelection).not.toHaveBeenCalled()
   })
 
-  it('resolves permission bundles and accepts yolo only for the complete native bundle', () => {
+  function permissions(events: readonly unknown[] = []) {
     const options = [{ value: 'safe', name: 'Safe' }, { value: 'open', name: 'Open' }]
-    const context = { permissionPresets: {
+    const dispose = vi.fn()
+    const source = { observeSession: vi.fn(async () => ({ events, [Symbol.dispose]: dispose })) }
+    const values = { permissionPresets: {
       catalog: () => ({ options, defaultOptions: options, defaultPreset: 'safe' }),
       resolve: (value: string) => {
-        if (value === 'unknown') throw new Error('withdrawn')
         return value === 'open' ? { sandbox: 'danger-full-access', approval: 'never' } : { sandbox: 'workspace-write', approval: 'ask' }
       },
-    } } as unknown as Context
+      defaultPreset: 'safe',
+    }, shell: { sandboxMode: 'workspace-write' as string | undefined }, approval: { config: { policy: 'ask' as string | undefined } }, sessionQuery: source }
+    const context = { ...values, get: (key: keyof typeof values) => values[key] } as unknown as Context
+    return { context, values, source, dispose }
+  }
+
+  it('resolves permission bundles and the native default for a genuinely sessionless view', async () => {
+    const { context, values, source } = permissions()
     const signal = new AbortController().signal
-    const baseline = permissionCatalogDetails(context, {}, signal)
+    const baseline = await permissionCatalogDetails(context, {}, signal)
     expect(baseline).toMatchObject({ yolo: false, defaultPreset: 'safe', specs: { safe: { sandbox: 'workspace-write', approval: 'ask' }, open: { sandbox: 'danger-full-access', approval: 'never' } } })
-    expect(permissionCatalogDetails(context, { currentPreset: 'open' }, signal).yolo).toBe(true)
-    expect(permissionCatalogDetails(context, { currentPreset: 'safe' }, signal).yolo).toBe(false)
-    expect(permissionCatalogDetails(context, { currentPreset: 'unknown' }, signal).yolo).toBe(false)
     expect(Object.isFrozen(baseline.specs)).toBe(true)
+    values.permissionPresets.defaultPreset = 'open'
+    values.permissionPresets.catalog = () => ({ options: [], defaultOptions: [], defaultPreset: 'open' })
+    expect((await permissionCatalogDetails(context, {}, signal)).yolo).toBe(true)
+    expect(source.observeSession).not.toHaveBeenCalled()
+  })
+
+  it('reads current knobs passively even for a custom or withdrawn preset and uses the newest override', async () => {
+    const f = permissions([
+      { type: 'permission/preset', data: { preset: 'withdrawn' } },
+      { type: 'sandbox/mode', data: { mode: 'read-only' } },
+      { type: 'approval/policy', data: { policy: 'never' } },
+      { type: 'sandbox/mode', data: { mode: 'danger-full-access' } },
+    ])
+    const signal = new AbortController().signal
+    expect((await permissionCatalogDetails(f.context, { sessionId: SessionId('cold-child') }, signal)).yolo).toBe(true)
+    expect(f.source.observeSession).toHaveBeenCalledExactlyOnceWith('cold-child', { signal, projectionMode: 'none' })
+    expect(f.dispose).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    { sandbox: 'danger-full-access', approval: 'never', yolo: true },
+    { sandbox: 'danger-full-access', approval: undefined, yolo: false },
+    { sandbox: 'danger-full-access', approval: 'ask', yolo: false },
+    { sandbox: 'workspace-write', approval: 'never', yolo: false },
+    { sandbox: undefined, approval: 'never', yolo: false },
+  ])('uses composition defaults for missing Session knobs: $sandbox / $approval', async ({ sandbox, approval, yolo }) => {
+    const f = permissions()
+    f.values.shell.sandboxMode = sandbox
+    f.values.approval.config.policy = approval
+    expect((await permissionCatalogDetails(f.context, { sessionId: SessionId('empty') }, new AbortController().signal)).yolo).toBe(yolo)
+  })
+
+  it('retires cancelled and replaced native reads and releases their late observations', async () => {
+    const f = permissions()
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof f.source.observeSession>>>()
+    f.source.observeSession.mockReturnValue(pending.promise)
+    const controller = new AbortController()
+    const read = permissionCatalogDetails(f.context, { sessionId: SessionId('one') }, controller.signal)
+    controller.abort(new Error('cancelled permission read'))
+    pending.resolve({ events: [], [Symbol.dispose]: f.dispose })
+    await expect(read).rejects.toThrow('cancelled permission read')
+    expect(f.dispose).toHaveBeenCalledOnce()
+    const next = Promise.withResolvers<Awaited<ReturnType<typeof f.source.observeSession>>>()
+    f.source.observeSession.mockReturnValue(next.promise)
+    const stale = permissionCatalogDetails(f.context, { sessionId: SessionId('one') }, new AbortController().signal)
+    f.values.sessionQuery = { observeSession: vi.fn() }
+    next.resolve({ events: [], [Symbol.dispose]: f.dispose })
+    await expect(stale).rejects.toMatchObject({ code: 'mayflyHost/session-stale' })
+    expect(f.dispose).toHaveBeenCalledTimes(2)
+    f.source.observeSession.mockResolvedValue({ events: [], [Symbol.dispose]: f.dispose })
+    f.context.get = (() => undefined) as typeof f.context.get
+    await expect(permissionCatalogDetails(f.context, { sessionId: SessionId('one') }, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'mayflyHost/session-stale' })
+    expect(f.dispose).toHaveBeenCalledTimes(3)
   })
 })

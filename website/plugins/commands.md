@@ -1,6 +1,6 @@
 # dsh 原生命令
 
-Mayfly 不定义 command adapter。插件依赖
+Host 插件注册原生 dsh command。插件依赖
 `@deepseek-ai/dsh-commands` 并直接使用 `ctx.commands`。
 
 ```ts
@@ -21,9 +21,10 @@ export function apply(ctx: Context): void {
 }
 ```
 
-需要当前 session 时，同时 inject `mayflyCurrentAgent`，在 handler 执行时获取
-Agent，再把 `agent.session` 传给原生 `sessionProjections` 等 service。
-Command definition、args/options 和返回值以
+这个 entry 运行在 Host。原生 handler 通过 `invocation.agent` 取得所选会话的精确
+Agent，再把其 Session 传给 `sessionProjections` 等 Host service。Remote 编辑器发现
+该 Session 的原生命令目录，并通过官方 Client transport 分发。Host handler 返回
+可序列化 command result，不能直接打开前端本地 overlay。定义、参数与结果以
 [Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)
 为准。
 

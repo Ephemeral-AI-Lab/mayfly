@@ -77,10 +77,27 @@ interface ActiveBtw {
   readonly lease: HostViewLease
 }
 
+interface PendingBtw {
+  readonly controller: AbortController
+  readonly signal: AbortSignal
+  readonly leases: Set<HostViewLease>
+}
+
+/** Abort a local wait without altering the admitted Host operation or another view lease. */
+function waitForBtw<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = (): void => { reject(signal.reason) }
+    signal.addEventListener('abort', abort, { once: true })
+    // Observe both outcomes even after retirement so late native failures are handled.
+    void promise.then(value => { signal.removeEventListener('abort', abort); resolve(value) }, error => { signal.removeEventListener('abort', abort); reject(error) })
+    if (signal.aborted) { signal.removeEventListener('abort', abort); abort() }
+  })
+}
+
 /** Owns one BTW view while leaving parent, displayed, and cold bindings independent. */
 export class RemoteBtwService {
   private active: ActiveBtw | undefined
-  private pending: AbortController | undefined
+  private pending: PendingBtw | undefined
   private tail: Promise<unknown> = Promise.resolve()
   private disposed = false
 
@@ -102,17 +119,22 @@ export class RemoteBtwService {
     if (question.trim() === '') return Promise.reject(new Error('BTW question must not be empty'))
     if (this.disposed) return Promise.reject(new RemoteBtwSupersededError('BTW service is disposed'))
     if (options.signal?.aborted) return Promise.reject(options.signal.reason)
-    this.pending?.abort(new RemoteBtwSupersededError('BTW request was replaced'))
+    this.pending?.controller.abort(new RemoteBtwSupersededError('BTW request was replaced'))
     const previous = this.active
     this.active = undefined
     previous?.lease.release()
     const controller = new AbortController()
-    this.pending = controller
     const signal = options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal])
-    const operation = this.tail.then(() => this.execute(parent, question, options, signal))
+    const pending: PendingBtw = { controller, signal, leases: new Set() }
+    this.pending = pending
+    const release = (): void => { for (const lease of pending.leases) lease.release(); pending.leases.clear() }
+    signal.addEventListener('abort', release, { once: true })
+    const operation = this.tail.then(() => this.execute(parent, question, options, pending))
     this.tail = operation.catch(() => undefined)
     const settled = (): void => {
-      if (this.pending === controller) this.pending = undefined
+      signal.removeEventListener('abort', release)
+      release()
+      if (this.pending === pending) this.pending = undefined
     }
     void operation.then(settled, settled)
     return operation
@@ -161,7 +183,7 @@ export class RemoteBtwService {
   /** Close the pending or displayed view and report whether one existed; Host work keeps its own lifetime. */
   close(): boolean {
     const existed = this.pending !== undefined || this.active !== undefined
-    this.pending?.abort(new RemoteBtwSupersededError('BTW view was closed'))
+    this.pending?.controller.abort(new RemoteBtwSupersededError('BTW view was closed'))
     this.pending = undefined
     const active = this.active
     this.active = undefined
@@ -184,15 +206,17 @@ export class RemoteBtwService {
     parent: SessionRef,
     question: string,
     options: RemoteBtwAskOptions,
-    signal: AbortSignal,
+    pending: PendingBtw,
   ): Promise<RemoteResult<RemoteBtwSession>> {
+    const { signal } = pending
     this.assertCurrent(signal)
     const parentLease = this.actions.retainView(parent, 'btw-parent')
+    pending.leases.add(parentLease)
     let childLease: HostViewLease | undefined
     try {
       const client = this.registry.get(parent.host)!
       const generation = client.state.getSnapshot().generation
-      const binding = await parentLease.ready
+      const binding = await waitForBtw(parentLease.ready, signal)
       const assertCurrent = (): void => {
         this.assertCurrent(signal)
         if (this.registry.get(parent.host) !== client || client.state.getSnapshot().generation !== generation || parentLease.reference.binding !== binding) {
@@ -236,7 +260,8 @@ export class RemoteBtwService {
       assertCurrent()
       if (!selected.ok) return selected
       childLease = this.actions.retainView(child, 'btw')
-      await childLease.ready
+      pending.leases.add(childLease)
+      await waitForBtw(childLease.ready, signal)
       assertCurrent()
       const queueFailure = await this.clearInheritedQueue(child, childLease, () => { assertCurrent() })
       if (queueFailure !== undefined) return { ok: false, error: queueFailure }
@@ -251,6 +276,7 @@ export class RemoteBtwService {
       assertCurrent()
       if (!prompted.ok) return prompted
       const lease = childLease
+      pending.leases.delete(lease)
       this.active = { parent, child, lease }
       return {
         ok: true,
@@ -266,8 +292,12 @@ export class RemoteBtwService {
         },
       }
     } finally {
+      pending.leases.delete(parentLease)
       parentLease.release()
-      if (this.active?.lease !== childLease) childLease?.release()
+      if (childLease !== undefined) {
+        pending.leases.delete(childLease)
+        if (this.active?.lease !== childLease) childLease.release()
+      }
     }
   }
 

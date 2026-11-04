@@ -29,14 +29,17 @@ const agentSchema = z.object({
   outcome: z.enum(['completed', 'failed', 'cancelled']).optional(),
   interrupted: z.literal(true).optional(),
 })
-const workflowPhaseSchema = z.custom<WorkflowPhase>(value => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
-  const phase = value as { title?: unknown, detail?: unknown, provider?: unknown, model?: unknown }
-  return typeof phase.title === 'string'
-    && (phase.detail === undefined || typeof phase.detail === 'string')
-    && (phase.provider === undefined || typeof phase.provider === 'string')
-    && (phase.model === undefined || typeof phase.model === 'string')
-})
+const workflowPhaseSchema: z.ZodType<WorkflowPhase> = z.object({
+  title: z.string(),
+  detail: z.string().optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+}).transform(({ title, detail, provider, model }) => ({
+  title,
+  ...detail === undefined ? {} : { detail },
+  ...provider === undefined ? {} : { provider },
+  ...model === undefined ? {} : { model },
+}))
 const runSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -229,7 +232,7 @@ export class WorkflowLiveCatalog {
     ctx.on('workflow/start', info => {
       const run = this.ensure(info)
       run.name = info.meta.name
-      run.phases = info.meta.phases
+      run.phases = info.meta.phases?.map(phase => workflowPhaseSchema.parse(phase))
       run.startedAt = Date.now()
       this.emit(info)
     })
@@ -380,7 +383,7 @@ export async function* followWorkflow(
     const signature = JSON.stringify(value)
     if (signature === lastSignature) return undefined
     lastSignature = signature
-    return { type: 'replacement', value }
+    return frozen({ type: 'replacement', value })
   }
   const publish = (): void => {
     try {
@@ -403,7 +406,7 @@ export async function* followWorkflow(
     signal.throwIfAborted()
     const baseline = catalog.snapshot(ctx, session)
     lastSignature = JSON.stringify(baseline)
-    yield { type: 'baseline', value: baseline }
+    yield frozen({ type: 'baseline', value: baseline })
     for await (const next of queue) yield next
   } finally {
     offCatalog()

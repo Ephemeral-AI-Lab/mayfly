@@ -302,6 +302,22 @@ describe('layout and the visible clock', () => {
     expect(host.scrolls).toEqual([])
   })
 
+  it('preserves a replacement marker with the same boundary while an old layout dismissal is queued', async () => {
+    const marker = new NewMessages(host)
+    marker.observe(['a'], false)
+    marker.observe(['a', 'b'], true)
+    host.tailValue = { away: true, top: 10, viewport: 5 }
+    host.rowValue = 1
+    marker.layout()
+    marker.reset()
+    marker.observe(['a'], false)
+    expect(marker.observe(['a', 'b'], true)).toBe('b')
+    await Promise.resolve()
+    expect(marker.pending).toBe(true)
+    expect(host.scrolls).toEqual([])
+    expect(host.republishes).toBe(0)
+  })
+
   it('cancels a scheduled dismissal when the marker is reset before the microtask runs', async () => {
     const marker = pending()
     host.rowValue = 9

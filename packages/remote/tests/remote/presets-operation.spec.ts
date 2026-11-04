@@ -94,6 +94,17 @@ function selection(host: HostClient, sessionId = 'session-1'): RemoteFeatureSele
 }
 
 describe('mountRemotePresetOperations', () => {
+  it('refuses readonly by-name switching without mutating Session or Host defaults', async () => {
+    const f = fixture()
+    const host = client([{ id: 'alpha' }])
+    f.attach(host as unknown as HostClient, { ...selection(host as unknown as HostClient), access: 'readonly' })
+    const dispose = mountRemotePresetOperations(f.context)
+    await f.execute('alpha')
+    expect(host.remote.agentPresets.select).not.toHaveBeenCalled()
+    expect(host.remote.settings.mutate).not.toHaveBeenCalled()
+    expect(f.notice.set).toHaveBeenCalledExactlyOnceWith('This conversation is read-only', 'error')
+    dispose()
+  })
   it('registers exactly the preset command and unregisters it on dispose', () => {
     const f = fixture()
     const dispose = mountRemotePresetOperations(f.context)

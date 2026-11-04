@@ -12,14 +12,12 @@ plugins:
 | `overlay` | `commands`, `settings`, `mayflyOverlays` | native command opening a capturing overlay |
 | `ui-gallery` | `mayflyPanes` | public node builders |
 
-`@mayfly-example/ecosystem` activates all five runtime examples
-through five ordinary Cordis rows:
-
-```sh
-dsh plugin --profile mayfly-examples add @ephemeral-ai/mayfly
-dsh plugin --profile mayfly-examples add @mayfly-example/ecosystem
-dsh --profile mayfly-examples
-```
+The examples are publish-shaped package and renderer fixtures. The UI-only
+entries can be source-integrated into a dedicated Remote composition. The
+`overlay` example deliberately combines native commands/settings with UI and
+belongs to the private in-process fixture; a split implementation separates its
+Host reads/writes from its frontend overlay using official Client/Remote DTOs.
+The `ecosystem` patch does not install terminal UI into the current Host.
 
 The examples prove package entries, direct `inject`, renderer-neutral output,
 Fiber unload, publish-shaped pack/install, and narrow-width rendering. They

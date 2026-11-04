@@ -25,6 +25,19 @@ recorded-file and MCP-resource reads. It is
 not a generic filesystem, arbitrary-tool, or Host lifecycle API. Its generated
 DTO contract lives in `packages/host/src/types.ts` and the Host package README.
 
+`statsHistory` requires global Host authorization before any catalog or history
+read, including requests limited to the current workspace. `statsSession`
+requires only the named Session's authorization. Raw settings-document saves
+share the native profile lock across Host instances and native configuration
+writers; revision comparison, atomic replacement, and the returned document
+read occur under that lock. This remains partial protection against external
+editors that ignore the lock and can race after the final revision check.
+
+Workspace-change reads use comparisons retained by the native Host service and
+return `null` when unavailable. Host restart or Session disposal may remove
+those comparisons; readonly browsing never activates a Session or restores a
+separate workspace-history store.
+
 Durable Mayfly conversation and facts projections live on the Host. Remote
 reads complete latest values, then overlays only transient current-attempt
 stream content. Reconnect replaces the baseline; old history must not replay
@@ -36,7 +49,9 @@ and cold-child Agent controls without resumption. Frontend extension hot mountin
 and an isolated Host boot check also lack an official Remote API.
 The root README describes each partial behavior and its
 visible feedback. These API boundaries do not excuse missing workflows when
-native operations already exist.
+native operations already exist. Capability additions stay in Mayfly Host
+composition and its serializable Remote contract; dsh upstream is not modified
+to supply them.
 
 ## TUI contribution services
 

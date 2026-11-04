@@ -41,7 +41,7 @@ const other = (overrides: Record<string, unknown>): TranscriptEntryModel => ({
 } as unknown as TranscriptEntryModel)
 
 const lines = (count: number, prefix = 'line'): string => Array.from({ length: count }, (_, index) => `${prefix} ${String(index + 1)}`).join('\n')
-const user = (turn: number, text: string): TranscriptEntryModel => ({ ...base(turn), id: `user:${String(seq)}`, kind: 'transcript-user', text, images: [] })
+const user = (turn: number, text: string): TranscriptEntryModel => ({ ...base(turn), id: `user:${String(seq)}`, kind: 'transcript-user', text, attachments: [] })
 const reply = (turn: number, text: string): TranscriptEntryModel => ({ ...base(turn), id: `assistant:${String(seq)}`, kind: 'transcript-assistant', step: 3, text, streaming: false })
 
 const closedTurn = (turn: number): TranscriptModel['turns'] => [{ turn, startedAt: NOON, endedAt: NOON + 9_000, outcome: 'completed' }] as TranscriptModel['turns']

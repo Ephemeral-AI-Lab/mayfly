@@ -78,7 +78,7 @@ describe('live draft overlays', () => {
     // A baseline settled entry and the live draft for the SAME step: the
     // settled entry wins and the draft is dropped.
     projections.emit(session, 'mayflyConversation', projection([
-      { kind: 'user', id: 'user:2', seq: 2, updatedSeq: 2, turn: 1, text: 'question', images: [] },
+      { kind: 'user', id: 'user:2', seq: 2, updatedSeq: 2, turn: 1, text: 'question', attachments: [] },
       { kind: 'assistant', id: 'assistant:1:0', seq: 3, updatedSeq: 3, turn: 1, step: 0, text: 'settled', streaming: false },
     ], false, ['1:0']))
     ctx.emit('agent/assistant-stream', { agent, frame: { type: 'start', attemptId: 'a' as never, revision: 1, turn: 1, step: 0 } } as never)
@@ -158,7 +158,7 @@ describe('live draft overlays', () => {
     source.attach(session, undefined, agent)
     const settled = {
       ...projection([
-        { kind: 'user', id: 'user:2', seq: 2, updatedSeq: 2, turn: 1, text: 'question', images: [] },
+        { kind: 'user', id: 'user:2', seq: 2, updatedSeq: 2, turn: 1, text: 'question', attachments: [] },
         { kind: 'assistant', id: 'assistant:1:0', seq: 3, updatedSeq: 3, turn: 1, step: 0, text: 'settled', streaming: false },
       ], false, ['1:0']),
       turns: [{ turn: 1, startedAt: 0, endedAt: 5, outcome: 'completed' }],
@@ -176,7 +176,7 @@ describe('live draft overlays', () => {
     // Once the projection moves to a newer turn, the same draft stays stale.
     projections.emit(session, 'mayflyConversation', {
       ...settled,
-      entries: [...settled.entries, { kind: 'user', id: 'user:3', seq: 4, updatedSeq: 4, turn: 2, text: 'next', images: [] }],
+      entries: [...settled.entries, { kind: 'user', id: 'user:3', seq: 4, updatedSeq: 4, turn: 2, text: 'next', attachments: [] }],
       streaming: true,
       turns: [...settled.turns, { turn: 2, startedAt: 6 }],
     })
@@ -333,7 +333,7 @@ describe('live draft overlays', () => {
     const session = { ...base.session, id: 'same-session-object' } as unknown as Session
     const agent = { ...base, id: 'same-session-object', session: { ...session } } as unknown as Agent
     projections.set(session, { mayflyConversation: projection([
-      { kind: 'user', id: 'user:1', seq: 1, updatedSeq: 1, turn: 1, text: 'question', images: [] },
+      { kind: 'user', id: 'user:1', seq: 1, updatedSeq: 1, turn: 1, text: 'question', attachments: [] },
     ], true) })
     const draft = {
       sessionId: 'same-session-object', attemptId: 'a', revision: 1, turn: 1, step: 0, phase: 'composing',

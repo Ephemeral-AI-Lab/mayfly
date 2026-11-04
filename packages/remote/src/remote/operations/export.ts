@@ -5,8 +5,9 @@
  * @module @ephemeral-ai/mayfly/remote/operations/export
  */
 
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { renameSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import type { ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import { memoizedLocaleTranslator } from '@ephemeral-ai/mayfly/frontend'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
@@ -33,6 +34,7 @@ const zh: Readonly<Record<string, string>> = {
 
 class RemoteExportCommand {
   private readonly t: MayflyTranslate
+  private readonly writes = new Map<string, Promise<void>>()
   private active = true
 
   constructor(private readonly context: RemoteOperationsContext) {
@@ -88,22 +90,40 @@ class RemoteExportCommand {
     await mkdir(dirname(target), { recursive: true })
     assertCurrent()
     try {
-      const previous = await readFile(target).catch((error: unknown) => {
-        if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return undefined
-        throw error
-      })
+      const previous = this.writes.get(target) ?? Promise.resolve()
+      const operation = previous.then(() => this.write(target, markdown, assertCurrent))
+      const settled = operation.then(() => undefined, () => undefined)
+      this.writes.set(target, settled)
+      try { await operation }
+      finally { if (this.writes.get(target) === settled) this.writes.delete(target) }
       assertCurrent()
-      try {
-        await writeFile(target, markdown, 'utf8')
-        assertCurrent()
-      } catch (error: unknown) {
-        await (previous === undefined ? unlink(target) : writeFile(target, previous)).then(undefined, () => undefined)
-        throw error
-      }
     } catch (error: unknown) {
       throw new Error(`could not write export: ${remoteErrorMessage(error)}`)
     }
     this.context.base.notice.set(this.t(full ? 'exported {count} events to {path}' : 'exported {count} items to {path}', { count, path: target }), 'success')
+  }
+
+  private async write(target: string, markdown: string, assertCurrent: () => void): Promise<void> {
+    assertCurrent()
+    const read = async (): Promise<Buffer | undefined> => readFile(target).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return undefined
+      throw error
+    })
+    const previous = await read()
+    assertCurrent()
+    const temporary = await mkdtemp(join(dirname(target), '.mayfly-export-'))
+    try {
+      assertCurrent()
+      const staged = join(temporary, 'export')
+      await writeFile(staged, markdown, 'utf8')
+      assertCurrent()
+      const latest = await read()
+      assertCurrent()
+      if (previous === undefined ? latest !== undefined : latest === undefined || !previous.equals(latest)) throw new Error('The export destination changed during export')
+      // Admission and the atomic local commit share one synchronous turn. A
+      // later selection change never rolls back a committed destination.
+      renameSync(staged, target)
+    } finally { await rm(temporary, { recursive: true, force: true }).catch(() => {}) }
   }
 }
 

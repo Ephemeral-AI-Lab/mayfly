@@ -23,7 +23,7 @@
 import { Markdown, type MarkdownTheme } from '@earendil-works/pi-tui'
 import { Marked, type Token, type TokenizerAndRendererExtension, type Tokens } from 'marked'
 import { CONTENT_SEGMENT_UNITS } from './content-segments.ts'
-import { highlightCodeLines } from './highlight.ts'
+import type { CodeHighlighter } from './highlight.ts'
 import { renderMermaidRows, splitRichDocument } from './rich-document.ts'
 import type { MayflySemanticColors } from './types.ts'
 
@@ -34,7 +34,7 @@ import type { MayflySemanticColors } from './types.ts'
  * markers are normalized to `•`, and fenced code goes through cli-highlight
  * via `highlightCode`, which recolors lines without changing their count.
  */
-export function markdownTheme(colors: MayflySemanticColors): MarkdownTheme {
+export function markdownTheme(colors: MayflySemanticColors, highlighter: CodeHighlighter): MarkdownTheme {
   return {
     heading: (text) => `\x1b[1m${colors.mdHeading(text)}\x1b[22m`,
     link: colors.mdLink,
@@ -50,7 +50,7 @@ export function markdownTheme(colors: MayflySemanticColors): MarkdownTheme {
     italic: colors.text,
     strikethrough: colors.muted,
     underline: colors.text,
-    highlightCode: (code, lang) => highlightCodeLines(code, lang, { base: colors.mdCodeBlock, keyword: colors.primary, string: colors.success, comment: colors.muted, number: colors.warning, type: colors.accent, added: colors.diffAdded, removed: colors.diffRemoved }),
+    highlightCode: (code, lang) => highlighter.highlight(code, lang, { base: colors.mdCodeBlock, keyword: colors.primary, string: colors.success, comment: colors.muted, number: colors.warning, type: colors.accent, added: colors.diffAdded, removed: colors.diffRemoved }),
   }
 }
 

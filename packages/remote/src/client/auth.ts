@@ -59,13 +59,7 @@ export function resolveHostEndpoint(startupUrl: string): HostEndpoint {
     throw new HostTransportError('configuration', 'Host startup URL must contain exactly one token')
   }
 
-  const baseUrl = new URL(startup.href)
-  baseUrl.search = ''
-  baseUrl.hash = ''
-  if (baseUrl.pathname.endsWith('/connect')) {
-    baseUrl.pathname = baseUrl.pathname.slice(0, -'/connect'.length)
-  }
-  if (!baseUrl.pathname.endsWith('/')) baseUrl.pathname += '/'
+  const baseUrl = canonicalHostBaseUrl(startup)
   const connectUrl = new URL('connect', baseUrl)
   connectUrl.searchParams.set('token', token)
   connectUrl.searchParams.set('interactions', 'answer')
@@ -84,6 +78,13 @@ export function resolveHostEndpoint(startupUrl: string): HostEndpoint {
       return resolveMounted(socketBaseUrl, input, 'Host WebSocket')
     },
   }
+}
+
+/** Canonical non-secret Host identity shared by transport and frontend selection. */
+export function canonicalHostBaseUrl(startup: URL): URL {
+  let path = startup.pathname.replace(/\/+$/u, '')
+  if (path.endsWith('/connect')) path = path.slice(0, -'/connect'.length)
+  return new URL(`${startup.origin}${path}/`)
 }
 
 /** Own token exchange, credential invalidation, and the public lifecycle source. */

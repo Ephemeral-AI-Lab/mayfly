@@ -14,6 +14,17 @@ function broker(fetch: RpcFetch = async () => connected()) {
 }
 
 describe('Host endpoint credential boundary', () => {
+  it.each([
+    ['/', '/'], ['/connect', '/'], ['/connect/', '/'], ['/connect///', '/'],
+    ['/mount', '/mount/'], ['/mount/', '/mount/'], ['/mount/connect', '/mount/'], ['/mount/connect/', '/mount/'],
+  ])('shares one canonical base for startup path %s and token changes', (path, base) => {
+    for (const token of ['first', 'second']) {
+      const endpoint = resolveHostEndpoint(`https://host.example${path}?token=${token}&extra=query#fragment`)
+      expect(endpoint.baseUrl.href).toBe(`https://host.example${base}`)
+      expect(endpoint.connectUrl.href).toBe(`https://host.example${base}connect?token=${token}&interactions=answer`)
+    }
+  })
+
   it('accepts both native loopback names and enforces origin, mount, and scheme for every carrier', () => {
     for (const host of ['localhost', '[::1]']) expect(resolveHostEndpoint(`http://${host}/?token=local`).hostname).toBe(host)
     expect(() => resolveHostEndpoint('not a startup URL')).toThrow('startup URL is invalid')

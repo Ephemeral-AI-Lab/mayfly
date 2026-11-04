@@ -5,7 +5,7 @@ import { remoteCommandCatalog, type RemoteCommandDescriptor } from '../../../rem
 import { displayKey } from '../../src/core/key-actions.ts'
 import { SHARED_KEY_REFERENCE } from '../../src/core/ui-key-grammar.ts'
 import type { HelpSection } from '../../src/interaction/help.ts'
-import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
+import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/key-definitions.ts'
 
 // Readonly descriptors from the feature, configuration, and operations mounts.
 // Keep the actual names/aliases and descriptions: Help must admit the shipped

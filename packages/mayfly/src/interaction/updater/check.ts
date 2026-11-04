@@ -193,9 +193,9 @@ function mountNotice(ctx: Context, target: string): void {
   const profile = profileNameFromArgv(process.argv)
   if (readProfileFacts(profileRoot(profile)).linked.length > 0) return
   const rows = updateNoticeRows({ current: MAYFLY_VERSION, target, command: `dsh plugin --profile ${profile} add @ephemeral-ai/mayfly@${target}` })
-  createInteractionNotificationOwner(ctx, 'mayfly.update-check', 'update-check').report('offer', {
+  createInteractionNotificationOwner(ctx, 'mayfly.update-check', () => ({ kind: 'app', targetId: `profile/${profile}` })).report('offer', {
     message: rows[0]!, detail: rows[1]!, severity: 'info',
-  }, { kind: 'app', targetId: `profile/${profile}` })
+  })
 }
 
 /**
@@ -228,9 +228,9 @@ function pendingSwapMarker(): InterruptedNoticeContent | undefined {
  */
 function mountInterruptedNotice(ctx: Context, content: InterruptedNoticeContent): void {
   const rows = interruptedNoticeRows(content)
-  createInteractionNotificationOwner(ctx, 'mayfly.update-recovery', 'update-check').report('interrupted', {
+  createInteractionNotificationOwner(ctx, 'mayfly.update-recovery', () => ({ kind: 'app', targetId: `profile/${profileNameFromArgv(process.argv)}` })).report('interrupted', {
     message: rows[0]!, detail: rows[1]!, severity: 'error',
-  }, { kind: 'app', targetId: `profile/${profileNameFromArgv(process.argv)}` })
+  })
 }
 
 /**

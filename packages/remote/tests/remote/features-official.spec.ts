@@ -162,6 +162,15 @@ describe('remoteProperty and remoteStringProjection', () => {
 })
 
 describe('RemoteFeatureOperation', () => {
+  it('rejects stale or displayed-Session writes through a Host-default operation', () => {
+    const f = fixture()
+    const hostOperation = new RemoteFeatureOperation(f.context, f.client)
+    expect(() => hostOperation.assertWritable()).toThrow('Session selection changed')
+    f.clearSelection()
+    expect(() => hostOperation.assertWritable()).not.toThrow()
+    hostOperation.dispose()
+    expect(() => hostOperation.assertWritable()).toThrow('Session selection changed')
+  })
   it('stays valid only while the exact selection and binding remain current', () => {
     const { context, client, ref, selection, replaceBinding, clearSelection } = fixture()
     const operation = new RemoteFeatureOperation(context, client, selection!)

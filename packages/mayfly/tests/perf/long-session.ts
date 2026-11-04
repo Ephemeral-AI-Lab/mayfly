@@ -6,7 +6,7 @@
  * @module @ephemeral-ai/mayfly/tests/perf/long-session
  */
 
-import type { ConversationEntry, ConversationImage, ConversationJson, ConversationProjection, ConversationToolEntry, ConversationTurn } from '../../src/conversation/types.ts'
+import type { ConversationEntry, ConversationAttachment, ConversationJson, ConversationProjection, ConversationToolEntry, ConversationTurn } from '../../src/conversation/types.ts'
 import type { MayflyComponent } from '../../src/core/types.ts'
 import type { LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
 import type { MayflyScreenService } from '../../src/core/screen.ts'
@@ -75,7 +75,7 @@ const SUBAGENT_META = { description: SUBAGENT_DESCRIPTION }
 
 const TEXT_CONTENT: readonly ConversationJson[] = Object.freeze([{ type: 'text', text: 'ok' }])
 
-const NO_IMAGES: readonly ConversationImage[] = Object.freeze([])
+const NO_IMAGES: readonly ConversationAttachment[] = Object.freeze([])
 
 const NO_PROJECTIONS: ConversationProjectionSource = Object.freeze({
   snapshot: () => ({ asOfSeq: 0, values: {} }),
@@ -187,7 +187,7 @@ export function longSessionProjection(turns: number): ConversationProjection {
     lifecycle.push({ turn, startedAt, endedAt, outcome: 'completed' })
     settledSteps.push(`${String(turn)}:0`, `${String(turn)}:1`)
     const userSeq = ++seq
-    entries.push({ kind: 'user', id: `user-${String(turn)}`, seq: userSeq, updatedSeq: userSeq, turn, text: USER_TEXT, images: NO_IMAGES })
+    entries.push({ kind: 'user', id: `user-${String(turn)}`, seq: userSeq, updatedSeq: userSeq, turn, text: USER_TEXT, attachments: NO_IMAGES })
     const thinkingSeq = ++seq
     entries.push({ kind: 'thinking', id: `thinking-${String(turn)}`, seq: thinkingSeq, updatedSeq: thinkingSeq, turn, step: 0, text: THINKING_TEXT, streaming: false })
     const assistantSeq = ++seq

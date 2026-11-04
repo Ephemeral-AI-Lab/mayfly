@@ -5,7 +5,7 @@ import type { TranscriptEntryModel } from '../../src/frontend/models.ts'
 import { createTranscriptModel } from '../../src/transcript/transcript-model.ts'
 import { findHits, readPattern } from '../../src/transcript/search.ts'
 
-const user = (id: string, turn: number, text: string): TranscriptEntryModel => ({ id, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, images: [] })
+const user = (id: string, turn: number, text: string): TranscriptEntryModel => ({ id, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, attachments: [] })
 const assistant = (id: string, turn: number, text: string): TranscriptEntryModel => ({ id, kind: 'transcript-assistant', seq: turn, updatedSeq: turn, turn, step: 1, text, streaming: false })
 
 describe('readPattern', () => {

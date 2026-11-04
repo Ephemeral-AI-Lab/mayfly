@@ -100,7 +100,10 @@ function failureText(result: ChangeResult): string {
  */
 export function registerPluginCommand(ctx: Context): () => void {
   const t = interactionTranslator(ctx)
-  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.market', 'plugin-market')
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.market', () => {
+    const agent = ctx.get('mayflyCurrentAgent')?.current()
+    return agent == null ? { kind: 'app', targetId: 'plugin-market' } : { kind: 'session', sessionId: String(agent.id) }
+  })
   /** Set when this fiber unloads: awaits must gate continuations on it. */
   let unloaded = false
   /** The status footer chip for changes that wait for a restart; made on the first change. */

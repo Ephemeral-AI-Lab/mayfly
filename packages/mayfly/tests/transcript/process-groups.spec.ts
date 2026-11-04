@@ -10,7 +10,7 @@ import { withOverrides, type Overrides } from '../fixture-fields.ts'
 type Entry = TranscriptModel['entries'][number]
 let seq = 0
 const base = (turn: number) => ({ seq: ++seq, updatedSeq: seq, turn })
-const user = (turn: number, text = 'ask'): TranscriptEntryModel => ({ kind: 'transcript-user', id: `u${String(seq + 1)}`, ...base(turn), text, images: [] })
+const user = (turn: number, text = 'ask'): TranscriptEntryModel => ({ kind: 'transcript-user', id: `u${String(seq + 1)}`, ...base(turn), text, attachments: [] })
 const reply = (turn: number, step: number, text: string): TranscriptEntryModel => ({ kind: 'transcript-assistant', id: `a${String(seq + 1)}`, ...base(turn), step, text, streaming: false })
 const think = (turn: number, step: number, text = 'plan'): TranscriptEntryModel => ({ kind: 'transcript-thinking', id: `t${String(seq + 1)}`, ...base(turn), step, text, streaming: false })
 type ToolEntry = Extract<TranscriptEntryModel, { kind: 'transcript-tool' }>

@@ -8,7 +8,7 @@ import type { ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm/types'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials/types'
 import type { AuthorizationNotice } from '@deepseek-ai/dsh-authorization/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
+import type { SubagentListEntry } from '@deepseek-ai/dsh-subagent/client'
 import type { SessionProjectionSummaryExcluded } from '@deepseek-ai/dsh-session-projection/types'
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools/presentation'
 import type { TypertResource } from '@deepseek-ai/dsh-typert-protocol'
@@ -388,7 +388,7 @@ export interface MayflyPermissionSpec {
   readonly approval: 'ask' | 'never'
 }
 
-/** Permission rows and their resolved bundles, plus yolo state for an optional current value. */
+/** Permission rows and bundles, plus the exact Session or future-Session default yolo state. */
 export interface MayflyPermissionCatalogDetails {
   readonly options: readonly { readonly value: string, readonly name: string, readonly description?: string | undefined }[]
   readonly defaultOptions: readonly { readonly value: string, readonly name: string, readonly description?: string | undefined }[]
@@ -397,9 +397,9 @@ export interface MayflyPermissionCatalogDetails {
   readonly yolo: boolean
 }
 
-/** Optional current-preset input for yolo evaluation. */
+/** Exact passive Session read; omission reads the native default for future Sessions. */
 export interface MayflyPermissionCatalogRequest {
-  readonly currentPreset?: string | undefined
+  readonly sessionId?: SessionId | undefined
 }
 
 /** One API wallet, preserving decimal strings exactly as the provider returned them. */
@@ -432,7 +432,9 @@ export interface MayflySettingsDocumentWrite {
 export type MayflySubagentStopBlocked = 'not-continuable' | 'not-live' | 'live-descendants' | 'parent-not-live'
 
 /** Native complete descendant row and readonly current live measurements. */
-export type MayflySubagentTreeEntry = SubagentDescendantListEntry & {
+export type MayflySubagentTreeEntry = SubagentListEntry & {
+  readonly parentId: SessionId
+  readonly depth: number
   readonly live?: boolean
   readonly tokens?: number
   readonly toolCount?: number

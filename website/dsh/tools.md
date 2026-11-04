@@ -64,7 +64,7 @@ dsh 自带的工具目录，按用途分组。哪些工具真正出现在你的�
 | 工具 | 说明 |
 | --- | --- |
 | `run_code` | 执行一段 TypeScript 程序（async 函数体），经绑定调用其他工具——`tools.mode: code/both` 时的保留传输 |
-| `cordis_*`（opt-in） | `cordis_define` / `cordis_inspect_*` / `cordis_run` / `cordis_stop` / `cordis_undefine`：运行时定义、检查、启停动态 Cordis 插件 |
+| `cordis_*`（opt-in） | `cordis_inspect_list` / `cordis_inspect_query`：alpha.2 检查公开 Cordis provider 与 schema，不提供面向模型的定义、运行、停止或删除工具 |
 
 ::: tip 完整 Schema
 每个工具的参数 Schema 由官方[工具目录](https://deepseek-harness.github.io/deepseek-harness/reference/tool-catalog)生成维护——本页是用途速查，字段细节以那边为准。Mayfly 会话里工具调用的呈现见[流式会话与工具卡片](/features/streaming)。

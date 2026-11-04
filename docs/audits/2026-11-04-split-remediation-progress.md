@@ -1,0 +1,101 @@
+# 分体审计修复实施记录
+
+本记录对应 [T01–T27 原始任务单](2026-11-04-split-remediation-tasks.md)，基线为 `5a834609`。原始问题描述保留；本记录说明实际实施选择、提交和验证状态。
+
+## 已确认的实施边界
+
+- 本轮所有能力补充均在 Mayfly Host 内完成，使用公开原生服务；不修改、升级 dsh 上游，也不把缺失能力转交上游实施。
+- 按依赖关系分批并行实施。Host、Remote、独立验证各使用独立 worktree；集成者负责合同、生成声明、包元数据和组合验证。此执行方式取代任务单中逐项串行的要求。
+- T05 采用原生 ConfigEditor 相同的 profile `package.json` 文件锁，在锁内读 revision、校验、原子写并读回。用户接受不合作的外部编辑器绕过锁时仍可能发生竞争，因此 T05 必须报告为**部分修复**，不能宣称任意进程之间都有 raw-document compare-and-write 保证。
+- `/changes [seq]` 读取原生保留的比较；原生比较随 Session disposal 消失，Host 重启后可能返回无可用比较。空态必须安全、只读且不激活 Agent，不新增独立 workspace 历史 store。
+- immutable rc.2 reference 不变，不从 candidate 重写 golden。已有 strict parity 红项与新回归分别记录。
+- 集成在 `fix/split-remediation`，不合入 main，直到适用的运行配置和 Website 人工验收完成。
+
+## 各任务提交
+
+下表的“已实现”表示代码与局部回归已交付，不等同于组合门禁或人工验收已完成。
+
+| 任务 | 集成提交 | 实施与局部验证 |
+| --- | --- | --- |
+| T01 | `65320f8d`、`78adba58` | statsHistory 显式 global 授权，覆盖真实 Gateway 拒绝时零 corpus 读取；Remote 显式提示失败；独立复核通过 |
+| T02 | `926b9ba2`、`0dc9a799` | 首次创建按 Host/Client/generation 隔离，真实 editor submission 覆盖附件与启动意图；独立复核通过 |
+| T03 | `870fe7ef` | controller/operation 统一写入 admission，readonly 不退化为 Host 默认写；独立复核通过 |
+| T04 | `e0d8c751` | 按规范化目标排队、同目录私有 staging、同步原子提交、仅清理本次临时文件；独立复核通过 |
+| T05 | `b50a1eda` | **部分修复**：共享 profile 锁与原子写，跨进程协作 writer 回归通过；不合作外部编辑器限制如上 |
+| T06 | `fa0ba576`、`a4201183`、`b55afdb3`、`a4245c46` | Host/schema/checkpoint、共享 Transcript、export/copy、Remote 图片读取保留有序 file/image 元数据；真实 HTTP/WebSocket、ordered file/image/file、file-only、reconnect 与精确 Session receipt 通过；flow 图片永久 loader 相邻缺陷另补回归并修复，严格真实复验已通过，最终顺序含 diagram.png，禁止残留 loader |
+| T07 | `691ec5fc` | editor key 经官方 `client.remote.session.openWorkspacePath`，精确所有者与迟到反馈回归；独立复核通过 |
+| T08 | `25b2369e` | `/changes [seq]` 复用 Files/diff，指定 seq 不跟随 latest；39 项局部回归；真实 Host 两个 seq（42/77）、latest、无效 seq/索引、8 个宽/窄 PTY checkpoint 通过；冷重启无 comparison 的 RPC 不激活、不写 event |
+| T09 | `4676f461`、`aa26732c` | Host 被动读取实际权限 knobs，Remote 独立组合 plan/yolo；custom/withdrawn、sessionless/readonly、授权/卸载/乱序覆盖；相关运行时文件局部覆盖率 100% |
+| T10 | `cec754a7` | MCP resource 错误固定安全文本与 server 标识，wire/普通日志无连接原文；独立复核通过 |
+| T11 | `6a3b4903` | HostKey 与 transport 共用 URL 规范化；root/connect/mount/token/query 隔离回归 |
+| T12 | `ad07cbbc` | service-owned pending leases 与 abort-aware ready wait，close/replacement/dispose 不等待永不结束的 acquisition；局部覆盖率 100% |
+| T13 | `b2cee041` | 仅确认相同 cold revision 后复用缓存，live 重算，失败不预填旧快照；独立复核通过 |
+| T14 | `c2183479` | diff model 与 palette 高亮分离，Dark→Light→Dark 与 fresh render 对照 |
+| T15 | `dda54f3a` | lazy source 带 surface owner；共享 paint cache，dispose 后通知与计数不串实例 |
+| T16 | `3c55b237` | focus observation 共用 surface slot，跨控件 newest-wins，其他观察独立 |
+| T17 | `d02c5c10` | layout microtask 捕获 marker generation 和 boundary，reset 后新 marker 保留 |
+| T18 | `a846e596`、`fb3e6acc` | duplicate occurrence 在归属、交互与 copy/disclosure 前统一规范化；歧义目标安全拒绝；独立复核通过 |
+| T19 | `6b7dd4e4` | numstat 失败为 unknown，取消与失败不污染 cache；独立复核通过 |
+| T20 | `e9fb8fab` | 保护当前五个 release 包，catalog/unlisted/direct 路径一致，指引 `/update`；第三方管理保留 |
+| T21 | `21494996`、`fe97f31d`、`a375fccb` | authorization/workflow/balance 出口 detached/frozen；独立 phase 别名回归与修复复核通过 |
+| T22 | `81fa7e3a` | public conversation/transcript runtime 闭包不触达 durable fold，transient 与 Host 同输入对照；旧代码回归为红 |
+| T23 | `7cc5a784`、`cdbf1134`、`25c07a17` | Host 唯一 Conversation DTO owner，shared 仅 type reuse；Remote 从生成 namespace 推导，保留 stream/uplink；外部 pack fixture 扩展 |
+| T24 | `81bbae3c` | headless runtime 闭包、Core 宽度布局、实例高亮 cache 与 disposal；6,514 项 Mayfly 回归，14 个相关运行时文件局部覆盖率 100% |
+| T25 | `f040586f`、`0c236c3e`、`6319e131`、`e20ddaad` | 显式 notification scope，移除旧 public lookup/export，key 常量拆出纯模块，commander/yaml 归 dev；Gallery 通过真实 prepare/publish ACK，无 observation upsert |
+| T26 | `4d42180f`、`73c1bd8e`、`7bc325a2` | 双语 README、能力 map、Host/Remote、42 个双语 Website 页及参考版本号修正；version 10 项回归与独立严格 Website build 通过 |
+| T27 | `831dd0ac` | 有界 Ctrl+C 重试与细分退出诊断，假终端回归及真实 focus/changelog smoke 通过；不宣称 strict parity 已全部通过 |
+
+T06 真实验证另外发现启动目录协调缺陷，已在 `a8ae7686` 修复：等待官方 Connection generation 后再加入原生 Session 目录刷新。修复前受控回归失败，修复后 app 115 项测试及逐文件 100% 覆盖通过；不修改 dsh。
+
+T06 真实图片读取进一步定位到既存 flow 渲染缓存缺陷：HTTP 45ms 返回原始 PNG 的全部 90 字节，但缓存的 list block 永久保留 loader。`a5c64b70` 固定原先失败的回归，`813bc0fe` 在图片 repaint 时同时清空 flow block 缓存；图片、列表和性能预算 138 项通过。`0baa98c8` 加强真实验证，必须看到最终图片 metadata fallback，禁止将 pending loader 算作完成。该 PTY 不支持内联图片协议，因此不宣称图像像素已在终端显示。`fd6a8a46` 进一步修复唯一 image provider 卸载时 pending→missing 不通知的问题，覆盖迟到成功/失败与 surface 先卸载的分支。
+
+## 组合验证与验收
+
+最终完整门禁运行在 `23c106c8`（运行时代码最后修改于 `fd6a8a46`），命令为 `COREPACK_HOME=/home/x/.cache/node/corepack pnpm run verify:full`。显式使用本机已缓存的固定版本 pnpm，避免隔离 HOME 反复下载 Corepack；没有修改依赖版本。原始结果为 **FAIL**，不得宣称完整严格 parity 已通过。
+
+- Workflow、typecheck、lint、diagrams、build、lib exports、agent docs、examples、pack 均通过。五个 tarball 的外部安装、公开 runtime 和严格类型消费检查通过。
+- 529 个套件通过、2 个既有套件跳过；9,153 项测试通过、2 项既有测试跳过。583 个可执行文件的 statements/branches/functions/lines 均为逐文件 100%，未放宽阈值或排除运行时代码。最终完整门禁再次确认了稳定构建下的独立覆盖率结果。
+- CLI registry smoke 首次安装遇到上游请求超时及原生浮动 peer 警告，在 300 秒期限内未完成；原始门禁保留该失败。同一批 tarball、同一检查独立复测通过，日志 `/tmp/mayfly-remediation-cli-registry-retry.log` 含 `CLI_LOCAL_REGISTRY_SMOKE_PASS`。独立对照确认 Host → native Web/app-boot 的依赖链在审计基线中已经存在，本轮没有新增该闭包，没有修改 pins 或接受 fatal peer 错误。
+- 完整 21 个 split 场景均尝试执行：16 个 strict pass，共 228 个检查点；network 的 3 个真实恢复检查点通过，保持 behavior-only 标签。实际运行的 20 个 candidate 场景（包含产生差异的场景）before/after hash 全部相同且 `stable=true`，统一为 `614e8cd63952bd2c4a781481b45358bd12ecdd8d7fc4e179ac5d78c83ed695f4`；files 在 reference 阶段失败，没有 candidate fingerprint。
+- `changelog`（4 个检查点）和 `focus-resize`（9 个检查点）本轮均 strict pass，原先退出时序红项不再出现。
+- 原始报告与日志保留于 `.artifacts/verify/{report.json,summary.md,split.json,steps/}`。
+
+仍保留以下严格 parity 红项，没有重写 reference 或屏蔽失败：
+
+| 场景 | 最终证据 | 分类 |
+| --- | --- | --- |
+| panels | 10 个检查点；4 条失败与审计基线逐字一致 | 已有 context/token/version、preset、model 和键提示原生差异 |
+| stats | 12 个检查点；2 条失败与审计基线逐字一致 | 已有 Session context `977k`/`1M` 与 Harness 版本差异 |
+| files | published reference 预览显示 `cannot get property "fs" without inject`，随后等待 `Description:` 消失失败，未进入 candidate | 去除 checkout 路径和行号后失败堆栈与基线语义一致；已有 immutable reference 缺陷，不宣称此场景通过 |
+| editor-feedback | 9 个检查点中仅 `editor-empty-help` 有差异，其余 8 个一致 | T08 新增 `/changes` 帮助条目，后续命令下移一行；本轮有意的 UI 差异，不归入旧基线 |
+
+`verify:changed -- --plan` 已执行。首轮 `verify:changed` 的源码测试被集成者同时启动的安装构建短暂删除 `lib/` 干扰，随后部分隔离场景又遇到 Corepack CDN 下载超时；该轮不作为覆盖率或完整验收证据。日志原样保存在 `.artifacts/verify-changed-initial/`，随后独立完整源码覆盖率及上述串行 `verify:full` 重新验证全部检查和 split 场景。
+
+独立真实证据另行保留：
+
+- T06：`/home/x/dev/mayfly-remediation-verify/.artifacts/remediation-t06/candidate-b3c23959-settled-image/report.json`。真实 HTTP/WebSocket、file-only、有序 file/image/file、错误 Session receipt 拒绝、重连恢复通过；100×35 和 40×16 共 4 个检查点、两次干净退出及终端恢复通过。最终明确显示 `second.txt → diagram.png → first.txt`，无残留 loader。runtime before/after hash 均为 `233fa4fcd8ef864cb994615059f2fb56451b579d5a88121d4efeef8d1fa219c4`。PTY 无内联图片协议，因此证据为原生字节读取与最终 metadata fallback。
+- T08：`/home/x/dev/mayfly-remediation-verify/.artifacts/remediation-t08/candidate-0c236c3e-final/report.json`。实际 turn 的 seq 42/77、latest、无效 seq/索引、warm 8 个 PTY 检查点通过。重启后原生比较不再保留，被动 RPC 保持 `active=false` 且不追加事件；普通 TUI resume 会激活 Session，另有 4 个空比较 UI 检查点，浏览不追加事件，未把 resume UI 称作 passive。
+- 独立验收 profile：`mayfly-split-fix` 已通过 `script/install-dev.sh` 安装。`.artifacts/acceptance-split-fix/report.json` 记录真实提交一轮对话、`/changes` 空态、40×16 窄窗口、同一 Session 重连恢复；4 个检查点与两次干净退出/终端恢复通过，TUI 退出后 Host 继续存活。runtime before/after hash 均为 `614e8cd63952bd2c4a781481b45358bd12ecdd8d7fc4e179ac5d78c83ed695f4`。
+- Website：root 严格 build 通过（19.25 秒），14 个受影响预览路由 HTTP 200。预览持续保留于 `http://192.168.8.188:4193/`，仍需人工视觉/内容验收。
+
+## 人工验收入口
+
+在两个终端依次运行：
+
+```sh
+dsh --profile mayfly-split-fix
+```
+
+```sh
+MAYFLY_DSH_STARTUP_URL='<Host 输出的完整 URL>' /home/x/dev/mayfly-remediation/script/mayfly-remote.sh
+```
+
+主要流程：正常提交与恢复会话，检查有序附件和 plan+yolo 状态组合；在产生原生 workspace comparison 后检查 `/changes [seq]` 与 `/files`。窄窗口和生命周期：缩至 40×16、断开重连、正常退出；附件不残留 loader，Host 不随 TUI 退出。原生比较随 Session disposal 或 Host 重启消失时，应显示安全空态。
+
+Website 中英文验收入口：`/guide/`、`/en/guide/`、`/guide/config`、`/en/guide/config`、`/plugins/seams`、`/en/plugins/seams`、`/plugins/quickstart`、`/en/plugins/quickstart`、`/reference/commands`、`/en/reference/commands`、`/features/`、`/en/features/`、`/guide/theme`、`/en/guide/theme`。
+
+用户于 2026-11-04 明确确认“验收通过，合并到主分支”，上述运行与 Website 验收范围已获接受。验收时披露的原始门禁红项、`/changes` 帮助条目差异及 T05 部分修复边界保持原样，不改写成全量严格 parity 通过。
+
+依据根 `AGENTS.md` 的 “After acceptance and merge, rebuild main when runtime output changed, stop previews, remove worktree profiles, and record exercised routes/scenarios.”，已合并 main 并完成主工作区的 frozen-lockfile 安装、runtime 重建、53 项 lib/export 检查和 Website 严格构建（19.36 秒）。主工作区 runtime hash 与验收构建完全一致，均为 `614e8cd63952bd2c4a781481b45358bd12ecdd8d7fc4e179ac5d78c83ed695f4`。
+
+验收用 Remote、Host 和 4193 预览已正常关闭；临时 `mayfly-split-fix` profile 已备份后移除，备份位于主工作区的私有 `.artifacts/split-remediation-merge/private/`。主工作区原有的两份审计草稿已确认完整纳入验收分支，另有 `.artifacts/split-remediation-merge/drafts-20261104-083640/` 备份。原始 worktrees 和验证产物继续保留供审计；上文列出的自动化与人工验收范围共同构成本轮验收记录。

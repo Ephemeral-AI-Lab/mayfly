@@ -1,6 +1,9 @@
 import { readdir, readFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
 import { resolve } from 'node:path'
+import { promisify } from 'node:util'
 import { Context } from '@deepseek-ai/cordis'
+import ts from 'typescript'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as frontend from '../../src/frontend/index.ts'
 
@@ -25,7 +28,108 @@ async function sourceFiles(directory: string): Promise<string[]> {
   return files
 }
 
+/** Runtime dependency edges, including re-exports and dynamic imports, with type-only edges erased. */
+function runtimeSpecifiers(source: string): string[] {
+  const file = ts.createSourceFile('source.ts', source, ts.ScriptTarget.Latest, true)
+  const references: string[] = []
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) {
+      const clause = node.importClause
+      if (clause?.isTypeOnly === true) return
+      if (clause?.name === undefined && clause?.namedBindings !== undefined && ts.isNamedImports(clause.namedBindings)
+        && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every(element => element.isTypeOnly)) return
+      references.push((node.moduleSpecifier as ts.StringLiteral).text)
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier !== undefined) {
+      if (node.isTypeOnly) return
+      if (node.exportClause !== undefined && ts.isNamedExports(node.exportClause) && node.exportClause.elements.length > 0
+        && node.exportClause.elements.every(element => element.isTypeOnly)) return
+      references.push((node.moduleSpecifier as ts.StringLiteral).text)
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const target = node.arguments[0]
+      if (target !== undefined && ts.isStringLiteral(target)) references.push(target.text)
+      else throw new Error('headless dynamic imports require a literal dependency')
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  return references
+}
+
 describe('frontend runtime architecture boundary', () => {
+  it('keeps every public runtime entry free of retired Agent lookup and development-only parsers', async () => {
+    const manifest = JSON.parse(await readFile(resolve(root, 'packages/mayfly/package.json'), 'utf8')) as { exports: Record<string, { default?: string }>, dependencies: Record<string, string>, devDependencies: Record<string, string> }
+    const visited = new Set<string>()
+    const visit = async (file: string): Promise<void> => {
+      if (visited.has(file)) return
+      visited.add(file)
+      const source = await readFile(file, 'utf8')
+      expect(source, file).not.toContain('mayflyCurrentAgent')
+      for (const target of runtimeSpecifiers(source)) {
+        expect(target, file).not.toMatch(/^(?:commander|yaml|@ephemeral-ai\/mayfly-host)(?:\/|$)/u)
+        if (target.startsWith('.')) await visit(resolve(file, '..', target))
+      }
+    }
+    for (const entry of Object.values(manifest.exports)) {
+      if (entry.default?.startsWith('./lib/') === true && entry.default.endsWith('.js')) {
+        await visit(resolve(root, 'packages/mayfly/src', entry.default.slice('./lib/'.length).replace(/\.js$/u, '.ts')))
+      }
+    }
+    expect(visited.size).toBeGreaterThan(100)
+    for (const dependency of ['commander', 'yaml']) {
+      expect(manifest.dependencies[dependency]).toBeUndefined()
+      expect(manifest.devDependencies[dependency]).toBeTypeOf('string')
+    }
+  })
+  it('follows runtime imports while erasing every type-only import and export form', () => {
+    expect(runtimeSpecifiers(`
+      import type { A } from './type-a.ts'
+      import { type A } from './type-b.ts'
+      export type * from './type-c.ts'
+      export { type A } from './type-d.ts'
+      type A = import('./type-e.ts').A
+      import './side-effect.ts'
+      import { type A, value } from './mixed.ts'
+      import value from './default.ts'
+      export * from './reexport.ts'
+      export { value } from './named.ts'
+      void import('./dynamic.ts')
+    `)).toEqual(['./side-effect.ts', './mixed.ts', './default.ts', './reexport.ts', './named.ts', './dynamic.ts'])
+    expect(() => runtimeSpecifiers('void import(target)')).toThrow('literal dependency')
+  })
+
+  it('keeps the complete public frontend runtime import graph independent of terminal rendering', async () => {
+    const entry = resolve(root, 'packages/mayfly/src/frontend/index.ts')
+    const visited = new Set<string>()
+    const visit = async (file: string, chain: readonly string[]): Promise<void> => {
+      if (visited.has(file)) return
+      visited.add(file)
+      const source = await readFile(file, 'utf8')
+      for (const target of runtimeSpecifiers(source)) {
+        const route = [...chain, file, target].join(' → ')
+        expect(target, route).not.toMatch(/@earendil-works\/pi-tui|(?:^|\/)(?:width|key-matching|document-layout|content-rows|markdown-rows|highlight)\.ts$/u)
+        if (target.startsWith('.')) await visit(resolve(file, '..', target), [...chain, file])
+        else if (target === '@ephemeral-ai/mayfly-ui') await visit(resolve(root, 'packages/ui/src/index.ts'), [...chain, file])
+      }
+    }
+    await visit(entry, [])
+    expect(visited.size).toBeGreaterThan(30)
+    expect(visited.has(resolve(root, 'packages/mayfly/src/core/ui-interaction-document.ts'))).toBe(true)
+  })
+
+  it('loads the built frontend entry with pi-tui unavailable', async () => {
+    const { stdout } = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', `
+      import { registerHooks } from 'node:module'
+      registerHooks({ resolve(specifier, context, next) {
+        if (specifier.startsWith('@earendil-works/pi-tui')) throw new Error('terminal renderer loaded by frontend')
+        return next(specifier, context)
+      } })
+      const frontend = await import('./packages/mayfly/lib/frontend.js')
+      if (typeof frontend.apply !== 'function') throw new Error('frontend entry missing')
+      process.stdout.write('headless frontend loaded')
+    `], { cwd: root })
+    expect(stdout).toBe('headless frontend loaded')
+  })
+
   it('keeps headless package source free of renderer and terminal dependencies', async () => {
     for (const directory of headlessRoots) {
       for (const path of await sourceFiles(directory)) {

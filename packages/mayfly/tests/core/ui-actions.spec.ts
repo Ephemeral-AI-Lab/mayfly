@@ -13,7 +13,7 @@ import { validateMayflyEditorShellNode, validateMayflyUiNode } from '../../src/c
 import type { MayflyKeymap } from '../../src/core/types.ts'
 import { probeComponents } from '../design/probe.ts'
 import { MayflyKeymapService } from '../../src/core/keymap.ts'
-import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/keys.ts'
+import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/key-definitions.ts'
 import { plainColors } from '../helpers.ts'
 
 /** The real keymap with the shipped defaults registered. */

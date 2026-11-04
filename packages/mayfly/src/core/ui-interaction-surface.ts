@@ -18,7 +18,6 @@ import { moveDocument, reconcileDocument, type UiDocumentAnchor, type UiDocument
 import { admitNotificationMessage, UiNotificationStore } from './ui-interaction-notifications.ts'
 import { untranslated, type UiTranslate } from './ui-interaction-locale.ts'
 import { listSelectedIds } from './ui-list-selection.ts'
-import { visibleWidth } from './width.ts'
 
 export interface UiSurfaceSnapshot {
   readonly id: string
@@ -146,6 +145,11 @@ export class UiSurfaceModel {
   get endpoint(): UiSurfaceSnapshot['events'] { return this.input.events }
   get registration(): UiSurfaceSnapshot { return this.input }
   get node(): MayflyUiNode | null { return this.admittedNode ?? this.admissionError ?? null }
+
+  /** Derive a renderer's review labels without retaining its layout in frontend state. */
+  rendererNode(reviewLabels: (labels: readonly string[]) => readonly string[]): MayflyUiNode | null {
+    return this.sourceNode === null ? this.node : this.resolveReviews(this.sourceNode, reviewLabels)
+  }
   get focus(): UiControlAddress | undefined { return this.decision === undefined ? this.selectedControl : this.decision.focus }
   /** A form holds an edit nobody has saved: the surface head says so. A surface that discards on dismissal has nothing to save (a decision's note). */
   get formsDirty(): boolean { return this.input.definition.dismissal !== 'discard' && [...this.forms.values()].some(formDirty) }
@@ -820,7 +824,7 @@ export class UiSurfaceModel {
   private observe(event: MayflyUiEvent): void {
     if (this.input.definition.onEvent === undefined) return
     // Focus reports keep their own slot, so one never cancels a control's `tab-change` or `value-change` in flight.
-    const key = `observe:${event.kind === 'focus-change' ? 'focus:' : ''}${uiControlKey({ pagePath: event.pagePath, controlId: (event as { readonly controlId: string }).controlId })}`
+    const key = event.kind === 'focus-change' ? 'observe:focus' : `observe:${uiControlKey({ pagePath: event.pagePath, controlId: (event as { readonly controlId: string }).controlId })}`
     const previous = this.activeKeys.get(key)
     if (previous !== undefined) this.tasks.get(previous)?.controller.abort()
     this.start(key, event)
@@ -1016,12 +1020,11 @@ export class UiSurfaceModel {
   }
 
   /** The list a review shows: one numbered row per step with its answer after the label, then the submit row. */
-  private reviewList(node: MayflyReviewNode): MayflyListNode {
-    // The answers line up in a column behind the longest label. They are spans of the label, not a description: a narrow list drops a description, and here the answer is the point.
-    const column = Math.max(...node.items.map(item => visibleWidth(item.label))) + 2
-    const rows: MayflyListItem[] = node.items.map(item => {
+  private reviewList(node: MayflyReviewNode, reviewLabels: (labels: readonly string[]) => readonly string[]): MayflyListNode {
+    const labels = reviewLabels(node.items.map(item => item.label))
+    const rows: MayflyListItem[] = node.items.map((item, index) => {
       const answer = this.answerText(item)
-      const lead = { text: `${item.label}${' '.repeat(column - visibleWidth(item.label))}` }
+      const lead = { text: labels[index]! }
       return { id: `step:${item.id}`, label: item.label, labelSpans: [lead, answer === undefined ? { text: node.skippedLabel, tone: 'warning' as const } : { text: answer }] }
     })
     rows.push({ id: 'submit', label: node.submitLabel, labelSpans: [{ text: node.submitLabel, styles: ['strong'] }] })
@@ -1029,11 +1032,11 @@ export class UiSurfaceModel {
   }
 
   /** The admitted tree with each review replaced by the list of the drafts it shows; subtrees without one keep their identity. */
-  private resolveReviews(source: MayflyUiNode): MayflyUiNode {
+  private resolveReviews(source: MayflyUiNode, reviewLabels: (labels: readonly string[]) => readonly string[] = labels => labels.map(label => `${label}  `)): MayflyUiNode {
     if (this.reviews.size === 0) return source
     const swap = (node: MayflyUiNode): MayflyUiNode => {
       switch (node.kind) {
-        case 'review': return this.reviewList(node)
+        case 'review': return this.reviewList(node, reviewLabels)
         case 'stack': {
           let replaced = false
           const children = node.children.map(child => {
@@ -1093,7 +1096,7 @@ export class UiSurfaceModel {
     this.cancelTasks()
     this.tasks.clear(); this.activeKeys.clear(); this.forms.clear(); this.formDefinitions.clear(); this.choices.clear(); this.prompts.clear(); this.promptDefinitions.clear(); this.sliders.clear(); this.tabs.clear(); this.documents.clear(); this.actions.clear()
     this.operations.clear(); this.notifications.dispose(); this.listeners.clear()
-    this.rawNode = null; this.admittedNode = null; this.decision = undefined; this.selectedControl = undefined
+    this.rawNode = null; this.sourceNode = null; this.admittedNode = null; this.decision = undefined; this.selectedControl = undefined
     this.publication = undefined
     this.input = { id: this.id, revision: this.input.revision, scope: this.scope, source: [], update: { reason: 'replace' }, node: null, definition: {}, events: DISPOSED_EVENTS }
     this.bindings = {}

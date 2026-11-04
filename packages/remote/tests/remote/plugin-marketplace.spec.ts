@@ -185,6 +185,44 @@ describe('Remote rc.2 plugin marketplace', () => {
     test.dispose()
   })
 
+  it('protects product release bundles independently of native removable flags and routes direct mutations to /update', async () => {
+    for (const removable of [false, true]) {
+      for (const name of ['@ephemeral-ai/mayfly-host', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly-cli']) {
+        const test = fixture({ bundles: [bundle({ name, removable })] })
+        for (const verb of ['install', 'uninstall']) {
+          await test.execute(`${verb} ${name}`)
+          expect(test.notice.set).toHaveBeenLastCalledWith('Manage Mayfly packages with /update', 'error')
+        }
+        expect(test.manager.installBundle).not.toHaveBeenCalled()
+        expect(test.manager.removeBundle).not.toHaveBeenCalled()
+        test.dispose()
+      }
+    }
+  })
+
+  it('hides product catalog and native rows while retaining third-party unlisted plugin management', async () => {
+    const product = { ...entry, id: 'product', install: { rows: [{ name: '@ephemeral-ai/mayfly-host', npm: { spec: '@ephemeral-ai/mayfly-host@2.0.0' } }] } }
+    mocks.catalog.mockResolvedValue(catalog([product]))
+    const test = fixture({ bundles: [bundle({ name: '@ephemeral-ai/mayfly-host', removable: true }), bundle({ name: '@scope/extra' })] })
+    for (const verb of ['install', 'uninstall']) {
+      await test.execute(`${verb} product`)
+      expect(test.notice.set).toHaveBeenLastCalledWith('Manage Mayfly packages with /update', 'error')
+    }
+    expect(test.manager.installBundle).not.toHaveBeenCalled()
+    expect(test.manager.removeBundle).not.toHaveBeenCalled()
+    await test.execute('info product')
+    expect(test.notice.set).toHaveBeenLastCalledWith('Manage Mayfly packages with /update', 'error')
+    await test.execute('info @ephemeral-ai/mayfly-host')
+    expect(test.notice.set).toHaveBeenLastCalledWith('Manage Mayfly packages with /update', 'error')
+    await test.execute('')
+    await settled()
+    expect(textOf(browser().view())).not.toContain('@ephemeral-ai/mayfly-host')
+    expect(textOf(browser().view())).toContain('@scope/extra')
+    await test.execute('uninstall @scope/extra')
+    expect(test.manager.removeBundle).toHaveBeenCalledExactlyOnceWith('@scope/extra')
+    test.dispose()
+  })
+
   it('does not remove protected bundles or install removed catalog entries', async () => {
     const test = fixture({ bundles: [bundle({ removable: false })] })
     await test.execute('uninstall alpha')

@@ -56,12 +56,10 @@ Mayfly 自有的调色板（每个分组的前几行）：
 
 ## 持久默认主题
 
-`/theme` 切换的是**会话级**主题；持久默认写在 settings.yaml 的 `mayfly:` 段（或用 `/settings` 面板的 Theme 行按名称选择，名称后标注深色或浅色——实时生效、同时落盘）：
-
-```yaml
-mayfly:
-  theme: tide   # 上文任一调色板的键，或 auto
-```
+`/theme` 切换当前前端主题。持久默认通过 `/settings` 的 Theme 行按名称选择，
+名称后标注深色或浅色；它通过原生 Host settings 写入，并由当前 TUI 实时应用。
+如需编辑原始文档，使用 `/settings` 提供的实际 Host 文档，不依赖旧 `settings.yaml`
+路径。详见[配置](/guide/config)。
 
 启动时应用该默认；会话内的 `/theme` 选择覆盖它，且无关的设置写入不会把会话选择冲掉。若保存的值不再对应任何调色板（旧版本的 `ocean` 或 `paper`），启动时使用 Mayfly Dark，其余设置不受影响。custom 调色板（`/theme custom <path>`）保持会话级，不落盘。
 

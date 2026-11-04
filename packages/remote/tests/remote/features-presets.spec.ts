@@ -20,6 +20,16 @@ function fixture(options: Parameters<typeof configurationFixture>[1] = {}) {
 }
 
 describe('Remote reference Agent preset surface', () => {
+  it('allows readonly roster browsing but refuses direct and picker Session writes', async () => {
+    const test = fixture()
+    test.select({ ...test.selection, access: 'readonly' })
+    await expect(test.controller.select(test.selection.ref, 'first')).rejects.toThrow('read-only')
+    await test.controller.open()
+    expect(test.render()).toContain('Presets')
+    expect(await test.act({ kind: 'selection-accept', controlId: 'presets', selectedIds: ['second'] })).toMatchObject({ kind: 'failed', message: 'This conversation is read-only' })
+    expect(test.selectPreset).not.toHaveBeenCalled()
+    expect(test.settings.mutate).not.toHaveBeenCalled()
+  })
   it('refuses pre-cancelled opens, retires late reads and keeps a refocused picker under its original caller', async () => {
     for (const session of [true, false]) {
       const test = fixture({ session, namespaces: [namespace('agent-preset-registry')] })

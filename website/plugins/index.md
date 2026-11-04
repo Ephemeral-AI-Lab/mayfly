@@ -1,37 +1,27 @@
 # Mayfly 插件开发
 
-Mayfly 插件就是普通 Cordis 插件。它直接使用 dsh 原生 service，并在需要终端
-界面时注入 Mayfly 的四个 UI service。
+Mayfly 使用两个独立的 Cordis tree：原生 dsh Host 和 Remote TUI。插件仍是普通的
+`name / inject / apply(ctx)` entry，但依赖必须来自它所在的进程。
 
-```text
-dsh 原生 service
-commands · sessionProjections · tools · settings · ...
-                         │
-                  普通 Cordis 插件
-                         │
-Mayfly UI service
-mayflyPanes · mayflyStatus · mayflyOverlays · mayflyEditorExtensions
-```
+| 位置 | 可用服务 | 安装与运行 |
+| --- | --- | --- |
+| Host | 原生 commands、sessionProjections、tools、settings 等 | 原生 Host bundle 与 plugin manager |
+| Remote TUI | 官方 Client、前端状态与四个 Mayfly UI service | 当前需要源码集成到 Remote composition，构建并重启 TUI |
 
-Mayfly 官方包和外部插件同构：相同的 `name / inject / apply(ctx)`，相同的
-service graph，相同的 Fiber unload 行为。没有专用 manifest、能力申请、
-adapter facade 或插件作者 CLI。
+需要 Host 数据的 TUI 功能使用官方 Client/Remote 及可序列化 DTO。Agent、Session、
+Tool Definition、回调与 renderer 对象不跨进程。补充 transport 能力由 Mayfly Host
+完成，使用公开原生 API，不修改 dsh 上游。
+
+下面是集成到 Remote composition 的静态 UI 插件：
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-commands'
-import type {} from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 
 export const name = '@acme/build-health'
-export const inject = ['commands', 'mayflyPanes']
+export const inject = ['mayflyPanes']
 
 export function apply(ctx: Context): void {
-  ctx.commands.register({
-    name: 'health',
-    description: 'Show build health',
-    handler: () => ({ kind: 'success', text: 'healthy' }),
-  })
   ctx.mayflyPanes.register({
     id: 'acme.build-health',
     placement: 'right',
@@ -40,6 +30,9 @@ export function apply(ctx: Context): void {
 }
 ```
 
-从[快速开始](/plugins/quickstart)创建第一个包；原生 dsh API 以
+Host plugin 安装不会自动挂载 TUI 界面。共享 `@ephemeral-ai/mayfly` 提供 renderer
+与只读展示 subpath，不发布根插件、Host patch 或 preset。
+
+从[快速开始](/plugins/quickstart)选择 Host 或 TUI 集成路径；原生 API 以
 [Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)
 为准，Mayfly UI 入口见 [Seam 参考](/plugins/seams)。

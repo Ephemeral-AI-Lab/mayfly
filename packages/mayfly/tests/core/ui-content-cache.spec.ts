@@ -22,6 +22,10 @@ describe('MayflyContentCache', () => {
     expect(cache.get('k')).toBe(painted)
     expect(cache.get('missing')).toBeUndefined()
     expect(paintedRowsBytes(['abcd', 'ef'])).toBe(64 + 4 * 2 + 40 + 2 * 2 + 40)
+    cache.clear()
+    expect(cache.size).toBe(0)
+    expect(cache.bytes).toBe(0)
+    expect(cache.get('k')).toBeUndefined()
   })
 
   it('replaces a key under its new byte cost', () => {

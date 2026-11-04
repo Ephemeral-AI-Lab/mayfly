@@ -1,40 +1,23 @@
 # Creative mode walkthrough
 
-The `mayfly-cordis` preset can hot-mount a dynamic Cordis prototype in the
-current process. The prototype is still an ordinary Cordis plugin with direct
-access to the current service graph.
+`mayfly-cordis` is a native Agent preset registered by Host. It uses Harness
+`0.2.2-alpha.2` Cordis tools and services and explains the Host/Remote process
+boundary.
 
-Workflow:
+1. Find service, event, and tool providers with `cordis_inspect_list`.
+2. Inspect exact public method schemas with `cordis_inspect_query`.
+3. Author a Host extension as an ordinary ESM Cordis package using public native services.
+4. Install through the native plugin manager in a dedicated Host profile and restart when its result requires it.
+5. Integrate TUI presentation separately in Remote source composition, build, restart, and accept it there.
 
-1. list current service/event/tool providers with `cordis_inspect_list`;
-2. query exact method schemas;
-3. use `cordis_define` for a host package with
-   `name / inject / apply(ctx)`;
-4. activate with `cordis_run`; define a new immutable package and `update`
-   when iterating;
-5. pause with `cordis_stop`, remove with `cordis_undefine`;
-6. after acceptance, ask for local/GitHub/npm/ephemeral before persistence.
+alpha.2 does not supply `cordis_define`, `cordis_run`, `cordis_stop`, or
+`cordis_undefine` model tools. The Host runner retains a programmatic lifecycle:
+`code.host` runs on Host and `code.client` targets the native browser runner.
+Neither is a Remote TUI hot-mount entry. Host plugins cannot inject
+frontend-local UI registries.
 
-```js
-return {
-  name: 'health-probe',
-  inject: ['commands', 'mayflyOverlays'],
-  apply(ctx) {
-    ctx.commands.register({
-      name: 'health-probe',
-      description: 'Open health',
-      handler() {
-        ctx.mayflyOverlays.open({
-          id: 'probe.health',
-          capturing: true,
-        }, { kind: 'text', content: 'healthy' })
-        return { kind: 'success', text: 'opened health' }
-      },
-    })
-  },
-}
-```
-
-Dynamic `code.host` is a plain JavaScript function body: no import, require,
-or TypeScript. The prototype disappears after restart. Persistence uses a
-normal package.json, compiled entry, and cordis.patch.yml.
+The Host preset ships three skills for Host extensions, Remote source
+integration, and user-owned compositions. Add missing transport capabilities
+inside Mayfly Host through public APIs and serializable DTOs. Do not copy
+private implementations or add capabilities to dsh upstream. Persistence and
+publication follow user authorization and the [publishing workflow](/en/plugins/publishing).

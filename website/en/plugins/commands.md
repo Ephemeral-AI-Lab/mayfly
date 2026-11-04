@@ -1,6 +1,6 @@
 # Native dsh commands
 
-Mayfly defines no command adapter. Depend on `@deepseek-ai/dsh-commands` and use
+Host plugins register native dsh commands. Depend on `@deepseek-ai/dsh-commands` and use
 `ctx.commands` directly.
 
 ```ts
@@ -21,9 +21,11 @@ export function apply(ctx: Context): void {
 }
 ```
 
-For the current session, also inject `mayflyCurrentAgent`, obtain the Agent when
-the handler runs, and pass `agent.session` to native services such as
-`sessionProjections`. The
+This entry runs on Host. A native handler receives the exact selected Agent as
+`invocation.agent`; pass its Session to Host services such as
+`sessionProjections`. The Remote editor discovers that Session's native command
+catalog and dispatches through official Client transport. Host handlers return
+serializable command results; they cannot open a frontend-local overlay. The
 [Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)
 is authoritative for command definitions, args/options, and results.
 

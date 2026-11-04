@@ -2,8 +2,9 @@
  * Prompt (roadmap slice 1.9b): `ui.prompt` is the one text control that is not a field. It draws a symbol, `[label size ×]`
  * tokens, and the buffer in one input row; a placeholder ladder while it is empty; `↑ history 2/4` in its corner while
  * `↑`/`↓` walk the recall (history, newest first); and a completion list under the buffer. The pane below is a small host:
- * it keeps the tokens and the history, offers completions for a leading `/`, `@`, or `#` word, and answers the
- * prompt's events by republishing the node. Core keeps the draft, so a republish never loses what was typed.
+ * it keeps the tokens and history, records observed draft text, and offers completions for a leading `/`, `@`, or `#`
+ * word when Show completions is activated. Actions acknowledge new nodes; observations never publish snapshots.
+ * Core keeps the draft, so acknowledging completion choices never loses what was typed.
  *
  * @module @mayfly-example/ui-gallery/groups/prompt
  */
@@ -56,7 +57,7 @@ export function registerGalleryPrompt(ctx: Context): void {
     if (reset !== undefined) state.resets += 1
     const { entries } = offered(state.text)
     return ui.stack.column([
-      ui.text('Backspace on an empty prompt selects, then removes, the last token. Up and Down recall; type / @ or # for completions.', { tone: 'muted' }),
+      ui.text('Backspace on an empty prompt selects, then removes, the last token. Up and Down recall; type / @ or #, then choose Show completions.', { tone: 'muted' }),
       ui.surface({
         title: 'Gallery prompt', titleAlign: 'right', chrome: 'surface', hint: 'completions',
         child: ui.prompt({
@@ -69,22 +70,22 @@ export function registerGalleryPrompt(ctx: Context): void {
           reset: { rev: state.resets, value: reset ?? state.text },
         }),
       }),
+      ui.actions({ id: 'gallery-prompt-actions', items: [{ id: 'gallery-prompt-completions', label: 'Show completions' }] }),
     ], { gap: 1 })
   }
 
-  const pane = ctx.mayflyPanes.register({
+  ctx.mayflyPanes.register({
     id: 'example.ui-gallery.prompt',
     title: 'Gallery prompt',
     placement: 'bottom',
     onEvent: {
       observe: (event: MayflyUiObservationEvent) => {
-        if (event.kind === 'value-change') {
-          const before = offered(state.text).entries.map(entry => entry.id).join()
-          state.text = event.value as string
-          if (offered(state.text).entries.map(entry => entry.id).join() !== before) pane.set(promptNode())
-        }
+        if (event.kind === 'value-change') state.text = event.value as string
       },
       action: (event: MayflyUiActionEvent) => {
+        if (event.kind === 'activate' && event.actionId === 'gallery-prompt-completions') {
+          return { kind: 'accepted', node: promptNode(), source: [] }
+        }
         if (event.kind === 'completion-accept') {
           const { word, entries } = offered(state.text)
           const entry = entries.find(candidate => candidate.id === event.itemId)
@@ -94,17 +95,15 @@ export function registerGalleryPrompt(ctx: Context): void {
             state.attachments += 1
             state.tokens = [...state.tokens, { id: `file-${String(state.attachments)}`, label: entry.label, size: entry.size! }]
             state.text = before
-            pane.set(promptNode(before))
+            return { kind: 'accepted', node: promptNode(before), source: [] }
           } else {
             state.text = `${before}${entry.label} `
-            pane.set(promptNode(state.text))
+            return { kind: 'accepted', node: promptNode(state.text), source: [] }
           }
-          return { kind: 'completed' }
         }
         if (event.kind === 'token-remove') {
           state.tokens = state.tokens.filter(token => token.id !== event.tokenId)
-          pane.set(promptNode())
-          return { kind: 'completed', feedback: { severity: 'info', message: 'Removed the attachment' } }
+          return { kind: 'accepted', node: promptNode(), source: [], feedback: { severity: 'info', message: 'Removed the attachment' } }
         }
         if (event.kind === 'submit') {
           const text = event.submission.forms[0]!.fields.find(field => field.id === 'text')!.value as string

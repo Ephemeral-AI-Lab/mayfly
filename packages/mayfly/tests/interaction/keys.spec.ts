@@ -8,15 +8,17 @@ import { describe, expect, it, vi } from 'vitest'
 import { MayflyKeymapService } from '../../src/core/keymap.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
 import * as keys from '../../src/interaction/keys.ts'
+import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/key-definitions.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
 import { DEFAULT_SETTINGS, type MayflySettings } from '../../src/interaction/settings.ts'
-import { ACTION_SUBMIT, displayKey, keyActionKeys, matchesKeyAction } from '../../src/core/key-actions.ts'
+import { ACTION_SUBMIT, displayKey, keyActionKeys } from '../../src/core/key-actions.ts'
+import { matchesKeyAction } from '../../src/core/key-matching.ts'
 
 describe('interaction keys', () => {
   it('normalizes paging, boundary, deletion, and Agent-view keys', () => {
     const ctx = new Context()
     const keymap = new MayflyKeymapService(ctx)
-    keymap.register([...keys.INTERACTION_KEY_ACTIONS])
+    keymap.register([...INTERACTION_KEY_ACTIONS])
     expect(keymap.matches('\x1b[5~', keys.ACTION_PAGE_UP)).toBe(true)
     expect(keymap.matches('\x1b[6~', keys.ACTION_PAGE_DOWN)).toBe(true)
     expect(keymap.matches('\x1b[H', keys.ACTION_HOME)).toBe(true)
@@ -63,16 +65,22 @@ describe('interaction keys', () => {
     await fiber.dispose()
   })
 
-  it('reports that no other conversation is open without throwing from global dispatch', async () => {
+  it.each([null, 'selected-session'])('scopes a global conversation warning to the current selection %s', async sessionId => {
     const ctx = new Context()
     await ctx.plugin(MayflyKeymapService)
     const interaction = new UiInteractionService(ctx)
     new InteractionStateService(ctx, DEFAULT_SETTINGS)
     ctx.reflect.provide('mayflyConversations', { back: () => false })
-    await ctx.plugin(keys)
+    if (sessionId !== null) ctx.provide('mayflyCurrentAgent', { current: () => ({ id: sessionId }) } as never)
+    const fiber = await ctx.plugin(keys)
     ctx.mayflyKeymap.dispatch('\x1b[18~')
     ctx.mayflyKeymap.dispatch('\x1b[19~')
-    expect(interaction.notificationSnapshot()).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'warning', message: 'no other conversation is open' })]))
+    expect(interaction.notificationSnapshot()).toEqual([expect.objectContaining({
+      severity: 'warning', message: 'no other conversation is open',
+      scope: sessionId === null ? { kind: 'app', targetId: 'agent-view' } : { kind: 'session', sessionId },
+    })])
+    await fiber.dispose()
+    expect(interaction.notificationSnapshot()).toEqual([])
   })
 
   describe('saved key bindings', () => {

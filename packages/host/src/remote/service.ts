@@ -44,8 +44,8 @@ declare module '@deepseek-ai/cordis' {
 /** Host service backing the generated `ctx.remote.mayflyHost` namespace. */
 export class MayflyHostService extends TypertRemoteService {
   static inject = [
-    'agentDefaultModel', 'agents', 'authorization', 'credentials', 'llm', 'permissionPresets',
-    'sessionController', 'sessionQuery', 'sessionProjections', 'sessions', 'settings', 'skills', 'subagents',
+    'agentDefaultModel', 'agents', 'approval', 'authorization', 'credentials', 'llm', 'permissionPresets', 'shell',
+    'profileContext', 'sessionController', 'sessionQuery', 'sessionProjections', 'sessions', 'settings', 'skills', 'subagents',
     'tools', 'workspaceChanges', 'workspaceRegistry',
   ]
 
@@ -165,9 +165,9 @@ export class MayflyHostService extends TypertRemoteService {
     cancelAuthorization(this.ctx, request, this.signal(signal))
   }
 
-  /** Resolve permission row bundles and optional current yolo state. */
-  @Remote('permissionCatalogDetails')
-  permissionCatalogDetails(request: MayflyPermissionCatalogRequest, signal: AbortSignal): MayflyPermissionCatalogDetails {
+  /** Resolve native permission bundles and exact passive Session or Host-default yolo state. */
+  @Remote({ resources: { session: request => request.sessionId } })
+  permissionCatalogDetails(request: MayflyPermissionCatalogRequest, signal: AbortSignal): Promise<MayflyPermissionCatalogDetails> {
     return permissionCatalogDetails(this.ctx, request, this.signal(signal))
   }
 
@@ -201,8 +201,8 @@ export class MayflyHostService extends TypertRemoteService {
     return statsSession(this.ctx, request, this.signal(signal))
   }
 
-  /** Scan native history into complete progress snapshots without activating Agents. */
-  @Remote({ mode: 'stream', resources: { session: request => request.sessionId } })
+  /** Scan the global native corpus; suppress the default single-Session resource inference. */
+  @Remote({ mode: 'stream', resources: { session: () => undefined } })
   statsHistory(request: MayflyStatsHistoryRequest, signal: AbortSignal): RemoteStream<MayflyStatsHistory> {
     return this.statistics.read(request, this.signal(signal))
   }

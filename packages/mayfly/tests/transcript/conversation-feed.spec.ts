@@ -22,7 +22,7 @@ import { OfficialConversationModelSource } from '../../src/transcript/official-m
 const ADDRESS: SessionAddress = { kind: 'subagent', parentSessionId: SessionId('parent'), childSessionId: SessionId('child'), mode: 'one-shot' }
 
 const stored = {
-  entries: [{ kind: 'user', id: 'u-1', seq: 3, updatedSeq: 3, turn: 1, text: 'stored question', images: [] }],
+  entries: [{ kind: 'user', id: 'u-1', seq: 3, updatedSeq: 3, turn: 1, text: 'stored question', attachments: [] }],
   streaming: false,
   settledSteps: [],
   turns: [],

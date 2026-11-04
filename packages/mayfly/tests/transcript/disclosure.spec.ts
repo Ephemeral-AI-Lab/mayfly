@@ -17,7 +17,7 @@ const web = (id: string, query: string): TranscriptEntryModel => ({
   ...base(1), id, kind: 'transcript-tool', step: 1, callId: id, name: 'web_search', family: 'web', activity: 'webSearch', detail: query, arguments: '{}', startedAt: 0,
   web: { kind: 'search', sources: [{ url: 'https://a.dev' }], truncated: false }, result: { text: `result ${query}`, isError: false, endedAt: 1_000 },
 } as unknown as TranscriptEntryModel)
-const user = (turn: number, text: string): TranscriptEntryModel => ({ seq: turn, updatedSeq: turn, turn, id: `user:${String(turn)}`, kind: 'transcript-user', text, images: [] })
+const user = (turn: number, text: string): TranscriptEntryModel => ({ seq: turn, updatedSeq: turn, turn, id: `user:${String(turn)}`, kind: 'transcript-user', text, attachments: [] })
 const answer = (turn: number): TranscriptEntryModel => ({ seq: turn, updatedSeq: turn, turn, id: `assistant:${String(turn)}`, kind: 'transcript-assistant', step: 2, text: `done ${String(turn)}`, streaming: false })
 const turnsOf = (count: number) => Array.from({ length: count }, (_, index) => ({ turn: index + 1, startedAt: 0, endedAt: 9_000, outcome: 'completed' })) as never
 

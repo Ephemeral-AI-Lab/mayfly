@@ -105,13 +105,11 @@ import { hasMotion, paintMotionSpans } from './ui-motion-text.ts'
 import { UiProgressTransitions } from './ui-progress-transition.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
 import { grammarHints, hintNotation, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState, type PromptOperation } from './ui-key-grammar.ts'
-import { documentAnchorAtRow, documentAnchorRow, documentResolver, type DocumentResolver } from './ui-interaction-document.ts'
+import { documentResolver } from './document-layout.ts'
+import { documentAnchorAtRow, documentAnchorRow, type DocumentResolver } from './ui-interaction-document.ts'
 import type { UiControlAddress } from './ui-interaction-tree.ts'
-import {
-  keyActionKeys,
-  matchesKeyAction,
-  matchesKeyId,
-} from './key-actions.ts'
+import { keyActionKeys } from './key-actions.ts'
+import { matchesKeyAction, matchesKeyId } from './key-matching.ts'
 import { listSelectedIds } from './ui-list-selection.ts'
 
 const FOCUS_SENTINEL = '\uf8ff'
@@ -569,6 +567,7 @@ const PURE_STATIC_WIDTHS = 4
  */
 function contentEnv(options: RuntimeCompilerOptions, paint: Pick<PaintOptions, 'components' | 'colors' | 'counters' | 'reportRuntimeFailure'>): ContentRowsEnv {
   return {
+    owner: options.listRuntime,
     get components() { return paint.components },
     get colors() { return paint.colors },
     get counters() { return paint.counters },
@@ -1143,7 +1142,7 @@ function coreText(options: Pick<MayflyUiCompilerOptions, 'contextHints'> | undef
 function flowListSpec(choice: UiChoiceState | undefined, node: MayflyListNode, index: number): ListRowSpec {
   if (choice !== undefined) {
     const row = choiceRow(choice, index)
-    return { item: row.item, depth: row.depth, last: row.last, expandable: row.expandable, open: row.open, position: index }
+    return { item: admittedListItem(node.items, index)!, depth: row.depth, last: row.last, expandable: row.expandable, open: row.open, position: index }
   }
   const item = admittedListItem(node.items, index)!
   const always = item.bodyAlways === true
@@ -2345,6 +2344,7 @@ export class MayflyUiSurfaceRuntime {
   private readonly flowLists = new Map<string, FlowListPainter>()
   /** The painted content segments this surface's leaves produced; the renderer's one shared cache by default. */
   readonly content: MayflyContentCache
+  private readonly ownsContent: boolean
   /** Where this surface's scroll regions are scrolled, by control key, the least recently compiled first. */
   private readonly scrolled = new Map<string, { readonly memory: ScrollMemory, readonly source: object | undefined }>()
   /** The one-shot drains of this surface's progress bars. */
@@ -2416,6 +2416,7 @@ export class MayflyUiSurfaceRuntime {
    */
   constructor(readonly interaction?: UiSurfaceModel, private readonly requestRender?: () => void, clock?: UiAnimationClock, readonly images?: MayflyUiImageSource, requestFrame?: () => void, content?: MayflyContentCache) {
     this.content = content ?? new MayflyContentCache()
+    this.ownsContent = content === undefined
     const tick = requestFrame ?? requestRender
     this.nudge = tick ?? (() => {})
     this.loaderAnimation = tick === undefined ? undefined : new UiLoaderAnimation(tick, clock)
@@ -2615,11 +2616,12 @@ export class MayflyUiSurfaceRuntime {
   }
   /**
    * Asks the renderer to paint this surface again: an image's bytes arrived. A list row that holds the image was
-   * painted from its item and key alone, so the memo of painted rows is dropped with the request.
+   * painted from its item and key alone, so both row and flow-block memos are dropped with the request.
    */
   readonly repaint = (): void => {
     if (!this.live) return
     this.rows.clear()
+    this.flowLists.clear()
     this.requestRender?.()
   }
   /** The scroll position a region keeps across publishes. */
@@ -2696,7 +2698,7 @@ export class MayflyUiSurfaceRuntime {
     const start = Math.max(0, Math.min(count - size, cursor - Math.floor(size / 2)))
     const window = Array.from({ length: size }, (_, offset) => {
       const index = state === undefined ? start + offset : choiceVisibleIndex(state, start + offset)!
-      if (state !== undefined) return { index, position: start + offset, ...choiceRow(state, index) }
+      if (state !== undefined) return { index, position: start + offset, ...choiceRow(state, index), item: admittedListItem(node.items, index)! }
       // Without a frontend model the list is a plain roving list: rows open only as they were declared.
       const item = admittedListItem(node.items, index)!
       const always = item.bodyAlways === true
@@ -2713,7 +2715,7 @@ export class MayflyUiSurfaceRuntime {
     const state = this.interaction?.choice(address)
     const index = state?.focusedIndex ?? -1
     const item = index < 0 ? undefined : admittedListItem(node.items, index)
-    return item === undefined ? undefined : { index, position: state!.focusedPosition, ...choiceRow(state!, index) }
+    return item === undefined ? undefined : { index, position: state!.focusedPosition, ...choiceRow(state!, index), item }
   }
 
   setFocused(value: boolean): void {
@@ -2854,6 +2856,7 @@ export class MayflyUiSurfaceRuntime {
     if (!this.live) return
     this.deactivate()
     this.live = false
+    if (this.ownsContent) this.content.clear()
     this.flowLists.clear()
     for (const lease of this.textEditors.values()) releaseTextEditor(lease)
     this.textEditors.clear()
@@ -3948,7 +3951,7 @@ export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOpt
   try {
     const contextKeyHints = options.contextHints?.enabled === true
     const contextEscapeHint = options.onUnhandledEscape === undefined ? undefined : 'close'
-    const surface = admittedSurface(admitted.value, options, 'ui', undefined, undefined, contextKeyHints, contextEscapeHint)
+    const surface = admittedSurface(rendererInteractionNode(value, admitted.value, options.interaction, options.components), options, 'ui', undefined, undefined, contextKeyHints, contextEscapeHint)
     const hasControls = surface.hasControls()
     const focusTarget = hasControls || (contextKeyHints && options.contextHints?.focusWithoutControls === true) ? surface : null
     return { ok: true, value: { node: admitted.value, component: surface, focusTarget } }
@@ -3956,6 +3959,16 @@ export function compileMayflyUiNode(value: unknown, options: MayflyUiCompilerOpt
     const message = 'Mayfly UI compilation failed safely'
     return { ok: false, code: 'MAYFLY_INVALID_CONTRIBUTION', message, errorComponent: new ErrorComponent(message, options.colors) }
   }
+}
+
+/** Review answers share a terminal column, derived only while Core compiles a frontend projection. */
+function rendererInteractionNode(source: unknown, node: MayflyUiNode, interaction: UiSurfaceModel | undefined, components: MayflyComponents): MayflyUiNode {
+  if (interaction === undefined || source !== interaction.node) return node
+  return interaction.rendererNode(labels => {
+    const widths = labels.map(label => components.visibleWidth(label))
+    const column = Math.max(...widths) + 2
+    return labels.map((label, index) => `${label}${' '.repeat(column - widths[index]!)}`)
+  })!
 }
 
 /** Compile one validated projection into a bridge-owned persistent runtime. */
@@ -3967,7 +3980,7 @@ export function compileMayflyUiSurfaceNode(value: unknown, options: MayflyUiSurf
   }
   try {
     const contextEscapeHint = options.onUnhandledEscape === undefined ? undefined : options.escapeHint ?? 'close'
-    let node = admitted.value
+    let node = rendererInteractionNode(value, admitted.value, options.surfaceRuntime.interaction, options.components)
     if (options.title !== undefined) {
       if (node.kind === 'surface' && node.title === undefined) {
         const frame = validateMayflyUiNode({ kind: 'surface', chrome: 'overlay', title: options.title, padding: 1, child: { kind: 'spacer' } }, options.counters)

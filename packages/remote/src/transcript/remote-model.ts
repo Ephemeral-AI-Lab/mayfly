@@ -131,8 +131,8 @@ export class RemoteConversationModelSource {
     for (const projection of [this.live?.projection, this.durable]) {
       for (const entry of projection?.entries ?? []) {
         if (entry.kind !== 'user') continue
-        const image = entry.images.find(candidate => candidate.attachmentId === attachmentId)
-        if (image !== undefined) return image
+        const image = entry.attachments.find(candidate => candidate.kind === 'image' && candidate.attachmentId === attachmentId)
+        if (image?.kind === 'image') return image
       }
     }
     return undefined

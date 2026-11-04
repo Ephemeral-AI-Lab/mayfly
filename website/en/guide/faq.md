@@ -2,32 +2,40 @@
 
 ## Why not a plain `npm install @ephemeral-ai/mayfly`?
 
-Mayfly is a plugin bundle installed into a dsh profile, not a standalone app — a bare install only drops the package into node_modules, with no host and no profile assembly, so there is nothing to run. The supported paths are the `mayfly` shell or `dsh plugin --profile mayfly add`; see [Quickstart](/en/guide/). The current preview is `v0.1.4-rc.2`, published under npm's `rc` tag; `latest` stays on the previous release line. Reproducible environments should pin Mayfly `0.1.4-rc.2` and Harness `0.2.1-rc.2`. The contributor development install lives in [Contributing to Mayfly](/en/plugins/contributing).
+The shared package contains renderer and readonly presentation subpaths. The
+current product uses `mayfly-host` in a native dsh profile and an independent
+`mayfly-remote` TUI. The small `mayfly-cli` launcher depends on the exact Remote
+version; it does not bundle or start Host. Follow the [split quickstart](/en/guide/).
+Published `v0.1.4-rc.2` is the immutable UI reference; current development targets
+Harness `0.2.2-alpha.2` and requires matching verified build artifacts.
 
-## The default install does not resolve the newest release?
+## The install resolves an older release?
 
-pnpm 11 enables a `minimumReleaseAge` cooldown by default: dist-tag resolution silently skips versions published inside the window and falls back to an older one. If `dsh plugin --profile mayfly add @ephemeral-ai/mayfly` installs a stale version, either:
-
-- install the current `latest` exactly — query it with `npm view @ephemeral-ai/mayfly dist-tags.latest`, then run `dsh plugin --profile mayfly add @ephemeral-ai/mayfly@<published-version>`;
-- or re-run the same unversioned command once the cooldown window has passed (upgrading = re-running the same `plugin add`).
-
-Upgrading through `/update` avoids the trap entirely: it resolves the target from registry metadata, always pins the exact version, and inside the cooldown window it answers with the retry time (an ETA) instead of installing a stale build.
+pnpm's `minimumReleaseAge` can defer newly published versions. Use a verified
+exact release set and preserve the repository's exclusions; do not resolve an
+unversioned shared renderer package as a Host installation. The development
+installer builds this workspace and checks the selected dsh version.
 
 ## How do I upgrade Mayfly?
 
-Two paths:
+`/update` performs a readonly check; `/update <version>` stages and checks the
+exact frontend release graph, asks for confirmation, upgrades both installations,
+verifies versions, and compensates failures. `/update recover` restores an
+interrupted transaction on the original Host. A cross-process lock and recovery
+marker prevent concurrent writers. Linked, readonly, or non-npm frontend
+installations use their original installer.
 
-- **Shell users**: re-run `npm -g install @ephemeral-ai/mayfly-cli` — reinstalling is the upgrade (the shell calibrates the profile's Mayfly to its own version and pins the host line with it); start with `mayfly` as usual afterwards.
-- **Direct-dsh users**:
-  - **In-app (recommended)**: type `/update` in the session — it runs the safety pre-flight first (profile health, whether the active dsh runtime meets the target release's harness line, the cooldown window), then after you select Yes in the Yes / No confirmation it snapshots the current install, installs the exact version in one transaction, verifies the whole package set, and boot-smokes the result (a module import sweep plus a real boot); any failure **rolls back automatically** to the previous version, with a progress panel and a log path throughout. `/update <version>` pins an explicit target; a bare `/update` doubles as a read-only check. After a successful update the current session keeps running the old version — a restart applies it.
-  - **Manually**: re-run the same `dsh plugin --profile mayfly add @ephemeral-ai/mayfly` (or the exact-version form in the previous question).
+Restart both processes after an upgrade and check Host startup. The official
+Host API supplies no isolated Host boot check. A frontend import check does not
+establish Host startup success. Development worktrees rebuild and reinstall
+their dedicated profile after dependency changes.
 
-Mayfly also checks for a newer release in the background at startup (at most once per 24h, silent on failure, reads registry metadata only, sends nothing); when one exists it appends a two-line notice to the scroll area (below the banner at boot). To turn the startup check off, write this into `~/.dsh/settings.yaml`:
+## Why is `/stats` history unavailable?
 
-```yaml
-mayfly:
-  updateCheck: false
-```
+History can expose sibling Sessions even in current-workspace mode, so it needs
+global Host authorization. Authorization for the selected Session permits its
+own statistics only. A denied history request explains the boundary and starts
+no scan.
 
 ## Pasting an image does nothing?
 
@@ -36,7 +44,7 @@ Ctrl-V paste depends on two things:
 1. **Terminal environment**: the platform's own clipboard path is probed — `wl-paste` then `xclip` on Linux (3s timeout), one PowerShell call on Windows (10s), osascript on macOS (5s);
 2. **Model capability**: pasted images enter the message as image content blocks. If the current model route has no image input, messages containing image blocks are rejected — that is the upstream harness capability negotiation; switch to a vision-capable model.
 
-Images land in the attachment store (default `~/.dsh/attachments`; relocate via `DSH_MAYFLY_ATTACHMENT_DIR` or `DSH_HOME`), capped at 10MB per image, 8 images / 30MB / 16M pixels per message.
+The TUI admits local image data and stages it through native Host attachment APIs. Session writes preserve the original order of images and file receipts; no local image-store path is a Host filesystem capability.
 
 You can copy image content from an application or copy one or more local PNG/JPEG/WebP/GIF files in your file manager (Ubuntu Files, Windows Explorer, macOS Finder — all paste as one ordered batch). The file-manager path only accepts local regular files; remote URIs, directories, symlinks, and special files are refused with a reason.
 
@@ -50,7 +58,7 @@ Not yet. Keys register through `mayflyKeymap` (duplicate bindings are rejected),
 
 ## `/quit` does nothing?
 
-In the brief window before the agent attaches, `/quit` shows `no active session` instead of exiting — command dispatch checks for a current agent. Retry a moment later. **Double Ctrl-C within 1 second** also exits interactive mode.
+`/quit` is frontend-local and works before a Session exists. It detaches and exits the TUI while Host work continues. The two-step Ctrl-C exit follows the warning shown by the editor.
 
 ## When does the status-bar git badge refresh?
 

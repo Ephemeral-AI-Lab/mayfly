@@ -184,7 +184,7 @@ function publishAgeDetail(published: number | undefined, now: number): string {
  * @returns the disposer removing the command.
  */
 export function registerUpdateCommand(ctx: Context): () => void {
-  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.update-command', 'update')
+  const notifications = createInteractionNotificationOwner(ctx, 'mayfly.update-command', () => ({ kind: 'app', targetId: `profile/${profileNameFromArgv(process.argv)}` }))
   const dispose = registerOwnedCommand(ctx, {
     name: 'update',
     description: 'Safely update Mayfly (preflight, snapshot, smoke, auto-rollback)',
@@ -234,10 +234,10 @@ async function runUpdateFlow(ctx: Context, requested: string, notifications: Ret
   if (ctx.get('mayflyOverlays') === undefined) {
     return { kind: 'error', text: t('update is unavailable: the Mayfly UI registry is not mounted') }
   }
-  notifications.report('registry', { message: t('checking the registry for {package} updates…', { package: MAYFLY_PACKAGE }), severity: 'info', purpose: 'progress' }, { kind: 'app', targetId: `profile/${profileNameFromArgv(process.argv)}` }, 'registry')
+  notifications.report('registry', { message: t('checking the registry for {package} updates…', { package: MAYFLY_PACKAGE }), severity: 'info', purpose: 'progress' })
   const registry = await fetchPackument({
     onRetry: (attempt, total) =>
-      notifications.report('registry', { message: t('registry unreachable, retrying ({attempt}/{total})…', { attempt, total }), severity: 'warning', purpose: 'progress' }, { kind: 'app', targetId: `profile/${profileNameFromArgv(process.argv)}` }, 'registry'),
+      notifications.report('registry', { message: t('registry unreachable, retrying ({attempt}/{total})…', { attempt, total }), severity: 'warning', purpose: 'progress' }),
   })
   if (!registry.ok) {
     const detail = registry.reason === 'network'
@@ -246,7 +246,7 @@ async function runUpdateFlow(ctx: Context, requested: string, notifications: Ret
         ? 'the registry answers E404 for @ephemeral-ai/mayfly — check the npmrc registry/mirror configuration'
         : 'unparseable answer — check the npmrc mirror and retry'
     const message = t('could not read the registry ({detail})', { detail: t(detail) })
-    notifications.report('registry', { message, severity: 'error' }, { kind: 'app', targetId: `profile/${profileNameFromArgv(process.argv)}` }, 'registry')
+    notifications.report('registry', { message, severity: 'error' })
     return { kind: 'error', text: message }
   }
   notifications.clear('registry')

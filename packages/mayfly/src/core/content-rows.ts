@@ -23,7 +23,7 @@ import { commonPrefix } from './text-match.ts'
 import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, extendMergedLines, indexContent, indexMergedLines, scanContentLines, type ContentIndex, type ContentLineScan } from './content-segments.ts'
 import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment, type DiffStyle } from './diff-align.ts'
 import { ownDataErrorMessage } from './error-message.ts'
-import { highlightable, highlightCodeLines, type CodePaints } from './highlight.ts'
+import { highlightable, type CodePaints } from './highlight.ts'
 import { markdownBlockRows, markdownMermaidRows, markdownTheme, scanMarkdown, type MarkdownUnit, type PreparedMarkdown } from './markdown-rows.ts'
 import {
   CODE_HIGHLIGHT_MAX_BYTES,
@@ -48,6 +48,8 @@ export type WindowedContentNode = MayflySectionContentNode | Extract<MayflyConte
 
 /** What a content leaf needs beyond its node: width helpers, palette, the content cache, and the frame contract. */
 export interface ContentRowsEnv {
+  /** The surface whose layout, diagnostics and work counters this source owns. */
+  readonly owner?: object | undefined
   readonly components: MayflyComponents
   readonly colors: MayflySemanticColors
   readonly counters?: MayflyWorkCounters | undefined
@@ -248,26 +250,26 @@ interface PreparedDiff {
   readonly style: DiffStyle
 }
 
+interface DiffLayout {
+  readonly model: DiffModel
+  readonly before: string
+  readonly after: string
+  readonly language: string
+  readonly paints: Map<string, PreparedDiff>
+}
 
-const preparedDiffs = new WeakMap<object, PreparedDiff>()
+const preparedDiffs = new WeakMap<object, DiffLayout>()
 
 function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: 'diff' }>, env: ContentRowsEnv): PreparedDiff {
-  let prepared = preparedDiffs.get(node)
-  if (prepared === undefined) {
+  let layout = preparedDiffs.get(node)
+  if (layout === undefined) {
     const before = sanitizePluginText(requireText(node.before, 'diff before'))
     const after = sanitizePluginText(requireText(node.after, 'diff after'))
     const ops = alignDiffLines(before, after)
     countWork(env.counters, 'linesEstimated', ops.length)
     const language = node.language === undefined ? '' : sanitizePluginText(requireText(node.language, 'diff language'))
-    // The code of each side is highlighted as one block, so a token that spans lines keeps its color; past the byte cap, plain.
-    const lit = highlightable(language) && Buffer.byteLength(before, 'utf8') + Buffer.byteLength(after, 'utf8') <= CODE_HIGHLIGHT_MAX_BYTES
-      ? {
-          before: highlightCodeLines(before, language, codePaints(env)),
-          after: highlightCodeLines(after, language, codePaints(env)),
-        }
-      : undefined
-    prepared = {
-      style: { numbered: node.numbered !== false, start: node.start ?? 1, beforeStart: node.beforeStart ?? node.start ?? 1, ...(lit === undefined ? {} : { lit }) },
+    layout = {
+      before, after, language, paints: new Map(),
       model: diffModel(ops, {
         ...node.start === undefined ? {} : { start: node.start },
         ...node.beforeStart === undefined ? {} : { beforeStart: node.beforeStart },
@@ -278,8 +280,24 @@ function diffPrepared(node: Extract<MayflySectionContentNode, { readonly kind: '
         ...node.tail === undefined ? {} : { tail: sanitizePluginText(node.tail) },
       }),
     }
-    preparedDiffs.set(node, prepared)
+    preparedDiffs.set(node, layout)
   }
+  const key = paintKey(env)
+  let prepared = layout.paints.get(key)
+  if (prepared !== undefined) return prepared
+  // Alignment is independent of paint; syntax-colored lines belong to the current palette and components.
+  const lit = highlightable(layout.language) && Buffer.byteLength(layout.before, 'utf8') + Buffer.byteLength(layout.after, 'utf8') <= CODE_HIGHLIGHT_MAX_BYTES
+    ? {
+        before: env.cache.highlights.highlight(layout.before, layout.language, codePaints(env)),
+        after: env.cache.highlights.highlight(layout.after, layout.language, codePaints(env)),
+      }
+    : undefined
+  prepared = {
+    model: layout.model,
+    style: { numbered: node.numbered !== false, start: node.start ?? 1, beforeStart: node.beforeStart ?? node.start ?? 1, ...(lit === undefined ? {} : { lit }) },
+  }
+  if (layout.paints.size >= SHARED_SOURCE_VARIANTS) layout.paints.delete(layout.paints.keys().next().value!)
+  layout.paints.set(key, prepared)
   return prepared
 }
 
@@ -469,7 +487,7 @@ class MarkdownRowSource implements RowSource {
       this.tree.add(index, estimate)
     })
     this.declaredWidth = width
-    this.theme = markdownTheme(env.colors)
+    this.theme = markdownTheme(env.colors, env.cache.highlights)
     // A document that fits a paint budget is painted eagerly: its row map is exact at once, like the texts.
     this.lazy = prepared.normalized.length > CONTENT_SEGMENT_UNITS
     if (!this.lazy) this.prepare(0, Number.MAX_SAFE_INTEGER)
@@ -964,7 +982,7 @@ function codeSource(node: Extract<MayflySectionContentNode, { readonly kind: 'co
           const [start, end] = index.lineText(line)
           head.push(sanitizePluginText(code.slice(start, end)))
         }
-        highlighted = highlightCodeLines(head.join('\n'), language, codePaints(env))
+        highlighted = env.cache.highlights.highlight(head.join('\n'), language, codePaints(env))
       }
     }
     return highlighted
@@ -1124,7 +1142,7 @@ function buildNodeSource(node: WindowedContentNode, width: number, env: ContentR
 const CONTENT_NODE_KINDS = new Set<string>(['text', 'fields', 'code', 'sections', 'rich-text', 'diff', 'markdown'])
 
 /**
- * One source per admitted node, width, paint, and cache, shared by the leaf that paints it and the document resolver
+ * One source per admitted node, width, paint, cache, and surface owner, shared by the leaf and document resolver
  * that maps its anchors: a scroll's anchor and its viewport read the same row map instead of re-wrapping the document
  * on their own. Keyed by node identity — the same object arriving again is the same text — plus the palette and
  * components it paints with and the cache its segments live in, so a theme change or another renderer never reads
@@ -1135,7 +1153,7 @@ const SHARED_SOURCE_VARIANTS = 4
 const sharedSources = new WeakMap<object, Map<string, RowSource>>()
 
 function nodeSource(node: WindowedContentNode, width: number, env: ContentRowsEnv, depth: number): RowSource {
-  const key = `${String(width)}|${paintKey(env)}|${String(idOf(env.cache))}`
+  const key = `${String(width)}|${paintKey(env)}|${String(idOf(env.cache))}|${String(idOf(env.owner ?? env))}`
   let variants = sharedSources.get(node)
   const shared = variants?.get(key)
   if (shared !== undefined) return shared

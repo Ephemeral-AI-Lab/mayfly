@@ -18,7 +18,7 @@ function fixture(count = 2) {
   const ctx = new Context(); contexts.push(ctx)
   const records = Array.from({ length: count }, (_value, index) => ({ header: { id: SessionId(String(index)), createdAt: index, cwd: index % 2 === 0 ? '/work' : '/other' } }))
   const dispose = vi.fn()
-  const observe = vi.fn(async (sessionId: string, ..._args: unknown[]) => ({ header: { id: sessionId, createdAt: 100, cwd: '/work' }, events: [turn()], revision: 'r1' as string | undefined, [Symbol.dispose]: dispose }))
+  const observe = vi.fn(async (sessionId: string, ..._args: unknown[]) => ({ source: 'prepared' as 'live' | 'prepared', header: { id: sessionId, createdAt: 100, cwd: '/work' }, events: [turn()], revision: 'r1' as string | undefined, [Symbol.dispose]: dispose }))
   const list = vi.fn(async (..._args: unknown[]) => records)
   const query = { observeSession: observe, listSessions: list }
   ctx.provide('sessionQuery', query)
@@ -68,11 +68,42 @@ describe('Host rc.2 statistics digests', () => {
     expect(f.dispose).toHaveBeenCalledTimes(6)
     const old = frames.at(-1)!.digests[0]
     const again = await f.read()
-    expect(again[0]!.digests[0]).toEqual(old)
+    expect(again[0]!.digests).toEqual([])
+    expect(again.at(-1)!.digests[0]).toBe(old)
     f.records.splice(0, 1)
     const scoped = await f.read(false)
     expect(scoped.at(-1)!.total).toBe(2)
     expect(scoped.at(-1)!.digests.map(item => item.id)).toEqual(['4', '2'])
+  })
+
+  it('never publishes unverified cached digests when a later observation fails', async () => {
+    const f = fixture(2)
+    await f.read()
+    const original = f.observe.getMockImplementation()!
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof original>>>()
+    f.observe.mockImplementation(async (sessionId, ...args) => {
+      if (sessionId === id) return original(sessionId, ...args)
+      if (sessionId === '0') throw new Error('cold source unreadable')
+      return pending.promise
+    })
+    const iterator = f.index.read(f.request, new AbortController().signal)[Symbol.asyncIterator]()
+    expect((await iterator.next()).value).toMatchObject({ running: true, done: 0, digests: [] })
+    expect((await iterator.next()).value).toMatchObject({ running: true, done: 1, failed: 1, digests: [] })
+    pending.resolve({ ...await original('1'), revision: 'r2', events: [turn(), turn()] })
+    const remaining = []
+    for (;;) { const next = await iterator.next(); if (next.done) break; remaining.push(next.value) }
+    expect(remaining.at(-1)).toMatchObject({ running: false, failed: 1, digests: [{ id: '1', days: [{ turns: 2 }] }] })
+    expect(remaining.every(frame => frame.digests.every(digest => digest.id !== '0'))).toBe(true)
+  })
+
+  it('recomputes live observations even if they carry the same durable revision', async () => {
+    const f = fixture(1)
+    await f.read()
+    const original = f.observe.getMockImplementation()!
+    f.observe.mockImplementation(async (sessionId, ...args) => ({ ...await original(sessionId, ...args), source: 'live', events: [turn(), turn()] }))
+    expect((await f.read()).at(-1)).toMatchObject({ digests: [{ days: [{ turns: 2 }] }] })
+    f.observe.mockImplementation(async (sessionId, ...args) => ({ ...await original(sessionId, ...args), source: 'live', events: [turn(), turn(), turn()] }))
+    expect((await f.read()).at(-1)).toMatchObject({ digests: [{ days: [{ turns: 3 }] }] })
   })
 
   it('refreshes live and revised records, removes newly empty digests, and accounts for unreadable logs', async () => {

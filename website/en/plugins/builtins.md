@@ -1,8 +1,26 @@
 # Built-in plugins
 
-The Mayfly bundle inserts ordinary Cordis siblings over `dsh-base`: a set of
-dsh support rows and the Mayfly product rows (`cordis.patch.yml` is the row
-list of record). There is no group/isolate or private service realm.
+The current product composes separate Host and Remote processes on Harness
+`0.2.2-alpha.2`.
+
+| Owner | Composition |
+| --- | --- |
+| Native Host | `dsh-base`, `dsh-web-app`, native services and Agent presets |
+| `@ephemeral-ai/mayfly-host` | Durable Mayfly projections, focused `mayflyHost` methods, Host readiness, and the native `mayfly-cordis` preset |
+| `@ephemeral-ai/mayfly-remote` | Official Client connections, Session selection, frontend feature controllers, and the TUI composition |
+| `@ephemeral-ai/mayfly` | Shared renderer, themes, editor/transcript controllers, and readonly presentation subpaths |
+| `@ephemeral-ai/mayfly-ui` | Pure builders, contracts, and the four frontend-local UI registries |
+
+Host services stay on Host. Frontend contributions publish through
+`mayflyStatus`, `mayflyPanes`, `mayflyOverlays`, and `mayflyEditorExtensions` in
+the TUI's tree. Cordis `inject` determines activation order and reload behavior.
+Installing a Host bundle does not mount its TUI contribution.
+
+## Historical test fixture
+
+The diagram records the private in-process fixture used by older renderer and
+composition tests. It is not the current installation, published package
+contract, or supported extension path.
 
 <!-- BEGIN diagram:mayfly-composition -->
 <!-- single source: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
@@ -25,25 +43,3 @@ flowchart TB
     UI --> PLUGINS
 ```
 <!-- END diagram:mayfly-composition -->
-
-## Support rows
-
-- subagent model settings and agent presets;
-- dynamic Cordis host runner;
-- workspace, connection, and file-upload;
-- session controller;
-- session statistics (turn/step counts and model/tool times).
-
-## Mayfly rows
-
-- `mayfly-ui-provider`: mounts the four direct UI registries from `@ephemeral-ai/mayfly-ui/provider`;
-- `mayfly-frontend`, `mayfly-core`, and dark theme;
-- `mayfly-conversation`, startup, app/current Agent;
-- banner, transcript, and official model;
-- basic/cwd/git/context/mode/jobs/goal status;
-- activity/queue/todo/agents/workflow panes;
-- BTW, jobs, and agents commands, attachments, paste image, editor-plus, and interaction.
-
-External plugin rows share this service graph. Activation dependencies come
-from `inject`, not YAML position. Every built-in status or pane uses the same
-`mayflyStatus`/`mayflyPanes` registry available to external plugins.

@@ -1,47 +1,54 @@
 # Service seam 参考
 
-## dsh 原生
+## Host 原生服务与 Remote
 
-插件直接 inject `commands`、`sessionProjections`、`tools`、`settings`、
-`skills`、`sessionController` 等 dsh service。与 `planMode` 同 realm 的插件
-也可以直接 inject；根级 UI 插件直接读取 `plan` projection、执行 `/plan`
-command。方法签名与返回值不经过 Mayfly 改写。
+Host 插件直接 inject `commands`、`sessionProjections`、`tools`、`settings`、
+`skills`、`sessionController` 等公开 dsh service。Agent 作用域操作必须使用本次调用
+对应的精确 Agent；例如命令 handler 的 `invocation.agent`。
 
-## Mayfly UI
+Remote TUI 使用官方 Client/Remote 的 Session face、完整投影和原生文件路由。
+原生 transport 缺少的展示查询与受保护写入由 Mayfly Host 的 `mayflyHost` 方法补充；
+DTO 只包含可序列化事实。它不是任意 service、文件系统或工具调用入口。
+
+`statsHistory` 在当前工作区与全部工作区模式下都要求 Host 全局授权；单个 Session
+的授权只允许读取它自己的统计。原始 settings 文档保存与原生配置写入共享 profile
+锁，在锁内比较 revision 并原子替换。此保护不覆盖无视该锁、在最终检查后写入的
+外部编辑器。
+
+## TUI 的四个 UI service
 
 | Service | 写入 | 消费方 |
 | --- | --- | --- |
-| `mayflyPanes` | `register(MayflyPaneDefinition, MayflyUiNode)` | core surface renderer |
+| `mayflyPanes` | `register(MayflyPaneDefinition, MayflyUiNode)` | Core surface renderer |
 | `mayflyStatus` | `register(MayflyStatusDefinition, MayflyStatusNode)` | transcript footer |
-| `mayflyOverlays` | `open(MayflyOverlayDefinition, MayflyUiNode)` | core overlay renderer |
-| `mayflyEditorExtensions` | `register(MayflyEditorExtensionDefinition, MayflyEditorDecoration)` | interaction editor |
+| `mayflyOverlays` | `open(MayflyOverlayDefinition, MayflyUiNode)` | Core overlay renderer |
+| `mayflyEditorExtensions` | `register(MayflyEditorExtensionDefinition, MayflyEditorDecoration)` | editor shell |
 
-`@ephemeral-ai/mayfly-ui` 提供 Context declaration merge 和 contract；
-`@ephemeral-ai/mayfly-ui` 提供纯 builder。
+`@ephemeral-ai/mayfly-ui` 提供 Context declaration merge、契约与纯 builder。Host
+插件和原生浏览器 client half 不能注入这些前端本地 registry。当前 TUI 扩展需要源码
+集成并重启，不支持通过 `/plugin` 安装或动态热挂载。
 
-## 当前 Agent
+## 选择与通知
 
-`mayflyCurrentAgent.current()` 返回 `Agent | null`；`subscribe(listener)`
-立即 replay 当前 selection，并在 revision 变化时通知。插件把当前 Agent 或
-`agent.session` 传给原生 dsh service。显示只读或可恢复的旁支会话时它返回
-null，因此 Agent 作用域的写入不会落到用户无法驱动的会话上。
+Remote 管理 HostKey + SessionRef 及可写、可恢复、只读会话状态。切换与断开连接
+使旧 generation 的读取、订阅与写入回复失效。Agent/Session 不跨进程；共享包没有
+公共当前 Agent 或会话导航 facade。
 
-## 会话
+需要共享通知 owner 的 TUI source consumer 显式提供 scope callback：
 
-`mayflyConversations.snapshot()` / `subscribe(listener)` 描述用户可以切换的
-会话：主会话以及 BTW、subagent 旁支会话。每个会话是冻结的描述符，包含
-`kind`、`label`、推导出的 `access`（`interactive`、`resumable`、`readonly`）与
-`residency`，以及当前显示的 id。`open({ kind: 'subagent', sessionId,
-parentSessionId, label, mode })` 显示一个 child 会话；`display(id)`、`back()`、
-`close(id)` 在会话间切换。描述符不含 Agent 或 Session：会话数据请读取原生
-service。
+```ts
+import { createInteractionNotificationOwner } from '@ephemeral-ai/mayfly/frontend'
+
+const notifications = createInteractionNotificationOwner(ctx, 'acme.health',
+  () => ({ kind: 'app', targetId: 'acme.health' }))
+```
+
+Session 通知由 consumer 的 callback 返回当前 `MayflyUiScope`；consumer 自己管理
+Host/Session 选择及其生命周期，helper 不查找原生 Agent。
 
 ## 生命周期
 
-所有 registration 绑定 consumer Fiber。没有专用 admission 阶段、grant、
-owner token 或跨 realm proxy。Renderer 暂时卸载时 registry 仍保留当前
-definition；renderer 重挂后通过 `list()/subscribe()` 读取。
-
-静态 UI 插件只 inject 它真正需要的 Mayfly service。依赖
-`mayflyCurrentAgent` 的插件会在 app/core dependency unload 时按 Cordis
-规则一起 unload。
+所有 registration 绑定 consumer Fiber。Registry 与前端交互状态在 Core/theme
+reload 时保留；重挂的 renderer 重新读取当前 snapshot。卸载 contribution 则移除
+registration 并撤销未完成回复。草稿、确认、分页和语义焦点属于 frontend；ANSI、
+可见宽度、终端 handle、布局与渲染缓存属于 Core。

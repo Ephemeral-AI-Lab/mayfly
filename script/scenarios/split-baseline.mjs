@@ -128,6 +128,7 @@ export async function capturePublishedReference({ root, dir, cols = 80, rows = 2
   const captureDir = join(dir, 'captures', caseName ?? '')
   mkdirSync(captureDir, { recursive: true })
   writeFileSync(join(captureDir, 'reference.ansi'), captured.output)
+  writeFileSync(join(captureDir, 'exit.json'), `${JSON.stringify(captured.exit ?? null, null, 2)}\n`)
   if (captured.failures.length > 0) throw new Error(`Published reference capture failed:\n${captured.failures.join('\n')}`)
   const file = join(captureDir, 'reference.json')
   const provenance = { ...SPLIT_REFERENCE, harness: HARNESS_REFERENCE_VERSION, dependencyLockSha256: acquired.lockHash, profileLockSha256: createHash('sha256').update(readFileSync(join(profile, 'pnpm-lock.yaml'))).digest('hex'), stepsSha256: createHash('sha256').update(JSON.stringify(steps)).digest('hex'), ...startup === undefined ? {} : { startup }, ...fixture === undefined ? {} : { fixture }, ...workspace === undefined ? {} : { workspace }, ...profileTag === undefined ? {} : { profileTag } }

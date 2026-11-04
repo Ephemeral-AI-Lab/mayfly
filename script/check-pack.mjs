@@ -98,6 +98,7 @@ function verifyExternalConsumers(packageTarballs) {
   const uiTarball = packageTarballs.get('@ephemeral-ai/mayfly-ui')
   const remoteTarball = packageTarballs.get('@ephemeral-ai/mayfly-remote')
   const sharedTarball = packageTarballs.get('@ephemeral-ai/mayfly')
+  const hostTarball = packageTarballs.get('@ephemeral-ai/mayfly-host')
   if (uiTarball === undefined) {
     fail('external UI kit fixture requires the packed UI tarball')
     return
@@ -108,6 +109,10 @@ function verifyExternalConsumers(packageTarballs) {
   }
   if (sharedTarball === undefined) {
     fail('external editor fixture requires the packed shared tarball')
+    return
+  }
+  if (hostTarball === undefined) {
+    fail('external conversation and namespace fixture requires the packed Host types')
     return
   }
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'mayfly-ui-kit-pack-'))
@@ -155,10 +160,12 @@ export declare const metric: MayflyComponentFactory<MetricProps>
       dependencies: {
         '@ephemeral-ai/mayfly-ui': `file:${uiTarball}`,
         '@ephemeral-ai/mayfly': `file:${sharedTarball}`,
+        '@ephemeral-ai/mayfly-host': `file:${hostTarball}`,
         '@ephemeral-ai/mayfly-remote': `file:${remoteTarball}`,
         '@mayfly-pack-fixture/user-kit': `file:${kitTarball}`,
       },
       devDependencies: {
+        '@deepseek-ai/dsh-typert-protocol': readManifest('packages/remote').devDependencies['@deepseek-ai/dsh-typert-protocol'],
         '@types/node': readManifest('packages/remote').devDependencies['@types/node'],
         '@types/ws': readManifest('packages/remote').devDependencies['@types/ws'],
       },
@@ -166,7 +173,7 @@ export declare const metric: MayflyComponentFactory<MetricProps>
     // The candidate shares rc.2's version until release. Resolve every Mayfly
     // dependency from these tarballs instead of mixing in the published TUI.
     writeFileSync(join(consumerRoot, 'pnpm-workspace.yaml'), `packages: []\nallowBuilds: {}\noverrides:\n${[...packageTarballs].map(([name, tarball]) => `  ${JSON.stringify(name)}: ${JSON.stringify(`file:${tarball}`)}\n`).join('')}`)
-    execFileSync('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], { cwd: consumerRoot, stdio: 'ignore' })
+    execFileSync('pnpm', ['install', '--ignore-scripts', '--no-frozen-lockfile'], { cwd: consumerRoot, stdio: 'inherit' })
     writeFileSync(join(consumerRoot, 'verify.mjs'), `
 import { metric } from '@mayfly-pack-fixture/user-kit'
 import { EditorExtensionRuntime } from '@ephemeral-ai/mayfly/editor-presentation'
@@ -190,6 +197,9 @@ import { metric, type MetricProps } from '@mayfly-pack-fixture/user-kit'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { createHostClient, HostKey, type HostClient } from '@ephemeral-ai/mayfly-remote/client'
 import { EditorExtensionRuntime, type EditorExtensionRuntimeOptions } from '@ephemeral-ai/mayfly/editor-presentation'
+import type { ConversationProjection } from '@ephemeral-ai/mayfly/conversation'
+import type { ConversationProjection as HostConversation, MayflyAuthorizationAnswer, MayflyAuthorizationFrame, MayflyWorkflowFrame } from '@ephemeral-ai/mayfly-host/types'
+import type { RemoteStreamHandle } from '@deepseek-ai/dsh-typert-protocol'
 const props: MetricProps = { label: 'Context', value: 42 }
 const node: MayflyUiNode = metric.render(props)
 const options: Parameters<typeof createHostClient>[0] = {
@@ -198,6 +208,14 @@ const options: Parameters<typeof createHostClient>[0] = {
 }
 declare const host: HostClient
 void [host.remote.session, host.remote.workspace, host.remote.skills, host.remote.commands]
+const authorization: RemoteStreamHandle<MayflyAuthorizationFrame, MayflyAuthorizationAnswer> = host.remote.mayflyHost.authorize({ key: 'fixture' as never })
+authorization.send({ type: 'decline', operationId: 'one', promptId: 'two' })
+// @ts-expect-error The generated stream retains its addressed uplink schema.
+authorization.send({ type: 'not-an-authorization-answer' })
+const workflow: RemoteStreamHandle<MayflyWorkflowFrame, never> = host.remote.mayflyHost.followWorkflow({ sessionId: 'fixture' as never })
+void workflow
+export const toHost = (value: ConversationProjection): HostConversation => value
+export const toRenderer = (value: HostConversation): ConversationProjection => value
 void options
 void node
 export function mountInput(options: EditorExtensionRuntimeOptions<{ readonly text: string, readonly receipt: number }>) {

@@ -338,7 +338,7 @@ describe('native capability ownership', () => {
 
   it('keeps mayflyConversationFacts free of removed domain fields', () => {
     const facts = codeOf(readFileSync(resolve(sourceRoot, 'conversation/facts.ts'), 'utf8'))
-    const types = codeOf(readFileSync(resolve(sourceRoot, 'conversation/types.ts'), 'utf8'))
+    const types = codeOf(readFileSync(resolve(root, '../host/src/conversation/types.ts'), 'utf8'))
     const schema = bodyAfter(facts, /conversationFactsSchema\s*=\s*z\.object/u)
     const shape = bodyAfter(types, /export interface ConversationFacts\s*/u)
     expect(schema).not.toBe('')

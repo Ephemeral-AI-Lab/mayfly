@@ -22,7 +22,8 @@ import { VIEWS_FOCUS_ID, type ViewHint, type ViewRegistration } from './views-la
 import { MayflyUiSurfaceRuntime, compileMayflyUiNode, compileMayflyUiSurfaceNode, type MayflyCompiledUi, type MayflyUiViewport } from './ui-compiler.ts'
 import { renderOverflowRow } from './ui-patterns.ts'
 import { OverlayArm, type OverlayArmHint } from './overlay-arm.ts'
-import { ACTION_FOLLOW_TAIL, ACTION_PAGE_DOWN, ACTION_PAGE_UP, displayKey, matchesKeyAction } from './key-actions.ts'
+import { ACTION_FOLLOW_TAIL, ACTION_PAGE_DOWN, ACTION_PAGE_UP, displayKey } from './key-actions.ts'
+import { matchesKeyAction } from './key-matching.ts'
 import type { MayflyComponents, MayflyFocusable, MayflyFocusIdentity, MayflyKeymap, MayflyOverlayHandle, MayflySemanticColors } from './types.ts'
 import type { UiSurfaceModel } from './ui-interaction-surface.ts'
 import type { UiInteractionService } from './ui-interaction-state.ts'
@@ -742,6 +743,7 @@ export function mountMayflySurfaceRenderer(ctx: OwnerContext, runtime: MayflyTer
   ctx.effect(() => () => {
     disposed = true
     clock.dispose()
+    content.clear()
     stopTailWatch?.()
     offInteraction()
     for (const record of [...overlays.values()].reverse()) {

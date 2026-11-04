@@ -20,6 +20,11 @@ export interface ConversationImage {
   readonly originalDimensions?: Readonly<{ width: number, height: number }> | undefined
 }
 
+/** Ordered safe attachment metadata; native filesystem targets never cross the wire. */
+export type ConversationAttachment =
+  | Readonly<ConversationImage & { readonly kind: 'image' }>
+  | Readonly<{ readonly kind: 'file', readonly attachmentId: string, readonly name: string, readonly bytes: number }>
+
 interface ConversationEntryBase {
   readonly id: string
   readonly seq: number
@@ -31,7 +36,7 @@ interface ConversationEntryBase {
 interface ConversationUserEntry extends ConversationEntryBase {
   readonly kind: 'user'
   readonly text: string
-  readonly images: readonly ConversationImage[]
+  readonly attachments: readonly ConversationAttachment[]
 }
 
 /** One assistant answer, updated in place while chunks arrive. */

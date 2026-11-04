@@ -39,8 +39,8 @@ export type StreamRow =
     readonly kind: 'prompt'
     readonly id: string
     readonly text: string
-    /** The images attached to the prompt, in block order. */
-    readonly images: readonly StreamImage[]
+    /** The safe attachment metadata attached to the prompt, in block order. */
+    readonly attachments: readonly (StreamImage & { readonly kind: 'image' | 'file' })[]
     /** Whether the prompt shows all its lines. */
     readonly open: boolean
   }
@@ -178,12 +178,14 @@ function rowParts(row: Exclude<StreamRow, { readonly kind: 'tools' }>): readonly
     case 'prompt':
       return [
         promptItem(row.id, row.text, row.open),
-        ...row.images.map((image, index): MayflyListItem => ({
-          id: `${row.id}.image.${String(index)}`,
+        ...row.attachments.map((image, index): MayflyListItem => ({
+          id: `${row.id}.${image.kind}.${String(index)}`,
           label: image.alt,
-          body: ui.image({ attachmentId: image.attachmentId, alt: image.alt, maxRows: PROMPT_IMAGE_MAX_ROWS }),
-          bodyAlways: true,
-          bodyLead: [span('  ▪ ', 'muted')],
+          ...(image.kind === 'file' ? {} : {
+            body: ui.image({ attachmentId: image.attachmentId, alt: image.alt, maxRows: PROMPT_IMAGE_MAX_ROWS }),
+            bodyAlways: true,
+            bodyLead: [span('  ▪ ', 'muted')],
+          }),
         })),
       ]
     // One item holds the whole answer: its Markdown body lays out the blocks and wraps under the `●` that leads it.
@@ -400,21 +402,39 @@ export function TranscriptView(facts: TranscriptViewFacts, cursor?: StreamCursor
   const cached = viewCache.get(facts)
   if (cached !== undefined && cached.cursor === cursorValue && cached.highlight === highlightValue) return cached.node
   const items: MayflyListItem[] = []
+  const rowIds = new Set<string>()
+  const ambiguous = new Set<string>()
+  const reserved = new Set(facts.turns.flatMap(turn => [...turn.rows, ...turn.after ?? []].map(row => row.id)))
+  const occurrence = (row: StreamRow): StreamRow => {
+    let id = row.id
+    for (let copy = 2; rowIds.has(id); copy += 1) {
+      id = `${row.id}~${String(copy)}`
+      while (reserved.has(id)) id += '~'
+    }
+    rowIds.add(id)
+    if (id !== row.id) ambiguous.add(id)
+    return id === row.id ? row : { ...row, id }
+  }
+  const parts = (row: StreamRow): readonly MayflyListItem[] => ambiguous.has(row.id)
+    ? itemsOf(row).map(item => freezeWire({ ...item, disabled: true }))
+    : itemsOf(row)
   facts.turns.forEach((turn, index) => {
     if (index > 0) items.push(blankBetween(turn))
     turn.rows.forEach((row, position) => {
+      row = occurrence(row)
       // Every row is a block of its own, and a blank row separates two blocks.
       if (position > 0) items.push(rowGap(row))
-      items.push(...itemsOf(row))
+      items.push(...parts(row))
     })
     items.push(...closingOf(turn))
     turn.after?.forEach((row) => {
-      items.push(rowGap(row), ...itemsOf(row))
+      row = occurrence(row)
+      items.push(rowGap(row), ...parts(row))
     })
   })
   for (const message of facts.queued) items.push(...queuedItems(message))
   const unique = withUniqueIds(items)
-  const drawn = new Set(unique.map(item => item.id))
+  const drawn = new Set(unique.filter(item => item.disabled !== true).map(item => item.id))
   // Sent to the rows it names; a row that is no longer drawn leaves the cursor where it is, and only a bare entry lands on the newest.
   const target = cursor === undefined ? undefined : cursor.ids === undefined ? unique.findLast(item => item.disabled !== true)?.id : cursor.ids.find(id => drawn.has(id))
   const node = ui.list({

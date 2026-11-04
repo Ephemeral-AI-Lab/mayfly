@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { admitNotificationMessage, feedbackSpans, UiNotificationOwner, UiNotificationStore } from '../../src/core/ui-interaction-notifications.ts'
 import { UiInteractionService } from '../../src/core/ui-interaction-state.ts'
-import { createInteractionNotificationOwner, currentNotificationScope } from '../../src/interaction/notifications.ts'
+import { createInteractionNotificationOwner } from '../../src/interaction/notifications.ts'
 
 const app = { kind: 'app' as const, targetId: 'test' }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
@@ -164,12 +164,15 @@ describe('notification owners', () => {
   it('binds an interaction owner to its Cordis Fiber and supports all helpers', async () => {
     const ctx = new Context()
     const interaction = new UiInteractionService(ctx)
-    expect(currentNotificationScope(ctx, 'application')).toEqual({ kind: 'app', targetId: 'application' })
-    ctx.provide('mayflyCurrentAgent', { current: () => ({ id: 'session' }) } as never)
-    expect(currentNotificationScope(ctx, 'application')).toEqual({ kind: 'session', sessionId: 'session' })
-    const owner = createInteractionNotificationOwner(ctx, 'producer', 'application')
+    ctx.provide('mayflyCurrentAgent', { current: () => { throw new Error('native Agent lookup is not a frontend seam') } } as never)
+    let scope: typeof app | { readonly kind: 'session', readonly sessionId: string } = app
+    const owner = createInteractionNotificationOwner(ctx, 'producer', () => scope)
     owner.report('one', { severity: 'info', message: 'One' })
+    expect(interaction.notificationSnapshot()[0]?.scope).toEqual(app)
     owner.clear('one')
+    scope = { kind: 'session', sessionId: 'session' }
+    owner.report('selected', { severity: 'info', message: 'Selected' })
+    expect(interaction.notificationSnapshot()[0]?.scope).toEqual(scope)
     owner.report('two', { severity: 'error', message: 'Two' }, app, 'explicit')
     owner.clearAll()
     expect(interaction.notificationSnapshot()).toEqual([])
@@ -177,7 +180,7 @@ describe('notification owners', () => {
     interaction.dispose()
 
     const absent = new Context()
-    const unavailable = createInteractionNotificationOwner(absent, 'absent')
+    const unavailable = createInteractionNotificationOwner(absent, 'absent', () => app)
     unavailable.report('one', { severity: 'info', message: 'One' })
     unavailable.clear('one')
     unavailable.clearAll()

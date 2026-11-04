@@ -29,12 +29,13 @@ function fixture(options: { readonly files?: typeof delivered | null, readonly n
   let generation = 1
   const deliveredFile = vi.fn(async (request: { deliveryId: string, preview?: boolean }, _signal?: AbortSignal): Promise<unknown> => ok({ path: `/native/${request.deliveryId}`, displayPath: '~/work/report.md', fileType: 'file', size: 12, ...request.preview === true ? { preview: 'preview line\n第二行' } : {} }))
   const latestWorkspaceChanges = vi.fn(async (): Promise<unknown> => ok(null))
+  const workspaceChangesSummary = vi.fn(async (): Promise<unknown> => ok(latest.summary))
   const workspaceChangesDiff = vi.fn(async (): Promise<unknown> => ok(null))
   const canOpenWorkspacePath = vi.fn(async (): Promise<unknown> => ok(true))
   const openWorkspacePath = vi.fn(async (_request: unknown, _signal?: AbortSignal): Promise<unknown> => ok({}))
   const copy = vi.fn(async (_text: string): Promise<void> => {})
   const binding = { session: { projections: { faceOf: () => ({ getSnapshot: () => files, subscribe: subscribe('projection') }) } }, eventSource: { getSnapshot: () => ({ entries }), subscribe: subscribe('events') } } as unknown as SessionBinding
-  const client = { key: HostKey('one'), state: { getSnapshot: () => ({ generation }), subscribe: subscribe('state') }, remote: { mayflyHost: { deliveredFile, latestWorkspaceChanges, workspaceChangesDiff }, session: { canOpenWorkspacePath, openWorkspacePath } } } as unknown as HostClient
+  const client = { key: HostKey('one'), state: { getSnapshot: () => ({ generation }), subscribe: subscribe('state') }, remote: { mayflyHost: { deliveredFile, latestWorkspaceChanges, workspaceChangesSummary, workspaceChangesDiff }, session: { canOpenWorkspacePath, openWorkspacePath } } } as unknown as HostClient
   let attached = true
   let current: RemoteFeatureSelection | undefined = { client, binding, ref: { host: HostKey('one'), sessionId: SessionId('lead') } }
   const locale = { register: vi.fn(), subscribe: vi.fn(() => () => {}), translate: vi.fn((_namespace: string, key: string) => key) }
@@ -55,10 +56,11 @@ function fixture(options: { readonly files?: typeof delivered | null, readonly n
   })
   const unmount = mountRemoteFilesOperations(context)
   const execute = (text = '', signal = new AbortController().signal) => commands.list().find(command => command.name === 'files')!.execute(text, signal)
+  const changes = (text = '', signal = new AbortController().signal) => commands.list().find(command => command.name === 'changes')!.execute(text, signal)
   const act = (event: object, signal = new AbortController().signal) => browser!.action!(event as MayflyUiActionEvent, { signal } as MayflyUiEventContext)
   const select = (id?: string, controlId = 'files') => act({ kind: 'selection-accept', controlId, selectedIds: id === undefined ? [] : [id] })
   const activate = (actionId: string, signal?: AbortSignal) => act({ kind: 'activate', actionId }, signal)
-  return { client, binding, commands, notice, unmount, execute, act, select, activate, deliveredFile, latestWorkspaceChanges, workspaceChangesDiff, canOpenWorkspacePath, openWorkspacePath, copy, refresh, close, focus, listeners,
+  return { client, binding, commands, notice, unmount, execute, changes, act, select, activate, deliveredFile, latestWorkspaceChanges, workspaceChangesSummary, workspaceChangesDiff, canOpenWorkspacePath, openWorkspacePath, copy, refresh, close, focus, listeners,
     browser: () => browser!, view: () => browser!.view(),
     project: (value: typeof files) => { files = value; fire('projection') },
     events: (value: readonly unknown[]) => { entries = value; fire('events') },
@@ -108,7 +110,7 @@ describe('native Files command composition', () => {
 
   it('registers the command, shows rc.2 Files chrome and details, and releases reads and registration on unload', async () => {
     const f = fixture()
-    expect(f.commands.list().map(command => command.name)).toEqual(['files'])
+    expect(f.commands.list().map(command => command.name)).toEqual(['changes', 'files'])
     await f.execute()
     await tick()
     expect(await f.activate('open', AbortSignal.abort())).toEqual({ kind: 'cancelled' })
@@ -284,6 +286,80 @@ describe('native Files command composition', () => {
     else if (action === 'open') f.openWorkspacePath.mockRejectedValueOnce(error)
     else f.deliveredFile.mockRejectedValueOnce(error)
     expect(await f.activate(action)).toEqual({ kind: 'failed', message: 'action denied' })
+    f.unmount()
+  })
+})
+
+describe('native per-sequence changes command', () => {
+  it('reads explicit sequence summary and diff for readonly cold views without delivery or opener reads', async () => {
+    const f = fixture()
+    f.selection({ ...f.current(), access: 'readonly' })
+    f.changes('8')
+    await tick()
+    expect(f.browser().id).toBe('remote.operations.changes')
+    expect(f.workspaceChangesSummary).toHaveBeenCalledExactlyOnceWith({ sessionId: 'lead', seq: 8 }, expect.any(AbortSignal))
+    expect(f.workspaceChangesDiff).toHaveBeenCalledExactlyOnceWith({ sessionId: 'lead', seq: 8, index: 0 }, expect.any(AbortSignal))
+    expect(f.latestWorkspaceChanges).not.toHaveBeenCalled()
+    expect(f.deliveredFile).not.toHaveBeenCalled()
+    expect(f.canOpenWorkspacePath).not.toHaveBeenCalled()
+    expect(f.listeners.projection.size + f.listeners.events.size).toBe(0)
+    expect(items(f.view())).toMatchObject([{ id: 'changes:8:0', label: 'a.ts' }])
+    expect(contains(f.view(), 'No comparison is available for this turn.')).toBe(true)
+    await f.select('changes:8:99')
+    expect(f.workspaceChangesDiff).toHaveBeenCalledOnce()
+    f.unmount()
+  })
+
+  it('keeps latest changes live while ignoring delivered files and preserves fixed-sequence refocus and replacement', async () => {
+    const f = fixture()
+    f.latestWorkspaceChanges.mockResolvedValue(ok(latest))
+    f.changes()
+    await tick()
+    expect(f.workspaceChangesSummary).not.toHaveBeenCalled()
+    expect(items(f.view())).toHaveLength(1)
+    f.events([{ type: 'event', event: { type: 'workspace/changes', seq: 9 } }])
+    await tick()
+    expect(f.latestWorkspaceChanges).toHaveBeenCalledTimes(2)
+    f.changes('8')
+    await tick()
+    f.changes('8')
+    expect(f.focus).toHaveBeenLastCalledWith('remote.operations.changes')
+    expect(f.workspaceChangesSummary).toHaveBeenCalledOnce()
+    f.changes('9')
+    await tick()
+    expect(f.workspaceChangesSummary).toHaveBeenLastCalledWith({ sessionId: 'lead', seq: 9 }, expect.any(AbortSignal))
+    f.unmount()
+  })
+
+  it('rejects malformed or unsafe sequences and keeps unavailable summaries empty', async () => {
+    const f = fixture()
+    for (const input of ['-1', '1.5', 'Infinity', '0x10', '1 2', '9007199254740992']) f.changes(input)
+    expect(f.notice.set).toHaveBeenCalledTimes(6)
+    expect(f.workspaceChangesSummary).not.toHaveBeenCalled()
+    f.workspaceChangesSummary.mockResolvedValueOnce(ok(null))
+    f.changes('0')
+    await tick()
+    expect(items(f.view())).toEqual([])
+    expect(f.workspaceChangesDiff).not.toHaveBeenCalled()
+    f.unmount()
+  })
+
+  it.each(['caller', 'selection', 'connection', 'unload'] as const)('retires delayed summary replies after %s', async change => {
+    const f = fixture()
+    const gate = deferred<unknown>()
+    const caller = new AbortController()
+    f.workspaceChangesSummary.mockReturnValueOnce(gate.promise)
+    f.changes('8', caller.signal)
+    if (change === 'caller') caller.abort()
+    if (change === 'selection') { f.selection({ ...f.current(), ref: { ...f.current().ref, host: HostKey('other') } }); f.topology() }
+    if (change === 'connection') f.reconnect()
+    if (change === 'unload') f.unmount()
+    const paints = f.refresh.mock.calls.length
+    gate.resolve(ok(latest.summary))
+    await tick()
+    expect(f.workspaceChangesDiff).not.toHaveBeenCalled()
+    expect(f.refresh).toHaveBeenCalledTimes(paints)
+    expect(f.notice.set).not.toHaveBeenCalled()
     f.unmount()
   })
 })

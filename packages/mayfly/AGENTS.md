@@ -14,6 +14,9 @@ owners, and update every shared caller to import the pure model. The packed
 runtime imports only Cordis, Schemastery, and the official browser-safe
 `dsh-llm`/`dsh-session/surface` stream helpers from Harness; `check:pack` refuses
 Host service runtime imports and legacy composition payload.
+The shared package's exact Host peer supplies serializable DTO declarations
+through type-only imports and reexports. It does not authorize a Host runtime
+import or move native service ownership into the renderer.
 
 ## State and lifetime ownership
 
@@ -31,6 +34,10 @@ Host service runtime imports and legacy composition payload.
   feedback survive renderer gaps. Teardown releases terminal editors and
   handles, not valid frontend drafts. Registry observers dispose only their
   own registration instances.
+  `createInteractionNotificationOwner` is exported from `frontend` and requires
+  the consumer's explicit `() => MayflyUiScope` callback. The consumer owns
+  selection and scope lifetime; the shared helper never looks up native Agents,
+  Sessions, or Host selection and supplies no default scope.
 - Locale namespaces are refcounted shared catalogs. Equivalent registrations
   share a catalog; conflicting content is an error. Use
   `memoizedLocaleTranslator` (`frontend/locale.ts`), with one observer Fiber

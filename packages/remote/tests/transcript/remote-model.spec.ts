@@ -685,10 +685,10 @@ describe('RemoteConversationModelSource', () => {
   it('keeps fork history floors aligned across entries, settled steps, turns, images, and Session facts', () => {
     const events = new TestEventSource()
     const durable = foldConversation([turn(1, 1), user('inherited', 2), assistant('old answer', 1, 3), turn(2, 10), user('child reply', 11)])
-    const image = { attachmentId: 'native-image', mediaType: 'image/png', bytes: 1, width: 2, height: 3 } as const
+    const image = { kind: 'image', attachmentId: 'native-image', mediaType: 'image/png', bytes: 1, width: 2, height: 3 } as const
     const conversation = projection<unknown>({
       ...durable,
-      entries: durable.entries.map(entry => entry.kind === 'user' && entry.turn === 2 ? { ...entry, images: [image] } : entry),
+      entries: durable.entries.map(entry => entry.kind === 'user' && entry.turn === 2 ? { ...entry, attachments: [{ kind: 'file', attachmentId: 'native-file', name: 'notes.txt', bytes: 12 }, image] } : entry),
       settledSteps: ['1:0', '2:0'],
     })
     const source = new RemoteConversationModelSource(tools, vi.fn())
@@ -698,6 +698,7 @@ describe('RemoteConversationModelSource', () => {
     expect(source.snapshot().entries).toEqual([expect.objectContaining({ kind: 'transcript-user', text: 'child reply' })])
     expect(source.snapshot().turns?.map(turn => turn.turn)).toEqual([2])
     expect(source.imageAttachment('native-image')).toEqual(image)
+    expect(source.imageAttachment('native-file')).toBeUndefined()
     expect(source.imageAttachment('missing')).toBeUndefined()
     source.dispose()
     source.dispose()

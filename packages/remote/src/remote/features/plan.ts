@@ -4,9 +4,11 @@
  */
 
 import { memoizedLocaleTranslator, type MayflyTranslate } from '@ephemeral-ai/mayfly/frontend'
-import type { MayflyStatusRegistration } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyStatusNode, MayflyStatusRegistration } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../features.ts'
 import { RemoteFeatureLifecycle } from './lifecycle.ts'
+import { assertRemoteSessionWritable, onRemoteSettingsDocumentUpdated } from './official.ts'
+import { RemoteConfigurationHost } from './configuration-host.ts'
 
 interface PlanProjection {
   readonly active: boolean
@@ -15,6 +17,7 @@ interface PlanProjection {
 
 const zh = {
   'plan': '计划',
+  'yolo': 'yolo',
   'plan…': '计划…',
   'plan mode is unavailable': '计划模式不可用',
   'Plan mode on for the next session': '下一个会话将进入计划模式',
@@ -32,12 +35,17 @@ class RemotePlanController {
   private readonly status: MayflyStatusRegistration
   private readonly unregisterKey: () => void
   private plan: PlanProjection | undefined
+  private yolo = false
+  private permissionTicket = 0
+  private readonly permissions: RemoteConfigurationHost
+  private readonly stopLocale: () => void
   private stopProjection: (() => void) | undefined
   private commandLifetime = new AbortController()
   private disposed = false
 
   constructor(options: RemoteFeatureContext) {
     this.options = options
+    this.permissions = new RemoteConfigurationHost(options.hosts)
     this.t = memoizedLocaleTranslator(options.ctx, 'remote-plan').translate
     this.lifecycle = new RemoteFeatureLifecycle(options, this.attach)
     this.status = options.ctx.mayflyStatus.register({ id: 'mayfly.status.mode', priority: 2 }, null)
@@ -52,6 +60,7 @@ class RemotePlanController {
       en: Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key]))),
       zh,
     }))
+    this.stopLocale = options.subscribeLocale(() => { if (!this.disposed) this.publish() })
     this.lifecycle.start()
   }
 
@@ -61,6 +70,7 @@ class RemotePlanController {
     this.commandLifetime.abort()
     this.stopProjection?.()
     this.stopProjection = undefined
+    this.stopLocale()
     this.unregisterKey()
     this.status.dispose()
   }
@@ -71,7 +81,21 @@ class RemotePlanController {
     this.stopProjection?.()
     this.stopProjection = undefined
     this.plan = undefined
+    this.yolo = false
+    const stops: (() => void)[] = []
+    this.stopProjection = () => { for (const stop of stops) stop() }
     const current = this.lifecycle.selection(generation)
+    const client = current?.client ?? this.options.hosts.active?.() ?? this.options.hosts.list()[0]
+    const signal = this.commandLifetime.signal
+    const refreshPermissions = (): void => {
+      if (!this.lifecycle.owns(generation) || client === undefined) return
+      const ticket = ++this.permissionTicket
+      void this.permissions.resolve(client, current?.ref, signal).then(details => {
+        if (!this.lifecycle.owns(generation) || signal.aborted || ticket !== this.permissionTicket) return
+        this.yolo = details?.yolo === true
+        this.publish()
+      })
+    }
     if (current !== undefined) {
       const projection = current.binding.session.projections.faceOf('plan')
       const update = (): void => {
@@ -79,8 +103,14 @@ class RemotePlanController {
         this.plan = projection.getSnapshot() as PlanProjection | undefined
         this.publish()
       }
-      this.stopProjection = projection.subscribe(update)
+      stops.push(projection.subscribe(update))
+      stops.push(current.binding.session.projections.faceOf('permissions').subscribe(refreshPermissions))
       update()
+    }
+    if (client !== undefined) {
+      stops.push(client.remote.$on('permission-presets/catalog-changed', refreshPermissions))
+      stops.push(onRemoteSettingsDocumentUpdated(client, ns => { if (ns === 'permission' || ns === 'shell' || ns === 'approval') refreshPermissions() }))
+      refreshPermissions()
     }
     this.publish()
   }
@@ -89,7 +119,9 @@ class RemotePlanController {
     const nextPlan = this.options.hosts.current() === undefined ? this.options.startupPlan?.pending() : undefined
     const pending = nextPlan !== undefined || this.plan?.pending === true
     const active = nextPlan === true || this.plan?.active === true || this.plan?.pending === true
-    this.status.set(active ? { kind: 'text', content: this.t(pending ? 'plan…' : 'plan'), tone: 'accent' } : null)
+    const plan: MayflyStatusNode | null = active ? { kind: 'text', content: this.t(pending ? 'plan…' : 'plan'), tone: 'accent' } : null
+    const yolo: MayflyStatusNode | null = this.yolo ? { kind: 'text', content: this.t('yolo'), tone: 'warning' } : null
+    this.status.set(plan === null ? yolo : yolo === null ? plan : { kind: 'stack', direction: 'row', gap: 1, children: [{ node: plan }, { node: yolo }] })
   }
 
   private async cycle(parent?: AbortSignal): Promise<void> {
@@ -117,6 +149,7 @@ class RemotePlanController {
   private async executeNative(current: RemoteFeatureSelection, line: string, generation: number, parent?: AbortSignal, cycle = false): Promise<void> {
     const signal = parent === undefined ? this.commandLifetime.signal : AbortSignal.any([this.commandLifetime.signal, parent])
     try {
+      assertRemoteSessionWritable(current)
       const result = await current.client.remote.commands.execute(current.ref.sessionId, line, [], signal)
       if (!this.lifecycle.owns(generation) || signal.aborted) return
       if (!result.ok) this.options.notice.set(result.error.message, 'error')

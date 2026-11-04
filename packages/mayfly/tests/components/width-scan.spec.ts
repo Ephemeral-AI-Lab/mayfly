@@ -55,7 +55,7 @@ function render(node: MayflyUiNode, width: number): string[] {
 function renderStream(rows: readonly StreamRow[], width: number, text: string): string[] {
   const node = TranscriptView({
     turns: [
-      { id: 'turn:1', number: 1, closing: `Worked for ${text} · done 10:13`, rows: [{ kind: 'prompt', id: 'u0', text: 'first', images: [], open: false }] },
+      { id: 'turn:1', number: 1, closing: `Worked for ${text} · done 10:13`, rows: [{ kind: 'prompt', id: 'u0', text: 'first', attachments: [], open: false }] },
       { id: 'turn:2', number: 2, closing: text, rows },
     ],
     queued: [{ id: 'q', text, suffix: '⏎ queued', lane: 'turn', open: false }],
@@ -67,8 +67,8 @@ function renderStream(rows: readonly StreamRow[], width: number, text: string): 
 function streamRows(text: string): StreamRow[] {
   const compaction: CompactionFacts = { state: 'running', title: text, compact: false, bar: { from: 40, to: 40, drain: false, rev: 1, labeled: true }, progress: ['summarizing', text], percent: 40 }
   return [
-    { kind: 'prompt', id: 'u1', text, images: [{ attachmentId: 'a1', alt: `[image] 1 · ${text}` }], open: false },
-    { kind: 'prompt', id: 'u2', text: `${text}\n${text}\n${text}\n${text}\n${text}\n${text}`, images: [], open: true },
+    { kind: 'prompt', id: 'u1', text, attachments: [{ kind: 'image', attachmentId: 'a1', alt: `[image] 1 · ${text}` }], open: false },
+    { kind: 'prompt', id: 'u2', text: `${text}\n${text}\n${text}\n${text}\n${text}\n${text}`, attachments: [], open: true },
     { kind: 'header', id: 'h1', mood: 'stopped', open: false, label: text, tail: ` · ${text}` },
     { kind: 'header', id: 'h2', mood: 'running', open: true, label: text, tail: '' },
     { kind: 'title', id: 't1', text, failed: text, partial: true, hint: text },

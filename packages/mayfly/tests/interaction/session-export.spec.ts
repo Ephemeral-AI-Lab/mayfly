@@ -56,7 +56,7 @@ describe('buildExportMarkdown', () => {
     {
       kind: 'user', seq: 1, turn: 0,
       text: 'first question',
-      images: [{ attachmentId: 'a1' as never, mediaType: 'image/png', bytes: 4, width: 1, height: 1 }],
+      attachments: [{ kind: 'image', attachmentId: 'a1' as never, mediaType: 'image/png', bytes: 4, width: 1, height: 1 }],
     },
     {
       kind: 'thinking', seq: 2, turn: 0, step: 0, text: 'reasoning trail', streaming: false,
@@ -127,7 +127,7 @@ describe('buildExportMarkdown', () => {
 
   it('drops empty thinking, skips empty assistant bodies, and uses result fallbacks', () => {
     const items: TranscriptItem[] = [
-      { kind: 'user', seq: 1, turn: 0, text: 'q', images: [] },
+      { kind: 'user', seq: 1, turn: 0, text: 'q', attachments: [] },
       { kind: 'thinking', seq: 2, turn: 0, step: 0, text: '   ', streaming: false },
       { kind: 'assistant', seq: 3, turn: 0, step: 0, text: '' },
       {
@@ -153,7 +153,7 @@ describe('buildExportMarkdown', () => {
 
   it('caps the overview topic at 80 characters and pluralizes the tool count', () => {
     const items: TranscriptItem[] = [
-      { kind: 'user', seq: 1, turn: 0, text: `${'x'.repeat(200)} more`, images: [] },
+      { kind: 'user', seq: 1, turn: 0, text: `${'x'.repeat(200)} more`, attachments: [] },
       { kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'a', name: 'read', startedAt: 0, arguments: '{}', parsedArguments: {} },
       { kind: 'tool', seq: 3, turn: 0, step: 0, callId: 'b', name: 'read', startedAt: 0, arguments: '{}', parsedArguments: {} },
     ]
@@ -166,7 +166,7 @@ describe('buildExportMarkdown', () => {
 
   it('exports grouped subagent members as ordinary tool calls (S33: the group is mount-layer only)', () => {
     const items: TranscriptItem[] = [
-      { kind: 'user', seq: 1, turn: 0, text: 'delegate', images: [] },
+      { kind: 'user', seq: 1, turn: 0, text: 'delegate', attachments: [] },
       {
         kind: 'tool', seq: 2, turn: 0, step: 0, callId: 'a', name: 'subagent',
         arguments: '{"description":"Survey","prompt":"p"}',
@@ -379,12 +379,12 @@ describe('buildExportMarkdown', () => {
   it('renders the remaining per-turn variants: second user, empty user text, named images, pluralization arms, codeless errors, over-long hints', () => {
     const items: TranscriptItem[] = [
       // Empty user text skips the body but still opens the section.
-      { kind: 'user', seq: 1, turn: 0, text: '', images: [] },
+      { kind: 'user', seq: 1, turn: 0, text: '', attachments: [] },
       // A second user item reuses the opened header; a named image keeps
       // its name in the placeholder.
       {
         kind: 'user', seq: 2, turn: 0, text: 'second user',
-        images: [{ attachmentId: 'a' as never, mediaType: 'image/png', bytes: 4, width: 1, height: 1, name: 'shot.png' }],
+        attachments: [{ kind: 'image', attachmentId: 'a' as never, mediaType: 'image/png', bytes: 4, width: 1, height: 1, name: 'shot.png' }],
       },
       // An error without a machine code drops the parenthetical.
       { kind: 'error', seq: 3, turn: 0, message: 'no code' },
@@ -407,16 +407,16 @@ describe('buildExportMarkdown', () => {
 describe('lastAssistantText', () => {
   it('returns the newest non-empty assistant text', () => {
     const items: TranscriptItem[] = [
-      { kind: 'user', seq: 1, turn: 0, text: 'q', images: [] },
+      { kind: 'user', seq: 1, turn: 0, text: 'q', attachments: [] },
       { kind: 'assistant', seq: 2, turn: 0, step: 0, text: 'first answer' },
-      { kind: 'user', seq: 3, turn: 1, text: 'q2', images: [] },
+      { kind: 'user', seq: 3, turn: 1, text: 'q2', attachments: [] },
       { kind: 'assistant', seq: 4, turn: 1, step: 0, text: 'second answer' },
     ]
     expect(lastAssistantText(items)).toBe('second answer')
   })
 
   it('skips empty assistant items and answers empty when none has text', () => {
-    const user = { kind: 'user' as const, seq: 1, turn: 0, text: 'q', images: [] }
+    const user = { kind: 'user' as const, seq: 1, turn: 0, text: 'q', attachments: [] }
     const empty = { kind: 'assistant' as const, seq: 2, turn: 0, step: 0, text: '   ' }
     const kept = { kind: 'assistant' as const, seq: 3, turn: 1, step: 0, text: 'kept' }
     // The newest non-empty reply wins (the empty item sits behind it).
@@ -613,7 +613,7 @@ describe('registerExportCommands', () => {
         mayflyConversation: {
           streaming: false,
           entries: [
-            { kind: 'user', id: 'u', seq: 1, turn: 0, text: 'question', images: [
+            { kind: 'user', id: 'u', seq: 1, turn: 0, text: 'question', attachments: [
               { attachmentId: 'a1', mediaType: 'image/png', bytes: 1, width: 1, height: 1, name: 'shot.png', originalDimensions: { width: 2, height: 2 } },
               { attachmentId: 'a2', mediaType: 'image/jpeg', bytes: 2, width: 2, height: 2 },
             ] },
@@ -836,6 +836,26 @@ describe('registerExportCommands', () => {
     expect(copied).toEqual(['second'])
     expect(notices.join('\n')).toContain('copied the last assistant message (6 characters)')
     await fiber.dispose()
+  })
+
+  it('reports a completed copy in the app scope when the current Session closes while the clipboard waits', async () => {
+    const { ctx, agent, fiber } = await mount({ attach: false, persistence: { content: singleTurnLog('hi', 'hello') } })
+    const selection: { current: Agent | null, modelRef: undefined } = { current: agent, modelRef: undefined }
+    ctx.provide('testSession', selection)
+    const clipboard = Promise.withResolvers<void>()
+    const write = vi.fn(() => clipboard.promise)
+    setClipboardTextWriter(write)
+    const copying = run(ctx, agent, '/copy')
+    await vi.waitFor(() => expect(write).toHaveBeenCalledWith('hello'))
+    selection.current = null
+    clipboard.resolve()
+    expect(await copying).toEqual({ kind: 'success' })
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([expect.objectContaining({
+      scope: { kind: 'app', targetId: 'session-export' },
+      severity: 'success', message: 'copied the last assistant message (5 characters)',
+    })])
+    await fiber.dispose()
+    expect(ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
   })
 
   it('guards /copy when there is no assistant message or the clipboard fails', async () => {

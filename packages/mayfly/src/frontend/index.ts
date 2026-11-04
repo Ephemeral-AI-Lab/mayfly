@@ -14,6 +14,7 @@ export * from './models.ts'
 export * from './theme.ts'
 export * from './locale.ts'
 export * from './common-locale.ts'
+export { createInteractionNotificationOwner } from '../interaction/notifications.ts'
 
 export const name = 'mayfly-frontend'
 export interface Config { readonly displayVersion?: string }

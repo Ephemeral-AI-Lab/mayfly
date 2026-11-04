@@ -1,14 +1,14 @@
 # 功能总览
 
-Mayfly `0.1.4-rc.2` 是 `dsh-base` 上的 flat Cordis plugin tree。Bundle
-插入一组 dsh 支撑 row 与全部 Mayfly row（行清单见 `cordis.patch.yml`）。
+Mayfly 在 Harness `0.2.2-alpha.2` 上运行原生 dsh Host 与独立 Remote TUI，
+各自拥有 Cordis tree。已发布的 `0.1.4-rc.2` 是外观、按键与工作流的不可改写参照。
 
 ## 数据与交互
 
 - Harness 原生 `sessionProjections` 驱动 conversation、token/context、
   title 与 session facts。
-- 内置 command 直接注册在原生 `commands` service。
-- app 持有会话注册表（`mayflyConversations`：主会话与旁支会话），并通过 `mayflyCurrentAgent` 共享当前展示的精确 identity。
+- Host command 注册在原生 `commands`；Remote 本地分发前端命令，并通过官方 Client 发现 Session 原生命令。
+- Remote 管理主会话与旁支会话的 HostKey + SessionRef 选择；Host 持有精确 Agent/Session domain 状态。
 - transcript 与 interaction 不维护第二份 Agent/Session truth。
 
 ## 终端 UI
@@ -17,7 +17,7 @@ Mayfly `0.1.4-rc.2` 是 `dsh-base` 上的 flat Cordis plugin tree。Bundle
 - status producer 直接注册到 `mayflyStatus`；
 - activity、queue、todo、agents、workflow pane 直接注册到 `mayflyPanes`；
 - BTW、subagent 与已存储的 child 都在同一个 transcript 面板中渲染；live 会话驱动完整主布局，cold/one-shot 会话从原生历史读取，标为只读或可恢复；
-- jobs footer、`/jobs` 与 `/agents` 直接消费 Harness 原生 service；
+- Remote jobs footer、`/jobs` 与 `/agents` 消费原生 transport 事实和 focused Host DTO；
 - overlay 由 `mayflyOverlays` 渲染；
 - editor 扩展由 `mayflyEditorExtensions` 组合在唯一 Mayfly editor 周围。
 

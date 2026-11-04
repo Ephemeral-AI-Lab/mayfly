@@ -17,7 +17,7 @@ import type {
   MayflySettingsDocument,
 } from '@ephemeral-ai/mayfly-host/types'
 import { mayflyHostRemote } from '../../frontend/host-mount.ts'
-import type { HostClient } from '../../client/types.ts'
+import type { HostClient, SessionRef } from '../../client/types.ts'
 import type { RemoteFeatureHosts } from './contracts.ts'
 import { hasMayflyHostFeature, unavailableCapability } from './capabilities.ts'
 import type { RemoteModelCatalogDetails, RemoteModelCatalogSource, RemoteDefaultModel } from './models.ts'
@@ -111,13 +111,14 @@ export class RemoteConfigurationHost implements
   }
 
   /** @inheritdoc */
-  async resolve(client: HostClient, currentPreset?: string, parent?: AbortSignal): Promise<RemotePermissionCatalogDetails | undefined> {
+  async resolve(client: HostClient, selection?: SessionRef, parent?: AbortSignal): Promise<RemotePermissionCatalogDetails | undefined> {
+    if (selection !== undefined && selection.host !== client.key) return undefined
     const operation = this.scope(client, parent)
     if (operation === undefined) return undefined
     try {
       if (!await this.feature(client, 'permissionCatalogDetails', operation)) return undefined
       const details = await remoteValue(mayflyHostRemote(client).permissionCatalogDetails(
-        currentPreset === undefined ? {} : { currentPreset },
+        selection === undefined ? {} : { sessionId: selection.sessionId },
         operation.signal,
       ))
       if (!operation.valid()) return undefined

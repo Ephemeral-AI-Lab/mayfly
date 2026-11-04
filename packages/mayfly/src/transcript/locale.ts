@@ -19,6 +19,7 @@ const identityCatalog = (zh: Readonly<Record<string, string>>): MayflyLocaleCata
 const TRANSCRIPT_MESSAGES = identityCatalog({
   'Toggle detail expansion (tool output, long messages)': '切换详细内容展开状态（工具输出、长消息）',
   '[image]': '[图片]',
+  '[file]': '[文件]',
   '■ interrupted': '■ 已中断',
   '⚠ deletes files': '⚠ 将删除文件',
   'waiting': '等待中',
