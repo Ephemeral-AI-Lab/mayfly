@@ -1026,11 +1026,11 @@
         ]
       },
       "candidate": {
-        "text": "  aligned with Harness",
+        "text": "  aligned with Harness 0.2.2-rc.1.",
         "styles": [
           {
             "from": 2,
-            "to": 21,
+            "to": 33,
             "style": "fg:#ededf2"
           }
         ]
