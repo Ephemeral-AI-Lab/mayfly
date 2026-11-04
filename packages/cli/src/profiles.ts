@@ -17,10 +17,12 @@ export function hostEnvironment(p: Paths): NodeJS.ProcessEnv {
 }
 
 /** Install a missing bundle and validate existing runtime pins before every launch. */
-export async function initialize(p: Paths, profile: string, progress: (message: string) => void): Promise<void> {
+export async function initialize(p: Paths, profile: string, progress: (message: string) => void, upgrade = false): Promise<void> {
   const version = packageManifest('@ephemeral-ai/mayfly-host').version
   const dir = join(p.home, 'harness', 'profiles', profile)
   const file = join(dir, 'package.json')
+  const marker = await readJson<{ version: string }>(join(dir, 'mayfly-install.json'))
+  if (upgrade && !marker) throw new Error('Profile is not a managed Mayfly installation; use server start to initialize it')
   const invoke = async (args: string[]): Promise<string> => {
     const result = await execute(process.execPath, [dshBin(), ...args], { env: hostEnvironment(p), maxBuffer: 8 * 1024 * 1024 })
     return result.stdout
@@ -31,9 +33,9 @@ export async function initialize(p: Paths, profile: string, progress: (message: 
   }
   const manifest = (await readJson<{ dependencies: Record<string, string>, dsh?: { profile?: { bundles?: string[] } } }>(file))!
   const installed = manifest.dependencies['@ephemeral-ai/mayfly-host']
-  const marker = await readJson<{ version: string }>(join(dir, 'mayfly-install.json'))
-  if (installed !== undefined && marker?.version !== undefined && marker.version !== version) throw new Error('Host profile version does not match this Mayfly installation; install the matching release or choose a new --profile')
-  if (!marker || installed === undefined) {
+  if (upgrade && installed === undefined) throw new Error('Profile is not a managed Mayfly installation; use server start to initialize it')
+  if (!upgrade && installed !== undefined && marker?.version !== undefined && marker.version !== version) throw new Error('Host profile version does not match this Mayfly installation; stop it with the old installer, back up its data, then run mayfly server upgrade')
+  if (upgrade || !marker || installed === undefined) {
     const workspace = join(dir, 'pnpm-workspace.yaml')
     const text = await readFile(workspace, 'utf8')
     if (!/^allowBuilds:/mu.test(text)) await appendFile(workspace, '\nallowBuilds:\n  koffi: false\n  node-pty: false\n')

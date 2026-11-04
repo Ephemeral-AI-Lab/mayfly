@@ -26,14 +26,14 @@ export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
     summary: 'Run Mayfly as a native background Host and an independent terminal frontend, with one command for startup and service management, aligned with Harness 0.2.2-alpha.3.',
     highlights: [
       'Split runtime - the Host owns Agents, Sessions and durable projections; the independent TUI uses official HTTP and WebSocket Client transport and can detach without stopping remote work.',
-      'Unified command - mayfly opens the TUI and starts its local Host when needed; mayfly server starts in the background and supports start, stop, restart, status, logs, enable and disable.',
+      'Unified command - mayfly opens the TUI and starts its local Host when needed; mayfly server starts in the background and supports start, stop, restart, status, logs, enable, disable and explicit profile upgrade.',
       'Native supervision - Linux uses systemd user services, macOS uses LaunchAgents, and Windows uses the Mayfly hidden supervisor with authenticated local control and bounded crash recovery. Login startup is opt-in.',
       'Harness 0.2.2-alpha.3 - update the complete Host and Client dependency line and consume the native task catalog with exact involved-Session filtering.',
       'Release verification - build clean split artifacts before typechecking, invoke pnpm without platform shell shims, keep all five package dependencies exact, and exercise background lifecycle with native PTY and ConPTY.',
     ],
     knownIssues: [
       'The default data root is ~/.mayfly. Existing ~/.dsh data is not imported automatically; follow the upgrade and migration guide before changing installations.',
-      'CLI-managed linked Host profiles require the external installer and a fresh versioned profile when upgrading; /update cannot replace this installation. Existing profiles refuse mixed release versions.',
+      'CLI-managed linked Host profiles require the external installer followed by mayfly server upgrade on the stopped original profile; /update cannot replace this installation. Ordinary startup refuses mixed release versions.',
       'The native Harness does not expose a Remote TUI hot-load API. Host and browser Cordis plugins cannot inject frontend UI services across the process boundary.',
     ],
   },

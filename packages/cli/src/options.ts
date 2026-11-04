@@ -1,5 +1,5 @@
 /** Unified terminal and local server command grammar. @module */
-export const actions = ['start', 'stop', 'restart', 'status', 'logs', 'enable', 'disable'] as const
+export const actions = ['start', 'stop', 'restart', 'status', 'logs', 'enable', 'disable', 'upgrade'] as const
 export type Action = typeof actions[number]
 export interface Options {
   server: boolean
@@ -70,13 +70,14 @@ export function parse(argv: readonly string[]): Options {
 export const HELP = `Mayfly terminal UI and background Host
 
 Usage: mayfly [--profile <name>] [--resume <id>] [--cwd <path>] [task ...]
-       mayfly server [start|stop|restart|status|logs|enable|disable] [options]
+       mayfly server [start|stop|restart|status|logs|enable|disable|upgrade] [options]
 
 The terminal automatically starts its local Host. Quitting detaches only the UI.
 Server defaults to start. --profile selects an instance (default: mayfly).
 Start/restart: --host <address> --port <0..65535> --print-startup-url
 Logs: --follow (default: last 100 lines)
 Enable/disable controls login startup without changing the running state.
+Upgrade refreshes a stopped managed profile after an external CLI upgrade.
 --help, --version do not initialize or start a Host.
 
 MAYFLY_HOME defaults to ~/.mayfly. Explicit MAYFLY_DSH_STARTUP_URL connects

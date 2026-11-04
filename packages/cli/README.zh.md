@@ -55,3 +55,5 @@ MAYFLY_DSH_STARTUP_URL='<authenticated-url>' mayfly
 凭据不进入 argv 或普通日志。本机发现使用当前用户私有记录与认证控制通道；远程继续使用环境变量中的认证 URL。无密钥 `--host <HTTP(S)-url>` 可覆盖远程地址，token 仍来自该环境变量。显式远程输入不能与 `--profile` 同用，也不会启动本机 Host。
 
 Remote 的 `--resume`/`--session`、`--cwd`、位置任务和 `MAYFLY_SESSION_ID`、`MAYFLY_CWD`、`MAYFLY_TASK` 保持现有行为。不提交初始任务时，首条 prompt 前不创建 Session；交互选择使用 `/sessions` 或 `/resume`。`--help` 与 `--version` 不初始化或启动 Host。
+
+升级时，先使用旧安装停止 Host 并备份 `MAYFLY_HOME`，安装新 CLI 后执行 `mayfly server upgrade --profile <原profile>`，然后 `server start`。该操作显式使用当前原生安装器刷新链接 Host，保留原 profile 数据；运行中的 supervisor 和非托管 profile 会被拒绝。保留原数据根与 profile，确保配置和持久化数据仍在原位置。见[升级说明](../../website/guide/upgrade.md)。

@@ -105,6 +105,7 @@ it('refuses to overwrite an alive owner whose control identity cannot be verifie
 })
 
 it('reports a native crash for system service restart and a clean native exit as stopped', async () => {
+  Object.defineProperty(process, 'platform', { value: 'linux' })
   let task = supervise('work')
   await running()
   exit(children[0]!, 2)

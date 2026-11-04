@@ -273,7 +273,8 @@ for (const relativeDir of PACKAGE_DIRS) {
     const runtime = files.filter(file => file.path.startsWith('lib/'))
     if (runtime.length !== 1 || runtime[0]?.path !== 'lib/bin.js') fail(`${sourceManifest.name}: lib must contain only lib/bin.js`)
     if ((runtime[0]?.size ?? Infinity) > 128_000) fail(`${sourceManifest.name}: lib/bin.js exceeds the 128 KB unified CLI budget`)
-    const expectedDependencies = { '@deepseek-ai/dsh': readManifest('packages/host').peerDependencies['@deepseek-ai/dsh-session'], '@ephemeral-ai/mayfly-host': manifest.version, '@ephemeral-ai/mayfly-remote': manifest.version }
+    const harness = readManifest('packages/host').peerDependencies['@deepseek-ai/dsh-session']
+    const expectedDependencies = { '@deepseek-ai/dsh': harness, '@deepseek-ai/dsh-atomic-write': harness, '@ephemeral-ai/mayfly-host': manifest.version, '@ephemeral-ai/mayfly-remote': manifest.version }
     if (!isDeepStrictEqual(manifest.dependencies, expectedDependencies)) {
       fail(`${sourceManifest.name}: dependencies must match the exact Host, Remote and native Harness versions`)
     }

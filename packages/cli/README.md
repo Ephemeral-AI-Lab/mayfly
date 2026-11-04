@@ -29,6 +29,7 @@ mayfly server logs                    # last 100 lines
 mayfly server logs --follow
 mayfly server enable                  # enable login startup
 mayfly server disable                 # disable login startup; keep running
+mayfly server upgrade                 # refresh a stopped managed profile after upgrading CLI
 mayfly server start --profile work --port 0
 mayfly --profile work
 mayfly --resume <session-id>
@@ -55,3 +56,5 @@ MAYFLY_DSH_STARTUP_URL='<authenticated-url>' mayfly
 Credentials stay out of argv and ordinary logs. Local discovery uses current-user private records and authenticated control; remote connections use the existing environment URL. A non-secret `--host <HTTP(S)-url>` can override the remote address while its token still comes from that environment variable. Explicit remote inputs cannot be combined with `--profile`, and do not start a local Host.
 
 Remote `--resume`/`--session`, `--cwd`, positional tasks, and `MAYFLY_SESSION_ID`, `MAYFLY_CWD`, `MAYFLY_TASK` keep their existing behavior. No Session is created before the first prompt unless an initial task is submitted. Use `/sessions` or `/resume` for interactive selection. `--help` and `--version` never initialize or start a Host.
+
+For an upgrade, stop the Host with its original installation and back up `MAYFLY_HOME`, install the new CLI, then run `mayfly server upgrade --profile <original-profile>` before `server start`. This explicitly refreshes the linked Host using the current native installer and retains the original profile data. A live supervisor or an unmanaged profile is refused. Keep the original data root and profile so its configuration and persisted data remain in place. See [upgrades](../../website/en/guide/upgrade.md).

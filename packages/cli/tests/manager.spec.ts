@@ -49,6 +49,23 @@ it('authenticates readiness without retaining cookies or following redirects', a
   expect(await healthy('http://localhost')).toBe(true)
 })
 
+it('upgrades a stopped managed profile explicitly and refuses a live supervisor', async () => {
+  vi.mocked(initialize).mockImplementation(async (_p, _profile, progress) => progress('upgrading'))
+  for (const state of [undefined, { ...record, state: 'stopped' }, { ...record, state: 'failed' }]) {
+    current = state
+    vi.mocked(alive).mockReturnValue(false)
+    await manage(parse(['server', 'upgrade']), '/bin', output)
+    expect(initialize).toHaveBeenLastCalledWith(paths('mayfly'), 'mayfly', expect.any(Function), true)
+  }
+  vi.mocked(alive).mockReturnValue(true)
+  current = { ...record, state: 'stopped' }
+  await manage(parse(['server', 'upgrade']), '/bin', output)
+  current = { ...record }
+  await expect(manage(parse(['server', 'upgrade']), '/bin', output)).rejects.toThrow('original installer')
+  expect(startService).not.toHaveBeenCalled()
+  expect(output).toHaveBeenCalledWith(expect.stringContaining('profile upgraded'))
+})
+
 it('distinguishes absent, stale, stopped, unhealthy and healthy instances', async () => {
   const p = paths('mayfly')
   expect(await inspect(p)).toBeUndefined()
@@ -174,10 +191,16 @@ it('retries a transient control failure during startup and prints each platform 
   })
   await ensure(parse([]), '/bin', output)
   const platform = process.platform
+  const getuid = Object.getOwnPropertyDescriptor(process, 'getuid')
+  Object.defineProperty(process, 'getuid', { value: () => 1000, configurable: true })
   try {
     for (const value of ['darwin', 'win32']) {
       Object.defineProperty(process, 'platform', { value })
       await manage(parse(['server', 'status']), '/bin', output)
     }
-  } finally { Object.defineProperty(process, 'platform', { value: platform }) }
+  } finally {
+    Object.defineProperty(process, 'platform', { value: platform })
+    if (getuid) Object.defineProperty(process, 'getuid', getuid)
+    else Reflect.deleteProperty(process, 'getuid')
+  }
 })

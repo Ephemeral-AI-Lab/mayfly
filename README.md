@@ -33,9 +33,9 @@ node packages/cli/lib/bin.js server status --profile mayfly-dev
 node packages/cli/lib/bin.js server stop --profile mayfly-dev
 ```
 
-After a matching release is published, install `@ephemeral-ai/mayfly-cli` globally and use `mayfly` and `mayfly server start|stop|restart|status|logs|enable|disable`. Linux uses systemd user services, macOS LaunchAgents, and Windows a hidden Mayfly supervisor. Login startup is opt-in. Data defaults to `~/.mayfly`, with `MAYFLY_HOME` overriding it; credentials are exchanged through private local discovery. See the [CLI manual](packages/cli/README.md) for instances, logs, remote connections and lifecycle limits.
+After a matching release is published, install `@ephemeral-ai/mayfly-cli` globally and use `mayfly` and `mayfly server start|stop|restart|status|logs|enable|disable|upgrade`. Linux uses systemd user services, macOS LaunchAgents, and Windows a hidden Mayfly supervisor. Login startup is opt-in. Data defaults to `~/.mayfly`, with `MAYFLY_HOME` overriding it; credentials are exchanged through private local discovery. See the [CLI manual](packages/cli/README.md) for instances, logs, remote connections and lifecycle limits.
 
-Upgrade existing installations with a fresh versioned profile after stopping the old Host and backing up `MAYFLY_HOME`. CLI-managed linked profiles use the external installer; `/update` cannot upgrade them. See [upgrades and existing data](website/en/guide/upgrade.md) for the exact commands, rollback, and the old `~/.dsh` boundary.
+Upgrade the external CLI after stopping the old Host and backing up `MAYFLY_HOME`, then run `mayfly server upgrade` on the original profile to retain its Sessions. CLI-managed linked profiles use this explicit installer path; `/update` cannot upgrade them. See [upgrades and existing data](website/en/guide/upgrade.md) for the exact commands, rollback, and the old `~/.dsh` boundary.
 
 ## Native development startup
 

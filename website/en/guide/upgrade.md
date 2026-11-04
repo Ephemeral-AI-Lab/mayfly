@@ -7,20 +7,24 @@ Mayfly 0.1.5 uses one CLI to manage a background Host and an independent TUI. It
 Exit every TUI, let Host work finish, and stop the old instance using its original launcher. Keep the same `MAYFLY_HOME`, back it up, and record the old version and profile name.
 
 ```sh
-# Use the old installation to stop its instance; retain MAYFLY_HOME if configured
-mayfly server disable --profile <old-profile>
-mayfly server stop --profile <old-profile>
+# Stop with the old installation; retain the original MAYFLY_HOME and profile
+mayfly server disable --profile <original-profile>
+mayfly server stop --profile <original-profile>
+# Back up MAYFLY_HOME before upgrading the external installation
 npm install -g @ephemeral-ai/mayfly-cli@0.1.5
-mayfly server start --profile mayfly-015
-mayfly server status --profile mayfly-015
-mayfly --profile mayfly-015
+mayfly server upgrade --profile <original-profile>
+mayfly server start --profile <original-profile>
+mayfly server status --profile <original-profile>
+mayfly --profile <original-profile>
 ```
 
-The new profile starts from the current Harness Web template. Its Host data root remains the same `MAYFLY_HOME/harness`; check profile-specific bundles, settings, and plugins again. Do not copy the old profile package manifest, `node_modules`, or installation marker to bypass validation. Check `/sessions`, `/provider`, `/settings`, and an ordinary prompt before optionally enabling login startup with `mayfly server enable --profile mayfly-015`. Keep using that profile name for subsequent launches.
+`server upgrade` refreshes the linked Host through the official dsh installer carried by the current CLI and updates the version marker after composition validation. It retains the original profile Session and settings files; a live supervisor or unmanaged profile is refused. Check `/sessions`, `/provider`, `/settings`, and an ordinary prompt before optionally re-enabling login startup. If dependency installation fails, keep logs and the backup, fix the installation environment, and retry the same explicit upgrade command.
 
-The default CLI registers its exact Host dependency through `link:`. `/update` therefore requests the original installer and cannot replace this managed installation. Starting an old profile with a different recorded release is refused explicitly. A fresh versioned profile is the supported upgrade path in this release.
+Ordinary startup still refuses a release mismatch and never upgrades an old profile implicitly. Do not copy `node_modules` or edit version markers to bypass validation. Keep the original data root and profile; creating another profile does not transfer the original profile configuration. Verify the upgrade by reopening an existing conversation that contains messages.
 
-To roll back, stop the new instance, reinstall the recorded old CLI version, and start its original profile. If the new Harness has rewritten persisted data, restore the complete pre-upgrade data-root backup before running the old version. Do not let different versions write the same data concurrently.
+The default CLI registers its exact Host dependency through `link:`. `/update` therefore requests the original installer and cannot replace this managed installation. The explicit external-installation workflow uses `server upgrade` for that profile refresh.
+
+To roll back, stop the new instance, reinstall the recorded old CLI version, restore the original profile from the pre-upgrade backup, and start it. If the new Harness has rewritten persisted data, restore the complete pre-upgrade data-root backup before running the old version. Do not let different versions write the same data concurrently.
 
 ## Migrate from the old single-process Mayfly
 

@@ -33,9 +33,9 @@ node packages/cli/lib/bin.js server status --profile mayfly-dev
 node packages/cli/lib/bin.js server stop --profile mayfly-dev
 ```
 
-匹配发布集发布后，全局安装 `@ephemeral-ai/mayfly-cli` 即可使用 `mayfly` 与 `mayfly server start|stop|restart|status|logs|enable|disable`。Linux 使用 systemd 用户服务，macOS 使用 LaunchAgent，Windows 使用隐藏窗口的 Mayfly 监督进程。登录自启默认关闭。数据默认放在 `~/.mayfly`，可通过 `MAYFLY_HOME` 修改；凭据通过私有本机发现交接。实例、日志、远程连接和生命周期限制见 [CLI 手册](packages/cli/README.zh.md)。
+匹配发布集发布后，全局安装 `@ephemeral-ai/mayfly-cli` 即可使用 `mayfly` 与 `mayfly server start|stop|restart|status|logs|enable|disable|upgrade`。Linux 使用 systemd 用户服务，macOS 使用 LaunchAgent，Windows 使用隐藏窗口的 Mayfly 监督进程。登录自启默认关闭。数据默认放在 `~/.mayfly`，可通过 `MAYFLY_HOME` 修改；凭据通过私有本机发现交接。实例、日志、远程连接和生命周期限制见 [CLI 手册](packages/cli/README.zh.md)。
 
-升级已有安装时，先停止旧 Host 并备份 `MAYFLY_HOME`，再通过外部安装器安装新版本，使用新的版本化 profile。CLI 托管的链接安装不能通过 `/update` 升级。具体命令、回退与旧 `~/.dsh` 数据边界见[升级与旧数据](website/guide/upgrade.md)。
+升级已有安装时，先停止旧 Host 并备份 `MAYFLY_HOME`，通过外部安装器安装新 CLI，再对原 profile 执行 `mayfly server upgrade` 以保留 Session。CLI 托管的链接安装使用这条显式更新路径，不能通过 `/update` 升级。具体命令、回退与旧 `~/.dsh` 数据边界见[升级与旧数据](website/guide/upgrade.md)。
 
 ## 原生开发启动
 

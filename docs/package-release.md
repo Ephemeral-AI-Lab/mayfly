@@ -52,7 +52,7 @@ exact artifacts and does not rebuild.
 `@ephemeral-ai/mayfly-cli` ships one unified bin with exact matching Host, Remote,
 and official dsh runtime dependencies. It carries no runtime archives and does
 not change a separate global dsh installation. Existing initialized profiles
-refuse a recorded release mismatch. The supported managed upgrade uses the external installer and a fresh versioned profile; see the bilingual Website upgrade guide. No silent profile upgrade is performed.
+refuse a recorded release mismatch. The supported managed upgrade uses the external installer followed by explicit server upgrade on the stopped original profile; see the bilingual Website upgrade guide. No silent profile upgrade is performed.
 
 The GitHub repository owns an `npm` environment. Until all five packages have
 trusted publishing configured, that environment must provide an `NPM_TOKEN`

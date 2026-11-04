@@ -112,6 +112,11 @@ export async function manage(options: Options, bin: string, output: (text: strin
   }
   await locked(p, async () => {
     if (options.action === 'stop') await stop(p)
+    else if (options.action === 'upgrade') {
+      const record = await readJson<RecordState>(p.record)
+      if (record && record.state !== 'stopped' && alive(record.pid)) throw new Error('Stop this Host with its original installer and back up its data before upgrading the profile')
+      await initialize(p, options.profile, message => output(`${message}\n`), true)
+    }
     else {
       await initialize(p, options.profile, message => output(`${message}\n`))
       if (!await readJson<Configuration>(p.config)) await writeJson(p.config, {
@@ -119,7 +124,7 @@ export async function manage(options: Options, bin: string, output: (text: strin
       })
       await setEnabled(p, options.profile, bin, options.action === 'enable')
     }
-    output(`Mayfly server ${options.profile}: ${options.action === 'stop' ? 'stopped' : options.action === 'enable' ? 'login startup enabled' : 'login startup disabled'}\n`)
+    output(`Mayfly server ${options.profile}: ${options.action === 'stop' ? 'stopped' : options.action === 'upgrade' ? 'profile upgraded; run mayfly server start' : options.action === 'enable' ? 'login startup enabled' : 'login startup disabled'}\n`)
   })
 }
 

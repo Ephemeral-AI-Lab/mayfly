@@ -80,6 +80,7 @@ it('formats reminder frequency and relative status across units and locale', asy
   expect(schedule.formatReminderFrequency({ id: 'r', title: 'p', prompt: 'p', kind: 'daily', time: '09:00:00', timeZone: 'UTC', scheduledAt: '2099-01-01T00:00:00Z' } as never, t)).toBe('Daily')
   expect(schedule.formatReminderFrequency({ id: 'r', title: 'p', prompt: 'p', kind: 'weekly', time: '09:00:00', timeZone: 'UTC', weekdays: [1], scheduledAt: '2099-01-01T00:00:00Z' } as never, t)).toBe('Weekly')
   expect(schedule.formatReminderFrequency({ id: 'r', title: 'p', prompt: 'p', kind: 'cron', expression: '0 9 * * *', timeZone: 'UTC', scheduledAt: '2099-01-01T00:00:00Z' } as never, t)).toBe('Cron')
+  expect(schedule.formatReminderFrequency({ id: 'r', title: 'p', kind: 'rrule', scheduledAt: '2099-01-01T00:00:00Z' }, t)).toBe('RRULE')
   expect(schedule.formatReminderFrequency(record(45), t)).toBe('Every 45 seconds')
   expect(schedule.formatReminderFrequency(record(300), t)).toBe('Every 5 minutes')
   expect(schedule.formatReminderFrequency(record(7200), t)).toBe('Every 2 hours')
