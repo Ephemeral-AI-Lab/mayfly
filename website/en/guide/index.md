@@ -8,6 +8,36 @@ have been published. Install development artifacts from this workspace or a
 verified matching tarball set.
 :::
 
+## One command to start
+
+After building this checkout, open the TUI directly. The CLI initializes a dedicated instance, starts its background Host and connects:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm run build
+node packages/cli/lib/bin.js --profile mayfly-dev
+```
+
+After a matching release is published, install with `npm install -g @ephemeral-ai/mayfly-cli` and run `mayfly`.
+
+```sh
+mayfly server              # same as start; runs in the background
+mayfly server stop
+mayfly server restart
+mayfly server status
+mayfly server logs --follow
+mayfly server enable       # opt into login startup
+mayfly server disable      # disable login startup; keep Host running
+mayfly server start --profile work
+mayfly --profile work
+```
+
+Linux uses systemd user services, macOS a LaunchAgent, and Windows Mayfly's own detached supervisor without administrator rights. Exiting the TUI leaves Host running. `server stop` ends Host work; the next `mayfly` starts it again.
+
+Data defaults to `~/.mayfly`, overridden by `MAYFLY_HOME`, without migrating existing `~/.dsh` state. Local discovery uses current-user private records; credentials stay out of logs. Remote connections still use `MAYFLY_DSH_STARTUP_URL` and do not start a local instance. Explicit URL output is available through `mayfly server start --print-startup-url`; never put that credential URL in argv.
+
+The native development workflow below remains useful for debugging the two processes independently.
+
 ## Prerequisites
 
 | Dependency | Version |

@@ -1,21 +1,18 @@
 # `@ephemeral-ai/mayfly-cli`
 
-The global `mayfly` launcher is not a Cordis plugin or a dsh Host launcher. Its published runtime dependency is the exact-version `@ephemeral-ai/mayfly-remote`; the package ships one small `lib/bin.js` and no runtime archives.
+The unified `mayfly` command owns terminal dispatch and local background Host management. Its normal runtime dependencies are the exact matching Remote and Host packages and the Host-pinned official dsh. It ships one bundled `lib/bin.js`, not extracted archives or a copied Harness runtime.
 
-## Launch boundary
+## Boundaries
 
-- `src/bin.ts` preserves the Node shebang and hands off to `run()` from `@ephemeral-ai/mayfly-remote/remote-bin`. Do not add calibration, extraction, spawning, profile management, or an in-process Host fallback.
-- `packages/remote/src/remote-bin.ts` owns help/version, Remote option parsing, ordinary-terminal diagnostics, and hand-off to `runRemoteFrontend`. The Remote runtime owns TTY restoration, signal handling, Client detachment, and exit completion.
-- `MAYFLY_DSH_STARTUP_URL` is the only authenticated startup-URL input. `MAYFLY_SESSION_ID`, `MAYFLY_CWD`, and `MAYFLY_TASK` are optional defaults; corresponding argv options take precedence.
-- Tokens and cookies never enter argv, logs, or committed files. Reject credential-shaped arguments without echoing them and redact startup credentials from errors. `--host` accepts only a non-secret HTTP(S) URL and still obtains its token from the canonical environment variable.
-- Host launch and termination belong to the separate REAL Loader `mayfly-host` profile. TUI exit detaches Clients only; do not add Host lifecycle RPCs or silently route arguments to the legacy dsh CLI.
-
-## Distribution
-
-`files` contains `lib/bin.js` and the bilingual README files. Keep Remote as a normal runtime dependency; do not bundle it, `@deepseek-ai/dsh`, the legacy Mayfly Host composition, or platform archives into the launcher. The root development override links the not-yet-published Remote package locally without changing the published version dependency.
-
-`script/check-pack.mjs` checks the single-file bin, exact Remote dependency, shebang/executable bits, absence of runtime archives, and forbidden Host/dsh references. `script/package-contract.mjs` derives the bin build entry from the manifest. Structural package or build changes require `pnpm run build`; ordinary source emission can use `pnpm run build:changed`.
+- `src/options.ts` reserves the first `server` argument, owns local profile and management options, and preserves Remote argv. Help/version must not initialize profiles. `mayfly -- server ...` submits a task.
+- `src/profiles.ts` uses the packaged official CLI and native plugin manager, with dedicated `MAYFLY_HOME/harness` state. Initialization is serialized and retryable; existing release mismatches are refused. Never change global dsh or production profiles during development.
+- `src/platform.ts` owns systemd user units, launchd agents, and Windows current-user Run entries. Login enablement is independent of current activation. Windows uses Mayfly's detached supervisor, never Task Scheduler or Windows Services.
+- `src/supervisor.ts` owns exactly one native child, authenticated local control, bounded native shutdown, Windows crash recovery and generation-safe records. Native readiness/stop uses parent-child IPC through the Host startup plugin. Never stop a process based solely on a persisted PID. Timers, sockets, listeners and queued continuations must retire on shutdown.
+- `src/state.ts` owns private records and management serialization. Local credentials may live only in current-user restricted discovery records; remote input remains `MAYFLY_DSH_STARTUP_URL`. Reject credential arguments and redact diagnostics/logs. Only explicit `--print-startup-url` may print the authenticated URL.
+- TUI startup awaits an authenticated Host handshake. Remote alone owns terminal restoration, Client detachment, Agent and Session selection; exiting TUI must not stop Host. Management never becomes a public Host lifecycle RPC.
 
 ## Verification
 
-Development uses only the incremental or structural build before unified acceptance. Finalization owns focused launcher/Remote-bin behavior coverage, `pnpm run check:pack`, and published-package two-process PTY smoke with a real Host. Preserve Linux/macOS/Windows launcher coverage; desktop clipboard and IME still need [platform acceptance](../../docs/platform-acceptance.md).
+Keep exact dependencies, exports/files, the single executable shebang bin and package budget synchronized with `script/check-pack.mjs`. Structural changes require a full build. All executable source requires per-file 100% coverage, including platform commands, stale-generation cleanup and failure paths. Use tracked temporary fixtures and mock management in source bin tests; never let tests auto-initialize a default user profile.
+
+Before acceptance run the full architecture gate, pack/lib/examples/agent-docs checks, real HTTP/WebSocket and PTY smoke in a dedicated profile. Windows/macOS command-contract tests do not replace native desktop lifecycle acceptance; record platform limitations in [platform acceptance](../../docs/platform-acceptance.md).

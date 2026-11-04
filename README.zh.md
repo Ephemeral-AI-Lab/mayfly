@@ -11,8 +11,8 @@
 [![CI](https://github.com/Ephemeral-AI-Lab/mayfly/actions/workflows/ci.yml/badge.svg)](https://github.com/Ephemeral-AI-Lab/mayfly/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@ephemeral-ai/mayfly?label=npm)](https://www.npmjs.com/package/@ephemeral-ai/mayfly)
 [![downloads](https://img.shields.io/npm/dm/@ephemeral-ai/mayfly)](https://www.npmjs.com/package/@ephemeral-ai/mayfly)
-[![Node](https://img.shields.io/badge/node-%3E%3D24.9.0-339933)](#安装与启动)
-[![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#安装与启动)
+[![Node](https://img.shields.io/badge/node-%3E%3D24.9.0-339933)](#统一命令)
+[![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#统一命令)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 [English](README.md) | 中文
@@ -21,7 +21,21 @@ Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) �
 
 当前开发分支面向官方 Harness `0.2.2-alpha.2`。已发布的 Mayfly `0.1.4-rc.2` 是外观、按键和工作流不可改写的参照。分体实现复用共享展示层；完整视觉一致性仍须按照[分体式验证](docs/split-parity-validation.md)完成验收。
 
-## 安装与启动
+## 统一命令
+
+新 CLI 自动启动后台 Host 并连接独立 TUI。在构建后的 checkout 中运行：
+
+```sh
+pnpm install --frozen-lockfile
+pnpm run build
+node packages/cli/lib/bin.js --profile mayfly-dev
+node packages/cli/lib/bin.js server status --profile mayfly-dev
+node packages/cli/lib/bin.js server stop --profile mayfly-dev
+```
+
+匹配发布集发布后，全局安装 `@ephemeral-ai/mayfly-cli` 即可使用 `mayfly` 与 `mayfly server start|stop|restart|status|logs|enable|disable`。Linux 使用 systemd 用户服务，macOS 使用 LaunchAgent，Windows 使用隐藏窗口的 Mayfly 监督进程。登录自启默认关闭。数据默认放在 `~/.mayfly`，可通过 `MAYFLY_HOME` 修改；凭据通过私有本机发现交接。实例、日志、远程连接和生命周期限制见 [CLI 手册](packages/cli/README.zh.md)。
+
+## 原生开发启动
 
 使用 Node `>=24.9.0`、锁定的 pnpm `11.7.0` 和独立安装的官方 dsh `0.2.2-alpha.2` 可执行文件。分体包目前是开发产物，应从本工作区或经过验证的发布 tarball 安装。安装器会检查 dsh 版本，不修改全局安装。
 
@@ -52,7 +66,7 @@ script/mayfly-remote.sh --resume <session-id>
 script/mayfly-remote.sh --cwd /path/on/host '运行相关检查'
 ```
 
-对应参数缺省时，`MAYFLY_SESSION_ID`、`MAYFLY_CWD` 和 `MAYFLY_TASK` 提供默认值。没有初始任务和恢复 id 时，启动界面在第一条 prompt 前不创建 Session。`/new` 和 `/clear` 返回该界面，不创建空 Session，也不停止已有工作。修改源码后运行 `pnpm run build`，依赖图变化后重新运行安装器。全局 `@ephemeral-ai/mayfly-cli` 通过精确版本依赖启动同一个 Remote 入口，不负责启动 Host。
+对应参数缺省时，`MAYFLY_SESSION_ID`、`MAYFLY_CWD` 和 `MAYFLY_TASK` 提供默认值。没有初始任务和恢复 id 时，启动界面在第一条 prompt 前不创建 Session。`/new` 和 `/clear` 返回该界面，不创建空 Session，也不停止已有工作。修改源码后运行 `pnpm run build`，依赖图变化后重新运行安装器。统一 CLI 在启动并发现本机后台 Host 后，通过同一个 Remote 入口连接。
 
 ## 使用 TUI
 
@@ -103,7 +117,7 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 | `@ephemeral-ai/mayfly-remote` | 官方 Client transport、Host/Session 选择、功能控制器和独立 TUI composition。 |
 | `@ephemeral-ai/mayfly` | 共享 renderer、主题、编辑器/会话控制器和只读展示 subpath；不发布根插件、dsh bundle、patch 或 preset 载荷。 |
 | `@ephemeral-ai/mayfly-ui` | 渲染无关的节点契约、builder 和四个 UI service/provider。 |
-| `@ephemeral-ai/mayfly-cli` | 通过精确版本依赖启动 Remote 的小型全局启动器。 |
+| `@ephemeral-ai/mayfly-cli` | 统一管理后台 Host 并启动独立 TUI 的全局 CLI。 |
 
 <!-- BEGIN diagram:mayfly-layers -->
 <!-- single source: docs/diagrams/mayfly-layers.zh.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->

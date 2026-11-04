@@ -31,9 +31,30 @@ export function authenticatedMayflyHostUrl(ctx: Context): string {
  */
 export function apply(ctx: Context): void {
   let active = true
-  ctx.effect(() => () => { active = false })
+  const managed = process.env.MAYFLY_MANAGED_HOST === '1' && process.send !== undefined
+  const stop = (message: unknown): void => {
+    if (active && typeof message === 'object' && message !== null && (message as { type?: unknown }).type === 'mayfly-stop') {
+      const exit = ctx.get('appExit') as ((code: number) => void) | undefined
+      exit?.(0)
+    }
+  }
+  const disconnected = (): void => stop({ type: 'mayfly-stop' })
+  ctx.effect(() => {
+    if (managed) {
+      process.on('message', stop)
+      process.on('disconnect', disconnected)
+    }
+    return () => {
+      active = false
+      process.off('message', stop)
+      process.off('disconnect', disconnected)
+    }
+  })
   const print = (): void => {
-    if (active) console.log(`mayfly host: ${authenticatedMayflyHostUrl(ctx)}`)
+    if (!active) return
+    if (managed) {
+      if (process.connected) process.send!({ type: 'mayfly-ready', url: authenticatedMayflyHostUrl(ctx) })
+    } else console.log(`mayfly host: ${authenticatedMayflyHostUrl(ctx)}`)
   }
   const settled = ctx.get('loader')?.await()
   if (settled === undefined) {

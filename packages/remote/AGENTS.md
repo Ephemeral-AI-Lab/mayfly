@@ -357,10 +357,10 @@ detach multiple Hosts without owning their Agent or Session lifetimes.
   The public Client entry must retain the official Remote assembly's type-only
   export in emitted declarations so external consumers receive its namespace
   augmentations without relying on workspace imports.
-- `src/remote-bin.ts` receives credentials only through the authenticated
+- `src/remote-bin.ts` receives remote credentials through the authenticated
   `MAYFLY_DSH_STARTUP_URL` environment variable; a non-secret `--host` URL is
   accepted, and a token in argv or a log is refused.
-  Tokens never enter argv, logs, screenshots, or ordinary error text.
+  The unified CLI may also pass a startup URL from its current-user private discovery record directly in memory; that input is redacted in diagnostics. Tokens never enter argv, logs, screenshots, or ordinary error text.
 
 The candidate `@ephemeral-ai/mayfly` and `@ephemeral-ai/mayfly-ui` packages are
 visual dependencies built from the same release set. The published rc.2

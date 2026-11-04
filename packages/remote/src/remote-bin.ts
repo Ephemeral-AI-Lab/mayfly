@@ -104,6 +104,9 @@ function parseArgv(argv: readonly string[]): CliOptions {
   }
 }
 
+/** Refuse invalid or credential-bearing terminal arguments before local server startup. */
+export function validateArguments(argv: readonly string[]): void { parseArgv(argv) }
+
 function hostOrigin(value: string): URL {
   let url: URL
   try {
@@ -146,10 +149,10 @@ function version(): string {
 }
 
 /** Redact startup credentials and credential-shaped fields from ordinary-terminal diagnostics. */
-export function sanitized(error: unknown): string {
+export function sanitized(error: unknown, localStartupUrl?: string): string {
   let message = error instanceof Error ? error.message : String(error)
   const secrets = new Set<string>()
-  const startup = process.env.MAYFLY_DSH_STARTUP_URL
+  const startup = localStartupUrl ?? process.env.MAYFLY_DSH_STARTUP_URL
   if (startup !== undefined && startup !== '') {
     secrets.add(startup)
     try {
@@ -173,8 +176,8 @@ export function sanitized(error: unknown): string {
 }
 
 /** Execute the independent Frontend using environment credentials and Remote-only command-line options. */
-export async function main(): Promise<void> {
-  const options = parseArgv(process.argv.slice(2))
+export async function main(argv = process.argv.slice(2), localStartupUrl?: string): Promise<void> {
+  const options = parseArgv(argv)
   if (options.action === 'help') {
     process.stdout.write(HELP)
     return
@@ -186,7 +189,7 @@ export async function main(): Promise<void> {
   const sessionId = options.sessionId ?? process.env.MAYFLY_SESSION_ID
   const task = options.task ?? process.env.MAYFLY_TASK
   const cwd = options.cwd ?? process.env.MAYFLY_CWD
-  const authenticatedUrl = startupUrl(options.host)
+  const authenticatedUrl = localStartupUrl ?? startupUrl(options.host)
   const { runRemoteFrontend } = await import('./remote/runtime.ts')
   await runRemoteFrontend({
     startupUrl: authenticatedUrl,
@@ -197,11 +200,11 @@ export async function main(): Promise<void> {
 }
 
 /** Run the bin and report a sanitized ordinary-terminal failure without terminating the Host. */
-export async function run(): Promise<void> {
+export async function run(argv = process.argv.slice(2), localStartupUrl?: string): Promise<void> {
   try {
-    await main()
+    await main(argv, localStartupUrl)
   } catch (error: unknown) {
-    process.stderr.write(`mayfly: ${sanitized(error)}\n`)
+    process.stderr.write(`mayfly: ${sanitized(error, localStartupUrl)}\n`)
     process.exitCode = 1
   }
 }

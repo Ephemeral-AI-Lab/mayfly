@@ -12,7 +12,7 @@ Read the owning package's instructions before editing:
 | [packages/mayfly](packages/mayfly/AGENTS.md) | Shared renderer and readonly presentation subpaths |
 | [packages/host](packages/host/AGENTS.md) | Native Host composition, projections, focused Remote methods |
 | [packages/remote](packages/remote/AGENTS.md) | Official Client transport, frontend state/writes, standalone TUI |
-| [packages/cli](packages/cli/AGENTS.md) | Small global launcher with exact Remote dependency |
+| [packages/cli](packages/cli/AGENTS.md) | Unified CLI, local services, exact Host/Remote/Harness dependencies |
 | [examples](examples/AGENTS.md) | Publish-shaped external consumers and composition |
 
 Current architecture: [docs/README.md](docs/README.md). Consult the

@@ -178,6 +178,12 @@ importers:
 
   packages/cli:
     dependencies:
+      '@deepseek-ai/dsh':
+        specifier: 0.2.2-alpha.2
+        version: 0.2.2-alpha.2(3e4497e65a4f597802a72475aa35a746)
+      '@ephemeral-ai/mayfly-host':
+        specifier: link:../host
+        version: link:../host
       '@ephemeral-ai/mayfly-remote':
         specifier: link:../remote
         version: link:../remote

@@ -38,6 +38,12 @@ MAYFLY_SMOKE_DSH_JS=/absolute/path/to/dsh/lib/bin.js \
 node script/smoke-platform-pty.mjs
 ```
 
+## Background Host acceptance
+
+Exercise `mayfly server start|stop|restart|status|logs|enable|disable` on all three platforms using a dedicated `MAYFLY_HOME` and `mayfly-<tag>` profile. Verify automatic startup on `mayfly`, terminal closure and TUI exit leaving Host running, authenticated readiness, explicit stop preventing recovery, crash recovery, private credential records, and enable/disable preserving current running state. Record native platform evidence separately from command-contract unit tests.
+
+Linux uses a systemd user service; macOS uses a runtime LaunchAgent, with a login plist only when enabled. Windows uses a hidden detached supervisor, authenticated named-pipe control, bounded crash backoff and a current-user registry Run entry for explicit login startup. Check spaces/Chinese characters in installation paths and missing Node/CLI paths after an installation move. No Windows Task Scheduler or Windows Service is used. User logout is outside the uptime guarantee.
+
 ## Manual desktop acceptance
 
 Native PTY logs cannot prove that a graphical terminal's input method, system

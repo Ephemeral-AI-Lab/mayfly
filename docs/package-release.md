@@ -47,10 +47,10 @@ manifest/export/bin/protocol checks, publint, AreTheTypesWrong, package budgets,
 and an external UI-kit install fixture. Release automation publishes those
 exact artifacts and does not rebuild.
 
-`@ephemeral-ai/mayfly-cli` ships a small launcher with an exact-version runtime
-dependency on `@ephemeral-ai/mayfly-remote`. It carries no dsh runtime archives.
-The native Host uses the separately installed matching official dsh executable;
-releasing or installing the TUI does not upgrade that installation.
+`@ephemeral-ai/mayfly-cli` ships one unified bin with exact matching Host, Remote,
+and official dsh runtime dependencies. It carries no runtime archives and does
+not change a separate global dsh installation. Existing initialized profiles
+refuse a recorded release mismatch; no silent profile upgrade is performed.
 
 The GitHub repository owns an `npm` environment. Until all five packages have
 trusted publishing configured, that environment must provide an `NPM_TOKEN`

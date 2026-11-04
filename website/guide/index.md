@@ -6,6 +6,36 @@
 分体安装产物已经发布。开发产物从本工作区或经验证的匹配 tarball 安装。
 :::
 
+## 一个命令启动
+
+构建当前 checkout 后，可以直接打开 TUI；CLI 自动初始化专用实例、启动后台 Host 并连接：
+
+```sh
+pnpm install --frozen-lockfile
+pnpm run build
+node packages/cli/lib/bin.js --profile mayfly-dev
+```
+
+匹配发布集发布后，使用 `npm install -g @ephemeral-ai/mayfly-cli` 安装，日常直接执行 `mayfly`。
+
+```sh
+mayfly server              # 等同于 start，后台运行
+mayfly server stop
+mayfly server restart
+mayfly server status
+mayfly server logs --follow
+mayfly server enable       # 开启登录自启，默认关闭
+mayfly server disable      # 关闭登录自启，不停止当前 Host
+mayfly server start --profile work
+mayfly --profile work
+```
+
+Linux 使用 systemd 用户服务，macOS 使用 LaunchAgent，Windows 使用 Mayfly 自管后台监督进程，无需管理员权限。退出 TUI 不停止 Host；`server stop` 会结束 Host 上的工作。下次执行 `mayfly` 会重新启动。
+
+默认数据根是 `~/.mayfly`，可用 `MAYFLY_HOME` 修改；不迁移已有 `~/.dsh`。本机通过当前用户私有记录发现 Host，日志不包含认证信息。远程连接继续使用 `MAYFLY_DSH_STARTUP_URL`，不会自动启动本机实例；显式获取 URL 使用 `mayfly server start --print-startup-url`，不要把认证 URL 放进 argv。
+
+以下原生开发方式仍可用于单独调试两端。
+
 ## 前置条件
 
 | 依赖 | 版本 |
