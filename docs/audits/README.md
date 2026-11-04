@@ -4,6 +4,19 @@ Each file is a dated record of one investigation or acceptance round. A record s
 define current behavior; the code and the [architecture docs](../README.md) do. Read a record's closeout or status note
 first, when it has one.
 
+## 0.1.5 release preparation (2026-11-04)
+
+Record: [2026-11-04-release-0.1.5.md](2026-11-04-release-0.1.5.md).
+Runtime `adca84c0`, aligned with the newest published Harness `0.2.2-alpha.3`.
+Records release tooling, native platform fixes, explicit managed-profile upgrade,
+real attachment and theme regressions, 9,233 passing tests with 100% per-file
+coverage, and the dedicated candidate/Website review resources. NO-GO: raw
+strict-reference failures, pending human acceptance and unverified npm publishing
+permissions remain; the first local registry timeout and its successful retry
+are both retained. A clean-CI temporary-directory fixture defect was reproduced
+and fixed in `7e9e2cbb`; all tests and coverage pass under a fresh temporary
+parent locally, with a new CI run still pending when the record was written.
+
 ## Unified CLI and background Host merge (2026-11-04)
 
 Record: [2026-11-04-server-manager-merge.md](2026-11-04-server-manager-merge.md).
