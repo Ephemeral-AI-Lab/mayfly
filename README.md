@@ -11,8 +11,8 @@
 [![CI](https://github.com/Ephemeral-AI-Lab/mayfly/actions/workflows/ci.yml/badge.svg)](https://github.com/Ephemeral-AI-Lab/mayfly/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@ephemeral-ai/mayfly?label=npm)](https://www.npmjs.com/package/@ephemeral-ai/mayfly)
 [![downloads](https://img.shields.io/npm/dm/@ephemeral-ai/mayfly)](https://www.npmjs.com/package/@ephemeral-ai/mayfly)
-[![Node](https://img.shields.io/badge/node-%3E%3D24.9.0-339933)](#install-and-run)
-[![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#install-and-run)
+[![Node](https://img.shields.io/badge/node-%3E%3D24.9.0-339933)](#unified-command)
+[![pnpm](https://img.shields.io/badge/pnpm-11-F69220)](#unified-command)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 English | [中文](README.zh.md)
@@ -21,7 +21,21 @@ Mayfly is an independent terminal frontend for [DeepSeek Harness](https://github
 
 This development branch targets official Harness `0.2.2-alpha.2`. The published Mayfly `0.1.4-rc.2` is the immutable reference for appearance, keys, and workflows. Shared presentation is being carried into the split runtime; complete visual parity still requires the acceptance described in [split validation](docs/split-parity-validation.md).
 
-## Install and run
+## Unified command
+
+The new CLI starts a background Host automatically and connects the independent TUI. From a built checkout:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm run build
+node packages/cli/lib/bin.js --profile mayfly-dev
+node packages/cli/lib/bin.js server status --profile mayfly-dev
+node packages/cli/lib/bin.js server stop --profile mayfly-dev
+```
+
+After a matching release is published, install `@ephemeral-ai/mayfly-cli` globally and use `mayfly` and `mayfly server start|stop|restart|status|logs|enable|disable`. Linux uses systemd user services, macOS LaunchAgents, and Windows a hidden Mayfly supervisor. Login startup is opt-in. Data defaults to `~/.mayfly`, with `MAYFLY_HOME` overriding it; credentials are exchanged through private local discovery. See the [CLI manual](packages/cli/README.md) for instances, logs, remote connections and lifecycle limits.
+
+## Native development startup
 
 Use Node `>=24.9.0`, pinned pnpm `11.7.0`, and an isolated official dsh `0.2.2-alpha.2` executable. These split packages are development artifacts; install from this checkout or verified release tarballs. The installer checks the dsh version and keeps the global installation unchanged.
 
@@ -52,7 +66,7 @@ script/mayfly-remote.sh --resume <session-id>
 script/mayfly-remote.sh --cwd /path/on/host 'Run the relevant checks'
 ```
 
-`MAYFLY_SESSION_ID`, `MAYFLY_CWD`, and `MAYFLY_TASK` provide defaults when corresponding arguments are absent. A launch without a task or resume id stays sessionless until the first prompt. `/new` and `/clear` return to that start view without creating an empty Session or stopping existing work. Rebuild with `pnpm run build` after source edits; rerun the installer when the dependency graph changes. The exact-version global `@ephemeral-ai/mayfly-cli` package hands off to this same Remote entry; it does not start the Host.
+`MAYFLY_SESSION_ID`, `MAYFLY_CWD`, and `MAYFLY_TASK` provide defaults when corresponding arguments are absent. A launch without a task or resume id stays sessionless until the first prompt. `/new` and `/clear` return to that start view without creating an empty Session or stopping existing work. Rebuild with `pnpm run build` after source edits; rerun the installer when the dependency graph changes. The unified CLI uses this same Remote entry after starting and discovering its local background Host.
 
 ## Use the TUI
 
@@ -103,7 +117,7 @@ The release set contains five packages:
 | `@ephemeral-ai/mayfly-remote` | Official Client transport, Host/Session selection, feature controllers, and standalone TUI composition. |
 | `@ephemeral-ai/mayfly` | Shared renderer, themes, editor/transcript controllers, and readonly presentation subpaths. No root plugin, dsh bundle, patch, or preset payload is published. |
 | `@ephemeral-ai/mayfly-ui` | Renderer-neutral node contracts, builders, and the four UI services/provider. |
-| `@ephemeral-ai/mayfly-cli` | Small global launcher with an exact-version dependency on Remote. |
+| `@ephemeral-ai/mayfly-cli` | Unified CLI for background Host management and independent TUI startup. |
 
 <!-- BEGIN diagram:mayfly-layers -->
 <!-- single source: docs/diagrams/mayfly-layers.en.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->

@@ -59,8 +59,7 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
   `web-runtime.surfaceContext`: terminal users must not be described to the
   model as browser GUI users, or given a browser-only shell URL.
 - `src/startup.ts` prints the authenticated URL once after Loader settlement.
-  That explicit readiness line is the credential handoff; tokens never enter
-  argv or ordinary diagnostics.
+  For a managed child it sends readiness only over parent IPC and consumes a native exit request on the same channel; unload retires both listeners. An unmanaged development Host retains its explicit readiness line. Tokens never enter argv or ordinary diagnostics.
 - `presets/mayfly-cordis.patch.yml` registers the native creative preset after
   the Host patch. Its child rows match the pinned upstream Cordis preset except
   persona and the Host-owned skill root. Its published skills describe the

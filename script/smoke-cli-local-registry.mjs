@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Install the packed pure-TUI CLI through a loopback registry and exercise its
+ * Install the packed unified CLI through a loopback registry and exercise its
  * Host-free help/version and credential-rejection surfaces. Other package
- * downloads proxy to npm; no Host or legacy profile is started.
+ * downloads proxy to npm; help/version and invalid credentials must not start a Host.
  *
  * Run after `pnpm run check:pack`.
  * @module script/smoke-cli-local-registry
@@ -14,6 +14,7 @@ import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmS
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { RELEASE_PACKAGE_DIRS, ROOT, readManifest } from './package-contract.mjs'
 
 const packRoot = join(ROOT, '.artifacts', 'pack')
@@ -58,6 +59,7 @@ mkdirSync(fixtureTemp)
 
 const requested = new Set()
 let registryUrl
+const upstreamRegistry = process.env.MAYFLY_SMOKE_UPSTREAM_REGISTRY ?? 'https://registry.npmjs.org'
 
 /** Send one JSON response. */
 function json(response, status, value) {
@@ -116,19 +118,21 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method !== 'GET' && request.method !== 'HEAD') return json(response, 200, {})
-    const upstream = await fetch(new URL(request.url ?? '/', 'https://registry.npmjs.org'), {
+    const upstream = await fetch(new URL(request.url ?? '/', upstreamRegistry), {
       method: request.method,
       headers: request.headers.accept === undefined ? {} : { accept: request.headers.accept },
       signal: AbortSignal.timeout(30_000),
     })
     const headers = {}
-    for (const name of ['content-type', 'content-length', 'cache-control', 'etag']) {
+    // fetch decodes content-encoding; forwarding the compressed content-length
+    // truncates JSON metadata when a registry or mirror compresses responses.
+    for (const name of ['content-type', 'cache-control', 'etag']) {
       const value = upstream.headers.get(name)
       if (value !== null) headers[name] = value
     }
     response.writeHead(upstream.status, headers)
     if (request.method === 'HEAD' || upstream.body === null) return response.end()
-    Readable.fromWeb(upstream.body).pipe(response)
+    await pipeline(Readable.fromWeb(upstream.body), response)
   } catch (error) {
     if (!response.headersSent) json(response, 500, { error: error instanceof Error ? error.message : String(error) })
     else response.destroy(error instanceof Error ? error : undefined)
@@ -171,6 +175,7 @@ try {
     XDG_CONFIG_HOME: join(userHome, '.config'),
     TMPDIR: fixtureTemp,
     DSH_HOME: dshHome,
+    MAYFLY_HOME: join(userHome, '.mayfly'),
     NO_COLOR: '1',
     COREPACK_NPM_REGISTRY: registryUrl.slice(0, -1),
     NPM_CONFIG_USERCONFIG: userConfig,
@@ -184,7 +189,7 @@ try {
   ], env)
   if (install.code !== 0) throw new Error(`packed CLI install failed${install.timedOut ? ' (300s timeout)' : ''}:\n${install.stderr.slice(-20_000)}\n${install.stdout.slice(-5000)}`)
 
-  for (const name of ['@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui']) {
+  for (const name of ['@ephemeral-ai/mayfly-host', '@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui']) {
     if (!requested.has(name)) throw new Error(`packed CLI install never requested ${name}`)
     const manifest = JSON.parse(readFileSync(join(cliRoot, 'node_modules', ...name.split('/'), 'package.json'), 'utf8'))
     if (manifest.version !== version) throw new Error(`${name}: expected ${version}, got ${manifest.version}`)
@@ -205,7 +210,7 @@ try {
   if (rejected.code !== 1 || !rejected.stderr.includes('MAYFLY_DSH_STARTUP_URL') || rejected.stderr.includes(secret) || rejected.stdout.includes(secret)) {
     throw new Error('packed CLI did not reject and redact a token-bearing argument')
   }
-  if (existsSync(join(dshHome, 'cache', 'mayfly-cli-runtime')) || existsSync(join(dshHome, 'profiles', 'mayfly'))) {
+  if (existsSync(join(userHome, '.mayfly')) || existsSync(join(dshHome, 'cache', 'mayfly-cli-runtime')) || existsSync(join(dshHome, 'profiles', 'mayfly'))) {
     throw new Error('packed CLI created a legacy runtime cache or profile')
   }
 

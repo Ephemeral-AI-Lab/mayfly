@@ -272,16 +272,16 @@ for (const relativeDir of PACKAGE_DIRS) {
   if (sourceManifest.name === '@ephemeral-ai/mayfly-cli') {
     const runtime = files.filter(file => file.path.startsWith('lib/'))
     if (runtime.length !== 1 || runtime[0]?.path !== 'lib/bin.js') fail(`${sourceManifest.name}: lib must contain only lib/bin.js`)
-    if ((runtime[0]?.size ?? Infinity) > 32_000) fail(`${sourceManifest.name}: lib/bin.js exceeds the 32 KB launcher budget`)
-    const expectedDependencies = { '@ephemeral-ai/mayfly-remote': manifest.version }
+    if ((runtime[0]?.size ?? Infinity) > 128_000) fail(`${sourceManifest.name}: lib/bin.js exceeds the 128 KB unified CLI budget`)
+    const expectedDependencies = { '@deepseek-ai/dsh': readManifest('packages/host').peerDependencies['@deepseek-ai/dsh-session'], '@ephemeral-ai/mayfly-host': manifest.version, '@ephemeral-ai/mayfly-remote': manifest.version }
     if (!isDeepStrictEqual(manifest.dependencies, expectedDependencies)) {
-      fail(`${sourceManifest.name}: dependencies must contain only the exact-version Remote package`)
+      fail(`${sourceManifest.name}: dependencies must match the exact Host, Remote and native Harness versions`)
     }
     if (files.some(file => /^runtime-.*\.tgz$/u.test(file.path))) fail(`${sourceManifest.name}: runtime archives are forbidden`)
     const bin = readFileSync(join(packageRoot, 'lib/bin.js'), 'utf8')
     if (!bin.includes('@ephemeral-ai/mayfly-remote/remote-bin')) fail(`${sourceManifest.name}: bin must import the Remote bin`)
-    if (/@deepseek-ai\/dsh(?:\/|['"])/u.test(bin) || /@ephemeral-ai\/mayfly-host(?:\/|['"])/u.test(bin) || /@ephemeral-ai\/mayfly(?:\/cordis\.patch\.yml|['"])/u.test(bin)) {
-      fail(`${sourceManifest.name}: bin must not reference the dsh CLI or legacy Host composition`)
+    if (/@ephemeral-ai\/mayfly(?:\/cordis\.patch\.yml|['"])/u.test(bin)) {
+      fail(`${sourceManifest.name}: bin must not reference the legacy in-process Host composition`)
     }
   } else {
     libraryFiles += files.filter(file => file.path.startsWith('lib/')).length

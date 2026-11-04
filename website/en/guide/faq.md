@@ -4,8 +4,9 @@
 
 The shared package contains renderer and readonly presentation subpaths. The
 current product uses `mayfly-host` in a native dsh profile and an independent
-`mayfly-remote` TUI. The small `mayfly-cli` launcher depends on the exact Remote
-version; it does not bundle or start Host. Follow the [split quickstart](/en/guide/).
+`mayfly-remote` TUI. The unified `mayfly-cli` depends on exact Host, Remote
+and official Harness versions. `mayfly server` manages the background Host;
+`mayfly` automatically starts and connects to its local instance. Follow the [split quickstart](/en/guide/).
 Published `v0.1.4-rc.2` is the immutable UI reference; current development targets
 Harness `0.2.2-alpha.2` and requires matching verified build artifacts.
 

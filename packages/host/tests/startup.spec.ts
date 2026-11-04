@@ -3,7 +3,7 @@
  * process, and the loader wait.
  * @module
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { apply, authenticatedMayflyHostUrl, inject, name } from '../src/startup.ts'
 
@@ -16,6 +16,7 @@ beforeEach(() => {
   // test's teardown and silently stop capturing.
   vi.spyOn(console, 'log').mockImplementation((line: string): void => { printed.push(line) })
 })
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
 /** A context answering one advertised URL and an optional loader. */
 function ctx(overrides: Partial<{ readonly loader: { await(): Promise<void> } | undefined, readonly disposers: (() => void)[] }> = {}): Context {
@@ -73,5 +74,45 @@ describe('mayfly-host-startup', () => {
     gate.reject(new Error('native profile did not settle'))
     await new Promise(resolve => setImmediate(resolve))
     expect(printed).toEqual([])
+  })
+
+  it('hands managed readiness to its parent and requests native exit over IPC', () => {
+    vi.stubEnv('MAYFLY_MANAGED_HOST', '1')
+    const send = vi.spyOn(process, 'send').mockImplementation(() => true)
+    const callbacks = new Map<string, (...args: unknown[]) => void>()
+    const originalOn = process.on.bind(process)
+    vi.spyOn(process, 'on').mockImplementation(((event: string, fn: (...args: unknown[]) => void) => {
+      if (event === 'message' || event === 'disconnect') { callbacks.set(event, fn); return process }
+      return originalOn(event, fn)
+    }) as typeof process.on)
+    const exit = vi.fn()
+    const context = ctx()
+    context.get = vi.fn((key: string) => key === 'appExit' ? exit : undefined) as typeof context.get
+    apply(context)
+    expect(send).toHaveBeenCalledWith({ type: 'mayfly-ready', url: 'http://127.0.0.1:3080/?token=sekret' })
+    expect(printed).toEqual([])
+    for (const message of [null, 'stop', {}, { type: 'other' }]) callbacks.get('message')!(message)
+    expect(exit).not.toHaveBeenCalled()
+    callbacks.get('message')!({ type: 'mayfly-stop' })
+    callbacks.get('disconnect')!()
+    expect(exit).toHaveBeenCalledTimes(2)
+  })
+
+  it('retires IPC callbacks on unload and handles a disconnected parent before readiness', () => {
+    vi.stubEnv('MAYFLY_MANAGED_HOST', '1')
+    const send = vi.spyOn(process, 'send').mockImplementation(() => true)
+    const connected = process.connected
+    Object.defineProperty(process, 'connected', { value: false, configurable: true, writable: true })
+    const disposers: (() => void)[] = []
+    try {
+      const context = ctx({ disposers })
+      apply(context)
+      expect(send).not.toHaveBeenCalled()
+      const callback = process.listeners('message').at(-1)!
+      callback.call(process, { type: 'mayfly-stop' }, undefined)
+      disposers[0]!()
+      callback.call(process, { type: 'mayfly-stop' }, undefined)
+      expect(process.listeners('message')).not.toContain(callback)
+    } finally { Object.defineProperty(process, 'connected', { value: connected, configurable: true, writable: true }) }
   })
 })

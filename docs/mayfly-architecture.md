@@ -34,7 +34,7 @@ flowchart TB
 | `@ephemeral-ai/mayfly-remote` | Client transport, multi-Host selection, feature controllers and writes, standalone TUI composition |
 | `@ephemeral-ai/mayfly` | Shared renderer, themes, readonly presentation, editor and transcript controllers; no public root plugin or native composition |
 | `@ephemeral-ai/mayfly-ui` | Renderer-neutral contracts, builders, and four direct UI services/provider |
-| `@ephemeral-ai/mayfly-cli` | Small global launcher with an exact-version Remote dependency; no Host spawning or runtime archive |
+| `@ephemeral-ai/mayfly-cli` | Unified CLI with exact Host/Remote/Harness dependencies; local background service management and independent TUI dispatch |
 
 The Host and TUI each have their own Cordis tree. Host plugins use documented
 native dsh services in their owning process. TUI plugins contribute through
@@ -108,8 +108,10 @@ native edit command in the prompt; revision-bound controls use native writes.
 
 ## Installation and verification
 
-Use the root [installation instructions](../README.md#install-and-run).
-`script/install-dev.sh` builds and links only the Host bundle into a dedicated
+Use the root [installation instructions](../README.md#unified-command).
+`mayfly` initializes and starts a local background Host, then discovers its private connection record and attaches the independent TUI. `mayfly server` owns local lifecycle management; Linux/macOS use native user services and Windows a detached Mayfly supervisor. Credentials never enter ordinary logs or argv.
+
+For explicit native development, `script/install-dev.sh` builds and links only the Host bundle into a dedicated
 `mayfly-*` profile using the selected exact-line `DSH_BIN`. Start that Host,
 then pass its authenticated readiness URL through `MAYFLY_DSH_STARTUP_URL` to
 `script/mayfly-remote.sh`. Tokens never enter argv or ordinary diagnostics.
