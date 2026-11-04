@@ -87,7 +87,7 @@ test('an honestly regenerated raw diff still rejects unknown text, styles, curso
   ]) {
     const sample = fixture(t)
     sample.update(transform)
-    rejected(sample, /Unreviewed|Dimensions or cursor/u)
+    rejected(sample, /Unreviewed|Dimensions or cursor|version field/u)
   }
 })
 
@@ -118,9 +118,31 @@ test('content decisions bind an exact named row, its style, dimensions and ownin
   sample.policy.decisions.push({ scenario: 'smoke', checkpoint: 'startup', cols: 40, rows: 2, row: 1, category: 'release-content', reason: 'Exact accepted release notes with unchanged panel framing.', reference: { text: '  Esc close', styles: [] }, candidate: { text: '  New release notes', styles: [] } })
   assert.equal(reviewSplitReleaseSuite(sample).status, 'passed-with-reviewed-differences')
   sample.update(grid => ({ ...grid, lines: [grid.lines[0], '  New release NOTES'] }))
-  rejected(sample, /Unreviewed/u)
+  rejected(sample, /Required reviewed change/u)
   writeFileSync(path, 'changed')
   rejected(sample, /Reviewed source changed/u)
+})
+
+test('required release changes cannot silently revert to reference text and pass as strict exact', t => {
+  const sample = fixture(t)
+  sample.update(() => parseGrid(sample.reference))
+  sample.result.status = 'passed'
+  sample.result.parityVerified = true
+  sample.result.failures = []
+  sample.suite.failures = []
+  sample.suite.parityVerified = true
+  rejected(sample, /Release version field is wrong/u)
+})
+
+test('duplicate, stale or missing content decisions fail rather than becoming unused allowances', t => {
+  const sample = fixture(t)
+  const decision = { scenario: 'smoke', checkpoint: 'startup', cols: 40, rows: 2, row: 1, category: 'release-content', reason: 'The new release must show this exact accepted content row.', reference: { text: '  Esc close', styles: [] }, candidate: { text: '  New release notes', styles: [] } }
+  sample.policy.decisions.push(decision)
+  rejected(sample, /Required reviewed change/u)
+  sample.policy.decisions.push({ ...decision })
+  rejected(sample, /Duplicate/u)
+  sample.policy.decisions = [{ ...decision, checkpoint: 'absent' }]
+  rejected(sample, /absent checkpoint/u)
 })
 
 test('a reference capture failure still runs the candidate and remains a raw suite failure', async t => {

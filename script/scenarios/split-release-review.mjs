@@ -15,6 +15,7 @@ const json = path => JSON.parse(readFileSync(path, 'utf8'))
 const requireFact = (condition, message) => { if (!condition) throw new Error(message) }
 const same = (a, b) => isDeepStrictEqual(a, b)
 const styles = (runs, cols) => Array.from({ length: cols }, (_, col) => runs.find(run => run.from <= col && run.to >= col)?.style ?? '')
+const isVersionField = text => /^(?:    ▗▘   ▝▖     | | {20,})mayfly v0\.1\.4-rc\.2$/u.test(text)
 
 /** A version replacement carries the reference's cell attributes; it cannot recolor a theme or move other content. */
 export function releaseVersionRow(reference, candidate, cols, version) {
@@ -81,6 +82,8 @@ export function reviewSplitReleaseSuite({ root, artifacts, suite, scenarios, pol
   const output = { schemaVersion: 1, status: 'rejected', strictParityVerified: suite.parityVerified, strictFailures: suite.failures, results: [], failures: [] }
   try {
     requireFact(policy.schemaVersion === 1 && policy.reference === SPLIT_REFERENCE.integrity, 'Unknown release review policy/reference')
+    const decisionKeys = policy.decisions.map(item => JSON.stringify([item.scenario, item.checkpoint, item.row]))
+    requireFact(new Set(decisionKeys).size === decisionKeys.length, 'Duplicate release row decisions')
     for (const dir of RELEASE_PACKAGE_DIRS) requireFact(json(join(root, dir, 'package.json')).version === policy.version, `Release decision does not cover ${dir}`)
     requireFact(json(join(root, 'packages/cli/package.json')).dependencies['@deepseek-ai/dsh'] === policy.harness, 'Release decision covers another Harness')
     for (const [file, digest] of Object.entries(policy.sources)) requireFact(hash(readFileSync(join(root, file))) === digest, `Reviewed source changed: ${file}`)
@@ -108,6 +111,7 @@ export function reviewSplitReleaseSuite({ root, artifacts, suite, scenarios, pol
           checkpoints.push({ name: step.name, cols, rows, grid: readFileSync(join(candidateDirectory, `${step.name}-${cols}x${rows}.grid`), 'utf8') })
         }
         requireFact(same(result.checkpoints, expected) && expected.length > 0, 'Missing, duplicate or unexpected candidate checkpoints')
+        for (const decision of policy.decisions.filter(item => item.scenario === name)) requireFact(expected.includes(decision.checkpoint), `Release decision names an absent checkpoint: ${decision.checkpoint}`)
         if (descriptor.splitOnly) {
           requireFact(result.status === 'smoke-only' && result.parityVerified === false && result.failures.length === 0, 'Split-only behavior failed')
           review.status = 'behavior-passed'
@@ -137,6 +141,11 @@ export function reviewSplitReleaseSuite({ root, artifacts, suite, scenarios, pol
           const left = parseGrid(reference)
           const right = parseGrid(actual)
           requireFact(reference.split('\n')[0] === actual.split('\n')[0] && left.cols === checkpoint.cols && left.lines.length === checkpoint.rows && right.lines.length === checkpoint.rows && same(left.cursor, right.cursor), `Dimensions or cursor changed: ${checkpoint.name}`)
+          for (const decision of policy.decisions.filter(item => item.scenario === name && item.checkpoint === checkpoint.name)) {
+            requireFact(decision.cols === checkpoint.cols && decision.rows === checkpoint.rows && Number.isInteger(decision.row) && decision.row >= 0 && decision.row < checkpoint.rows, `Release decision has unexpected dimensions/row: ${checkpoint.name}`)
+            requireFact(same(decision.reference, { text: left.lines[decision.row], styles: left.styles[decision.row] }) && same(decision.candidate, { text: right.lines[decision.row], styles: right.styles[decision.row] }), `Required reviewed change is absent or altered: ${checkpoint.name} row ${decision.row}`)
+          }
+          for (let row = 0; row < left.lines.length; row += 1) if (isVersionField(left.lines[row])) requireFact(releaseVersionRow({ text: left.lines[row], styles: left.styles[row] }, { text: right.lines[row], styles: right.styles[row] }, checkpoint.cols, policy.version), `Release version field is wrong: ${checkpoint.name} row ${row}`)
           if (diffGrids(reference, actual).length === 0) { review.exactCheckpoints.push(checkpoint.name); continue }
           for (let row = 0; row < left.lines.length; row += 1) {
             const before = { text: left.lines[row], styles: left.styles[row] }

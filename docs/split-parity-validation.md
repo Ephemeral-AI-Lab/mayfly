@@ -264,7 +264,10 @@ terminal text would look the same.
 Every expected semantic checkpoint and its dimensions must be present. A
 nonvisual runtime failure, changed build during capture, a different current
 build, tampered reference, unknown row, recoloring, or missing native evidence
-rejects the release review. A policy change itself selects the full gate.
+rejects the release review. Required release rows and version fields must
+actually appear: silently reverting to old content cannot pass as strict exact.
+Duplicate decisions or decisions naming absent checkpoints also fail. A policy
+change itself selects the full gate.
 Raw results and immutable reference bytes are never rewritten. An accepted
 result is labelled `passed-with-reviewed-differences`, with exact checkpoints,
 reviewed rows, split-only behavior and reference defects reported separately.
