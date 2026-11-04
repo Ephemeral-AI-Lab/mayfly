@@ -9,7 +9,7 @@ const HOST = '@ephemeral-ai/mayfly-host'
 
 /** Keep native install/remove/refusal/activation logic; only the external registry/package executable is a fixture. */
 export async function nativeUpdateHost(hmr: boolean) {
-  const directory = mkdtempTracked(join('/tmp', 'mayfly-native-update-'))
+  const directory = mkdtempTracked('mayfly-native-update-')
   const anchor = join(directory, 'installation', 'package.json')
   await mkdir(join(directory, 'installation'))
   await writeFile(anchor, JSON.stringify({ name: 'native-update-installation', version: '1.0.0', dependencies: {} }))

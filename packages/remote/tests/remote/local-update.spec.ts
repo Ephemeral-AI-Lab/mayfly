@@ -139,7 +139,7 @@ describe('frontend-local updater', () => {
 
   it('uses private file modes and strips authenticated startup/task inputs from every subprocess', async () => {
     const io = systemLocalUpdateIo()
-    const directory = mkdtempTracked(join('/tmp', 'mayfly-local-io-'))
+    const directory = mkdtempTracked('mayfly-local-io-')
     system.temporary.mockResolvedValueOnce(directory)
     expect(await io.temporary()).toBe(directory)
     const lock = join(directory, 'lock')
