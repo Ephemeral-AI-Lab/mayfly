@@ -11,10 +11,16 @@ import { advertisedVersionFiles } from './release-line.mjs'
 export function checkReleaseReadiness(root, version, { requireChangelog = true } = {}) {
   const problems = []
   if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(version)) return [`invalid release version: ${version}`]
+  const names = new Set(RELEASE_PACKAGE_DIRS.map(directory => JSON.parse(readFileSync(join(root, directory, 'package.json'), 'utf8')).name))
   for (const directory of [...RELEASE_PACKAGE_DIRS, 'website']) {
     const relativePath = `${directory}/package.json`
     const manifest = parseManifestText(readFileSync(join(root, relativePath), 'utf8'), relativePath)
     if (manifest.version !== version) problems.push(`${relativePath}: expected ${version}, got ${manifest.version}`)
+    for (const table of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
+      for (const [name, spec] of Object.entries(manifest[table] ?? {})) {
+        if (names.has(name) && spec !== 'workspace:*' && spec !== version) problems.push(`${relativePath}: ${table} ${name}: expected ${version}, got ${spec}`)
+      }
+    }
   }
   for (const relativePath of advertisedVersionFiles) {
     if (!readFileSync(join(root, relativePath), 'utf8').includes(version)) problems.push(`${relativePath}: does not advertise ${version}`)

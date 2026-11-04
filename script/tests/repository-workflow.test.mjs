@@ -291,6 +291,11 @@ describe('agent documentation drift', () => {
     assert.ok(problems.some(problem => problem.includes('stale prerelease 0.1.1-rc.9')))
   })
 
+  test('retains the immutable published split reference after the current release advances', () => {
+    const root = fixture('Use pnpm run check, check:agent-docs. Immutable npm 0.1.4-rc.2 reference.\n')
+    assert.deepEqual(auditAgentDocs(root, { packageDirs: [], checkPreset: false }), [])
+  })
+
   test('generated artifacts cannot introduce instruction drift', () => {
     const root = fixture('Use pnpm run check, check:agent-docs.\n')
     mkdirSync(join(root, '.artifacts', 'unpacked'), { recursive: true })

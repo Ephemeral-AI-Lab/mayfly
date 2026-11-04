@@ -1,6 +1,6 @@
 # Configuration: models, providers, and themes
 
-The split implementation uses Harness `0.2.2-alpha.2`. Host owns native
+The split implementation uses Harness `0.2.2-alpha.3`. Host owns native
 configuration, credentials, model defaults, permissions, and Sessions. Theme
 application, clipboard, exports, and external editor processes run on the
 Remote TUI machine.

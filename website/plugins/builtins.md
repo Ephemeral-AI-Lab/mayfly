@@ -1,6 +1,6 @@
 # 内置插件
 
-当前产品在 Harness `0.2.2-alpha.2` 上分别组合 Host 与 Remote 两个进程。
+当前产品在 Harness `0.2.2-alpha.3` 上分别组合 Host 与 Remote 两个进程。
 
 | 所有者 | 组合 |
 | --- | --- |

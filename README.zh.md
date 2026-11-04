@@ -19,7 +19,7 @@
 
 Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的独立终端前端。产品由两个进程组成：原生 dsh **Host** 和通过官方 HTTP/WebSocket Client 连接的 **Remote TUI**。Host 持有 Agent、模型、工具和 Session；TUI 持有输入、主题、面板与终端渲染。关闭 TUI 只解除连接，Host 上的工作继续运行。
 
-当前开发分支面向官方 Harness `0.2.2-alpha.2`。已发布的 Mayfly `0.1.4-rc.2` 是外观、按键和工作流不可改写的参照。分体实现复用共享展示层；完整视觉一致性仍须按照[分体式验证](docs/split-parity-validation.md)完成验收。
+当前开发分支面向官方 Harness `0.2.2-alpha.3`。已发布的 Mayfly `0.1.4-rc.2` 是外观、按键和工作流不可改写的参照。分体实现复用共享展示层；完整视觉一致性仍须按照[分体式验证](docs/split-parity-validation.md)完成验收。
 
 ## 统一命令
 
@@ -35,9 +35,11 @@ node packages/cli/lib/bin.js server stop --profile mayfly-dev
 
 匹配发布集发布后，全局安装 `@ephemeral-ai/mayfly-cli` 即可使用 `mayfly` 与 `mayfly server start|stop|restart|status|logs|enable|disable`。Linux 使用 systemd 用户服务，macOS 使用 LaunchAgent，Windows 使用隐藏窗口的 Mayfly 监督进程。登录自启默认关闭。数据默认放在 `~/.mayfly`，可通过 `MAYFLY_HOME` 修改；凭据通过私有本机发现交接。实例、日志、远程连接和生命周期限制见 [CLI 手册](packages/cli/README.zh.md)。
 
+升级已有安装时，先停止旧 Host 并备份 `MAYFLY_HOME`，再通过外部安装器安装新版本，使用新的版本化 profile。CLI 托管的链接安装不能通过 `/update` 升级。具体命令、回退与旧 `~/.dsh` 数据边界见[升级与旧数据](website/guide/upgrade.md)。
+
 ## 原生开发启动
 
-使用 Node `>=24.9.0`、锁定的 pnpm `11.7.0` 和独立安装的官方 dsh `0.2.2-alpha.2` 可执行文件。分体包目前是开发产物，应从本工作区或经过验证的发布 tarball 安装。安装器会检查 dsh 版本，不修改全局安装。
+使用 Node `>=24.9.0`、锁定的 pnpm `11.7.0` 和独立安装的官方 dsh `0.2.2-alpha.3` 可执行文件。分体包目前是开发产物，应从本工作区或经过验证的发布 tarball 安装。安装器会检查 dsh 版本，不修改全局安装。
 
 ```sh
 pnpm install --frozen-lockfile
@@ -96,7 +98,7 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 
 | 范围 | 已实现行为与剩余边界 |
 | --- | --- |
-| `/mcp` 连接信息 | 官方 alpha.2 没有已配置服务器或传输健康状态的公共目录。面板只能列出通过工具 schema 发现的服务器，连接状态显示未知，transport/endpoint 缺省。资源、模板和明确的资源读取走原生工具；提供可选脱敏目录的组合可补充连接信息。 |
+| `/mcp` 连接信息 | 官方 alpha.3 没有已配置服务器或传输健康状态的公共目录。面板只能列出通过工具 schema 发现的服务器，连接状态显示未知，transport/endpoint 缺省。资源、模板和明确的资源读取走原生工具；提供可选脱敏目录的组合可补充连接信息。 |
 | Remote TUI 扩展热挂载 | Host bundle 变更使用原生 plugin manager。官方 API 没有动态 TUI 扩展挂载入口，preset 浏览器会明确标注此限制。前端扩展需要源码集成并重启 TUI。 |
 | 冷子会话工具卡片与控制 | 原生历史和投影可被动读取。没有活跃子 Agent 时，自定义 presenter 降级为通用持久工具卡片，依赖 Agent 的控制报告不可用。浏览不会激活子 Agent 或借用父 Agent；明确的 continuable 子会话回复走原生寻址路径。 |
 | `/update` Host 启动检查 | `/update [<version>]` 先准备并检查前端精确发布依赖图，经确认后升级两端、验证版本，并在失败时补偿恢复。`/update recover` 在原 Host 上恢复中断的事务。官方 Host API 没有独立 Host 启动检查；确认页和结果页会明确要求重启两进程并验证 Host 启动。链接、只读或非 npm 前端安装使用原安装方式升级。 |

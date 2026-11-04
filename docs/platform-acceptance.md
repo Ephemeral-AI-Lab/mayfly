@@ -1,40 +1,29 @@
 # Platform acceptance
 
-A PR's `native platform regressions` job verifies the launcher, cache repair,
-host command selection, and the clipboard subprocess on Node 24 across Linux,
-Windows, and macOS. The Windows-specific tests use `npm.cmd` and `pnpm.cmd`
-under paths containing spaces and Chinese characters, without relying on Git
-Bash.
+The `native platform regressions` CI job builds a clean checkout on Node 24 across Linux, Windows and macOS, runs the current CLI suites and native command/clipboard regressions, and drives a real background Host plus independent PTY/ConPTY. Release registry installs use the same supported Node 24 matrix (minimum runtime: 24.9.0).
 
-Release candidates keep the three-platform Node 22/24 install matrix; Node 24
-additionally validates the full profile composition and runs the native
-PTY/ConPTY via `script/smoke-platform-pty.mjs`. The flow covers:
+Linux runners prepare a systemd user manager and its D-Bus environment; macOS runners require their GUI launchd domain. Windows uses the Mayfly hidden detached supervisor, with Git Bash directories removed from the test subprocess PATH. JavaScript entries execute through the selected Node binary. Build scripts execute pnpm JavaScript through Node, preserving paths with spaces and Chinese characters.
 
-- Startup, Unicode bracketed paste, backspace, and 40/100-column resize.
-- File completion, provider form editing, and cancellation.
-- In-app install and uninstall of a local tarball marketplace fixture, with no
-  third-party plugin publishing required.
-- Clean exit and bracketed-paste terminal-mode restoration.
+`script/smoke-platform-pty.mjs` exercises:
 
-Each platform uploads `terminal.log`, `result.json`, and the startup
-calibration log as release artifacts. The Windows subprocess PATH excludes the
-Git Bash executable directory. Launching a JavaScript entry uses the current
-Node and never treats `.js` or `.cmd` as a POSIX executable.
+- All five resolved package versions and authenticated official HTTP/WebSocket Session list/create/open.
+- Native service startup, login enable/disable preserving the running Host, owned-child crash recovery, and restart rotating credentials.
+- Independent TUI startup, Unicode bracketed paste, backspace, 100/40/100-column resize and the command panel.
+- Clean terminal restoration, TUI exit keeping Host alive, redacted logs, and explicit stop preventing recovery.
 
-By default the driver exercises the installed global candidate launcher:
+The full split gate separately covers filesystem completion, providers and native plugin actions. Each platform uploads redacted `terminal.log`, `commands.json` and `result.json`. These automated results do not establish manual desktop acceptance below.
+
+By default the driver locates the installed global candidate CLI and creates a temporary isolated data root:
 
 ```sh
 node script/smoke-platform-pty.mjs
 ```
 
-Local source acceptance can point at an installed standalone profile.
-`DSH_HOME` must be given explicitly, and the profile must use `mayfly-<tag>`;
-never point at the production profile. For example:
+For local source acceptance, build first and supply the CLI entry. A supplied profile must use `mayfly-<tag>`. An explicit `MAYFLY_HOME` is retained for inspection; the driver stops its Host and disables login startup on exit.
 
 ```sh
-DSH_HOME=/tmp/mayfly-acceptance \
+MAYFLY_SMOKE_LAUNCHER="$PWD/packages/cli/lib/bin.js" \
 MAYFLY_SMOKE_PROFILE=mayfly-audit \
-MAYFLY_SMOKE_DSH_JS=/absolute/path/to/dsh/lib/bin.js \
 node script/smoke-platform-pty.mjs
 ```
 
@@ -70,14 +59,6 @@ processes after hot reload or exit. SSH/tmux, image display protocols, and
 automatic theme are recorded separately as an extended matrix; automated passes
 do not replace these desktop results.
 
-## Cache lock boundaries
+## Management lock boundaries
 
-Cache publishing uses a directory lease with a 120-second stale timeout and a
-5-second heartbeat; acquisition retries are bounded at roughly 12 seconds.
-Contention errors advise retrying later; locks orphaned by a crash recover
-automatically after expiry without deleting the whole cache. Inside the lock
-only bounded verification and rename run; recursive deletion happens after the
-lock is released. The lease does not guarantee strong exclusivity if a process
-pause or synchronous filesystem stall exceeds the stale window. The native
-file check verifies existence and size, not per-file content hashes or a full
-dependency-tree validation.
+The unified CLI serializes operations with a private owner record and reaps only a lock whose process is absent. Supervisor control authenticates both a private secret and exact generation. A persisted PID alone never authorizes stopping a process. The former extracted-runtime cache is removed; normal package-manager installation owns dependency integrity.

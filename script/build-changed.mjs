@@ -7,10 +7,11 @@ import { join } from 'node:path'
 import { collectChangedFiles, defaultBase, normalizeChangedFiles, owningPackage } from './change-files.mjs'
 import { BUILD_PACKAGE_DIRS, ROOT, readManifest, runtimeEntries } from './package-contract.mjs'
 import { isStructuralBuildPath } from './verify/inputs.mjs'
+import { pnpmCommand } from './pnpm-command.mjs'
 
 function run(command, args, env) {
   process.stdout.write(`> ${command} ${args.join(' ')}\n`)
-  const result = spawnSync(command, args, { stdio: 'inherit', env: env === undefined ? process.env : { ...process.env, ...env } })
+  const result = spawnSync(...(command === 'pnpm' ? pnpmCommand(args) : [command, args]), { stdio: 'inherit', env: env === undefined ? process.env : { ...process.env, ...env } })
   if (result.error !== undefined) throw result.error
   if (result.status !== 0) process.exit(result.status ?? 1)
 }

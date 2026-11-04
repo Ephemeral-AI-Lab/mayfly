@@ -334,7 +334,7 @@ export class RemoteSessionsBrowserController implements RemoteSessionsBrowser {
     void (async () => {
       try {
         const entries = await remoteValue(client.remote.schedule.catalog())
-        if (valid()) reminders = new Set(entries.filter(entry => entry.status === 'active').map(entry => String(entry.sessionId)))
+        if (valid()) reminders = new Set(entries.filter(entry => entry.status === 'active').flatMap(entry => entry.involvedSessionIds))
       } catch { /* Schedule is optional; the catalog row still works without reminder badges. */ }
       finally { if (valid()) { loadingReminders = false; publish() } }
     })()

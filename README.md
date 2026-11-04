@@ -19,7 +19,7 @@ English | [中文](README.zh.md)
 
 Mayfly is an independent terminal frontend for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The product runs as two processes: a native dsh **Host** and a **Remote TUI** connected through the official HTTP/WebSocket Client. The Host owns Agents, models, tools, and Sessions; the TUI owns input, themes, panels, and terminal rendering. Closing the TUI detaches it while Host work continues.
 
-This development branch targets official Harness `0.2.2-alpha.2`. The published Mayfly `0.1.4-rc.2` is the immutable reference for appearance, keys, and workflows. Shared presentation is being carried into the split runtime; complete visual parity still requires the acceptance described in [split validation](docs/split-parity-validation.md).
+This development branch targets official Harness `0.2.2-alpha.3`. The published Mayfly `0.1.4-rc.2` is the immutable reference for appearance, keys, and workflows. Shared presentation is being carried into the split runtime; complete visual parity still requires the acceptance described in [split validation](docs/split-parity-validation.md).
 
 ## Unified command
 
@@ -35,9 +35,11 @@ node packages/cli/lib/bin.js server stop --profile mayfly-dev
 
 After a matching release is published, install `@ephemeral-ai/mayfly-cli` globally and use `mayfly` and `mayfly server start|stop|restart|status|logs|enable|disable`. Linux uses systemd user services, macOS LaunchAgents, and Windows a hidden Mayfly supervisor. Login startup is opt-in. Data defaults to `~/.mayfly`, with `MAYFLY_HOME` overriding it; credentials are exchanged through private local discovery. See the [CLI manual](packages/cli/README.md) for instances, logs, remote connections and lifecycle limits.
 
+Upgrade existing installations with a fresh versioned profile after stopping the old Host and backing up `MAYFLY_HOME`. CLI-managed linked profiles use the external installer; `/update` cannot upgrade them. See [upgrades and existing data](website/en/guide/upgrade.md) for the exact commands, rollback, and the old `~/.dsh` boundary.
+
 ## Native development startup
 
-Use Node `>=24.9.0`, pinned pnpm `11.7.0`, and an isolated official dsh `0.2.2-alpha.2` executable. These split packages are development artifacts; install from this checkout or verified release tarballs. The installer checks the dsh version and keeps the global installation unchanged.
+Use Node `>=24.9.0`, pinned pnpm `11.7.0`, and an isolated official dsh `0.2.2-alpha.3` executable. These split packages are development artifacts; install from this checkout or verified release tarballs. The installer checks the dsh version and keeps the global installation unchanged.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -96,7 +98,7 @@ These rows describe the remaining official API limits. Additional capabilities b
 
 | Area | Implemented behavior and remaining boundary |
 | --- | --- |
-| `/mcp` connection details | Official alpha.2 exposes no public configured-server/transport-health catalog. The panel lists servers discoverable from tool schemas and shows unknown connection state and absent transport/endpoint values. Resources/templates and explicit resource reads use native tools. A composition providing the optional sanitized catalog can add connection details. |
+| `/mcp` connection details | Official alpha.3 exposes no public configured-server/transport-health catalog. The panel lists servers discoverable from tool schemas and shows unknown connection state and absent transport/endpoint values. Resources/templates and explicit resource reads use native tools. A composition providing the optional sanitized catalog can add connection details. |
 | Remote TUI extension hot loading | Host bundle changes use the native plugin manager. The official API provides no dynamic TUI extension mount; the preset browser marks this boundary. Frontend extensions require source integration and a TUI restart. |
 | Cold child tool cards and controls | Passive native history and projections work. Without a live child Agent, custom presenters use generic durable tool cards and Agent-scoped controls report unavailable. Browsing never activates a child or borrows its parent's Agent. An explicit continuable-child reply uses the native addressed path. |
 | `/update` Host startup check | `/update [<version>]` stages and checks the exact frontend release graph, confirms, upgrades both installations, verifies versions, and compensates failed changes. `/update recover` restores an interrupted transaction on its original Host. The official Host API provides no isolated Host boot check; the confirmation and result explicitly require restarting both processes and checking Host startup. Linked/read-only and non-npm frontend installations use their original installer. |

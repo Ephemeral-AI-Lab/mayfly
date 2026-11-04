@@ -26,11 +26,11 @@ import { describe, expect, it } from 'vitest'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 
 /** The published release version (the website's advertised number). */
-const RELEASE_VERSION = '0.1.4-rc.2'
+const RELEASE_VERSION = '0.1.5'
 /** The harness prerelease line the legacy dsh pins ride. */
 const HARNESS_LINE = '0.2.1-rc.2'
 /** The independent Host/Client and archived CLI runtime line. */
-const CLI_HARNESS_LINE = '0.2.2-alpha.2'
+const CLI_HARNESS_LINE = '0.2.2-alpha.3'
 
 /** One workspace package manifest. */
 interface Manifest {
@@ -82,11 +82,11 @@ describe('the Mayfly release line', () => {
     const en = readFileSync(new URL('../../../../website/en/index.md', import.meta.url), 'utf8')
     expect(zh).toContain(`v${RELEASE_VERSION}`)
     expect(en).toContain(`v${RELEASE_VERSION}`)
-    // The quickstart/FAQ pages promise the same first release.
-    const zhGuide = readFileSync(new URL('../../../../website/guide/faq.md', import.meta.url), 'utf8')
-    const enGuide = readFileSync(new URL('../../../../website/en/guide/index.md', import.meta.url), 'utf8')
-    expect(zhGuide).toContain(`v${RELEASE_VERSION}`)
-    expect(enGuide).toContain(`v${RELEASE_VERSION}`)
+    // Reference pins on guide/FAQ pages remain immutable across release bumps.
+    const zhReference = readFileSync(new URL('../../../../website/plugins/ui-reference.md', import.meta.url), 'utf8')
+    const enReference = readFileSync(new URL('../../../../website/en/plugins/ui-reference.md', import.meta.url), 'utf8')
+    expect(zhReference).toContain(RELEASE_VERSION)
+    expect(enReference).toContain(RELEASE_VERSION)
   })
 
   it('release packages pin every internal Mayfly dependency exactly', () => {

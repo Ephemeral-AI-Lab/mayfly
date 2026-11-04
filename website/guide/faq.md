@@ -5,7 +5,7 @@
 共享包只包含 renderer 与只读展示 subpath。当前产品由原生 dsh profile 中的
 `mayfly-host` 和独立 `mayfly-remote` TUI 组成；统一 `mayfly-cli` 精确依赖 Host、Remote 与官方 Harness，
 通过 `mayfly server` 管理后台 Host，直接 `mayfly` 自动启动并连接本机实例。安装见[分体快速上手](/guide/)。已发布的 `v0.1.4-rc.2`
-是不可改写的 UI 参照；当前开发面向 Harness `0.2.2-alpha.2`，使用经验证的匹配构建产物。
+是不可改写的 UI 参照；当前开发面向 Harness `0.2.2-alpha.3`，使用经验证的匹配构建产物。
 
 ## 安装解析到了旧版本？
 

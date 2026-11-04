@@ -24,7 +24,7 @@ loading belong to Host; the shared renderer package ships no legacy preset or
 in-process composition.
 
 Creative mode can inspect native services and author ordinary persistent Host
-bundles and Agent presets. Harness `0.2.2-alpha.2` supplies only
+bundles and Agent presets. Harness `0.2.2-alpha.3` supplies only
 `cordis_inspect_list` and `cordis_inspect_query` as Cordis model tools; it no
 longer supplies model tools to define, mount, run, stop, or remove dynamic
 packages. The Host runner retains a programmatic lifecycle, with `code.host`
@@ -67,12 +67,12 @@ Cold child history and projections remain passively readable through the officia
 
 Handshake package and required Harness versions come from the published manifest. An optional composition exposing a sanitized native MCP server catalog may advertise `mcpTransportHealth`; connecting, reconnecting, and disconnected servers have tool availability `unknown`, never `no-tools` or `synced`.
 
-dsh `0.2.2-alpha.2` exposes no public configured-MCP-server or transport-health catalog: its `ServerContext` carries resources and instructions only. Mayfly therefore lists only servers discoverable through registered tool names and leaves transport/endpoint `null`; it never reads Loader entries or emits command arguments, environment, headers, credentials, or other raw MCP configuration. Its `synced`/`restricted`/`no-tools` status describes tool visibility, not connection health. Additional catalog data must come from a Mayfly Host composition extension using public APIs and sanitized DTOs for server identity, transport, redacted endpoint, and connection state. Environment and headers remain excluded. This project does not add that capability to dsh upstream or copy its private implementation.
+dsh `0.2.2-alpha.3` exposes no public configured-MCP-server or transport-health catalog: its `ServerContext` carries resources and instructions only. Mayfly therefore lists only servers discoverable through registered tool names and leaves transport/endpoint `null`; it never reads Loader entries or emits command arguments, environment, headers, credentials, or other raw MCP configuration. Its `synced`/`restricted`/`no-tools` status describes tool visibility, not connection health. Additional catalog data must come from a Mayfly Host composition extension using public APIs and sanitized DTOs for server identity, transport, redacted endpoint, and connection state. Environment and headers remain excluded. This project does not add that capability to dsh upstream or copy its private implementation.
 
 ## Development profile
 
 Use Node `>=24.9.0`, pinned pnpm `11.7.0`, and an isolated official dsh
-`0.2.2-alpha.2` executable. From the repository root:
+`0.2.2-alpha.3` executable. From the repository root:
 
 ```sh
 pnpm install --frozen-lockfile

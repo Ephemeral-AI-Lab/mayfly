@@ -20,12 +20,21 @@ export function releaseVersionChanges(root, next) {
   const old = parseManifestText(readFileSync(join(root, 'packages/mayfly/package.json'), 'utf8'), 'packages/mayfly/package.json').version
   if (!gt(next, old)) throw new Error(`release line must advance from ${old} to ${next}`)
   const changes = new Map()
+  const names = new Set(PACKAGE_DIRS.map(directory => JSON.parse(readFileSync(join(root, directory, 'package.json'), 'utf8')).name))
   for (const directory of [...PACKAGE_DIRS, 'website']) {
     const relativePath = `${directory}/package.json`
     const source = readFileSync(join(root, relativePath), 'utf8')
     const manifest = JSON.parse(source)
     if (manifest.version !== old) throw new Error(`${relativePath}: expected ${old}, got ${manifest.version}`)
-    const updated = source.replace(/("version"\s*:\s*")[^"]+(")/u, `$1${next}$2`)
+    manifest.version = next
+    for (const table of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
+      for (const [name, spec] of Object.entries(manifest[table] ?? {})) {
+        if (!names.has(name) || spec === 'workspace:*') continue
+        if (spec !== old) throw new Error(`${relativePath}: ${table} ${name}: expected ${old}, got ${spec}`)
+        manifest[table][name] = next
+      }
+    }
+    const updated = JSON.stringify(manifest, null, 2) + '\n'
     if (updated === source) throw new Error(`${relativePath}: top-level version not found`)
     changes.set(relativePath, updated)
   }

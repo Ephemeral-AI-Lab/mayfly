@@ -6,6 +6,7 @@ import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { after, test } from 'node:test'
+import { inc } from 'semver'
 import { RELEASE_PACKAGE_DIRS, ROOT } from '../package-contract.mjs'
 import { advertisedVersionFiles } from '../release-line.mjs'
 import { releaseVersionChanges } from '../release-version.mjs'
@@ -18,9 +19,9 @@ after(() => { for (const root of roots) rmSync(root, { recursive: true, force: t
 /** The version this checkout advertises, so a release bump does not stale this test. */
 const CURRENT = JSON.parse(readFileSync(join(ROOT, 'packages/mayfly/package.json'), 'utf8')).version
 /** The next version the fixture changes to. */
-const NEXT = CURRENT.replace(/-rc\.(\d+)$/u, (_, rc) => `-rc.${Number(rc) + 1}`)
+const NEXT = inc(CURRENT, 'patch')
 /** A deliberately different version for drift assertions. */
-const OTHER = CURRENT.replace(/-rc\.\d+$/u, '-rc.9')
+const OTHER = inc(NEXT, 'patch')
 /** Escape a version for a RegExp. */
 const literal = value => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
 
@@ -33,6 +34,7 @@ function fixture() {
     'packages/mayfly/src/transcript/banner-content.ts',
     'packages/mayfly/src/interaction/changelog-content.ts',
     ...advertisedVersionFiles,
+    'docs/package-release.md',
   ]
   for (const file of new Set(files)) {
     mkdirSync(dirname(join(root, file)), { recursive: true })
@@ -61,6 +63,21 @@ test('the release bump computes consistent changes without writing files', () =>
   assert.match(changes.get('packages/mayfly/package.json'), new RegExp(`"version": "${literal(NEXT)}"`, 'u'))
   assert.match(changes.get('website/en/index.md'), new RegExp(literal(NEXT), 'u'))
   assert.equal(readFileSync(manifest, 'utf8'), before)
+  for (const directory of RELEASE_PACKAGE_DIRS) {
+    const updated = JSON.parse(changes.get(`${directory}/package.json`))
+    for (const [name, spec] of Object.entries(updated.dependencies ?? {})) {
+      if (name.startsWith('@ephemeral-ai/') && spec !== 'workspace:*') assert.equal(spec, NEXT, name)
+    }
+  }
+  assert.equal(changes.has('docs/package-release.md'), false, 'immutable published reference is not a release marker')
+  const remote = join(root, 'packages/remote/package.json')
+  const broken = JSON.parse(readFileSync(remote, 'utf8'))
+  broken.dependencies['@ephemeral-ai/mayfly-host'] = OTHER
+  writeFileSync(remote, JSON.stringify(broken))
+  assert.ok(checkReleaseReadiness(root, CURRENT).some(problem => problem.includes('dependencies @ephemeral-ai/mayfly-host')))
+  assert.throws(() => releaseVersionChanges(root, NEXT), /dependencies @ephemeral-ai\/mayfly-host/u)
+  broken.dependencies['@ephemeral-ai/mayfly-host'] = CURRENT
+  writeFileSync(remote, JSON.stringify(broken))
   const cli = join(root, 'packages/cli/package.json')
   writeFileSync(cli, readFileSync(cli, 'utf8').replace(CURRENT, OTHER))
   assert.throws(() => releaseVersionChanges(root, NEXT), new RegExp(`expected ${literal(CURRENT)}`, 'u'))
@@ -92,7 +109,7 @@ test('release preflight rejects stale changelogs, advertised versions, and misma
 
 test('the release workflow validates before publish and verifies the downloaded promotion artifact', () => {
   const workflow = readFileSync(join(ROOT, '.github/workflows/release.yml'), 'utf8')
-  assert.ok(workflow.indexOf('pnpm release:preflight "${RELEASE_VERSION#v}"') < workflow.indexOf('pnpm check:pack'))
+  assert.ok(workflow.indexOf('pnpm release:preflight "${RELEASE_VERSION#v}"') < workflow.indexOf('pnpm run verify:full'))
   assert.ok(workflow.indexOf('pnpm release:preflight --artifact "${RELEASE_VERSION#v}"') < workflow.indexOf('node script/release-packages.mjs publish'))
   assert.ok(workflow.indexOf('node script/release-preflight.mjs --artifact "${RELEASE_VERSION#v}"') < workflow.indexOf('node script/release-packages.mjs promote'))
   assert.ok(workflow.includes('node script/promotion-source.mjs "$(git rev-parse HEAD)"'))
@@ -107,10 +124,10 @@ test('release preflight works in a promotion checkout without node_modules', () 
   assert.match(execFileSync(process.execPath, [join(root, 'script/release-preflight.mjs'), CURRENT], { encoding: 'utf8' }), /are consistent/u)
 })
 
-test('promote-only requires the same release commit and six successful registry installs', () => {
+test('promote-only requires the same release commit and three successful registry installs', () => {
   const jobs = [{ name: 'gate + publish candidate', conclusion: 'success' }]
   for (const os of ['ubuntu-latest', 'windows-latest', 'macos-latest']) {
-    for (const node of ['22', '24']) jobs.push({ name: `registry install (${os}, node ${node})`, conclusion: 'success' })
+    for (const node of ['24']) jobs.push({ name: `registry install (${os}, node ${node})`, conclusion: 'success' })
   }
   const source = { workflowName: 'release', headSha: 'abc123', jobs }
   assert.deepEqual(validatePromotionSource(source, 'abc123'), [])

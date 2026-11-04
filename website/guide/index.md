@@ -1,10 +1,12 @@
 # 快速上手
 
 ::: info 当前开发线与参照
-当前分体实现面向 Harness `0.2.2-alpha.2`，需要原生 Host 与独立 Remote TUI。
+当前分体实现面向 Harness `0.2.2-alpha.3`，需要原生 Host 与独立 Remote TUI。
 已发布的 Mayfly `v0.1.4-rc.2` 是不可改写的 UI、按键和工作流参照，不代表下面的
 分体安装产物已经发布。开发产物从本工作区或经验证的匹配 tarball 安装。
 :::
+
+升级已有安装前先阅读[升级与旧数据](/guide/upgrade)。
 
 ## 一个命令启动
 
@@ -42,7 +44,7 @@ Linux 使用 systemd 用户服务，macOS 使用 LaunchAgent，Windows 使用 Ma
 | --- | --- |
 | Node | `>=24.9.0` |
 | pnpm | 仓库锁定的 `11.7.0` |
-| dsh CLI | 独立安装的官方 `0.2.2-alpha.2` 可执行文件 |
+| dsh CLI | 独立安装的官方 `0.2.2-alpha.3` 可执行文件 |
 
 ## 安装专用 Host profile
 

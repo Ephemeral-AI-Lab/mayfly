@@ -1,7 +1,7 @@
 # Built-in plugins
 
 The current product composes separate Host and Remote processes on Harness
-`0.2.2-alpha.2`.
+`0.2.2-alpha.3`.
 
 | Owner | Composition |
 | --- | --- |

@@ -44,10 +44,10 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
   if (tier === 'full' || plan.mode === 'full') {
     return [
       pnpm('workflow tests', 'run', 'test:repo-workflow'),
+      { ...pnpm('build', 'run', 'build'), blocking: true },
       { ...pnpm('typecheck', 'run', 'typecheck'), blocking: true },
       pnpm('lint', 'run', 'lint'),
       pnpm('diagrams', 'run', 'diagrams:check'),
-      { ...pnpm('build', 'run', 'build'), blocking: true },
       pnpm('lib exports', 'run', 'check:lib'),
       pnpm('agent docs', 'run', 'check:agent-docs'),
       pnpm('examples', 'run', 'check:examples'),

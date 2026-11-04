@@ -1,22 +1,17 @@
-/** Verify a calibrated profile contains one exact Mayfly release. @module script/verify-installed-mayfly */
-
+/** Verify the five-package graph actually resolved by the installed split CLI. @module script/verify-installed-mayfly */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { installedCli, installedManifests } from './installed-cli.mjs'
 
 const expected = process.argv[2]
-if (expected === undefined) throw new Error('usage: verify-installed-mayfly.mjs <version>')
-const home = process.env.DSH_HOME
-if (home === undefined || home === '') throw new Error('DSH_HOME is required')
-
-// The profile receives the bundle and its public UI dependency; mayfly-cli
-// itself is installed globally and is checked by the release workflow.
-const PROFILE_PACKAGES = [
-  'mayfly-ui',
-  'mayfly',
-]
-
-for (const name of PROFILE_PACKAGES) {
-  const manifest = JSON.parse(readFileSync(join(home, 'profiles', 'mayfly', 'node_modules', '@ephemeral-ai', name, 'package.json'), 'utf8'))
-  if (manifest.version !== expected) throw new Error(`@ephemeral-ai/${name}: expected ${expected}, got ${manifest.version}`)
+if (!expected) throw new Error('usage: verify-installed-mayfly.mjs <version>')
+const home = process.env.MAYFLY_HOME
+if (!home) throw new Error('MAYFLY_HOME is required')
+for (const file of installedManifests(installedCli())) {
+  const manifest = JSON.parse(readFileSync(file, 'utf8'))
+  if (manifest.version !== expected) throw new Error(`${manifest.name}: expected ${expected}, got ${manifest.version}`)
 }
-console.log(`installed Mayfly set: ${PROFILE_PACKAGES.length} profile packages at ${expected}`)
+const profile = process.env.MAYFLY_SMOKE_PROFILE ?? 'mayfly-release'
+const marker = JSON.parse(readFileSync(join(home, 'harness/profiles', profile, 'mayfly-install.json'), 'utf8'))
+if (marker.version !== expected) throw new Error(`managed Host profile: expected ${expected}, got ${marker.version}`)
+console.log(`installed Mayfly set: five resolved packages and managed Host profile at ${expected}`)

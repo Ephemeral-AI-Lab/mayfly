@@ -85,9 +85,9 @@ class RemoteScheduleController {
     if (signal?.aborted || current === undefined) return
     const ticket = ++this.ticket
     try {
-      const list = await current.client.remote.schedule.list({ sessionId: current.ref.sessionId })
+      const list = await current.client.remote.schedule.catalog()
       if (signal?.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
-      this.records = list.ok ? list.value : undefined
+      this.records = list.ok ? list.value.filter(record => record.status === 'active' && record.involvedSessionIds.includes(current.ref.sessionId)) : undefined
     } catch {
       if (signal?.aborted || !this.lifecycle.owns(generation) || ticket !== this.ticket) return
       this.records = undefined

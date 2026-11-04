@@ -1,9 +1,15 @@
 /** Readonly rc.2 reminder presentation shared by native and Remote owners.
  * @module @ephemeral-ai/mayfly/interaction/schedule-model
  */
-import type { ScheduleRecord } from '@deepseek-ai/dsh-schedule/client'
 import { panel, ui, type MayflyListItem, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyLocaleId, MayflyTranslate } from '../frontend/locale.ts'
+
+/** Renderer-neutral timing facts supplied by the native or independent owner. */
+export type ScheduleRecord = { readonly id: string, readonly title: string, readonly scheduledAt: string } & (
+  | { readonly kind: 'every', readonly everySeconds: number }
+  | { readonly kind: 'daily' | 'weekly' | 'cron', readonly timeZone: string }
+  | { readonly kind: 'after' | 'at' | 'rrule' }
+)
 
 type TimeUnit = 'day' | 'hour' | 'minute' | 'second'
 
@@ -35,6 +41,7 @@ export function formatReminderFrequency(record: ScheduleRecord, t: MayflyTransla
   if (record.kind === 'daily') return t('Daily')
   if (record.kind === 'weekly') return t('Weekly')
   if (record.kind === 'cron') return t('Cron')
+  if (record.kind === 'rrule') return 'RRULE'
   if (record.kind !== 'every') return t('Once')
   let selected: { unit: TimeUnit; seconds: number } = SECOND_UNIT
   for (const candidate of UNIT_SECONDS) {

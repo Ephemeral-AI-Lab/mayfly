@@ -1,7 +1,7 @@
 # Features overview
 
 Mayfly runs a native dsh Host and an independent Remote TUI on Harness
-`0.2.2-alpha.2`. Each process has its own Cordis tree. The published
+`0.2.2-alpha.3`. Each process has its own Cordis tree. The published
 `0.1.4-rc.2` release is the immutable UI, key, and workflow reference.
 
 ## Data and interaction

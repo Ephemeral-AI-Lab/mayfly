@@ -5,6 +5,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BUILD_PACKAGE_DIRS, parseManifestText } from './package-contract.mjs'
+import { SPLIT_REFERENCE } from './scenarios/split-reference.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -38,6 +39,7 @@ export function auditAgentDocs(root, options = {}) {
     const manifest = parseManifestText(readFileSync(join(root, packageDir, 'package.json'), 'utf8'), `${packageDir}/package.json`)
     return manifest.version
   }))
+  packageVersions.add(SPLIT_REFERENCE.version)
   const harnessSource = join(root, 'packages', 'mayfly', 'src', 'interaction', 'session-commands.ts')
   if (existsSync(harnessSource)) {
     const harnessVersion = /HARNESS_LINE = '([^']+)'/u.exec(readFileSync(harnessSource, 'utf8'))?.[1]

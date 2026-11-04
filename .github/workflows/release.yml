@@ -20,11 +20,6 @@ on:
         description: 'Workflow run ID containing the npm-tarballs artifact (required for promote-only)'
         required: false
         type: string
-      waive_platform_pty:
-        description: 'RC preview only: skip the native PTY step while the start-screen smoke is stale'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   actions: read
@@ -68,25 +63,10 @@ jobs:
           fi
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:preflight "${RELEASE_VERSION#v}"
-      - run: pnpm test:repo-workflow
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm diagrams:check
-      - run: pnpm build
-      - run: pnpm check:lib
-      - run: pnpm check:agent-docs
+      - name: full architecture and split acceptance gate
+        run: pnpm run verify:full -- --verbose
       - run: pnpm shots:check
-        if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
-      - run: pnpm check:examples
-        if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
       - run: pnpm website:build
-        if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
-      - name: full coverage gate (正式 rc/stable)
-        if: ${{ !contains(inputs.version || github.ref_name, '-test.') }}
-        run: pnpm exec vitest run --coverage
-      - name: test-package contract smoke
-        if: ${{ contains(inputs.version || github.ref_name, '-test.') }}
-        run: pnpm vitest run packages/ui/tests/ui.spec.ts packages/ui/tests/provider.spec.ts packages/cli/tests/main.spec.ts packages/mayfly/tests/interaction/commands-plugin.spec.ts
       - run: pnpm check:pack
       - run: pnpm release:preflight --artifact "${RELEASE_VERSION#v}"
       - uses: actions/upload-artifact@v4
@@ -129,10 +109,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: ['22', '24']
+        node: ['24']
     runs-on: ${{ matrix.os }}
     env:
-      DSH_HOME: ${{ github.workspace }}/.mayfly-candidate-home
+      MAYFLY_HOME: ${{ github.workspace }}/.mayfly-candidate-home
+      MAYFLY_SMOKE_PROFILE: mayfly-release
       # Skip first-run credential onboarding in the isolated PTY smoke. This
       # value never reaches a model request; the smoke exits immediately.
       DEEPSEEK_API_KEY: mayfly-release-smoke-key
@@ -152,24 +133,26 @@ jobs:
       - name: verify exact CLI version
         shell: bash
         run: test "$(mayfly -V | awk '{print $2}')" = "${RELEASE_VERSION#v}"
-      - name: materialize and execute bundled Harness host
+      - name: prepare native user service environment
         shell: bash
-        run: mayfly plugin --help
-      - name: calibrate exact bundle and compose profile
-        if: matrix.node == '24'
-        run: mayfly --dump-config
-      - name: verify installed Mayfly set
-        if: matrix.node == '24'
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            sudo loginctl enable-linger "$(id -u)"
+            sudo systemctl start "user@$(id -u).service"
+            echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+            echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+          elif [[ "$RUNNER_OS" == macOS ]]; then
+            launchctl print "gui/$(id -u)" >/dev/null
+          fi
+      - name: install portable PTY verification dependencies
+        run: pnpm install --frozen-lockfile
+      - name: native background Host and independent PTY workflows
+        run: node script/smoke-platform-pty.mjs
+      - name: verify five installed versions and managed profile
         shell: bash
         run: node script/verify-installed-mayfly.mjs "${RELEASE_VERSION#v}"
-      - name: install portable PTY verification dependencies
-        if: matrix.node == '24'
-        run: pnpm install --frozen-lockfile
-      - name: native PTY and ConPTY workflows
-        if: ${{ matrix.node == '24' && inputs.waive_platform_pty != true }}
-        run: node script/smoke-platform-pty.mjs
       - uses: actions/upload-artifact@v4
-        if: always() && matrix.node == '24'
+        if: always()
         with:
           name: platform-pty-${{ runner.os }}
           path: .artifacts/platform-pty

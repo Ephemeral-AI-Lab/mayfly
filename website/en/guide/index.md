@@ -1,12 +1,14 @@
 # Quickstart
 
 ::: info Current development line and reference
-The split implementation targets Harness `0.2.2-alpha.2` and runs a native Host
+The split implementation targets Harness `0.2.2-alpha.3` and runs a native Host
 plus an independent Remote TUI. Published Mayfly `v0.1.4-rc.2` is the immutable
 UI, key, and workflow reference; it does not mean the split artifacts below
 have been published. Install development artifacts from this workspace or a
 verified matching tarball set.
 :::
+
+Read [upgrades and existing data](/en/guide/upgrade) before upgrading an existing installation.
 
 ## One command to start
 
@@ -44,7 +46,7 @@ The native development workflow below remains useful for debugging the two proce
 | --- | --- |
 | Node | `>=24.9.0` |
 | pnpm | Repository-pinned `11.7.0` |
-| dsh CLI | Independently installed official `0.2.2-alpha.2` executable |
+| dsh CLI | Independently installed official `0.2.2-alpha.3` executable |
 
 ## Install a dedicated Host profile
 

@@ -1,6 +1,6 @@
 # Native-first Harness adaptation
 
-Mayfly targets Harness `0.2.2-alpha.2` and follows its native contracts. The
+Mayfly targets Harness `0.2.2-alpha.3` and follows its native contracts. The
 published Mayfly `0.1.4-rc.2` on Harness `0.2.1-rc.2` remains the immutable
 appearance, key, and workflow reference. Native services own session lifecycle,
 working directories, scheduling, subagent activations, tool execution, and

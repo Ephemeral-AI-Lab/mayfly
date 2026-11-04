@@ -29,7 +29,7 @@ export async function taskFixture(selected = true) {
   const generation = { generation: 1 }
   const state = { goal: projection<unknown>(undefined), todos: projection<unknown>(undefined), mayflyConversation: projection<unknown>(undefined), mayflyConversationFacts: projection<unknown>(undefined) }
   const goals = { get: vi.fn(async (): Promise<unknown> => good(undefined)), create: vi.fn(async (..._args: unknown[]) => good(undefined)), edit: vi.fn(async (..._args: unknown[]) => good(undefined)), pause: vi.fn(async (..._args: unknown[]) => good(undefined)), resume: vi.fn(async (..._args: unknown[]) => good(undefined)), complete: vi.fn(async (..._args: unknown[]) => good(undefined)), clear: vi.fn(async (..._args: unknown[]) => good(undefined)) }
-  const schedule = { list: vi.fn(async (..._args: unknown[]): Promise<unknown> => good([])), catalog: vi.fn(async (): Promise<unknown> => good([])) }
+  const schedule = { catalog: vi.fn(async (): Promise<unknown> => good([])) }
   const client = { key: HostKey('tasks'), state: { getSnapshot: () => generation, subscribe: (fn: () => void) => { connections.add(fn); return () => { connections.delete(fn) } } }, remote: { goals, schedule, $on: vi.fn((name: string, listener: (event: unknown) => void) => { const rows = events.get(name) ?? new Set(); rows.add(listener); events.set(name, rows); return () => { rows.delete(listener) } }) } } as unknown as HostClient
   const original = { client, ref: { host: client.key, sessionId: SessionId('session') }, binding: { session: { projections: { faceOf: (key: keyof typeof state) => state[key] } } } } as unknown as RemoteFeatureSelection
   let current: RemoteFeatureSelection | undefined = selected ? original : undefined

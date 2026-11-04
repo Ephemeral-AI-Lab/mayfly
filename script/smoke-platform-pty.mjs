@@ -1,15 +1,13 @@
-/**
- * Native PTY/ConPTY acceptance for a candidate launcher or a prepared profile.
- * No shell is used to boot the JavaScript entry or drive the TUI.
- * @module script/smoke-platform-pty
- */
-
-import { spawnSync } from 'node:child_process'
+/** Native split CLI, background lifecycle and PTY/ConPTY acceptance. @module script/smoke-platform-pty */
+import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { c as createTar } from 'tar'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { installedCli, installedManifests } from './installed-cli.mjs'
 import { loadPty, sleep } from './smoke-lib.mjs'
 
 const require = createRequire(import.meta.url)
@@ -17,199 +15,150 @@ const pty = loadPty()
 const { Terminal } = require('@xterm/headless')
 const artifactRoot = resolve(process.env.MAYFLY_SMOKE_ARTIFACTS ?? '.artifacts/platform-pty')
 mkdirSync(artifactRoot, { recursive: true })
-const fixture = mkdtempSync(join(tmpdir(), 'mayfly-platform-'))
+const fixture = mkdtempSync(join(tmpdir(), 'mayfly platform 中文 '))
 const workspace = join(fixture, 'workspace with spaces')
 mkdirSync(workspace)
 writeFileSync(join(workspace, 'portable-中文.txt'), 'completion fixture\n')
-const home = process.env.DSH_HOME ?? join(fixture, 'dsh')
-const profile = process.env.MAYFLY_SMOKE_PROFILE ?? 'mayfly'
-const direct = process.env.MAYFLY_SMOKE_DSH_JS
-if (direct !== undefined && (process.env.DSH_HOME === undefined || !profile.startsWith('mayfly-'))) {
-  throw new Error('direct-host acceptance requires an explicit DSH_HOME and a mayfly-<tag> profile')
-}
-
-function globalLauncher() {
-  const command = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : 'npm'
-  const args = process.platform === 'win32' ? ['/d', '/s', '/c', 'npm root -g'] : ['root', '-g']
-  const result = spawnSync(command, args, { encoding: 'utf8', timeout: 30_000, windowsHide: true })
-  if (result.status !== 0) throw new Error(`cannot locate installed launcher: ${result.stderr}`)
-  return join(result.stdout.trim(), '@ephemeral-ai', 'mayfly-cli', 'lib', 'bin.js')
-}
-
-const entry = direct ?? process.env.MAYFLY_SMOKE_LAUNCHER ?? globalLauncher()
-const env = { ...process.env, DSH_HOME: home, DEEPSEEK_API_KEY: 'mayfly-platform-smoke-key', LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' }
-if (direct !== undefined) env.MAYFLY_DSH_BIN = direct
-delete env.COLUMNS
-delete env.LINES
+const home = resolve(process.env.MAYFLY_HOME ?? join(fixture, 'mayfly home'))
+const profile = process.env.MAYFLY_SMOKE_PROFILE ?? 'mayfly-release'
+if (!profile.startsWith('mayfly-')) throw new Error('acceptance requires a dedicated mayfly-<tag> profile')
+const entry = installedCli()
+const env = { ...process.env, MAYFLY_HOME: home, DEEPSEEK_API_KEY: 'mayfly-platform-smoke-key', LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' }
+for (const key of ['COLUMNS', 'LINES', 'MAYFLY_DSH_STARTUP_URL']) delete env[key]
 if (process.platform === 'win32') {
-  // Hosted Windows runners carry Git Bash. Excluding its directories proves
-  // application commands resolve through the native Windows command path.
   for (const key of Object.keys(env).filter(key => key.toLowerCase() === 'path')) {
-    env[key] = env[key].split(';').filter(path => !/[\\/]git[\\/](?:bin|usr[\\/]bin|mingw64[\\/]bin)\/?$/i.test(path)).join(';')
+    env[key] = env[key].split(';').filter(path => !/[\\/]git[\\/](?:bin|usr[\\/]bin|mingw64[\\/]bin)[\\/]?$/i.test(path)).join(';')
   }
 }
-
-const fixtureName = 'mayfly-platform-fixture'
-const packageRoot = join(fixture, 'package')
-mkdirSync(packageRoot)
-writeFileSync(join(packageRoot, 'package.json'), JSON.stringify({
-  name: fixtureName, version: '1.0.0', type: 'module', exports: './index.js',
-  dsh: { bundle: { patch: './cordis.patch.yml' } },
-}))
-writeFileSync(join(packageRoot, 'index.js'), 'export const name = "mayfly-platform-fixture"\nexport function apply() {}\n')
-writeFileSync(join(packageRoot, 'cordis.patch.yml'), '[]\n')
-const tarball = join(fixture, 'fixture.tgz')
-createTar({ cwd: fixture, file: tarball, gzip: true, sync: true }, ['package'])
-
-const index = {
-  schemaVersion: 1,
-  entries: [{
-    id: 'platform-fixture', source: 'community', displayName: 'Platform fixture',
-    description: 'Local acceptance fixture', author: { name: 'Mayfly' }, category: 'testing',
-    status: 'stable', surfaces: { tui: { contributions: [] } },
-    install: { rows: [{ name: fixtureName, npm: { spec: `file:${tarball.replaceAll('\\', '/')}` } }] },
-  }],
-}
-
+const recordFile = join(home, 'run', profile, 'connection.json')
+const readRecord = () => JSON.parse(readFileSync(recordFile, 'utf8'))
 let terminal
 let screen
 let output = ''
 let exitCode
 let passed = false
-const cachePath = join(home, 'storages', 'mayfly-plugin-market', 'cache.json')
-let previousCache
-let fixtureCache
+let startupUrl
 const scenarios = []
+const commands = []
 const view = () => Array.from({ length: screen.rows }, (_, row) => screen.buffer.active.getLine(row)?.translateToString(true) ?? '').join('\n')
-async function waitFor(predicate, label, timeout = 30_000) {
+const redact = text => String(text).replace(/([?&]token=)[^\s"'<>]+/gu, '$1[REDACTED]')
+async function cli(args, allowed = [0]) {
+  return new Promise((resolveRun, reject) => {
+    const child = spawn(process.execPath, [entry, 'server', ...args, '--profile', profile], { cwd: workspace, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    const timer = setTimeout(() => { child.kill(); reject(new Error(`server ${args[0]} timed out`)) }, 1_200_000)
+    child.stdout.on('data', data => { stdout += data })
+    child.stderr.on('data', data => { stderr += data })
+    child.once('error', error => { clearTimeout(timer); reject(error) })
+    child.once('exit', code => {
+      clearTimeout(timer)
+      commands.push({ args, code, stdout: redact(stdout), stderr: redact(stderr) })
+      if (!allowed.includes(code)) reject(new Error(`server ${args[0]} failed (${code}): ${redact(stderr)}`))
+      else resolveRun(stdout)
+    })
+  })
+}
+async function waitFor(predicate, label, timeout = 60_000) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
-    if (predicate()) return
-    if (exitCode !== undefined) throw new Error(`exited (${exitCode}) while waiting for ${label}`)
-    await sleep(50)
+    if (await predicate()) return
+    if (exitCode !== undefined) throw new Error(`TUI exited (${exitCode}) while waiting for ${label}`)
+    await sleep(100)
   }
-  throw new Error(`timed out waiting for ${label}\n${view()}`)
-}
-async function clearEditor() {
-  terminal.write('\x1b')
-  await sleep(300)
-  terminal.write('\x1b[F')
-  await sleep(100)
-  terminal.write('\x15')
-  await sleep(200)
+  throw new Error(`timed out waiting for ${label}\n${screen ? view() : ''}`)
 }
 async function command(text) {
-  await clearEditor()
+  terminal.write('\x1b')
+  await sleep(150)
+  terminal.write('\x15')
   terminal.write(`\x1b[200~${text}\x1b[201~`)
-  await sleep(100)
+  await sleep(150)
   terminal.write('\r')
 }
-// Hosted Windows runners can stall the first marketplace install (Defender
-// scanning, indexing). Give the interactive step a longer window and one
-// re-issue instead of failing on the first timeout.
-async function waitForCommand(text, predicate, label, { attempts = 2, timeout = 240_000, retryDelay = 2_000 } = {}) {
-  let lastError
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    await command(text)
-    try {
-      await waitFor(predicate, label, timeout)
-      return
-    } catch (error) {
-      lastError = error
-      if (exitCode !== undefined) throw error
-      if (attempt < attempts) await sleep(retryDelay)
-    }
-  }
-  throw lastError
-}
-const manifestPath = join(home, 'profiles', profile, 'package.json')
-const installed = () => JSON.parse(readFileSync(manifestPath, 'utf8')).dependencies?.[fixtureName] !== undefined
-
 try {
-  if (direct === undefined) {
-    const prepared = spawnSync(process.execPath, [entry, '--dump-config'], {
-      cwd: workspace, env, encoding: 'utf8', timeout: 1_200_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true,
-    })
-    writeFileSync(join(artifactRoot, 'calibration.log'), `${prepared.stdout ?? ''}${prepared.stderr ?? ''}`)
-    if (prepared.status !== 0) throw new Error(`launcher calibration failed (${prepared.status})`)
-  }
-  const cache = join(home, 'storages', 'mayfly-plugin-market')
-  mkdirSync(cache, { recursive: true })
-  previousCache = existsSync(cachePath) ? readFileSync(cachePath) : undefined
-  fixtureCache = JSON.stringify({
-    fetchedAt: Date.now(), indexUrl: 'https://raw.githubusercontent.com/Ephemeral-AI-Lab/dsh-plugins/main/dist/index.json', text: JSON.stringify(index),
-  })
-  writeFileSync(cachePath, fixtureCache)
+  // Real OS service managers, not command mocks. Neither help nor version may materialize a profile.
+  await cli(['stop'])
+  await cli(['status'], [3])
+  await cli(['start'])
+  const first = readRecord()
+  startupUrl = first.url
+  const expected = JSON.parse(readFileSync(installedManifests(entry)[0], 'utf8')).version
+  for (const file of installedManifests(entry)) assert.equal(JSON.parse(readFileSync(file, 'utf8')).version, expected)
+  assert.match(await cli(['status']), /running/u)
+  const remote = createRequire(entry).resolve('@ephemeral-ai/mayfly-remote/client')
+  const { smokeHostClient } = await import(pathToFileURL(remote).href)
+  await smokeHostClient({ key: 'platform-smoke', startupUrl, cwd: workspace })
+  scenarios.push('five-package-version', 'authenticated-http-websocket')
+  await cli(['enable'])
+  assert.equal(readRecord().generation, first.generation)
+  await cli(['disable'])
+  assert.equal(readRecord().generation, first.generation)
+  scenarios.push('login-policy-preserves-running-host')
+  // The PID comes from the exact child this isolated test just started.
+  process.kill(first.hostPid, 'SIGKILL')
+  await waitFor(() => {
+    try { const record = readRecord(); return record.state === 'running' && record.hostPid !== first.hostPid } catch { return false }
+  }, 'native crash recovery')
+  await cli(['status'])
+  scenarios.push('crash-recovery')
+  await cli(['restart'])
+  assert.notEqual(readRecord().url, startupUrl)
+  startupUrl = readRecord().url
+  scenarios.push('restart-rotates-credentials')
+
   screen = new Terminal({ cols: 100, rows: 30, allowProposedApi: true })
-  terminal = pty.spawn(process.execPath, [entry, ...(direct === undefined ? [] : ['--profile', profile])], {
-    name: 'xterm-256color', cols: 100, rows: 30, cwd: workspace, env,
-  })
+  terminal = pty.spawn(process.execPath, [entry, '--profile', profile, '--cwd', workspace], { name: 'xterm-256color', cols: 100, rows: 30, cwd: workspace, env })
   terminal.onData(data => { output += data; screen.write(data) })
   screen.onData(data => terminal.write(data))
   terminal.onExit(event => { exitCode = event.exitCode })
-  await waitFor(() => output.includes('\x1b[?2004h'), 'bracketed-paste activation')
-  await waitFor(() => view().includes('deepseek'), 'initial application frame')
-  scenarios.push('boot')
-
-  // Startup deliberately leaves the sessionless launch surface in place until
-  // the first prompt. File completion needs a live Agent, so create one here
-  // and interrupt its throwaway request: the rest of the smoke exercises the
-  // ordinary editor with a session attached.
-  await command('bootstrap the platform smoke session')
-  await sleep(500)
-  await waitFor(() => view().includes('bootstrap the platform smoke session'), 'session bootstrap')
-  await clearEditor()
-  scenarios.push('session')
-
+  await waitFor(() => output.includes('\x1b[?2004h') && view().includes('deepseek'), 'split TUI frame')
   terminal.write('\x1b[200~portable 输入\x1b[201~')
   await waitFor(() => view().includes('portable 输入'), 'Unicode bracketed paste')
   terminal.write('\x7f')
   await waitFor(() => view().includes('portable 输') && !view().includes('portable 输入'), 'editor backspace')
-  terminal.resize(40, 16)
-  screen.resize(40, 16)
-  await sleep(300)
+  terminal.resize(40, 24)
+  screen.resize(40, 24)
   await waitFor(() => view().includes('portable 输'), 'narrow resize')
   terminal.resize(100, 30)
   screen.resize(100, 30)
   await sleep(300)
-  scenarios.push('paste', 'edit', 'resize')
-
-  await clearEditor()
-  terminal.write('@')
-  await waitFor(() => view().includes('portable-中文.txt'), 'filesystem completion')
-  scenarios.push('file-completion')
-
-  // Provider and form editing is covered by provider-add.spec.ts; this
-  // platform smoke stays on the launcher-level workflow (session, editor,
-  // completion, plugin install) so a renderer focus edge cannot mask a
-  // terminal/launcher regression.
-  await waitForCommand('/plugin install platform-fixture', () => installed() && /installed; restart|restart Mayfly/.test(view()), 'in-app plugin install')
-  await waitForCommand('/plugin uninstall platform-fixture', () => !installed() && /removed|uninstalled|restart Mayfly/.test(view()), 'in-app plugin removal', { timeout: 180_000 })
-  scenarios.push('plugin-install', 'plugin-uninstall')
-
+  scenarios.push('boot', 'unicode-paste', 'edit', 'resize-100-40-100')
+  await command('/help')
+  await waitFor(() => /Commands|命令|help/u.test(view()), 'command panel')
+  terminal.write('\x1b')
+  await sleep(300)
   await command('/quit')
-  await waitFor(() => exitCode !== undefined, 'clean exit')
-  if (exitCode !== 0 || !output.includes('\x1b[?2004l')) throw new Error('terminal restore or exit code failed')
-  if (/exceeds terminal width|Uncaught|pi-crash\.log/.test(output)) throw new Error('TUI failure appeared in output')
-  scenarios.push('exit-restore')
+  await waitFor(() => exitCode !== undefined, 'clean TUI exit')
+  assert.equal(exitCode, 0)
+  assert.ok(output.includes('\x1b[?2004l'), 'terminal restoration')
+  assert.doesNotMatch(output, /exceeds terminal width|Uncaught|pi-crash\.log/u)
+  await cli(['status'])
+  scenarios.push('command-panel', 'exit-restore', 'tui-exit-keeps-host')
+  const logs = await cli(['logs'])
+  assert.ok(!logs.includes(new URL(startupUrl).searchParams.get('token')), 'logs omit credentials')
+  await cli(['stop'])
+  await sleep(4000)
+  await cli(['status'], [3])
+  scenarios.push('redacted-logs', 'explicit-stop-prevents-recovery')
   passed = true
   console.log(`PLATFORM_PTY_PASS ${process.platform}-${process.arch}: ${scenarios.join(', ')}`)
 } finally {
-  if (terminal !== undefined && exitCode === undefined) {
+  if (terminal && exitCode === undefined) {
     terminal.kill()
     for (let attempt = 0; attempt < 20 && exitCode === undefined; attempt += 1) await sleep(100)
   }
   screen?.dispose()
-  writeFileSync(join(artifactRoot, 'terminal.log'), output)
+  await cli(['stop']).catch(() => {})
+  await cli(['disable']).catch(() => {})
+  writeFileSync(join(artifactRoot, 'terminal.log'), redact(output))
+  writeFileSync(join(artifactRoot, 'commands.json'), JSON.stringify(commands, null, 2))
   writeFileSync(join(artifactRoot, 'result.json'), JSON.stringify({ platform: process.platform, arch: process.arch, passed, scenarios, exitCode }, null, 2))
-  // Restore only our own fixture value; a concurrent real catalog refresh
-  // must not be overwritten by cleanup from this acceptance run.
-  if (fixtureCache !== undefined && existsSync(cachePath) && readFileSync(cachePath, 'utf8') === fixtureCache) {
-    if (previousCache === undefined) rmSync(cachePath)
-    else writeFileSync(cachePath, previousCache)
+  // Remove only the stopped test's own service registration; preserve externally supplied acceptance homes.
+  if (!process.env.MAYFLY_HOME) {
+    const id = `dev.mayfly.${createHash('sha256').update(join(home, 'run', profile)).digest('hex').slice(0, 20)}`
+    if (process.platform === 'linux') rmSync(join(homedir(), '.config/systemd/user', `${id}.service`), { force: true })
+    rmSync(fixture, { recursive: true, force: true })
   }
-  rmSync(fixture, { recursive: true, force: true })
 }
-
-// Child exit and artifact cleanup are complete; ConPTY workers can keep Node alive.
 if (process.platform === 'win32') process.stdout.write('', () => process.exit(0))

@@ -58,6 +58,7 @@ test('the full tier runs one vitest coverage/work-budget pass and actual split p
   assert.deepEqual(steps.find(step => step.kind === 'split').args, ['script/split-parity.mjs', '--scenario', 'all', '--results', '.artifacts/verify/split.json'])
   assert.ok(vitest[0].args.includes('--coverage'))
   assert.ok(steps.findIndex(step => step.name === 'build') < steps.findIndex(step => step.kind === 'split'))
+  assert.ok(scripts.indexOf('build') < scripts.indexOf('typecheck'), 'clean checkouts need generated Host declarations and refreshed Remote packages')
 })
 
 test('a global input or a shipped skill runs the full tier whatever tier was asked', () => {

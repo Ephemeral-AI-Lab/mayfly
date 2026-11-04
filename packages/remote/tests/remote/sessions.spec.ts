@@ -64,7 +64,7 @@ async function fixture(options: { sessionless?: boolean, noPaths?: boolean, noOp
     archiveSession: vi.fn(async (id: ReturnType<typeof SessionId>, _options?: { stopActivity?: boolean }) => { archived = [...archived, id] }),
     unarchiveSession: vi.fn(async (id: ReturnType<typeof SessionId>) => { archived = archived.filter(item => item !== id) }),
   }
-  const reminderCatalog = vi.fn(async () => ({ ok: true as const, value: [{ sessionId: currentId, status: 'active' }] }))
+  const reminderCatalog = vi.fn(async () => ({ ok: true as const, value: [{ involvedSessionIds: [currentId], status: 'active' }] }))
   const client = { key: ref.host, sessions, workspaces, state: { getSnapshot: () => ({ status: 'connected', generation }), subscribe: subscribe(connectionListeners) }, remote: { schedule: { catalog: reminderCatalog } } } as unknown as HostClient
   let current: RemoteFeatureSelection | undefined = options.sessionless ? undefined : { ref, client, binding: {} as never }
   let active: HostClient | undefined = client
@@ -498,7 +498,7 @@ describe('RemoteSessionsBrowserController', () => {
     f.sessions.search.mockRejectedValueOnce(new Error('search offline'))
     await expect(f.event(search('failure'))).rejects.toThrow('search offline')
     await f.owner.dispose()
-    reminders.resolve({ ok: true, value: [{ sessionId: SessionId('current'), status: 'active' }] })
+    reminders.resolve({ ok: true, value: [{ involvedSessionIds: [SessionId('current')], status: 'active' }] })
     await f.flush()
     expect(f.overlays.list()).toEqual([])
   })

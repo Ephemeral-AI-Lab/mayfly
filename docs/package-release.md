@@ -4,7 +4,7 @@ The split runtime publishes five packages in lockstep:
 `@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`,
 `@ephemeral-ai/mayfly-host`, `@ephemeral-ai/mayfly-remote`, and
 `@ephemeral-ai/mayfly-cli`. The exact release order lives in
-`script/package-contract.mjs`. The supported Harness line is `0.2.2-alpha.2`.
+`script/package-contract.mjs`. The supported Harness line is `0.2.2-alpha.3`.
 The published `@ephemeral-ai/mayfly@0.1.4-rc.2` remains an immutable parity
 reference; choose a new, unpublished version before releasing the split packages.
 
@@ -24,6 +24,8 @@ pnpm release:preflight "$VERSION"
 pnpm run check -- --tier full
 pnpm release:preflight --artifact "$VERSION"
 ```
+
+Immutable reference mentions and private historical skills are excluded from automatic version replacement. Exact internal dependency pins are validated and advanced with the five manifests.
 
 The version bump supports `pnpm release:version <version> --dry-run` and checks
 all release markers before writing. Write a substantive first entry in the
@@ -50,7 +52,7 @@ exact artifacts and does not rebuild.
 `@ephemeral-ai/mayfly-cli` ships one unified bin with exact matching Host, Remote,
 and official dsh runtime dependencies. It carries no runtime archives and does
 not change a separate global dsh installation. Existing initialized profiles
-refuse a recorded release mismatch; no silent profile upgrade is performed.
+refuse a recorded release mismatch. The supported managed upgrade uses the external installer and a fresh versioned profile; see the bilingual Website upgrade guide. No silent profile upgrade is performed.
 
 The GitHub repository owns an `npm` environment. Until all five packages have
 trusted publishing configured, that environment must provide an `NPM_TOKEN`
@@ -84,10 +86,10 @@ Tags execute the CI release workflow after acceptance: publish verified artifact
 promote alpha and stable versions to `latest`, and RC versions to `rc` only;
 `latest` stays on the previous line until a stable release. The workflow
 validates release metadata and artifact versions
-before publishing or promotion. Local release commands must not publish.
+before publishing or promotion. Its candidate job runs the same full architectural gate, including immutable-reference comparisons, as local final acceptance. There is no PTY waiver. Local release commands must not publish.
 Promote-only dispatch requires the original release run ID and
 must be started from the same release commit; the referenced run must have
-passed the candidate and all six registry-install jobs.
+passed the candidate and all three Node 24 registry-install jobs.
 The repository's `npm` environment needs required reviewers to make human
 approval enforceable before candidate publication; naming the environment
 alone does not provide an approval gate.

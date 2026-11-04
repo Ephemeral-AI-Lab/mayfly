@@ -28,7 +28,7 @@ async function fixture(kind: 'todo' | 'schedule', selected = true) {
   return { ...f, panels, localeSubscriptions, stop: dispose, node: (): MayflyUiNode | null => f.pane('mayfly.view.todo')?.node ?? null, summary: () => f.pane('mayfly.view.todo')?.summary ?? null, invoke: (signal: AbortSignal) => registered.mock.calls[0]![0].execute('', signal), status: () => f.ctx.mayflyStatus.list().find(entry => entry.id === 'mayfly.schedule')?.node ?? null }
 }
 const panelText = (f: Awaited<ReturnType<typeof fixture>>) => JSON.stringify(f.panels.at(-1)?.options.view())
-const reminder = (extra: Record<string, unknown> = {}): RemoteScheduleRecord => ({ id: 'reminder', title: 'Native reminder', prompt: 'Native reminder prompt', kind: 'at', scheduledAt: new Date(2_000).toISOString(), ...extra }) as RemoteScheduleRecord
+const reminder = (extra: Record<string, unknown> = {}): RemoteScheduleRecord => ({ id: 'reminder', title: 'Native reminder', prompt: 'Native reminder prompt', kind: 'at', scheduledAt: new Date(2_000).toISOString(), status: 'active', involvedSessionIds: ['session'], target: { kind: 'session', sessionId: 'session' }, ...extra }) as RemoteScheduleRecord
 
 describe('native Todo projection owner', () => {
   it('keeps no baseline rows and only lingers completion after observing unfinished work', async () => {
@@ -123,7 +123,7 @@ describe('native Schedule reads and observations', () => {
       await f.invoke(cancelled.signal)
       expect(f.panels).toHaveLength(0)
       const gate = Promise.withResolvers<unknown>()
-      f.schedule.list.mockReturnValueOnce(gate.promise)
+      f.schedule.catalog.mockReturnValueOnce(gate.promise)
       const caller = new AbortController()
       await f.run('schedule', '', caller.signal)
       const panel = f.panels.at(-1)!
@@ -137,7 +137,7 @@ describe('native Schedule reads and observations', () => {
       await tick()
       expect(f.status()).toBeNull()
       expect(await panel.options.action!(activated('refresh'), { signal: new AbortController().signal } as never)).toEqual({ kind: 'cancelled' })
-      f.schedule.list.mockResolvedValue(good([reminder()]))
+      f.schedule.catalog.mockResolvedValue(good([reminder()]))
       f.event('schedule/changed'); await tick()
       expect(JSON.stringify(f.status())).toContain('Reminders 1')
       f.stop()
@@ -151,9 +151,9 @@ describe('native Schedule reads and observations', () => {
     const f = await fixture('schedule')
     const original = opened.getMockImplementation()!
     opened.mockImplementationOnce((...args) => { const panel = original(...args); panel.close(); return panel })
-    const count = f.schedule.list.mock.calls.length
+    const count = f.schedule.catalog.mock.calls.length
     await f.run('schedule')
-    expect(f.schedule.list).toHaveBeenCalledTimes(count)
+    expect(f.schedule.catalog).toHaveBeenCalledTimes(count)
     expect(vi.getTimerCount()).toBe(0)
     await f.run('schedule')
     const panel = f.panels.at(-1)!
@@ -161,7 +161,7 @@ describe('native Schedule reads and observations', () => {
     expect(await panel.options.action!(activated('refresh'), { signal: cancelled.signal } as never)).toEqual({ kind: 'cancelled' })
     const caller = new AbortController()
     const gate = Promise.withResolvers<unknown>()
-    f.schedule.list.mockReturnValueOnce(gate.promise)
+    f.schedule.catalog.mockReturnValueOnce(gate.promise)
     const pending = panel.options.action!(activated('refresh'), { signal: caller.signal } as never)
     caller.abort(); gate.resolve(good([reminder()]))
     expect(await pending).toEqual({ kind: 'cancelled' })
@@ -173,11 +173,11 @@ describe('native Schedule reads and observations', () => {
     const owner = new AbortController()
     await f.run('schedule', '', owner.signal)
     const panel = f.panels.at(-1)!
-    const count = f.schedule.list.mock.calls.length
+    const count = f.schedule.catalog.mock.calls.length
     const other = new AbortController()
     await f.run('schedule', '', other.signal)
     expect(f.panels).toHaveLength(1)
-    expect(f.schedule.list).toHaveBeenCalledTimes(count)
+    expect(f.schedule.catalog).toHaveBeenCalledTimes(count)
     other.abort()
     expect(panel.close).not.toHaveBeenCalled()
     owner.abort()
@@ -189,8 +189,7 @@ describe('native Schedule reads and observations', () => {
     const f = await fixture('schedule', false)
     await f.run('schedule'); expect(f.options.notice.set).toHaveBeenCalledWith('Schedule unavailable', 'error')
     expect(f.status()).toBeNull()
-    f.schedule.list.mockResolvedValue(good([reminder()]))
-    f.schedule.catalog.mockResolvedValue(good([reminder({ sessionId: 'session', status: 'inactive', timeZone: 'Asia/Shanghai' })]))
+    f.schedule.catalog.mockResolvedValue(good([reminder(), reminder({ id: 'paused', status: 'paused' }), reminder({ id: 'other-session', involvedSessionIds: ['elsewhere'] })]))
     f.select(true); await tick()
     expect(JSON.stringify(f.status())).toContain('Reminders 1')
     await f.run('schedule'); await tick()
@@ -204,7 +203,7 @@ describe('native Schedule reads and observations', () => {
     await f.panels.at(-1)!.options.action!(activated('refresh'), { signal: new AbortController().signal } as never); await tick()
     f.panels.at(-1)!.close()
     await f.run('schedule', 'all'); await tick()
-    expect(panelText(f)).toContain('Reminders'); expect(f.schedule.catalog).not.toHaveBeenCalled()
+    expect(panelText(f)).toContain('Reminders'); expect(f.schedule.catalog).toHaveBeenCalled()
     f.panels.at(-1)!.close()
     expect(vi.getTimerCount()).toBe(0)
     await f.run('schedule', 'invalid'); expect(panelText(f)).toContain('Reminders'); f.panels.at(-1)!.close()
@@ -216,21 +215,20 @@ describe('native Schedule reads and observations', () => {
 
   it('shows the exact reference unavailable state and refreshes on current Host facts only', async () => {
     const f = await fixture('schedule')
-    f.schedule.list.mockResolvedValueOnce(bad('list denied'))
-    f.schedule.catalog.mockResolvedValueOnce(bad('catalog denied'))
+    f.schedule.catalog.mockResolvedValueOnce(bad('list denied'))
     f.event('schedule/changed'); await tick()
     expect(f.status()).toBeNull()
     await f.run('schedule'); await tick()
-    f.schedule.list.mockResolvedValueOnce(bad('list denied')); f.schedule.catalog.mockResolvedValueOnce(bad('catalog denied'))
+    f.schedule.catalog.mockResolvedValueOnce(bad('list denied'))
     f.event('schedule/changed'); await tick()
     expect(panelText(f)).toContain('Schedule unavailable')
     expect(panelText(f)).toContain('The Schedule capability is a Host service; enable it in profile files.')
     f.panels.at(-1)!.close()
     await f.run('schedule', 'all'); await tick()
-    f.schedule.list.mockResolvedValueOnce(bad('list denied')); f.event('schedule/changed'); await tick()
+    f.schedule.catalog.mockResolvedValueOnce(bad('list denied')); f.event('schedule/changed'); await tick()
     expect(panelText(f)).toContain('Schedule unavailable')
     for (const error of [new Error('transport down'), 'transport down']) {
-      f.schedule.list.mockRejectedValueOnce(error); f.event('schedule/changed'); await tick()
+      f.schedule.catalog.mockRejectedValueOnce(error); f.event('schedule/changed'); await tick()
       expect(panelText(f)).toContain('Schedule unavailable')
     }
     const stale = f.panels.at(-1)!
@@ -244,7 +242,7 @@ describe('native Schedule reads and observations', () => {
     const f = await fixture('schedule')
     for (const failure of [false, true]) {
       const late = Promise.withResolvers<unknown>()
-      f.schedule.list.mockReturnValueOnce(late.promise)
+      f.schedule.catalog.mockReturnValueOnce(late.promise)
       f.event('schedule/changed')
       f.event('schedule/changed'); await tick()
       if (failure) late.reject(new Error('retired refresh failed'))
@@ -252,17 +250,17 @@ describe('native Schedule reads and observations', () => {
       await tick()
       expect(f.status()).toBeNull()
     }
-    const late = Promise.withResolvers<unknown>(); f.schedule.list.mockReturnValueOnce(late.promise)
+    const late = Promise.withResolvers<unknown>(); f.schedule.catalog.mockReturnValueOnce(late.promise)
     f.event('schedule/changed'); f.reconnect(); late.resolve(good([])); await tick()
     expect(f.status()).toBeNull()
-    const failed = Promise.withResolvers<unknown>(); f.schedule.list.mockReturnValueOnce(failed.promise)
+    const failed = Promise.withResolvers<unknown>(); f.schedule.catalog.mockReturnValueOnce(failed.promise)
     f.event('schedule/changed'); f.stop(); failed.reject('unloaded'); await tick()
     expect(f.ctx.mayflyStatus.list()).toEqual([])
   })
 
   it('formats native recurrence and relative deadlines with deterministic sorting and narrow row widths', async () => {
     const f = await fixture('schedule')
-    for (const [kind, expected] of [['daily', 'Daily'], ['weekly', 'Weekly'], ['cron', 'Cron'], ['once', 'Once']]) expect(formatRemoteReminderFrequency(reminder({ kind }), translate)).toBe(expected)
+    for (const [kind, expected] of [['daily', 'Daily'], ['weekly', 'Weekly'], ['cron', 'Cron'], ['rrule', 'RRULE'], ['at', 'Once']]) expect(formatRemoteReminderFrequency(reminder({ kind }), translate)).toBe(expected)
     for (const interval of [86_400, 172_800, 3_600, 60, 2, 0.5]) expect(formatRemoteReminderFrequency(reminder({ kind: 'every', everySeconds: interval }), translate)).toContain('Every')
     expect(formatRemoteReminderRelative(new Date(1_000).toISOString(), 1_000, translate)).toBe('Due now')
     expect(formatRemoteReminderRelative(new Date(1_100).toISOString(), 1_000, translate)).toBe('in 1 second')

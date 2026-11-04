@@ -46,16 +46,33 @@ jobs:
       - name: native launcher, command, and clipboard regressions
         run: >-
           pnpm exec vitest run
-          packages/cli/tests/translate.spec.ts
-          packages/cli/tests/runtime.spec.ts
-          packages/cli/tests/runtime-lock.spec.ts
-          packages/cli/tests/main.spec.ts
+          packages/cli/tests
           packages/mayfly/tests/interaction/updater-profile.spec.ts
           packages/mayfly/tests/interaction/clipboard-runner.spec.ts
           packages/mayfly/tests/interaction/platform-command.spec.ts
           packages/mayfly/tests/interaction/file-mention.spec.ts
           packages/mayfly/tests/core/search-input.spec.ts
           packages/mayfly/tests/transcript/status-cwd.spec.ts
+      - name: prepare native user service environment
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            sudo loginctl enable-linger "$(id -u)"
+            sudo systemctl start "user@$(id -u).service"
+            echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+            echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+          elif [[ "$RUNNER_OS" == macOS ]]; then
+            launchctl print "gui/$(id -u)" >/dev/null
+          fi
+      - name: native background Host and independent PTY workflows
+        run: node script/smoke-platform-pty.mjs
+        env:
+          MAYFLY_SMOKE_LAUNCHER: ${{ github.workspace }}/packages/cli/lib/bin.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-platform-${{ runner.os }}
+          path: .artifacts/platform-pty
 
   check:
     name: check (${{ github.event_name == 'pull_request' && 'pr' || 'full' }} tier)

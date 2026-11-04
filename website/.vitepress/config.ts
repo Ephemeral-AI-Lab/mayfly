@@ -6,7 +6,7 @@ const base = process.env.DOCS_BASE ?? '/'
  * 站点版本：当前预览线，与三个发布包一致。
  * 升级时只改这一处（首页 hero 文案与 footer 同步引用语义，见各 index.md）。
  */
-const SITE_VERSION = '0.1.4-rc.2'
+const SITE_VERSION = '0.1.5'
 
 /**
  * Optional deployment origin. Local and fork builds deliberately have no
@@ -63,6 +63,7 @@ const sidebarZh = {
       text: '指南',
       items: [
         { text: '快速上手', link: '/guide/' },
+        { text: '升级与旧数据', link: '/guide/upgrade' },
         { text: '配置', link: '/guide/config' },
         { text: '主题', link: '/guide/theme' },
         { text: '常见问题', link: '/guide/faq' },
@@ -167,6 +168,7 @@ const sidebarEn = {
       text: 'Guide',
       items: [
         { text: 'Quickstart', link: '/en/guide/' },
+        { text: 'Upgrades and existing data', link: '/en/guide/upgrade' },
         { text: 'Configuration', link: '/en/guide/config' },
         { text: 'Theming', link: '/en/guide/theme' },
         { text: 'FAQ', link: '/en/guide/faq' },

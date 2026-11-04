@@ -12,7 +12,7 @@ export function validatePromotionSource(run, sha) {
     problems.push('source run has no successful candidate job')
   }
   for (const os of ['ubuntu-latest', 'windows-latest', 'macos-latest']) {
-    for (const node of ['22', '24']) {
+    for (const node of ['24']) {
       const name = `registry install (${os}, node ${node})`
       if (!Array.isArray(jobs) || jobs.filter(job => job.name === name && job.conclusion === 'success').length !== 1) {
         problems.push(`source run has no successful ${name}`)
@@ -28,5 +28,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   for await (const chunk of process.stdin) input += chunk
   const problems = validatePromotionSource(JSON.parse(input), process.argv[2])
   if (problems.length > 0) throw new Error(`promotion source is invalid: ${problems.join('; ')}`)
-  console.log('promotion source: candidate and six registry installs succeeded')
+  console.log('promotion source: candidate and three registry installs succeeded')
 }
