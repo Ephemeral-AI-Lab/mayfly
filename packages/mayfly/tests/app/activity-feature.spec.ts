@@ -292,4 +292,31 @@ describe('Remote shared activity and approval waiting', () => {
     await flushApproval()
     expect(f.ctx.mayflyPanes.list().some(pane => pane.id === 'mayfly.pane.activity')).toBe(false)
   })
+  it('republishes the activity pane only when its row changes, not for every streamed chunk', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(1_000)
+    const f = await fixture()
+    const upserts: unknown[] = []
+    const off = f.ctx.mayflyPanes.subscribe(delta => { if (delta.kind === 'upsert' && delta.entry.id === 'mayfly.pane.activity') upserts.push(delta.entry.node) })
+    upserts.length = 0
+    const writing = { phase: 'composing', inFlight: [], turnStartedAt: 1_000, flowDownChars: 200 }
+    f.active(1, writing)
+    f.session.set({ running: true })
+    expect(upserts).toHaveLength(1)
+    // The Client republishes an equal Session snapshot per chunk, and an equal Facts value repaints nothing.
+    for (let chunk = 0; chunk < 20; chunk += 1) f.session.set({ running: true })
+    f.active(1, writing)
+    expect(upserts).toHaveLength(1)
+    f.active(1, { ...writing, flowDownChars: 400 })
+    expect(upserts).toHaveLength(2)
+    expect(f.rows()[1]).toContain('↓100')
+    // The clock repaints the elapsed time once its text changes.
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(upserts).toHaveLength(3)
+    expect(f.rows()[1]).toContain('1s')
+    f.idle()
+    f.idle()
+    expect(upserts.filter(node => node === null)).toHaveLength(1)
+    off()
+  })
 })
+

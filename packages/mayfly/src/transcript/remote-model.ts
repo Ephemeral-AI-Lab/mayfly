@@ -266,10 +266,16 @@ export class RemoteConversationModelSource {
         return
       }
       if (window.change.kind === 'replace') this.generation += 1
+      const phase = livePresentation(this.live)
       this.live = this.liveFold.advance(window)
       this.revision = window.revision
       this.rebuildModel()
-      this.publishModel()
+      // A streamed chunk changes the live text only. The presentation facts
+      // read no transient entry beyond the live phase, so the footer and
+      // prompt are not re-read for every chunk of an answer.
+      if (window.change.kind === 'append' && window.change.entries.every(entry => entry.type === 'transient')
+        && livePresentation(this.live) === phase) this.publish(this.model)
+      else this.publishModel()
     })
   }
 
@@ -402,6 +408,11 @@ function withLiveOverlay(
     // transientAssistantProjection always presents one active assistant attempt.
     streaming: true,
   }) as TranscriptModel
+}
+
+/** The presentation facts a live attempt decides: whether it streams, and its phase. */
+function livePresentation(live: RemoteLiveConversation | undefined): string {
+  return live?.projection.streaming === true ? livePhase(live) : 'settled'
 }
 
 function livePhase(live: RemoteLiveConversation): ConversationFactsState['phase'] {

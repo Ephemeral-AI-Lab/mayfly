@@ -9,6 +9,7 @@ import type { HostClient } from '../client/types.ts'
 import { HostActions } from '../hosts/host-actions.ts'
 import { RemoteBtwService } from '../hosts/btw.ts'
 import { HostRegistry } from '../hosts/host-registry.ts'
+import { subscribeSessionChanges } from '../hosts/session-facts.ts'
 import type { RemoteConversationModelSource, RemotePresentationFacts } from '../transcript/remote-model.ts'
 import type { RemoteNotice } from './notice.ts'
 import type { RemoteAppPanels } from './interactions/plain-panels.ts'
@@ -559,7 +560,7 @@ export class RemoteApp {
       this.panels.showContext({
         read: () => isCurrent() ? remoteSessionInformation(binding, this.displayedView?.()?.presentation ?? this.conversation.presentation()) : undefined,
         subscribe: listener => {
-          const disposers = [this.subscribeTopology(listener), client.state.subscribe(listener), binding.session.subscribe(listener),
+          const disposers = [this.subscribeTopology(listener), client.state.subscribe(listener), subscribeSessionChanges(binding.session, listener),
             ...REMOTE_SESSION_INFO_KEYS.map(key => binding.session.projections.faceOf(key).subscribe(listener))]
           const offDisplayed = this.subscribeDisplayedView?.(listener)
           if (offDisplayed !== undefined) disposers.push(offDisplayed)
