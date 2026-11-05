@@ -36,7 +36,7 @@ describe('change impact planning', () => {
   })
 
   test('the frame path reaches the work-budget spec, and a renderer outside it does not', () => {
-    for (const file of ['packages/mayfly/src/core/terminal.ts', 'packages/mayfly/src/core/surface-renderer.ts', 'packages/mayfly/src/core/surface-manager.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/interaction/editor-extension-runtime.ts']) {
+    for (const file of ['packages/mayfly/src/core/terminal.ts', 'packages/mayfly/src/core/surface-renderer.ts', 'packages/mayfly/src/core/surface-manager.ts', 'packages/mayfly/src/core/keymap.ts', 'packages/mayfly/src/frontend/editor-extension-runtime.ts']) {
       assert.ok(classifyChanges([file]).tests.specs.includes('packages/mayfly/tests/perf/work-budget.spec.ts'), file)
     }
     assert.ok(!classifyChanges(['packages/mayfly/tests/transcript/thinking.spec.ts']).tests.specs.includes('packages/mayfly/tests/perf/work-budget.spec.ts'))

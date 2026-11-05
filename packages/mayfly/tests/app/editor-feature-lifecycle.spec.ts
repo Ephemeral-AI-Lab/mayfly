@@ -52,7 +52,7 @@ async function fixture(extra: Partial<EditorFeatureOptions> = {}, withSession = 
   const tokenSources = vi.spyOn(editor, 'setTokenSource')
   const hide = vi.fn()
   const screen = {
-    columns: 80, rows: 24, screenMode: 'alternate', requestRender, setFocus: vi.fn(),
+    columns: 80, rows: 24, editorViewport: { columns: 80, rows: 10 }, screenMode: 'alternate', requestRender, setFocus: vi.fn(),
     suspend: vi.fn(async (callback: () => Promise<unknown>) => callback()),
     showOverlay: vi.fn((_component: MayflyComponent) => ({ hide })),
     mountContentSlot: vi.fn(() => ({ dispose: vi.fn() })),
@@ -313,17 +313,20 @@ describe('mounted editor routes and ownership', () => {
     f.editor.setText('/zzzzz with arguments')
     expect(f.extensions!.render(80).join('\n')).toContain('no matching command: /zzzzz')
     f.ctx.mayflyLocale.setPreference('zh')
+    // The editor rereads its hint after the locale publication settles.
     expect(f.extensions!.render(80).join('\n')).toContain('no matching command: /zzzzz')
+    await flush()
+    expect(f.extensions!.render(80).join('\n')).toContain('没有匹配的命令：/zzzzz')
     const pending = deferred<Awaited<ReturnType<typeof f.host.listCommands>>>()
     f.host.listCommands.mockReturnValueOnce(pending.promise)
     f.emit('commands/change')
     pending.resolve({ ok: true, value: [{ name: 'zzzzz', description: 'Arrived later', input: { hint: '<value>' } }] })
     await flush()
-    expect(f.extensions!.render(80).join('\n')).not.toContain('no matching command: /zzzzz')
+    expect(f.extensions!.render(80).join('\n')).not.toContain('/zzzzz')
     f.host.listCommands.mockResolvedValueOnce({ ok: true, value: [] })
     f.controller.hostReconnected()
     await flush()
-    expect(f.extensions!.render(80).join('\n')).toContain('no matching command: /zzzzz')
+    expect(f.extensions!.render(80).join('\n')).toContain('没有匹配的命令：/zzzzz')
   })
 
   it('rereads the actual active image token on locale change and ignores a queued locale observer after unload', async () => {

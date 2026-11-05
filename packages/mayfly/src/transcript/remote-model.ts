@@ -7,7 +7,7 @@ import type {
   SessionEventLikeEntry,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
-import type { ConversationFactsState, ConversationImage, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
+import type { ConversationEntry, ConversationFactsState, ConversationImage, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import { freezeModel, type TranscriptEntryModel, type TranscriptModel } from '../frontend/models.ts'
 import { conversationTranscriptModel, createTranscriptModelCaches } from './conversation-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
@@ -84,9 +84,11 @@ export class RemoteConversationModelSource {
   private durable: ConversationProjection = EMPTY_CONVERSATION
   private durableValue: unknown
   /* Identity caches over the entries of the current attachment. A Host push
-     decodes a new value, so they reuse entries only while that value stands:
-     a live-window change, a hidden view shown again, or a tools/change. */
+     decodes every entry afresh, so `interned` hands the caches the previous
+     object of an entry whose id and `updatedSeq` are unchanged: the Host's fold
+     stamps `updatedSeq` on every replacement. */
   private caches = createTranscriptModelCaches()
+  private interned = new Map<string, ConversationEntry>()
   private durableModel: DurableModel | undefined
   private live: RemoteLiveConversation | undefined
   private defaultModel: RemoteModelSelection | undefined
@@ -226,6 +228,7 @@ export class RemoteConversationModelSource {
     this.durable = EMPTY_CONVERSATION
     this.durableValue = undefined
     this.caches = createTranscriptModelCaches()
+    this.interned = new Map()
     this.durableModel = undefined
     this.live = undefined
     this.unread = false
@@ -287,6 +290,7 @@ export class RemoteConversationModelSource {
     this.durable = EMPTY_CONVERSATION
     this.durableValue = undefined
     this.caches = createTranscriptModelCaches()
+    this.interned = new Map()
     this.durableModel = undefined
     this.live = undefined
     this.model = createTranscriptModel('official-conversation', [], false, this.generation)
@@ -310,8 +314,23 @@ export class RemoteConversationModelSource {
     const projection = readConversationProjection(value)
     this.durable = projection === undefined
       ? EMPTY_CONVERSATION
-      : visibleConversationProjection(projection, this.selection?.historyFloorSeq)
+      : visibleConversationProjection(this.intern(projection), this.selection?.historyFloorSeq)
     return true
+  }
+
+  /** The projection with every unchanged entry replaced by the object the previous value decoded for it. */
+  private intern(projection: ConversationProjection): ConversationProjection {
+    const next = new Map<string, ConversationEntry>()
+    let reused = false
+    const entries = projection.entries.map(entry => {
+      const prior = this.interned.get(entry.id)
+      const kept = prior !== undefined && prior.kind === entry.kind && prior.updatedSeq === entry.updatedSeq ? prior : entry
+      if (kept === prior) reused = true
+      next.set(entry.id, kept)
+      return kept
+    })
+    this.interned = next
+    return reused ? { ...projection, entries } : projection
   }
 
   private refreshTools(): void {
