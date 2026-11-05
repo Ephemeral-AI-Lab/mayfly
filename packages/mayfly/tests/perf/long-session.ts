@@ -261,6 +261,22 @@ export function longSessionDraft(projection: ConversationProjection, text: strin
   }] as unknown as readonly SessionEventLikeEntry[]
 }
 
+/**
+ * Build the next transient text chunk of the answer `longSessionDraft` started, as the official window appends it.
+ * @param projection - the durable projection the answer follows.
+ * @param before - the answer text already streamed.
+ * @param delta - the text this chunk adds.
+ * @returns the one appended event-window entry.
+ */
+export function longSessionDelta(projection: ConversationProjection, before: string, delta: string): SessionEventLikeEntry {
+  const [draft] = longSessionDraft(projection, before)
+  const event = draft!.event as Extract<SessionEventLikeEntry, { readonly type: 'transient' }>['event']
+  return {
+    type: 'transient',
+    event: { ...event, seq: event.seq + 1, time: event.time + delta.length, data: { ...event.data, chunk: { type: 'text-delta', index: 0, text: delta } } },
+  }
+}
+
 /** What one retained view owns: the fake Host Session it reads and the real model source over it. */
 export interface LongSessionView {
   readonly host: FakeHostSession
@@ -295,8 +311,18 @@ export class FakeHostSession implements SessionEventSource {
   /** Replace the live window with the entries of one attempt. */
   setDraft(entries: readonly SessionEventLikeEntry[]): void {
     this.entries = entries
+    this.publishWindow({ kind: 'replace', entries })
+  }
+
+  /** Append one live entry at the window's tail, as the official source does for each streamed chunk. */
+  appendDraft(entry: SessionEventLikeEntry): void {
+    this.entries = [...this.entries, entry]
+    this.publishWindow({ kind: 'append', entries: [entry] })
+  }
+
+  private publishWindow(change: SessionEventChange): void {
     this.revision += 1
-    this.change = { kind: 'append', entries }
+    this.change = change
     for (const listener of [...this.windowListeners]) listener()
   }
 

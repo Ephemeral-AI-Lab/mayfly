@@ -4,7 +4,8 @@ import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import ts from 'typescript'
 import type { AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
-import { transientAssistantConversation } from '../../src/conversation/transient.ts'
+import { transientAssistantProjection, type TransientCursor } from '../../src/conversation/transient.ts'
+import { foldAssistantStreamRecords, initialAssistantStream } from '../../../host/src/conversation/stream-accumulator.ts'
 import { foldConversationProjection, initialConversationState } from '../../../host/src/conversation/projection.ts'
 
 /** The named runtime imports every TUI source takes from Host's conversation subpath. */
@@ -23,6 +24,10 @@ async function hostConversationImports(directory: string, names = new Set<string
     }
   }
   return names
+}
+
+function transientAssistantConversation(stream: readonly AssistantStreamRecord[], cursor: TransientCursor) {
+  return transientAssistantProjection(foldAssistantStreamRecords(initialAssistantStream(), stream), cursor)
 }
 
 describe('transient assistant conversation', () => {

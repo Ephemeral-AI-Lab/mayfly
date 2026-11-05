@@ -32,6 +32,7 @@ import { plainColors } from '../helpers.ts'
 import {
   LongSessionHarness,
   assertUnchangedEntriesReused,
+  longSessionDelta,
   longSessionDraft,
   longSessionProjection,
   pendingLastTool,
@@ -638,7 +639,7 @@ export const WORKLOADS: readonly Workload[] = [
       reset(counters)
       return {
         step: () => {
-          view.host.setDraft(longSessionDraft(projection, `${text} the tail keeps growing.`))
+          view.host.appendDraft(longSessionDelta(projection, text, ' the tail keeps growing.'))
           const after = harness.publish()
           assertUnchangedEntriesReused(before, after)
           harness.render()

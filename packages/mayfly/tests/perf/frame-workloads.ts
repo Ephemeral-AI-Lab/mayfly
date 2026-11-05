@@ -36,6 +36,7 @@ import {
   FakeHostSession,
   FakeScopedTools,
   FakeTickSource,
+  longSessionDelta,
   longSessionDraft,
   longSessionProjection,
   pendingLastTool,
@@ -470,7 +471,7 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
       return {
         step: async () => {
           const mark = stream.host.terminal.written.length
-          stream.session.setDraft(longSessionDraft(projection, `${text}\nA second line arrives.`))
+          stream.session.appendDraft(longSessionDelta(projection, text, '\nA second line arrives.'))
           stream.controller.republish()
           stream.flush()
           await stream.host.frames()

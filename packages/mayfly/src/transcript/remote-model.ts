@@ -14,7 +14,7 @@ import { createTranscriptModel } from './transcript-model.ts'
 import type { ToolPresentationSource } from './present.ts'
 import type { MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import type { HostKey, SessionRef } from '../client/types.ts'
-import { projectLiveConversation, type RemoteLiveConversation } from '../conversation/live.ts'
+import { LiveConversationFold, type RemoteLiveConversation } from '../conversation/live.ts'
 import {
   RemoteSessionFactsSource,
   type RemotePresentationSelection,
@@ -91,6 +91,7 @@ export class RemoteConversationModelSource {
   private interned = new Map<string, ConversationEntry>()
   private durableModel: DurableModel | undefined
   private live: RemoteLiveConversation | undefined
+  private readonly liveFold = new LiveConversationFold()
   private defaultModel: RemoteModelSelection | undefined
   private restoreEffectiveEffort = false
   private readonly modelCatalogs = new Map<HostKey, ModelCatalog>()
@@ -134,7 +135,7 @@ export class RemoteConversationModelSource {
     this.replacedWhileHidden = false
     this.updateDurable()
     const window = this.source?.getSnapshot()
-    this.live = window === undefined ? undefined : projectLiveConversation(window.entries)
+    this.live = window === undefined ? undefined : this.liveFold.reset(window)
     this.revision = window?.revision ?? -1
     this.rebuildModel()
     this.publishModel()
@@ -231,6 +232,7 @@ export class RemoteConversationModelSource {
     this.interned = new Map()
     this.durableModel = undefined
     this.live = undefined
+    this.liveFold.clear()
     this.unread = false
     this.replacedWhileHidden = false
     this.attaching = true
@@ -249,7 +251,7 @@ export class RemoteConversationModelSource {
     const snapshot = source.getSnapshot()
     this.revision = snapshot.revision
     if (this.visible) {
-      this.live = projectLiveConversation(snapshot.entries)
+      this.live = this.liveFold.reset(snapshot)
       this.rebuildModel()
       this.publishModel()
     } else this.unread = true
@@ -264,7 +266,7 @@ export class RemoteConversationModelSource {
         return
       }
       if (window.change.kind === 'replace') this.generation += 1
-      this.live = projectLiveConversation(window.entries)
+      this.live = this.liveFold.advance(window)
       this.revision = window.revision
       this.rebuildModel()
       this.publishModel()
@@ -293,6 +295,7 @@ export class RemoteConversationModelSource {
     this.interned = new Map()
     this.durableModel = undefined
     this.live = undefined
+    this.liveFold.clear()
     this.model = createTranscriptModel('official-conversation', [], false, this.generation)
   }
 
@@ -396,7 +399,7 @@ function withLiveOverlay(
   return freezeModel({
     ...durableModel,
     ...(entries.length === 0 ? {} : { live: { turn: live.turn, step: live.step, entries } }),
-    // transientAssistantConversation always opens one active assistant attempt.
+    // transientAssistantProjection always presents one active assistant attempt.
     streaming: true,
   }) as TranscriptModel
 }
