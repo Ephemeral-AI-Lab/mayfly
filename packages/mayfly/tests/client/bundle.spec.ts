@@ -1,4 +1,5 @@
 /** Static Client handoffs fail loudly on registration, export, and external faults. */
+import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -76,5 +77,12 @@ describe('loadClientPlugins', () => {
       return { inject: [], apply: () => {} }
     })
     await expect(loadClientPlugins()).rejects.toThrow('undeclared external')
+  })
+
+  it('names the installed bundle and the supported Harness line in a format fault', async () => {
+    const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { dependencies: Record<string, string> }
+    const installed = JSON.parse(readFileSync(new URL(import.meta.resolve('@deepseek-ai/dsh-api-remotes/package.json')), 'utf8')) as { version: string }
+    mocks.runInThisContext.mockImplementation(() => () => {})
+    await expect(loadClientPlugins()).rejects.toThrow(`@deepseek-ai/dsh-api-remotes ${installed.version} did not register its entry; Mayfly reads the handoff format of Harness ${manifest.dependencies['@deepseek-ai/dsh-session']!}`)
   })
 })
