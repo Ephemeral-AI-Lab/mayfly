@@ -8,7 +8,7 @@ import { countWork, type MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
-import { toolDetail } from '../conversation/activity-detail.ts'
+import { toolDetail } from '@ephemeral-ai/mayfly-host/conversation'
 import { toolActivity } from './process-activity.ts'
 
 /** Preview lines a read window carries: the body of its verbose block, opened to every row by Ctrl+O. */

@@ -40,7 +40,8 @@ export function auditAgentDocs(root, options = {}) {
     return manifest.version
   }))
   packageVersions.add(SPLIT_REFERENCE.version)
-  const harnessVersion = parseManifestText(readFileSync(join(root, 'packages', 'host', 'package.json'), 'utf8'), 'packages/host/package.json').peerDependencies?.['@deepseek-ai/dsh-session']
+  const hostManifest = join(root, 'packages', 'host', 'package.json')
+  const harnessVersion = existsSync(hostManifest) ? parseManifestText(readFileSync(hostManifest, 'utf8'), 'packages/host/package.json').peerDependencies?.['@deepseek-ai/dsh-session'] : undefined
   if (harnessVersion !== undefined) packageVersions.add(harnessVersion)
   for (const version of options.allowedVersions ?? []) packageVersions.add(version)
 

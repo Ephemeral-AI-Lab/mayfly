@@ -59,7 +59,7 @@ export function referenceCommandInventory(root) {
     if (existing === undefined) byName.set(entry.name, { name: entry.name, aliases: aliases.get(entry.name) ?? [], sources: [entry], status: 'unverified' })
     else existing.sources.push(entry)
   }
-  const candidateFiles = git(['ls-files', 'packages/remote/src/remote']).trim().split('\n').filter(file => file.endsWith('.ts'))
+  const candidateFiles = git(['ls-files', 'packages/mayfly/src/app']).trim().split('\n').filter(file => file.endsWith('.ts'))
   const candidateNames = new Set(candidateFiles.flatMap(file => {
     const source = readFileSync(join(root, file), 'utf8')
     // Feature registries are independent from dsh commands; presence is only a routing hint.

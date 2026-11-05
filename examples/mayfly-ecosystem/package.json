@@ -40,7 +40,7 @@
     "@ephemeral-ai/mayfly": "workspace:*"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/cordis": "4.1.0",
     "@ephemeral-ai/mayfly": "workspace:*"
   }
 }

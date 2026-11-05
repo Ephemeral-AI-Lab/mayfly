@@ -23,7 +23,7 @@ export const CHECKS = {
   diagrams: { entry: 'script/sync-diagrams.mjs', inputs: [/^docs\/diagrams\//u, /^README(?:\.zh)?\.md$/u, /^docs\/mayfly-architecture\.md$/u] },
   checkLib: { entry: 'script/check-lib-exports.mjs', inputs: [/^(?:packages|examples)\/[^/]+\/(?:package\.json|tsconfig\.json)$/u, /^packages\/ui\/src\//u, /^script\/(?:clean-lib|prune-types)\.mjs$/u] },
   examples: { entry: 'script/check-examples.mjs', inputs: [/^examples\//u, /^packages\/ui\/src\//u] },
-  pack: { entry: 'script/check-pack.mjs', inputs: [/^packages\/[^/]+\/package\.json$/u, /^packages\/ui\/src\//u, /^script\/(?:release-packages|release-preflight|registry-release)\.mjs$/u] },
+  pack: { entry: 'script/check-pack.mjs', inputs: [/^packages\/[^/]+\/package\.json$/u, /^packages\/host\/(?:cordis\.patch\.yml|presets\/)/u, /^packages\/ui\/src\//u, /^script\/(?:release-packages|release-preflight|registry-release)\.mjs$/u] },
   smoke: { entry: 'script/split-parity.mjs', inputs: [/^script\/install-dev\.sh$/u] },
 }
 
@@ -31,8 +31,10 @@ export const CHECKS = {
 export const DATA_READS = [
   ['script/scenarios/split-release-review.mjs', 'script/scenarios/split-release-policy.json'],
   // The agent-doc scanner walks instruction files rather than importing them.
-  ...['AGENTS.md', 'packages/ui/AGENTS.md', 'packages/mayfly/AGENTS.md', 'packages/host/AGENTS.md', 'packages/remote/AGENTS.md', 'packages/cli/AGENTS.md', 'examples/AGENTS.md'].map(file => ['script/check-agent-docs.mjs', file]),
-  ['packages/mayfly/tests/bundle.spec.ts', 'packages/mayfly/package.json'],
+  ...['AGENTS.md', 'packages/ui/AGENTS.md', 'packages/mayfly/AGENTS.md', 'packages/host/AGENTS.md', 'packages/cli/AGENTS.md', 'examples/AGENTS.md'].map(file => ['script/check-agent-docs.mjs', file]),
+  // The preset spec reads the shipped Host composition by path.
+  ['packages/host/tests/presets.spec.ts', 'packages/host/presets/'],
+  ['packages/host/tests/presets.spec.ts', 'packages/host/cordis.patch.yml'],
   // The type fixtures compile with tsc against the declarations every source file of the contract emits.
   ['packages/ui/tests/types.spec.ts', 'packages/ui/tests/tsconfig.json'],
   ['packages/ui/tests/types.spec.ts', 'packages/ui/tests/ui.compile.ts'],
@@ -61,14 +63,13 @@ export const RUNTIME_SOURCE = /^packages\/(?:mayfly|host|ui|cli)\/src\//u
  */
 export const INERT = [
   // The split deployment's TUI launcher: a documented dev convenience no check reads.
-  /^script\/mayfly-remote\.sh$/u,
+  /^script\/mayfly-tui\.sh$/u,
   /^LICENSE$/u,
   /^website\//u,
   /^\.gitignore$/u,
   /^docs\//u,
   /^(?:packages|examples)\/[^/]+\/(?:README(?:\.zh)?\.md|LICENSE|THIRD-PARTY-NOTICES\.md|\.gitignore|CHANGELOG\.md)$/u,
-  // Nested-workspace and build-face configuration the checks read by literal path, not through an import.
-  /^packages\/remote\/(?:pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig(?:\.tests)?\.json)$/u,
+  // Build-face configuration the checks read by literal path, not through an import.
   /^packages\/host\/tsconfig\.(?:client|host)\.json$/u,
   /^packages\/[^/]+\/tsconfig\.tests\.json$/u,
   // The typert generator is patched to accept out-of-tree Host protocol declarations.

@@ -1,7 +1,7 @@
 /** The shipped Remote command families and shared key reference in Help order.
  * @module @ephemeral-ai/mayfly/tests/interaction/help-catalog-fixture
  */
-import { remoteCommandCatalog, type RemoteCommandDescriptor } from '../../../remote/src/remote/command-catalog.ts'
+import { remoteCommandCatalog, type RemoteCommandDescriptor } from '../../src/app/command-catalog.ts'
 import { displayKey } from '../../src/core/key-actions.ts'
 import { SHARED_KEY_REFERENCE } from '../../src/core/ui-key-grammar.ts'
 import type { HelpSection } from '../../src/interaction/help.ts'

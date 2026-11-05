@@ -67,7 +67,7 @@ interface SessionListContext {
  * @returns the display facts.
  */
 export function sessionListFacts(summary: SessionSummary, context: SessionListContext): SessionListFacts {
-  const values: SessionProjectionValues = { ...summary.projections?.values, ...context.values }
+  const values = { ...summary.projections?.values, ...context.values }
   const title = values.title?.trim()
   const metadata = values.sessionListMetadata
   const stats = values.sessionStats

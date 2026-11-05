@@ -102,7 +102,7 @@ test('every raw report, reference manifest, source and grid hash is checked befo
 
 test('extra nonvisual failures cannot be approved by a native visual review', t => {
   const sample = fixture(t)
-  sample.report.failures.push('Detaching Remote stopped the Host')
+  sample.report.failures.push('Detaching the TUI stopped the Host')
   writeFileSync(join(sample.dir, 'candidate/report.json'), JSON.stringify(sample.report))
   sample.plan.rawReport = sample.artifact('candidate/report.json')
   reject(sample, /nonvisual runtime failures/u)
@@ -257,15 +257,15 @@ test('capture provenance hashes emitted runtime and settled native artifacts, in
   const sample = fixture(t)
   assert.deepEqual(persistedSplitEvidence(undefined), undefined)
   assert.deepEqual(persistedSplitEvidence(sample.dir), { runDirectory: sample.dir, files: {} })
-  for (const name of ['ui', 'mayfly', 'host', 'remote']) {
+  for (const name of ['ui', 'mayfly', 'host']) {
     const lib = join(sample.dir, 'packages', name, 'lib')
     mkdirSync(lib, { recursive: true })
     writeFileSync(join(lib, 'entry.js'), `export const owner = '${name}'\n`)
     writeFileSync(join(lib, 'entry.js.map'), '{}')
   }
   const first = builtSplitRuntime(sample.dir)
-  assert.equal(Object.keys(first.files).length, 4)
-  writeFileSync(join(sample.dir, 'packages/remote/lib/entry.js'), 'export const owner = "changed"\n')
+  assert.equal(Object.keys(first.files).length, 3)
+  writeFileSync(join(sample.dir, 'packages/mayfly/lib/entry.js'), 'export const owner = "changed"\n')
   assert.notEqual(first.sha256, builtSplitRuntime(sample.dir).sha256)
   mkdirSync(join(sample.dir, 'sessions/session-a'), { recursive: true })
   mkdirSync(join(sample.dir, 'storages/session_projcache/sessions'), { recursive: true })

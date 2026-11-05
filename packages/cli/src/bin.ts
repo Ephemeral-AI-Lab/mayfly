@@ -3,7 +3,7 @@
  * Unified terminal launcher and local background Host management.
  * @module @ephemeral-ai/mayfly-cli/bin
  */
-import { run, validateArguments } from '@ephemeral-ai/mayfly-remote/remote-bin'
+import { run, validateArguments } from '@ephemeral-ai/mayfly/bin'
 import { parse, HELP } from './options.ts'
 import { ensure, manage, ownBin } from './manager.ts'
 import { packageManifest } from './profiles.ts'

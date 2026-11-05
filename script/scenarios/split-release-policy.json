@@ -10,8 +10,7 @@
     "packages/mayfly/src/interaction/session-info-model.ts": "3357e21a17de6b371f7cd39631260efd2a807b339640336a1862ae0cb142fdf4",
     "packages/mayfly/src/interaction/stats-facts.ts": "3d3f28fce00915b81cc4bbc51345affba06ec5626f80c32c3f612be7178ba0ea",
     "packages/mayfly/src/transcript/status-context-model.ts": "3e4348f741721107da084b4f0604a5dea6b86ac11a8c1c6894782143fb9b6845",
-    "packages/mayfly/src/interaction/model-picker-model.ts": "6863213d90d8886f58267c2c4bfd783f983e0e384615e8a4c4769faac45d6e8b",
-    "packages/remote/src/remote/operations/files.ts": "38020a0b8f531950b9a3c93ed15eee5b1048d6dee302b66dd6152fdc8f8d854b",
+    "packages/mayfly/src/app/operations/files.ts": "81a5b3e93c1781a2f9ba833abc9707912d94d0625f73229af1b08c9c9b44ea99",
     "packages/host/presets/mayfly-cordis.patch.yml": "9b05b989f76b9bb0d1bf180bed7ce5ae1a24ea650a45b90cf513e80ec254d426"
   },
   "nativeFacts": {

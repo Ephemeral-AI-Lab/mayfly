@@ -171,17 +171,17 @@ describe('change impact planning', () => {
   })
 
   test('widens executable compositions and verifies shipped presets', () => {
-    assert.equal(classifyChanges(['packages/mayfly/cordis.patch.yml']).mode, 'full')
-    const preset = classifyChanges(['packages/mayfly/presets/mayfly-cordis/skills/mayfly-plugin-development/SKILL.md'])
+    assert.equal(classifyChanges(['packages/host/cordis.patch.yml']).mode, 'full')
+    const preset = classifyChanges(['packages/host/presets/mayfly-cordis/skills/mayfly-plugin-development/SKILL.md'])
     assert.equal(preset.mode, 'full')
     assert.equal(preset.checks.agentDocs, true)
     assert.equal(preset.checks.pack, true)
     assert.equal(preset.checks.build, true)
-    assert.ok(preset.tests.specs.includes('packages/mayfly/tests/presets.spec.ts'))
+    assert.ok(preset.tests.specs.includes('packages/host/tests/presets.spec.ts'))
   })
 
   test('plans no Website check and owes only runtime acceptance', () => {
-    const plan = classifyChanges(['website/en/index.md', 'packages/mayfly/src/transcript/status-context.ts'])
+    const plan = classifyChanges(['website/en/index.md', 'packages/mayfly/src/transcript/status-context-model.ts'])
     assert.equal(plan.checks.website, undefined)
     assert.deepEqual(plan.manualAcceptance, ['runtime-profile'])
     assert.deepEqual(classifyChanges(['website/en/index.md']).manualAcceptance, [])
@@ -192,8 +192,8 @@ describe('change impact planning', () => {
     try {
       execFileSync('git', ['init', '--initial-branch', 'main', root], { stdio: 'ignore' })
       writeFileSync(join(root, '.gitignore'), readFileSync(join(ROOT, '.gitignore'), 'utf8'))
-      mkdirSync(join(root, 'packages', 'mayfly'), { recursive: true })
-      writeFileSync(join(root, 'packages', 'mayfly', 'cordis.patch.yml'), 'original\n')
+      mkdirSync(join(root, 'packages', 'host'), { recursive: true })
+      writeFileSync(join(root, 'packages', 'host', 'cordis.patch.yml'), 'original\n')
       execFileSync('git', ['add', '.'], { cwd: root })
       execFileSync('git', ['commit', '-m', 'baseline'], {
         cwd: root, stdio: 'ignore',
@@ -211,7 +211,7 @@ describe('change impact planning', () => {
         join(ROOT, 'script/check.mjs'), '--plan', '--tier', 'full',
       ], { cwd: root, encoding: 'utf8' }))
       assert.ok(!full.steps.some(step => step.includes('website')))
-      writeFileSync(join(root, 'packages', 'mayfly', 'cordis.patch.yml'), 'updated\n')
+      writeFileSync(join(root, 'packages', 'host', 'cordis.patch.yml'), 'updated\n')
       assert.equal(verify().mode, 'full')
     } finally {
       rmSync(root, { recursive: true, force: true })

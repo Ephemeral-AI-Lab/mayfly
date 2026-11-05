@@ -185,7 +185,7 @@ function merge(target: Set<string>, values: ReadonlySet<string>): void {
 describe('business package rendering drift guard', () => {
   it('detects representative renderer-import, width, pointer, border, and padding drift', () => {
     const audit = auditSource('positive-fixture.ts', `
-import { visibleWidth as columns } from '@ephemeral-ai/mayfly/core'
+import { visibleWidth as columns } from '../../src/core.ts'
 const widthOf = (text: string) => Array.from(text).length
 const available = width - columns(text)
 const pointer = '  → active'

@@ -11,7 +11,7 @@ import { visibleWidth } from '../../src/core/width.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
-import transport from '../../../remote/tests/fixtures/native-files-transport.json' with { type: 'json' }
+import transport from '../fixtures/native-files-transport.json' with { type: 'json' }
 
 describe('Host builtin filesystem wire rendering', () => {
   it('shows native line counts, applied diff and Unicode write bodies within narrow and wide widths', () => {

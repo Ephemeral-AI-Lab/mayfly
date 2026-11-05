@@ -26,7 +26,7 @@ export const VITEST_RESULTS = `${OUTPUT}/vitest.json`
 export const SPLIT_RESULTS = `${OUTPUT}/split.json`
 export const SPLIT_REVIEW_RESULTS = `${OUTPUT}/split-review.json`
 
-const split = (scenario, smokeOnly = false) => ({ name: smokeOnly ? 'split Host/Remote smoke' : 'published rc.2 comparison and release review', kind: 'split', command: 'node', args: ['script/split-parity.mjs', '--scenario', scenario, ...(smokeOnly ? ['--smoke-only'] : ['--review-release', '--review-results', SPLIT_REVIEW_RESULTS]), '--results', SPLIT_RESULTS] })
+const split = (scenario, smokeOnly = false) => ({ name: smokeOnly ? 'split Host/TUI smoke' : 'published rc.2 comparison and release review', kind: 'split', command: 'node', args: ['script/split-parity.mjs', '--scenario', scenario, ...(smokeOnly ? ['--smoke-only'] : ['--review-release', '--review-results', SPLIT_REVIEW_RESULTS]), '--results', SPLIT_RESULTS] })
 
 const pnpm = (name, ...args) => ({ name, command: 'pnpm', args })
 const vitest = (name, kind, args) => ({ name, kind, command: 'pnpm', args: ['exec', 'vitest', 'run', ...args, '--reporter=dot', '--reporter=json', `--outputFile.json=${VITEST_RESULTS}`, '--silent=passed-only'] })
@@ -54,7 +54,7 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
       ...(plan.checks.pack ? [pnpm('pack', 'run', 'check:pack'), pnpm('cli registry smoke', 'run', 'smoke:cli-registry')] : []),
       // One run: the suites with every retained-row hit painted again, the work budgets, and coverage against its floor.
       vitest('suites and coverage', 'coverage', ['--coverage']),
-      // The real Host and Remote use the build above. Network recovery is separately reported
+      // The real Host and TUI use the build above. Network recovery is separately reported
       // as behavior, while shared semantic cases compare immutable published rc.2 grids.
       split('all'),
     ]

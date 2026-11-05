@@ -9,6 +9,7 @@ export default defineConfig({
     startup: 'src/startup.ts',
     settings: 'src/settings.ts',
     'types/types': 'src/types.ts',
+    conversation: 'src/conversation.ts',
   },
   outDir: 'lib',
   format: ['esm'],

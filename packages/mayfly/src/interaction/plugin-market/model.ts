@@ -93,7 +93,7 @@ export interface MarketRow {
 }
 
 /** Packages the profile needs to run at all; `/plugin` never lists them as plugins. */
-const PRODUCT_PACKAGES: readonly string[] = Object.freeze([MAYFLY_PACKAGE, '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly-cli'])
+const PRODUCT_PACKAGES: readonly string[] = Object.freeze([MAYFLY_PACKAGE, '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly-cli'])
 
 /** Exact Mayfly release packages use the coordinated product updater. */
 export function isMayflyProductPackage(name: string): boolean {

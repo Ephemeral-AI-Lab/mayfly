@@ -20,7 +20,7 @@ const row = (text, end = text.length - 1) => ({ text, styles: [{ from: 1, to: en
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'mayfly-release-review-'))
   t.after(() => rmSync(root, { recursive: true, force: true }))
-  for (const name of ['ui', 'mayfly', 'host', 'remote', 'cli']) {
+  for (const name of ['ui', 'mayfly', 'host', 'cli']) {
     mkdirSync(join(root, 'packages', name, 'lib'), { recursive: true })
     writeJson(join(root, 'packages', name, 'package.json'), { version: '0.1.5', dependencies: { '@deepseek-ai/dsh': '0.2.2-alpha.3' } })
     writeFileSync(join(root, 'packages', name, 'lib/entry.js'), 'export const fixture = true\n')
@@ -101,7 +101,7 @@ test('missing checkpoints, capture errors, stale builds and a different Harness 
     sample => { sample.suite.results.push(sample.result) },
     sample => { sample.suite.failures = [] },
     sample => { sample.result.status = 'passed' },
-    sample => { writeFileSync(join(sample.root, 'packages/remote/lib/entry.js'), 'changed') },
+    sample => { writeFileSync(join(sample.root, 'packages/mayfly/lib/entry.js'), 'changed') },
   ]) {
     const sample = fixture(t)
     mutate(sample)

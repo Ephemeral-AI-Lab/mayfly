@@ -1,0 +1,514 @@
+/** Independent TUI composition over exact native Host selections and mount-owned lifetimes. @module remote/runtime */
+import { Context } from '@deepseek-ai/cordis'
+import { AttachmentId } from '@deepseek-ai/dsh-attachment'
+import { MessageId } from '@deepseek-ai/dsh-llm/brand'
+import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
+import * as Core from '../core.ts'
+import * as ThemeDark from '../theme-dark.ts'
+import * as Frontend from '../frontend.ts'
+import { currentMayflySettings } from '../settings.ts'
+import { INTERACTION_KEY_ACTIONS, displayKey, interactionTranslator } from '../command-panels.ts'
+import {
+  followPresentationSettings, mountTranscriptLocale, observeTranscriptLocale,
+  TRANSCRIPT_LOCALE, TranscriptController, TranscriptPresentationPolicy, transcriptTranslator,
+  type TranscriptControllerOptions,
+} from '../transcript.ts'
+
+type QueueAction = Parameters<NonNullable<TranscriptControllerOptions['rows']>['queued']>[0]
+type DecisionRequests = ReturnType<NonNullable<TranscriptControllerOptions['requests']>>
+import type { SessionRef } from '../client/types.ts'
+import { RemoteToolPresentationCache } from '../hosts/tool-presentations.ts'
+import { RemoteConversationModelSource } from '../transcript/remote-model.ts'
+import { RemoteTranscriptContextSource } from '../transcript/context-source.ts'
+import { RemoteApp } from './app.ts'
+import { RemoteSessionsBrowserController } from './features/sessions.ts'
+import { createRemoteSettingsEditor } from './features/settings-editor.ts'
+import { RemoteBannerComponent } from './banner.ts'
+import { mountRemoteConfigurationComposition, type RemoteConfigurationCompositionHandle } from './configuration-composition.ts'
+import { mayflyVersion } from './features/version.ts'
+import { mountEditorComposition, type EditorCompositionHandle } from './editor-composition.ts'
+import { mountRemoteCompletionDrawer } from './completion-drawer.ts'
+import { mountRemoteEditor, type RemoteEditorHandle } from './editor.ts'
+import { mountRemoteFeatures, type RemoteFeatureHandle } from './features.ts'
+import { mergeRemoteFeatureCommandSources, type RemoteFeatureCommandSource } from './features/commands.ts'
+import { resolveMayflyToolPresentation } from './host-composition.ts'
+import { RemotePlainPanels } from './interactions/plain-panels.ts'
+import { mountRemoteOperationsComposition, type RemoteOperationsCompositionHandle } from './operations-composition.ts'
+import { RemotePanelController } from './panels.ts'
+import { RemoteSideViews } from './side-views.ts'
+import { RemoteStartupController } from './startup.ts'
+import { mountRemoteStatus, type RemoteStatusHandle } from './status.ts'
+
+/** Inputs for one independent Mayfly Frontend process. */
+export interface RemoteFrontendOptions {
+  readonly startupUrl: string
+  readonly hostId?: string
+  readonly sessionId?: string
+  readonly cwd?: string
+  readonly task?: string
+}
+
+/** Run the standalone TUI until the user detaches or exits, then release every Client and the TTY. */
+export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise<void> {
+  const ctx = new Context()
+  const apps: RemoteApp[] = []
+  let editor: RemoteEditorHandle | undefined
+  let completionDrawer: { dispose(): void } | undefined
+  let editorComposition: EditorCompositionHandle | undefined
+  let panels: RemotePanelController | undefined
+  let features: RemoteFeatureHandle | undefined
+  let configuration: RemoteConfigurationCompositionHandle | undefined
+  let operations: RemoteOperationsCompositionHandle | undefined
+  let sideViews: RemoteSideViews | undefined
+  let commandSource: RemoteFeatureCommandSource | undefined
+  let toolPresentations: RemoteToolPresentationCache | undefined
+  let conversation: RemoteConversationModelSource | undefined
+  let transcript: TranscriptController | undefined
+  let transcriptContext: RemoteTranscriptContextSource | undefined
+  let status: RemoteStatusHandle | undefined
+  let sessionsBrowser: RemoteSessionsBrowserController | undefined
+  let startup: RemoteStartupController | undefined
+  let cancelled: { readonly ref: SessionRef, readonly text: string, readonly lane: 'turn' | 'step', readonly at: number } | undefined
+  let stopped = false
+  const lifetime = new AbortController()
+  const done = Promise.withResolvers<void>()
+  const stop = (): void => {
+    if (stopped) return
+    stopped = true
+    done.resolve()
+  }
+  const sigint = (): void => { stop() }
+  const sigterm = (): void => { stop() }
+  process.once('SIGINT', sigint)
+  process.once('SIGTERM', sigterm)
+  try {
+    await ctx.plugin(MayflyUiProvider)
+    await ctx.plugin(Frontend)
+    await ctx.plugin(ThemeDark)
+    await ctx.plugin(Core)
+    const keyNotifications = ctx.mayflyUiInteraction.createNotificationOwner('mayfly.remote.keys')
+    ctx.effect(() => () => { keyNotifications.dispose() })
+    let app: RemoteApp | undefined
+    ctx.effect(() => ctx.mayflyKeymap.register(INTERACTION_KEY_ACTIONS
+      .filter(action => action.id !== 'mayfly.interaction.cycle-mode' && action.id !== 'mayfly.interaction.cycle-model')
+      .map(action => action.id === 'mayfly.interaction.toggle-agent-view' ? {
+        ...action, handler: () => {
+          if (lifetime.signal.aborted) return
+          if (sideViews?.back() !== true) {
+            const ref = sideViews?.current() ?? app?.registry.current
+            keyNotifications.report('toggle-agent-view', ref === undefined ? { kind: 'app', targetId: 'agent-view' } : { kind: 'session', sessionId: ref.sessionId }, { message: 'no other conversation is open', severity: 'warning' }, 'toggle-agent-view')
+          }
+        },
+      } : action.id === 'mayfly.interaction.close-agent-view' ? {
+        ...action, handler: () => {
+          const target = sideViews?.closeTarget()
+          if (target !== undefined) operations?.closeChild(target)
+        },
+      } : action)))
+    const screen = ctx.mayflyScreen
+    const displayedFacts = () => sideViews?.presentation() ?? conversation!.presentation()
+    const displayedSelection = () => {
+      const side = sideViews?.selected()
+      const ref = side?.ref ?? app?.registry.current
+      const binding = side?.binding ?? app?.registry.currentReference?.binding
+      const client = ref === undefined ? undefined : app?.registry.get(ref.host)
+      return ref === undefined || binding === undefined || client === undefined ? undefined
+        : { ref, binding, client, access: side?.facts.access ?? 'interactive' as const, kind: side?.facts.kind ?? 'primary' as const }
+    }
+    const presentationOwner = (): (() => boolean) => {
+      const selection = displayedSelection()
+      const generation = selection?.client.state.getSnapshot().generation
+      return () => {
+        const next = displayedSelection()
+        return !lifetime.signal.aborted && next?.client === selection?.client && next?.binding === selection?.binding
+          && (selection === undefined || selection.client.state.getSnapshot().generation === generation)
+      }
+    }
+    // Presentation requests require an attached native Session; the App is
+    // constructed before any source can receive that Session binding.
+    toolPresentations = new RemoteToolPresentationCache(ref => resolveMayflyToolPresentation(() => app!.registry.list(), ref))
+    conversation = new RemoteConversationModelSource(toolPresentations, () => transcript?.refresh(), {
+      defaultCwd: options.cwd ?? process.cwd(),
+      onPresentation: () => {
+        status?.refresh()
+        editor?.refresh()
+        screen.requestRender()
+      },
+    })
+    // A queued paint can run while native theme replacement withdraws services.
+    // Publish the next complete provider pair from the injected owner below.
+    let bannerColors = ctx.mayflyTheme.colors
+    let bannerComponents = ctx.mayflyComponents
+    const bannerSlot = screen.mountContentSlot('transcript.prelude', new RemoteBannerComponent(
+      bannerColors,
+      bannerComponents,
+      displayedFacts,
+      {
+        identity: () => app?.activeClient,
+        home: () => app?.activeClient?.remote.$host.home ?? '',
+        directory: () => options.cwd ?? process.cwd(),
+        colors: () => bannerColors,
+        components: () => bannerComponents,
+        flyInAt: () => startup?.flyInAt(),
+        splash: () => startup?.splash(),
+        rows: () => Math.max(1, screen.rows - screen.editorRowsFromBottom),
+      },
+    ))
+    ctx.effect(() => () => bannerSlot.dispose())
+    const imageRefs = new Map<string, { readonly attachmentId: string, readonly mediaType: string }>()
+    const queueAction = async (action: QueueAction, id: string | undefined, owns: () => boolean): Promise<void> => {
+      const controller = editorComposition?.controller
+      if (controller === undefined) return
+      const current = displayedFacts()
+      if (action === 'undo') {
+        if (cancelled === undefined || Date.now() - cancelled.at > 8_000 || !sameRef(current.ref, cancelled.ref)) return
+        controller.requeue(cancelled.text, cancelled.lane)
+        cancelled = undefined
+        return
+      }
+      const item = id === undefined ? undefined : current.queue.find(candidate => candidate.id === id)
+      if (item === undefined) {
+        editor?.notice.set('The agent already read it')
+        return
+      }
+      if (action === 'edit') {
+        if (await controller.updateQueue(MessageId(item.id), { kind: 'remove' }) && owns()) controller.restoreQueued(item.text)
+        return
+      }
+      if (action === 'steer') {
+        await controller.updateQueue(MessageId(item.id), { kind: 'steer' })
+        return
+      }
+      if (await controller.updateQueue(MessageId(item.id), { kind: 'remove' }) && owns()) {
+        cancelled = { ref: selectedRef(current.ref), text: item.text, lane: item.lane, at: Date.now() }
+        editor?.notice.set('Cancelled · u undo')
+      }
+    }
+    const requests: Record<'approval' | 'plan', DecisionRequests> = { approval: [], plan: [] }
+    mountTranscriptLocale(ctx, 'transcript', TRANSCRIPT_LOCALE)
+    const t = transcriptTranslator(ctx, 'transcript')
+    const presentation = new TranscriptPresentationPolicy()
+    followPresentationSettings(ctx, presentation, () => transcript?.refreshPresentationPolicy())
+    transcriptContext = new RemoteTranscriptContextSource({
+      read: () => {
+        const facts = sideViews?.sessionFacts() ?? conversation!.sessionFacts()
+        return { facts, client: facts.ref === undefined ? undefined : app?.registry.get(facts.ref.host) }
+      },
+      changed: () => { if (!lifetime.signal.aborted) transcript?.republish() },
+    })
+    transcript = new TranscriptController({
+      t, presentation,
+      queued: () => displayedFacts().queue,
+      requests: () => [...requests.approval, ...requests.plan],
+      tick: ctx.mayflyTick,
+      focusMode: mode => { if (!lifetime.signal.aborted) ctx.emit('mayfly/focus-mode-changed', mode) },
+      focusRow: row => { if (!lifetime.signal.aborted) ctx.emit('mayfly/focus-row-changed', row) },
+      context: () => transcriptContext!.snapshot(),
+      imageRefs,
+      rows: {
+        copy: (text, mode) => {
+          if (lifetime.signal.aborted) return
+          const current = presentationOwner()
+          void editorComposition?.controller.copyText(text).then(method => {
+            if (current()) editor?.notice.set(t(mode === 'raw' ? (method === 'native' ? 'Copied {count} characters of JSON' : 'Copied {count} characters of JSON (unverified)') : (method === 'native' ? 'Copied {count} characters' : 'Copied {count} characters (unverified)'), { count: text.length }), 'success')
+          }).catch((error: unknown) => { if (current()) editor?.notice.set(t('Could not copy'), 'error', error instanceof Error ? error.message : String(error)) })
+        },
+        open: (text) => {
+          if (lifetime.signal.aborted) return
+          const current = presentationOwner()
+          void editorComposition?.controller.openText(text).catch((error: unknown) => {
+            if (current()) editor?.notice.set(error instanceof Error ? error.message : String(error), 'error')
+          })
+        },
+        queued: (action, id) => {
+          if (lifetime.signal.aborted) return
+          const current = presentationOwner()
+          void queueAction(action, id, current).catch((error: unknown) => {
+            if (current()) editor?.notice.set(error instanceof Error ? error.message : String(error), 'error')
+          })
+        },
+      },
+    })
+    ctx.effect(() => ctx.on('mayfly/decision-requests-changed', (source, next) => {
+      requests[source] = next
+      transcript?.republish()
+    }))
+    transcript.setView('remote', () => conversation!.snapshot())
+    transcript.show('remote')
+    transcript.attach(screen)
+    let offTranscriptKeys: () => void = () => {}
+    const registerTranscriptKeys = (): void => {
+      offTranscriptKeys()
+      offTranscriptKeys = ctx.mayflyKeymap.register([{
+        id: 'mayfly.transcript.toggle-collapse',
+        keys: 'ctrl+o',
+        description: t('Toggle detail expansion (tool output, long messages)'),
+        handler: () => {
+          if (lifetime.signal.aborted) return
+          transcript!.toggleRecent()
+          screen.requestRender(true)
+        },
+      }])
+    }
+    registerTranscriptKeys()
+    ctx.effect(() => () => offTranscriptKeys())
+    ctx.effect(() => observeTranscriptLocale(ctx, () => {
+      if (lifetime.signal.aborted) return
+      transcript!.refreshLocale()
+      registerTranscriptKeys()
+    }))
+
+    const execute = async (text: string): Promise<void> => {
+      const result = await app!.execute(text)
+      if (result.exit) stop()
+    }
+    editor = mountRemoteEditor(ctx, screen, ctx.mayflyComponents, ctx.mayflyTheme.colors, {
+      submit: execute,
+      onError: (error) => { if (!lifetime.signal.aborted) editor?.notice.set(error instanceof Error ? error.message : String(error), 'error') },
+      cancel: () => app!.cancel(),
+      exit: stop,
+    }, () => {
+      const side = sideViews?.selected()
+      const facts = displayedFacts()
+      const settings = currentMayflySettings(ctx)
+      const navigation = sideViews?.navigation()
+      const t = interactionTranslator(ctx)
+      const keyHint = (id: string) => ctx.mayflyKeymap.getKeys(id).map(displayKey).join('/')
+      return {
+        view: side === undefined ? { kind: 'primary', access: 'interactive' } : side.facts,
+        title: side !== undefined && side.facts.access !== 'interactive' ? side.facts.label ?? facts.title : facts.title,
+        running: facts.active,
+        quietHints: settings.quietHints,
+        hostKey: facts.ref?.host,
+        sessionId: facts.ref?.sessionId,
+        toggle: navigation === undefined ? undefined : `${keyHint('mayfly.interaction.toggle-agent-view')} ${t(navigation.counterpart === 'primary' ? 'main' : navigation.counterpart)} · ${keyHint('mayfly.interaction.close-agent-view')} ${t(navigation.close === 'subagent' ? 'detach' : 'close')}`,
+        slashHint: editorComposition?.controller.slashHint(),
+      }
+    })
+    ctx.effect(() => ctx.on('mayfly/request-new-messages', () => {
+      if (!lifetime.signal.aborted) transcript!.jumpNew()
+    }))
+    ctx.effect(() => ctx.on('mayfly/request-help', () => {
+      if (lifetime.signal.aborted) return
+      void execute('/help').catch((error: unknown) => {
+        if (!lifetime.signal.aborted) editor!.notice.set(error instanceof Error ? error.message : String(error), 'error')
+      })
+    }))
+    completionDrawer = mountRemoteCompletionDrawer(ctx, screen, editor.editor, ctx.mayflyTheme.colors, ctx.mayflyComponents)
+    sideViews = new RemoteSideViews(transcript, toolPresentations, screen, {
+      client: ref => app?.registry.get(ref.host),
+      modelCatalog: host => conversation!.getModelCatalog(host),
+      changed: () => { status?.refresh(); editor?.refresh() },
+      evicted: ref => { operations?.closeChild(ref) },
+      retainOnly: refs => { operations?.retainOnly(refs) },
+      primaryVisible: visible => { conversation!.setVisible(visible) },
+      reopen: (ref, facts) => {
+        const client = app?.registry.get(ref.host)
+        if (client === undefined || operations === undefined) return
+        const generation = client.state.getSnapshot().generation
+        const address = facts.address ?? client.sessions.subagentAddress(ref.sessionId)
+        const opening = facts.kind === 'btw'
+          ? operations.openBtw(client, ref, facts, lifetime.signal)
+          : address === undefined ? Promise.reject(new Error('The native child address is unavailable'))
+            : operations.openChild(client, address, lifetime.signal)
+        void opening.catch((error: unknown) => {
+          if (!lifetime.signal.aborted && app?.activeClient === client && client.state.getSnapshot().generation === generation) editor?.notice.set(error instanceof Error ? error.message : String(error))
+        })
+      },
+    })
+    panels = new RemotePanelController(screen, () => editor?.focus(), true, ctx.mayflyComponents)
+    app = new RemoteApp(conversation, editor.notice, new RemotePlainPanels(ctx), undefined, options.cwd ?? process.cwd(), {
+      open: (client, current, select, signal) => { sessionsBrowser!.open(client, current, select, signal) },
+    }, () => {
+      const selected = sideViews?.selected()
+      return selected === undefined ? undefined : { ref: selected.ref, access: selected.facts.access, binding: selected.binding, presentation: displayedFacts() }
+    }, () => commandSource?.list(true) ?? [], listener => sideViews!.subscribe(listener), () => { sideViews!.showPrimary() })
+    apps.push(app)
+    const mountedApp = app
+    ctx.effect(() => () => { mountedApp.dispose() })
+    let notificationHost = app.activeClient
+    ctx.effect(() => app!.subscribeTopology(() => {
+      const next = app!.activeClient
+      if (next === notificationHost) return
+      notificationHost = next
+      keyNotifications.clearAll()
+    }))
+    startup = new RemoteStartupController(ctx, screen, {
+      client: () => app?.activeClient,
+      current: () => app?.registry.current,
+      directory: () => options.cwd ?? process.cwd(),
+      subscribe: listener => app!.subscribeTopology(listener),
+      resume: async (sessionId) => {
+        const client = app?.activeClient
+        const generation = client?.state.getSnapshot().generation
+        try {
+          await app!.selectOrCreate(sessionId, options.cwd)
+        } catch (error) {
+          if (!lifetime.signal.aborted && client !== undefined && app?.activeClient === client && client.state.getSnapshot().generation === generation) editor?.notice.set(error instanceof Error ? error.message : String(error))
+        }
+      },
+      autocomplete: () => editor?.editor.isShowingAutocomplete() === true,
+    })
+    let primaryBinding = app.registry.currentReference?.binding
+    ctx.effect(() => app!.subscribeTopology(() => {
+      const next = app!.registry.currentReference?.binding
+      if (next === primaryBinding) return
+      primaryBinding = next
+      for (const ref of sideViews!.references()) operations?.closeChild(ref)
+    }))
+    ctx.effect(() => ctx.mayflyUiImages.provide(async (attachmentId) => {
+      const reference = sideViews!.current() === undefined ? conversation!.imageAttachment(attachmentId) : sideViews!.imageAttachment(attachmentId)
+      if (reference === undefined) return undefined
+      const data = await editorComposition!.controller.readAttachment({
+        attachmentId: AttachmentId(reference.attachmentId),
+        mediaType: reference.mediaType,
+        bytes: reference.bytes,
+        width: reference.width,
+        height: reference.height,
+        ...reference.name === undefined ? {} : { name: reference.name },
+        ...reference.originalDimensions === undefined ? {} : { originalDimensions: { ...reference.originalDimensions } },
+      })
+      return data === undefined ? undefined : { data, mediaType: reference.mediaType }
+    }))
+    features = mountRemoteFeatures({
+      ctx,
+      screen,
+      components: ctx.mayflyComponents,
+      colors: ctx.mayflyTheme.colors,
+      overlays: panels,
+      notice: editor.notice,
+      startupPlan: app.startupPlan,
+      editPrompt: (text, current) => {
+        if (lifetime.signal.aborted || !current()) return false
+        screen.leaveViews()
+        if (!current()) return false
+        editor!.editor.setText(text)
+        editor!.focus()
+        return true
+      },
+      hosts: {
+        active: () => app!.activeClient,
+        list: () => app!.registry.list(),
+        current: displayedSelection,
+        subscribe: listener => {
+          const offApp = app!.subscribeTopology(listener)
+          const offSide = sideViews!.subscribe(listener)
+          return () => { offApp(); offSide() }
+        },
+      },
+    })
+    const featureContext = features.context
+    sessionsBrowser = new RemoteSessionsBrowserController(featureContext, {
+      home: client => client.remote.$host.home ?? '',
+      directory: () => options.cwd ?? process.cwd(),
+      openChild: async (client, address, signal) => { await operations!.openChild(client, address, signal) },
+    })
+    configuration = mountRemoteConfigurationComposition(featureContext, {
+      clientVersion: mayflyVersion(),
+      edit: createRemoteSettingsEditor({ suspend: run => screen.suspend(run) }),
+      onDefaultModelSelected: (client, selected) => {
+        if (!lifetime.signal.aborted && app?.activeClient === client) conversation!.setDefaultModel(selected)
+      },
+      onModelCatalogObserved: (client, catalog) => {
+        if (!lifetime.signal.aborted && app?.registry.get(client.key) === client) conversation!.setModelCatalog(client.key, catalog)
+      },
+    })
+    operations = mountRemoteOperationsComposition(featureContext, {
+      localCwd: process.cwd(),
+      primary: () => {
+        const ref = app!.registry.current
+        const binding = app!.registry.currentReference?.binding
+        const client = ref === undefined ? undefined : app!.registry.get(ref.host)
+        return ref === undefined || binding === undefined || client === undefined ? undefined : { ref, binding, client }
+      },
+      showPrimary: () => { sideViews!.showPrimary() },
+      btw: app.btw,
+      modelCatalog: host => conversation!.getModelCatalog(host),
+      present: (ref, binding, facts) => { sideViews!.present(binding, { ref, cwd: facts.cwd ?? '' }, facts) },
+      closePresent: ref => { sideViews!.close(ref) },
+      copy: (text) => editorComposition!.controller.copyText(text),
+    })
+    commandSource = mergeRemoteFeatureCommandSources(
+      features.commands,
+      configuration.commands,
+      operations.commands,
+    )
+    editorComposition = mountEditorComposition({
+      ctx,
+      app,
+      editor: editor.editor,
+      extensionRuntime: editor.extensions,
+      screen,
+      components: ctx.mayflyComponents,
+      colors: ctx.mayflyTheme.colors,
+      keymap: ctx.mayflyKeymap,
+      notice: editor.notice,
+      localCwd: process.cwd(),
+      exit: stop,
+      featureCommands: commandSource,
+      focusEditor: () => editor!.focus(),
+      selection: displayedSelection,
+      subscribeSelection: listener => sideViews!.subscribe(listener),
+      startupKey: (data, text) => startup!.handleInput(data, text),
+    })
+    status = mountRemoteStatus(ctx, () => ({
+      presentation: displayedFacts(),
+      values: (sideViews!.sessionFacts() ?? conversation!.sessionFacts()).values,
+      conversation: sideViews!.kind(),
+      access: sideViews!.selected()?.facts.access,
+    }), {
+      home: () => app?.activeClient?.remote.$host.home ?? '',
+      directory: () => options.cwd ?? process.cwd(),
+    })
+    await ctx.plugin({
+      name: 'mayfly-retained-renderers',
+      inject: ['mayflyTheme', 'mayflyComponents'],
+      apply(owner: Context) {
+        bannerColors = owner.mayflyTheme.colors
+        bannerComponents = owner.mayflyComponents
+        editor!.retheme(owner.mayflyComponents, owner.mayflyTheme.colors)
+        editorComposition!.controller.retheme(owner.mayflyComponents, owner.mayflyTheme.colors)
+        completionDrawer?.dispose()
+        completionDrawer = mountRemoteCompletionDrawer(owner, screen, editor!.editor, owner.mayflyTheme.colors, owner.mayflyComponents)
+        screen.requestRender()
+      },
+    })
+    await app.attach(options.startupUrl, options.hostId)
+    if (options.sessionId !== undefined) await app.selectOrCreate(options.sessionId, options.cwd)
+    if (options.task !== undefined && options.task.trim() !== '') await execute(options.task)
+    startup.start()
+    await done.promise
+  } finally {
+    lifetime.abort()
+    for (const mountedApp of apps) mountedApp.dispose()
+    process.removeListener('SIGINT', sigint)
+    process.removeListener('SIGTERM', sigterm)
+    transcriptContext?.dispose()
+    startup?.dispose()
+    operations?.dispose()
+    sessionsBrowser?.dispose()
+    configuration?.dispose()
+    features?.dispose()
+    sideViews?.dispose()
+    editorComposition?.dispose()
+    panels?.dispose()
+    completionDrawer?.dispose()
+    editor?.dispose()
+    await status?.dispose()
+    conversation?.dispose()
+    transcript?.dispose()
+    await toolPresentations?.dispose()
+    const clients = apps.flatMap(app => app.registry.list())
+    await Promise.allSettled(clients.map(client => apps[0]!.registry.detach(client.key)))
+    await ctx.fiber.dispose()
+  }
+}
+
+function sameRef(left: SessionRef | undefined, right: SessionRef): boolean {
+  return left?.host === right.host && left.sessionId === right.sessionId
+}
+
+function selectedRef(ref: SessionRef | undefined): SessionRef {
+  if (ref === undefined) throw new Error('The selected Session changed before the queue mutation')
+  return ref
+}
