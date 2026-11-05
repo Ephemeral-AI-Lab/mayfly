@@ -14,7 +14,7 @@ import { attachMayflyHostClient, resolveMayflyToolPresentation } from '../../src
 
 const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string, dependencies: Record<string, string> }
 const release = manifest.version
-const harness = manifest.dependencies['@deepseek-ai/dsh-agent']!
+const harness = manifest.dependencies['@deepseek-ai/dsh-session']!
 
 function host(version = release) {
   const presentTools = vi.fn(async () => ({ ok: true, value: { presentations: { session: { call: { updatedSeq: 1 } } } } }))

@@ -19,5 +19,7 @@ export default defineConfig({
   dts: false,
   clean: false,
   sourcemap: true,
+  // Code the entries share lands under fixed names that one files entry publishes; anything else in lib/ stays guarded.
+  outputOptions: { chunkFileNames: 'chunks/[name].js' },
   plugins: [sourceDecoratorsPlugin(), typertPlugin({ mode: 'package', faces: ['host'] })],
 })
