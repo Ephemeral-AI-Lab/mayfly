@@ -1,7 +1,7 @@
 /**
  * Provider directory, editing, discovery, and write-only credential operations
  * through official LLM, settings, and credentials Remotes.
- * @module @ephemeral-ai/mayfly/remote/features/providers
+ * @module @ephemeral-ai/mayfly/app/features/providers
  */
 
 import type {

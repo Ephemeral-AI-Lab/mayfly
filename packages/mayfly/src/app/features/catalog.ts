@@ -1,6 +1,6 @@
 /**
  * Construction-frozen Host MCP/tool catalogs, responsive browsers, and refresh ownership.
- * @module @ephemeral-ai/mayfly/remote/features/catalog
+ * @module @ephemeral-ai/mayfly/app/features/catalog
  */
 
 import type { MayflyMcpCatalog, MayflyMcpServer, MayflyToolCatalog, MayflyToolSchema } from '@ephemeral-ai/mayfly-host/types'

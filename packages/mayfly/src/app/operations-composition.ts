@@ -4,7 +4,7 @@
  * export, trace, stats, plugins, update checks, and the terminal title. Every
  * module registers its own slash commands into the foundation registry and
  * owns its listeners under this mount's lifetime.
- * @module @ephemeral-ai/mayfly/remote/operations-composition
+ * @module @ephemeral-ai/mayfly/app/operations-composition
  */
 
 import type { RemoteFeatureCommandSource } from './features/commands.ts'

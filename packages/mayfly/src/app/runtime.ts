@@ -1,4 +1,4 @@
-/** Independent TUI composition over exact native Host selections and mount-owned lifetimes. @module remote/runtime */
+/** Independent TUI composition over exact native Host selections and mount-owned lifetimes. @module @ephemeral-ai/mayfly/app/runtime */
 import { Context, type Plugin } from '@deepseek-ai/cordis'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import { MessageId } from '@deepseek-ai/dsh-llm/brand'

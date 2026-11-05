@@ -1,5 +1,5 @@
 /** Shared settings rail over native redacted descriptors and revisioned writes.
- * @module @ephemeral-ai/mayfly/remote/features/settings
+ * @module @ephemeral-ai/mayfly/app/features/settings
  */
 
 import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'

@@ -1,5 +1,5 @@
 /** Shared marketplace and explicit split release upgrade composition.
- * @module remote/operations/plugins
+ * @module @ephemeral-ai/mayfly/app/operations/plugins
  */
 import { mountRemoteMarketplace } from './plugin-marketplace.ts'
 import { mountRemoteUpdate } from './update.ts'

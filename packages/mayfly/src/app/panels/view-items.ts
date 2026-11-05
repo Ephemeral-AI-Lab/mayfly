@@ -1,6 +1,6 @@
 /**
  * Current Mayfly summary and expanded-view builders for Remote-owned panes.
- * @module @ephemeral-ai/mayfly/remote/panels/view-items
+ * @module @ephemeral-ai/mayfly/app/panels/view-items
  */
 
 import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyStatusNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'

@@ -1,6 +1,6 @@
 /**
  * Narrow declarations for official editor Remote events missing from nested handoffs.
- * @module @ephemeral-ai/mayfly/remote/editor/official
+ * @module @ephemeral-ai/mayfly/app/editor/official
  */
 
 import type { SessionId } from '@deepseek-ai/dsh-session/types'

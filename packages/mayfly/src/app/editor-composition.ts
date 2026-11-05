@@ -1,6 +1,6 @@
 /**
  * Composition of the delivered editor feature controller with actual Client and local adapters.
- * @module @ephemeral-ai/mayfly/remote/editor-composition
+ * @module @ephemeral-ai/mayfly/app/editor-composition
  */
 
 import type { SessionId } from '@deepseek-ai/dsh-session/types'

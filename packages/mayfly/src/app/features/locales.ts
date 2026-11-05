@@ -1,6 +1,6 @@
 /**
  * Shared English/Chinese catalogs for Remote productivity features.
- * @module @ephemeral-ai/mayfly/remote/features/locales
+ * @module @ephemeral-ai/mayfly/app/features/locales
  */
 
 import type { Context } from '@deepseek-ai/cordis'

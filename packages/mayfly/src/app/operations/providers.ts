@@ -2,7 +2,7 @@
  * Public `/provider` routing into the shared reference provider configuration
  * and model picker. The configuration family owns all native Host operations
  * and generation-scoped surfaces.
- * @module @ephemeral-ai/mayfly/remote/operations/providers
+ * @module @ephemeral-ai/mayfly/app/operations/providers
  */
 
 import { memoizedLocaleTranslator } from '../../frontend/locale.ts'

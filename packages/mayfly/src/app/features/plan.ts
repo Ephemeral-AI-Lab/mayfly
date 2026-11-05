@@ -1,6 +1,6 @@
 /**
  * Native plan projection and command behavior, including next-Session pending selection.
- * @module @ephemeral-ai/mayfly/remote/features/plan
+ * @module @ephemeral-ai/mayfly/app/features/plan
  */
 
 import { memoizedLocaleTranslator } from '../../frontend/locale.ts'

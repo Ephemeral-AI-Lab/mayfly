@@ -1,4 +1,4 @@
-/** Submission admission, draft recovery, and exact-selection cancellation decisions. @module mayfly-remote/tests/editor-submission */
+/** Submission admission, draft recovery, and exact-selection cancellation decisions. @module @ephemeral-ai/mayfly/tests/app/editor-submission */
 import { describe, expect, it, vi } from 'vitest'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import { EditorSubmit } from '../../src/app/editor/submit.ts'

@@ -1,6 +1,6 @@
 /**
  * Official-compatible file mention grammar, formatting, and Host file reads.
- * @module @ephemeral-ai/mayfly/remote/editor/mentions
+ * @module @ephemeral-ai/mayfly/app/editor/mentions
  */
 
 import type { FileReferenceCandidate } from '@deepseek-ai/dsh-api-remotes/client'

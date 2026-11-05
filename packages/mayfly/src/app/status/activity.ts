@@ -1,6 +1,6 @@
 /**
  * Presentation-only activity derivation from official Facts, Conversation, and Session snapshots.
- * @module @ephemeral-ai/mayfly/remote/status/activity
+ * @module @ephemeral-ai/mayfly/app/status/activity
  */
 
 import type { ConversationFacts, ConversationProjection, OutputProgress } from '@ephemeral-ai/mayfly-host/types'

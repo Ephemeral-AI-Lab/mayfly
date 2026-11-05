@@ -1,6 +1,6 @@
 /**
  * Validated Mayfly Host capability reads for optional Remote productivity surfaces.
- * @module @ephemeral-ai/mayfly/remote/features/capabilities
+ * @module @ephemeral-ai/mayfly/app/features/capabilities
  */
 
 import type { MayflyHostFeature } from '@ephemeral-ai/mayfly-host/types'

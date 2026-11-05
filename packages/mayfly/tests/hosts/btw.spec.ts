@@ -1,4 +1,4 @@
-/** Independent side-view orchestration over real HostActions and HostRegistry ownership. @module mayfly-remote/tests/frontend/btw */
+/** Independent side-view orchestration over real HostActions and HostRegistry ownership. @module @ephemeral-ai/mayfly/tests/hosts/btw */
 import { describe, expect, it, vi } from 'vitest'
 import type { ISessions, SessionBinding, SessionFace, SessionReference, SessionTarget } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/types'

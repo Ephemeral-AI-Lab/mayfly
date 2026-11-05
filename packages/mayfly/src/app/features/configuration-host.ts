@@ -4,7 +4,7 @@
  * bundles, the raw settings document, OAuth authorization streams, and the
  * API-key balance. Every call runs under one exact-generation operation scope
  * whose disposal drops late results and cancels local streams.
- * @module @ephemeral-ai/mayfly/remote/features/configuration-host
+ * @module @ephemeral-ai/mayfly/app/features/configuration-host
  */
 
 import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'

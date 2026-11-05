@@ -1,4 +1,4 @@
-/** Real core editor plus transport-boundary fixtures for independent feature decisions. @module mayfly-remote/tests/editor-feature-fixture */
+/** Real core editor plus transport-boundary fixtures for independent feature decisions. @module @ephemeral-ai/mayfly/tests/app/editor-feature-fixture */
 import { afterEach, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { MayflyComponentsService, type MayflyComponentsDeps } from '../../src/core/components.ts'

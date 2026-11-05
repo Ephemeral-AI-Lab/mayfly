@@ -1,5 +1,5 @@
 /** Native permission preset catalog and shared decision-lane presentation.
- * @module @ephemeral-ai/mayfly/remote/features/permissions
+ * @module @ephemeral-ai/mayfly/app/features/permissions
  */
 
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'

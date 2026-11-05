@@ -1,7 +1,7 @@
 /**
  * `/retract` explicit turn retraction through the generated mayflyHost face;
  * it never overlaps ordinary `/cancel` semantics.
- * @module @ephemeral-ai/mayfly/remote/operations/retract
+ * @module @ephemeral-ai/mayfly/app/operations/retract
  */
 
 import { memoizedLocaleTranslator } from '../../frontend/locale.ts'

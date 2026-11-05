@@ -1,6 +1,6 @@
 /**
  * Native provider settings addressing and endpoint profile helpers.
- * @module @ephemeral-ai/mayfly/remote/features/provider-profile
+ * @module @ephemeral-ai/mayfly/app/features/provider-profile
  */
 
 import type { LlmConfigurableProvider } from '@deepseek-ai/dsh-api-remotes/client'

@@ -1,6 +1,6 @@
 /**
  * Per-mount local command contributions for focused Remote features.
- * @module @ephemeral-ai/mayfly/remote/features/commands
+ * @module @ephemeral-ai/mayfly/app/features/commands
  */
 
 /** One feature-owned slash command; execution receives only the argument suffix. */

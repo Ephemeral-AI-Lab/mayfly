@@ -1,7 +1,7 @@
 /**
  * Remote configuration feature locale catalog, migrated from the legacy
  * interaction vocabulary without mounting the legacy composition.
- * @module @ephemeral-ai/mayfly/remote/features/locale
+ * @module @ephemeral-ai/mayfly/app/features/locale
  */
 
 import type { MayflyLocaleCatalog } from '../../frontend/locale.ts'

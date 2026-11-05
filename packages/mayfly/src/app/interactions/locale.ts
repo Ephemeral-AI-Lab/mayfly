@@ -1,6 +1,6 @@
 /**
  * Remote approval/question locale catalog and dynamic translator lifecycle.
- * @module @ephemeral-ai/mayfly/remote/interactions/locale
+ * @module @ephemeral-ai/mayfly/app/interactions/locale
  */
 
 import type { Context } from '@deepseek-ai/cordis'

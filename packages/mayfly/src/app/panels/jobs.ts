@@ -1,6 +1,6 @@
 /**
  * Current Mayfly Job summaries, roster, detail, and output presentations.
- * @module @ephemeral-ai/mayfly/remote/panels/jobs
+ * @module @ephemeral-ai/mayfly/app/panels/jobs
  */
 
 import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyPaneSummary, type MayflyTranslate, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'

@@ -1,6 +1,6 @@
 /**
  * `/btw` side-question command over the shared RemoteBtwService and presented view.
- * @module @ephemeral-ai/mayfly/remote/operations/btw
+ * @module @ephemeral-ai/mayfly/app/operations/btw
  */
 
 import { memoizedLocaleTranslator } from '../../frontend/locale.ts'

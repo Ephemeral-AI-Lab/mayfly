@@ -2,7 +2,7 @@
  * Host-generation model catalog and exact-Session model selection through the
  * official Session Remote API, with Host-merged context metadata and the
  * Session-independent default model.
- * @module @ephemeral-ai/mayfly/remote/features/models
+ * @module @ephemeral-ai/mayfly/app/features/models
  */
 
 import type {

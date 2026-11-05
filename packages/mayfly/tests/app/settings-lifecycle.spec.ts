@@ -1,5 +1,5 @@
 /** Actual settings overlays, dirty drafts, ACK publication, and exact native Host generations.
- * @module @ephemeral-ai/mayfly-remote/tests/settings-lifecycle
+ * @module @ephemeral-ai/mayfly/tests/app/settings-lifecycle
  */
 import Schema from '@deepseek-ai/schemastery'
 import { afterEach, describe, expect, it, vi } from 'vitest'

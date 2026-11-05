@@ -1,6 +1,6 @@
 /**
  * Exact displayed-selection predicate shared by Remote interaction controllers.
- * @module @ephemeral-ai/mayfly/remote/interactions/selection
+ * @module @ephemeral-ai/mayfly/app/interactions/selection
  */
 
 import type { HostClient, SessionRef } from '../../client/types.ts'

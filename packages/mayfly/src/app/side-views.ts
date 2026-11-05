@@ -1,4 +1,4 @@
-/** Retained native side conversations, exact displayed bindings, and F7 recency. @module remote/side-views */
+/** Retained native side conversations, exact displayed bindings, and F7 recency. @module @ephemeral-ai/mayfly/app/side-views */
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflyScreenService } from '../core/screen.ts'

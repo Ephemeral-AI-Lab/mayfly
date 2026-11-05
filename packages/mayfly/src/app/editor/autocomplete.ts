@@ -1,6 +1,6 @@
 /**
  * Fuzzy slash, Host file mention, and skill autocomplete with generation fencing.
- * @module @ephemeral-ai/mayfly/remote/editor/autocomplete
+ * @module @ephemeral-ai/mayfly/app/editor/autocomplete
  */
 
 import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponents } from '../../core/types.ts'

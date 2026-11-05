@@ -1,6 +1,6 @@
 /**
  * Remote-local draft editor with private temporary files and process teardown.
- * @module @ephemeral-ai/mayfly/remote/local/external-editor
+ * @module @ephemeral-ai/mayfly/app/local/external-editor
  */
 
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'

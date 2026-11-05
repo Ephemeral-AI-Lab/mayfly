@@ -1,5 +1,5 @@
 /** Official upload-global carriers restore exact active owners across overlapping construction.
- * @module @ephemeral-ai/mayfly-remote/tests/client/upload
+ * @module @ephemeral-ai/mayfly/tests/client/upload
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ClientFileUploadHooks, FileUploadFetch } from '@deepseek-ai/dsh-client-file-upload/types'

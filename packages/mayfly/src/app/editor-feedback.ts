@@ -1,4 +1,4 @@
-/** Prompt teaching facts and delayed waits owned by one Remote editor mount. @module remote/editor-feedback */
+/** Prompt teaching facts and delayed waits owned by one Remote editor mount. @module @ephemeral-ai/mayfly/app/editor-feedback */
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyEditor } from '../core/types.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'

@@ -1,6 +1,6 @@
 /**
  * Narrow job.follow adapter and one output reader's cursor-owned presentation state.
- * @module @ephemeral-ai/mayfly/remote/features/jobs-follow
+ * @module @ephemeral-ai/mayfly/app/features/jobs-follow
  */
 
 import type { HostClient, SessionRef } from '../../client/types.ts'

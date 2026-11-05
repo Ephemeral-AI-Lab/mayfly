@@ -1,6 +1,6 @@
 /**
  * Standalone remote editor with transient command feedback.
- * @module @ephemeral-ai/mayfly/remote/editor
+ * @module @ephemeral-ai/mayfly/app/editor
  */
 
 import type { Context } from '@deepseek-ai/cordis'

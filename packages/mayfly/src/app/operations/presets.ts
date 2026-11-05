@@ -5,7 +5,7 @@
  * switches the exact Session, or — with no Session selected — stores the preset
  * a later blank Session takes. Switching is the native `agentPresets.select`
  * turn-boundary guard, never a local recompose.
- * @module @ephemeral-ai/mayfly/remote/operations/presets
+ * @module @ephemeral-ai/mayfly/app/operations/presets
  */
 
 import { memoizedLocaleTranslator } from '../../frontend/locale.ts'

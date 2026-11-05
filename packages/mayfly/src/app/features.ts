@@ -1,6 +1,6 @@
 /**
  * Feature-mount contracts and the single registration manifest for independent Remote UI lanes.
- * @module @ephemeral-ai/mayfly/remote/features
+ * @module @ephemeral-ai/mayfly/app/features
  */
 
 import type { Context } from '@deepseek-ai/cordis'

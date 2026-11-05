@@ -1,5 +1,5 @@
 /** Secret redaction at programmatic preference write boundaries.
- * @module @ephemeral-ai/mayfly/remote/features/settings-model
+ * @module @ephemeral-ai/mayfly/app/features/settings-model
  */
 import Schema from '@deepseek-ai/schemastery'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'

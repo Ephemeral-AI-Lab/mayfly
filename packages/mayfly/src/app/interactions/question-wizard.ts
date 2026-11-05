@@ -1,6 +1,6 @@
 /**
  * Shared Remote question wizard with optional officially claimed countdown text.
- * @module @ephemeral-ai/mayfly/remote/interactions/question-wizard
+ * @module @ephemeral-ai/mayfly/app/interactions/question-wizard
  */
 
 import { decisionLane, ui, wizard, wizardNext, type MayflySurfaceNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'

@@ -1,6 +1,6 @@
 /**
  * Acknowledged Remote request overlays with selection, cancellation, and hide-only dismissal.
- * @module @ephemeral-ai/mayfly/remote/interactions/request-overlay
+ * @module @ephemeral-ai/mayfly/app/interactions/request-overlay
  */
 
 import type { Context } from '@deepseek-ai/cordis'

@@ -2,7 +2,7 @@
  * Remote-process account transport I/O: loopback callback origins, platform
  * browser opening, local clipboard delivery, and callback POSTs restricted to
  * the configured origin. Copied or opened content is never logged.
- * @module @ephemeral-ai/mayfly/remote/features/configuration-account
+ * @module @ephemeral-ai/mayfly/app/features/configuration-account
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'

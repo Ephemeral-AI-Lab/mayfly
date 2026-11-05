@@ -1,6 +1,6 @@
 /**
  * Host-owned Git status polling with effective-directory and stale-result fencing.
- * @module @ephemeral-ai/mayfly/remote/features/git
+ * @module @ephemeral-ai/mayfly/app/features/git
  */
 
 import type { MayflyGitStatus } from '@ephemeral-ai/mayfly-host/types'

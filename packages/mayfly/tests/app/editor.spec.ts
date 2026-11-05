@@ -1,4 +1,4 @@
-/** Standalone editor admission, reference chrome, focus, and terminal-slot lifecycle. @module mayfly-remote/tests/editor */
+/** Standalone editor admission, reference chrome, focus, and terminal-slot lifecycle. @module @ephemeral-ai/mayfly/tests/app/editor */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import * as Frontend from '../../src/frontend/index.ts'

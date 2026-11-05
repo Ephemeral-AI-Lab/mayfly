@@ -1,6 +1,6 @@
 /**
  * Exact-selection Remote approval waterfalls, allowances, and rejection steering.
- * @module @ephemeral-ai/mayfly/remote/interactions/approval
+ * @module @ephemeral-ai/mayfly/app/interactions/approval
  */
 
 import type { Context } from '@deepseek-ai/cordis'

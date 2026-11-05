@@ -1,4 +1,4 @@
-/** Real core editor and transcript focus transitions through a recording terminal boundary. @module remote/tests/editor-focus */
+/** Real core editor and transcript focus transitions through a recording terminal boundary. @module @ephemeral-ai/mayfly/tests/app/editor-focus */
 import { Context } from '@deepseek-ai/cordis'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import { MayflyComponentsService, type MayflyComponentsDeps } from '../../src/core/components.ts'

@@ -1,5 +1,5 @@
 /** Reference authorization instructions and acknowledgement-ordered prompt replies.
- * @module @ephemeral-ai/mayfly/remote/features/provider-authorization
+ * @module @ephemeral-ai/mayfly/app/features/provider-authorization
  */
 import { panel, ui, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteAccountLocalIO, RemoteFeatureContext } from './contracts.ts'

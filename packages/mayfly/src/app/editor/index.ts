@@ -1,6 +1,6 @@
 /**
  * Mount Commands, Skills, autocomplete, full editor behavior, and Remote-local integrations.
- * @module @ephemeral-ai/mayfly/remote/editor
+ * @module @ephemeral-ai/mayfly/app/editor
  */
 
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'

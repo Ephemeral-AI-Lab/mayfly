@@ -1,6 +1,6 @@
 /**
  * Official Job roster, durable Session history, follow readers, and rechecked human kill.
- * @module @ephemeral-ai/mayfly/remote/features/jobs
+ * @module @ephemeral-ai/mayfly/app/features/jobs
  */
 
 import { ui, type MayflyPaneRegistration, type MayflyTranslate, type MayflyUiActionEvent, type MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'

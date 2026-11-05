@@ -1,5 +1,5 @@
 /** Shared provider setup steps over official settings and credential writes.
- * @module @ephemeral-ai/mayfly/remote/features/provider-add
+ * @module @ephemeral-ai/mayfly/app/features/provider-add
  */
 import { isDeepStrictEqual } from 'node:util'
 import type { LlmDiscoveredModel, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'

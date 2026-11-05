@@ -1,6 +1,6 @@
 /**
  * Official Client declarations, results, and exact-generation operation scopes.
- * @module @ephemeral-ai/mayfly/remote/features/official
+ * @module @ephemeral-ai/mayfly/app/features/official
  */
 
 import type {} from '@deepseek-ai/dsh-goal/remote'

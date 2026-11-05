@@ -1,6 +1,6 @@
 /**
  * Bounded Remote-local child processes with operation and feature-lifetime cancellation.
- * @module @ephemeral-ai/mayfly/remote/local/process
+ * @module @ephemeral-ai/mayfly/app/local/process
  */
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process'

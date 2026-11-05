@@ -1,8 +1,8 @@
 flowchart TB
     HOST["native dsh Host process<br/>dsh-base · dsh-web-app · mayfly-host"]
     STATE["native Agents · Sessions · models · tools<br/>durable Mayfly projections"]
-    WIRE["official Client HTTP/WebSocket<br/>serializable Remote DTOs · native file routes"]
-    REMOTE["independent Remote TUI process<br/>HostKey + SessionRef selection · local feature state"]
+    WIRE["official Client HTTP/WebSocket<br/>serializable Host DTOs · native file routes"]
+    REMOTE["independent TUI process<br/>HostKey + SessionRef selection · local feature state"]
     UI["four direct Mayfly UI services<br/>panes · status · overlays · editor extensions"]
     CORE["shared Mayfly core<br/>only pi-tui · ANSI · terminal · width owner"]
     TERM["terminal"]

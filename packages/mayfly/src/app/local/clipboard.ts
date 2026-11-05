@@ -1,6 +1,6 @@
 /**
  * Remote-local clipboard text delivery and bounded copied-file image reads.
- * @module @ephemeral-ai/mayfly/remote/local/clipboard
+ * @module @ephemeral-ai/mayfly/app/local/clipboard
  */
 
 import { constants as fsConstants } from 'node:fs'

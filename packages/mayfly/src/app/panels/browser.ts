@@ -1,6 +1,6 @@
 /**
  * Generation-owned ordinary Mayfly overlay panels for Remote feature browsers.
- * @module @ephemeral-ai/mayfly/remote/panels/browser
+ * @module @ephemeral-ai/mayfly/app/panels/browser
  */
 
 import type {

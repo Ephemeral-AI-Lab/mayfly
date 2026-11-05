@@ -1,6 +1,6 @@
 /**
  * Read choice and note values from Remote decision-card actions.
- * @module @ephemeral-ai/mayfly/remote/interactions/decision-actions
+ * @module @ephemeral-ai/mayfly/app/interactions/decision-actions
  */
 
 import type { MayflyUiActionEvent } from '@ephemeral-ai/mayfly-ui'

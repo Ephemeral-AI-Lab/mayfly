@@ -4,7 +4,7 @@
  * fixed native MCP operations; this adapter narrows the JSON rows to the
  * browser-safe fields and never executes a tool as a fallback.
  *
- * @module @ephemeral-ai/mayfly/remote/features/mcp-resources
+ * @module @ephemeral-ai/mayfly/app/features/mcp-resources
  */
 
 import type {

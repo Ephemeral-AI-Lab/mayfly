@@ -1,6 +1,6 @@
 /**
  * Official Schedule list/catalog reads and change events with selection fencing.
- * @module @ephemeral-ai/mayfly/remote/features/schedule
+ * @module @ephemeral-ai/mayfly/app/features/schedule
  */
 
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'

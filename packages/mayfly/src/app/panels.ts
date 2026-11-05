@@ -1,6 +1,6 @@
 /**
  * Generation-safe base overlay host for independent Remote feature panels.
- * @module @ephemeral-ai/mayfly/remote/panels
+ * @module @ephemeral-ai/mayfly/app/panels
  */
 
 import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen } from '../core/types.ts'

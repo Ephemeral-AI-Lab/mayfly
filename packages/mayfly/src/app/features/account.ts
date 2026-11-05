@@ -1,7 +1,7 @@
 /**
  * DeepSeek Platform account state, details, and browser sign-in over the
  * official account Remote namespace.
- * @module @ephemeral-ai/mayfly/remote/features/account
+ * @module @ephemeral-ai/mayfly/app/features/account
  */
 
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'

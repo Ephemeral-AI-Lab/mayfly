@@ -1,4 +1,4 @@
-/** The reference wire skill browser over one exact native catalog. @module remote/editor/skills-panel */
+/** The reference wire skill browser over one exact native catalog. @module @ephemeral-ai/mayfly/app/editor/skills-panel */
 import type { Context } from '@deepseek-ai/cordis'
 import { skillsNode } from '../../interaction/skills-model.ts'
 import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from '../../interaction/locale.ts'

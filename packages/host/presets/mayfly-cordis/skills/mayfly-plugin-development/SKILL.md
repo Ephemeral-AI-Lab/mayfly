@@ -13,8 +13,8 @@ the request and repository cannot resolve.
 | --- | --- |
 | Tools, commands, domain services, persistence, credentials, projections | Native dsh Host; ordinary Cordis bundle installed by Plugin Manager |
 | Persona, model-facing tools, prompt sections, skill roots | Native Agent preset declared in a user-owned bundle |
-| Terminal panes, status, overlays, editor extensions, focus and layout | Independent `@ephemeral-ai/mayfly-remote` process; frontend source composition |
-| Renderer and shared readonly presentation builders | `@ephemeral-ai/mayfly` and `@ephemeral-ai/mayfly-ui` shared packages |
+| Terminal panes, status, overlays, editor extensions, focus and layout | Independent `@ephemeral-ai/mayfly` TUI process; a plugin in a TUI source composition |
+| Renderer-neutral node contracts and builders | `@ephemeral-ai/mayfly-ui` |
 
 ## Audit a migration
 
@@ -48,25 +48,28 @@ it. Host installation changes the Host tree only.
 
 ## Terminal UI path and current limits
 
-There is no public external frontend plugin installation or UI hot-load entry
-in this release. A Host `dsh plugin` install cannot mount a terminal pane, and
-the native dynamic runner's browser `code.client` half cannot reach the Node
-Remote process. Current model tools do not supply dynamic define/run/mount
+There is no external frontend plugin installer or UI hot-load entry in this
+release. A Host `dsh plugin` install cannot mount a terminal pane, and the
+native dynamic runner's browser `code.client` half cannot reach the Node TUI
+process. Current model tools do not supply dynamic define/run/mount
 operations. State these limits before proposing an in-session visual result.
 
-An authorized terminal feature currently requires integrating an ordinary
-Cordis contribution into the frontend source composition, building the
-frontend, and restarting it. Follow the checkout's root and owning-package
-`AGENTS.md`; do not invent a plugin-author CLI, hidden loader, bridge, or
-manifest. Use the four UI services in that process, shared renderer-neutral
-models and builders, and documented native Client operations. A model contains
+An authorized terminal feature is an ordinary Cordis plugin (`name`, optional
+`inject`, `apply(ctx)`) that a TUI source composition loads: an entry calling
+`run(process.argv.slice(2), { plugins: [plugin] })` from
+`@ephemeral-ai/mayfly/bin`, which keeps every `mayfly` option and environment
+variable. `examples/mayfly-ecosystem` in the Mayfly repository is a complete
+composition. Build the entry and restart the TUI to load a change. Follow the
+checkout's root and owning-package `AGENTS.md`; do not invent a plugin-author
+CLI, hidden loader, bridge, or manifest. Use the four UI services in that
+process, `@ephemeral-ai/mayfly-ui` builders, and documented native Client
+operations. A model contains
 readonly data and structured actions, never ANSI, terminal width, focus handles,
 Promises, Agent/Session objects, or renderer instances. Core owns width,
 palette, focus, input, and terminal state.
 
-Do not claim an unavailable integration path is complete. Explain the source
-integration requirement and the smallest public seam a future external
-frontend loader would need before proposing such a separate architecture change.
+Do not claim an unavailable integration path is complete: a composition is an
+ordinary program the user starts, not an installed or hot-loaded extension.
 
 ## Verification and acceptance
 

@@ -1,5 +1,5 @@
 /** Explicit Host plus frontend upgrade, using native Host transactions and frontend-local staging.
- * @module remote/operations/update
+ * @module @ephemeral-ai/mayfly/app/operations/update
  */
 import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import { setTimeout as delay } from 'node:timers/promises'

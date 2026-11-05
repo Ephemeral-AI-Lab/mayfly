@@ -1,6 +1,6 @@
 /**
  * Session skill token grammar, rewrite, and last-good native Host catalog.
- * @module @ephemeral-ai/mayfly/remote/editor/skills
+ * @module @ephemeral-ai/mayfly/app/editor/skills
  */
 
 import type { SkillEntry } from '@deepseek-ai/dsh-api-remotes/client'

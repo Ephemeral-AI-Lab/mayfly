@@ -1,6 +1,6 @@
 /**
  * Remote-local `!` shell execution, output safety, and transcript-style echo.
- * @module @ephemeral-ai/mayfly/remote/editor/shell
+ * @module @ephemeral-ai/mayfly/app/editor/shell
  */
 
 import { exec } from 'node:child_process'

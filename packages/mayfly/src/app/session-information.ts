@@ -1,4 +1,4 @@
-/** Readonly information from the exact native Client snapshots. @module remote/session-information */
+/** Readonly information from the exact native Client snapshots. @module @ephemeral-ai/mayfly/app/session-information */
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionInfoFacts } from '../interaction/session-info-model.ts'
 import type { RemotePresentationFacts } from '../transcript/remote-model.ts'

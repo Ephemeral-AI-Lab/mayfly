@@ -1,7 +1,7 @@
 /**
  * Terminal title projection for the current Session, deduplicated and restored
  * on selection change and unload.
- * @module @ephemeral-ai/mayfly/remote/operations/title
+ * @module @ephemeral-ai/mayfly/app/operations/title
  */
 
 import { sanitizeTitleText, TITLE_MAX_CHARS } from '../../core/terminal-escape.ts'

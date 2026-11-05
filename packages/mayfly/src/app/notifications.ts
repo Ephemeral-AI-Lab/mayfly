@@ -1,7 +1,7 @@
 /**
  * The reference notification row over Remote-local presentation and feedback.
  * No Host Session events or Agent objects are retained here.
- * @module @ephemeral-ai/mayfly/remote/notifications
+ * @module @ephemeral-ai/mayfly/app/notifications
  */
 
 import type { Context, Events } from '@deepseek-ai/cordis'

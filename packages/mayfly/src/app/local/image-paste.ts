@@ -1,6 +1,6 @@
 /**
  * Remote-local clipboard image probes for Linux, Windows, and macOS.
- * @module @ephemeral-ai/mayfly/remote/local/image-paste
+ * @module @ephemeral-ai/mayfly/app/local/image-paste
  */
 
 import { mkdtemp, readFile, rm } from 'node:fs/promises'

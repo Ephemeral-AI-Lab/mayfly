@@ -1,4 +1,4 @@
-/** Live local/feature discovery without retaining Host Session objects. @module remote/command-catalog */
+/** Live local/feature discovery without retaining Host Session objects. @module @ephemeral-ai/mayfly/app/command-catalog */
 import type { RemoteFeatureCommandDefinition } from './features/commands.ts'
 
 /** Renderer-neutral command discovery data; execution stays with its owning router. */

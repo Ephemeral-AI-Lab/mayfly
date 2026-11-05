@@ -1,7 +1,7 @@
 /**
  * The rc.2 marketplace UI driven by the selected official Host plugin manager.
  * Host writes are explicit and never replayed after a lost response.
- * @module @ephemeral-ai/mayfly/remote/operations/plugin-marketplace
+ * @module @ephemeral-ai/mayfly/app/operations/plugin-marketplace
  */
 
 import type { MayflyStatusRegistration, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext, MayflyUiNode, MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'

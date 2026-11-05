@@ -1,6 +1,6 @@
 /**
  * Selection-scoped Host command catalog and local-first command execution.
- * @module @ephemeral-ai/mayfly/remote/editor/commands
+ * @module @ephemeral-ai/mayfly/app/editor/commands
  */
 
 import type { CommandSubmitAttachment } from '@deepseek-ai/dsh-commands/types'

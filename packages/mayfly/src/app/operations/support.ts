@@ -2,7 +2,7 @@
  * Shared seams for the operations composition: narrow mount options, one
  * retained side views, and backwards event pagination over the official
  * session journal.
- * @module @ephemeral-ai/mayfly/remote/operations/support
+ * @module @ephemeral-ai/mayfly/app/operations/support
  */
 
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'

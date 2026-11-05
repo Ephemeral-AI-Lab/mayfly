@@ -2,7 +2,7 @@
  * `/export` and `/save` render the Host conversation projection, with native
  * backwards `session.events` paging for full audit exports, written to caller
  * paths on the TUI machine with overwrite-aware ownership cleanup.
- * @module @ephemeral-ai/mayfly/remote/operations/export
+ * @module @ephemeral-ai/mayfly/app/operations/export
  */
 
 import { renameSync } from 'node:fs'

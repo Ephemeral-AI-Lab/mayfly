@@ -1,5 +1,5 @@
 /** Native Agent preset selection through shared choice surfaces.
- * @module @ephemeral-ai/mayfly/remote/features/presets
+ * @module @ephemeral-ai/mayfly/app/features/presets
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import { panel, ui, type MayflyListItem, type MayflyTranslate } from '@ephemeral-ai/mayfly-ui'

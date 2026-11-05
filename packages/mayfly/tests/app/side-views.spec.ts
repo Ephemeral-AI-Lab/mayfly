@@ -1,4 +1,4 @@
-/** Display recency and bounded native view residency over actual transcript sources. @module remote/tests/side-views */
+/** Display recency and bounded native view residency over actual transcript sources. @module @ephemeral-ai/mayfly/tests/app/side-views */
 import { describe, expect, it, vi } from 'vitest'
 import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'

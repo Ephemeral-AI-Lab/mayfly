@@ -1,6 +1,6 @@
 /**
  * Conversation-derived activity and official notification-lane panes for Remote.
- * @module @ephemeral-ai/mayfly/remote/features/activity
+ * @module @ephemeral-ai/mayfly/app/features/activity
  */
 
 import type { ConversationFacts, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'

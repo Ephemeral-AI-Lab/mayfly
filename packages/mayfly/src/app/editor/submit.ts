@@ -1,6 +1,6 @@
 /**
  * Single-use command/prompt submission, reversible drafts, and official queue writes.
- * @module @ephemeral-ai/mayfly/remote/editor/submit
+ * @module @ephemeral-ai/mayfly/app/editor/submit
  */
 
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'

@@ -1,4 +1,4 @@
-/** Frontend-owned greeting and launch-screen presentation over the native catalog. @module remote/startup */
+/** Frontend-owned greeting and launch-screen presentation over the native catalog. @module @ephemeral-ai/mayfly/app/startup */
 import { basename } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyScreenService } from '../core/screen.ts'

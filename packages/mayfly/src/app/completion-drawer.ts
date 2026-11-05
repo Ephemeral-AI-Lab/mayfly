@@ -1,4 +1,4 @@
-/** The standalone editor uses the canonical core completion painter. @module remote/completion-drawer */
+/** The standalone editor uses the canonical core completion painter. @module @ephemeral-ai/mayfly/app/completion-drawer */
 import type { Context } from '@deepseek-ai/cordis'
 import { CompletionDrawer, type CompletionDrawerSource } from '../core/completion-drawer.ts'
 import type { MayflyEditor, MayflySemanticColors } from '../core/types.ts'

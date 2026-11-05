@@ -1,6 +1,6 @@
 /**
  * Host-owned Workflow baseline/replacement stream behind the Remote Workflow pane.
- * @module @ephemeral-ai/mayfly/remote/features/workflow
+ * @module @ephemeral-ai/mayfly/app/features/workflow
  */
 
 import { ui, type MayflyPaneRegistration, type MayflyTranslate } from '@ephemeral-ai/mayfly-ui'

@@ -1,5 +1,5 @@
 /** Focused native DTO and shared-browser fixture for configuration surfaces.
- * @module @ephemeral-ai/mayfly-remote/tests/configuration-fixture
+ * @module @ephemeral-ai/mayfly/tests/app/configuration-fixture
  */
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'

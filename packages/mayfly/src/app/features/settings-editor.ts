@@ -1,6 +1,6 @@
 /**
  * Local settings-document editing through the core's exclusive terminal suspension.
- * @module @ephemeral-ai/mayfly/remote/features/settings-editor
+ * @module @ephemeral-ai/mayfly/app/features/settings-editor
  */
 
 import { editLocalText, resolveExternalEditorCommand } from '../local/external-editor.ts'

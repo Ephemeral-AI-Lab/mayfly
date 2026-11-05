@@ -1,4 +1,4 @@
-/** Independent command discovery, alias routing, file-mention, and draft contracts. @module mayfly-remote/tests/editor-contracts */
+/** Independent command discovery, alias routing, file-mention, and draft contracts. @module @ephemeral-ai/mayfly/tests/app/editor-contracts */
 import { describe, expect, it, vi } from 'vitest'
 import type { EditorHostFiles } from '../../src/app/editor/types.ts'
 import { activeMention, applyMention, formatMention, mentionItem, mentionPath, readHostFile } from '../../src/app/editor/mentions.ts'

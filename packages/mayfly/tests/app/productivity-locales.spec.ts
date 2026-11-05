@@ -1,5 +1,5 @@
 /** Locale catalogs belong to the feature Fiber and keep English and Chinese keys aligned.
- * @module @ephemeral-ai/mayfly-remote/tests/productivity-locales
+ * @module @ephemeral-ai/mayfly/tests/app/productivity-locales
  */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'

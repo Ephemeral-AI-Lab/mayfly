@@ -2,7 +2,7 @@
  * Assembly for the models/providers/account/onboarding/settings/permissions
  * feature family. The foundation adds one manifest entry and supplies account
  * transport I/O; shared app/runtime/panels remain untouched.
- * @module @ephemeral-ai/mayfly/remote/features/configuration
+ * @module @ephemeral-ai/mayfly/app/features/configuration
  */
 
 import { interpolateLocaleMessage, memoizedLocaleTranslator } from '../../frontend/locale.ts'

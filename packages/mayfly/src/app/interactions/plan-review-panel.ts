@@ -1,6 +1,6 @@
 /**
  * Remote plan-review choices, answers, and validation without Host-bound actions.
- * @module @ephemeral-ai/mayfly/remote/interactions/plan-review-panel
+ * @module @ephemeral-ai/mayfly/app/interactions/plan-review-panel
  */
 
 import type { MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply, MayflySurfaceNode } from '@ephemeral-ai/mayfly-ui'

@@ -1,6 +1,6 @@
 /**
  * Mount and operation contracts for Remote-owned editor features.
- * @module @ephemeral-ai/mayfly/remote/editor/types
+ * @module @ephemeral-ai/mayfly/app/editor/types
  */
 
 import type { MayflyComponents, MayflyEditor, MayflyKeymap, MayflyScreen, MayflySemanticColors } from '../../core/types.ts'

@@ -2,7 +2,7 @@
  * Structural feature-mount contracts mirrored from the Remote UI foundation.
  * The foundation context satisfies these types without a runtime dependency on
  * its coordinator module.
- * @module @ephemeral-ai/mayfly/remote/features/contracts
+ * @module @ephemeral-ai/mayfly/app/features/contracts
  */
 
 import type { Context } from '@deepseek-ai/cordis'

@@ -8,7 +8,7 @@ Host 保留原生 Web 传输和浏览器服务，同时禁用 Web 专用的
 `harness-dev-context` 系统提示段和 `DSH_WEB_URL` shell 上下文。模型不会被告知
 终端用户正在操作 Web GUI。
 
-独立前端是 `@ephemeral-ai/mayfly-remote`；Host 不内嵌该前端。
+独立前端是 `@ephemeral-ai/mayfly` TUI；Host 不内嵌该前端。
 
 ## Mayfly 创造模式 preset
 
@@ -17,8 +17,8 @@ Host bundle 通过原生 `@deepseek-ai/dsh-agent-preset` 注册表注册
 isolate 分组，添加说明两个进程边界的 persona，并从已发布的 Host payload 加载
 `cordis-plugin-development`、`mayfly-plugin-development` 和
 `editing-cordis-compositions` 技能。在原生 Session 的 turn 边界允许切换时，可用
-`/preset mayfly-cordis` 选择它。注册和技能加载均属于 Host；共享渲染包不发布旧
-preset 或进程内组合。
+`/preset mayfly-cordis` 选择它。注册和技能加载均属于 Host；TUI 包不发布
+preset。
 
 创造模式可以检查原生服务，编写普通持久 Host bundle 和 Agent preset。
 Harness `0.2.2-rc.1` 的 Cordis 模型工具只有 `cordis_inspect_list` 和
@@ -84,7 +84,7 @@ Mayfly Host 组合。安装器校验所选 dsh 版本，不修改全局安装。
 /path/to/dsh --profile mayfly-host-accept
 
 # TUI；复制 Host 唯一就绪行中的 URL
-MAYFLY_DSH_STARTUP_URL='<authenticated-url>' script/mayfly-remote.sh
+MAYFLY_DSH_STARTUP_URL='<authenticated-url>' script/mayfly-tui.sh
 ```
 
 认证 URL 不得放入 argv 或提交到仓库。设置、凭据、workspace 和 Session
@@ -93,4 +93,3 @@ MAYFLY_DSH_STARTUP_URL='<authenticated-url>' script/mayfly-remote.sh
 
 修改源码后运行 `pnpm run build` 并重启受影响进程。依赖图变化后重新安装专用
 profile。当前分支的分体包是开发产物，发布包安装须使用匹配且经过验证的发布集。
-旧的进程内 Mayfly composition 不再是受支持的替代安装路径。

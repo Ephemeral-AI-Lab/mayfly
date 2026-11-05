@@ -1,6 +1,6 @@
 /**
  * Remote question declarations and structured answer encoding over the shared wizard.
- * @module @ephemeral-ai/mayfly/remote/interactions/questionnaire
+ * @module @ephemeral-ai/mayfly/app/interactions/questionnaire
  */
 
 import type { MayflyPagePath, MayflyTranslate, MayflyUiEvent, MayflySurfaceNode } from '@ephemeral-ai/mayfly-ui'

@@ -1,6 +1,6 @@
 /**
  * Exact Host/Session/reconnection generation ownership for focused Remote features.
- * @module @ephemeral-ai/mayfly/remote/features/lifecycle
+ * @module @ephemeral-ai/mayfly/app/features/lifecycle
  */
 
 import type { HostClient } from '../../client/types.ts'

@@ -1,7 +1,7 @@
 /**
  * Once-per-Host-generation first-run onboarding after official capability,
  * settings, credential, and account readiness.
- * @module @ephemeral-ai/mayfly/remote/features/onboarding
+ * @module @ephemeral-ai/mayfly/app/features/onboarding
  */
 
 import type { SettingsDescribeValue, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'

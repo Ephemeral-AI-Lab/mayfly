@@ -1,6 +1,6 @@
 /**
  * Node image markers, official upload/read transport, and reversible prompt parts.
- * @module @ephemeral-ai/mayfly/remote/editor/attachments
+ * @module @ephemeral-ai/mayfly/app/editor/attachments
  */
 
 import type {

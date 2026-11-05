@@ -1,6 +1,6 @@
 /**
  * Transient command and operation feedback owned by the remote editor.
- * @module @ephemeral-ai/mayfly/remote/notice
+ * @module @ephemeral-ai/mayfly/app/notice
  */
 import type { MayflyFeedbackRecord } from '@ephemeral-ai/mayfly-ui'
 

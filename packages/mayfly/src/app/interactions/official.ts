@@ -1,6 +1,6 @@
 /**
  * Client-safe official approval/question DTOs and the narrow userQuestions Remote adapter.
- * @module @ephemeral-ai/mayfly/remote/interactions/official
+ * @module @ephemeral-ai/mayfly/app/interactions/official
  */
 
 import type { Context } from '@deepseek-ai/cordis'

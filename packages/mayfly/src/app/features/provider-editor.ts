@@ -1,5 +1,5 @@
 /** Shared provider tabs, drafts, and native revision-checked writes.
- * @module @ephemeral-ai/mayfly/remote/features/provider-editor
+ * @module @ephemeral-ai/mayfly/app/features/provider-editor
  */
 import type { CredentialInfo, LlmDiscoveredModel, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
 import { loadModelsDevIndex } from '../../interaction/models-dev.ts'

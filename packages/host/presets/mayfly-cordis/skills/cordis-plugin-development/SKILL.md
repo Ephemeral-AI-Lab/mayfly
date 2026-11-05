@@ -35,10 +35,10 @@ a tool ran, or replace it with an unreviewed helper tool.
 The Host runner retains a programmatic definition lifecycle, but it is not a
 Mayfly terminal extension channel. A dynamic `code.host` half runs on Host.
 A `code.client` half requires the native browser runner and browser approval;
-it does not run in the independent Node terminal frontend. Remote exposes no
-public UI hot-load or external frontend plugin installation entry in this
-release. A visible terminal prototype requires frontend source integration,
-build, restart, and acceptance; load `mayfly-plugin-development` for that path.
+it does not run in the independent Node terminal frontend. The TUI has no UI
+hot-load or external frontend plugin installer in this release. A visible
+terminal prototype is a plugin in a TUI source composition, built, restarted,
+and accepted; load `mayfly-plugin-development` for that path.
 
 ## Implement authorized Host work
 

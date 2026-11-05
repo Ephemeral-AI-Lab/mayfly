@@ -1,8 +1,8 @@
 flowchart TB
     HOST["原生 dsh Host 进程<br/>dsh-base · dsh-web-app · mayfly-host"]
     STATE["原生 Agent · Session · 模型 · 工具<br/>持久 Mayfly 投影"]
-    WIRE["官方 Client HTTP/WebSocket<br/>可序列化 Remote DTO · 原生文件路由"]
-    REMOTE["独立 Remote TUI 进程<br/>HostKey + SessionRef 选择 · 本地功能状态"]
+    WIRE["官方 Client HTTP/WebSocket<br/>可序列化 Host DTO · 原生文件路由"]
+    REMOTE["独立 TUI 进程<br/>HostKey + SessionRef 选择 · 本地功能状态"]
     UI["四项 Mayfly 直接 UI 服务<br/>pane · status · overlay · editor extension"]
     CORE["共享 Mayfly core<br/>唯一 pi-tui · ANSI · 终端 · 宽度 owner"]
     TERM["终端"]

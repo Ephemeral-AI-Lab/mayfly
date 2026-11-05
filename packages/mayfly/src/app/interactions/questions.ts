@@ -1,6 +1,6 @@
 /**
  * Remote user-question waterfalls, timed claims, and projection-backed continued answers.
- * @module @ephemeral-ai/mayfly/remote/interactions/questions
+ * @module @ephemeral-ai/mayfly/app/interactions/questions
  */
 
 import type { Context } from '@deepseek-ai/cordis'

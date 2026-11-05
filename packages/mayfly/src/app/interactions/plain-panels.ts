@@ -1,4 +1,4 @@
-/** Shared wire command panels for the standalone frontend. @module remote/interactions/plain-panels */
+/** Shared wire command panels for the standalone frontend. @module @ephemeral-ai/mayfly/app/interactions/plain-panels */
 import type { Context } from '@deepseek-ai/cordis'
 import { MAYFLY_VERSION } from '../../transcript/banner-content.ts'
 import { helpNode } from '../../interaction/help.ts'

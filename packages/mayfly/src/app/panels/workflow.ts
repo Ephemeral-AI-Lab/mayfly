@@ -1,6 +1,6 @@
 /**
  * Host Workflow DTOs mapped into the published Mayfly workflow presentation.
- * @module @ephemeral-ai/mayfly/remote/panels/workflow
+ * @module @ephemeral-ai/mayfly/app/panels/workflow
  */
 
 import { workflowNode, type WorkflowRunState } from '../../transcript/workflow-model.ts'

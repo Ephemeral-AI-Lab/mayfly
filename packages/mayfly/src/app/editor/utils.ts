@@ -1,6 +1,6 @@
 /**
  * Pure command, feedback, fuzzy-match, and draft helpers for the Remote editor.
- * @module @ephemeral-ai/mayfly/remote/editor/utils
+ * @module @ephemeral-ai/mayfly/app/editor/utils
  */
 
 import type { MayflyComponents, MayflySubmittedDraft } from '../../core/types.ts'

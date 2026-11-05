@@ -2,7 +2,7 @@
  * Single composition mount for the configuration feature family: local account
  * I/O, focused Host DTO adapters, the feature assembly, and its slash-command
  * surface registered into the foundation command registry.
- * @module @ephemeral-ai/mayfly/remote/configuration-composition
+ * @module @ephemeral-ai/mayfly/app/configuration-composition
  */
 
 import type { HostClient } from '../client/types.ts'

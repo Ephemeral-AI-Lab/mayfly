@@ -1,7 +1,7 @@
 /**
  * Local theme/locale application with optional official Host persistence.
  * Live choices never depend on a Remote-local settings store.
- * @module @ephemeral-ai/mayfly/remote/features/preferences
+ * @module @ephemeral-ai/mayfly/app/features/preferences
  */
 
 import type { SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'

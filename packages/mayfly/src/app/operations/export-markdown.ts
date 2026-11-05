@@ -2,7 +2,7 @@
  * Frozen rc.2 Markdown shapes over the Host's visible conversation projection
  * and the native audit wire stream: front-matter, overview, per-turn sections,
  * and readable attempt prefixes in the full audit.
- * @module @ephemeral-ai/mayfly/remote/operations/export-markdown
+ * @module @ephemeral-ai/mayfly/app/operations/export-markdown
  */
 
 import type { SessionWireEvent } from '@deepseek-ai/dsh-api-session-controller/types'

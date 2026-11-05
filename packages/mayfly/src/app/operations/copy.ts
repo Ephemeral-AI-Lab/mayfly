@@ -1,7 +1,7 @@
 /**
  * `/copy` reads the last visible assistant reply from the whole Host
  * conversation projection and hands it to the integrator's clipboard seam.
- * @module @ephemeral-ai/mayfly/remote/operations/copy
+ * @module @ephemeral-ai/mayfly/app/operations/copy
  */
 
 import { memoizedLocaleTranslator } from '../../frontend/locale.ts'

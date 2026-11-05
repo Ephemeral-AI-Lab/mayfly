@@ -1,7 +1,7 @@
 /**
  * Remote-local theme and locale presentation. Host persistence stays with the
  * official settings namespace; this module owns only live Cordis presentation.
- * @module @ephemeral-ai/mayfly/remote/features/presentation
+ * @module @ephemeral-ai/mayfly/app/features/presentation
  */
 
 import type { Context } from '@deepseek-ai/cordis'
