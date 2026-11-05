@@ -67,7 +67,10 @@ export function mountRemoteEditor(
   let disposed = false
   mountInteractionLocale(ctx)
   const t = memoizedLocaleTranslator(ctx, 'interaction').translate
-  const notifications = new RemoteNotifications(ctx, presentation)
+  // One refresh reads the facts once for the notification row, the frame and the footer.
+  let pass: RemoteEditorPresentation | undefined
+  const read = (): RemoteEditorPresentation => pass ?? presentation()
+  const notifications = new RemoteNotifications(ctx, read)
   editor.onSubmit = (value) => {
     if (disposed) return
     const text = value.trim()
@@ -109,7 +112,7 @@ export function mountRemoteEditor(
     ctx, editor, components: () => components, colors: () => colors,
     report: (id, feedback) => { notifications.report(id, feedback) },
     frame: ({ parked }) => {
-      const facts = presentation()
+      const facts = read()
       const title = (facts.title || (facts.view?.kind === 'primary' ? undefined : facts.view?.label))?.replace(/\s+/gu, ' ').trim() || undefined
       return Editor({
         ...title === undefined ? {} : { title }, shell: shellMode, parked,
@@ -117,14 +120,19 @@ export function mountRemoteEditor(
       })
     },
     footer: () => {
-      const hint = presentation().slashHint
+      const hint = read().slashHint
       return hint === undefined ? undefined : ui.text(hint, { tone: 'muted' })
     },
   })
   const sync = (): void => {
     if (disposed) return
-    notifications.refresh()
-    extensions.refreshPresentation()
+    pass = presentation()
+    try {
+      notifications.refresh()
+      extensions.refreshPresentation()
+    } finally {
+      pass = undefined
+    }
   }
   editor.onChange = () => {
     if (disposed) return

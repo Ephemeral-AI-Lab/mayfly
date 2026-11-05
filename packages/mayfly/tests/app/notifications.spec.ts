@@ -53,6 +53,19 @@ describe('Remote notification row', () => {
     expect(test.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
   })
 
+  it('reads the presentation once per refresh', async () => {
+    const ctx = new Context()
+    disposers.push(() => ctx.fiber.dispose())
+    await ctx.plugin(MayflyUiProvider)
+    await ctx.plugin(Frontend)
+    const presentation = vi.fn((): RemoteNotificationPresentation => ({ sessionId: 'one', running: true }))
+    const notifications = new RemoteNotifications(ctx, presentation)
+    disposers.push(() => { notifications.dispose() })
+    presentation.mockClear()
+    notifications.refresh()
+    expect(presentation).toHaveBeenCalledOnce()
+  })
+
   it('keeps multiline command detail in an app notice before a Session is selected', async () => {
     const test = await fixture()
     test.present({})

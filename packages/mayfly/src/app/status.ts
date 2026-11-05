@@ -43,6 +43,17 @@ export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot
   const context = ctx.mayflyStatus.register({ id: 'mayfly.status.context', priority: 6, band: 'right', overflow: 'hide' })
   let disposed = false
   const signatures: string[] = []
+  const published: (MayflyStatusNode | null)[] = []
+  // A refresh runs for every presentation change; the shed builders clone
+  // their nodes, so a node is rebuilt only when one of its inputs changed.
+  const built: ({ readonly inputs: readonly unknown[], readonly node: MayflyStatusNode | null } | undefined)[] = []
+  const memo = (index: number, inputs: readonly unknown[], build: () => MayflyStatusNode | null): MayflyStatusNode | null => {
+    const prior = built[index]
+    if (prior !== undefined && prior.inputs.every((input, at) => Object.is(input, inputs[at]))) return prior.node
+    const node = build()
+    built[index] = { inputs, node }
+    return node
+  }
   const refresh = (): void => {
     if (disposed) return
     const snapshot = read()
@@ -55,18 +66,26 @@ export function mountRemoteStatus(ctx: Context, read: () => RemoteStatusSnapshot
     const matches = selected == null || selected.provider === facts.provider && selected.model === facts.model
     const live = snapshot.access === undefined || snapshot.access === 'interactive'
     const effort = live ? selected?.reasoningEffort ?? (matches ? facts.reasoningEffort : undefined) : undefined
+    const modelName = facts.model ?? (facts.ref === undefined ? '' : 'no model')
+    const directory = facts.cwd || options.directory?.() || ''
+    const home = options.home?.() ?? ''
+    const usage = values['tokenUsage'] as ContextStatusValues['usage']
+    const pressure = values['contextPressure'] as ContextStatusValues['pressure']
+    const breakdown = values['contextBreakdown'] as ContextStatusValues['breakdown']
     const nodes: readonly (MayflyStatusNode | null)[] = [
-      buildModelStatusNode({
-        model: facts.model ?? (facts.ref === undefined ? '' : 'no model'),
+      memo(0, [modelName, facts.provider, effort], () => buildModelStatusNode({
+        model: modelName,
         ...facts.provider === undefined ? {} : { provider: facts.provider },
         ...effort === undefined ? {} : { effort },
-      }),
-      buildCwdStatusNode(shortenCwd(facts.cwd || options.directory?.() || '', options.home?.() ?? '')),
+      })),
+      memo(1, [directory, home], () => buildCwdStatusNode(shortenCwd(directory, home))),
       buildConversationStatus(snapshot.conversation, t),
-      live ? buildContextStatusNode({ usage: values['tokenUsage'] as ContextStatusValues['usage'], pressure: values['contextPressure'] as ContextStatusValues['pressure'], breakdown: values['contextBreakdown'] as ContextStatusValues['breakdown'] }) : null,
+      memo(3, [live, usage, pressure, breakdown], () => live ? buildContextStatusNode({ usage, pressure, breakdown }) : null),
     ]
     for (const [index, registration] of [model, cwd, conversation, context].entries()) {
       const node = nodes[index]!
+      if (index in published && published[index] === node) continue
+      published[index] = node
       const signature = JSON.stringify(node)
       if (signature === signatures[index]) continue
       signatures[index] = signature

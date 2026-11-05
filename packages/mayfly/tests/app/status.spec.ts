@@ -11,6 +11,13 @@ import { HostKey } from '../../src/client/types.ts'
 import { mountRemoteStatus, type RemoteStatusHandle, type RemoteStatusSnapshot } from '../../src/app/status.ts'
 import type { RemotePresentationFacts } from '../../src/transcript/remote-model.ts'
 
+// Counts the shed builds (each clones its nodes) without changing what they return.
+const shed = vi.hoisted(() => ({ builds: 0 }))
+vi.mock('../../src/transcript/status-shed.ts', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../src/transcript/status-shed.ts')>()
+  return { ...actual, shedNode: (...args: Parameters<typeof actual.shedNode>) => { shed.builds += 1; return actual.shedNode(...args) } }
+})
+
 const components = fakeMayflyComponents()
 const colors = plainColors()
 type MayflyFocusMode = Parameters<typeof focusModeNode>[0]
@@ -121,6 +128,27 @@ describe('mountRemoteStatus', () => {
     mounted.update({ ...current, values: { ...current.values, modelSelection: { next: { provider: 'deepseek', model: 'deepseek-chat' } } } })
     expect(mounted.rows(160).join('\n')).not.toContain(' Max')
     expect(mounted.status.list().filter(entry => entry.id !== 'mayfly.status.basic').map(entry => entry.revision)).toEqual(revisions)
+    await mounted.owner.dispose()
+  })
+
+  it('rebuilds a status node only when one of its inputs changes', async () => {
+    const values = {
+      modelSelection: { next: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'max' } },
+      contextPressure: { projectedTokens: 1024, contextWindow: 2048 },
+      tokenUsage: { uncachedInputTokens: 512, cacheReadTokens: 512, cacheWriteTokens: 0 },
+    }
+    const mounted = await mount({ presentation: facts(), values }, { home: () => '/home/host' })
+    const builds = shed.builds
+    expect(builds).toBeGreaterThan(0)
+    // Each streamed chunk re-reads equal presentation facts.
+    for (let chunk = 0; chunk < 10; chunk += 1) mounted.update({ presentation: facts(), values: { ...values } })
+    expect(shed.builds).toBe(builds)
+    mounted.update({ presentation: facts({ cwd: '/home/host/work/other' }), values })
+    expect(shed.builds).toBe(builds + 1)
+    expect(mounted.rows(160).join('\n')).toContain('~/work/other')
+    mounted.update({ presentation: facts({ cwd: '/home/host/work/other' }), values: { ...values, contextPressure: { projectedTokens: 1536, contextWindow: 2048 } } })
+    expect(shed.builds).toBeGreaterThan(builds + 1)
+    expect(mounted.rows(160).join('\n')).toContain('75%')
     await mounted.owner.dispose()
   })
 
