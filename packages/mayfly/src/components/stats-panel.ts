@@ -37,14 +37,14 @@ export interface AccountTabFacts {
 }
 
 /** The date range line and the workspace scope, shared by History and Models. */
-export interface StatsRangeFacts {
+interface StatsRangeFacts {
   readonly ranges: readonly { readonly id: string, readonly label: string, readonly active: boolean }[]
   /** `all workspaces` or `this workspace`, at the right of the range line. */
   readonly scope: string
 }
 
 /** The index's state under the figures. */
-export interface StatsIndexFacts {
+interface StatsIndexFacts {
   /** `indexing 12/80 sessions`, with the gap spinner, while sessions are read. */
   readonly loading?: string | undefined
   /** `latest 300 sessions`, `2 sessions could not be read`. */
@@ -52,7 +52,7 @@ export interface StatsIndexFacts {
 }
 
 /** The texts of the keyed actions (their hint labels). */
-export interface StatsKeys {
+interface StatsKeys {
   readonly range: string
   readonly workspace: string
   readonly copy: string

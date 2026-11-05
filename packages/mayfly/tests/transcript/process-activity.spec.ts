@@ -4,8 +4,8 @@
 import { describe, expect, it } from 'vitest'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../../src/frontend/locale.ts'
 import { diffStat, elapsedText, summarizeProcess, toolActivity, type ProcessMemberFact } from '../../src/transcript/process-activity.ts'
-import { flightLabel, kindOf, unitPhrase } from '../../src/transcript/tool-kinds.ts'
-import { ACTIVITY_LOCALE, TRANSCRIPT_LOCALE } from '../../src/transcript/locale.ts'
+import { unitPhrase } from '../../src/transcript/tool-kinds.ts'
+import { TRANSCRIPT_LOCALE } from '../../src/transcript/locale.ts'
 
 const zh: MayflyTranslate = (key, values) => interpolateLocaleMessage(TRANSCRIPT_LOCALE.zh[key] ?? key, values)
 const member = (activity: ProcessMemberFact['activity'], overrides: Partial<ProcessMemberFact> = {}): ProcessMemberFact => ({ activity, running: false, ...overrides })
@@ -68,20 +68,5 @@ describe('process activity', () => {
     expect(elapsedText(9_960)).toBe('10s')
     expect(elapsedText(3_000)).toBe('3s')
     expect(elapsedText(65_000)).toBe('1m 5s')
-  })
-
-  it('names running and preparing categories for the activity row, one category by name and several by count', () => {
-    expect(kindOf('commands').running).toBe('Running commands')
-    expect(kindOf('subagents').running).toBe('Coordinating subagents')
-    expect(kindOf('edit').preparing).toBe('Preparing to edit files')
-    expect(flightLabel([{ activity: 'commands', preparing: false }, { activity: 'commands', preparing: false }])).toEqual({ key: 'Running commands' })
-    expect(flightLabel([{ activity: 'edit', preparing: true }])).toEqual({ key: 'Preparing to edit files' })
-    expect(flightLabel([{ activity: 'read', preparing: false }, { activity: 'commands', preparing: false }])).toEqual({ key: 'Running {count} tools', values: { count: 2 } })
-    expect(flightLabel([{ activity: 'read', preparing: true }, { activity: 'edit', preparing: true }])).toEqual({ key: 'Preparing {count} tool calls', values: { count: 2 } })
-    expect(ACTIVITY_LOCALE.zh[kindOf('commands').running]).toBe('正在运行命令')
-    expect(ACTIVITY_LOCALE.zh[kindOf('write').preparing]).toBe('准备写入文件')
-    // The retired reasoning-group titles are gone from both catalogs.
-    expect(TRANSCRIPT_LOCALE.zh['Analyzing the request']).toBeUndefined()
-    expect(TRANSCRIPT_LOCALE.zh['Analysis completed']).toBeUndefined()
   })
 })

@@ -760,7 +760,7 @@ const SETTLE_PASSES = 6
 const SETTLE_FRAMES = 8
 
 /** Constructor options for {@link startMayflyTerminal}. */
-export interface MayflyTerminalOptions {
+interface MayflyTerminalOptions {
   /**
    * The probed terminal background ('dark'/'light'), already classified by
    * `backgroundFromRgb`. The caller owns the asynchronous probe so this

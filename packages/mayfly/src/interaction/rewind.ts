@@ -6,7 +6,7 @@ import { panel, ui, type MayflyTranslate, type MayflyUiNode } from '@ephemeral-a
 import { interpolateLocaleMessage } from '../frontend/locale.ts'
 
 /** Validated native event shape used by the readonly rewind presentation. */
-export interface RewindEvent {
+interface RewindEvent {
   readonly type: string
   readonly seq: number
   readonly data: unknown

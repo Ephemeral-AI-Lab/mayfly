@@ -17,7 +17,7 @@
 import { ellipsize } from './present.ts'
 
 /** One recognized top-level `<tag>value</tag>` pair of an envelope. */
-export interface EnvelopePair {
+interface EnvelopePair {
   readonly tag: string
   readonly value: string
 }

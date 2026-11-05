@@ -21,7 +21,7 @@ export const PROMPT_MAX_LINES = 4
 const DIFF_CONTEXT = 1
 
 /** The tallest a prompt's picture paints, in terminal rows. */
-export const PROMPT_IMAGE_MAX_ROWS = 12
+const PROMPT_IMAGE_MAX_ROWS = 12
 
 /** One image attached to a prompt: the reference the host resolves to bytes, and the text shown until it does. */
 export interface StreamImage {
@@ -371,7 +371,7 @@ function withUniqueIds(items: MayflyListItem[]): MayflyListItem[] {
 export const STREAM = Object.freeze({ list: 'stream', keys: 'stream.keys', copy: 'copy', copyRaw: 'copy-raw', open: 'open', queuedEdit: 'queued-edit', queuedSteer: 'queued-steer', queuedCancel: 'queued-cancel', queuedUndo: 'queued-undo', findDown: 'find-down', findUp: 'find-up', matchPrev: 'match-prev', matchNext: 'match-next', matchAgain: 'match-again', matchBack: 'match-back' })
 
 /** Where the stream's cursor is sent from outside: the newest row when the reader moves focus up into the stream. */
-export interface StreamCursor {
+interface StreamCursor {
   /** Changes every time the cursor is sent; the list moves it once per value. */
   readonly rev: number
   /** The rows to land on, the first that the stream draws; the newest row when none is given or none is drawn. */

@@ -1,0 +1,515 @@
+/** Actual native question waterfalls, acknowledged UI replies, countdown claims, and stale Host fencing. @module */
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
+import { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { visibleWidth } from '@earendil-works/pi-tui'
+import { mountActivityFeature } from '../../src/app/features/activity.ts'
+import { plain } from './render-fixture.ts'
+import { questionFixture, sampleQuestion, callId, flushQuestions } from './question-feature-fixture.ts'
+
+const fixtures: Awaited<ReturnType<typeof questionFixture>>[] = []
+afterEach(async () => { for (const fixture of fixtures.splice(0).reverse()) await fixture.cleanup(); vi.useRealTimers(); vi.clearAllMocks() })
+async function fixture() { const result = await questionFixture(); fixtures.push(result); return result }
+const continued = (id = callId) => ({ active: [{ callId: id, questions: [sampleQuestion], state: 'continued' }] })
+
+describe('Remote question interactions', () => {
+  it('answers a native single question only through the actual shared wizard acknowledgement', async () => {
+    const f = await fixture()
+    const pending = f.request()
+    expect(f.decisionWaits).toEqual([{ kind: 'answer' }])
+    expect(f.plans).toEqual([[]])
+    expect(JSON.stringify(f.model().node)).toContain('Choose one route')
+    f.submit('1')
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'choice', selected: ['Second'] }] })
+    expect(f.next).not.toHaveBeenCalled()
+    expect(f.answer).not.toHaveBeenCalled()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    expect(f.locales.size).toBe(0)
+    expect(f.decisionWaits.at(-1)).toBeUndefined()
+  })
+
+  it('delegates empty, unscoped, foreign Session and invalid timed requests without opening UI', async () => {
+    const f = await fixture()
+    await expect(f.request({ questions: [] })).resolves.toEqual({ answers: [] })
+    f.scope(undefined)
+    await f.request()
+    f.scope(SessionId('another-session'))
+    await f.request()
+    f.scope(SessionId('same-session'))
+    await f.request({ wait: { timed: true } as never })
+    expect(f.next).toHaveBeenCalledTimes(4)
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    expect(f.decisionWaits.at(-1)).toBeUndefined()
+  })
+
+  it('keeps the native abort and user dismissal errors distinct', async () => {
+    const f = await fixture()
+    const aborted = new AbortController(); aborted.abort()
+    await expect(f.request({ signal: aborted.signal })).rejects.toMatchObject({ name: 'UserQuestionError', code: 'ASK_ABORTED' })
+    const cancelled = f.request()
+    f.model().requestClose()
+    await expect(cancelled).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
+    const abort = new AbortController()
+    const pending = f.request({ signal: abort.signal })
+    abort.abort()
+    await expect(pending).rejects.toMatchObject({ code: 'ASK_ABORTED' })
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    expect(f.decisionWaits.at(-1)).toBeUndefined()
+  })
+
+  it.each(['detach', 'deselect', 'rebind', 'switchHost', 'reconnect', 'dispose'] as const)('delegates old waterfalls and rejects late UI actions after %s', async action => {
+    const f = await fixture()
+    const pending = f.request({ wait: { callId } })
+    const old = f.model()
+    f[action]()
+    await expect(pending).resolves.toEqual({ answers: [] })
+    old.emit({ kind: 'selection-accept', pagePath: [], controlId: 'options', selectedIds: ['0'] })
+    await flushQuestions()
+    expect(f.answer).not.toHaveBeenCalled()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    if (action === 'detach' || action === 'dispose') expect(f.states.size).toBe(0)
+    expect(f.decisionWaits.at(-1)).toBeUndefined()
+  })
+
+  it('delegates a duplicate live native call while the first claim remains owned by its original waterfall', async () => {
+    const f = await fixture()
+    const pending = f.request({ wait: { callId } })
+    await expect(f.request({ wait: { callId } })).resolves.toEqual({ answers: [] })
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+    f.submit()
+    await expect(pending).resolves.toMatchObject({ answers: [{ selected: ['First'] }] })
+    expect(f.next).toHaveBeenCalledOnce()
+  })
+
+  it('uses the real multi-question wizard and preserves custom drafts across locale refresh', async () => {
+    const f = await fixture()
+    const pending = f.request({ questions: [sampleQuestion, { id: 'why', question: 'Explain why' }] })
+    expect(f.decisionWaits.at(-1)).toEqual({ kind: 'answer' })
+    const model = f.model()
+    model.emit({ kind: 'selection-accept', pagePath: [{ controlId: 'questions', itemId: 'choice' }], controlId: 'options', selectedIds: ['1'] })
+    model.updateChoice({ pagePath: [{ controlId: 'questions', itemId: 'why' }], controlId: 'options' }, { kind: 'input', id: 'other', text: '保留 exact draft' })
+    f.locale('zh')
+    model.invoke('questions.next.why', [{ controlId: 'questions', itemId: 'why' }])
+    model.invoke('questions.submit', [{ controlId: 'questions', itemId: 'questions.review' }])
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'choice', selected: ['Second'] }, { id: 'why', selected: [], custom: '保留 exact draft' }] })
+    expect(f.decisionWaits.at(-1)).toBeUndefined()
+  })
+
+  it('retains multiple native choices alongside a custom answer and renders option details and the plan document', async () => {
+    const f = await fixture()
+    const pending = f.request({ questions: [
+      { id: 'many', question: 'Choose compatible routes', multiSelect: true, detail: '## Native route details', options: [{ label: 'One', description: 'First native description' }, { label: 'Two', description: 'Second native description' }] },
+      { id: 'note', question: 'Anything else?' },
+    ] })
+    const model = f.model()
+    expect(JSON.stringify(model.node)).toContain('select all that apply')
+    expect(JSON.stringify(model.node)).toContain('First native description')
+    expect(JSON.stringify(model.node)).toContain('Native route details')
+    const many = [{ controlId: 'questions', itemId: 'many' }]
+    model.updateChoice({ pagePath: many, controlId: 'options' }, { kind: 'select', ids: ['0', '1'] })
+    model.updateChoice({ pagePath: many, controlId: 'options' }, { kind: 'input', id: 'other', text: 'Also preserve this constraint' })
+    model.invoke('questions.next.many', many)
+    model.invoke('questions.next.note', [{ controlId: 'questions', itemId: 'note' }])
+    model.invoke('questions.submit', [{ controlId: 'questions', itemId: 'questions.review' }])
+    await expect(pending).resolves.toEqual({ answers: [{ id: 'many', selected: ['One', 'Two'], custom: 'Also preserve this constraint' }, { id: 'note', selected: [] }] })
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('renders a claimed native deadline, hides a timed question on Escape, and delegates when the foreground wait ends', async () => {
+    const f = await fixture()
+    const pending = f.request({ wait: { callId, timed: true } })
+    expect(f.attachWait).toHaveBeenCalledWith(SessionId('same-session'), callId, expect.any(AbortSignal))
+    f.waits[0]!.opening.resolve({ done: false, value: { remainingMs: 5000 } })
+    await flushQuestions()
+    const model = f.model()
+    expect(JSON.stringify(model.node)).toContain('expires in 5s')
+    model.requestClose()
+    await flushQuestions()
+    expect(f.next).not.toHaveBeenCalled()
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+    expect(f.decisionWaits.at(-1)).toEqual({ kind: 'answer' })
+    f.waits[0]!.ending.resolve({ done: true, value: undefined })
+    await expect(pending).rejects.toThrow('foreground question wait ended')
+    await flushQuestions()
+    expect(f.waits[0]!.dispose).toHaveBeenCalledOnce()
+    expect(f.decisionWaits.at(-1)).toBeUndefined()
+  })
+
+  it('delegates an empty native timed claim and disposes it without showing a stale card', async () => {
+    const f = await fixture()
+    const pending = f.request({ wait: { callId, timed: true } })
+    f.waits[0]!.opening.resolve({ done: true, value: undefined })
+    await expect(pending).resolves.toEqual({ answers: [] })
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    expect(f.waits[0]!.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('answers a durable continued question through its exact native Session and removes only its own card', async () => {
+    const f = await fixture()
+    f.questions.set(continued())
+    f.submit()
+    await flushQuestions()
+    expect(f.answer).toHaveBeenCalledExactlyOnceWith(SessionId('same-session'), callId, { answers: [{ id: 'choice', selected: ['First'] }] })
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('does not reoffer a continued question with an already queued native reply and removes withdrawn rows', async () => {
+    const f = await fixture()
+    f.inbox.set({ 'next-step': [{ source: { kind: 'user-question-reply', callId } }], 'next-turn': [] })
+    f.questions.set(continued())
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    f.inbox.set({ 'next-step': [], 'next-turn': [] })
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+    f.questions.set({ active: [] })
+    await flushQuestions()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    expect(f.answer).not.toHaveBeenCalled()
+  })
+
+  it('retires continued answers on reconnect, waits for a new baseline, and accepts the same call identity in the new generation', async () => {
+    const f = await fixture()
+    f.questions.set(continued())
+    const old = f.model()
+    f.reconnect()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    old.emit({ kind: 'selection-accept', pagePath: [], controlId: 'options', selectedIds: ['0'] })
+    await flushQuestions()
+    expect(f.answer).not.toHaveBeenCalled()
+    f.questions.set(continued())
+    f.submit('1')
+    await flushQuestions()
+    expect(f.answer).toHaveBeenCalledExactlyOnceWith(SessionId('same-session'), callId, { answers: [{ id: 'choice', selected: ['Second'] }] })
+  })
+
+  it.each([new Error('answer transport failed'), 'answer transport failed'])('surfaces current continued-answer transport failure and permits an explicit fresh answer: %s', async error => {
+    const f = await fixture()
+    f.questions.set(continued())
+    f.answer.mockRejectedValueOnce(error)
+    f.submit()
+    await flushQuestions()
+    expect(f.options.notice.set).toHaveBeenCalledWith('answer transport failed')
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+    f.submit('1')
+    await flushQuestions()
+    expect(f.answer).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps an admitted continued write scoped to its retired Host and never retries its late failure', async () => {
+    const f = await fixture()
+    const admitted = Promise.withResolvers<Awaited<ReturnType<typeof f.answer>>>()
+    f.answer.mockReturnValueOnce(admitted.promise)
+    f.questions.set(continued())
+    f.submit()
+    await flushQuestions()
+    expect(f.answer).toHaveBeenCalledOnce()
+    f.reconnect()
+    admitted.reject(new Error('old generation failure'))
+    await flushQuestions()
+    expect(f.options.notice.set).not.toHaveBeenCalled()
+    expect(f.answer).toHaveBeenCalledOnce()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('does not borrow the same SessionId or call identity from another Host', async () => {
+    const f = await fixture()
+    f.questions.set(continued(ToolCallId('same-call')))
+    f.switchHost()
+    await flushQuestions()
+    expect(f.answer).not.toHaveBeenCalled()
+    f.scope(SessionId('same-session'))
+    await expect(f.request({ wait: { callId: ToolCallId('same-call') } })).resolves.toEqual({ answers: [] })
+  })
+
+  it('replaces an aborted waterfall with the same native call without allowing its old completion to retire the new one', async () => {
+    const f = await fixture()
+    const abort = new AbortController()
+    const first = f.request({ wait: { callId }, signal: abort.signal })
+    abort.abort()
+    const second = f.request({ wait: { callId } })
+    await expect(first).resolves.toEqual({ answers: [] })
+    expect(f.decisionWaits.at(-1)).toEqual({ kind: 'answer' })
+    f.submit()
+    await expect(second).resolves.toMatchObject({ answers: [{ selected: ['First'] }] })
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('reuses a projected open call after its live answer, then exposes its native continued state', async () => {
+    const f = await fixture()
+    f.questions.set({ active: [{ callId, questions: [sampleQuestion], state: 'open' }] })
+    const first = f.request({ wait: { callId } })
+    f.submit()
+    await first
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    f.questions.set(continued())
+    f.notify()
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+    const model = f.model()
+    model.updateChoice({ pagePath: [], controlId: 'options' }, { kind: 'input', id: 'other', text: 'persistent hidden draft' })
+    model.requestClose()
+    model.answerDecision(true)
+    await flushQuestions()
+    expect(f.ctx.mayflyOverlays.list()[0]?.hidden).toBe(true)
+    expect(f.answer).not.toHaveBeenCalled()
+    f.notify()
+    expect(f.ctx.mayflyOverlays.list()[0]?.hidden).toBe(true)
+    f.questions.set({ active: [{ callId, questions: [sampleQuestion], state: 'open' }] })
+    f.questions.set(continued())
+    expect(f.ctx.mayflyOverlays.list()[0]?.hidden).toBe(false)
+    expect(f.model().choice({ pagePath: [], controlId: 'options' })?.inputs?.other).toBe('persistent hidden draft')
+    f.questions.set({ active: [] })
+    await flushQuestions()
+  })
+
+  it.each(['error', 'refused'] as const)('reports a native continued-answer %s and restores a fresh explicit answer card', async mode => {
+    const f = await fixture()
+    f.questions.set(continued())
+    f.answer.mockResolvedValueOnce(mode === 'error' ? { ok: false, error: { message: 'native answer refused' } } as never : { ok: true, value: false })
+    f.submit()
+    await flushQuestions()
+    expect(f.options.notice.set).toHaveBeenCalledWith(mode === 'error' ? 'native answer refused' : 'The question is no longer waiting for an answer')
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+  })
+
+  it('drops malformed and unrelated inbox records while respecting queued replies in both native lanes', async () => {
+    const f = await fixture()
+    f.inbox.set({ 'next-step': [null, {}, { source: [] }, { source: { kind: 'other' } }, { source: { kind: 'user-question-reply', callId: 3 } }], 'next-turn': [{ source: { kind: 'user-question-reply', callId } }] })
+    f.questions.set(continued())
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+    f.inbox.set([])
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+    f.questions.set({ active: [] })
+  })
+
+  it('propagates native claim-opening failure and delegates a claim retired while its opening was pending', async () => {
+    const f = await fixture()
+    const failed = f.request({ wait: { callId, timed: true } })
+    f.waits[0]!.opening.reject(new Error('claim failed'))
+    await expect(failed).rejects.toThrow('claim failed')
+    const retired = f.request({ wait: { callId, timed: true } })
+    f.reconnect()
+    await expect(retired).resolves.toEqual({ answers: [] })
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('accepts a timed answer before the native claim ends and releases that claim when native completion arrives', async () => {
+    const f = await fixture()
+    const pending = f.request({ wait: { callId, timed: true } })
+    f.waits[0]!.opening.resolve({ done: false, value: { remainingMs: 0 } })
+    await flushQuestions()
+    expect(JSON.stringify(f.model().node)).toContain('expires in 0s')
+    f.submit()
+    await expect(pending).resolves.toMatchObject({ answers: [{ selected: ['First'] }] })
+    expect(f.waits[0]!.dispose).not.toHaveBeenCalled()
+    f.waits[0]!.ending.resolve({ done: true, value: undefined })
+    await flushQuestions()
+    expect(f.waits[0]!.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('uses the reference plan-review card and preserves revision validation and native decline labels', async () => {
+    const f = await fixture()
+    const question = { ...sampleQuestion, detail: 'Plan document', intent: { kind: 'plan-review' as const, approve: 'First' } }
+    const first = f.request({ questions: [question] })
+    expect(f.decisionWaits.at(-1)).toEqual({ kind: 'approval' })
+    expect(f.plans.at(-1)).toEqual([{ type: 'plan', toolName: 'plan' }])
+    const model = f.model()
+    model.emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision.options', selectedIds: ['keep'] })
+    await flushQuestions()
+    expect(model.form({ pagePath: [], formId: 'decision.note' })?.fields.note?.error).toBe('Write what to change first')
+    model.edit({ pagePath: [], formId: 'decision.note', fieldId: 'note' }, 'add a test')
+    model.invoke('send-note')
+    await expect(first).resolves.toEqual({ answers: [{ id: 'choice', selected: [], custom: 'add a test' }] })
+    expect(f.decisionWaits.at(-1)).toBeUndefined()
+    expect(f.plans.at(-1)).toEqual([])
+    const declined = f.request({ questions: [{ ...question, header: 'Review this plan', intent: { ...question.intent, callId: ToolCallId('native-plan-tool') } }] })
+    expect(f.plans.at(-1)).toEqual([{ type: 'plan', toolName: 'Review this plan', callId: 'native-plan-tool' }])
+    f.model().requestClose()
+    await expect(declined).resolves.toEqual({ answers: [{ id: 'choice', selected: ['Second'] }] })
+    const approved = f.request({ questions: [question] })
+    f.model().emit({ kind: 'selection-accept', pagePath: [], controlId: 'decision.options', selectedIds: ['approve'] })
+    await expect(approved).resolves.toEqual({ answers: [{ id: 'choice', selected: ['First'] }] })
+  })
+
+  it('keeps an unchanged connection and topology snapshot from retiring a pending waterfall', async () => {
+    const f = await fixture()
+    const pending = f.request()
+    const model = f.model()
+    f.notify()
+    for (const callback of f.states) callback()
+    expect(f.model()).toBe(model)
+    f.submit()
+    await pending
+  })
+
+  it('delegates a stale anonymous answer and tolerates queued topology and projection callbacks after unload', async () => {
+    const f = await fixture()
+    const pending = f.request()
+    const queuedTopology = [...f.topology]
+    const queuedProjection = [...f.questions.listeners]
+    vi.spyOn(f.options.hosts, 'current').mockReturnValue(undefined)
+    f.submit()
+    await expect(pending).resolves.toEqual({ answers: [] })
+    f.dispose()
+    for (const callback of [...queuedTopology, ...queuedProjection]) callback()
+    f.dispose()
+    await expect(f.request({ wait: { callId, timed: true } })).resolves.toEqual({ answers: [] })
+    expect(f.attachWait).not.toHaveBeenCalled()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('cleans up an anonymous waterfall twice safely while preserving a native fallback rejection', async () => {
+    const f = await fixture()
+    const failure = new Error('native fallback failed')
+    const pending = f.request({}, vi.fn(async () => { throw failure }))
+    f.detach()
+    await expect(pending).rejects.toBe(failure)
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it.each(['reconnect', 'switchHost'] as const)('rejects a prepared continued acknowledgement published after %s', async action => {
+    const f = await fixture()
+    f.questions.set(continued())
+    const entry = f.ctx.mayflyOverlays.list()[0]!
+    const prepared = await entry.events.prepare({ kind: 'submit', pagePath: [], controlId: 'submit', submission: {
+      actionId: 'answer', draftRevision: 0, source: entry.source, forms: [],
+      selections: [{ pagePath: [], controlId: 'options', selectedIds: ['0'] }],
+    } }, { surfaceId: entry.id, revision: entry.revision, source: entry.source, operationId: 'old-question-answer', signal: new AbortController().signal, report: vi.fn() })
+    f[action]()
+    prepared.publish()
+    await flushQuestions()
+    expect(f.answer).not.toHaveBeenCalled()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('refuses continued writes when a native queued reply wins before acknowledgement settles', async () => {
+    const f = await fixture()
+    f.questions.set(continued())
+    f.submit()
+    f.inbox.set({ 'next-step': [{ source: { kind: 'user-question-reply', callId } }] })
+    await flushQuestions()
+    expect(f.answer).not.toHaveBeenCalled()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('ignores a successful continued write after reconnect and does not remove a new live waterfall', async () => {
+    const f = await fixture()
+    const admitted = Promise.withResolvers<Awaited<ReturnType<typeof f.answer>>>()
+    f.answer.mockReturnValueOnce(admitted.promise)
+    f.questions.set(continued())
+    f.submit()
+    await flushQuestions()
+    const live = f.request({ wait: { callId } })
+    admitted.resolve({ ok: true, value: true })
+    await flushQuestions()
+    expect(f.ctx.mayflyOverlays.list()).toHaveLength(1)
+    f.submit('1')
+    await expect(live).resolves.toMatchObject({ answers: [{ selected: ['Second'] }] })
+    f.questions.set(continued(ToolCallId('late-success')))
+    const late = Promise.withResolvers<Awaited<ReturnType<typeof f.answer>>>()
+    f.answer.mockReturnValueOnce(late.promise)
+    f.submit()
+    await flushQuestions()
+    f.reconnect()
+    late.resolve({ ok: true, value: true })
+    await flushQuestions()
+    expect(f.options.notice.set).not.toHaveBeenCalled()
+  })
+
+  it('does not reconcile native projection callbacks under a silently replaced Session binding', async () => {
+    const f = await fixture()
+    vi.spyOn(f.options.hosts, 'current').mockReturnValue({ client: f.client, binding: { ...f.binding }, ref: { host: f.client.key, sessionId: SessionId('same-session') } })
+    f.questions.set(continued())
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('replaces an aborted timed claim while preserving the new timer and its new answer', async () => {
+    const f = await fixture()
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    const abort = new AbortController()
+    const first = f.request({ wait: { callId, timed: true }, signal: abort.signal })
+    f.waits[0]!.opening.resolve({ done: false, value: { remainingMs: 5000 } })
+    await flushQuestions()
+    vi.advanceTimersByTime(1000)
+    expect(JSON.stringify(f.model().node)).toContain('expires in 4s')
+    abort.abort()
+    const second = f.request({ wait: { callId, timed: true } })
+    await expect(first).resolves.toEqual({ answers: [] })
+    f.waits[1]!.opening.resolve({ done: false, value: { remainingMs: 2000 } })
+    await flushQuestions()
+    f.submit()
+    await expect(second).resolves.toMatchObject({ answers: [{ selected: ['First'] }] })
+    f.waits[1]!.ending.resolve({ done: true, value: undefined })
+    await flushQuestions()
+  })
+
+  it('delegates a timed opening that becomes aborted before its native first value is consumed', async () => {
+    const f = await fixture()
+    const abort = new AbortController()
+    const pending = f.request({ wait: { callId, timed: true }, signal: abort.signal })
+    f.waits[0]!.opening.resolve({ done: false, value: { remainingMs: 5000 } })
+    abort.abort()
+    await expect(pending).resolves.toEqual({ answers: [] })
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('retires a mounted countdown on detach and tolerates reconnect with no remaining cards', async () => {
+    const f = await fixture()
+    f.reconnect()
+    const pending = f.request({ wait: { callId, timed: true } })
+    f.waits[0]!.opening.resolve({ done: false, value: { remainingMs: 5000 } })
+    await flushQuestions()
+    f.detach()
+    await expect(pending).resolves.toEqual({ answers: [] })
+    expect(f.waits[0]!.dispose).toHaveBeenCalledOnce()
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('delegates a duplicate claim while native claim disposal is already settling the first waterfall', async () => {
+    const f = await fixture()
+    const pending = f.request({ wait: { callId, timed: true } })
+    f.waits[0]!.opening.resolve({ done: true, value: undefined })
+    await Promise.resolve()
+    await expect(f.request({ wait: { callId } })).resolves.toEqual({ answers: [] })
+    await expect(pending).resolves.toEqual({ answers: [] })
+    expect(f.next).toHaveBeenCalledTimes(2)
+    expect(f.ctx.mayflyOverlays.list()).toEqual([])
+  })
+
+  it('derives waiting from remaining native waterfalls when another request settles', async () => {
+    const f = await fixture()
+    const first = f.request()
+    const second = f.request({ questions: [sampleQuestion, { id: 'why', question: 'Explain why' }] })
+    f.submit()
+    await first
+    expect(f.decisionWaits.at(-1)).toEqual({ kind: 'answer' })
+    f.model().requestClose()
+    await expect(second).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
+    expect(f.decisionWaits.at(-1)).toBeUndefined()
+  })
+
+  it.each([1, 20, 40, 80, 120])('renders the shared answer waiting row and tip at width %s until its native waterfall ends', async width => {
+    const f = await fixture()
+    const disposeActivity = mountActivityFeature(f.options)
+    const rows = (): string[] => {
+      const node = f.ctx.mayflyPanes.list().find(pane => pane.id === 'mayfly.pane.activity')?.node
+      if (node == null) return []
+      const compiled = compileMayflyUiNode(node, { components: f.options.components, colors: f.options.colors, getViewport: () => ({ columns: width, rows: 24 }), screenMode: 'alternate', emit: () => {} })
+      if (!compiled.ok) throw new Error(compiled.message)
+      return plain(compiled.value.component.render(width))
+    }
+    try {
+      const pending = f.request()
+      f.ctx.emit('mayfly/editor-slot-swapped', true)
+      const waiting = rows()
+      expect(waiting).toHaveLength(3)
+      expect(waiting.every(row => visibleWidth(row) <= width)).toBe(true)
+      if (width >= 40) {
+        expect(waiting[1]).toContain('Waiting for your answer · 0s')
+        expect(waiting[2]).toContain('Tip: Esc to interrupt the turn')
+      }
+      f.submit()
+      await pending
+      expect(rows()).toEqual([])
+    } finally { disposeActivity() }
+  })
+})

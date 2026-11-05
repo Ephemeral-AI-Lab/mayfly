@@ -479,6 +479,8 @@ export class NodeSlotHost {
     private readonly viewport: (region: MayflyNodeSlotRegion) => MayflyUiViewport,
     private readonly focusPromptHost: () => void,
     private readonly contentStartOf: (id: string) => number | undefined,
+    /** Whether the screen is still the provided one; a lease that ends after it stopped is part of the screen's teardown. */
+    private readonly provided: () => boolean = () => true,
   ) {}
 
   /** The line the slot's first row stands on among the scroll content's rows, or `undefined` when it is not in the scroll. */
@@ -553,9 +555,13 @@ export class NodeSlotHost {
     }
   }
 
-  /** An explicit dispose drops the slot's model now, or at the next bind when no interaction owner is known yet. */
+  /**
+   * An explicit dispose drops the slot's model now, or at the next bind when no interaction owner is known yet. An owner
+   * that disposes because the screen stopped being provided (Cordis tears dependents down first) keeps the model.
+   */
   release(lease: NodeSlotLease, interaction: UiInteractionService | undefined): void {
     this.leases.delete(lease.id)
+    if (!this.provided()) return
     const owner = this.bound?.interaction ?? interaction
     if (owner === undefined) this.forgotten.add(lease.id)
     else owner.remove('slot', lease.id)

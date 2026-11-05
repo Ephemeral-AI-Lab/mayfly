@@ -29,16 +29,13 @@ export interface UserPrice {
 }
 
 /** Where a price came from. */
-export type PriceSource = 'user' | 'deepseek' | 'models.dev'
+type PriceSource = 'user' | 'deepseek' | 'models.dev'
 
 /** A price in the currency a panel shows; `approx` when it was converted at the configured rate. */
-export interface Price extends PriceList {
+interface Price extends PriceList {
   readonly source: PriceSource
   readonly approx: boolean
 }
-
-/** The date the official DeepSeek table below was read (api-docs.deepseek.com, USD and zh-cn pages). */
-export const DEEPSEEK_PRICES_AS_OF = '2026-10-14'
 
 /** Off-peak rates; a peak request pays twice. DeepSeek has no cache-write price. */
 const DEEPSEEK_OFF_PEAK: Readonly<Record<'flash' | 'pro', Readonly<Record<Currency, PriceList>>>> = {
@@ -57,21 +54,8 @@ const DEEPSEEK_TIERS: Readonly<Record<string, 'flash' | 'pro'>> = {
   'deepseek-flash': 'flash', 'deepseek-v4-flash': 'flash', 'deepseek-v4-flash-vision-exp': 'flash', 'deepseek-v4-pro': 'pro',
 }
 
-/** DeepSeek's peak hours: Monday to Friday, 09:00-12:00 and 14:00-18:00 Beijing time (a public holiday is not modelled, so it counts as peak). */
-export function isDeepseekPeak(at: number): boolean {
-  const beijing = new Date(at + 8 * 3_600_000)
-  const day = beijing.getUTCDay()
-  const hour = beijing.getUTCHours()
-  return day >= 1 && day <= 5 && ((hour >= 9 && hour < 12) || (hour >= 14 && hour < 18))
-}
-
 /** The provider routes that bill at DeepSeek's own price list: the built-in official route and the pi-ai catalog's `deepseek`. */
 const isDeepseekRoute = (provider: string): boolean => provider === 'deepseek-official' || provider === 'deepseek'
-
-/** Whether a request at `at` is billed at DeepSeek's peak rate; other providers have no peak. */
-export function isPeakRequest(provider: string, at: number): boolean {
-  return isDeepseekRoute(provider) && isDeepseekPeak(at)
-}
 
 /** The price sources a panel consults. */
 export interface PriceSources {

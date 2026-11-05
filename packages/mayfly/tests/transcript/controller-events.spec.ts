@@ -15,7 +15,7 @@ import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/m
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import type { TickSource } from '../../src/transcript/tick.ts'
 import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
-import { appendTranscriptNode, createTranscriptModel, TranscriptController, type TranscriptControllerOptions, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
+import { createTranscriptModel, TranscriptController, type TranscriptControllerOptions, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
 const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, attachments: [] })
 const answer = (turn: number, text: string): TranscriptEntryModel => ({ id: `assistant:${String(turn)}`, kind: 'transcript-assistant', seq: turn, updatedSeq: turn, turn, step: 2, text, streaming: false })
@@ -108,16 +108,6 @@ const compactPolicy = (): TranscriptPresentationPolicy => {
   policy.apply({ transcriptView: 'compact' })
   return policy
 }
-
-describe('building a model by hand', () => {
-  it('appends an entry to a model and keeps its turns, generation, and streaming unless told otherwise', () => {
-    const base = createTranscriptModel('s', [user(1, 'one')], true, 4, [{ turn: 1, startedAt: 0 }])
-    const next = appendTranscriptNode(base, answer(1, 'two'))
-    expect(next).toMatchObject({ id: 's', generation: 4, streaming: true, turns: [{ turn: 1, startedAt: 0 }] })
-    expect(next.entries.map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant'])
-    expect(appendTranscriptNode(base, answer(1, 'two'), false).streaming).toBe(false)
-  })
-})
 
 describe('a controller with nothing to show', () => {
   it('ignores a refresh until a view is displayed and the screen is attached', () => {

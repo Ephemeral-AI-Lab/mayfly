@@ -2,13 +2,15 @@
 /**
  * Scenario → headless Terminal renderer.
  *
- * Compiles one public `ui.*` wire node through the BUILT core compiler
- * (`packages/mayfly/lib/core.js`) with the real dark theme palette
- * (`packages/mayfly/lib/theme-dark.js`), renders it to ANSI rows, asserts the
+ * Compiles one public `ui.*` wire node through the TUI's core compiler
+ * (`packages/mayfly/src/core/index.ts`) with the real dark theme palette
+ * (`packages/mayfly/src/core/theme-dark.ts`), renders it to ANSI rows, asserts the
  * D48 width contract on every row, then parses the rows into an
  * `@xterm/headless` Terminal for the SVG painter. Width math delegates to the
  * same pi-tui helpers core re-exports from `src/width.ts` — nothing is
  * re-implemented here (D48). No PTY, no wall clock: output is deterministic.
+ * The TUI publishes only root, client and bin, so these internals load from
+ * source: run under `node --experimental-transform-types` (the `shots:*` scripts).
  *
  * @module script/shots/render
  */
@@ -20,15 +22,14 @@ const require = createRequire(import.meta.url)
 // @xterm/headless@6 ships CJS-only; the ESM namespace lacks named exports.
 const { Terminal } = require('@xterm/headless')
 
-const coreLibUrl = new URL('../../packages/mayfly/lib/core.js', import.meta.url)
-if (!existsSync(coreLibUrl)) {
-  throw new Error('packages/mayfly/lib is missing — run `pnpm build` before the shots pipeline')
+if (!existsSync(new URL('../../packages/ui/lib/provider.js', import.meta.url))) {
+  throw new Error('packages/ui/lib is missing — run `pnpm build` before the shots pipeline')
 }
 const { Context } = await import(new URL('../../packages/mayfly/node_modules/@deepseek-ai/cordis/lib/index.js', import.meta.url).href)
-const { compileMayflyUiNode } = await import(coreLibUrl.href)
+const { compileMayflyUiNode } = await import(new URL('../../packages/mayfly/src/core/index.ts', import.meta.url).href)
 const uiProvider = await import(new URL('../../packages/ui/lib/provider.js', import.meta.url).href)
-const mayflyFrontend = await import(new URL('../../packages/mayfly/lib/frontend.js', import.meta.url).href)
-const { DARK_COLORS } = await import(new URL('../../packages/mayfly/lib/theme-dark.js', import.meta.url).href)
+const mayflyFrontend = await import(new URL('../../packages/mayfly/src/frontend/index.ts', import.meta.url).href)
+const { DARK_COLORS } = await import(new URL('../../packages/mayfly/src/core/theme-dark.ts', import.meta.url).href)
 // Resolve pi-tui through core's own node_modules so the width helpers are the
 // exact instance core's `src/width.ts` re-exports (D48 single width truth).
 const { CURSOR_MARKER, truncateToWidth, visibleWidth, wrapTextWithAnsi } =

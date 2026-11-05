@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { statsDigest } from '../../src/remote/stats-digest.ts'
 import type { MayflyStatsHistory } from '../../src/remote/stats-contract.ts'
 import { StatsHistory, statsSession } from '../../src/remote/stats.ts'
-import { foldDigest } from '../../../mayfly/src/interaction/stats-index/digest.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
@@ -31,7 +30,7 @@ function fixture(count = 2) {
 }
 
 describe('Host rc.2 statistics digests', () => {
-  it('matches the reference for complete logs and preserves zero, invalid and missing usage semantics', () => {
+  it('keeps the rc.2 digest for complete logs and preserves zero, invalid and missing usage semantics', () => {
     const monday = Date.parse('2026-10-05T00:00:00Z')
     const hours = [0, 1, 3, 4, 5, 6, 9, 10, 11]
     const events = [event('custom/test', monday), ...hours.flatMap(hour => [message('deepseek', monday + hour * 3_600_000), message('deepseek-official', monday + hour * 3_600_000)]),
@@ -40,7 +39,181 @@ describe('Host rc.2 statistics digests', () => {
     // An explicit missing usage is distinct from the fixture's default argument.
     events.push(event('assistant/message', monday, { message: { source: { provider: 'other', model: 'm' } } }))
     const digest = statsDigest('s', '/work', events)!
-    expect(decode(digest)).toEqual(foldDigest('s', '/work', events as unknown as Parameters<typeof foldDigest>[2]))
+    expect(JSON.stringify(decode(digest), (_key, value: unknown) => value instanceof Map ? [...value] : value, 2)).toMatchInlineSnapshot(`
+      "{
+        "id": "s",
+        "cwd": "/work",
+        "firstAt": 1791158400000,
+        "lastAt": 1791676800000,
+        "days": [
+          [
+            "2026-10-04",
+            {
+              "turns": 2,
+              "models": [
+                [
+                  "deepseek\\u0000m",
+                  {
+                    "provider": "deepseek",
+                    "model": "m",
+                    "peak": {
+                      "input": 30,
+                      "output": 15,
+                      "cacheRead": 6,
+                      "cacheWrite": 3
+                    },
+                    "offPeak": {
+                      "input": 30,
+                      "output": 15,
+                      "cacheRead": 6,
+                      "cacheWrite": 3
+                    }
+                  }
+                ],
+                [
+                  "deepseek-official\\u0000m",
+                  {
+                    "provider": "deepseek-official",
+                    "model": "m",
+                    "peak": {
+                      "input": 30,
+                      "output": 15,
+                      "cacheRead": 6,
+                      "cacheWrite": 3
+                    },
+                    "offPeak": {
+                      "input": 30,
+                      "output": 15,
+                      "cacheRead": 6,
+                      "cacheWrite": 3
+                    }
+                  }
+                ],
+                [
+                  "other\\u0000m",
+                  {
+                    "provider": "other",
+                    "model": "m",
+                    "peak": {
+                      "input": 0,
+                      "output": 0,
+                      "cacheRead": 0,
+                      "cacheWrite": 0
+                    },
+                    "offPeak": {
+                      "input": 20,
+                      "output": 10,
+                      "cacheRead": 4,
+                      "cacheWrite": 2
+                    }
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "2026-10-05",
+            {
+              "turns": 1,
+              "models": [
+                [
+                  "deepseek\\u0000m",
+                  {
+                    "provider": "deepseek",
+                    "model": "m",
+                    "peak": {
+                      "input": 10,
+                      "output": 5,
+                      "cacheRead": 2,
+                      "cacheWrite": 1
+                    },
+                    "offPeak": {
+                      "input": 20,
+                      "output": 10,
+                      "cacheRead": 4,
+                      "cacheWrite": 2
+                    }
+                  }
+                ],
+                [
+                  "deepseek-official\\u0000m",
+                  {
+                    "provider": "deepseek-official",
+                    "model": "m",
+                    "peak": {
+                      "input": 10,
+                      "output": 5,
+                      "cacheRead": 2,
+                      "cacheWrite": 1
+                    },
+                    "offPeak": {
+                      "input": 20,
+                      "output": 10,
+                      "cacheRead": 4,
+                      "cacheWrite": 2
+                    }
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "2026-10-09",
+            {
+              "turns": 0,
+              "models": [
+                [
+                  "deepseek\\u0000m",
+                  {
+                    "provider": "deepseek",
+                    "model": "m",
+                    "peak": {
+                      "input": 0,
+                      "output": 0,
+                      "cacheRead": 0,
+                      "cacheWrite": 0
+                    },
+                    "offPeak": {
+                      "input": 10,
+                      "output": 5,
+                      "cacheRead": 2,
+                      "cacheWrite": 1
+                    }
+                  }
+                ]
+              ]
+            }
+          ],
+          [
+            "2026-10-10",
+            {
+              "turns": 0,
+              "models": [
+                [
+                  "deepseek\\u0000m",
+                  {
+                    "provider": "deepseek",
+                    "model": "m",
+                    "peak": {
+                      "input": 0,
+                      "output": 0,
+                      "cacheRead": 0,
+                      "cacheWrite": 0
+                    },
+                    "offPeak": {
+                      "input": 10,
+                      "output": 5,
+                      "cacheRead": 2,
+                      "cacheWrite": 1
+                    }
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      }"
+    `)
     expect(Object.isFrozen(digest.days[0]!.models[0]!.peak)).toBe(true)
     expect(statsDigest('empty', undefined, [event('custom/test', monday)])).toBeUndefined()
   })

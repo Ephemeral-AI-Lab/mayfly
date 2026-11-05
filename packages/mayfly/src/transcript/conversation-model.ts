@@ -1,27 +1,27 @@
 /** Shared readonly conversation projection to transcript model mapping. @module */
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ToolCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
-import type { ConversationEntry, ConversationProjection, ConversationToolEntry } from '../conversation/types.ts'
+import type { ConversationEntry, ConversationProjection, ConversationToolEntry } from '@ephemeral-ai/mayfly-host/types'
 import { type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptFileChangeModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type ToolInterruption, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
 import { diffChangeCounts } from '../core/diff-align.ts'
 import { countWork, type MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
-import { toolDetail } from '../conversation/activity-detail.ts'
+import { toolDetail } from '@ephemeral-ai/mayfly-host/conversation'
 import { toolActivity } from './process-activity.ts'
 
 /** Preview lines a read window carries: the body of its verbose block, opened to every row by Ctrl+O. */
-export const READ_PREVIEW_LINE_LIMIT = 40
+const READ_PREVIEW_LINE_LIMIT = 40
 
 /** Match previews a search file carries for the body of its verbose block. */
-export const SEARCH_PREVIEW_MATCH_LIMIT = 3
+const SEARCH_PREVIEW_MATCH_LIMIT = 3
 
 /** Path rows a glob call carries for the body of its verbose block. */
-export const SEARCH_PATH_LIMIT = 40
+const SEARCH_PATH_LIMIT = 40
 
 /** Output-tail rows a command carries for the body of its verbose block. */
-export const COMMAND_PREVIEW_LINE_LIMIT = 40
+const COMMAND_PREVIEW_LINE_LIMIT = 40
 
 /** Lines of a multi-line command that a call carries as its input rows. */
 const COMMAND_INPUT_LINE_LIMIT = 40
@@ -52,10 +52,10 @@ interface CachedToolGroup {
 }
 
 /**
- * Identity caches for one conversation source. Entries are keyed by their
- * registry-owned wire objects, which the projection retains across whole
- * values; presenters and models are keyed by the resolved tool they belong to.
- * A source replaces the whole object on attach and the tool half on a
+ * Identity caches for one conversation source. Entries are keyed by the
+ * decoded objects of one Host value, so a new value maps every entry again;
+ * presenters and models are keyed by the resolved tool they belong to. A
+ * source replaces the whole object on attach and the tool half on a
  * tools/change, so a stale presenter is never served.
  */
 export interface TranscriptModelCaches {

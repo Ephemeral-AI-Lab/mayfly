@@ -5,7 +5,8 @@ import Schema from '@deepseek-ai/schemastery'
 import { describe, expect, it } from 'vitest'
 import type { SettingsDescriptor } from '@deepseek-ai/dsh-settings'
 import { settingsOperations, settingsProjection } from '../../src/interaction/settings-model.ts'
-import { settingsField } from './settings-fixture.ts'
+
+const settingsField = (...path: string[]) => ({ fieldId: JSON.stringify(path) })
 
 const project = (schema: Schema, value: unknown = {}, options: Partial<SettingsDescriptor> = {}) => settingsProjection({ ns: 'test' as never, revision: 0, applies: 'live', autoGenerate: false, schema: schema.toJSON(), value, ...options }, true, {}, key => key)
 

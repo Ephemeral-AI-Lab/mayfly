@@ -27,7 +27,7 @@ export interface WorkflowRunState {
 }
 
 /** Compact workflow elapsed time. */
-export function formatWorkflowElapsed(seconds: number): string {
+function formatWorkflowElapsed(seconds: number): string {
   return compactElapsedSeconds(seconds)
 }
 

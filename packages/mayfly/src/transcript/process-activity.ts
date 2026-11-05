@@ -63,7 +63,7 @@ export interface ProcessMemberFact {
 }
 
 /** Ranked category counts and failures of one process group's settled members. */
-export interface ProcessSummary {
+interface ProcessSummary {
   readonly counts: readonly { readonly activity: ProcessActivity, readonly count: number }[]
   readonly failed: number
   /** Members cancelled by an interruption, which are not counted as failed. */

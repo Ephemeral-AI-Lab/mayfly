@@ -1,17 +1,3 @@
-/**
- * Shared test doubles for the Mayfly interaction suites: fake MayflyScreen,
- * MayflyTheme, MayflyKeymap, and MayflyComponents (in-memory MayflyEditor and
- * MayflySelectList) implementing the L1 contracts with observable state, plus
- * helpers to mount a context with the fakes provided.
- */
-
-import { Context } from '@deepseek-ai/cordis'
-import {
-  MayflyEditorExtensionService,
-  MayflyOverlayService,
-  MayflyPaneService,
-  MayflyStatusService,
-} from '../../../ui/src/services.ts'
 // Width truth is pi-tui itself (D48): the fake SGR-stripped counters that
 // used to live here were exact only for ASCII, so CJK mis-budgets stayed
 // green in tests while tripping the real width guard. Fakes now delegate to
@@ -19,20 +5,12 @@ import {
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { topRule } from '../../src/core/chrome.ts'
 import type { MayflyAutocompleteProvider, MayflyCompletionView, MayflyComponent, MayflyComponents, MayflyEditor, MayflyEditorOptions, MayflyEditorToken, MayflyEditorSubmitAttempt, MayflyFocusable, MayflyKeyAction, MayflyKeymap, MayflyMarkdown, MayflyMarkdownOptions, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen, MayflySelectItem, MayflySelectList, MayflySelectListOptions, MayflySemanticColors, MayflySubmittedDraft, MayflyTheme } from '../../src/core/types.ts'
-import type { MayflyComponentsService } from '../../src/core/components.ts'
-import type { MayflyKeymapService } from '../../src/core/keymap.ts'
-import type { MayflyScreenService } from '../../src/core/screen.ts'
 // MayflyImage/MayflyImageOptions are not root-exported by core yet; source-plane
 // tests import them straight from core's src types.
 import type { MayflyFuzzyMatch, MayflyImage, MayflyImageOptions } from '../../src/core/types.ts'
-import { PromptEditorController } from '../../src/interaction/editor-instance.ts'
-import { PromptSubmitPipeline } from '../../src/interaction/prompt-submit-pipeline.ts'
 import {
   INTERACTION_KEY_ACTIONS,
 } from '../../src/interaction/key-definitions.ts'
-import { SkillsCatalogService } from '../../src/interaction/skills-catalog.ts'
-import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
-import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 import { identity } from '../helpers.ts'
 
@@ -162,7 +140,6 @@ export class FakeKeymap implements MayflyKeymap {
     })
   }
 }
-
 
 /** Marker-wrapping color functions so tests can assert which role styled a row. */
 function fakeColors(): MayflySemanticColors {
@@ -860,11 +837,6 @@ function isFocusable(component: MayflyComponent | null): component is MayflyFocu
   return component !== null && 'focused' in component
 }
 
-interface TestSessionState {
-  readonly current?: unknown | null
-  readonly modelRef?: { current: { provider: string, model: string, reasoningEffort?: string } }
-}
-
 /**
  * A conversation-registry fake with no side conversations. `display` records
  * the requested ids so callers can assert which conversation was shown.
@@ -889,192 +861,4 @@ export function fakeConversations(displayed: string[] = []): object {
 export interface FakeSessionProjections {
   snapshot(session: unknown, keys?: readonly string[]): { readonly asOfSeq: number, readonly values: Record<string, unknown> }
   onChanged(listener: (session: unknown, key: string, value: unknown, seq: number) => void): () => void
-}
-
-/** A context with the renderer services and native dsh session seams provided. */
-export function fakeMayflyContext(options: { readonly display?: boolean; readonly dock?: boolean; readonly agents?: boolean; readonly projections?: FakeSessionProjections } = {}): {
-  ctx: Context
-  screen: FakeScreen
-  theme: FakeTheme
-  keymap: FakeKeymap
-  components: FakeMayflyComponents
-} {
-  const ctx = new Context()
-  const screen = new FakeScreen()
-  const theme = new FakeTheme()
-  const keymap = new FakeKeymap()
-  const components = new FakeMayflyComponents()
-  if (options.display !== false) {
-    ctx.provide('mayflyScreen', screen as unknown as MayflyScreenService)
-    // The theme fake casts to the MayflyTheme contract: the concrete
-    // MayflyThemeService class moved to core's theme-dark subpath plugin.
-    ctx.provide('mayflyTheme', theme as unknown as MayflyTheme)
-    ctx.provide('mayflyKeymap', keymap as unknown as MayflyKeymapService)
-    ctx.provide('mayflyComponents', components as unknown as MayflyComponentsService)
-  }
-  const testSession = (): TestSessionState | undefined => ctx.get('testSession') as TestSessionState | undefined
-  const active = (): unknown | null => {
-    const value = testSession()?.current
-    return value ?? null
-  }
-  if (options.agents !== false) {
-    ctx.provide('agents', {
-      get: (id: unknown) => {
-        const agent = active() as { readonly id?: unknown } | null
-        return agent?.id !== undefined && String(agent.id) === String(id) ? agent : undefined
-      },
-      list: () => {
-        const agent = active()
-        return agent === null ? [] : [agent]
-      },
-    } as never)
-  }
-  const listeners = new Set<(agent: unknown | null, revision: number) => void>()
-  const viewListeners = new Set<(view: unknown) => void>()
-  let revision = 0
-  const publishAgent = (): void => {
-    revision += 1
-    const agent = active()
-    for (const listener of listeners) listener(agent, revision)
-  }
-  // The test session's current-Agent change is the fake tree's own broadcast.
-  ctx.on('test/session-changed', () => { publishAgent() })
-  ctx.provide('mayflyCurrentAgent', {
-    current: active,
-    primary: active,
-    revision: () => revision,
-    subscribe(listener: (agent: unknown | null, revision: number) => void) {
-      listeners.add(listener)
-      listener(active(), revision)
-      return ctx.effect(() => () => { listeners.delete(listener) })
-    },
-  } as never)
-  // Only the test session's primary conversation is ever displayed here.
-  const primaryView = () => {
-    const agent = active() as { readonly id?: unknown } | null
-    return agent?.id === undefined ? null : {
-      kind: 'primary', id: `session:${String(agent.id)}`, sessionId: String(agent.id), access: 'interactive', residency: 'displayed',
-    }
-  }
-  const conversationsSnapshot = () => {
-    const primary = primaryView()
-    return {
-      primaryId: primary?.id ?? null,
-      displayedId: primary?.id ?? null,
-      recent: primary === null ? [] : [primary.id],
-      views: primary === null ? [] : [primary],
-      revision,
-    }
-  }
-  ctx.provide('mayflyConversations', {
-    primary: active,
-    displayed: primaryView,
-    snapshot: conversationsSnapshot,
-    revision: () => revision,
-    subscribe(listener: (snapshot: unknown) => void) {
-      viewListeners.add(listener)
-      listener(conversationsSnapshot())
-      return ctx.effect(() => () => { viewListeners.delete(listener) })
-    },
-    display: () => false,
-    back: () => false,
-    close: () => null,
-    closeSides: () => {},
-  } as never)
-  new MayflyPaneService(ctx)
-  new MayflyStatusService(ctx)
-  new MayflyOverlayService(ctx)
-  new MayflyEditorExtensionService(ctx)
-  const projectionListeners = new Set<(session: unknown, key: string, value: unknown, seq: number) => void>()
-  ctx.provide('sessionProjections', options.projections ?? {
-    snapshot: (_session: unknown, keys?: readonly string[]) => {
-      const selection = testSession()?.modelRef?.current
-      const values = selection === undefined || (keys !== undefined && !keys.includes('modelSelection'))
-        ? {}
-        : { modelSelection: { lastUsed: selection, next: selection } }
-      return { asOfSeq: 0, values }
-    },
-    onChanged: (listener: (session: unknown, key: string, value: unknown, seq: number) => void) => {
-      projectionListeners.add(listener)
-      return ctx.effect(() => () => { projectionListeners.delete(listener) })
-    },
-  } as never)
-  ctx.provide('sessionController', {
-    async *follow() {
-      yield { type: 'snapshot', assistantStream: { revision: 0 } }
-    },
-    // Mirrors the rc.2 contract: the Session-local selection is installed
-    // synchronously and the default save runs in the background.
-    selectModel: async (request: { sessionId: string, provider: string, model: string, reasoningEffort?: string }) => {
-      const state = testSession()
-      if (state?.current === null || state?.modelRef === undefined) throw new Error('no session is live yet')
-      const selected = {
-        provider: request.provider,
-        model: request.model,
-        ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
-      }
-      state.modelRef.current = selected
-      const session = (state.current as { session?: unknown } | undefined)?.session
-      if (session !== undefined) {
-        for (const listener of projectionListeners) {
-          listener(session, 'modelSelection', { lastUsed: selected, next: selected }, 0)
-        }
-      }
-      void (ctx.get('agentDefaultModel') as { saveSelection?(value: unknown): Promise<void> } | undefined)
-        ?.saveSelection?.(selected).catch(() => {})
-      return { selected }
-    },
-  } as never)
-  ctx.provide('tools', { schemas: () => [] } as never)
-  ctx.provide('workspaceRegistry', { archivedSessionIds: [] } as never)
-  ctx.provide('subagents', {
-    prompt: async () => ({ messageId: 'fake-subagent-message' }),
-    interrupt: () => {},
-    interruptByParent: () => ({ accepted: true }),
-    listDescendants: async () => [],
-  } as never)
-  let requestEpoch = 0
-  let activeRequest: { sessionEpoch: number, requestEpoch: number, scope: 'main' | 'btw' | 'subagent' } | undefined
-  let stopRequested = false
-  ctx.provide('mayflyRequests', {
-    sessionEpoch: 0,
-    active: () => activeRequest,
-    begin: (scope: 'main' | 'btw' | 'subagent' = 'main') => {
-      activeRequest = { sessionEpoch: 0, requestEpoch: ++requestEpoch, scope }
-      return activeRequest
-    },
-    transition: (ref: typeof activeRequest, state: string) => {
-      if (ref === activeRequest && ['completed', 'failed', 'aborted', 'interrupted'].includes(state)) activeRequest = undefined
-    },
-    interrupt: () => { activeRequest = undefined },
-    commitSession: () => { activeRequest = undefined; stopRequested = false; return 0 },
-    stopPending: () => stopRequested,
-    requestStop: () => { stopRequested = true },
-    clearStop: () => { stopRequested = false },
-  } as never)
-  ctx.provide('mayflyRetractions', { tryRetract: () => false })
-  let startPlan = false
-  const startPlanListeners = new Set<(active: boolean) => void>()
-  ctx.provide('mayflySessionStart', {
-    onBooted: (listener: () => void) => { listener(); return () => {} },
-    ensure: async () => { throw new Error('no active session') },
-    planActive: () => startPlan,
-    setPlanActive: (active: boolean) => {
-      if (startPlan === active) return
-      startPlan = active
-      for (const listener of startPlanListeners) listener(active)
-    },
-    subscribePlan: (listener: (active: boolean) => void) => {
-      startPlanListeners.add(listener)
-      return () => { startPlanListeners.delete(listener) }
-    },
-  } as never)
-  ctx.on('test/session-changed', publishAgent)
-  ctx.on('agent/status', publishAgent)
-  new SkillsCatalogService(ctx)
-  new InteractionStateService(ctx, DEFAULT_SETTINGS)
-  new PromptEditorController(ctx)
-  new PromptSubmitPipeline(ctx)
-  screen.renderRequests = 0
-  return { ctx, screen, theme, keymap, components }
 }

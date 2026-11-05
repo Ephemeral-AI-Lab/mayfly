@@ -12,7 +12,7 @@
 
 import { alignDiffLines, diffModel } from '../core/diff-align.ts'
 import { sanitizePluginText } from '../core/plugin-view.ts'
-import { argumentDetail } from '../conversation/activity-detail.ts'
+import { argumentDetail } from '@ephemeral-ai/mayfly-host/conversation'
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import { isCancelled, type CommandCallModel, type ProcessActivity, type ReadCallModel, type SearchCallModel, type ToolInterruption, type TranscriptEntryModel } from '../frontend/models.ts'
 import type { StreamRow } from '../components/transcript-view.ts'

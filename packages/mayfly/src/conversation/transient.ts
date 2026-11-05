@@ -1,7 +1,7 @@
 /** Transient assistant presentation from one official Client attempt window. @module */
 import type { AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
-import type { ConversationEntry, ConversationProjection } from './types.ts'
-import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
+import type { ConversationEntry, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
+import { foldAssistantStreamRecords, initialAssistantStream } from '@ephemeral-ai/mayfly-host/conversation'
 
 /** Render only the selected live attempt; durable history remains a Host projection. */
 export function transientAssistantConversation(

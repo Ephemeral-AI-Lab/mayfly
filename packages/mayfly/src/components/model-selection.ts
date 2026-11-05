@@ -1,7 +1,7 @@
 /** Model selection equality and the reference switch feedback. @module @ephemeral-ai/mayfly/components/model-selection */
 
 /** Readonly route fields used by both native and Remote model selection. */
-export interface ModelSelectionFacts {
+interface ModelSelectionFacts {
   readonly provider: string
   readonly model: string
   readonly reasoningEffort?: string

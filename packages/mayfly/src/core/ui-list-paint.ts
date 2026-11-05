@@ -737,7 +737,7 @@ export interface FlowListModel {
 }
 
 /** One list paint: the node, its model, and the state the rows paint in. */
-export interface FlowListPaintInput {
+interface FlowListPaintInput {
   readonly node: ListNodeView
   readonly model: FlowListModel
   readonly width: number

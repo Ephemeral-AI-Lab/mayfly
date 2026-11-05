@@ -22,6 +22,6 @@ npm pack --dry-run
 `types`、`files`、peer resolution，并确保没有 `workspace:`、`link:` 或
 开发机绝对路径泄漏。
 
-Host bundle 安装到专用 profile；TUI entry 在 Remote 源码组合中集成。构建并启动
+Host bundle 安装到专用 profile；TUI entry 加入源码组合（`run(argv, { plugins })`）。构建并启动
 两个进程，完成启动、主流程、窄宽、Session 切换、unload 与 restart 的人工验收。
 TUI 行为需要真实 HTTP/WebSocket 与 PTY 证据，共享 renderer 测试不能单独证明分体工作流一致。

@@ -2,7 +2,7 @@
 
 ::: info Current development line and reference
 The split implementation targets Harness `0.2.2-rc.1` and runs a native Host
-plus an independent Remote TUI. Published Mayfly `v0.1.4-rc.2` is the immutable
+plus an independent TUI. Published Mayfly `v0.1.4-rc.2` is the immutable
 UI, key, and workflow reference; it does not mean the split artifacts below
 have been published. Install development artifacts from this workspace or a
 verified matching tarball set.
@@ -70,7 +70,7 @@ installable Host bundle.
 DEEPSEEK_API_KEY='<your key>' /path/to/dsh --profile mayfly-split-accept
 
 # Terminal 2: TUI; copy the authenticated URL printed by Host
-MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh
+MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-tui.sh
 ```
 
 Supply the authenticated URL only through the environment. Keep it out of argv,
@@ -78,7 +78,7 @@ logs, and commits. Host owns credentials, providers, permissions, and Sessions.
 Closing the TUI detaches it while Host work continues.
 
 Without a task or resume id, the first ordinary message creates the Session.
-Use `script/mayfly-remote.sh 'explain this repository'` for an initial task,
+Use `script/mayfly-tui.sh 'explain this repository'` for an initial task,
 `--resume <session-id>` to resume, or `--cwd <path>` for a Host directory.
 `/new` and `/clear` return to startup without creating an empty Session.
 

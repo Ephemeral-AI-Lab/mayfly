@@ -22,8 +22,8 @@ Install the real tarball into an empty directory, import its public entry, and
 verify `exports`, `types`, `files`, peer resolution, and absence of leaked
 `workspace:`, `link:`, or machine-local paths.
 
-Install Host bundles into a dedicated profile; integrate TUI entries into the
-Remote source composition. Build and launch both processes, then accept startup,
+Install Host bundles into a dedicated profile; add TUI entries to a source
+composition (`run(argv, { plugins })`). Build and launch both processes, then accept startup,
 the primary workflow, narrow width, session switching, unload, and restart. TUI
 behavior needs real HTTP/WebSocket plus PTY evidence; shared renderer tests alone
 do not establish split workflow parity.

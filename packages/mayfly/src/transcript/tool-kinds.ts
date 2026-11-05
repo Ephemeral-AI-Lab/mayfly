@@ -12,7 +12,7 @@ import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { ProcessActivity } from '../frontend/models.ts'
 
 /** What one category of tool does in the stream. */
-export interface ToolKind {
+interface ToolKind {
   /** Whether the head of a run names what the calls did, so a call's line in the run is just its target. */
   readonly headed: boolean
   /** The tool's own name, for the head of a group whose calls are not all of one tool (`Read`, `WebSearch`). */
@@ -78,22 +78,3 @@ export function unitPhrase(activity: ProcessActivity, count: number, t: MayflyTr
   return t(KINDS[activity].unit[count === 1 ? 0 : 1], { count })
 }
 
-/** A call in flight as the activity row sees it. */
-export interface FlightCall {
-  readonly activity: ProcessActivity
-  /** Whether the call's arguments still stream. */
-  readonly preparing: boolean
-}
-
-/**
- * The activity row's label for the calls in flight: one category names itself (`Running commands`), several say how many
- * calls run. The same list gives the stream its pending lines, so the row and the stream always speak of the same calls.
- * @param calls - the calls in flight; at least one.
- * @returns the untranslated label and its values.
- */
-export function flightLabel(calls: readonly FlightCall[]): { readonly key: string, readonly values?: { readonly count: number } } {
-  const first = calls[0]!
-  const preparing = calls.every(call => call.preparing)
-  if (calls.every(call => call.activity === first.activity)) return { key: preparing ? KINDS[first.activity].preparing : KINDS[first.activity].running }
-  return { key: preparing ? 'Preparing {count} tool calls' : 'Running {count} tools', values: { count: calls.length } }
-}

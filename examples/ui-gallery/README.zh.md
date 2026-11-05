@@ -6,9 +6,13 @@
 表格、Mermaid DAG、line/point、grouped/stacked/normalized bar、sparkline 与
 heatmap。
 
-```sh
-dsh plugin --profile mayfly-dev add @mayfly-example/ui-gallery
+把它组合进一个 TUI 入口；入口接受与 `mayfly` 相同的选项和环境变量：
+
+```ts
+import { run } from '@ephemeral-ai/mayfly/bin'
+import * as gallery from '@mayfly-example/ui-gallery'
+
+await run(process.argv.slice(2), { plugins: [gallery] })
 ```
 
-包内自带单行 `cordis.patch.yml`，安装即激活；卸载时 pane 随 Cordis Fiber
-一同清理。
+TUI 退出时，pane 随 Cordis Fiber 一同清理。

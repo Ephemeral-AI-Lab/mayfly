@@ -2,7 +2,6 @@
 
 export const advertisedVersionFiles = [
   'packages/mayfly/tests/transcript/version.spec.ts',
-  'packages/mayfly/tests/transcript/banner.spec.ts',
   'website/.vitepress/config.ts',
   'website/index.md',
   'website/en/index.md',

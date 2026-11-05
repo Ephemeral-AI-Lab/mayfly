@@ -171,7 +171,7 @@ describe('buildRows', () => {
   })
 
   it('protects the exact product release set in native installed rows and indexed entries', () => {
-    const names = ['@ephemeral-ai/mayfly-host', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly-cli']
+    const names = ['@ephemeral-ai/mayfly-host', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly-cli']
     expect(MAYFLY_PACKAGE).toBe('@ephemeral-ai/mayfly-host')
     for (const name of names) {
       expect(isMayflyProductPackage(name)).toBe(true)

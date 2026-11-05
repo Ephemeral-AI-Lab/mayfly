@@ -5,31 +5,9 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
-import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
-import { beginPromptWait } from '../../src/interaction/prompt-wait.ts'
+import { DEFAULT_SETTINGS } from '../../src/frontend/settings.ts'
 
 describe('InteractionStateService', () => {
-  it('retires both shown and pending prompt waits on disposal', async () => {
-    vi.useFakeTimers()
-    const ctx = new Context()
-    const service = new InteractionStateService(ctx, DEFAULT_SETTINGS)
-    try {
-      expect(service.disposed).toBe(false)
-      expect(service.settingsSource()).toBe(DEFAULT_SETTINGS)
-      beginPromptWait(ctx, 'Native request running')
-      vi.advanceTimersByTime(150)
-      beginPromptWait(ctx, 'Another request starting')
-      expect(service.promptWaits.active).toHaveLength(2)
-      expect(vi.getTimerCount()).toBe(1)
-      service.dispose()
-      expect(service.disposed).toBe(true)
-      expect(service.promptWaits.active).toEqual([])
-      expect(vi.getTimerCount()).toBe(0)
-    } finally {
-      vi.useRealTimers()
-      await ctx.fiber.dispose()
-    }
-  })
 
   it('isolates product state between frontend trees', () => {
     const first = new InteractionStateService(new Context(), DEFAULT_SETTINGS)

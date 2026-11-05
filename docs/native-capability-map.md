@@ -64,6 +64,9 @@ subset Mayfly consumes and the rules that keep it native.
 | `contextBreakdown` | `@deepseek-ai/dsh-token-meter` | `/context` composition |
 | `sessionListMetadata` | `@deepseek-ai/dsh-api-session-controller` | sessions list last-prompt time |
 | `agentPreset` | `@deepseek-ai/dsh-agent-preset-registry` | preset display |
+| `inbox` | `@deepseek-ai/dsh-agent-loop` | queued prompts and question replies |
+| `imageLimits` | `@deepseek-ai/dsh-api-session-controller` | prompt image admission |
+| `turnOutline` | `@deepseek-ai/dsh-session-turn-outline` | status and pane surfaces |
 
 Host plugins read with `ctx.sessionProjections.snapshot(session, keys)`,
 `stateOf` for host-only state, and `onChanged` for subscriptions. A session
@@ -111,6 +114,16 @@ fallback only when no working-directory service is composed.
 | Permissions | `ctx.permissionPresets` | catalog/current; `/permission` remains native |
 | Session query | `ctx.sessionQuery` | `/trace`, `/stats` history; no second log store |
 | Persistence | native Session Query/controller | Host passive presentation queries; no TUI filesystem access or persistence-based session browsing |
+| Startup URL | `ctx.connection` / `ctx.webApp` | the authenticated advertised URL `mayfly-host-startup` hands to the TUI |
+| Invocation | `ctx.invocation` | the calling connection behind an authorization request |
+| Sandbox and approval | `ctx.shell` / `ctx.approval` | sandbox mode and approval policy shown in catalog details |
+| Profile | `ctx.profileContext` | the profile directory the settings document locks |
+| Agent files | Agent `ctx.fs` | delivered-file identity for `/files` |
+| Application exit | `ctx.appExit` | Host shutdown |
+
+The TUI's own Cordis tree holds only the official Client services
+(`connection`, `remote`, `fileUpload`, `sessions`, `workspaces`), Cordis
+infrastructure, and Mayfly services.
 
 These services stay in the Host process. Remote uses their existing official
 Remote namespaces, Session faces, and native file routes. The focused
@@ -174,8 +187,9 @@ additional frontend-local connection commands.
 
 ## Enforcement
 
-`tests/architecture/native-capability.spec.ts` scans source for projection and
-service names, command registrations, direct profile writes, loader internals,
-session-browsing persistence reads, current-operation header cwd reads, and
-known prose/flag guesses. A new key or service must be added here with its
-native owner; a Mayfly-owned key must be justified under the rules above.
+`packages/mayfly/tests/architecture/native-capability.spec.ts` scans the Host
+and TUI sources for projection and service names, registered projection keys,
+command registrations, direct profile writes, loader internals,
+session-browsing persistence reads, header cwd reads, and known prose/flag
+guesses. A new key or service must be added here with its native owner; a
+Mayfly-owned key must be justified under the rules above.

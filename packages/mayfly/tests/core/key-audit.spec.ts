@@ -10,8 +10,6 @@ import { MayflyKeymapService } from '../../src/core/keymap.ts'
 import { DEFAULT_ACTION_KEYS, keyActionKeys, printableKey } from '../../src/core/key-actions.ts'
 import { keyGrammar, type EscapeStep, type GrammarBinding, type GrammarControl, type GrammarState } from '../../src/core/ui-key-grammar.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/key-definitions.ts'
-import { ACTION_IMAGE_PASTE } from '../../src/interaction/paste-image.ts'
-import { ACTION_TOGGLE_COLLAPSE } from '../../src/transcript/index.ts'
 import type { MayflyKeyAction, MayflyKeyScope } from '../../src/core/types.ts'
 import { DEFAULT_KEYMAP } from '../../../../docs/design/prototypes/ui-kit.mjs'
 
@@ -19,8 +17,8 @@ import { DEFAULT_KEYMAP } from '../../../../docs/design/prototypes/ui-kit.mjs'
 const PRODUCT_KEY_ACTIONS: readonly (MayflyKeyAction & { readonly source: string, readonly handler?: () => void })[] = [
   { id: 'mayfly.surface.next', keys: 'f6', source: '../../src/core/surface-renderer.ts', handler: () => {} },
   { id: 'mayfly.surface.previous', keys: 'shift+f6', source: '../../src/core/surface-renderer.ts', handler: () => {} },
-  { id: ACTION_IMAGE_PASTE, keys: 'ctrl+v', source: '../../src/interaction/paste-image.ts' },
-  { id: ACTION_TOGGLE_COLLAPSE, keys: 'ctrl+o', source: '../../src/transcript/index.ts', handler: () => {} },
+  { id: 'mayfly.image.paste', keys: 'ctrl+v', scope: 'editor', source: '../../src/app/editor/index.ts' },
+  { id: 'mayfly.transcript.toggle-collapse', keys: 'ctrl+o', source: '../../src/app/runtime.ts', handler: () => {} },
 ]
 
 /**
@@ -121,7 +119,7 @@ describe('default keys', () => {
   it.each(PRODUCT_KEY_ACTIONS)('keeps $id in step with its owner ($keys)', ({ id, keys, source }) => {
     const text = readFileSync(new URL(source, import.meta.url), 'utf8')
     expect(text).toMatch(new RegExp(`keys: \\[?'${String(keys).replace('+', '\\+')}'\\]?`, 'u'))
-    expect(text).toMatch(new RegExp(`id: ${id.startsWith('mayfly.surface') ? `'${id}'` : '[A-Z_]+'}`, 'u'))
+    expect(text).toContain(`id: '${id}'`)
   })
 
   it('binds no printable key to a global handler or in the editor scope', () => {

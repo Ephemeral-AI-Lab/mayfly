@@ -17,7 +17,7 @@ export interface TraceItem {
 }
 
 /** Native direct event relationships used by the clipboard document. */
-export interface TraceRelation {
+interface TraceRelation {
   readonly replacedBy?: number
   readonly replacementChain: readonly number[]
   readonly replacedEventSeqs: readonly number[]

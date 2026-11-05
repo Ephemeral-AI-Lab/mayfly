@@ -20,7 +20,7 @@ import { DEFAULT_TRANSCRIPT_PRESENTATION, PROCESS_POLICIES } from '../../src/tra
 import { progressAt, StreamFacts, type StreamInputs } from '../../src/transcript/stream-facts.ts'
 import { NO_DISCLOSURE } from '../../src/transcript/disclosure.ts'
 import type { StreamRow, StreamTurn } from '../../src/components/transcript-view.ts'
-import { formatTokens } from '../../src/transcript/status-context.ts'
+import { formatTokens } from '../../src/transcript/status-context-model.ts'
 
 const ANSI = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|.)/gu
 

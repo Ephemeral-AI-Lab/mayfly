@@ -14,9 +14,9 @@ import type { MayflySearchLine } from '../core/search-line.ts'
 import type { MayflyScreenService } from '../core/screen.ts'
 import type { MayflyDecisionRequest, MayflyFocusMode, MayflyFocusRow, MayflyQueuedAction, MayflyScreen } from '../core/types.ts'
 import type { MayflyWorkCounters } from '../core/ui-work-counters.ts'
-import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
+import type { ApprovalMark, CompactionMark } from '@ephemeral-ai/mayfly-host/types'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import { freezeModel, materializeTranscriptEntries, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
+import { freezeModel, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import { NO_DISCLOSURE, toggleCall, toggleGroup, toggleRecent, toggleRows, toggleTurn, type Disclosure } from './disclosure.ts'
 import type { CopyMode } from './row-text.ts'
 import { findHits, readPattern, type SearchPattern, type SearchResult } from './search.ts'
@@ -102,7 +102,7 @@ export interface StreamRowActions {
 }
 
 /** How one retained view differs from the default. */
-export interface TranscriptViewOptions {
+interface TranscriptViewOptions {
   /**
    * Keep the running turn's header. Only for views with no activity row (which otherwise owns every live fact), such as
    * a read-only child conversation.
@@ -123,15 +123,6 @@ export function createTranscriptModel(
     ...(streaming === undefined ? {} : { streaming }),
     ...(turns === undefined ? {} : { turns: [...turns] }),
   })
-}
-
-/** Append one projected canonical node or semantic entry without folding events. */
-export function appendTranscriptNode(
-  model: TranscriptModel,
-  entry: MayflyUiNode | TranscriptEntryModel,
-  streaming = model.streaming,
-): TranscriptModel {
-  return createTranscriptModel(model.id, [...materializeTranscriptEntries(model), entry], streaming, model.generation, model.turns)
 }
 
 const EMPTY_RESULT: SearchResult = { hits: [], turnStart: new Map(), orders: new Map() }

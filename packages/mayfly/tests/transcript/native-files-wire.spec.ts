@@ -1,6 +1,6 @@
 /** Render actual Host-verified builtin filesystem wire facts through the shared reference components. @module */
 import { describe, expect, it } from 'vitest'
-import { conversationProjectionSchema } from '../../src/conversation/projection.ts'
+import { conversationProjectionSchema } from '../../../host/src/conversation/projection.ts'
 import { conversationTranscriptModel } from '../../src/transcript/conversation-model.ts'
 import { StreamFacts } from '../../src/transcript/stream-facts.ts'
 import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
@@ -11,7 +11,7 @@ import { visibleWidth } from '../../src/core/width.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { COLORS } from './status-fakes.ts'
-import transport from '../../../remote/tests/fixtures/native-files-transport.json' with { type: 'json' }
+import transport from '../fixtures/native-files-transport.json' with { type: 'json' }
 
 describe('Host builtin filesystem wire rendering', () => {
   it('shows native line counts, applied diff and Unicode write bodies within narrow and wide widths', () => {

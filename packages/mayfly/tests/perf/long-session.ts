@@ -1,19 +1,21 @@
 /**
  * The long-session fixture behind the Phase 7 work-budget rows W28 to W31: a deterministic 2,000-turn
- * `mayflyConversation` projection, the tool presenters that render its read, edit, bash, and subagent cards, a fake feed and
- * tick, and a harness that runs the real transcript controller against a real screen service.
+ * `mayflyConversation` projection, the tool presenters that render its read, edit, bash, and subagent cards, a fake Host
+ * Session binding and tick, and a harness that runs the real transcript controller and the real Remote model source
+ * against a real screen service.
  *
  * @module @ephemeral-ai/mayfly/tests/perf/long-session
  */
 
-import type { ConversationEntry, ConversationAttachment, ConversationJson, ConversationProjection, ConversationToolEntry, ConversationTurn } from '../../src/conversation/types.ts'
+import type { SessionBinding, SessionEventChange, SessionEventLikeEntry, SessionEventSource } from '@deepseek-ai/dsh-api-session-controller/client'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import type { ConversationEntry, ConversationAttachment, ConversationJson, ConversationProjection, ConversationToolEntry, ConversationTurn } from '@ephemeral-ai/mayfly-host/types'
 import type { MayflyComponent } from '../../src/core/types.ts'
-import type { LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
 import type { MayflyScreenService } from '../../src/core/screen.ts'
 import type { MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
 import type { TranscriptModel } from '../../src/frontend/models.ts'
-import type { ConversationFeed, ConversationFeedState, ConversationProjectionSource } from '../../src/transcript/conversation-feed.ts'
-import { OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
+import type { ScopedRemoteToolPresentationSource } from '../../src/hosts/tool-presentations.ts'
+import { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'
 import type { TickSource } from '../../src/transcript/tick.ts'
 import { TranscriptController, type TranscriptControllerOptions, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
@@ -76,13 +78,6 @@ const SUBAGENT_META = { description: SUBAGENT_DESCRIPTION }
 const TEXT_CONTENT: readonly ConversationJson[] = Object.freeze([{ type: 'text', text: 'ok' }])
 
 const NO_IMAGES: readonly ConversationAttachment[] = Object.freeze([])
-
-const NO_PROJECTIONS: ConversationProjectionSource = Object.freeze({
-  snapshot: () => ({ asOfSeq: 0, values: {} }),
-  onChanged: () => () => {},
-})
-
-const READY: ConversationFeedState = Object.freeze({ kind: 'ready' })
 
 const NO_QUEUED: readonly { readonly id: string, readonly text: string, readonly lane: 'turn' | 'step' }[] = Object.freeze([])
 
@@ -248,34 +243,28 @@ export function settleLastTool(projection: ConversationProjection): Conversation
 }
 
 /**
- * Build the live assistant draft the transcript overlays on a settled projection.
- * @param projection - the durable projection the draft follows.
- * @param text - the answer text the draft carries.
- * @param revision - the producer revision, which moves on with each text change.
- * @returns a valid live draft for the next turn.
+ * Build the official live window that carries an assistant answer over a settled projection: one transient text chunk
+ * of the next turn.
+ * @param projection - the durable projection the answer follows.
+ * @param text - the answer text so far.
+ * @returns the event-window entries of the live attempt.
  */
-export function longSessionDraft(projection: ConversationProjection, text: string, revision = 1): LiveAssistantDraft {
+export function longSessionDraft(projection: ConversationProjection, text: string): readonly SessionEventLikeEntry[] {
   const turn = (projection.turns.at(-1)?.turn ?? 0) + 1
-  const updatedAt = EPOCH + text.length
-  return {
-    sessionId: 'long-session',
-    attemptId: 'long-session-answer',
-    revision,
-    turn,
-    step: 0,
-    phase: 'composing',
-    reasoning: '',
-    text,
-    outputProgress: { chars: text.length, initialChars: 0, startedAt: EPOCH, updatedAt },
-    chars: text.length,
-    updatedAt,
-  }
+  const seq = (projection.entries.at(-1)?.seq ?? 0) + 1
+  return [{
+    type: 'transient',
+    event: {
+      type: 'assistant/live-chunk', seq, time: EPOCH + text.length,
+      data: { attemptId: 'long-session-answer', turn, step: 0, chunk: { type: 'text-delta', index: 0, text } },
+    },
+  }] as unknown as readonly SessionEventLikeEntry[]
 }
 
-/** What one retained view owns: the feed the harness pushes into and the real model source over it. */
+/** What one retained view owns: the fake Host Session it reads and the real model source over it. */
 export interface LongSessionView {
-  readonly feed: FakeConversationFeed
-  readonly source: OfficialConversationModelSource
+  readonly host: FakeHostSession
+  readonly source: RemoteConversationModelSource
 }
 
 /** The screen face the harness mounts on; `SlotScreen` satisfies it. */
@@ -285,41 +274,74 @@ export interface LongSessionScreen {
   dispose(): void
 }
 
-/** A fake conversation feed: the harness pushes whole values and drafts, the real source takes them. */
-export class FakeConversationFeed implements ConversationFeed {
-  private pending: { readonly value: unknown, readonly seq: number } | undefined
-  private watermark = -1
-  private draftValue: LiveAssistantDraft | undefined
-  private disposed = false
+/**
+ * A fake Host Session: the `mayflyConversation` projection face and the official live event window. A pushed value
+ * reaches the source as the Client store holds it, decoded from its frame, so no entry object survives a push.
+ */
+export class FakeHostSession implements SessionEventSource {
+  private value: unknown
+  private entries: readonly SessionEventLikeEntry[] = []
+  private revision = 0
+  private change: SessionEventChange = { kind: 'replace', entries: [] }
+  private readonly faceListeners = new Set<() => void>()
+  private readonly windowListeners = new Set<() => void>()
 
-  /** Queue a whole value newer than every value already taken or settled. */
-  push(value: unknown, seq: number): void {
-    if (this.disposed || seq <= Math.max(this.watermark, this.pending?.seq ?? -1)) return
-    this.pending = { value, seq }
+  /** Deliver one whole Host projection value. */
+  push(projection: ConversationProjection): void {
+    this.value = JSON.parse(JSON.stringify(projection)) as unknown
+    for (const listener of [...this.faceListeners]) listener()
   }
 
-  /** Replace the live draft the source overlays. */
-  setDraft(draft: LiveAssistantDraft | undefined): void {
-    this.draftValue = draft
+  /** Replace the live window with the entries of one attempt. */
+  setDraft(entries: readonly SessionEventLikeEntry[]): void {
+    this.entries = entries
+    this.revision += 1
+    this.change = { kind: 'append', entries }
+    for (const listener of [...this.windowListeners]) listener()
   }
 
-  take(): { readonly value: unknown, readonly seq: number } | undefined {
-    const pending = this.pending
-    this.pending = undefined
-    return pending
+  getSnapshot() {
+    return { entries: this.entries, hasMore: false, revision: this.revision, change: this.change }
   }
 
-  settle(seq: number): void { this.watermark = seq }
-
-  draft(): LiveAssistantDraft | undefined { return this.draftValue }
-
-  state(): ConversationFeedState { return READY }
-
-  dispose(): void {
-    this.disposed = true
-    this.pending = undefined
-    this.draftValue = undefined
+  subscribe(listener: () => void): () => void {
+    this.windowListeners.add(listener)
+    return () => { this.windowListeners.delete(listener) }
   }
+
+  binding(): SessionBinding {
+    const empty = { getSnapshot: () => undefined, subscribe: () => () => {} }
+    const conversation = {
+      getSnapshot: () => this.value,
+      subscribe: (listener: () => void) => {
+        this.faceListeners.add(listener)
+        return () => { this.faceListeners.delete(listener) }
+      },
+    }
+    return {
+      sessionId: SessionId('long-session'),
+      eventSource: this,
+      session: {
+        getSnapshot: () => ({ running: false }),
+        subscribe: () => () => {},
+        projections: { faceOf: (key: string) => key === 'mayflyConversation' ? conversation : empty },
+      },
+    } as unknown as SessionBinding
+  }
+}
+
+/** The long-session presenters as the Host-scoped source the live runtime passes; `invalidate` is a tools/change. */
+export class FakeScopedTools implements ScopedRemoteToolPresentationSource {
+  private readonly base = longSessionTools()
+  private readonly listeners = new Set<() => void>()
+  get(name: string) { return this.base.get(name) }
+  getForCall(name: string, callId: string) { return this.base.getForCall?.(name, callId) }
+  source(): ToolPresentationSource { return this.base }
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+  invalidate(): void { for (const listener of [...this.listeners]) listener() }
 }
 
 /** A tick source the workload fires by hand, so a measured step never waits for a timer. */
@@ -384,7 +406,7 @@ class FixedPublishClock {
 export class LongSessionHarness {
   readonly controller: TranscriptController
   readonly tick = new FakeTickSource()
-  private readonly tools: ToolPresentationSource = longSessionTools()
+  readonly tools = new FakeScopedTools()
   private readonly clock = new FixedPublishClock()
   private readonly views = new Map<string, LongSessionView>()
 
@@ -405,22 +427,14 @@ export class LongSessionHarness {
   }
 
   /** Push one whole projection into a new retained view, warm its durable model, and set the view. */
-  addView(key: string, projection: ConversationProjection, options: { readonly seq?: number, readonly draft?: LiveAssistantDraft } = {}): LongSessionView {
-    const feed = new FakeConversationFeed()
-    feed.push(projection, options.seq ?? 1)
-    if (options.draft !== undefined) feed.setDraft(options.draft)
-    const source = new OfficialConversationModelSource(
-      NO_PROJECTIONS,
-      this.tools,
-      () => { this.controller.refresh() },
-      undefined,
-      translate,
-      this.counters,
-    )
-    source.attachFeed(feed)
-    source.snapshot()
+  addView(key: string, projection: ConversationProjection, options: { readonly draft?: readonly SessionEventLikeEntry[] } = {}): LongSessionView {
+    const host = new FakeHostSession()
+    host.push(projection)
+    if (options.draft !== undefined) host.setDraft(options.draft)
+    const source = new RemoteConversationModelSource(this.tools, () => { this.controller.refresh() }, { counters: this.counters })
+    source.attach(host.binding())
     this.controller.setView(key, () => source.snapshot())
-    const view: LongSessionView = { feed, source }
+    const view: LongSessionView = { host, source }
     this.views.set(key, view)
     return view
   }
@@ -431,9 +445,13 @@ export class LongSessionHarness {
     return view
   }
 
-  show(key: string): void { this.controller.show(key) }
+  /** Display one view; like the side-view owner, the others stop converting until shown. */
+  show(key: string): void {
+    this.controller.show(key)
+    for (const [candidate, view] of this.views) view.source.setVisible(candidate === key)
+  }
 
-  /** Convert the newest pending value (or draft) in one view, then publish the controller. */
+  /** Read one view's current model, then publish the controller. */
   publish(key = 'main'): TranscriptModel {
     const model = this.view(key).source.snapshot()
     this.controller.republish()
@@ -441,7 +459,7 @@ export class LongSessionHarness {
     return model
   }
 
-  /** Republish the controller without converting another feed value. */
+  /** Republish the controller without another Host value. */
   republish(): void {
     this.controller.republish()
     this.clock.flush()

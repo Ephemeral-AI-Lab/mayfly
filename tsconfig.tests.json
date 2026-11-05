@@ -28,7 +28,6 @@
     "examples/*/tests/**/*.ts"
   ],
   "exclude": [
-    "packages/ui/tests/ui.compile.ts",
-    "packages/remote/tests/**"
+    "packages/ui/tests/ui.compile.ts"
   ]
 }

@@ -60,7 +60,7 @@ function isPictograph(point: number): boolean {
  * member: a ZWJ sequence, a flag, a toned person, and a pictograph with a presentation selector are two columns each.
  * The estimate follows those few rules and no others; every other cluster stays priced by its code points.
  */
-export interface ColumnWalk {
+interface ColumnWalk {
   /** The previous printing code point was a pictograph, so a joiner, tone, or selector after it belongs to its cluster. */
   emoji: boolean
   /** A joiner followed that pictograph: the next pictograph is a member of the sequence. */
