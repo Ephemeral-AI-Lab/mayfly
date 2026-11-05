@@ -25,7 +25,7 @@ try {
     else if (process.env.MAYFLY_DSH_STARTUP_URL || options.remote.some(arg => /^--host(?:=|$)/u.test(arg))) await run(options.remote)
     else {
       const state = await ensure(options, ownBin(), text => process.stderr.write(text))
-      await run(options.remote, state.url!)
+      await run(options.remote, { localStartupUrl: state.url! })
     }
   }
 } catch (error) {

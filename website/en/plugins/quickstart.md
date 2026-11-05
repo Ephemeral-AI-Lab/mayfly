@@ -38,17 +38,29 @@ export function apply(ctx: Context): void {
 }
 ```
 
-Mount it with ordinary `ctx.plugin(entry)` in the Remote composition of a
-dedicated worktree. Build and launch that worktree's Host and TUI:
+Compose it into a TUI entry of your own. `run` from `@ephemeral-ai/mayfly/bin`
+is the `mayfly` command itself, with the same options and environment; the
+plugins load into the TUI's Cordis tree after its built-in features and unload
+with it:
 
-```sh
-PROFILE=mayfly-build-health script/install-dev.sh
-dsh --profile mayfly-build-health
-MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh
+```ts
+import { run } from '@ephemeral-ai/mayfly/bin'
+import * as buildHealth from '@acme/build-health-ui'
+
+await run(process.argv.slice(2), { plugins: [buildHealth] })
 ```
 
-There is currently no public external TUI plugin installer or hot-loading
-entry. A Remote consumer needing Host state reads official Client facts or
-focused Mayfly Host DTOs, then publishes readonly UI nodes. Rebuild after source
-edits and reinstall the dedicated profile after dependency changes. Do not
-use the production `mayfly` profile for acceptance.
+Start the Host separately, as for `mayfly`, then run the entry with the Host's
+startup URL:
+
+```sh
+dsh --profile mayfly-build-health
+MAYFLY_DSH_STARTUP_URL='<Host URL>' node ./build-health-tui.js
+```
+
+`examples/mayfly-ecosystem` is a complete composition. There is no installer or
+hot-loading for TUI plugins: a composition is an ordinary program. The TUI's
+tree has the four UI services but no native dsh services; a TUI plugin needing
+Host state reads official Client facts or focused Mayfly Host DTOs, then
+publishes readonly UI nodes. Do not use the production `mayfly` profile for
+acceptance.

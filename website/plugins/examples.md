@@ -8,13 +8,13 @@
 | `header` | `mayflyPanes` | header lane |
 | `right-inspector` | `mayflyPanes` | right lane 与窄屏 bottom fallback |
 | `bottom-log` | `mayflyPanes` | passive bottom lane |
-| `overlay` | `commands`, `settings`, `mayflyOverlays` | 原生 command 打开 capturing overlay |
+| `overlay` | `mayflyEditorExtensions`, `mayflyOverlays` | 编辑器动作打开 capturing 设置 overlay |
 | `ui-gallery` | `mayflyPanes` | 公共 node builder 展示 |
 
-这些示例是模拟发布形态的 package 与 renderer fixture。纯 UI entry 可在专用
-Remote composition 中做源码集成。`overlay` 同时依赖原生 commands/settings 与
-UI，属于私有进程内 fixture；分体实现必须把 Host 读写与前端 overlay 分开，通过官方
-Client/Remote DTO 通信。`ecosystem` patch 不能向当前 Host 安装终端 UI。
+这些示例是模拟发布形态的 package 与 renderer fixture。每个插件都是普通 Cordis
+模块，由 TUI 组合传给 `run(argv, { plugins })`；`mayfly-ecosystem` 把五个插件组合成
+`mayfly-ecosystem` 命令。示例都不提供 dsh bundle：TUI 的树提供四个 UI service，没有
+原生 dsh service，因此 `overlay` 示例把设置保存在自己的 Fiber 中。
 
 示例证明 package entry、direct `inject`、renderer-neutral output、Fiber
-unload、publish-shaped pack/install 和窄宽渲染。它们不进入 Mayfly 默认 bundle。
+unload、publish-shaped pack/install 和窄宽渲染。它们不进入 Mayfly 默认组合。

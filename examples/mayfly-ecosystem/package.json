@@ -1,6 +1,6 @@
 {
   "name": "@mayfly-example/ecosystem",
-  "description": "Opt-in composition bundle for all Mayfly ecosystem examples",
+  "description": "Opt-in TUI source composition of all Mayfly ecosystem examples",
   "version": "0.1.0",
   "private": true,
   "publishConfig": {
@@ -14,33 +14,27 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "bin": {
+    "mayfly-ecosystem": "lib/bin.js"
+  },
   "files": [
-    "lib/**/*",
-    "cordis.patch.yml"
+    "lib/**/*"
   ],
   "license": "MIT",
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  },
   "dependencies": {
-    "@mayfly-example/user-kit": "workspace:*",
     "@mayfly-example/header": "workspace:*",
     "@mayfly-example/right-inspector": "workspace:*",
     "@mayfly-example/bottom-log": "workspace:*",
     "@mayfly-example/overlay": "workspace:*",
-    "@mayfly-example/ui-gallery": "workspace:*"
+    "@mayfly-example/ui-gallery": "workspace:*",
+    "@ephemeral-ai/mayfly": "workspace:*"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.5",
-    "@ephemeral-ai/mayfly": "workspace:*"
+    "@deepseek-ai/cordis": "^4.0.5"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.1.0",
-    "@ephemeral-ai/mayfly": "workspace:*"
+    "@deepseek-ai/cordis": "4.1.0"
   }
 }

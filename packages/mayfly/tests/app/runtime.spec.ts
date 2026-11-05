@@ -273,6 +273,25 @@ describe('runRemoteFrontend', () => {
     expect(mocks.startupDispose).toHaveBeenCalled()
   })
 
+  it('loads a source composition\'s plugins in order before attaching and unloads them with the TUI', async () => {
+    mocks.apps.length = 0
+    mocks.editorActions = undefined
+    const events: string[] = []
+    const plugin = (id: string) => ({
+      name: id,
+      apply(ctx: import('@deepseek-ai/cordis').Context) {
+        events.push(`apply ${id} attached=${String(mocks.apps[0]?.attach.mock.calls.length ?? 0)}`)
+        ctx.effect(() => () => { events.push(`unload ${id}`) })
+      },
+    })
+    const running = runRemoteFrontend({ startupUrl, plugins: [plugin('first'), plugin('second')] })
+    await vi.waitFor(() => { expect(mocks.editorActions).toBeDefined() })
+    expect(events).toEqual(['apply first attached=0', 'apply second attached=0'])
+    mocks.editorActions!.exit()
+    await running
+    expect(events.slice(2).sort()).toEqual(['unload first', 'unload second'])
+  })
+
   it('uses the prompt viewport for startup and applies only active confirmed default selections', async () => {
     mocks.editorActions = undefined
     mocks.setDefaultModel.mockClear()

@@ -1,49 +1,58 @@
-/** Persistent two-page settings edited through native services and the direct overlay registry.
+/** A two-page settings form opened from an editor action through the direct overlay registry.
  * @module @mayfly-example/overlay
  */
 import type { Context } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
-import { SettingsConflictError, type SettingsPathOp } from '@deepseek-ai/dsh-settings'
-import type {} from '@deepseek-ai/dsh-commands'
 import { ui, type MayflyFormAddress, type MayflyOverlayDefinition, type MayflyOverlayHandle, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 
 export const name = '@mayfly-example/overlay'
-export const inject = ['commands', 'settings', 'mayflyOverlays']
-/** The native settings namespace: the Loader entry id this plugin mounts under. */
-export const SETTINGS_NAMESPACE = '@mayfly-example/overlay'
-/** Source-stamp id correlating snapshots and submissions; wire ids reject `@`. */
+export const inject = ['mayflyEditorExtensions', 'mayflyOverlays']
+/** The editor action that opens the overlay; editor actions need a modifier key. */
+export const OPEN_KEY = 'alt+o'
+/** Source-stamp id correlating snapshots and submissions. */
 const SETTINGS_STAMP = 'mayfly-example-overlay.settings'
 
-interface Settings {
+/** The values the form edits; they live as long as the plugin Fiber. */
+export interface Settings {
   readonly connection: { readonly name: string, readonly transport: 'local' | 'remote', readonly enabled: boolean }
   readonly workspace: { readonly name: string, readonly limit: number }
 }
 
-const defaults: Settings = Object.freeze({
+/** What a reset field returns to. */
+export const defaults: Settings = Object.freeze({
   connection: Object.freeze({ name: 'Default', transport: 'local', enabled: true }),
   workspace: Object.freeze({ name: 'Workspace', limit: 100 }),
 })
-/** The row's Config: volatile sections are what `settings.describe()` projects and `settings.mutate()` commits live. */
-export const Config = z.object({
-  connection: z.object({ name: z.string().default(defaults.connection.name), transport: z.union([z.const('local'), z.const('remote')]).default(defaults.connection.transport), enabled: z.boolean().default(defaults.connection.enabled) }).default(defaults.connection).volatile(),
-  workspace: z.object({ name: z.string().default(defaults.workspace.name), limit: z.number().min(1).max(10000).step(1).default(defaults.workspace.limit) }).default(defaults.workspace).volatile(),
-})
+
+type Page = keyof Settings
+const FIELDS: { readonly [P in Page]: readonly (keyof Settings[P])[] } = {
+  connection: ['name', 'transport', 'enabled'],
+  workspace: ['name', 'limit'],
+}
+
+/** Whether `value` is acceptable for the field, by the same rules the form declares. */
+function valid(page: Page, field: string, value: unknown): boolean {
+  if (field === 'name') return typeof value === 'string' && value.trim() !== '' && value.length <= 80
+  if (page === 'connection' && field === 'transport') return value === 'local' || value === 'remote'
+  if (page === 'connection' && field === 'enabled') return typeof value === 'boolean'
+  return page === 'workspace' && field === 'limit' && Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 10000
+}
+
 const address = (itemId: string): MayflyFormAddress => ({ pagePath: [{ controlId: 'settings-pages', itemId }], formId: 'settings' })
 
-function settingsNode(value: Settings, writable: boolean): MayflyUiNode {
+function settingsNode(value: Settings): MayflyUiNode {
   return ui.stack.column([
     ui.tabs({ id: 'settings-pages', activeId: 'connection', items: [{ id: 'connection', label: 'Connection' }, { id: 'workspace', label: 'Workspace' }] }),
     ui.child(ui.form({ id: 'settings', fields: [
-      { kind: 'input', id: 'name', label: 'Name', value: value.connection.name, required: true, maxLength: 80, disabled: !writable },
-      { kind: 'select', id: 'transport', label: 'Transport', value: value.connection.transport, options: [{ id: 'local', label: 'Local' }, { id: 'remote', label: 'Remote' }], disabled: !writable },
-      { kind: 'toggle', id: 'enabled', label: 'Enabled', value: value.connection.enabled, disabled: !writable },
+      { kind: 'input', id: 'name', label: 'Name', value: value.connection.name, required: true, maxLength: 80 },
+      { kind: 'select', id: 'transport', label: 'Transport', value: value.connection.transport, options: [{ id: 'local', label: 'Local' }, { id: 'remote', label: 'Remote' }] },
+      { kind: 'toggle', id: 'enabled', label: 'Enabled', value: value.connection.enabled },
     ] }), { tab: { controlId: 'settings-pages', itemId: 'connection' } }),
     ui.child(ui.form({ id: 'settings', fields: [
-      { kind: 'input', id: 'name', label: 'Name', value: value.workspace.name, required: true, maxLength: 80, disabled: !writable },
-      { kind: 'number', id: 'limit', label: 'History limit', value: value.workspace.limit, min: 1, max: 10000, step: 1, disabled: !writable },
+      { kind: 'input', id: 'name', label: 'Name', value: value.workspace.name, required: true, maxLength: 80 },
+      { kind: 'number', id: 'limit', label: 'History limit', value: value.workspace.limit, min: 1, max: 10000, step: 1 },
     ] }), { tab: { controlId: 'settings-pages', itemId: 'workspace' } }),
     ui.actions({ id: 'settings-actions', items: [
-      { id: 'save', label: 'Save', intent: 'primary', disabled: !writable, submit: [address('connection'), address('workspace')] },
+      { id: 'save', label: 'Save', intent: 'primary', submit: [address('connection'), address('workspace')] },
       { id: 'cancel', label: 'Cancel', dismiss: true },
     ] }),
   ], { gap: 1 })
@@ -58,64 +67,54 @@ export const overlayRequest: MayflyOverlayDefinition & { readonly node: MayflyUi
   anchor: 'center',
   width: '70%',
   maxHeight: '70%',
-  scope: { kind: 'app', targetId: SETTINGS_NAMESPACE },
-  node: settingsNode(defaults, true),
+  scope: { kind: 'app', targetId: 'example.overlay' },
+  node: settingsNode(defaults),
 }
 
-/** Register an ordinary command; the `mayfly-example-overlay` patch row owns the settings namespace. */
+/** Register the editor action; activating it opens the overlay, or focuses the one already open. */
 export function apply(ctx: Context): void {
+  let settings = defaults
+  let revision = 0
   let active: MayflyOverlayHandle | undefined
-  const snapshot = () => {
-    const descriptor = ctx.settings.describe().find(entry => String(entry.ns) === SETTINGS_NAMESPACE)!
-    return { node: settingsNode(descriptor.value as Settings, ctx.settings.writable), source: [{ resourceId: SETTINGS_STAMP, revision: descriptor.revision }] }
-  }
-  const refresh = () => {
-    if (active === undefined || active.closed) return
-    const next = snapshot()
-    active.set(next.node, { reason: 'data', source: next.source })
-  }
-  const offDocument = ctx.on('settings/document-updated', ns => { if (String(ns) === SETTINGS_NAMESPACE) refresh() })
-  ctx.effect(() => () => { offDocument(); active = undefined })
-  ctx.commands.register({
-    name: 'example-overlay',
-    description: 'Edit the example settings',
-    handler: () => {
-      if (active !== undefined && !active.closed) active.focus()
-      else {
-        const current = snapshot()
-        const { node: _initialNode, ...definition } = overlayRequest
-        active = ctx.mayflyOverlays.open({
-          ...definition, source: current.source,
-          onEvent: { action: async (event, context): Promise<MayflyUiActionReply> => {
-            if (event.kind !== 'submit') return { kind: 'completed' }
-            if (context.signal.aborted) return { kind: 'cancelled' }
-            const revision = event.submission.source.find(stamp => stamp.resourceId === SETTINGS_STAMP)?.revision
-            if (typeof revision !== 'number') return { kind: 'conflict', ...snapshot(), message: 'Settings must be refreshed before saving' }
-            const ops: SettingsPathOp[] = []
-            for (const form of event.submission.forms) {
-              const page = form.pagePath[0]?.itemId
-              if (form.formId !== 'settings' || (page !== 'connection' && page !== 'workspace')) return { kind: 'failed', message: 'Unknown settings page' }
-              const allowed = page === 'connection' ? ['name', 'transport', 'enabled'] : ['name', 'limit']
-              for (const field of form.fields) {
-                if (!allowed.includes(field.id)) return { kind: 'failed', message: 'Unknown settings field' }
-                if (field.change === 'set') ops.push({ op: 'set', path: [page, field.id], value: field.value })
-                else if (field.change === 'reset') ops.push({ op: 'unset', path: [page, field.id] })
-              }
-            }
-            try {
-              if (ops.length > 0) await ctx.settings.mutate(SETTINGS_NAMESPACE, ops, revision)
-              if (context.signal.aborted) return { kind: 'cancelled' }
-              return { kind: 'accepted', ...snapshot(), feedback: { severity: 'success', message: 'Settings saved' } }
-            } catch (error) {
-              if (context.signal.aborted) return { kind: 'cancelled' }
-              return error instanceof SettingsConflictError
-                ? { kind: 'conflict', ...snapshot(), message: 'Settings changed elsewhere' }
-                : { kind: 'failed', message: 'Settings could not be saved' }
-            }
-          } },
-        }, current.node)
+  const snapshot = () => ({ node: settingsNode(settings), source: [{ resourceId: SETTINGS_STAMP, revision }] })
+  ctx.effect(() => () => { active = undefined })
+
+  const save: NonNullable<NonNullable<MayflyOverlayDefinition['onEvent']>['action']> = (event, context): MayflyUiActionReply => {
+    if (event.kind !== 'submit') return { kind: 'completed' }
+    if (context.signal.aborted) return { kind: 'cancelled' }
+    const stamped = event.submission.source.find(stamp => stamp.resourceId === SETTINGS_STAMP)?.revision
+    if (stamped !== revision) return { kind: 'conflict', ...snapshot(), message: 'Settings changed since the form opened' }
+    const next = { connection: { ...settings.connection }, workspace: { ...settings.workspace } } as Record<Page, Record<string, unknown>>
+    for (const form of event.submission.forms) {
+      const page = form.pagePath[0]?.itemId
+      if (form.formId !== 'settings' || (page !== 'connection' && page !== 'workspace')) return { kind: 'failed', message: 'Unknown settings page' }
+      for (const field of form.fields) {
+        if (!(FIELDS[page] as readonly string[]).includes(field.id)) return { kind: 'failed', message: 'Unknown settings field' }
+        if (field.change === 'unchanged') continue
+        const value = field.change === 'reset' ? (defaults[page] as Record<string, unknown>)[field.id] : field.value
+        if (!valid(page, field.id, value)) return { kind: 'failed', message: `Invalid ${page} ${field.id}` }
+        next[page][field.id] = value
       }
-      return { kind: 'success', text: 'opened the example overlay' }
+    }
+    settings = Object.freeze({ connection: Object.freeze(next.connection), workspace: Object.freeze(next.workspace) }) as unknown as Settings
+    revision += 1
+    return { kind: 'accepted', ...snapshot(), feedback: { severity: 'success', message: 'Settings saved' } }
+  }
+
+  const open = (): void => {
+    if (active !== undefined && !active.closed) { active.focus(); return }
+    const current = snapshot()
+    const { node: _initialNode, ...definition } = overlayRequest
+    active = ctx.mayflyOverlays.open({ ...definition, source: current.source, onEvent: { action: save } }, current.node)
+  }
+
+  ctx.mayflyEditorExtensions.register({
+    id: 'example.overlay.open',
+    onEvent: {
+      action: (event) => {
+        if (event.kind === 'activate' && event.actionId === 'open') open()
+        return { kind: 'completed' }
+      },
     },
-  })
+  }, { actions: [{ id: 'open', label: 'Example settings', key: OPEN_KEY }] })
 }

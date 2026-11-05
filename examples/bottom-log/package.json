@@ -14,19 +14,12 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "files": [
-    "lib/**/*",
-    "cordis.patch.yml"
+    "lib/**/*"
   ],
   "license": "MIT",
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  },
   "dependencies": {
     "@ephemeral-ai/mayfly-ui": "workspace:*"
   },

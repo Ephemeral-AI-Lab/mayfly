@@ -2,6 +2,7 @@
 import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { Plugin } from '@deepseek-ai/cordis'
 import { mayflyVersion } from './app/features/version.ts'
 
 const HELP = `Mayfly independent terminal UI
@@ -176,8 +177,16 @@ export function sanitized(error: unknown, localStartupUrl?: string): string {
     .replaceAll(/((?:cookie|authorization)\s*:\s*)[^\r\n]+/giu, '$1<redacted>')
 }
 
+/** How a caller of the bin starts the TUI beyond its command line. */
+export interface MayflyRunOptions {
+  /** An authenticated startup URL of a Host this process launched; it replaces `MAYFLY_DSH_STARTUP_URL`. */
+  readonly localStartupUrl?: string
+  /** Cordis entries a source composition adds to the TUI's tree. */
+  readonly plugins?: readonly Plugin[]
+}
+
 /** Execute the independent Frontend using environment credentials and Remote-only command-line options. */
-export async function main(argv = process.argv.slice(2), localStartupUrl?: string): Promise<void> {
+export async function main(argv = process.argv.slice(2), { localStartupUrl, plugins }: MayflyRunOptions = {}): Promise<void> {
   const options = parseArgv(argv)
   if (options.action === 'help') {
     process.stdout.write(HELP)
@@ -197,15 +206,16 @@ export async function main(argv = process.argv.slice(2), localStartupUrl?: strin
     ...(sessionId === undefined ? {} : { sessionId }),
     ...(task === undefined ? {} : { task }),
     ...(cwd === undefined ? {} : { cwd }),
+    ...(plugins === undefined ? {} : { plugins }),
   })
 }
 
 /** Run the bin and report a sanitized ordinary-terminal failure without terminating the Host. */
-export async function run(argv = process.argv.slice(2), localStartupUrl?: string): Promise<void> {
+export async function run(argv = process.argv.slice(2), options: MayflyRunOptions = {}): Promise<void> {
   try {
-    await main(argv, localStartupUrl)
+    await main(argv, options)
   } catch (error: unknown) {
-    process.stderr.write(`mayfly: ${sanitized(error, localStartupUrl)}\n`)
+    process.stderr.write(`mayfly: ${sanitized(error, options.localStartupUrl)}\n`)
     process.exitCode = 1
   }
 }

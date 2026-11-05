@@ -42,10 +42,15 @@ describe('remote-bin environment entry', () => {
     expect(() => validateArguments(['--token=secret'])).toThrow('Credentials')
     expect(() => validateArguments(['--resume', 'local-session'])).not.toThrow()
     delete process.env.MAYFLY_DSH_STARTUP_URL
-    await main(['--resume', 'local-session'], startupUrl())
+    await main(['--resume', 'local-session'], { localStartupUrl: startupUrl() })
     expect(runRemoteFrontend).toHaveBeenCalledWith({ startupUrl: startupUrl(), sessionId: 'local-session' })
     expect(process.env.MAYFLY_DSH_STARTUP_URL).toBeUndefined()
     expect(sanitized(new Error('secret'), startupUrl())).toBe('<redacted>')
+  })
+  it('hands a source composition\'s plugins to the TUI with the ordinary startup', async () => {
+    const plugin = { name: 'composed', apply() {} }
+    await main(['--resume', 'composed-session'], { localStartupUrl: startupUrl(), plugins: [plugin] })
+    expect(runRemoteFrontend).toHaveBeenCalledWith({ startupUrl: startupUrl(), sessionId: 'composed-session', plugins: [plugin] })
   })
   it('prints help and the actual package version before requiring a Host', async () => {
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)

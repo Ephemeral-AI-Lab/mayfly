@@ -1,5 +1,5 @@
 /** Independent TUI composition over exact native Host selections and mount-owned lifetimes. @module remote/runtime */
-import { Context } from '@deepseek-ai/cordis'
+import { Context, type Plugin } from '@deepseek-ai/cordis'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
@@ -46,6 +46,11 @@ export interface RemoteFrontendOptions {
   readonly sessionId?: string
   readonly cwd?: string
   readonly task?: string
+  /**
+   * Cordis entries a source composition adds to the TUI's tree, in order, after the core and the built-in features. Each
+   * runs in its own Fiber beside the direct UI services and unloads with the TUI.
+   */
+  readonly plugins?: readonly Plugin[]
 }
 
 /** Run the standalone TUI until the user detaches or exits, then release every Client and the TTY. */
@@ -473,6 +478,7 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
         screen.requestRender()
       },
     })
+    for (const plugin of options.plugins ?? []) await ctx.plugin(plugin)
     await app.attach(options.startupUrl, options.hostId)
     if (options.sessionId !== undefined) await app.selectOrCreate(options.sessionId, options.cwd)
     if (options.task !== undefined && options.task.trim() !== '') await execute(options.task)

@@ -14,23 +14,13 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "files": [
-    "lib/**/*",
-    "cordis.patch.yml"
+    "lib/**/*"
   ],
   "license": "MIT",
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  },
   "dependencies": {
-    "@deepseek-ai/dsh-commands": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-settings": "0.2.2-rc.1",
-    "@deepseek-ai/schemastery": "3.19.0",
     "@ephemeral-ai/mayfly-ui": "workspace:*"
   },
   "peerDependencies": {

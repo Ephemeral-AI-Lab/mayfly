@@ -7,13 +7,13 @@ import { ROOT } from './package-contract.mjs'
 import { harnessLine } from './smoke-lib.mjs'
 
 const scenarios = [
-  'composition.five-direct-rows',
+  'composition.five-plugins',
   'user-kit.public-component',
   'header.pane-lifecycle',
   'right-inspector.pane-lifecycle',
   'bottom-log.pane-lifecycle',
   'ui-gallery.pane-lifecycle',
-  'overlay.command-and-lifecycle',
+  'overlay.editor-action-and-lifecycle',
   'direct.status-and-editor-lifecycle',
 ]
 const directServices = ['mayflyPanes', 'mayflyStatus', 'mayflyOverlays', 'mayflyEditorExtensions']
@@ -31,5 +31,6 @@ if (JSON.stringify(report.executed) !== JSON.stringify(scenarios)) throw new Err
 if (JSON.stringify(report.directServices) !== JSON.stringify(directServices)) throw new Error('fixture direct-service evidence differs')
 if (report.skipped.length !== 0 || report.failures.length !== 0) throw new Error('fixture skipped or failed scenarios')
 if (!report.fixtureCleaned || !report.cleaned || !report.valid) throw new Error('fixture did not complete cleanly')
-if (report.harnessPackages['@deepseek-ai/dsh-commands'] !== harnessLine) throw new Error('fixture resolved the wrong dsh commands line')
+if (Object.keys(report.harnessPackages).length === 0) throw new Error('fixture resolved no dsh packages')
+for (const [name, version] of Object.entries(report.harnessPackages)) if (version !== harnessLine) throw new Error(`fixture resolved ${name} ${String(version)}, expected ${harnessLine}`)
 process.stdout.write(output)

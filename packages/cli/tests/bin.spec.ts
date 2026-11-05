@@ -40,7 +40,7 @@ it('starts the local server and passes credentials only in memory', async () => 
   })
   await invoke(['--profile=work', 'task'])
   expect(ensure).toHaveBeenCalledWith(expect.objectContaining({ profile: 'work' }), '/bin', expect.any(Function))
-  expect(run).toHaveBeenCalledWith(['task'], 'http://localhost/?token=secret')
+  expect(run).toHaveBeenCalledWith(['task'], { localStartupUrl: 'http://localhost/?token=secret' })
 })
 it.each([[], ['--host=https://example.test']])('preserves explicit remote connection %j', async (...args) => {
   if (args.length === 0) vi.stubEnv('MAYFLY_DSH_STARTUP_URL', 'http://localhost/?token=secret')
