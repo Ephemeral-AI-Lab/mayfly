@@ -26,7 +26,7 @@
 #
 # Why the agent may never touch .github/: GITHUB_TOKEN cannot push commits
 # that modify workflow files — GitHub rejects the push outright. ci.yml's
-# CLI pin is derived from HARNESS_LINE (script/harness-line.mjs), so a line
+# CLI pin is derived from the Host manifest (script/harness-line.mjs), so a line
 # bump has no reason to touch a workflow file at all.
 #
 # The dispatch `apply` input is an explicit human intent: it may be run

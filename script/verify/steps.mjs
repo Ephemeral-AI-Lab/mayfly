@@ -14,8 +14,8 @@ import { join } from 'node:path'
  * @property {string} command - the executable.
  * @property {string[]} args - its arguments.
  * @property {boolean} [blocking] - stop the tier when this step fails.
- * @property {'specs' | 'coverage' | 'scenarios' | 'perf' | 'split'} [kind] - a run whose results the report reads: vitest's JSON,
- *   the scenario results, or the perf results.
+ * @property {'specs' | 'coverage' | 'split'} [kind] - a run whose results the report reads: vitest's JSON or the split
+ *   results.
  */
 
 export const TIERS = ['round', 'pr', 'full']
@@ -23,8 +23,6 @@ export const TIERS = ['round', 'pr', 'full']
 /** Where a tier writes its report, logs, and the results the report reads. */
 export const OUTPUT = '.artifacts/verify'
 export const VITEST_RESULTS = `${OUTPUT}/vitest.json`
-export const SCENARIO_RESULTS = `${OUTPUT}/scenarios.json`
-export const PERF_RESULTS = `${OUTPUT}/perf.json`
 export const SPLIT_RESULTS = `${OUTPUT}/split.json`
 export const SPLIT_REVIEW_RESULTS = `${OUTPUT}/split-review.json`
 
@@ -87,13 +85,7 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
       : []
     steps.push(vitest(`specs (${String(plan.tests.specs.length)})`, coverage.length > 0 ? 'coverage' : 'specs', [...plan.tests.specs, ...coverage]))
   }
-  // The old in-process replay/perf CLI requires the rc.2 Harness. Runtime acceptance now
-  // drives the actual split executable; deterministic frame work budgets remain Vitest specs.
-  const terminalChange = plan.tests.scenarios.length > 0 || plan.tests.perf.length > 0 || plan.checks.smoke
-    || plan.files.some(file => /^packages\/(?:host|remote)\/src\//u.test(file))
-  if (terminalChange) steps.push(split(tier === 'pr' ? 'all' : 'smoke', tier === 'round'))
-  if (tier === 'pr' && plan.tests.perf.length > 0 && !plan.tests.specs.some(file => file.startsWith('packages/mayfly/tests/perf/'))) {
-    steps.push(vitest('renderer work budgets', 'specs', ['--project=perf']))
-  }
+  // Runtime acceptance drives the real split Host and TUI; deterministic frame work budgets are Vitest specs.
+  if (plan.checks.smoke) steps.push(split(tier === 'pr' ? 'all' : 'smoke', tier === 'round'))
   return steps
 }

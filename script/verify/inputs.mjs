@@ -11,7 +11,7 @@ export const GLOBAL = [
   { pattern: /^script\/package-contract\.mjs$/u, reason: 'the package and build contract' },
   { pattern: /^script\/scenarios\/split-release-policy\.json$/u, reason: 'the exact published-reference release decisions' },
   { pattern: /^\.github\/workflows\//u, reason: 'a CI workflow' },
-  { pattern: /^packages\/mayfly\/(?:cordis\.patch\.yml|presets\/)/u, reason: 'the shipped composition contract' },
+  { pattern: /^packages\/host\/(?:cordis\.patch\.yml|presets\/)/u, reason: 'the shipped Host composition contract' },
 ]
 
 /**
@@ -50,22 +50,10 @@ export const DATA_READS = [
 ]
 
 /**
- * The scenarios a product source no scenario covers runs: the two long conversations of the catalog, which show the
- * stream, the editor, the notification row, and the status row together.
+ * Product sources that run in the shipped Host or TUI: a change to one runs the real Host/TUI split smoke and needs
+ * the dedicated runtime-profile acceptance.
  */
-export const SCENARIO_SMOKE = [
-  { pattern: /^packages\/(?:mayfly|ui)\/src\//u, scenarios: ['mergeConversations', 'mergeDock'] },
-]
-
-/**
- * Scenario machinery: a change here can move every checkpoint, so it selects the whole catalog. The path rule covers
- * the pipeline directory (not the goldens, which select their own scenario) and the `scenarios` command itself; the
- * pipeline roots catch an outside file the run, the content, or the compare loads (the throwaway profile a boot
- * prepares). An import the command makes only to orchestrate — the change-set parser, the shots painter, the dsh
- * lookup — is not machinery and no longer runs the catalog. @see select.mjs
- */
-export const SCENARIO_ALL = /^script\/scenarios(?:\.mjs|\/(?!golden\/))/u
-export const SCENARIO_PIPELINE = ['script/scenarios/runner.mjs', 'script/scenarios/catalog.mjs', 'script/scenarios/golden.mjs']
+export const RUNTIME_SOURCE = /^packages\/(?:mayfly|host|ui|cli)\/src\//u
 
 /**
  * Files nothing in the gate reads: prose, history, the design sketch, scripts a person runs, and the Website with its

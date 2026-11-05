@@ -40,11 +40,8 @@ export function auditAgentDocs(root, options = {}) {
     return manifest.version
   }))
   packageVersions.add(SPLIT_REFERENCE.version)
-  const harnessSource = join(root, 'packages', 'mayfly', 'src', 'interaction', 'session-commands.ts')
-  if (existsSync(harnessSource)) {
-    const harnessVersion = /HARNESS_LINE = '([^']+)'/u.exec(readFileSync(harnessSource, 'utf8'))?.[1]
-    if (harnessVersion !== undefined) packageVersions.add(harnessVersion)
-  }
+  const harnessVersion = parseManifestText(readFileSync(join(root, 'packages', 'host', 'package.json'), 'utf8'), 'packages/host/package.json').peerDependencies?.['@deepseek-ai/dsh-session']
+  if (harnessVersion !== undefined) packageVersions.add(harnessVersion)
   for (const version of options.allowedVersions ?? []) packageVersions.add(version)
 
   const projectSkills = join(root, '.agents', 'skills')
