@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import * as Frontend from '../../src/frontend.ts'
+import * as Frontend from '../../src/frontend/index.ts'
 import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
 import { RemoteNotifications, type RemoteNotificationPresentation } from '../../src/app/notifications.ts'
 

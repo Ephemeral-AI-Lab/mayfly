@@ -4,7 +4,7 @@
  * @module @ephemeral-ai/mayfly/remote/features/locale
  */
 
-import type { MayflyLocaleCatalog } from '../../frontend.ts'
+import type { MayflyLocaleCatalog } from '../../frontend/locale.ts'
 
 const zh: Readonly<Record<string, string>> = {
   'Select a model': '选择模型',
@@ -12,7 +12,6 @@ const zh: Readonly<Record<string, string>> = {
   '{size} context': '{size} 上下文',
   'Thinking': '推理强度',
   'Provider default': '提供商默认',
-  'Switched to {model} ({provider})': '已切换到 {model}（{provider}）',
   'Providers': '提供商',
   'Custom endpoint': '自定义端点',
   'Configure {route}': '配置 {route}',
@@ -54,7 +53,6 @@ const zh: Readonly<Record<string, string>> = {
   'Callback URL': '回调地址',
   'Sign-in link copied': '登录链接已复制',
   'Paste the full callback address from the browser address bar': '请粘贴浏览器地址栏中的完整回调地址',
-  'The callback could not be delivered': '回调无法送达',
   'Settings': '设置',
   'No settings namespaces': '没有设置命名空间',
   'Settings changed elsewhere; review before saving': '设置已被其他操作修改，请检查后再保存',
@@ -72,7 +70,6 @@ const zh: Readonly<Record<string, string>> = {
   'Preset switched to {preset}': '已切换到预设 {preset}',
   'Select a theme': '选择主题',
   'Language': '语言',
-  'switched to theme "{key}"': '已切换到主题“{key}”',
   'Theme': '主题',
   'On start': '启动时',
   'Splash': '启动页',
@@ -100,31 +97,13 @@ const zh: Readonly<Record<string, string>> = {
   'high contrast on white': '白底高对比度',
   'Mayfly Dark or Light, as the terminal': '随终端在 Mayfly Dark 与 Light 间切换',
   'Selecting the default model requires the Host defaultModel capability.': '选择默认模型需要 Host 的 defaultModel 能力。',
-  'This preset disables the sandbox and every approval': '该预设会禁用沙箱并跳过所有审批',
-  'Settings document': '设置文档',
-  'View and edit the raw settings document': '查看并编辑原始设置文档',
-  'revision': '修订版本',
   'read-only': '只读',
-  'Edit in external editor': '在外部编辑器中编辑',
-  'Editing in the external editor…': '正在外部编辑器中编辑……',
-  'No external editor is configured for the settings document': '没有为设置文档配置外部编辑器',
-  'Settings document saved': '设置文档已保存',
-  'The settings document is empty': '设置文档为空',
-  '… {count} more lines; edit in an external editor to see them all': '… 还有 {count} 行；用外部编辑器查看全部内容',
-  'The settings document changed elsewhere (mayflyHost/settings-conflict); reopen it and review before saving': '设置文档已在别处修改（mayflyHost/settings-conflict）；请重新打开并检查后再保存',
-  'API key balance': 'API key 余额',
-  'No API key is configured': '未配置 API key',
-  'The provider rejected the balance request': '提供商拒绝了余额查询',
-  'The balance service could not be reached': '无法访问余额服务',
-  'No balance is available on this key': '该 key 没有可用余额',
-  'Sign in with OAuth': '使用 OAuth 登录',
   'Authorize {route}': '授权 {route}',
   'Waiting for authorization': '等待授权完成',
   'Answer': '回答',
   'Code': '代码',
   'Authorization completed': '授权已完成',
   'Authorization cancelled': '授权已取消',
-  'Signed in, but the provider profile could not be created': '已登录，但未能创建提供商配置',
 }
 
 const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key])))

@@ -2,8 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { TranscriptControllerOptions } from '../../src/transcript.ts'
-import type { MayflyKeyAction } from '../../src/core.ts'
+import type { TranscriptControllerOptions } from '../../src/transcript/transcript-model.ts'
+import type { MayflyKeyAction } from '../../src/core/types.ts'
 import { HostKey, type HostClient, type SessionRef } from '../../src/client/types.ts'
 import type { RemoteSideSelection, RemoteSideViewOptions } from '../../src/app/side-views.ts'
 import type { RemotePresentationFacts } from '../../src/transcript/remote-model.ts'
@@ -181,13 +181,17 @@ vi.mock('../../src/app/editor-composition.ts', () => ({ mountEditorComposition: 
   return { controller: wiring.controller, dispose: vi.fn() }
 }) }))
 vi.mock('../../src/app/host-composition.ts', () => ({ resolveMayflyToolPresentation: vi.fn((list: () => readonly HostClient[]) => { list(); return undefined }) }))
-vi.mock('../../src/transcript.ts', () => ({
-  ACTION_TOGGLE_COLLAPSE: 'mayfly.transcript.toggle-collapse',
-  TRANSCRIPT_LOCALE: {}, mountTranscriptLocale: vi.fn(),
-  transcriptTranslator: () => (text: string, values?: Readonly<Record<string, string | number>>) => `${wiring.locale}:${text.replace(/\{([^}]+)\}/gu, (_token, key: string) => String(values?.[key] ?? key))}`,
-  observeTranscriptLocale: (_ctx: unknown, changed: () => void) => { wiring.localeChanged = changed; return wiring.offLocale },
+vi.mock('../../src/transcript/presentation-policy.ts', async importOriginal => ({ ...await importOriginal<object>(),
   TranscriptPresentationPolicy: class {},
   followPresentationSettings: (_ctx: unknown, _policy: unknown, changed: () => void) => { wiring.policyChanged = changed; changed() },
+}))
+vi.mock('../../src/transcript/locale.ts', async importOriginal => ({ ...await importOriginal<object>(),
+  TRANSCRIPT_LOCALE: {},
+  mountTranscriptLocale: vi.fn(),
+  transcriptTranslator: () => (text: string, values?: Readonly<Record<string, string | number>>) => `${wiring.locale}:${text.replace(/\{([^}]+)\}/gu, (_token, key: string) => String(values?.[key] ?? key))}`,
+  observeTranscriptLocale: (_ctx: unknown, changed: () => void) => { wiring.localeChanged = changed; return wiring.offLocale },
+}))
+vi.mock('../../src/transcript/transcript-model.ts', async importOriginal => ({ ...await importOriginal<object>(),
   TranscriptController: class {
   constructor(options: TranscriptControllerOptions) { wiring.transcript = options; wiring.early?.() }
   readonly setView = vi.fn()
@@ -200,8 +204,9 @@ vi.mock('../../src/transcript.ts', () => ({
   readonly refreshLocale = wiring.refreshLocale
   readonly refreshPresentationPolicy = wiring.refreshPresentationPolicy
   readonly dispose = vi.fn()
-} }))
-vi.mock('../../src/core.ts', () => ({ name: 'core', Config: undefined, inject: [], apply(ctx: Context) {
+},
+}))
+vi.mock('../../src/core/index.ts', () => ({ name: 'core', Config: undefined, inject: [], apply(ctx: Context) {
   wiring.ctx = ctx
   ctx.provide('mayflyUiInteraction', { createNotificationOwner: () => wiring.keyNotices } as never)
   ctx.provide('mayflyScreen', { rows: 30, editorRowsFromBottom: 4, mountContentSlot: () => ({ dispose() {} }), requestRender: wiring.requestRender, suspend: wiring.suspend, leaveViews: wiring.leaveViews } as never)
@@ -215,16 +220,18 @@ vi.mock('../../src/core.ts', () => ({ name: 'core', Config: undefined, inject: [
   wiring.withdrawTheme = ctx.provide('mayflyTheme', { colors: {} } as never)
   ctx.provide('mayflyUiImages', { provide(provider: typeof wiring.image) { wiring.image = provider; return () => {} } } as never)
 } }))
-vi.mock('../../src/frontend.ts', () => ({ name: 'frontend', Config: undefined, inject: [], apply() {}, interpolateLocaleMessage: (key: string) => key }))
-vi.mock('../../src/theme-dark.ts', () => ({ name: 'theme', Config: undefined, inject: [], apply() {} }))
+vi.mock('../../src/frontend/index.ts', () => ({ name: 'frontend', Config: undefined, inject: [], apply() {}, interpolateLocaleMessage: (key: string) => key }))
+vi.mock('../../src/core/theme-dark.ts', () => ({ name: 'theme', Config: undefined, inject: [], apply() {} }))
 vi.mock('@ephemeral-ai/mayfly-ui/provider', () => ({ name: 'ui', Config: undefined, inject: [], apply() {} }))
-vi.mock('../../src/settings.ts', () => ({ currentMayflySettings: () => ({ quietHints: false }) }))
-vi.mock('../../src/command-panels.ts', () => ({
+vi.mock('../../src/frontend/settings.ts', async importOriginal => ({ ...await importOriginal<object>(), currentMayflySettings: () => ({ quietHints: false }) }))
+vi.mock('../../src/interaction/key-definitions.ts', async importOriginal => ({ ...await importOriginal<object>(),
   INTERACTION_KEY_ACTIONS: [
     { id: 'mayfly.interaction.cycle-mode' }, { id: 'mayfly.interaction.cycle-model' },
     { id: 'mayfly.interaction.toggle-agent-view' }, { id: 'mayfly.interaction.close-agent-view' }, { id: 'other' },
-  ], displayKey: (key: string) => key, interactionTranslator: () => (key: string) => key,
+  ],
 }))
+vi.mock('../../src/core/key-actions.ts', async importOriginal => ({ ...await importOriginal<object>(), displayKey: (key: string) => key }))
+vi.mock('../../src/interaction/locale.ts', async importOriginal => ({ ...await importOriginal<object>(), interactionTranslator: () => (key: string) => key }))
 
 import { runRemoteFrontend } from '../../src/app/runtime.ts'
 const local = HostKey('local')

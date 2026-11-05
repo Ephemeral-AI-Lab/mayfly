@@ -20,7 +20,8 @@ import {
   remoteProperty,
   remoteValue,
 } from './official.ts'
-import { EffortPicker, ModelPicker, formatContextWindow, modelSwitchNotice, sameModelSelection } from '../../model-picker.ts'
+import { EffortPicker, ModelPicker, formatContextWindow } from '../../components/model-picker.ts'
+import { modelSwitchNotice, sameModelSelection } from '../../components/model-selection.ts'
 import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
 import type { MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
 
@@ -43,7 +44,7 @@ export interface RemoteDefaultModel {
 }
 
 /** One flattened model row with reasoning metadata supplied by the official catalog. */
-export interface RemoteModelRow {
+interface RemoteModelRow {
   readonly key: string
   readonly provider: string
   readonly providerLabel: string
@@ -73,9 +74,6 @@ export function currentRemoteModelSelection(projection: unknown, catalog: ModelC
     ?? remoteModelSelection(remoteProperty(projection, 'lastUsed'))
     ?? catalog.default
 }
-
-/** Format context metadata in the legacy picker's binary units. */
-export const formatRemoteContextWindow = formatContextWindow
 
 /** Flatten official provider groups, preferring Host-merged context and effort metadata. */
 export function remoteModelRows(

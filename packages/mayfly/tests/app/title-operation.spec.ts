@@ -1,6 +1,6 @@
 /** Exact native title subscriptions and stale notification retirement. @module */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { TITLE_MAX_CHARS } from '../../src/core.ts'
+import { TITLE_MAX_CHARS } from '../../src/core/terminal-escape.ts'
 import { mountRemoteTitleOperations } from '../../src/app/operations/title.ts'
 import { RemotePresentSlot, type RemoteOperationsContext } from '../../src/app/operations/support.ts'
 import { projection } from './approval-feature-fixture.ts'

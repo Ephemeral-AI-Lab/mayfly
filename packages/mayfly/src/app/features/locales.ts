@@ -4,6 +4,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { MayflyLocaleCatalog } from '../../frontend/locale.ts'
 
 const shared: Readonly<Record<string, string>> = {
   'Refresh': '刷新',
@@ -61,7 +62,6 @@ const catalogs: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     'Tools': '工具',
     'Configuration': '配置',
     'Resources': '资源',
-    'MCP resources unavailable': 'MCP 资源不可用',
     'No MCP servers are declared': '未声明 MCP 服务器',
     '{count} registered MCP tools have no declared server': '{count} 个已注册 MCP 工具没有对应服务器声明',
     '{visible}/{registered} tools': '{visible}/{registered} 个工具',
@@ -134,13 +134,15 @@ const catalogs: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   'remote-workflow': {},
 }
 
+/** Every additional feature catalog by namespace; each carries the shared verbs. */
+export const REMOTE_PRODUCTIVITY_LOCALES: Readonly<Record<string, MayflyLocaleCatalog>> = Object.freeze(Object.fromEntries(
+  Object.entries(catalogs).map(([namespace, catalog]) => {
+    const zh = Object.freeze({ ...shared, ...catalog })
+    return [namespace, Object.freeze({ en: Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key]))), zh })]
+  }),
+))
+
 /** Register every additional feature catalog once under the current mount Fiber. */
 export function mountRemoteProductivityLocales(ctx: Context): void {
-  for (const [namespace, catalog] of Object.entries(catalogs)) {
-    const zh = Object.freeze({ ...shared, ...catalog })
-    ctx.effect(() => ctx.mayflyLocale.register(namespace, {
-      en: Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key]))),
-      zh,
-    }))
-  }
+  for (const [namespace, catalog] of Object.entries(REMOTE_PRODUCTIVITY_LOCALES)) ctx.effect(() => ctx.mayflyLocale.register(namespace, catalog))
 }

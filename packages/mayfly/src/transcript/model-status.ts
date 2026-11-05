@@ -2,14 +2,14 @@
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import { SHED, shedNode } from './status-shed.ts'
 /** The displayed triple: the provider, the model, and the source-paired effort id. */
-export interface StatusModelSelection {
+interface StatusModelSelection {
   readonly provider?: string
   readonly model: string
   readonly effort?: string
 }
 
 /** Capitalize the effort id's head: `max` → `Max`, `x-high` → `X-high`. */
-export function capitalizeEffort(id: string): string {
+function capitalizeEffort(id: string): string {
   return id.charAt(0).toUpperCase() + id.slice(1)
 }
 

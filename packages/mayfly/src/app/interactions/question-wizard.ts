@@ -5,7 +5,7 @@
 
 import { decisionLane, ui, wizard, wizardNext, type MayflySurfaceNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 
-export interface QuestionFacts {
+interface QuestionFacts {
   readonly id: string
   readonly question: string
   readonly header?: string
@@ -14,7 +14,7 @@ export interface QuestionFacts {
   readonly multiSelect?: boolean
 }
 
-export interface QuestionLabels {
+interface QuestionLabels {
   readonly title: string
   readonly other: string
   readonly answer: string

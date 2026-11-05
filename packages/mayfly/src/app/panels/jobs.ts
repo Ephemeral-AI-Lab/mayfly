@@ -18,7 +18,7 @@ export function isRemoteJobLive(job: JobView): boolean {
 }
 
 /** Sort live Jobs oldest first, then settled Jobs newest first. */
-export function sortRemoteJobs(jobs: readonly JobView[]): readonly JobView[] {
+function sortRemoteJobs(jobs: readonly JobView[]): readonly JobView[] {
   return [
     ...jobs.filter(isRemoteJobLive).toSorted((left, right) => left.startedAt - right.startedAt),
     ...jobs.filter(job => !isRemoteJobLive(job)).toSorted((left, right) => (right.finishedAt ?? right.startedAt) - (left.finishedAt ?? left.startedAt)),
@@ -37,7 +37,7 @@ export function formatRemoteJobDuration(startedAt: number, now: number): string 
 }
 
 /** Roster state consumed by the summary and selectable view. */
-export interface RemoteJobsState {
+interface RemoteJobsState {
   readonly jobs: readonly JobView[]
   readonly now: number
   readonly done?: { readonly total: number, readonly failed: boolean }

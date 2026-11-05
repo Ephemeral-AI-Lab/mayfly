@@ -6,10 +6,7 @@ import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteFeatureSelection } from '../../src/app/features/contracts.ts'
 import * as Browser from '../../src/app/panels/browser.ts'
-import {
-  ONBOARDING_WIZARD, ONBOARDING_PREFERENCES, ONBOARDING_CONNECT, ONBOARDING_READY,
-  ONBOARDING_PREFERENCES_FORM, ONBOARDING_CONNECT_LIST, ONBOARDING_KEY_FORM, ONBOARDING_KEY_FIELD, ONBOARDING_SIGN_IN,
-} from '../../src/configuration-panels.ts'
+import { ONBOARDING_WIZARD, ONBOARDING_PREFERENCES, ONBOARDING_CONNECT, ONBOARDING_READY, ONBOARDING_PREFERENCES_FORM, ONBOARDING_CONNECT_LIST, ONBOARDING_KEY_FORM, ONBOARDING_KEY_FIELD, ONBOARDING_SIGN_IN } from '../../src/components/onboarding-wizard.ts'
 import { RemoteOnboardingController } from '../../src/app/features/onboarding.ts'
 import { RemoteProvidersController } from '../../src/app/features/providers.ts'
 import { RemoteSettingsController } from '../../src/app/features/settings.ts'

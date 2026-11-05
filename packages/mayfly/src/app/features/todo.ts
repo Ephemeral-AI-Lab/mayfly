@@ -1,7 +1,7 @@
 /** Native whole Todo and conversation-fact projections behind the reference status view. @module */
 import type { ConversationFacts } from '@ephemeral-ai/mayfly-host/types'
-import { todoPanel, todoSummary, TODO_DONE_LINGER_MS, type TodoPresentationItem } from '../../command-panels.ts'
-import { mountTranscriptLocale, transcriptTranslator, observeTranscriptLocale, TRANSCRIPT_LOCALE } from '../../transcript.ts'
+import { todoPanel, todoSummary, TODO_DONE_LINGER_MS, type TodoPresentationItem } from '../../transcript/todo-model.ts'
+import { mountTranscriptLocale, transcriptTranslator, observeTranscriptLocale, TRANSCRIPT_LOCALE } from '../../transcript/locale.ts'
 import type { MayflyPaneRegistration, MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteFeatureContext } from '../features.ts'
 import { RemoteFeatureLifecycle } from './lifecycle.ts'

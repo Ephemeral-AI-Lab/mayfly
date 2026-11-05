@@ -10,10 +10,10 @@ import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { HostClient, SessionRef } from '../client/types.ts'
 
 /** Official Job identity used by follow and kill requests. */
-export type RemoteJobId = JobView['id']
+type RemoteJobId = JobView['id']
 
 /** Immutable selected-Session Job roster state. */
-export interface RemoteJobsSnapshot {
+interface RemoteJobsSnapshot {
   readonly ref: SessionRef | undefined
   readonly jobs: readonly JobView[]
   readonly ready: boolean
@@ -23,7 +23,7 @@ export interface RemoteJobsSnapshot {
 }
 
 /** Local preflight refusal; no kill RPC is issued and official Host failures are never rewritten. */
-export class RemoteJobKillRejectedError extends Error {
+class RemoteJobKillRejectedError extends Error {
   override readonly name = 'RemoteJobKillRejectedError'
 
   constructor(

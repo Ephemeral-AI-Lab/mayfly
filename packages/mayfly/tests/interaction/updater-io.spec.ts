@@ -13,18 +13,10 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
 registerTempDirCleanup()
-import { cleanOutput, updaterInternals } from '../../src/interaction/updater/io.ts'
+import { updaterInternals } from '../../src/interaction/updater/io.ts'
 
 /** Child scripts run with the test runner's own Node. */
 const NODE = process.execPath
-
-describe('updater/io cleanOutput', () => {
-  it('strips ANSI escapes, OSC hyperlinks, and carriage returns', () => {
-    expect(cleanOutput('\x1b[1;32mhi\x1b[0m')).toBe('hi')
-    expect(cleanOutput('\x1b]8;;https://x\x07link\x1b]8;;\x07')).toBe('link')
-    expect(cleanOutput('a\r\nb')).toBe('a\nb')
-  })
-})
 
 describe('updater/io defaultSpawnOnce', () => {
   it('captures stdout, stderr, and the exit code', async () => {

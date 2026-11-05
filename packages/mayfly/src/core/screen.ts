@@ -184,6 +184,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
     region => region === 'dock' ? this.editorViewport : region === 'footer' ? { columns: this.runtime.columns, rows: this.runtime.rows } : this.contentViewport,
     () => { this.fixed.get('editor.prompt')?.focus() },
     id => { const host = this.fixed.get(id); return host === undefined ? undefined : this.runtime.contentStart(host) },
+    () => this.ctx.get('mayflyScreen') !== undefined,
   )
 
   /**

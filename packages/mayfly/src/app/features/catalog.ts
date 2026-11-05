@@ -9,18 +9,8 @@ import type { MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply, MayflyU
 import type { HostClient } from '../../client/types.ts'
 import type { RemoteFeatureContext } from '../features.ts'
 import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
-import {
-  interactionTranslator,
-  mountInteractionLocale,
-  mcpListNode,
-  mcpServerPageNode,
-  mcpToolNode,
-  mcpResourceNode,
-  mcpResourceBodyNode,
-  toolsBrowserNode,
-  type McpResourceFacts,
-  type McpServerTab,
-} from '../../command-panels.ts'
+import { interactionTranslator, mountInteractionLocale } from '../../interaction/locale.ts'
+import { listPanel as mcpListNode, serverPage as mcpServerPageNode, toolPanel as mcpToolNode, resourcePanel as mcpResourceNode, resourceBodyPanel as mcpResourceBodyNode, toolsBrowserNode, type ResourceState as McpResourceFacts, type ServerTab as McpServerTab } from '../../interaction/catalog-model.ts'
 import { isRemoteFeatureSelection } from '../interactions/selection.ts'
 import { unavailableCapability } from './capabilities.ts'
 import { RemoteFeatureLifecycle } from './lifecycle.ts'

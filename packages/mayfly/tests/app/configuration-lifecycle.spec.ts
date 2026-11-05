@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configurationFixture } from './configuration-fixture.ts'
-import { createRemoteConfigurationFeatures, mountRemoteConfigurationFeatures, type RemoteConfigurationMountContext, type RemoteConfigurationAdapters } from '../../src/app/features/configuration.ts'
+import { createRemoteConfigurationFeatures, type RemoteConfigurationMountContext, type RemoteConfigurationAdapters } from '../../src/app/features/configuration.ts'
 const mocks = vi.hoisted(() => ({ preferences: vi.fn(async (_client: unknown) => {}), ready: vi.fn(async (_client: unknown) => {}), models: vi.fn(), account: vi.fn(), providerCallbacks: [] as Array<(value: never, parent?: AbortSignal) => unknown>, disposed: vi.fn(), translator: undefined as undefined | ((key: string, values?: Readonly<Record<string, string | number>>) => string) }))
 vi.mock('../../src/app/features/models.ts', () => ({ RemoteModelsController: class { dispose = mocks.disposed; open = mocks.models } }))
 vi.mock('../../src/app/features/account.ts', () => ({ RemoteAccountController: class { dispose = mocks.disposed; open = mocks.account } }))
@@ -27,16 +27,6 @@ describe('Remote configuration Host preference subscriptions', () => {
     mocks.providerCallbacks[1]!('deepseek-official' as never, parent)
     expect(mocks.account).toHaveBeenCalledWith(first.client, parent)
     expect(mocks.models).toHaveBeenCalledWith('', 'deepseek-official', parent)
-  })
-
-  it('mounts the default local presentation and releases it through the public mount disposer', () => {
-    const first = configurationFixture(vi.fn(), { session: false })
-    const { presentation: _presentation, ...base } = first.context
-    const stop = mountRemoteConfigurationFeatures(base as unknown as RemoteConfigurationMountContext, {} as RemoteConfigurationAdapters)
-    stop()
-    first.dispose()
-    expect(first.stateListeners.size).toBe(0)
-    expect(first.topology.size).toBe(0)
   })
 
   it('leaves disconnected state changes alone and tolerates both initial and refresh preference failures', async () => {

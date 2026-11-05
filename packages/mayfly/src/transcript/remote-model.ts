@@ -7,10 +7,12 @@ import type {
   SessionEventLikeEntry,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
-import type { ConversationFactsState, ConversationImage, ConversationProjection } from '../conversation.ts'
-import { freezeModel, type TranscriptEntryModel, type TranscriptModel } from '../frontend.ts'
-import { conversationTranscriptModel, createTranscriptModel } from '../transcript.ts'
-import type { ToolPresentationSource } from '../transcript.ts'
+import type { ConversationFactsState, ConversationImage, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
+import { freezeModel, type TranscriptEntryModel, type TranscriptModel } from '../frontend/models.ts'
+import { conversationTranscriptModel, createTranscriptModelCaches } from './conversation-model.ts'
+import { createTranscriptModel } from './transcript-model.ts'
+import type { ToolPresentationSource } from './present.ts'
+import type { MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import type { HostKey, SessionRef } from '../client/types.ts'
 import { projectLiveConversation, type RemoteLiveConversation } from '../conversation/live.ts'
 import {
@@ -42,14 +44,24 @@ export interface RemotePresentationFacts {
 }
 
 /** Presentation callbacks owned by the standalone Frontend. */
-export interface RemoteConversationOptions {
+interface RemoteConversationOptions {
   readonly defaultCwd?: string
   readonly modelCatalog?: (host: HostKey) => ModelCatalog | undefined
   readonly onPresentation?: () => void
+  /** Work counters the perf workloads read; production leaves them unset. */
+  readonly counters?: MayflyWorkCounters
+}
+
+/** The durable model of one Host value, reused while only the live overlay moves. */
+interface DurableModel {
+  readonly value: ConversationProjection
+  readonly generation: number
+  readonly toolsRevision: number
+  readonly model: TranscriptModel
 }
 
 /** Provider and model advertised by the Host for new Sessions. */
-export interface RemoteModelSelection {
+interface RemoteModelSelection {
   readonly model: string
   readonly provider: string
   readonly reasoningEffort?: string
@@ -71,6 +83,11 @@ export class RemoteConversationModelSource {
   private model = createTranscriptModel('official-conversation', [], false)
   private durable: ConversationProjection = EMPTY_CONVERSATION
   private durableValue: unknown
+  /* Identity caches over the entries of the current attachment. A Host push
+     decodes a new value, so they reuse entries only while that value stands:
+     a live-window change, a hidden view shown again, or a tools/change. */
+  private caches = createTranscriptModelCaches()
+  private durableModel: DurableModel | undefined
   private live: RemoteLiveConversation | undefined
   private defaultModel: RemoteModelSelection | undefined
   private restoreEffectiveEffort = false
@@ -208,6 +225,8 @@ export class RemoteConversationModelSource {
     this.revision = -1
     this.durable = EMPTY_CONVERSATION
     this.durableValue = undefined
+    this.caches = createTranscriptModelCaches()
+    this.durableModel = undefined
     this.live = undefined
     this.unread = false
     this.replacedWhileHidden = false
@@ -267,6 +286,8 @@ export class RemoteConversationModelSource {
     this.revision = -1
     this.durable = EMPTY_CONVERSATION
     this.durableValue = undefined
+    this.caches = createTranscriptModelCaches()
+    this.durableModel = undefined
     this.live = undefined
     this.model = createTranscriptModel('official-conversation', [], false, this.generation)
   }
@@ -296,6 +317,8 @@ export class RemoteConversationModelSource {
   private refreshTools(): void {
     if (this.disposed) return
     this.toolsRevision += 1
+    // Presenters changed: entry models stay, resolved tools and their cards go.
+    this.caches = { entries: this.caches.entries, tools: new WeakMap(), models: new WeakMap(), groups: new WeakMap() }
     if (!this.visible) { this.unread = true; return }
     this.rebuildModel()
     this.publishModel()
@@ -305,13 +328,19 @@ export class RemoteConversationModelSource {
     const scopedTools = this.selection !== undefined && isScopedTools(this.tools)
       ? this.tools.source(this.selection.ref, this.durable)
       : this.tools
-    const durable = conversationTranscriptModel(
-      this.durable,
-      scopedTools,
-      this.generation,
-      this.toolsRevision === 0 ? undefined : `tools:${String(this.toolsRevision)}`,
-    )
-    this.model = withLiveOverlay(durable, this.durable, this.live, scopedTools, this.generation, this.toolsRevision)
+    const memo = this.durableModel
+    const durable = memo !== undefined && memo.value === this.durable && memo.generation === this.generation && memo.toolsRevision === this.toolsRevision
+      ? memo.model
+      : conversationTranscriptModel(
+        this.durable,
+        scopedTools,
+        this.generation,
+        this.toolsRevision === 0 ? undefined : `tools:${String(this.toolsRevision)}`,
+        this.caches,
+        this.options.counters,
+      )
+    this.durableModel = { value: this.durable, generation: this.generation, toolsRevision: this.toolsRevision, model: durable }
+    this.model = withLiveOverlay(durable, this.durable, this.live, scopedTools, this.generation, this.toolsRevision, this.options.counters)
   }
 
   private publishModel(): void {
@@ -327,6 +356,7 @@ function withLiveOverlay(
   tools: ToolPresentationSource,
   generation: number,
   toolsRevision: number,
+  counters: MayflyWorkCounters | undefined,
 ): TranscriptModel {
   if (live === undefined || durable.settledSteps.includes(`${String(live.turn)}:${String(live.step)}`)) return durableModel
   const staleTurn = durable.turns.some(turn => turn.turn > live.turn || (turn.turn === live.turn && turn.endedAt !== undefined))
@@ -336,6 +366,8 @@ function withLiveOverlay(
     tools,
     generation,
     `live:${live.attemptId}:${String(toolsRevision)}`,
+    undefined,
+    counters,
   )
   const durableIds = new Set(durable.entries.map(entry => entry.id))
   // The shared converter produces identified transcript entries. A native

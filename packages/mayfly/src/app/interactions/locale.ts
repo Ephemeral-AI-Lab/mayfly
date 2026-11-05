@@ -5,7 +5,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
-import { memoizedLocaleTranslator, mountCommonLocale } from '../../frontend.ts'
+import { memoizedLocaleTranslator, type MayflyLocaleCatalog } from '../../frontend/locale.ts'
+import { mountCommonLocale } from '../../frontend/common-locale.ts'
 
 const zh: Readonly<Record<string, string>> = {
   'Allow once': '仅允许一次',
@@ -23,7 +24,6 @@ const zh: Readonly<Record<string, string>> = {
   '— skipped': '— 已跳过',
   'type your own answer': '输入你自己的回答',
   'select all that apply · Space toggles': '可多选 · 空格切换',
-  'Plan review': '计划评审',
   'Feedback': '反馈',
   'Revise': '修改意见',
   'Decide': '决定',
@@ -39,12 +39,16 @@ const zh: Readonly<Record<string, string>> = {
   'expires in {time}': '{time} 后过期',
 }
 
-const en = Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key])))
+/** The approval/question vocabulary: English keys and their Chinese values. */
+export const REMOTE_INTERACTION_LOCALE: MayflyLocaleCatalog = Object.freeze({
+  en: Object.freeze(Object.fromEntries(Object.keys(zh).map(key => [key, key]))),
+  zh: Object.freeze(zh),
+})
 const NAMESPACE = 'remote-interactions'
 
 /** Register only the Remote interaction vocabulary and return its live translator. */
 export function mountRemoteInteractionLocale(ctx: Context): MayflyTranslate {
   mountCommonLocale(ctx)
-  ctx.effect(() => ctx.mayflyLocale.register(NAMESPACE, { en, zh: Object.freeze(zh) }))
+  ctx.effect(() => ctx.mayflyLocale.register(NAMESPACE, REMOTE_INTERACTION_LOCALE))
   return memoizedLocaleTranslator(ctx, NAMESPACE).translate
 }

@@ -1,7 +1,7 @@
 /** Component-overlay generations, opaque cell widths and focus restoration. @module */
 import { describe, expect, it, vi } from 'vitest'
 import { visibleWidth } from '../../src/core/width.ts'
-import type { MayflyComponent, MayflyFocusable, MayflyScreen } from '../../src/core.ts'
+import type { MayflyComponent, MayflyFocusable, MayflyScreen } from '../../src/core/types.ts'
 import { RemotePanelController, remotePanelOverlayOptions } from '../../src/app/panels.ts'
 
 function fixture(opaque = false) {

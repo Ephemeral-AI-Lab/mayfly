@@ -16,7 +16,7 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
 export const mayflySessionReferenceSource = 'mayflyFrontend'
 
 /** Factory for one independent Host Client. */
-export type HostAttachFactory = (key: HostKey) => HostClient | Promise<HostClient>
+type HostAttachFactory = (key: HostKey) => HostClient | Promise<HostClient>
 
 /** An operation addressed a Host that is not currently attached. */
 export class HostNotAttachedError extends Error {

@@ -1,7 +1,8 @@
 /** Real core editor plus transport-boundary fixtures for independent feature decisions. @module mayfly-remote/tests/editor-feature-fixture */
 import { afterEach, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { MayflyComponentsService, type MayflyComponentsDeps, type MayflyScreen } from '../../src/core.ts'
+import { MayflyComponentsService, type MayflyComponentsDeps } from '../../src/core/components.ts'
+import type { MayflyScreen } from '../../src/core/types.ts'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { BeginSubmissionInput, SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/types'

@@ -17,7 +17,7 @@ export type ToolLineState = 'pending' | 'waiting' | 'ok' | 'error' | 'returned' 
 export type ToolGroupState = ToolLineState | 'partial'
 
 /** The facts of one tool line. Every text is final: translated, sanitized, and without escape sequences. */
-export interface ToolLineFacts {
+interface ToolLineFacts {
   readonly state: ToolLineState
   /** The tool's name, in bold (`Read`, `Bash`, `WebSearch`). */
   readonly name: string

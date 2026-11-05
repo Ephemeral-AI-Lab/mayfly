@@ -7,13 +7,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
-import type {
-  MayflyComponents,
-  MayflyFocusable,
-  MayflyOverlayOptions,
-  MayflyScreenService,
-  MayflySemanticColors,
-} from '../../core.ts'
+import type { MayflyComponents, MayflyFocusable, MayflyOverlayOptions, MayflySemanticColors } from '../../core/types.ts'
+import type { MayflyScreenService } from '../../core/screen.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { HostClient, SessionRef } from '../../client/types.ts'
 import type { RemoteNotice } from '../notice.ts'
@@ -39,12 +34,12 @@ export interface RemoteFeatureHosts {
 }
 
 /** Options accepted by the feature-neutral overlay lease host. */
-export interface RemoteFeatureOverlayOptions extends MayflyOverlayOptions {
+interface RemoteFeatureOverlayOptions extends MayflyOverlayOptions {
   readonly onClosed?: () => void
 }
 
 /** One feature overlay generation; closing it never cancels Host work. */
-export interface RemoteFeatureOverlayLease {
+interface RemoteFeatureOverlayLease {
   readonly generation: number
   readonly closed: boolean
   close(): void
@@ -109,9 +104,6 @@ export interface RemoteFeatureAdapters {
   readonly accountIO: RemoteAccountLocalIO
   readonly clientVersion: string
 }
-
-/** A focused mount compatible with the foundation's registration manifest. */
-export type RemoteFeatureMount = (context: RemoteFeatureContext) => void | (() => void)
 
 /** Test the exact Client and Session identity captured by an operation. */
 export function isRemoteFeatureSelection(

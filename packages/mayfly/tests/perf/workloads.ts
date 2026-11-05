@@ -603,7 +603,7 @@ export const WORKLOADS: readonly Workload[] = [
   {
     id: 'W28', title: 'long session: a 2,000-turn projection, one tool result settles and the tail repaints (entriesMapped, toolModelsBuilt, streamRowsBuilt, rowsPainted)',
     setup(counters) {
-      // The two projections share every entry but the settled tool, so a future entry cache can see the unchanged ones.
+      // The Host pushes the settled projection as a new value; the Client decodes every entry of it afresh.
       const initial = pendingLastTool(longSessionProjection(2000))
       const settled = settleLastTool(initial)
       const screen = new SlotScreen(counters)
@@ -614,7 +614,7 @@ export const WORKLOADS: readonly Workload[] = [
       reset(counters)
       return {
         step: () => {
-          view.feed.push(settled, 2)
+          view.host.push(settled)
           harness.publish()
           harness.render()
         },
@@ -627,7 +627,7 @@ export const WORKLOADS: readonly Workload[] = [
     setup(counters) {
       const projection = longSessionProjection(2000)
       const text = 'The answer starts here and keeps going. '.repeat(40)
-      const initialDraft = longSessionDraft(projection, text, 1)
+      const initialDraft = longSessionDraft(projection, text)
       const screen = new SlotScreen(counters)
       const harness = new LongSessionHarness(screen, counters, WIDTH)
       const view = harness.addView('main', projection, { draft: initialDraft })
@@ -635,12 +635,10 @@ export const WORKLOADS: readonly Workload[] = [
       // The durable entries this snapshot already painted must keep their identity when only the draft text changes.
       const before = view.source.snapshot()
       harness.render()
-      let revision = 1
       reset(counters)
       return {
         step: () => {
-          revision += 1
-          view.feed.setDraft(longSessionDraft(projection, `${text} the tail keeps growing.`, revision))
+          view.host.setDraft(longSessionDraft(projection, `${text} the tail keeps growing.`))
           const after = harness.publish()
           assertUnchangedEntriesReused(before, after)
           harness.render()
@@ -678,14 +676,14 @@ export const WORKLOADS: readonly Workload[] = [
       const projection = longSessionProjection(2000)
       const screen = new SlotScreen(counters)
       const harness = new LongSessionHarness(screen, counters, WIDTH)
-      const views = [harness.addView('a', projection), harness.addView('b', projection), harness.addView('c', projection)]
+      for (const key of ['a', 'b', 'c']) harness.addView(key, projection)
       harness.show('a')
       harness.render()
       reset(counters)
       return {
         step: () => {
-          // Today every retained view re-resolves its presenters, displayed or not.
-          for (const view of views) view.source.invalidateTools()
+          // One Host tools/change reaches every retained view; the hidden two only mark themselves unread.
+          harness.tools.invalidate()
           harness.republish()
           harness.render()
         },

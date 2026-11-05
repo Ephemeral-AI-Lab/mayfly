@@ -1,24 +1,21 @@
 /**
- * The global version-control guard for one Mayfly release version and the two
- * Harness lines used during the split preview: the legacy bundle keeps its
- * compatible pins, while the independent Host/Client and archived CLI runtime
- * share the newer line.
+ * The global version-control guard for one Mayfly release version and the one
+ * Harness line every package rides.
  *
- * Mayfly side: the three legacy release package.json versions plus the website
- * (whose package.json must agree with its own tagline), and the
- * `MAYFLY_VERSION` constant the banner title and the `/version` notice read,
- * all equal. The website's user-facing version mentions (index.md tagline,
- * guide/faq) are pinned here too, so the site can never advertise a different
- * number than the code ships.
+ * Mayfly side: the four release package.json versions plus the website (whose
+ * package.json must agree with its own tagline), and the `MAYFLY_VERSION`
+ * constant the banner title and the `/version` panel read, all equal. The
+ * website's user-facing version mentions (index.md tagline, guide/faq) are
+ * pinned here too, so the site can never advertise a different number than
+ * the code ships.
  *
- * Harness side: legacy dependency and peer pins agree with the `/version`
- * notice. The CLI seed, extractor, and workspace release-age exclusions agree
- * with the independent Host/Client line. Neither line is tied to Mayfly's
- * release number.
+ * Harness side: every dependency, development, and peer pin, and the workspace
+ * release-age exclusions, name the same line. It is not tied to Mayfly's
+ * release number; the `/version` panel shows the line the Host advertises.
  *
  * A bump edits one side at a time: publishing Mayfly bumps the release
- * manifests + MAYFLY_VERSION + the website copy; upgrading either Harness line
- * updates its owning pins and sentinels together.
+ * manifests + MAYFLY_VERSION + the website copy; upgrading the Harness line
+ * updates every pin and sentinel together.
  */
 
 import { readFileSync } from 'node:fs'
@@ -27,10 +24,8 @@ import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 
 /** The published release version (the website's advertised number). */
 const RELEASE_VERSION = '0.1.5'
-/** The harness prerelease line the legacy dsh pins ride. */
-const HARNESS_LINE = '0.2.1-rc.2'
-/** The independent Host/Client and archived CLI runtime line. */
-const CLI_HARNESS_LINE = '0.2.2-rc.1'
+/** The harness prerelease line every dsh pin rides. */
+const HARNESS_LINE = '0.2.2-rc.1'
 
 /** One workspace package manifest. */
 interface Manifest {
@@ -42,13 +37,12 @@ interface Manifest {
   readonly devDependencies?: Readonly<Record<string, string>>
 }
 
-/** Every split release manifest plus the website. */
+/** Every release manifest plus the website. */
 const MANIFESTS: readonly string[] = [
   '../../package.json',
   '../../../ui/package.json',
   '../../../cli/package.json',
   '../../../host/package.json',
-  '../../../remote/package.json',
   '../../../../website/package.json',
 ]
 /** Publishable manifests that carry official runtime Harness pins. */
@@ -66,7 +60,7 @@ function dshEntries(table: Readonly<Record<string, string>> | undefined): Readon
 
 describe('the Mayfly release line', () => {
   it('MAYFLY_VERSION is the version of all release manifests and website', () => {
-    expect(MANIFESTS).toHaveLength(6)
+    expect(MANIFESTS).toHaveLength(5)
     for (const rel of MANIFESTS) {
       const pkg = manifest(rel)
       expect(pkg.version, `${pkg.name} version`).toBe(RELEASE_VERSION)
@@ -96,7 +90,8 @@ describe('the Mayfly release line', () => {
       for (const table of ['dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies'] as const) {
         for (const [name, spec] of Object.entries(pkg[table] ?? {})) {
           if (!name.startsWith('@ephemeral-ai/') || name === pkg.name || !releaseNames.has(name)) continue
-          expect(spec, `${pkg.name} ${table} ${name}`).toBe(['@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly-cli'].includes(pkg.name) || name === '@ephemeral-ai/mayfly-remote' ? RELEASE_VERSION : 'workspace:*')
+          // The launcher installs published packages, so it pins them exactly; workspace packages link each other.
+          expect(spec, `${pkg.name} ${table} ${name}`).toBe(pkg.name === '@ephemeral-ai/mayfly-cli' ? RELEASE_VERSION : 'workspace:*')
         }
       }
     }
@@ -105,8 +100,6 @@ describe('the Mayfly release line', () => {
 
 describe('the harness dependency line', () => {
   it('every dsh runtime dependency is exact-pinned to one line', () => {
-    // The deployed Host/Remote pair uses one exact official line. Historical
-    // in-process source fixtures keep their independent development pins.
     const specs = new Set<string>()
     for (const rel of HARNESS_MANIFESTS) {
       const pkg = manifest(rel)
@@ -116,7 +109,7 @@ describe('the harness dependency line', () => {
       }
     }
     expect(specs.size, 'runtime dsh pins exist').toBeGreaterThan(0)
-    expect([...specs]).toEqual([CLI_HARNESS_LINE])
+    expect([...specs]).toEqual([HARNESS_LINE])
   })
 
   it('every dsh dev dependency is exact-pinned to one line', () => {
@@ -127,7 +120,7 @@ describe('the harness dependency line', () => {
         expect(spec, `${pkg.name} devDependencies ${name}`).toMatch(/^0\.[0-9]+\.[0-9]+-(?:alpha|rc)\.[0-9]+$/)
         specs.add(spec)
       }
-      if (specs.size > 0) expect([...specs], pkg.name).toEqual([pkg.name === '@ephemeral-ai/mayfly' ? HARNESS_LINE : CLI_HARNESS_LINE])
+      if (specs.size > 0) expect([...specs], pkg.name).toEqual([HARNESS_LINE])
     }
   })
 
@@ -135,24 +128,24 @@ describe('the harness dependency line', () => {
     for (const rel of HARNESS_MANIFESTS) {
       const pkg = manifest(rel)
       for (const [name, spec] of dshEntries(pkg.peerDependencies)) {
-        expect(spec, `${pkg.name} peerDependencies ${name}`).toBe(CLI_HARNESS_LINE)
+        expect(spec, `${pkg.name} peerDependencies ${name}`).toBe(HARNESS_LINE)
       }
     }
   })
 
-  it('the workspace release-age excludes pin the independent host line', () => {
+  it('the workspace release-age excludes pin the Harness line', () => {
     const workspace = readFileSync(new URL('../../../../pnpm-workspace.yaml', import.meta.url), 'utf8')
     const pins = [...workspace.matchAll(/'(@deepseek-ai\/dsh-[a-z-]+)@([^']+)'/g)]
     expect(pins.length).toBeGreaterThan(0)
     for (const [, name, spec] of pins) {
-      expect(spec, `pnpm-workspace exclude ${name}`).toBe(`${CLI_HARNESS_LINE}`)
+      expect(spec, `pnpm-workspace exclude ${name}`).toBe(HARNESS_LINE)
     }
   })
 
-  it('the /version notice carries the harness line, not the Mayfly number', () => {
-    const source = readFileSync(new URL('../../src/interaction/session-commands.ts', import.meta.url), 'utf8')
-    expect(source).toContain(`const HARNESS_LINE = '${HARNESS_LINE}'`)
-    expect(source).not.toContain("MAYFLY_VERSION.split('-')")
+  it('the /version panel shows the Host-advertised harness line, not one derived from the Mayfly number', () => {
+    const source = readFileSync(new URL('../../src/app/interactions/plain-panels.ts', import.meta.url), 'utf8')
+    expect(source).toContain("harness: harness ?? this.t('not advertised by the Host')")
+    expect(source).not.toContain(HARNESS_LINE)
   })
 
   it('split verification resolves the packaged current runtime without changing global dsh', () => {

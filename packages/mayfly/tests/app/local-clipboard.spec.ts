@@ -8,7 +8,7 @@ const native = vi.hoisted(() => ({
   runLocalTool: vi.fn(),
   open: vi.fn(),
 }))
-vi.mock('../../src/core.ts', () => ({ emitClipboardOsc52: native.emitClipboardOsc52 }))
+vi.mock('../../src/core/terminal-escape.ts', () => ({ emitClipboardOsc52: native.emitClipboardOsc52 }))
 vi.mock('../../src/app/local/process.ts', async importOriginal => ({ ...await importOriginal(), runLocalTool: native.runLocalTool }))
 vi.mock('node:fs/promises', () => ({ open: native.open }))
 afterEach(() => { vi.clearAllMocks() })

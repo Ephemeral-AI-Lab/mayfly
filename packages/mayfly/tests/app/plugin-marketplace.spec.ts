@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MarketEntry } from '../../src/plugin-marketplace.ts'
-import { DEFAULT_SETTINGS } from '../../src/settings.ts'
+import type { MarketEntry } from '../../src/interaction/plugin-market/types.ts'
+import { DEFAULT_SETTINGS } from '../../src/frontend/settings.ts'
 import type { BundleInfo, ManagementError, ChangeResult } from '../../src/client/remote-face.ts'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
@@ -15,7 +15,7 @@ afterEach(() => { for (const stop of cleanup.splice(0).reverse()) stop() })
 
 const mocks = vi.hoisted(() => ({ open: vi.fn(), catalog: vi.fn() }))
 vi.mock('../../src/app/panels/browser.ts', () => ({ openRemoteBrowser: mocks.open }))
-vi.mock('../../src/plugin-marketplace.ts', async importOriginal => ({
+vi.mock('../../src/interaction/plugin-market/catalog.ts', async importOriginal => ({
   ...await importOriginal<object>(),
   loadMarketCatalog: mocks.catalog,
 }))
@@ -187,7 +187,7 @@ describe('Remote rc.2 plugin marketplace', () => {
 
   it('protects product release bundles independently of native removable flags and routes direct mutations to /update', async () => {
     for (const removable of [false, true]) {
-      for (const name of ['@ephemeral-ai/mayfly-host', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly-cli']) {
+      for (const name of ['@ephemeral-ai/mayfly-host', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly-cli']) {
         const test = fixture({ bundles: [bundle({ name, removable })] })
         for (const verb of ['install', 'uninstall']) {
           await test.execute(`${verb} ${name}`)

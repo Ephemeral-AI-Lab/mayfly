@@ -77,7 +77,7 @@ export interface RemoteProviderBalanceSource {
 const ACCOUNT_PROVIDER = 'deepseek-account'
 
 /** One redacted provider directory snapshot. */
-export interface RemoteProviderDirectory {
+interface RemoteProviderDirectory {
   readonly live: readonly LlmProviderInfo[]
   readonly configurable: readonly LlmConfigurableProvider[]
   readonly settings: SettingsDescribeValue

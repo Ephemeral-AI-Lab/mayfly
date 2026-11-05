@@ -1,12 +1,13 @@
 /** Real core editor and transcript focus transitions through a recording terminal boundary. @module remote/tests/editor-focus */
 import { Context } from '@deepseek-ai/cordis'
-import {
-  compileMayflyUiNode, MayflyComponentsService, MayflyKeymapService, MayflyScreenService,
-  type MayflyComponent, type MayflyComponentsDeps, type MayflyFocusable, type MayflySemanticColors,
-} from '../../src/core.ts'
-import { INTERACTION_KEY_ACTIONS } from '../../src/command-panels.ts'
-import { createTranscriptModel, TranscriptController } from '../../src/transcript.ts'
-import * as Frontend from '../../src/frontend.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { MayflyComponentsService, type MayflyComponentsDeps } from '../../src/core/components.ts'
+import { MayflyKeymapService } from '../../src/core/keymap.ts'
+import { MayflyScreenService } from '../../src/core/screen.ts'
+import type { MayflyComponent, MayflyFocusable, MayflySemanticColors } from '../../src/core/types.ts'
+import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/key-definitions.ts'
+import { createTranscriptModel, TranscriptController } from '../../src/transcript/transcript-model.ts'
+import * as Frontend from '../../src/frontend/index.ts'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
 import { afterEach, describe, expect, it, vi } from 'vitest'

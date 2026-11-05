@@ -3,14 +3,7 @@
  * @module @ephemeral-ai/mayfly/remote/panels
  */
 
-import type {
-  MayflyComponent,
-  MayflyComponents,
-  MayflyFocusable,
-  MayflyOverlayHandle,
-  MayflyOverlayOptions,
-  MayflyScreen,
-} from '../core.ts'
+import type { MayflyComponent, MayflyComponents, MayflyFocusable, MayflyOverlayHandle, MayflyOverlayOptions, MayflyScreen } from '../core/types.ts'
 
 /**
  * Make a panel an opaque overlay: every rendered row is padded to the overlay's

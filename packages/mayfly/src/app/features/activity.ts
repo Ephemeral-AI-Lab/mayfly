@@ -5,11 +5,15 @@
 
 import type { ConversationFacts, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import type { MayflyPaneRegistration, MayflyTone, MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
-import { memoizedLocaleTranslator } from '../../frontend.ts'
-import { ACTIVITY_LOCALE, buildTipRotation, mountTranscriptLocale, resumedSessionMessage, STATUS_TIPS, type MayflyDecisionWait } from '../../editor-presentation.ts'
-import { contextPercent } from '../../status-context.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
+import { ACTIVITY_LOCALE, mountTranscriptLocale } from '../../transcript/locale.ts'
+import { buildTipRotation } from '../../transcript/status-tips.ts'
+import { resumedSessionMessage } from '../../transcript/resume-notice.ts'
+import { STATUS_TIPS } from '../../transcript/tips-content.ts'
+import { type MayflyDecisionWait } from '../../core/types.ts'
+import { contextPercent } from '../../transcript/status-context-model.ts'
 import type { RemoteFeatureContext } from '../features.ts'
-import { RemoteActivityRow, type RemoteActivityPhase } from '../panels/activity-row.ts'
+import { ActivityRow as RemoteActivityRow, type ActivityPhase as RemoteActivityPhase } from '../../components/activity-row.ts'
 import {
   deriveRemoteActivity,
   remoteCompactElapsedMs,

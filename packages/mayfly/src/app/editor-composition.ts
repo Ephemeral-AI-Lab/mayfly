@@ -5,13 +5,7 @@
 
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Context } from '@deepseek-ai/cordis'
-import type {
-  MayflyComponents,
-  MayflyEditor,
-  MayflyKeymap,
-  MayflyScreen,
-  MayflySemanticColors,
-} from '../core.ts'
+import type { MayflyComponents, MayflyEditor, MayflyKeymap, MayflyScreen, MayflySemanticColors } from '../core/types.ts'
 import type { HostClient } from '../client/types.ts'
 import type { RemoteApp } from './app.ts'
 import { FRONTEND_COMMANDS, remoteCommandCatalog } from './command-catalog.ts'
@@ -27,7 +21,7 @@ import type {
 import type { RemoteFeatureCommandSource } from './features/commands.ts'
 import type { RemoteNotice } from './notice.ts'
 import type { RemoteFeatureSelection } from './features/contracts.ts'
-import type { EditorExtensionRuntime } from '../editor-presentation.ts'
+import type { EditorExtensionRuntime } from '../frontend/editor-extension-runtime.ts'
 
 /** Generic ownership of the attached editor features and their lifecycle subscriptions. */
 export interface EditorCompositionHandle {

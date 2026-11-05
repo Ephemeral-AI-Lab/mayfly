@@ -1,5 +1,5 @@
 /** Readonly rc.2 account facts over native Remotes; credentials stay on Host. @module */
-import { addDecimal, type AccountSnapshot, type BalanceResult, type Wallet } from '../../stats-presentation.ts'
+import { addDecimal, type AccountSnapshot, type BalanceResult, type Wallet } from '../../interaction/stats-account-model.ts'
 import type { HostClient } from '../../client/types.ts'
 import { mayflyHostRemote } from '../../hosts/host-mount.ts'
 import { remoteValue } from '../features/official.ts'

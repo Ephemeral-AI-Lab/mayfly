@@ -1,8 +1,8 @@
 /** Real native filesystem event/presenter transport into the public reference transcript mapper. @module */
 import { describe, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
-import { conversationTranscriptModel } from '../../src/transcript.ts'
-import type { ConversationProjection } from '../../src/conversation.ts'
+import { conversationTranscriptModel } from '../../src/transcript/conversation-model.ts'
+import type { ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import { HostKey } from '../../src/client/types.ts'
 import type { MayflyPresentToolsResponse } from '../../src/hosts/host-contract.ts'
 import { RemoteToolPresentationCache, type RemoteToolPresentationRequest } from '../../src/hosts/tool-presentations.ts'

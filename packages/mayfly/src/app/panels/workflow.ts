@@ -3,7 +3,7 @@
  * @module @ephemeral-ai/mayfly/remote/panels/workflow
  */
 
-import { workflowNode, type WorkflowRunState } from '../../pane-workflow.ts'
+import { workflowNode, type WorkflowRunState } from '../../transcript/workflow-model.ts'
 import type { MayflyTranslate, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyWorkflowRun, MayflyWorkflowSnapshot } from '../../hosts/host-contract.ts'
 

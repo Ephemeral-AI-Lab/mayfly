@@ -1,11 +1,13 @@
 /** Published Mayfly welcome banner driven by remote Session facts. @module */
-import { composeBannerLines, shortenHome } from '../banner.ts'
-import { composeSplashLines, MAYFLY_VERSION, type SplashContent } from '../banner-content.ts'
-import { GutterComponent, type MayflyComponent, type MayflyComponents, type MayflySemanticColors } from '../core.ts'
+import { composeBannerLines, shortenHome } from '../transcript/banner-model.ts'
+import { composeSplashLines, type SplashContent } from '../transcript/splash.ts'
+import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
+import { GutterComponent } from '../core/gutter.ts'
+import type { MayflyComponent, MayflyComponents, MayflySemanticColors } from '../core/types.ts'
 import type { RemotePresentationFacts } from '../transcript/remote-model.ts'
 
 /** Renderer-owned live sources; the Host owns directory and home values. */
-export interface RemoteBannerOptions {
+interface RemoteBannerOptions {
   /** The physical Host Client owns one greeting, including before its first Session. */
   readonly identity?: () => unknown
   readonly home?: () => string

@@ -13,7 +13,7 @@ export interface LocalToolRun {
   readonly stderr: string
 }
 
-export interface LocalToolOptions {
+interface LocalToolOptions {
   readonly input?: string
   readonly cwd?: string
   readonly env?: NodeJS.ProcessEnv

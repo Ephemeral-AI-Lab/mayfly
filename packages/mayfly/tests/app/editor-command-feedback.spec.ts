@@ -1,7 +1,9 @@
 /** Command outcomes through the actual editor change handler and notification pane. @module */
 import { Context } from '@deepseek-ai/cordis'
-import { compileMayflyUiNode, MayflyKeymapService, type MayflyScreenService } from '../../src/core.ts'
-import * as frontend from '../../src/frontend.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { MayflyKeymapService } from '../../src/core/keymap.ts'
+import type { MayflyScreenService } from '../../src/core/screen.ts'
+import * as frontend from '../../src/frontend/index.ts'
 import * as uiProvider from '@ephemeral-ai/mayfly-ui/provider'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mountRemoteEditor } from '../../src/app/editor.ts'

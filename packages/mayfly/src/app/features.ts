@@ -5,11 +5,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
-import type {
-  MayflyComponents,
-  MayflyScreenService,
-  MayflySemanticColors,
-} from '../core.ts'
+import type { MayflyComponents, MayflySemanticColors } from '../core/types.ts'
+import type { MayflyScreenService } from '../core/screen.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { HostClient, SessionRef } from '../client/types.ts'
 import { mountApprovalInteractions } from './interactions/approval.ts'
@@ -41,7 +38,7 @@ export interface RemoteFeatureSelection {
 }
 
 /** Read-only topology and selection seam; HostRegistry remains the sole owner. */
-export interface RemoteFeatureHosts {
+interface RemoteFeatureHosts {
   /** Selected Host even while the start view has no Session. */
   active?(): HostClient | undefined
   /** Committed Host Clients, used to mount and retire per-Host event listeners. */
@@ -53,7 +50,7 @@ export interface RemoteFeatureHosts {
 }
 
 /** App-owned next-Session intent, applied before the first prompt is admitted. */
-export interface RemoteStartupPlan {
+interface RemoteStartupPlan {
   pending(): boolean | undefined
   set(active: boolean): void
 }
@@ -80,7 +77,7 @@ export interface RemoteFeatureContext extends RemoteFeatureMountContext {
 }
 
 /** One focused feature mount; its disposer owns every listener, stream, and pending panel. */
-export type RemoteFeatureMount = (context: RemoteFeatureContext) => void | (() => void)
+type RemoteFeatureMount = (context: RemoteFeatureContext) => void | (() => void)
 
 /** Mounted feature teardown plus its instance-owned local command source and shared context. */
 export interface RemoteFeatureHandle {

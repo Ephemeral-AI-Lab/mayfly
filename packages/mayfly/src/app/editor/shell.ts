@@ -5,19 +5,14 @@
 
 import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { GutterComponent, sanitizeShellOutput } from '../../core.ts'
-import type {
-  MayflyComponent,
-  MayflyComponents,
-  MayflyScreen,
-  MayflyScreenSlot,
-  MayflySemanticColors,
-} from '../../core.ts'
+import { GutterComponent } from '../../core/gutter.ts'
+import { sanitizeShellOutput } from '../../core/shell-output.ts'
+import type { MayflyComponent, MayflyComponents, MayflyScreen, MayflyScreenSlot, MayflySemanticColors } from '../../core/types.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 
 const MAX_LINES = 200
 const MAX_BYTES = 64 * 1024
-export interface ShellExecution {
+interface ShellExecution {
   readonly code: number
   readonly stdout: string
   readonly stderr: string

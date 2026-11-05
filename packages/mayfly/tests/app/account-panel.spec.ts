@@ -1,6 +1,6 @@
 /** Account panel exercises the real browser, UI provider, event admission, and native account flow. @module */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildAccountPanel } from '../../src/configuration-panels.ts'
+import { buildAccountPanel } from '../../src/components/account-panel.ts'
 import type { MayflyUiActionEvent } from '@ephemeral-ai/mayfly-ui'
 import { accountFixture, accountView } from './account-feature-fixture.ts'
 

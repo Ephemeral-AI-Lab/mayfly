@@ -9,14 +9,7 @@ import type {
 import { HostKey } from '../../src/client/types.ts'
 import type { HostClient, SessionRef } from '../../src/client/types.ts'
 import type { RemoteFeatureContext } from '../../src/app/features/contracts.ts'
-import {
-  currentRemoteModelSelection,
-  formatRemoteContextWindow,
-  RemoteModelsController,
-  remoteModelRows,
-  remoteModelSelection,
-  type RemoteModelCatalogDetails,
-} from '../../src/app/features/models.ts'
+import { currentRemoteModelSelection, RemoteModelsController, remoteModelRows, remoteModelSelection, type RemoteModelCatalogDetails } from '../../src/app/features/models.ts'
 import type { RemoteBrowserOptions } from '../../src/app/panels/browser.ts'
 import type { MayflyUiActionEvent, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
 const mocks = vi.hoisted(() => ({ open: vi.fn() }))
@@ -388,14 +381,6 @@ describe('remote model wire values', () => {
     expect(currentRemoteModelSelection({ lastUsed: { provider: 'b', model: 'old' } }, hostCatalog))
       .toEqual({ provider: 'b', model: 'old' })
     expect(currentRemoteModelSelection({}, hostCatalog)).toBe(hostCatalog.default)
-  })
-
-  it('formats context sizes in binary units without a trailing zero', () => {
-    expect(formatRemoteContextWindow(512)).toBe('512')
-    expect(formatRemoteContextWindow(1024)).toBe('1k')
-    expect(formatRemoteContextWindow(1536)).toBe('1.5k')
-    expect(formatRemoteContextWindow(131072)).toBe('128k')
-    expect(formatRemoteContextWindow(10 * 1024 * 1024)).toBe('10m')
   })
 })
 

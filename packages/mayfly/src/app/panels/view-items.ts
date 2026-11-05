@@ -6,7 +6,7 @@
 import { ui, type MayflyInlineSpan, type MayflyListItem, type MayflyStatusNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 
 /** Fixed row count of an expanded status view. */
-export const REMOTE_VIEW_PANEL_ROWS = 7
+const REMOTE_VIEW_PANEL_ROWS = 7
 
 /** Build one compact mark/label/progress summary. */
 export function remoteItemSummary(mark: MayflyInlineSpan, label: string, done: number, total: number): MayflyStatusNode {

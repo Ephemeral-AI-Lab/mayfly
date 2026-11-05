@@ -5,8 +5,8 @@
  * @module @ephemeral-ai/mayfly/remote/features/configuration
  */
 
-import { interpolateLocaleMessage, memoizedLocaleTranslator } from '../../frontend.ts'
-import { interactionTranslator, mountInteractionLocale } from '../../editor-presentation.ts'
+import { interpolateLocaleMessage, memoizedLocaleTranslator } from '../../frontend/locale.ts'
+import { interactionTranslator, mountInteractionLocale } from '../../interaction/locale.ts'
 import type { HostClient } from '../../client/types.ts'
 import { RemoteAccountController } from './account.ts'
 import type { RemoteConfigurationHost } from './configuration-host.ts'
@@ -42,7 +42,7 @@ export interface RemoteConfigurationAdapters extends RemoteFeatureAdapters {
 }
 
 /** Controllers exposed for foundation command routing plus their joint lifetime. */
-export interface RemoteConfigurationFeatures {
+interface RemoteConfigurationFeatures {
   readonly models: RemoteModelsController
   readonly providers: RemoteProvidersController
   readonly account: RemoteAccountController
@@ -145,11 +145,3 @@ export function createRemoteConfigurationFeatures(
   }
 }
 
-/** Single manifest-compatible mount; command routing can use createRemoteConfigurationFeatures instead. */
-export function mountRemoteConfigurationFeatures(
-  context: RemoteConfigurationMountContext,
-  adapters: RemoteConfigurationAdapters,
-): () => void {
-  const features = createRemoteConfigurationFeatures(context, adapters)
-  return () => { features.dispose() }
-}

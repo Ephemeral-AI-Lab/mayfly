@@ -1,19 +1,7 @@
-/** `/sessions` pure projections over native summaries: facts, rows, and the detail sheet.
- * @module @ephemeral-ai/mayfly/tests/interaction/session-list-model
- */
-import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import { describe, expect, it } from 'vitest'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../../src/frontend/locale.ts'
-import {
-  formatAgo,
-  formatDuration,
-  sessionDetailNode,
-  sessionLabel,
-  sessionListFacts,
-  sessionListItem,
-  type SessionListFacts,
-} from '../../src/interaction/session-list-model.ts'
+import { formatAgo, formatDuration, sessionDetailNode, sessionLabel, sessionListItem, type SessionListFacts } from '../../src/interaction/session-list-model.ts'
 import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
 const t: MayflyTranslate = (key, values) => key.replace(/\{(\w+)\}/g, (_match, name: string) => String(values?.[name]))
@@ -21,100 +9,6 @@ const text = (node: MayflyUiNode | ReturnType<typeof sessionListItem>): string =
 
 const NOW = 1_800_000_000_000
 const STATS = { turns: 2, steps: 4, llmMs: 1_000, toolMs: 500, ttftMs: 100, ttftSteps: 1, decodeMs: 900, decodeTokens: 50 }
-
-type SummaryFixture = Omit<Partial<SessionSummary>, 'projections' | 'parentSessionId'> & {
-  readonly projections?: { readonly kind?: 'cached' | 'sequenced', readonly asOfSeq?: number, readonly values: Readonly<Record<string, unknown>> }
-  readonly parentSessionId?: string
-}
-const summary = (over: SummaryFixture = {}): SessionSummary => ({
-  sessionId: 'session-id-abcdef',
-  updatedAt: NOW - 60_000,
-  running: false,
-  blank: false,
-  ...over,
-} as unknown as SessionSummary)
-
-const context = (over = {}) => ({ archived: false, current: false, now: NOW, ...over })
-
-describe('sessionListFacts', () => {
-  it('projects the title, hints, status, and preset', () => {
-    const facts = sessionListFacts(summary({
-      cwd: '/repo',
-      running: true,
-      projections: { values: {
-        title: 'My session',
-        agentPreset: 'standard',
-        sessionListMetadata: { blank: false, lastPromptAt: NOW - 30_000 },
-        tokenUsage: { uncachedInputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 5 },
-        sessionStats: STATS,
-        modelSelection: { lastUsed: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' } },
-      } },
-    }), { ...context({ current: true, archived: true }), reminders: new Set(['session-id-abcdef']) })
-    expect(facts).toMatchObject({
-      id: 'session-id-abcdef',
-      title: 'My session',
-      cwd: '/repo',
-      preset: 'standard',
-      lastActiveAt: NOW,
-      running: true,
-      archived: true,
-      current: true,
-      reminders: true,
-      migrationRequired: false,
-      tokens: { input: 100, cacheRead: 10, cacheWrite: 5, output: 50 },
-      stats: { turns: 2, steps: 4 },
-      model: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' },
-    })
-  })
-
-  it('drops absent values and distinguishes a cache miss from real activity', () => {
-    const facts = sessionListFacts(summary({ updatedAt: NOW - 120_000 }), context())
-    expect(facts.title).toBeUndefined()
-    expect(facts.cwd).toBeUndefined()
-    expect(facts.preset).toBeUndefined()
-    expect(facts.lastActiveAt).toBeUndefined()
-    expect(facts.tokens).toBeUndefined()
-    expect(facts.stats).toBeUndefined()
-    expect(facts.model).toBeUndefined()
-    expect(facts.reminders).toBe(false)
-  })
-
-  it('uses the last prompt, then updatedAt for a session with turns, and now while running', () => {
-    expect(sessionListFacts(summary({ projections: { values: { sessionListMetadata: { blank: false, lastPromptAt: NOW - 5_000 } } } }), context()).lastActiveAt).toBe(NOW - 5_000)
-    expect(sessionListFacts(summary({ updatedAt: NOW - 7_000, projections: { values: { sessionStats: STATS } } }), context()).lastActiveAt).toBe(NOW - 7_000)
-    expect(sessionListFacts(summary({ running: true, updatedAt: NOW - 7_000 }), context()).lastActiveAt).toBe(NOW)
-  })
-
-  it('never derives activity from Mayfly conversation facts', () => {
-    const facts = sessionListFacts(summary({
-      projections: { values: { mayflyConversationFacts: { endedAt: NOW - 1_000 } } },
-    }), context())
-    expect(facts.lastActiveAt).toBeUndefined()
-  })
-
-  it('shows the migration format status and keeps cached title/model hints', () => {
-    const facts = sessionListFacts(summary({
-      formatStatus: 'migration-required',
-      projections: { kind: 'cached', asOfSeq: 4, values: {
-        title: 'Old format', modelSelection: { lastUsed: null, next: { provider: 'deepseek', model: 'deepseek-reasoner' } },
-      } },
-    }), context())
-    expect(facts.migrationRequired).toBe(true)
-    expect(facts.title).toBe('Old format')
-    expect(facts.model).toEqual({ provider: 'deepseek', model: 'deepseek-reasoner' })
-  })
-
-  it('ignores empty titles and lets exact detail values replace the listing hints', () => {
-    const blank = sessionListFacts(summary({ projections: { values: { title: '   ' } } }), context())
-    expect(blank.title).toBeUndefined()
-    const exact = sessionListFacts(summary({ projections: { values: { title: 'Stale' } } }), {
-      ...context(),
-      values: { title: 'Exact', sessionListMetadata: { blank: false, lastPromptAt: NOW - 60_000 } },
-    })
-    expect(exact.title).toBe('Exact')
-    expect(exact.lastActiveAt).toBe(NOW - 60_000)
-  })
-})
 
 describe('formatDuration', () => {
   it('formats every scale', () => {

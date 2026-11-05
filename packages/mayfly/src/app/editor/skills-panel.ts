@@ -1,6 +1,7 @@
 /** The reference wire skill browser over one exact native catalog. @module remote/editor/skills-panel */
 import type { Context } from '@deepseek-ai/cordis'
-import { skillsNode, interactionTranslator, mountInteractionLocale, observeInteractionLocale } from '../../command-panels.ts'
+import { skillsNode } from '../../interaction/skills-model.ts'
+import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from '../../interaction/locale.ts'
 import type { MayflyOverlayHandle } from '@ephemeral-ai/mayfly-ui'
 import type { EditorSkills } from './skills.ts'
 import type { EditorFeatureSession } from './types.ts'

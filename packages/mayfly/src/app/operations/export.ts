@@ -9,7 +9,7 @@ import { renameSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type { ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { remoteErrorMessage } from '../features/official.ts'
 import {

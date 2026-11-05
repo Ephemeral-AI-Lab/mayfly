@@ -203,11 +203,17 @@ vi.mock('../../src/app/host-composition.ts', () => ({
   })),
 }))
 
-vi.mock('../../src/transcript.ts', () => ({
-  ACTION_TOGGLE_COLLAPSE: 'mayfly.transcript.toggle-collapse',
-  TRANSCRIPT_LOCALE: {}, mountTranscriptLocale: vi.fn(),
+vi.mock('../../src/transcript/presentation-policy.ts', async importOriginal => ({ ...await importOriginal<object>(),
+  TranscriptPresentationPolicy: class {},
+  followPresentationSettings: vi.fn(),
+}))
+vi.mock('../../src/transcript/locale.ts', async importOriginal => ({ ...await importOriginal<object>(),
+  TRANSCRIPT_LOCALE: {},
+  mountTranscriptLocale: vi.fn(),
   transcriptTranslator: () => (text: string) => text,
-  observeTranscriptLocale: () => vi.fn(), TranscriptPresentationPolicy: class {}, followPresentationSettings: vi.fn(),
+  observeTranscriptLocale: () => vi.fn(),
+}))
+vi.mock('../../src/transcript/transcript-model.ts', async importOriginal => ({ ...await importOriginal<object>(),
   TranscriptController: class {
     readonly setView = vi.fn((_name: string, source: () => unknown) => { mocks.transcriptSource = source })
     readonly show = vi.fn()
@@ -221,7 +227,7 @@ vi.mock('../../src/transcript.ts', () => ({
   },
 }))
 
-vi.mock('../../src/core.ts', () => ({
+vi.mock('../../src/core/index.ts', () => ({
   name: 'core',
   Config: undefined,
   inject: [],
@@ -241,11 +247,11 @@ vi.mock('../../src/core.ts', () => ({
     ctx.provide('mayflyUiImages', { provide: vi.fn(() => vi.fn()) })
   },
 }))
-vi.mock('../../src/frontend.ts', () => ({
+vi.mock('../../src/frontend/index.ts', () => ({
   name: 'frontend', apply: () => {}, Config: undefined, inject: [],
   interpolateLocaleMessage: (key: string) => key,
 }))
-vi.mock('../../src/theme-dark.ts', () => ({ name: 'theme-dark', apply: () => {}, Config: undefined, inject: [] }))
+vi.mock('../../src/core/theme-dark.ts', () => ({ name: 'theme-dark', apply: () => {}, Config: undefined, inject: [] }))
 vi.mock('@ephemeral-ai/mayfly-ui/provider', () => ({ name: 'ui-provider', apply: () => {}, Config: undefined, inject: [] }))
 
 import { runRemoteFrontend } from '../../src/app/runtime.ts'

@@ -3,10 +3,8 @@
  * @module @ephemeral-ai/mayfly/conversation/live
  */
 import type { SessionEventLikeEntry } from '@deepseek-ai/dsh-api-session-controller/client'
-import {
-  transientAssistantConversation,
-  type ConversationProjection,
-} from '../conversation.ts'
+import { transientAssistantConversation } from './transient.ts'
+import { type ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 
 /** Replaceable live overlay; never retained as durable Session truth. */
 export interface RemoteLiveConversation {

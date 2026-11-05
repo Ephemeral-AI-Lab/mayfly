@@ -8,7 +8,7 @@
  * @module @ephemeral-ai/mayfly/remote/operations/presets
  */
 
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { HostClient } from '../../client/types.ts'
 import { RemoteFeatureOperation, remoteErrorMessage, remoteValue } from '../features/official.ts'

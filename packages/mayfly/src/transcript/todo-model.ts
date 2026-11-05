@@ -25,7 +25,7 @@ function todoSpans(todo: TodoPresentationItem): readonly MayflyInlineSpan[] {
 
 
 /** What the view renders from. */
-export interface TodoState {
+interface TodoState {
   /** The latest whole-list snapshot while it is unfinished; empty until the first `todo/write` and after it settles. */
   readonly todos: readonly TodoPresentationItem[]
   /** Whether the latest run failed or was stopped while the list was unsettled. */

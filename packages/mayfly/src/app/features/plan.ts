@@ -3,7 +3,8 @@
  * @module @ephemeral-ai/mayfly/remote/features/plan
  */
 
-import { memoizedLocaleTranslator, type MayflyTranslate } from '../../frontend.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
+import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyStatusNode, MayflyStatusRegistration } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../features.ts'
 import { RemoteFeatureLifecycle } from './lifecycle.ts'
@@ -24,7 +25,6 @@ const zh = {
   'Plan mode off for the next session': '下一个会话将退出计划模式',
   'Send a message first: /plan with a message needs a session': '请先发送消息：带内容的 /plan 需要会话',
   'Toggle plan mode': '切换计划模式',
-  'Enter or leave plan mode': '进入或离开计划模式',
   'mode command is unavailable: /plan': '模式命令不可用：/plan',
 } as const
 

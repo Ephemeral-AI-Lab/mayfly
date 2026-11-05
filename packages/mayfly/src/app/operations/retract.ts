@@ -4,7 +4,7 @@
  * @module @ephemeral-ai/mayfly/remote/operations/retract
  */
 
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { mayflyHostRemote } from '../../hosts/host-mount.ts'
 import { RemoteFeatureOperation } from '../features/official.ts'

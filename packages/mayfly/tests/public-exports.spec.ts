@@ -9,8 +9,8 @@ describe('public module projections', () => {
     expect(root.runRemoteFrontend).toBeTypeOf('function')
     expect(root.RemoteApp).toBeTypeOf('function')
     expect(client.smokeHostClient).toBeTypeOf('function')
-    const manifest = JSON.parse(readFileSync(new URL('../../remote/package.json', import.meta.url), 'utf8')) as { exports: Record<string, unknown> }
-    expect(Object.keys(manifest.exports)).toEqual(['.', './client', './remote-bin', './package.json'])
+    const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { exports: Record<string, unknown> }
+    expect(Object.keys(manifest.exports)).toEqual(['.', './client', './bin', './package.json'])
     expect(root).not.toHaveProperty('MayflyHostActions')
     expect(root).not.toHaveProperty('RemoteFeaturePanel')
     expect(root).not.toHaveProperty('buildRemoteStatusFooter')

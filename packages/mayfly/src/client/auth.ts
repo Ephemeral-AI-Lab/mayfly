@@ -15,7 +15,7 @@ import {
 } from './types.ts'
 
 /** Validated URLs and mount checks shared by every Host carrier. */
-export interface HostEndpoint {
+interface HostEndpoint {
   readonly baseUrl: URL
   readonly connectUrl: URL
   readonly hostname: string

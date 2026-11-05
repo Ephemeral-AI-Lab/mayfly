@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { HostClient } from '../../src/client/types.ts'
 import type { RemoteSettingsController } from '../../src/app/features/settings.ts'
 import { RemotePreferencesController } from '../../src/app/features/preferences.ts'
-import { resolveMayflySettings } from '../../src/settings.ts'
+import { resolveMayflySettings } from '../../src/frontend/settings.ts'
 import { configurationFixture, deferred, namespace, schemaJson } from './configuration-fixture.ts'
 const mocks = vi.hoisted(() => ({ open: vi.fn() }))
 vi.mock('../../src/app/panels/browser.ts', () => ({ openRemoteBrowser: mocks.open }))

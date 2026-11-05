@@ -4,9 +4,9 @@
  */
 
 import type { MayflyUiActionEvent } from '@ephemeral-ai/mayfly-ui'
-import { DECISION } from './decision-card.ts'
+import { DECISION } from '../../components/decision-card.ts'
 
-export interface DecisionRead {
+interface DecisionRead {
   readonly action: 'choose' | 'send'
   readonly choice?: string
   readonly note: string

@@ -187,7 +187,7 @@ export class RemotePresentSlot {
 }
 
 /** Bounds of one backwards journal walk. */
-export interface RemoteEventsQuery {
+interface RemoteEventsQuery {
   readonly address: SessionAddress
   /** Page size passed as `maxMessages`; the official default applies when omitted. */
   readonly maxMessages?: number

@@ -9,7 +9,7 @@ import { REMOTE_CONFIGURATION_LOCALE } from '../../src/app/features/locale.ts'
 import { configurationFixture, deferred, namespace } from './configuration-fixture.ts'
 const mocks = vi.hoisted(() => ({ open: vi.fn(), metadata: vi.fn(async (_ctx: unknown, _signal: AbortSignal): Promise<unknown> => undefined) }))
 vi.mock('../../src/app/panels/browser.ts', () => ({ openRemoteBrowser: mocks.open }))
-vi.mock('../../src/configuration-panels.ts', async original => ({ ...await original<Record<string, unknown>>(), loadModelsDevIndex: mocks.metadata }))
+vi.mock('../../src/interaction/models-dev.ts', async original => ({ ...await original<Record<string, unknown>>(), loadModelsDevIndex: mocks.metadata }))
 const cleanups: (() => void)[] = []
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); mocks.metadata.mockReset(); mocks.metadata.mockResolvedValue(undefined) })
 

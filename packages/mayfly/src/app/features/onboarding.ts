@@ -17,15 +17,10 @@ import {
   remoteValue,
 } from './official.ts'
 import type { MayflySubmission, MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
-import {
-  onboardingLabels, onboardingWizard, ONBOARDING_WIZARD, ONBOARDING_PREFERENCES,
-  ONBOARDING_CONNECT, ONBOARDING_READY, ONBOARDING_PREFERENCES_FORM,
-  ONBOARDING_PERMISSION_FIELD, ONBOARDING_STARTUP_FIELD, ONBOARDING_CONNECT_LIST,
-  ONBOARDING_KEY_FORM, ONBOARDING_KEY_FIELD, ONBOARDING_SIGN_IN,
-  type OnboardingFacts,
-} from '../../configuration-panels.ts'
+import { onboardingLabels } from '../../components/onboarding-labels.ts'
+import { onboardingWizard, ONBOARDING_WIZARD, ONBOARDING_PREFERENCES, ONBOARDING_CONNECT, ONBOARDING_READY, ONBOARDING_PREFERENCES_FORM, ONBOARDING_PERMISSION_FIELD, ONBOARDING_STARTUP_FIELD, ONBOARDING_CONNECT_LIST, ONBOARDING_KEY_FORM, ONBOARDING_KEY_FIELD, ONBOARDING_SIGN_IN, type OnboardingFacts } from '../../components/onboarding-wizard.ts'
 import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
-import type { RemotePermissionsController } from './permissions.ts'
+import type { RemotePermissionCatalog, RemotePermissionsController } from './permissions.ts'
 import type { RemotePreferencesController } from './preferences.ts'
 import { remoteProviderCredentialRefs, type RemoteProvidersController } from './providers.ts'
 import { REMOTE_LANGUAGES, REMOTE_STARTUPS } from './presentation.ts'
@@ -84,7 +79,7 @@ export class RemoteOnboardingController extends RemoteFeatureController {
         settings,
         canSignIn: account !== undefined && configurable.some(provider => provider.provider === 'deepseek-account'),
         permissionDefault: permission.defaultPreset,
-        permissionOptions: permission.defaultOptions.map((option: import('./permissions.ts').RemotePermissionCatalog['defaultOptions'][number]) => ({ id: option.value, label: option.name })),
+        permissionOptions: permission.defaultOptions.map((option: RemotePermissionCatalog['defaultOptions'][number]) => ({ id: option.value, label: option.name })),
       })
     } catch {
       // A later Host generation gets its own single readiness attempt.
@@ -122,7 +117,7 @@ export class RemoteOnboardingController extends RemoteFeatureController {
         settings,
         canSignIn: account !== undefined && configurable.some(provider => provider.provider === 'deepseek-account'),
         permissionDefault: permission.defaultPreset,
-        permissionOptions: permission.defaultOptions.map((option: import('./permissions.ts').RemotePermissionCatalog['defaultOptions'][number]) => ({ id: option.value, label: option.name })),
+        permissionOptions: permission.defaultOptions.map((option: RemotePermissionCatalog['defaultOptions'][number]) => ({ id: option.value, label: option.name })),
       }
     })()
     if (!operation.valid()) return

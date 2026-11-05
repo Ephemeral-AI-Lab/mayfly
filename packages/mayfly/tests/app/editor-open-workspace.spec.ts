@@ -1,9 +1,10 @@
 /** Real editor key routing through the official Host namespace, with no SessionFace convenience method. @module */
 import { Context } from '@deepseek-ai/cordis'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
-import { MayflyComponentsService, type MayflyComponentsDeps, type MayflyKeymap, type MayflyScreen, type MayflySemanticColors } from '../../src/core.ts'
+import { MayflyComponentsService, type MayflyComponentsDeps } from '../../src/core/components.ts'
+import type { MayflyKeymap, MayflyScreen, MayflySemanticColors } from '../../src/core/types.ts'
 import * as Provider from '@ephemeral-ai/mayfly-ui/provider'
-import * as Frontend from '../../src/frontend.ts'
+import * as Frontend from '../../src/frontend/index.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
 import type { RemoteApp } from '../../src/app/app.ts'

@@ -9,7 +9,7 @@ import { mayflyHostRemote } from '../../hosts/host-mount.ts'
 import type { EditorFeatureSession } from './types.ts'
 
 /** The official skill row enriched only by exact native Host catalog fields. */
-export type EditorSkill = SkillEntry & Partial<Pick<MayflySkillSummary, 'source' | 'provider'>>
+type EditorSkill = SkillEntry & Partial<Pick<MayflySkillSummary, 'source' | 'provider'>>
 
 const SKILL_TOKEN = /(^|\s)#([a-z0-9]+(?:-[a-z0-9]+)*)(?=\s|$)/gu
 const SKILL_PREFIX = /(^|\s)#([a-z0-9-]*)$/u

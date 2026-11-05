@@ -4,7 +4,7 @@
 import Schema from '@deepseek-ai/schemastery'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
-import { visibleWidth } from '../../src/core.ts'
+import { visibleWidth } from '@earendil-works/pi-tui'
 import { RemoteSettingsController } from '../../src/app/features/settings.ts'
 import { CordisRemoteLocalPresentation } from '../../src/app/features/presentation.ts'
 import { good, taskFixture, tick } from './task-feature-fixture.ts'

@@ -32,7 +32,7 @@ import { visibleWidth } from './width.ts'
  * shape without the type import: delegation is one property at a time, so a
  * `Terminal`, a recovery facade, or a test fake all satisfy it.
  */
-export interface OptimizerTerminal {
+interface OptimizerTerminal {
   start(onInput: (data: string) => void, onResize: () => void): void
   stop(): void
   drainInput(maxMs?: number, idleMs?: number): Promise<void>
@@ -51,7 +51,7 @@ export interface OptimizerTerminal {
 }
 
 /** Tuning for the shift heuristic. */
-export interface OutputOptimizerOptions {
+interface OutputOptimizerOptions {
   /** Fraction of the change band a shift must explain; defaults to 0.6. */
   readonly shiftRatio?: number
   /** Rows a shift must explain before it is used; defaults to 3. */
@@ -59,7 +59,7 @@ export interface OutputOptimizerOptions {
 }
 
 /** Test-only activity of one optimizer; production does not read it. */
-export interface OutputOptimizerDiagnostics {
+interface OutputOptimizerDiagnostics {
   /** Frames whose next screen equaled the shadow; no row was written. */
   readonly noopFrames: number
   /** Frames emitted with a scrolling-region shift. */
@@ -79,7 +79,7 @@ export interface OutputOptimizerDiagnostics {
 }
 
 /** A terminal facade that filters pi-tui alternate-screen frames. */
-export interface OutputOptimizer extends OptimizerTerminal {
+interface OutputOptimizer extends OptimizerTerminal {
   readonly diagnostics: OutputOptimizerDiagnostics
 }
 

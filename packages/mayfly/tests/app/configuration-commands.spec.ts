@@ -1,7 +1,7 @@
 /** Reference local theme argument routing must work without Host persistence. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HostKey, type HostClient } from '../../src/client/types.ts'
-import type { MayflyKeyAction } from '../../src/core.ts'
+import type { MayflyKeyAction } from '../../src/core/types.ts'
 import { RemoteFeatureCommandRegistry } from '../../src/app/features/commands.ts'
 import type { RemoteConfigurationMountContext } from '../../src/app/features/configuration.ts'
 import { mountRemoteConfigurationComposition } from '../../src/app/configuration-composition.ts'

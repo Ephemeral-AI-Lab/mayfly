@@ -26,13 +26,13 @@ export interface RemoteMcpResourceItem {
 }
 
 /** One cursor page of resource or resource-template metadata. */
-export interface RemoteMcpResourcePage {
+interface RemoteMcpResourcePage {
   readonly items: readonly RemoteMcpResourceItem[]
   readonly nextCursor?: string
 }
 
 /** One server-scoped page request: kind, optional continuation cursor. */
-export interface RemoteMcpResourcePageRequest {
+interface RemoteMcpResourcePageRequest {
   readonly serverName: string
   readonly templates: boolean
   readonly cursor?: string
@@ -42,7 +42,7 @@ export interface RemoteMcpResourcePageRequest {
  * Page loader over `client.remote.mayflyHost.listMcpResources`; a failed page
  * rejects with the Remote failure for the owning feature to fence and show.
  */
-export type RemoteMcpResourcePageLoader = (
+type RemoteMcpResourcePageLoader = (
   client: HostClient,
   sessionId: SessionId,
   request: RemoteMcpResourcePageRequest,
@@ -53,7 +53,7 @@ export type RemoteMcpResourcePageLoader = (
  * Body reader over `client.remote.mayflyHost.readMcpResource`; text and binary
  * summaries arrive as one Host-summarized document.
  */
-export type RemoteMcpResourceReader = (
+type RemoteMcpResourceReader = (
   client: HostClient,
   sessionId: SessionId,
   serverName: string,

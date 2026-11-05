@@ -1,14 +1,17 @@
 /** Frontend-owned greeting and launch-screen presentation over the native catalog. @module remote/startup */
 import { basename } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import type { MayflyScreenService } from '../core.ts'
-import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS, MAYFLY_VERSION, SPLASH_RECENT_MAX, type SplashContent, type SplashSession } from '../banner-content.ts'
-import { currentMayflySettings } from '../settings.ts'
-import { formatAgo, interactionTranslator, mountInteractionLocale } from '../session-browser.ts'
+import type { MayflyScreenService } from '../core/screen.ts'
+import { FLY_IN_FRAME_MS, FLY_IN_TOTAL_MS } from '../core/quad-mark.ts'
+import { MAYFLY_VERSION } from '../transcript/banner-content.ts'
+import { SPLASH_RECENT_MAX, type SplashContent, type SplashSession } from '../transcript/splash.ts'
+import { currentMayflySettings } from '../frontend/settings.ts'
+import { formatAgo } from '../interaction/session-list-model.ts'
+import { interactionTranslator, mountInteractionLocale } from '../interaction/locale.ts'
 import type { HostClient, SessionRef } from '../client/types.ts'
 
 /** Borrowed native selection; the launch screen never retains or creates a Session. */
-export interface RemoteStartupOptions {
+interface RemoteStartupOptions {
   readonly client: () => HostClient | undefined
   readonly current: () => SessionRef | undefined
   readonly directory: () => string

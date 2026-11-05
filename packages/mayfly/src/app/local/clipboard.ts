@@ -7,7 +7,7 @@ import { constants as fsConstants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { basename } from 'node:path'
 import type { ImageAttachmentLimits, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
-import { emitClipboardOsc52 } from '../../core.ts'
+import { emitClipboardOsc52 } from '../../core/terminal-escape.ts'
 import { sniffImageMediaType } from '../editor/attachments.ts'
 import { failureDetail as detail, runLocalTool, type LocalToolRun } from './process.ts'
 

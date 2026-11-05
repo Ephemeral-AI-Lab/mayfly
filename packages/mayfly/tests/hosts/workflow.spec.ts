@@ -3,7 +3,7 @@ import { RemoteStream, type RemoteStreamOptions } from '@deepseek-ai/dsh-api-gat
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HostKey, type HostClient, type SessionRef } from '../../src/client/types.ts'
-import { createMayflyWorkflowStreamOptions, RemoteWorkflowSource } from '../../src/hosts/workflow.ts'
+import { RemoteWorkflowSource } from '../../src/hosts/workflow.ts'
 
 type Baseline = { readonly type: 'baseline', readonly value: string }
 type Frame = { readonly type: 'replacement', readonly value: string }
@@ -265,22 +265,5 @@ describe('RemoteWorkflowSource official snapshot lifecycle', () => {
     await expect(drained).resolves.toBe(failure)
     await expect(f.source.dispose()).resolves.toBeUndefined()
     expect(f.channels[0]!.closed).toBe(true)
-  })
-})
-
-describe('generated Mayfly Workflow stream options', () => {
-  it('uses the exact Host namespace, SessionId, signal, and native baseline discriminator', () => {
-    const followWorkflow = vi.fn(() => ({ async *[Symbol.asyncIterator]() {} }))
-    const client = { key: HostKey('generated-workflow'), remote: { mayflyHost: { followWorkflow } } } as unknown as HostClient
-    const ref = { host: client.key, sessionId: SessionId('generated-session') }
-    const options = createMayflyWorkflowStreamOptions(client, ref)
-    const signal = new AbortController().signal
-    const iterable = options.open(signal)
-    expect(iterable).toBe(followWorkflow.mock.results[0]!.value)
-    expect(followWorkflow).toHaveBeenCalledWith({ sessionId: ref.sessionId }, signal)
-    expect(options.name).toBe('mayfly workflow generated-session')
-    expect(options.isBaseline({ type: 'baseline', value: { sessionId: ref.sessionId, runs: [] } })).toBe(true)
-    expect(options.isBaseline({ type: 'replacement', value: { sessionId: ref.sessionId, runs: [] } })).toBe(false)
-    expect(() => createMayflyWorkflowStreamOptions(client, { ...ref, host: HostKey('foreign') })).toThrow('same Host')
   })
 })

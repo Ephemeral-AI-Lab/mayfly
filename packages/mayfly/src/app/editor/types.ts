@@ -3,13 +3,7 @@
  * @module @ephemeral-ai/mayfly/remote/editor/types
  */
 
-import type {
-  MayflyComponents,
-  MayflyEditor,
-  MayflyKeymap,
-  MayflyScreen,
-  MayflySemanticColors,
-} from '../../core.ts'
+import type { MayflyComponents, MayflyEditor, MayflyKeymap, MayflyScreen, MayflySemanticColors } from '../../core/types.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { EditorDraftStore } from './utils.ts'
 import type { SessionFace } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -26,7 +20,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Context } from '@deepseek-ai/cordis'
 import type { HostClient, SessionRef } from '../../client/types.ts'
 import type { RemoteNotice } from '../notice.ts'
-import type { EditorExtensionRuntime } from '../../editor-presentation.ts'
+import type { EditorExtensionRuntime } from '../../frontend/editor-extension-runtime.ts'
 import type { CapturedAttachments } from './attachments.ts'
 
 /** An admitted transform owns only the original draft's exact attachment identities. */
@@ -209,7 +203,3 @@ export interface EditorFeatureController {
   dispose(): void
 }
 
-/** Host DTOs and orchestration deliberately left to the Host/domain lanes. */
-export const EDITOR_INTEGRATION_REQUIREMENTS = Object.freeze({
-  btwFork: 'D-D/Host must fork, clean inherited queue entries, restore model and preset, select the child, then prompt.',
-} as const)

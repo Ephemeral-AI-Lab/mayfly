@@ -1,12 +1,13 @@
 /** Host catalogs and MCP resources through actual native adapters and exact browser lifetimes. @module */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { visibleWidth } from '../../src/core.ts'
+import { visibleWidth } from '@earendil-works/pi-tui'
 import type { MayflyUiActionEvent, MayflyUiEventContext, MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyMcpCatalog, MayflyMcpServer, MayflyToolCatalog } from '@ephemeral-ai/mayfly-host/types'
 import { mountCatalogFeature } from '../../src/app/features/catalog.ts'
 import { remoteMcpResourceItem } from '../../src/app/features/mcp-resources.ts'
 import type { RemoteBrowserOptions } from '../../src/app/panels/browser.ts'
-import { firstSentence as remoteFirstSentence, mcpListNode, mcpServerPageNode, mcpToolNode, mcpResourceNode, mcpResourceBodyNode, toolsBrowserNode, type McpResourceFacts } from '../../src/command-panels.ts'
+import { firstSentence as remoteFirstSentence } from '../../src/interaction/catalog-model.ts'
+import { listPanel as mcpListNode, serverPage as mcpServerPageNode, toolPanel as mcpToolNode, resourcePanel as mcpResourceNode, resourceBodyPanel as mcpResourceBodyNode, toolsBrowserNode, type ResourceState as McpResourceFacts } from '../../src/interaction/catalog-model.ts'
 import { taskFixture, tick, translate, activated, good, bad } from './task-feature-fixture.ts'
 
 const browser = vi.hoisted(() => vi.fn())

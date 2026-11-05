@@ -1,6 +1,7 @@
 /** Actual reference completion painter, presentation, waiting and overlay lifetime. @module */
 import { Context } from '@deepseek-ai/cordis'
-import type { MayflyComponent, MayflyEditor, MayflyScreenService } from '../../src/core.ts'
+import type { MayflyComponent, MayflyEditor } from '../../src/core/types.ts'
+import type { MayflyScreenService } from '../../src/core/screen.ts'
 import { describe, expect, it, vi } from 'vitest'
 import { mountRemoteCompletionDrawer } from '../../src/app/completion-drawer.ts'
 import { fakeMayflyComponents, plain, plainColors } from './render-fixture.ts'

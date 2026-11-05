@@ -1,6 +1,6 @@
 /** Render actual Host-verified builtin filesystem wire facts through the shared reference components. @module */
 import { describe, expect, it } from 'vitest'
-import { conversationProjectionSchema } from '../../src/conversation/projection.ts'
+import { conversationProjectionSchema } from '../../../host/src/conversation/projection.ts'
 import { conversationTranscriptModel } from '../../src/transcript/conversation-model.ts'
 import { StreamFacts } from '../../src/transcript/stream-facts.ts'
 import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'

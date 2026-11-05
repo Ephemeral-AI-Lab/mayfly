@@ -4,7 +4,7 @@
  */
 
 import { ui, type MayflyPaneRegistration, type MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import type { MayflyWorkflowFrame } from '../../hosts/host-contract.ts'
 import { mayflyHostRemote } from '../../hosts/host-mount.ts'
 import { RemoteWorkflowSource } from '../../hosts/workflow.ts'

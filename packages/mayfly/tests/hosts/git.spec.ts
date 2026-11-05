@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
-import { RemoteGitPoller, createMayflyGitRead } from '../../src/hosts/git.ts'
-import { HostKey, type HostClient } from '../../src/client/types.ts'
+import { RemoteGitPoller } from '../../src/hosts/git.ts'
+import { HostKey } from '../../src/client/types.ts'
 
 const ref = (host = 'one') => ({ host: HostKey(host), sessionId: SessionId('same') })
 const result = (value = 'main') => ({ ok: true as const, value })
@@ -79,14 +79,5 @@ describe('native Host Git polling', () => {
     const queued = timer.mock.calls.at(-1)![0] as () => void
     poller.attach(null); queued(); expect(read).toHaveBeenCalledOnce()
     await poller.dispose()
-  })
-
-  it('addresses the generated Host Git method only through a matching HostKey', async () => {
-    const selection = ref(); const gitStatus = vi.fn(async (..._args: unknown[]) => result(null as unknown as string))
-    const client = { key: selection.host, remote: { mayflyHost: { gitStatus } } } as unknown as HostClient
-    const read = createMayflyGitRead(client); const signal = new AbortController().signal
-    await read(selection, signal)
-    expect(gitStatus).toHaveBeenCalledWith({ sessionId: selection.sessionId }, signal)
-    expect(() => read(ref('other'), signal)).toThrow('same Host')
   })
 })

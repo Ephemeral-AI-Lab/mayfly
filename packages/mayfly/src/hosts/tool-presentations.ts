@@ -3,8 +3,8 @@
  * @module @ephemeral-ai/mayfly/frontend/tool-presentations
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
-import type { ConversationProjection, ConversationToolEntry } from '../conversation.ts'
-import type { ToolPresentationSource } from '../transcript.ts'
+import type { ConversationProjection, ConversationToolEntry } from '@ephemeral-ai/mayfly-host/types'
+import type { ToolPresentationSource } from '../transcript/present.ts'
 import type { HostClient, SessionRef } from '../client/types.ts'
 import type {
   MayflyPresentToolsRequest, MayflyPresentToolsResponse, MayflyToolPresentation,
@@ -13,10 +13,10 @@ import type {
 import { mayflyHostRemote } from './host-mount.ts'
 
 /** Official Host-computed call and result views for one tool entry. */
-export type RemoteToolPresentation = MayflyToolPresentation
+type RemoteToolPresentation = MayflyToolPresentation
 
 /** One changed tool entry sent to the generated Host presentation adapter. */
-export type RemoteToolPresentationCall = MayflyToolPresentationInput
+type RemoteToolPresentationCall = MayflyToolPresentationInput
 
 /** One batch of changed entries from one exact Host/Session/revision generation. */
 export type RemoteToolPresentationRequest = MayflyPresentToolsRequest
@@ -42,7 +42,7 @@ export interface ScopedRemoteToolPresentationSource extends ToolPresentationSour
 }
 
 /** Complete identity of one cached tool presentation, including multi-Host isolation. */
-export interface RemoteToolPresentationKey {
+interface RemoteToolPresentationKey {
   readonly ref: SessionRef
   readonly callId: string
   readonly updatedSeq: number

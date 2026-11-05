@@ -3,7 +3,7 @@ import { panel, ui, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { signInBody, type SignInFacts, type SignInIds } from './account-sign-in.ts'
 
 /** Display-safe fields of one native sign-in attempt. */
-export interface AccountPanelAttempt {
+interface AccountPanelAttempt {
   readonly phase: string
   readonly errorCode?: string
   readonly authorizeUrl?: string
@@ -11,7 +11,7 @@ export interface AccountPanelAttempt {
 }
 
 /** Display-safe native account state; credentials never enter this model. */
-export interface AccountPanelView {
+interface AccountPanelView {
   readonly status: string
   readonly attempt: AccountPanelAttempt | null
 }
@@ -30,7 +30,7 @@ function outcomeText(attempt: AccountPanelAttempt, t: (key: string) => string): 
 }
 
 /** Presentation options for the account panel node. */
-export interface AccountPanelOptions {
+interface AccountPanelOptions {
   /** A callback was admitted and the native attempt is finishing. */
   readonly delivering?: boolean
   /** The browser launch has no result yet. */

@@ -5,9 +5,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '../../frontend.ts'
-import type { Config as BuiltinThemeConfig } from '../../theme-builtin.ts'
-import type { Config as CustomThemeConfig } from '../../theme-custom.ts'
+
+import type { Config as BuiltinThemeConfig } from '../../core/theme-builtin.ts'
+import type { Config as CustomThemeConfig } from '../../core/theme-custom.ts'
 import type { RemoteFeatureContext, RemoteLocalPresentation, RemoteThemeOption } from './contracts.ts'
 
 /** Language choices migrated from the Mayfly onboarding presentation. */
@@ -56,17 +56,12 @@ export const REMOTE_THEMES: readonly RemoteThemeOption[] = [
   { key: 'auto', name: 'Auto', idea: 'Mayfly Dark or Light, as the terminal', dark: true },
 ]
 
-/** Human-readable theme name without reaching a legacy private palette module. */
-export function remoteThemeName(key: string): string {
-  return REMOTE_THEMES.find(theme => theme.key === key)?.name ?? key
-}
-
 /** Resolve the plugin module and config for one local built-in theme. */
 async function themeTarget(key: string, custom?: CustomThemeConfig): Promise<{ readonly module: Parameters<Context['plugin']>[0], readonly config?: BuiltinThemeConfig | CustomThemeConfig }> {
-  if (key === 'custom') return { module: await import('../../theme-custom.ts'), ...custom === undefined ? {} : { config: custom } }
-  if (key === 'dark') return { module: await import('../../theme-dark.ts') }
-  if (key === 'auto') return { module: await import('../../theme-auto.ts') }
-  const module = await import('../../theme-builtin.ts')
+  if (key === 'custom') return { module: await import('../../core/theme-custom.ts'), ...custom === undefined ? {} : { config: custom } }
+  if (key === 'dark') return { module: await import('../../core/theme-dark.ts') }
+  if (key === 'auto') return { module: await import('../../core/theme-auto.ts') }
+  const module = await import('../../core/theme-builtin.ts')
   return { module, config: { palette: key as BuiltinThemeConfig['palette'] } }
 }
 

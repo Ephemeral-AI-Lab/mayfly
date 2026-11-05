@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { buildIndex, loadModelsDevIndex, setModelsDevFetch, setModelsDevLoader } from '../../src/interaction/models-dev.ts'
 import { InteractionStateService } from '../../src/interaction/runtime-state.ts'
-import { DEFAULT_SETTINGS } from '../../src/interaction/settings.ts'
+import { DEFAULT_SETTINGS } from '../../src/frontend/settings.ts'
 
 function createContext(): Context {
   const ctx = new Context()

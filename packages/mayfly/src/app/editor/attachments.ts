@@ -11,12 +11,11 @@ import type {
 import type { PendingSubmissionAttachment } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { PromptContentPart } from '@deepseek-ai/dsh-api-remotes/client'
 import type { FileUploadValue } from '@deepseek-ai/dsh-client-file-upload/client'
-import type { MayflyComponents } from '../../core.ts'
+import type { MayflyComponents } from '../../core/types.ts'
 import type { EditorFeatureSession, EditorTokenSpan, EditorUpload, RemoteEditorPrepared } from './types.ts'
-import type { EditorExtensionSubmitCapture } from '../../editor-presentation.ts'
+import type { EditorExtensionSubmitCapture } from '../../frontend/editor-extension-runtime.ts'
 
-export const IMAGE_MARKER = /\[image #\d+ [^\]]+\]/gu
-export const FILE_MARKER = /\[file #\d+ [^\]]+\]/gu
+const IMAGE_MARKER = /\[image #\d+ [^\]]+\]/gu
 const ATTACHMENT_MARKER = /\[(?:image|file) #\d+ [^\]]+\]/gu
 
 interface LocalImage {

@@ -4,8 +4,9 @@
  */
 
 import { ui, type MayflyPaneRegistration, type MayflyTranslate, type MayflyUiActionEvent, type MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
-import { memoizedLocaleTranslator } from '../../frontend.ts'
-import { jobListPanel, jobDetailsNode, jobOutputNode, interactionTranslator, mountInteractionLocale } from '../../command-panels.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
+import { jobListPanel, jobDetailsNode, jobOutputNode } from '../../interaction/jobs-model.ts'
+import { interactionTranslator, mountInteractionLocale } from '../../interaction/locale.ts'
 import { RemoteJobSource } from '../../hosts/jobs.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../features.ts'
 import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'

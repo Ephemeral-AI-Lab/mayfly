@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { HostKey } from '../../src/client/types.ts'
 import type { HostClient, SessionRef } from '../../src/client/types.ts'
-import type { ConversationProjection } from '../../src/conversation.ts'
+import type { ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import { RemoteToolPresentationCache } from '../../src/hosts/tool-presentations.ts'
 
 const setup = vi.hoisted(() => ({ create: vi.fn() }))
@@ -12,7 +12,7 @@ vi.mock('@ephemeral-ai/mayfly-host/remote', () => ({ TYPERT_REMOTE: {} }))
 
 import { attachMayflyHostClient, resolveMayflyToolPresentation } from '../../src/app/host-composition.ts'
 
-const manifest = JSON.parse(readFileSync(new URL('../../../remote/package.json', import.meta.url), 'utf8')) as { version: string, dependencies: Record<string, string> }
+const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string, dependencies: Record<string, string> }
 const release = manifest.version
 const harness = manifest.dependencies['@deepseek-ai/dsh-agent']!
 

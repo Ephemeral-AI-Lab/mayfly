@@ -6,11 +6,12 @@ import { mkdtempTracked, registerTempDirCleanup } from './core/temp-dir.ts'
 
 const runRemoteFrontend = vi.hoisted(() => vi.fn())
 vi.mock('../src/app/runtime.ts', () => ({ runRemoteFrontend }))
-vi.mock('node:fs', async original => {
-  const actual = await original<typeof import('node:fs')>()
-  return { ...actual, readFileSync: vi.fn(actual.readFileSync) }
+vi.mock('../src/app/features/version.ts', async original => {
+  const actual = await original<typeof import('../src/app/features/version.ts')>()
+  return { ...actual, mayflyVersion: vi.fn(actual.mayflyVersion) }
 })
 
+import { mayflyVersion } from '../src/app/features/version.ts'
 import { main, sanitized, validateArguments } from '../src/bin.ts'
 
 const originalEnv = process.env
@@ -57,10 +58,10 @@ describe('remote-bin environment entry', () => {
     for (const option of ['--version', '-V']) {
       process.argv = [...originalArgv.slice(0, 2), option]
       await main()
-      expect(write).toHaveBeenLastCalledWith(`mayfly ${JSON.parse(readFileSync(new URL('../../remote/package.json', import.meta.url), 'utf8')).version}\n`)
+      expect(write).toHaveBeenLastCalledWith(`mayfly ${JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version}\n`)
     }
-    vi.mocked(readFileSync).mockReturnValueOnce('{"version":null}')
-    await expect(main()).rejects.toThrow('Mayfly Remote package has no version')
+    vi.mocked(mayflyVersion).mockReturnValueOnce('')
+    await expect(main()).rejects.toThrow('The Mayfly package has no version')
     expect(runRemoteFrontend).not.toHaveBeenCalled()
   })
 

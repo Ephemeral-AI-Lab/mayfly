@@ -4,7 +4,7 @@ import { mayflyVersion } from '../../src/app/features/version.ts'
 
 /** The manifest this package publishes, read independently of the module's own resolver. */
 function manifest(): { readonly name: string, readonly version: string } {
-  return JSON.parse(readFileSync(new URL('../../../remote/package.json', import.meta.url), 'utf8')) as { readonly name: string, readonly version: string }
+  return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { readonly name: string, readonly version: string }
 }
 
 const mocks = vi.hoisted(() => ({
@@ -29,7 +29,7 @@ describe('mayflyVersion', () => {
     const own = manifest()
     const version = mayflyVersion()
 
-    expect(own.name).toBe('@ephemeral-ai/mayfly-remote')
+    expect(own.name).toBe('@ephemeral-ai/mayfly')
     expect(version).toBe(own.version)
     expect(version).not.toBe('')
     expect(version).toMatch(/^\d+\.\d+\.\d+(?:-[\w.]+)?$/u)
@@ -43,9 +43,9 @@ describe('mayflyVersion', () => {
 
   it('refuses a differently named manifest and keeps descending', async () => {
     stubManifests({
-      '../package.json': { name: '@ephemeral-ai/mayfly', version: '9.9.9' },
+      '../package.json': { name: '@ephemeral-ai/mayfly-ui', version: '9.9.9' },
       '../../package.json': { name: 'some-other-package', version: '8.8.8' },
-      '../../../package.json': { name: '@ephemeral-ai/mayfly-remote', version: '1.2.3' },
+      '../../../package.json': { name: '@ephemeral-ai/mayfly', version: '1.2.3' },
     })
     const module = await import('../../src/app/features/version.ts')
     expect(module.mayflyVersion()).toBe('1.2.3')
@@ -55,8 +55,8 @@ describe('mayflyVersion', () => {
 
   it('skips a matching name whose version is not a string', async () => {
     stubManifests({
-      '../package.json': { name: '@ephemeral-ai/mayfly-remote', version: 42 },
-      '../../package.json': { name: '@ephemeral-ai/mayfly-remote', version: '0.0.1' },
+      '../package.json': { name: '@ephemeral-ai/mayfly', version: 42 },
+      '../../package.json': { name: '@ephemeral-ai/mayfly', version: '0.0.1' },
     })
     const module = await import('../../src/app/features/version.ts')
     expect(module.mayflyVersion()).toBe('0.0.1')
@@ -77,11 +77,11 @@ describe('mayflyVersion', () => {
   })
 
   it('reads the manifest once and caches the answer for the process', async () => {
-    stubManifests({ '../package.json': { name: '@ephemeral-ai/mayfly-remote', version: '3.1.4' } })
+    stubManifests({ '../package.json': { name: '@ephemeral-ai/mayfly', version: '3.1.4' } })
     const module = await import('../../src/app/features/version.ts')
     expect(module.mayflyVersion()).toBe('3.1.4')
 
-    mocks.manifests = { '../package.json': { name: '@ephemeral-ai/mayfly-remote', version: '9.9.9' } }
+    mocks.manifests = { '../package.json': { name: '@ephemeral-ai/mayfly', version: '9.9.9' } }
     expect(module.mayflyVersion()).toBe('3.1.4')
     vi.doUnmock('node:module')
     vi.resetModules()

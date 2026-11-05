@@ -4,7 +4,6 @@
  */
 
 import type { MayflyTone } from '@ephemeral-ai/mayfly-ui'
-import type { TranscriptToolItem } from './types.ts'
 
 /** Canonical visual semantics of one Agent lifecycle phase. */
 interface AgentPhasePresentation {
@@ -12,32 +11,6 @@ interface AgentPhasePresentation {
   readonly marker: '●' | '✓' | '✗' | '⊘'
   readonly tone: MayflyTone
 }
-
-/**
- * The live overlay one member renders from — the child-session tracker's
- * snapshot (kimi-level fields the fold has no source for; D39).
- */
-export interface AgentMemberLive {
-  /** The refined phase; `running`/`waiting` override a premature ack. */
-  readonly phase: 'running' | 'waiting' | 'completed' | 'failed'
-  /** Wall clock of the epoch's close, while terminal. */
-  readonly endedAt?: number
-  /** Total tokens, once at least one usage record landed. */
-  readonly tokens?: number
-  /** Streamed output chars of the live attempt; absent once it settles. */
-  readonly liveChars?: number
-  /** Dispatched tool calls this epoch. */
-  readonly toolCount: number
-  /** The activity second line, non-terminal states only. */
-  readonly activity?: string
-  /** The child's latest `request/header` model. */
-  readonly model?: string
-  /** The child's latest `request/header` reasoning effort. */
-  readonly effort?: string
-}
-
-/** Resolves a member's live overlay; absent on replay and unit tests. */
-export type AgentLiveLookup = (member: TranscriptToolItem) => AgentMemberLive | undefined
 
 /** Compact non-negative duration from elapsed seconds. */
 export function compactElapsedSeconds(seconds: number): string {
@@ -62,7 +35,7 @@ export function agentPhasePresentation(phase: 'pending' | 'running' | 'waiting' 
 }
 
 /** Groups up to this size keep spawn order and a separate detail line per member. */
-export const COMPACT_MEMBER_LIMIT = 3
+const COMPACT_MEMBER_LIMIT = 3
 
 /** At most this many member rows render in a dock pane; the rest fold into one count row. */
 const MAX_MEMBER_ROWS = 6
@@ -115,28 +88,3 @@ export function agentTreeBranch(last: boolean): '└─' | '├─' {
   return last ? '└─' : '├─'
 }
 
-/** Argument keys naming a spawned agent, in priority order. */
-const AGENT_NAME_KEYS = ['name', 'agent_name', 'agent', 'type', 'preset']
-
-function stringArgument(args: unknown, key: string): string | undefined {
-  if (typeof args !== 'object' || args === null || Array.isArray(args)) return undefined
-  const value = (args as Record<string, unknown>)[key]
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
-}
-
-/**
- * The display label of one spawn-class call: its agent name (with the task
- * description as detail), else the description, else the tool name with its
- * raw arguments as detail.
- * @param name - the tool name.
- * @param args - the parsed arguments, when valid.
- * @param raw - the raw arguments string.
- * @returns the label and optional detail.
- */
-export function agentCallLabel(name: string, args: unknown, raw: string): { readonly label: string, readonly detail?: string } {
-  const named = AGENT_NAME_KEYS.map(key => stringArgument(args, key)).find(value => value !== undefined)
-  const description = stringArgument(args, 'description')
-  if (named !== undefined) return { label: named, ...(description === undefined || description === named ? {} : { detail: description }) }
-  if (description !== undefined) return { label: description }
-  return { label: name, ...(raw === '' ? {} : { detail: raw }) }
-}

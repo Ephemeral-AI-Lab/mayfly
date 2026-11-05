@@ -1,8 +1,11 @@
 /** Reference wire skill browsing uses the native exact-selection catalog. @module tests/remote/skills-panel */
 import { Context } from '@deepseek-ai/cordis'
 import * as Provider from '@ephemeral-ai/mayfly-ui/provider'
-import * as Frontend from '../../src/frontend.ts'
-import { compileMayflyUiNode, MayflyComponentsService, visibleWidth, type MayflyComponentsDeps, type MayflySemanticColors } from '../../src/core.ts'
+import * as Frontend from '../../src/frontend/index.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { MayflyComponentsService, type MayflyComponentsDeps } from '../../src/core/components.ts'
+import { visibleWidth } from '@earendil-works/pi-tui'
+import type { MayflySemanticColors } from '../../src/core/types.ts'
 import type { MayflyUiActionEvent, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EditorSkills } from '../../src/app/editor/skills.ts'

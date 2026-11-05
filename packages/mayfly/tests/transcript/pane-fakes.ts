@@ -10,10 +10,10 @@ import { MayflyPaneService } from '../../../ui/src/provider.ts'
 import type { MayflyComponent, MayflyKeyAction, MayflyKeymap, MayflyOverlayHandle, MayflyScreen } from '../../src/core/types.ts'
 import type { CommandDefinition, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { fakeMayflyComponents } from './helpers.ts'
-import { asAgent, COLORS, FakeFactsService, type FakeAgent } from './status-fakes.ts'
+import { COLORS } from './status-fakes.ts'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
-import { conversationProjectionDefinition, foldConversationProjection, initialConversationState } from '../../src/conversation/projection.ts'
-import type { ConversationProjection, ConversationProjectionState } from '../../src/conversation/types.ts'
+import { conversationProjectionDefinition, foldConversationProjection, initialConversationState } from '../../../host/src/conversation/projection.ts'
+import type { ConversationProjection, ConversationProjectionState } from '../../../host/src/conversation/types.ts'
 import { mountFakeScreenSlot } from '../core/fake-screen-slot.ts'
 
 const ANSI_OR_OSC = /\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|.)/gu
@@ -296,80 +296,4 @@ export interface PanePluginModule {
   name: string
   inject: string[]
   apply: (ctx: Context) => void
-}
-
-export interface PanePluginHarness {
-  ctx: Context
-  screen: PaneFakeScreen
-  keymap: PaneFakeKeymap
-  commands: PaneFakeCommands
-  facts: FakeFactsService
-  dispose(): Promise<void>
-}
-
-/**
- * Boot one pane plugin on a fresh root context with every service it injects
- * faked.
- * @param plugin - the plugin module under test.
- * @param current - agent preloaded onto `mayflySession.current`, if any.
- * @param extras - extra services (e.g. a fake `agents` registry).
- */
-export async function bootPanePlugin(
-  plugin: PanePluginModule,
-  current: FakeAgent | null = null,
-  extras: Record<string, unknown> = {},
-): Promise<PanePluginHarness> {
-  const ctx = new Context()
-  const screen = new PaneFakeScreen()
-  const keymap = new PaneFakeKeymap()
-  const commands = new PaneFakeCommands()
-  const facts = new FakeFactsService(ctx, current)
-  const components = fakeMayflyComponents()
-  const panes = new MayflyPaneService(ctx)
-  const projections = new FakeProjectionService()
-  let selected = current
-  const selectedListeners = new Set<(agent: unknown, revision: number) => void>()
-  ctx.on('session/event', (session, event) => projections.emit(session, event))
-  ctx.on('test/session-changed', next => {
-    selected = next === null ? null : next as unknown as FakeAgent
-    for (const listener of selectedListeners) listener(selected === null ? null : asAgent(selected), 1)
-  })
-  const serviceNames: Record<string, unknown> = {
-    mayflyScreen: screen,
-    mayflyTheme: { colors: COLORS },
-    mayflyComponents: components,
-    mayflyKeymap: keymap,
-    mayflyCurrentAgent: {
-      current: () => selected === null ? null : asAgent(selected),
-      revision: () => 0,
-      subscribe(listener: (agent: unknown, revision: number) => void) {
-        selectedListeners.add(listener)
-        listener(selected === null ? null : asAgent(selected), 0)
-        return () => { selectedListeners.delete(listener) }
-      },
-    },
-    mayflySessionFacts: facts,
-    mayflyConversations: new FakeConversations(selected === null ? undefined : String(asAgent(selected).id)),
-    sessionProjections: projections,
-    commands,
-    facts,
-    agents: { create: async () => { throw new Error('fake agents.create is not configured') } },
-    agentDefaultModel: { currentSelection: () => ({ provider: 'mock', model: 'mock' }) },
-    agentPresets: { mount: async () => {} },
-    ...extras,
-  }
-  for (const [serviceName, value] of Object.entries(serviceNames)) {
-    ctx.reflect.provide(serviceName, value)
-  }
-  const theme = serviceNames.mayflyTheme as { readonly colors: typeof COLORS }
-  screen.bindPanes(panes, components, theme.colors)
-  const fiber = await ctx.plugin(plugin)
-  return {
-    ctx,
-    screen,
-    keymap,
-    commands,
-    facts,
-    dispose: () => fiber.dispose(),
-  }
 }

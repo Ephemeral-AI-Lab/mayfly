@@ -1,13 +1,13 @@
 /** Real Cordis overlay replacement, acknowledgement, rendering and native manager ownership. @module */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MayflyOverlayEntry, MayflyUiActionEvent, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
-import { visibleWidth } from '../../src/core.ts'
+import { visibleWidth } from '@earendil-works/pi-tui'
 import { mountRemoteMarketplace } from '../../src/app/operations/plugin-marketplace.ts'
 import { RemotePresentSlot, type RemoteOperationsContext } from '../../src/app/operations/support.ts'
 import { taskFixture, tick, activated, good } from './task-feature-fixture.ts'
 
 const mocks = vi.hoisted(() => ({ catalog: vi.fn() }))
-vi.mock('../../src/plugin-marketplace.ts', async importOriginal => ({ ...await importOriginal<object>(), loadMarketCatalog: mocks.catalog }))
+vi.mock('../../src/interaction/plugin-market/catalog.ts', async importOriginal => ({ ...await importOriginal<object>(), loadMarketCatalog: mocks.catalog }))
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.restoreAllMocks() })
 

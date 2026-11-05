@@ -4,11 +4,11 @@
  */
 
 import type { FileReferenceCandidate } from '@deepseek-ai/dsh-api-remotes/client'
-import type { MayflyAutocompleteItem } from '../../core.ts'
+import type { MayflyAutocompleteItem } from '../../core/types.ts'
 import type { EditorFeatureSession, EditorHostFiles, EditorHostFileSnapshot } from './types.ts'
 
 /** Active `@` token at the editor cursor. */
-export interface ActiveMention {
+interface ActiveMention {
   readonly prefix: string
   readonly query: string
   readonly quoted: boolean

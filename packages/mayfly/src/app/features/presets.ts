@@ -3,8 +3,8 @@
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import { panel, ui, type MayflyListItem, type MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
-import { mountInteractionLocale } from '../../editor-presentation.ts'
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { mountInteractionLocale } from '../../interaction/locale.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import type { HostClient, SessionRef } from '../../client/types.ts'
 import type { RemoteFeatureContext } from './contracts.ts'
 import { RemoteFeatureController, remoteErrorMessage, remoteValue } from './official.ts'
@@ -12,9 +12,9 @@ import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts
 import type { RemoteSettingsController } from './settings.ts'
 
 /** Official preset roster projected from the generated Client method. */
-export type RemoteAgentPresetRoster = Awaited<ReturnType<HostClient['remote']['agentPresets']['list']>> extends RemoteResult<infer Value> ? Value : never
+type RemoteAgentPresetRoster = Awaited<ReturnType<HostClient['remote']['agentPresets']['list']>> extends RemoteResult<infer Value> ? Value : never
 /** Official read-only preset composition document. */
-export type RemoteAgentPresetDocument = Awaited<ReturnType<HostClient['remote']['agentPresets']['read']>> extends RemoteResult<infer Value> ? Value : never
+type RemoteAgentPresetDocument = Awaited<ReturnType<HostClient['remote']['agentPresets']['read']>> extends RemoteResult<infer Value> ? Value : never
 
 /** Read an agentPreset projection without trusting its unknown value. */
 export function remoteAgentPresetSelection(value: unknown): string | null | undefined { return value === null || typeof value === 'string' ? value : undefined }

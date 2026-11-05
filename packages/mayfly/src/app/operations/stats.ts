@@ -1,11 +1,12 @@
 /** rc.2 statistics tabs over whole Host digests and native Client projections. @module */
-import {
-  StatsPanel, buildStatsFacts, statsSummary, STATS_TABS, RANGES, aggregate,
-  type AccountSnapshot, type IndexState, type SessionDigest, type StatsRange, type StatsTab,
-} from '../../stats-presentation.ts'
-import { currentMayflySettings } from '../../settings.ts'
-import { loadModelsDevIndex, type ModelsDevIndex } from '../../configuration-panels.ts'
-import { interactionTranslator, mountInteractionLocale } from '../../editor-presentation.ts'
+import { StatsPanel } from '../../components/stats-panel.ts'
+import { buildStatsFacts, statsSummary, STATS_TABS, type IndexState, type StatsTab } from '../../interaction/stats-facts.ts'
+import { RANGES, aggregate, type StatsRange } from '../../interaction/stats-index/stats.ts'
+import { type AccountSnapshot } from '../../interaction/stats-account-model.ts'
+import { type SessionDigest } from '../../interaction/stats-index/digest.ts'
+import { currentMayflySettings } from '../../frontend/settings.ts'
+import { loadModelsDevIndex, type ModelsDevIndex } from '../../interaction/models-dev.ts'
+import { interactionTranslator, mountInteractionLocale } from '../../interaction/locale.ts'
 import type { MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyStatsDigest, MayflyStatsSession } from '@ephemeral-ai/mayfly-host/types'
 import { mayflyHostRemote } from '../../hosts/host-mount.ts'

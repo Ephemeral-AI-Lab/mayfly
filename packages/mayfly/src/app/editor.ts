@@ -4,15 +4,14 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import {
-  normalizeWheelInput,
-  type MayflyComponents,
-  type MayflyEditor,
-  type MayflyScreenService,
-  type MayflySemanticColors,
-} from '../core.ts'
-import { memoizedLocaleTranslator } from '../frontend.ts'
-import { Editor, EditorExtensionRuntime, mountInteractionLocale, placeholderLadder, placeholderState, type PlaceholderView } from '../editor-presentation.ts'
+import { normalizeWheelInput } from '../core/terminal.ts'
+import type { MayflyComponents, MayflyEditor, MayflySemanticColors } from '../core/types.ts'
+import type { MayflyScreenService } from '../core/screen.ts'
+import { memoizedLocaleTranslator } from '../frontend/locale.ts'
+import { Editor } from '../components/editor.ts'
+import { EditorExtensionRuntime } from '../frontend/editor-extension-runtime.ts'
+import { mountInteractionLocale } from '../interaction/locale.ts'
+import { placeholderLadder, placeholderState, type PlaceholderView } from '../interaction/placeholder.ts'
 import { ui } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteNotice } from './notice.ts'
 import type { RemoteEditorPrepared } from './editor/types.ts'
@@ -26,7 +25,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** Local commands emitted by the small standalone remote editor. */
-export interface RemoteEditorActions {
+interface RemoteEditorActions {
   submit(text: string): void | Promise<void>
   onError(error: unknown): void
   cancel(): void

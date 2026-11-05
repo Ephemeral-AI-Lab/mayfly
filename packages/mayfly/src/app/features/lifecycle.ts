@@ -83,8 +83,3 @@ export class RemoteFeatureLifecycle {
   }
 }
 
-/** Identity key for logs and operation fences that must include the borrowed Client binding. */
-export function remoteSelectionKey(selection: RemoteFeatureSelection | undefined): string {
-  if (selection === undefined) return ''
-  return `${selection.ref.host}\0${selection.ref.sessionId}\0${String(selection.client.key)}`
-}

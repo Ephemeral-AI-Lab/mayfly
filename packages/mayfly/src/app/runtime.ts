@@ -3,16 +3,16 @@ import { Context } from '@deepseek-ai/cordis'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
-import * as Core from '../core.ts'
-import * as ThemeDark from '../theme-dark.ts'
-import * as Frontend from '../frontend.ts'
-import { currentMayflySettings } from '../settings.ts'
-import { INTERACTION_KEY_ACTIONS, displayKey, interactionTranslator } from '../command-panels.ts'
-import {
-  followPresentationSettings, mountTranscriptLocale, observeTranscriptLocale,
-  TRANSCRIPT_LOCALE, TranscriptController, TranscriptPresentationPolicy, transcriptTranslator,
-  type TranscriptControllerOptions,
-} from '../transcript.ts'
+import * as Core from '../core/index.ts'
+import * as ThemeDark from '../core/theme-dark.ts'
+import * as Frontend from '../frontend/index.ts'
+import { currentMayflySettings } from '../frontend/settings.ts'
+import { INTERACTION_KEY_ACTIONS } from '../interaction/key-definitions.ts'
+import { displayKey } from '../core/key-actions.ts'
+import { interactionTranslator } from '../interaction/locale.ts'
+import { followPresentationSettings, TranscriptPresentationPolicy } from '../transcript/presentation-policy.ts'
+import { mountTranscriptLocale, observeTranscriptLocale, TRANSCRIPT_LOCALE, transcriptTranslator } from '../transcript/locale.ts'
+import { TranscriptController, type TranscriptControllerOptions } from '../transcript/transcript-model.ts'
 
 type QueueAction = Parameters<NonNullable<TranscriptControllerOptions['rows']>['queued']>[0]
 type DecisionRequests = ReturnType<NonNullable<TranscriptControllerOptions['requests']>>

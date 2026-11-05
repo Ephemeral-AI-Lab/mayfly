@@ -14,7 +14,7 @@ import type {
   MayflyUiScope,
 } from '@ephemeral-ai/mayfly-ui'
 
-export type RemoteRequestCancellation = 'dismiss' | 'abort' | 'unload' | 'stale'
+type RemoteRequestCancellation = 'dismiss' | 'abort' | 'unload' | 'stale'
 
 interface RemoteRequestOverlayOptions<Result> {
   readonly id: string

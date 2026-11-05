@@ -1,13 +1,3 @@
-/**
- * The facts of the conversation stream: the display plan of one transcript model (`buildDisplay`, the presentation
- * policy's window and Ctrl-O reach) mapped to the rows `TranscriptView` draws, turn by turn. A row is rebuilt on every
- * pass and kept by identity while its content is equal, so a settled turn publishes the same frozen items and only the
- * live turn's rows change. Texts leave here translated and sanitized; times leave formatted.
- *
- * @module @ephemeral-ai/mayfly/transcript/stream-facts
- */
-
-import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MayflyDecisionRequest } from '../core/types.ts'
 import { textOf, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { sanitizePluginText } from '../core/plugin-view.ts'
@@ -26,7 +16,7 @@ import { ellipsize } from './present.ts'
 import { partText, type CopyMode, type RowPart } from './row-text.ts'
 import { contextPercent, formatTokens } from './status-context-model.ts'
 import { COMPACTION_DRAIN_MS, type CompactionFacts } from '../components/compaction-row.ts'
-import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
+import type { ApprovalMark, CompactionMark } from '@ephemeral-ai/mayfly-host/types'
 import type { TranscriptCompactionModel } from '../frontend/models.ts'
 
 /** Characters of a salient argument kept on a row. */
@@ -123,18 +113,6 @@ function isSemantic(entry: Entry): entry is TranscriptEntryModel {
   return entry.kind.startsWith('transcript-')
 }
 
-/** One line of a user message for a queued row: its text, and a count of its images. */
-export function userMessageText(message: UserMessage): string {
-  const text = message.content
-    .filter(block => block.type === 'text')
-    .map(block => block.text)
-    .join(' ')
-    .replace(/[\r\n]+/g, ' ')
-    .trim()
-  const images = message.content.filter(block => block.type === 'image').length
-  return [text, ...(images === 0 ? [] : [`[${images} image${images === 1 ? '' : 's'}]`])].filter(Boolean).join(' ')
-}
-
 /** The wall-clock time a turn started, as `HH:MM` in the local zone. */
 export function clockTime(ms: number): string {
   const date = new Date(ms)
@@ -167,7 +145,7 @@ function sameRow(left: StreamRow, right: StreamRow): boolean {
 }
 
 /** What a stream row stands for: the turn it sits in and the entries (or calls of them) it draws. */
-export type RowOwner = {
+type RowOwner = {
   /** Entry ids, or the ids of calls inside group entries (`<entry>:<call>`). */
   readonly parts: readonly string[]
   /** A run's head or one of its calls: the run's id and the ids of the calls it holds, so Enter opens a call without leaving the run. */

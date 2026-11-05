@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { MayflyFieldValue, MayflyUiActionEvent } from '@ephemeral-ai/mayfly-ui'
-import { DECISION } from '../../src/app/interactions/decision-card.ts'
+import { DECISION } from '../../src/components/decision-card.ts'
 import { readDecision } from '../../src/app/interactions/decision-actions.ts'
 import { planReviewAction, planReviewAnswer, planReviewChoices } from '../../src/app/interactions/plan-review-panel.ts'
 import { questionnaireAnswer, questionnaireView } from '../../src/app/interactions/questionnaire.ts'

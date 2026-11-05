@@ -1,5 +1,5 @@
 /** Native Session routing and local command admission for the independent TUI. @module */
-import { rewindCandidates } from '../command-panels.ts'
+import { rewindCandidates } from '../interaction/rewind.ts'
 import { collectRemoteSessionEvents } from './operations/support.ts'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'

@@ -1,8 +1,8 @@
 /** Native Goal status reads and revision-checked actions; slash commands stay with the Host. @module */
 import type { GoalProjection, GoalView } from '@deepseek-ai/dsh-goal/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { goalPanel, goalSummary, GOAL_DONE_LINGER_MS, type GoalVerb } from '../../command-panels.ts'
-import { mountTranscriptLocale, transcriptTranslator, observeTranscriptLocale, TRANSCRIPT_LOCALE } from '../../transcript.ts'
+import { goalPanel, goalSummary, GOAL_DONE_LINGER_MS, type GoalVerb } from '../../transcript/goal-model.ts'
+import { mountTranscriptLocale, transcriptTranslator, observeTranscriptLocale, TRANSCRIPT_LOCALE } from '../../transcript/locale.ts'
 import type { MayflyPaneRegistration, MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
 import type { HostClient } from '../../client/types.ts'
 import type { RemoteFeatureContext } from '../features.ts'

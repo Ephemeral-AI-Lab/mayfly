@@ -3,7 +3,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
-import { interpolateLocaleMessage, MayflyLocaleService } from '../../src/frontend.ts'
+import { interpolateLocaleMessage, MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SettingsDescribeValue, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflyUiActionEvent, MayflyUiEventContext, MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'

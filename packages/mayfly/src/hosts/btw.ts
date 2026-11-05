@@ -17,12 +17,12 @@ import type { RemotePresentationSelection } from './session-facts.ts'
 import { mayflyHostRemote } from './host-mount.ts'
 
 /** Input for one ordinary forked side question. */
-export interface RemoteBtwAskOptions extends Pick<HostSessionForkOptions, 'atSeq' | 'allowMigration'> {
+interface RemoteBtwAskOptions extends Pick<HostSessionForkOptions, 'atSeq' | 'allowMigration'> {
   readonly signal?: AbortSignal
 }
 
 /** Successfully opened BTW view and its independent presentation selection. */
-export interface RemoteBtwSession {
+interface RemoteBtwSession {
   readonly parent: SessionRef
   readonly child: SessionRef
   readonly view: HostViewLease
@@ -35,7 +35,7 @@ export class RemoteBtwSupersededError extends Error {
 }
 
 /** Neither the source projection nor the native Host default supplies a model route. */
-export class RemoteBtwPreconditionError extends Error {
+class RemoteBtwPreconditionError extends Error {
   override readonly name = 'RemoteBtwPreconditionError'
 
   readonly reason = 'model-unavailable'
@@ -64,7 +64,7 @@ export class RemoteSubagentAddressError extends Error {
 }
 
 /** Input for one addressed continuable-child prompt. */
-export interface RemoteSubagentPromptInput {
+interface RemoteSubagentPromptInput {
   readonly content: SubagentPromptRequest['content']
   readonly delivery: 'queue' | 'steer'
   readonly clientTimeZone?: string

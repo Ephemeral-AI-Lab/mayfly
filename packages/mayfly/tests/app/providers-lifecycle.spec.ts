@@ -2,14 +2,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflyOverlayEntry, MayflyUiActionEvent } from '@ephemeral-ai/mayfly-ui'
-import { visibleWidth } from '../../src/core.ts'
+import { visibleWidth } from '@earendil-works/pi-tui'
 import { RemoteProvidersController, type RemoteAuthorizationInteraction } from '../../src/app/features/providers.ts'
 import { CordisRemoteLocalPresentation } from '../../src/app/features/presentation.ts'
 import { taskFixture, tick, good } from './task-feature-fixture.ts'
 import { namespace } from './configuration-fixture.ts'
 
 const metadata = vi.hoisted(() => vi.fn(async () => undefined))
-vi.mock('../../src/configuration-panels.ts', async original => ({ ...await original<object>(), loadModelsDevIndex: metadata }))
+vi.mock('../../src/interaction/models-dev.ts', async original => ({ ...await original<object>(), loadModelsDevIndex: metadata }))
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.restoreAllMocks() })
 

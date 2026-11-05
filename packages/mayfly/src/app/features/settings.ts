@@ -4,9 +4,9 @@
 
 import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflySettingsDocument } from '@ephemeral-ai/mayfly-host/types'
-import { settingsOperations, settingsProjection, type SettingsChoices, type SettingsProjection } from '../../configuration-panels.ts'
-import { mountInteractionLocale } from '../../editor-presentation.ts'
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { settingsOperations, settingsProjection, type SettingsChoices, type SettingsProjection } from '../../interaction/settings-model.ts'
+import { mountInteractionLocale } from '../../interaction/locale.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import { panel, rail, ui, type MayflySourceStamp, type MayflyTranslate, type MayflyUiActionReply, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { HostClient } from '../../client/types.ts'
 import type { RemoteFeatureContext } from './contracts.ts'
@@ -32,18 +32,13 @@ const ROOT_ID = 'mayfly.settings'
 const RAIL_ID = 'namespaces'
 
 /** Both revisions required by every settings write. */
-export interface RemoteSettingsWriteRevision {
+interface RemoteSettingsWriteRevision {
   readonly descriptor: number
   readonly fields: string
 }
 
 interface SettingsEntry { readonly ns: string, readonly descriptor: SettingsNamespaceView, readonly projection: SettingsProjection }
 interface SettingsSnapshot { readonly node: MayflyUiNode, readonly source: readonly MayflySourceStamp[], readonly entries: readonly SettingsEntry[] }
-
-/** Availability of the Host-owned Mayfly schema. */
-export function remoteMayflySettingsPersistence(settings: SettingsDescribeValue): 'available' | 'host-schema-required' {
-  return settings.namespaces.some(namespace => namespace.ns === 'mayfly') ? 'available' : 'host-schema-required'
-}
 
 /** The native view is the serializable descriptor, with its namespace branding restored at the presentation boundary. */
 function sharedDescriptor(descriptor: SettingsNamespaceView): SharedDescriptor {

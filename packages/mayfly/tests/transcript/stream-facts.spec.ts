@@ -10,7 +10,7 @@ import type { StreamRow, StreamTurn } from '../../src/components/transcript-view
 import { createTranscriptModel } from '../../src/transcript/transcript-model.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
 import { DEFAULT_TRANSCRIPT_PRESENTATION, PROCESS_POLICIES, TranscriptPresentationPolicy, type TranscriptPresentationSnapshot } from '../../src/transcript/presentation-policy.ts'
-import { clockTime, StreamFacts, userMessageText, type StreamInputs } from '../../src/transcript/stream-facts.ts'
+import { clockTime, StreamFacts, type StreamInputs } from '../../src/transcript/stream-facts.ts'
 import { NO_DISCLOSURE } from '../../src/transcript/disclosure.ts'
 
 let seq = 0
@@ -250,15 +250,6 @@ describe('StreamFacts: the remaining decisions', () => {
     ...base(1), id: 'cmp:1', kind: 'transcript-compaction', state: 'ok', trigger: 'auto', startedAt: NOON, ...overrides,
   } as TranscriptEntryModel)
   const one = (facts: ReturnType<StreamFacts['build']>) => rowsOf(facts.turns[0])
-
-  it('reads the text of a user message: its text, and a count of its images', () => {
-    const text = { type: 'text', text: 'look' } as const
-    const image = { type: 'image', mediaType: 'image/png', data: '' } as never
-    expect(userMessageText({ role: 'user', content: [text, { type: 'text', text: 'at\nthis' }] } as never)).toBe('look at this')
-    expect(userMessageText({ role: 'user', content: [text, image] } as never)).toBe('look [1 image]')
-    expect(userMessageText({ role: 'user', content: [text, image, image] } as never)).toBe('look [2 images]')
-    expect(userMessageText({ role: 'user', content: [image] } as never)).toBe('[1 image]')
-  })
 
   it('does not confuse an entry id prefix with the exact call whose text is requested', () => {
     const prefix = { ...user(1, 'prefix prompt'), id: 'read' }

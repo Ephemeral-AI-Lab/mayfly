@@ -25,12 +25,12 @@ export type ApprovalListener = (
   next: () => Promise<ApprovalOutcome>,
 ) => Promise<ApprovalOutcome>
 
-export interface QuestionOption {
+interface QuestionOption {
   readonly label: string
   readonly description?: string
 }
 
-export type QuestionIntent = {
+type QuestionIntent = {
   readonly kind: 'plan-review'
   readonly approve: string
   readonly callId?: ToolCallId
@@ -88,7 +88,7 @@ export interface OfficialQuestionWait extends AsyncIterable<{ readonly remaining
 }
 
 /** Exact official userQuestions methods used by Remote; no generic Remote invocation surface. */
-export interface OfficialUserQuestionsRemote {
+interface OfficialUserQuestionsRemote {
   attachWait(sessionId: SessionId, callId: QuestionCallId, signal: AbortSignal): OfficialQuestionWait
   answer(sessionId: SessionId, callId: QuestionCallId, answer: QuestionAnswer): Promise<
     | { readonly ok: true, readonly value: boolean }

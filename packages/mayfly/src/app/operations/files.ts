@@ -1,6 +1,6 @@
 /** Frozen Files browser over Host delivery metadata and native per-turn comparisons. @module */
-import { FilesBrowser, filesBrowserItems, filesBrowserRow, type FilesBrowserFacts, type FilesDeliveredFile, type FilesRow } from '../../files-browser.ts'
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { FilesBrowser, filesBrowserItems, filesBrowserRow, type FilesBrowserFacts, type FilesDeliveredFile, type FilesRow } from '../../interaction/files-browser-model.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import type { MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
 import { mayflyHostRemote } from '../../hosts/host-mount.ts'
 import type { RemoteFeatureSelection } from '../features.ts'

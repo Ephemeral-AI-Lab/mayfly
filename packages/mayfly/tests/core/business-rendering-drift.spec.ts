@@ -4,14 +4,17 @@
  */
 
 import { readdir, readFile } from 'node:fs/promises'
-import { relative, resolve, sep } from 'node:path'
+import { dirname, relative, resolve, sep } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 
 const root = resolve(import.meta.dirname, '../../../..')
 const packagesRoot = resolve(root, 'packages')
 const sourceSegment = `${sep}src${sep}`
-const coreSourceSegment = `${resolve(root, 'packages/mayfly/src/core')}${sep}`
+const coreRoot = resolve(root, 'packages/mayfly/src/core')
+const coreSourceSegment = `${coreRoot}${sep}`
+/** Core modules only a renderer may import: chrome painting and display width. */
+const rendererModules = new Set([resolve(coreRoot, 'chrome.ts'), resolve(coreRoot, 'width.ts')])
 const widthHelperNames = new Set(['visibleWidth', 'truncateToWidth', 'wrapText', 'wrapTextWithAnsi'])
 const borderGlyph = /[╭╮╰╯│─├┤┬┴┼]/u
 const selectionPointer = /^\s*(?:→|›|❯)\s/u
@@ -46,13 +49,12 @@ const approvedPresentation = new Set([
   "padding:packages/mayfly/src/transcript/splash.ts:return gap < 2 ? deps.truncate(left, width) : left + ' '.repeat(gap) + right",
   "padding:packages/mayfly/src/transcript/splash.ts:text + ' '.repeat(Math.max(0, width - deps.visibleWidth(text)))",
   "padding:packages/mayfly/src/transcript/tool-calls.ts:const lead = names[index]!.padEnd(wide)",
-  // Remaining Remote-specific plain panels; completion, skills and status use
-  // the shared renderer and have no business-owned padding.
-  "padding:packages/remote/src/remote/panels.ts:return missing > 0 ? `${row}${' '.repeat(missing)}` : row",
-  "pointer:packages/mayfly/src/interaction/update-command.ts:detail: [`v${fromVersion} \u2192 v${toVersion}`, detail, t('The update is kept only after a successful startup check.')].filter(Boolean).join(' \u00b7 '),",
+  // Remaining plain panels; completion, skills and status use the shared
+  // renderer and have no business-owned padding.
+  "padding:packages/mayfly/src/app/panels.ts:return missing > 0 ? `${row}${' '.repeat(missing)}` : row",
   "pointer:packages/mayfly/src/interaction/update-model.ts:{ kind: 'divider', label: `v${fromVersion} \u2192 v${toVersion}` },",
   // A version transition caption in the shared decision strip, not a selection pointer.
-  "pointer:packages/remote/src/remote/operations/update.ts:`v${from} \u2192 v${to}`,",
+  "pointer:packages/mayfly/src/app/operations/update.ts:`v${from} \u2192 v${to}`,",
   "pointer:packages/mayfly/src/transcript/stream-facts.ts:const tokens = mark?.before !== undefined && mark.after !== undefined ? `${approx(mark.before)} \u2192 ${approx(mark.after)} ${t('tokens')}`",
   "pointer:packages/mayfly/src/transcript/tool-calls.ts:if (mcp !== null) return `${mcp[1]!} \u203a ${mcp[2]!}`",
 ])
@@ -67,9 +69,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true })
   const files: string[] = []
   for (const entry of entries) {
-    // The Remote package resolves its own nested graph, so third-party sources
-    // live under packages/remote/node_modules; the guard audits this
-    // repository's sources, never a dependency's.
+    // The guard audits this repository's sources, never a dependency's.
     if (entry.name === 'node_modules') continue
     const path = resolve(directory, entry.name)
     if (entry.isDirectory()) files.push(...await sourceFiles(path))
@@ -123,12 +123,11 @@ function auditSource(path: string, source: string): Audit {
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       const moduleName = node.moduleSpecifier.text
-      if (moduleName.startsWith('@earendil-works/pi-tui')
-        || moduleName === '@ephemeral-ai/mayfly/core/chrome'
-        || moduleName === '@ephemeral-ai/mayfly/core/width') {
+      const target = moduleName.startsWith('.') ? resolve(root, dirname(path), moduleName) : moduleName
+      if (moduleName.startsWith('@earendil-works/pi-tui') || rendererModules.has(target)) {
         violate(node, 'renderer-import')
       }
-      if (moduleName === '@ephemeral-ai/mayfly/core' && node.importClause !== undefined) {
+      if (target === resolve(coreRoot, 'index.ts') && node.importClause !== undefined) {
         const bindings = node.importClause.namedBindings
         if (bindings !== undefined && ts.isNamedImports(bindings)) {
           for (const element of bindings.elements) {
@@ -184,25 +183,27 @@ function merge(target: Set<string>, values: ReadonlySet<string>): void {
 
 describe('business package rendering drift guard', () => {
   it('detects representative renderer-import, width, pointer, border, and padding drift', () => {
-    const audit = auditSource('positive-fixture.ts', `
-import { visibleWidth as columns } from '../../src/core.ts'
+    const audit = auditSource('packages/mayfly/src/app/positive-fixture.ts', `
+import { visibleWidth as columns } from '../core/index.ts'
+import { truncateToWidth } from '../core/width.ts'
 const widthOf = (text: string) => Array.from(text).length
 const available = width - columns(text)
 const pointer = '  → active'
 const border = '\\u2502'
 const padding = Array(width).fill(' ').join('')
-void [widthOf, available, pointer, border, padding]
+void [widthOf, available, pointer, border, padding, truncateToWidth]
 `)
     expect([...audit.violations].map(value => value.split(':', 1)[0])).toEqual([
       'width-helper-import',
+      'renderer-import',
       'local-padding-math',
     ])
     expect(audit.widthMath).toEqual(new Set([
-      'positive-fixture.ts:const widthOf = (text: string) => Array.from(text).length',
+      'packages/mayfly/src/app/positive-fixture.ts:const widthOf = (text: string) => Array.from(text).length',
     ]))
     expect(audit.presentation).toEqual(new Set([
-      "pointer:positive-fixture.ts:const pointer = '  → active'",
-      "border:positive-fixture.ts:const border = '\\u2502'",
+      "pointer:packages/mayfly/src/app/positive-fixture.ts:const pointer = '  → active'",
+      "border:packages/mayfly/src/app/positive-fixture.ts:const border = '\\u2502'",
     ]))
   })
 

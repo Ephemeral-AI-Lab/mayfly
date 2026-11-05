@@ -1,7 +1,7 @@
 /** Native image policy, reversible markers, file receipts and exact Session attachment reads. @module */
 import type { ImageAttachmentLimits, ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { FileUploadValue } from '@deepseek-ai/dsh-client-file-upload/client'
-import type { MayflyComponents } from '../../src/core.ts'
+import type { MayflyComponents } from '../../src/core/types.ts'
 import { describe, expect, it, vi } from 'vitest'
 import { EditorAttachments, formatImageSize, imageMarker, sniffImageMediaType } from '../../src/app/editor/attachments.ts'
 import type { EditorUpload } from '../../src/app/editor/types.ts'

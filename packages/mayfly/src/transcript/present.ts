@@ -41,10 +41,10 @@ export function ellipsize(text: string, maxChars: number): string {
 }
 
 /** Maximum key/value pairs shown by {@link summarizeToolCall}. */
-export const TOOL_ARG_PAIR_LIMIT = 6
+const TOOL_ARG_PAIR_LIMIT = 6
 
 /** Maximum length of one value shown by {@link summarizeToolCall}. */
-export const TOOL_ARG_VALUE_MAX_CHARS = 40
+const TOOL_ARG_VALUE_MAX_CHARS = 40
 
 function argumentValueText(value: unknown): string {
   if (typeof value === 'string') return value

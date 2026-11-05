@@ -7,7 +7,7 @@ import { interpolateLocaleMessage, type MayflyTranslate } from '../frontend/loca
 /** Stages presented by the immutable rc.2 upgrade panel. */
 export type UpdateStep = 'snapshot' | 'install' | 'verify' | 'smoke-imports' | 'smoke-boot' | 'rollback' | 'done'
 /** One executor progress fact. */
-export interface UpdateProgress { readonly step: UpdateStep, readonly state: 'start' | 'ok' | 'fail' }
+interface UpdateProgress { readonly step: UpdateStep, readonly state: 'start' | 'ok' | 'fail' }
 /** Settled upgrade facts supplied by the owning process. */
 export interface UpdateOutcome {
   readonly kind: 'success' | 'rolled-back' | 'failed-no-rollback' | 'rollback-incomplete'

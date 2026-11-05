@@ -3,7 +3,7 @@
 import type { SessionListState, SessionProjectionMap } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ConversationFacts } from '@ephemeral-ai/mayfly-host/types'
-import type { TranscriptControllerOptions } from '../transcript.ts'
+import type { TranscriptControllerOptions } from './transcript-model.ts'
 import type { SessionRef } from '../client/types.ts'
 import type { RemoteSessionFactsSnapshot } from '../hosts/session-facts.ts'
 

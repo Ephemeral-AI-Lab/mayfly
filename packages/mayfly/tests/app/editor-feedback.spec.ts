@@ -1,6 +1,6 @@
 /** Actual editor teaching facts and operation-owned delayed notification waits. @module tests/remote/editor-feedback */
 import { Context } from '@deepseek-ai/cordis'
-import type { MayflyEditor } from '../../src/core.ts'
+import type { MayflyEditor } from '../../src/core/types.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RemoteEditorFeedback } from '../../src/app/editor-feedback.ts'
 import type { EditorToken } from '../../src/app/editor/types.ts'

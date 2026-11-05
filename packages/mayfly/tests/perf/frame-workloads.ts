@@ -23,22 +23,21 @@ import { startMayflyTerminal, wheelReport, type MayflyTerminalRuntime } from '..
 import * as themeDark from '../../src/core/theme-dark.ts'
 import type { MayflyFocusable } from '../../src/core/types.ts'
 import { createWorkCounters, type MayflyWorkCounters } from '../../src/core/ui-work-counters.ts'
-import type { LiveAssistantDraft } from '../../src/conversation/live-stream.ts'
-import type { ConversationProjection } from '../../src/conversation/types.ts'
+import type { SessionEventLikeEntry } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import * as frontend from '../../src/frontend/index.ts'
-import { EditorExtensionRuntime } from '../../src/interaction/editor-extension-runtime.ts'
+import { EditorExtensionRuntime } from '../../src/frontend/editor-extension-runtime.ts'
 import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/key-definitions.ts'
-import type { ConversationProjectionSource } from '../../src/transcript/conversation-feed.ts'
-import { OfficialConversationModelSource } from '../../src/transcript/official-model.ts'
+import { RemoteConversationModelSource } from '../../src/transcript/remote-model.ts'
 import { TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 import { FakeTerminal } from '../core/fake-terminal.ts'
-import { FakeMayflyComponents, FakeMayflyEditor, FakeScreen, FakeTheme, fakeMayflyContext } from '../interaction/fakes.ts'
+import { FakeMayflyComponents, FakeMayflyEditor, FakeScreen, FakeTheme } from '../interaction/fakes.ts'
 import {
-  FakeConversationFeed,
+  FakeHostSession,
+  FakeScopedTools,
   FakeTickSource,
   longSessionDraft,
   longSessionProjection,
-  longSessionTools,
   pendingLastTool,
 } from './long-session.ts'
 import { codeDocument, type WorkloadEnvironment } from './workloads.ts'
@@ -214,8 +213,6 @@ async function withSidePane(counters: MayflyWorkCounters, environment: WorkloadE
 /** A translator that keeps the key, so a row's text never depends on a locale bundle. */
 function translate(key: string): string { return key }
 
-const NO_PROJECTIONS: ConversationProjectionSource = { snapshot: () => ({ asOfSeq: 0, values: {} }), onChanged: () => () => {} }
-
 /** A fixed publish clock whose trailing timers the workload drains explicitly, so a measured step includes the publish. */
 class FixedPublishClock {
   private next = 0
@@ -265,10 +262,10 @@ function mountContentScroll(host: FrameHost): () => void {
   })
 }
 
-/** What one mounted stream workload keeps: the frame host, the feed the next value goes into, and the controller. */
+/** What one mounted stream workload keeps: the frame host, the fake Host Session the next value goes into, and the controller. */
 interface StreamRun {
   readonly host: FrameHost
-  readonly feed: FakeConversationFeed
+  readonly session: FakeHostSession
   readonly controller: TranscriptController
   readonly tick: FakeTickSource
   /** Drain the controller's trailing publish; a stream step calls this after a republish. */
@@ -277,7 +274,7 @@ interface StreamRun {
 }
 
 /**
- * Mount a real transcript controller over the frame host: a projection in a fake feed, the real official model source,
+ * Mount a real transcript controller over the frame host: a projection in a fake Host Session, the real Remote model source,
  * the long-session tool presenters, and a fake tick the workload fires by hand. Publishing stays explicit, so a measured
  * step never waits for a timer.
  */
@@ -285,24 +282,24 @@ async function withStream(
   counters: MayflyWorkCounters,
   environment: WorkloadEnvironment,
   projection: ConversationProjection,
-  draft?: LiveAssistantDraft,
+  draft?: readonly SessionEventLikeEntry[],
 ): Promise<StreamRun> {
   const host = await FrameHost.boot(counters, environment)
-  const feed = new FakeConversationFeed()
-  feed.push(projection, 1)
-  if (draft !== undefined) feed.setDraft(draft)
+  const session = new FakeHostSession()
+  session.push(projection)
+  if (draft !== undefined) session.setDraft(draft)
   const tick = new FakeTickSource()
   const clock = new FixedPublishClock()
   const controller = new TranscriptController({ t: translate, queued: () => [], tick, clock, counters })
-  const source = new OfficialConversationModelSource(NO_PROJECTIONS, longSessionTools(), () => { controller.refresh() }, undefined, translate, counters)
-  source.attachFeed(feed)
+  const source = new RemoteConversationModelSource(new FakeScopedTools(), () => { controller.refresh() }, { counters })
+  source.attach(session.binding())
   controller.attach(host.root.mayflyScreen as unknown as TranscriptScreen)
   controller.setView('main', () => source.snapshot())
   controller.show('main')
   const releaseScroll = mountContentScroll(host)
   await host.frames()
   return {
-    host, feed, controller, tick,
+    host, session, controller, tick,
     flush: () => clock.flush(),
     dispose: async () => { releaseScroll(); controller.dispose(); source.dispose(); await host.dispose() },
   }
@@ -468,12 +465,12 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
       // A text no earlier run streamed: the content cache cannot hand this run a line table another run estimated.
       streamRuns += 1
       const text = `The answer streams at the tail ${String(streamRuns)}.`
-      const stream = await withStream(counters, environment, projection, longSessionDraft(projection, text, 1))
+      const stream = await withStream(counters, environment, projection, longSessionDraft(projection, text))
       reset(counters)
       return {
         step: async () => {
           const mark = stream.host.terminal.written.length
-          stream.feed.setDraft(longSessionDraft(projection, `${text}\nA second line arrives.`, 2))
+          stream.session.setDraft(longSessionDraft(projection, `${text}\nA second line arrives.`))
           stream.controller.republish()
           stream.flush()
           await stream.host.frames()
@@ -507,7 +504,8 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
   {
     id: 'W17', title: 'editor shell: one keystroke recompiles the prompt footer beside one editor extension',
     async setup(counters) {
-      const { ctx } = fakeMayflyContext({ display: false })
+      const ctx = new Context()
+      await ctx.plugin({ name: 'w17-ui-provider', apply: applyUiProvider })
       ctx.provide('mayflyScreen', new FakeScreen() as never)
       ctx.provide('mayflyTheme', new FakeTheme() as never)
       ctx.provide('mayflyComponents', new FakeMayflyComponents() as never)
@@ -520,7 +518,7 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
       const keymap = new CountingKeymap(ctx)
       keymap.register([...INTERACTION_KEY_ACTIONS])
       const extension = ctx.mayflyEditorExtensions.register({ id: 'perf.editor' }, { hint: 'An extension hint row' })
-      const runtime = new EditorExtensionRuntime({ ctx, editor: new FakeMayflyEditor(), report: () => {}, frame: ({ parked }) => Editor({ shell: false, parked }), shouldTransformSubmit: () => true })
+      const runtime = new EditorExtensionRuntime({ ctx, editor: new FakeMayflyEditor(), report: () => {}, frame: ({ parked }) => Editor({ shell: false, parked }) })
       runtime.refreshPresentation()
       reset(counters)
       return {

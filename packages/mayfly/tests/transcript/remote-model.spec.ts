@@ -9,11 +9,11 @@ import type {
 import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { MessageId, ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import type { LlmAttemptId } from '@deepseek-ai/dsh-llm/brand'
-import type { ConversationProjection } from '../../src/conversation.ts'
+import type { ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import { foldConversationProjection, initialConversationState } from '../../../host/src/conversation/projection.ts'
 import { HostKey } from '../../src/client/types.ts'
 import { RemoteConversationModelSource, remoteEffectiveReasoningEffort } from '../../src/transcript/remote-model.ts'
-import type { ToolPresentationSource } from '../../src/transcript.ts'
+import type { ToolPresentationSource } from '../../src/transcript/present.ts'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 
 const tools = { get: () => undefined } as ToolPresentationSource

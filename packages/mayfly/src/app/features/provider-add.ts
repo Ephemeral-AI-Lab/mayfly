@@ -3,7 +3,7 @@
  */
 import { isDeepStrictEqual } from 'node:util'
 import type { LlmDiscoveredModel, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
-import { loadModelsDevIndex } from '../../configuration-panels.ts'
+import { loadModelsDevIndex } from '../../interaction/models-dev.ts'
 import { panel, tabs, ui, type MayflyFormAddress, type MayflySubmission, type MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteFeatureContext } from './contracts.ts'
 import { onRemoteSettingsDocumentUpdated, RemoteCallError, type RemoteFeatureOperation, remoteErrorMessage, remoteValue } from './official.ts'
@@ -15,7 +15,7 @@ const address = (formId: string): MayflyFormAddress => ({ pagePath: [{ controlId
 type SettingValue = Extract<SettingsPathOpView, { op: 'set' }>['value']
 interface ModelFacts { readonly contextWindow?: number, readonly maxTokens?: number, readonly reasoningEfforts?: Record<string, string> | false }
 /** Native settings address and the exact-generation owner for one setup. */
-export interface RemoteProviderSetupOptions {
+interface RemoteProviderSetupOptions {
   readonly operation: RemoteFeatureOperation
   readonly descriptor: SettingsNamespaceView
   readonly container: readonly string[]

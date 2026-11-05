@@ -19,7 +19,7 @@ export function skillGroup(source: string): string {
 }
 
 /** Optional list/detail state; the wide list follows its cursor. */
-export interface SkillsViewState {
+interface SkillsViewState {
   readonly focused?: string | undefined
   readonly detailMode?: boolean | undefined
   /** An actual native API metadata limitation, shown beside the affected view. */

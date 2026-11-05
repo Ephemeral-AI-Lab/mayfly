@@ -17,7 +17,7 @@ export interface RemoteProviderProfile {
 }
 
 /** Native settings address owned by the provider adapter. */
-export interface RemoteProviderAddress {
+interface RemoteProviderAddress {
   readonly ns: string
   readonly path: readonly string[]
   readonly container?: readonly string[]
@@ -39,7 +39,7 @@ export function normalizeRemoteProviderBaseURL(protocol: string, entered: string
 }
 
 /** Read a value below a redacted settings section. */
-export function remoteProviderValueAt(value: unknown, path: readonly string[]): unknown {
+function remoteProviderValueAt(value: unknown, path: readonly string[]): unknown {
   let node = value
   for (const segment of path) {
     if (node === null || typeof node !== 'object' || Array.isArray(node) || !Object.hasOwn(node, segment)) return undefined

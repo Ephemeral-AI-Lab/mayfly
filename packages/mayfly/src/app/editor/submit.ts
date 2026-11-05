@@ -5,11 +5,7 @@
 
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { PromptContentPart, QueueAction } from '@deepseek-ai/dsh-api-remotes/client'
-import type {
-  MayflyEditor,
-  MayflyScreen,
-  MayflySubmittedDraft,
-} from '../../core.ts'
+import type { MayflyEditor, MayflyScreen, MayflySubmittedDraft } from '../../core/types.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteNotice } from '../notice.ts'
 import type { EditorAttachments, CapturedAttachments } from './attachments.ts'

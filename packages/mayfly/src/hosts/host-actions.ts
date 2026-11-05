@@ -17,7 +17,7 @@ import {
 } from './host-registry.ts'
 
 /** Options for one Host Session creation, matching the official Session service. */
-export type HostSessionCreateOptions = NonNullable<Parameters<ISessions['create']>[0]>
+type HostSessionCreateOptions = NonNullable<Parameters<ISessions['create']>[0]>
 
 /** One logical prompt submission; its request identity is managed by HostActions. */
 export interface HostPromptInput extends BeginSubmissionInput {
@@ -33,12 +33,12 @@ export interface HostPromptInput extends BeginSubmissionInput {
 export type HostSessionForkOptions = Omit<Parameters<ISessions['fork']>[0], 'sessionId'>
 
 /** One Host-namespaced Session content-search result. */
-export interface HostSessionSearchItem extends SessionSearchResultItem {
+interface HostSessionSearchItem extends SessionSearchResultItem {
   readonly ref: SessionRef
 }
 
 /** Bounded Host Session search response. */
-export interface HostSessionSearchValue {
+interface HostSessionSearchValue {
   readonly items: HostSessionSearchItem[]
   readonly hasMore: boolean
 }

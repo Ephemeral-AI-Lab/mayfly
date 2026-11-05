@@ -23,7 +23,7 @@ interface TranscriptThinkingModel extends TranscriptEntryBase {
   readonly step: number
   readonly text: string
   readonly streaming: boolean
-  readonly outputProgress?: import('../conversation/types.ts').OutputProgress | undefined
+  readonly outputProgress?: import('@ephemeral-ai/mayfly-host/types').OutputProgress | undefined
   /** Producer-time reasoning span once the phase has ended. */
   readonly durationMs?: number | undefined
   /** Producer time of the first reasoning delta, for a live elapsed label. */

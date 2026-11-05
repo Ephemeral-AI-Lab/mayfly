@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionEventLikeEntry } from '@deepseek-ai/dsh-api-session-controller/client'
-import { DecisionCard } from '../../src/editor-presentation.ts'
+import { DecisionCard } from '../../src/components/decision-card.ts'
 import { editLocalText } from '../../src/app/local/external-editor.ts'
 import { approvalFixture, flushApproval } from './approval-feature-fixture.ts'
 

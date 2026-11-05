@@ -1,5 +1,7 @@
 /** Published renderer primitives for standalone Frontend tests. @module */
-import { MayflyComponentsService, visibleWidth, type MayflyComponents, type MayflySemanticColors } from '../../src/core.ts'
+import { MayflyComponentsService } from '../../src/core/components.ts'
+import { visibleWidth } from '@earendil-works/pi-tui'
+import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 
 const identity = (text: string): string => text
 

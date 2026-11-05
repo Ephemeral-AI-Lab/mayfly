@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LocalProcessOwner, failureDetail, runInheritedShell, runLocalTool } from '../../src/app/local/process.ts'
 import { EditorShell } from '../../src/app/editor/shell.ts'
 import { visibleWidth } from '../../src/core/width.ts'
-import type { MayflyComponent, MayflyComponents, MayflyScreen, MayflySemanticColors } from '../../src/core.ts'
+import type { MayflyComponent, MayflyComponents, MayflyScreen, MayflySemanticColors } from '../../src/core/types.ts'
 
 const native = vi.hoisted(() => ({ execFile: vi.fn(), exec: vi.fn(), spawn: vi.fn() }))
 vi.mock('node:child_process', () => native)

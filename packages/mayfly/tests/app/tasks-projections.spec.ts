@@ -1,11 +1,11 @@
 /** Native Todo/Schedule projections, reminder catalogs and lifecycle-safe presentation. @module */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { visibleWidth } from '../../src/core.ts'
+import { visibleWidth } from '@earendil-works/pi-tui'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { mountTodoFeature } from '../../src/app/features/todo.ts'
 import { mountScheduleFeature } from '../../src/app/features/schedule.ts'
-import { todoPanel, todoSummary } from '../../src/command-panels.ts'
-import { remoteScheduleNode, formatRemoteReminderFrequency, formatRemoteReminderRelative, type RemoteScheduleRecord } from '../../src/app/panels/schedule.ts'
+import { todoPanel, todoSummary } from '../../src/transcript/todo-model.ts'
+import { type RemoteScheduleRecord } from '../../src/app/panels/schedule.ts'
 import type { RemoteBrowserOptions } from '../../src/app/panels/browser.ts'
 import { taskFixture, tick, translate, activated, good, bad } from './task-feature-fixture.ts'
 
@@ -256,17 +256,5 @@ describe('native Schedule reads and observations', () => {
     const failed = Promise.withResolvers<unknown>(); f.schedule.catalog.mockReturnValueOnce(failed.promise)
     f.event('schedule/changed'); f.stop(); failed.reject('unloaded'); await tick()
     expect(f.ctx.mayflyStatus.list()).toEqual([])
-  })
-
-  it('formats native recurrence and relative deadlines with deterministic sorting and narrow row widths', async () => {
-    const f = await fixture('schedule')
-    for (const [kind, expected] of [['daily', 'Daily'], ['weekly', 'Weekly'], ['cron', 'Cron'], ['rrule', 'RRULE'], ['at', 'Once']]) expect(formatRemoteReminderFrequency(reminder({ kind }), translate)).toBe(expected)
-    for (const interval of [86_400, 172_800, 3_600, 60, 2, 0.5]) expect(formatRemoteReminderFrequency(reminder({ kind: 'every', everySeconds: interval }), translate)).toContain('Every')
-    expect(formatRemoteReminderRelative(new Date(1_000).toISOString(), 1_000, translate)).toBe('Due now')
-    expect(formatRemoteReminderRelative(new Date(1_100).toISOString(), 1_000, translate)).toBe('in 1 second')
-    expect(formatRemoteReminderRelative(new Date(0).toISOString(), 3_000, translate)).toBe('3 seconds overdue')
-    const records = [reminder({ id: 'past-active', scheduledAt: new Date(0).toISOString(), status: 'active' }), reminder(), reminder({ id: 'same', scheduledAt: new Date(2_000).toISOString(), timeZone: 'UTC', status: 'active' }), reminder({ id: 'past', scheduledAt: new Date(0).toISOString(), sessionId: 'session', status: 'inactive' }), reminder({ id: 'future', scheduledAt: new Date(3_000).toISOString(), status: 'unknown', timeZone: 1 })]
-    const nodes = [remoteScheduleNode(records, 1_000, translate, 'en'), remoteScheduleNode(undefined, 1_000, translate, undefined), remoteScheduleNode([], 1_000, translate, 'en')]
-    for (const node of nodes) for (const width of [1, 8, 20, 40, 80, 120]) expect(f.render(node, width).every(row => visibleWidth(row) <= width)).toBe(true)
   })
 })

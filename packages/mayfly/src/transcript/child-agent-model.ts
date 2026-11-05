@@ -1,17 +1,6 @@
-/**
- * Projection-backed child-agent presentation helpers. Child session event
- * reduction belongs to `mayflyConversationFacts`; this module only correlates
- * readonly child snapshots with parent transcript tool entries. A spawn call
- * names its child through the native activation result
- * `{ kind: 'activation', subagentId }`; rendered tool prose is never parsed.
- *
- * @module @ephemeral-ai/mayfly/transcript/child-agent-model
- */
-
-import type { TranscriptToolItem } from './types.ts'
 
 /** One canonical activation result, as the native delegation tool returns it. */
-export interface ActivationResult {
+interface ActivationResult {
   readonly kind: 'activation'
   readonly subagentId: string
 }
@@ -39,13 +28,3 @@ export function parseActivationResult(text: string | undefined): ActivationResul
     : undefined
 }
 
-/**
- * The child session id a spawn result names, through the canonical activation
- * JSON only.
- * @param item - the parent transcript tool item.
- * @returns the child id, or undefined when the result is not activation JSON.
- */
-export function childIdOfResult(item: TranscriptToolItem): string | undefined {
-  if (item.result === undefined) return undefined
-  return parseActivationResult(item.result.text)?.subagentId
-}

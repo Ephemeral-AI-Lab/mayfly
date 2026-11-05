@@ -17,12 +17,12 @@ export type MayflySubagentTreeEntry = SubagentDescendantListEntry & {
 }
 
 /** Elapsed format used by agent browser rows. */
-export function formatAgentElapsed(ms: number): string {
+function formatAgentElapsed(ms: number): string {
   return compactElapsedMs(ms)
 }
 
 /** Optional live-output, tool, token, and elapsed summary. */
-export function agentMetricsText(
+function agentMetricsText(
   entry: { readonly tokens?: number | undefined, readonly toolCount?: number | undefined, readonly liveChars?: number | undefined, readonly settledMs?: number | undefined, readonly activeSince?: number | undefined },
   now: number,
 ): string {
@@ -41,7 +41,7 @@ export function agentMetricsText(
  * `stopBlocked` names why Stop cannot run for a row, so the action shows the
  * reason instead of confirming a stop that the native check would refuse.
  */
-export function agentTreeItems(entries: readonly MayflySubagentTreeEntry[], now: number): readonly MayflyListItem[] {
+function agentTreeItems(entries: readonly MayflySubagentTreeEntry[], now: number): readonly MayflyListItem[] {
   const ids = new Set(entries.map(entry => String(entry.id)))
   return entries.map(entry => {
     const id = String(entry.id)

@@ -7,13 +7,9 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { QueueAction, SkillEntry } from '@deepseek-ai/dsh-api-remotes/client'
 import type { FileUploadValue } from '@deepseek-ai/dsh-client-file-upload/client'
-import type {
-  MayflyAutocompleteProvider,
-  MayflyComponent,
-  MayflyFocusable,
-} from '../../core.ts'
-import { mountInteractionLocale } from '../../editor-presentation.ts'
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import type { MayflyAutocompleteProvider, MayflyComponent, MayflyFocusable } from '../../core/types.ts'
+import { mountInteractionLocale } from '../../interaction/locale.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import { EditorAttachments } from './attachments.ts'
 import { EditorAutocomplete } from './autocomplete.ts'
 import { EditorCommands } from './commands.ts'
@@ -38,29 +34,13 @@ import type {
   EditorToken,
 } from './types.ts'
 
-export {
-  EDITOR_INTEGRATION_REQUIREMENTS,
-  type EditorCommandDescriptor,
-  type EditorFeatureController,
-  type EditorFeatureOptions,
-  type EditorFeatureSession,
-  type EditorHostFileBytes,
-  type EditorHostFiles,
-  type EditorHostFileSnapshot,
-  type EditorHostFileStat,
-  type EditorLocalAdapter,
-  type EditorLocalCommandInvocation,
-  type EditorLocalCommandResult,
-  type EditorToken,
-  type EditorTokenSpan,
-  type EditorUpload,
-} from './types.ts'
-export { EditorDraftStore, parseEditorCommand, filterEditorCommands } from './utils.ts'
-export { activeMention, applyMention, formatMention, mentionPath } from './mentions.ts'
-export { extractSkillPrefix, rewriteSkillTokens } from './skills.ts'
-export { imageMarker, sniffImageMediaType } from './attachments.ts'
-export { copyLocalText } from '../local/clipboard.ts'
-export { editLocalText, resolveExternalEditorCommand } from '../local/external-editor.ts'
+
+
+
+
+
+
+
 
 const EMPTY_PROVIDER: MayflyAutocompleteProvider = {
   getSuggestions: () => Promise.resolve(null),

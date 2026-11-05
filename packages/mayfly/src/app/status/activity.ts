@@ -5,7 +5,7 @@
 
 import type { ConversationFacts, ConversationProjection, OutputProgress } from '@ephemeral-ai/mayfly-host/types'
 import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
-import { formatTokens } from '../../status-context.ts'
+import { formatTokens } from '../../transcript/status-context-model.ts'
 
 /** One in-flight tool used by the activity label and detail line. */
 export interface RemoteActivityCall {

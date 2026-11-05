@@ -1,14 +1,13 @@
 /** Standalone editor admission, reference chrome, focus, and terminal-slot lifecycle. @module mayfly-remote/tests/editor */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import * as Frontend from '../../src/frontend.ts'
+import * as Frontend from '../../src/frontend/index.ts'
 import * as MayflyUiProvider from '@ephemeral-ai/mayfly-ui/provider'
-import { MayflyKeymapService } from '../../src/core.ts'
-import { INTERACTION_KEY_ACTIONS } from '../../src/command-panels.ts'
+import { MayflyKeymapService } from '../../src/core/keymap.ts'
+import { INTERACTION_KEY_ACTIONS } from '../../src/interaction/key-definitions.ts'
 import { mountRemoteEditor } from '../../src/app/editor.ts'
-import type {
-  MayflyComponents, MayflyEditor, MayflyFocusable, MayflyScreenService, MayflySemanticColors,
-} from '../../src/core.ts'
+import type { MayflyComponents, MayflyEditor, MayflyFocusable, MayflySemanticColors } from '../../src/core/types.ts'
+import type { MayflyScreenService } from '../../src/core/screen.ts'
 
 const identity = (text: string): string => text
 // The compiled editor shell paints its chrome and motion cells through the

@@ -103,7 +103,7 @@ export function isMayflyProductPackage(name: string): boolean {
 const SOURCE_ORDER = ['official', 'dsh', 'community'] as const
 
 /** How one marketplace entry relates to the profile's native bundles. */
-export interface EntryInstallState {
+interface EntryInstallState {
   /** Every row package is a profile dependency. */
   readonly installed: boolean
   /** Installed version of the first row (display only). */
@@ -266,7 +266,7 @@ export function groupRows(rows: readonly MarketRow[], mode: GroupMode): readonly
 }
 
 /** Which frontends the entry contributes to. */
-export interface SurfaceFlags {
+interface SurfaceFlags {
   readonly tui: boolean
   readonly web: boolean
   readonly server: boolean
@@ -295,7 +295,7 @@ export function usefulOnWeb(entry: MarketEntry): boolean {
 }
 
 /** One declared engine range, as the catalog supplies it; the native manager owns compatibility, not this display. */
-export interface DeclaredEngine {
+interface DeclaredEngine {
   readonly engine: 'dsh' | 'mayfly' | 'node'
   readonly range: string
 }

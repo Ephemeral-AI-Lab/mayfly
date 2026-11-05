@@ -3,7 +3,7 @@
  * @module @ephemeral-ai/mayfly/remote/operations/btw
  */
 
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { RemoteFeatureOperation } from '../features/official.ts'
 import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
@@ -14,7 +14,6 @@ const zh: Readonly<Record<string, string>> = {
   'no side question is open': '当前没有打开的侧问题',
   'dismissed the side question': '已关闭侧问题',
   'asked the side question': '已提出侧问题',
-  'The BTW question was cancelled': 'BTW 问题已取消',
 }
 
 /** The reference view label is one line, capped at sixty characters. */

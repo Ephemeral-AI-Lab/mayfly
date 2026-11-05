@@ -7,7 +7,7 @@ import { editLocalText, resolveExternalEditorCommand } from '../local/external-e
 import type { RemoteSettingsEdit } from './settings.ts'
 
 /** Integrator-owned terminal handoff; no terminal mode is managed by this module. */
-export interface RemoteSettingsEditorOptions {
+interface RemoteSettingsEditorOptions {
   readonly suspend: <T>(run: () => Promise<T>) => Promise<T>
   readonly command?: () => string | undefined
   readonly edit?: typeof editLocalText

@@ -1,6 +1,6 @@
 /** Theme replacement against real Cordis Fibers and the built public palette entries. @module */
 import { Context } from '@deepseek-ai/cordis'
-import * as ThemeDark from '../../src/theme-dark.ts'
+import * as ThemeDark from '../../src/core/theme-dark.ts'
 import { expect, it, vi } from 'vitest'
 import type { RemoteFeatureContext } from '../../src/app/features/contracts.ts'
 import { CordisRemoteLocalPresentation } from '../../src/app/features/presentation.ts'

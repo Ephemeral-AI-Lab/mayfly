@@ -1,6 +1,6 @@
 /** The rc.2 `/trace` timeline and copy commands over passive native Host observations. @module */
-import { memoizedLocaleTranslator } from '../../frontend.ts'
-import { TRACE_BREAKPOINT, tracePanelModel, formatTraceAll, formatTraceItem, type TraceItem } from '../../trace.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
+import { TRACE_BREAKPOINT, tracePanelModel, formatTraceAll, formatTraceItem, type TraceItem } from '../../interaction/trace-model.ts'
 import type { MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteFeatureSelection } from '../features.ts'
 import { mayflyHostRemote } from '../../hosts/host-mount.ts'

@@ -1,6 +1,6 @@
 /** Readonly information from the exact native Client snapshots. @module remote/session-information */
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { SessionInfoFacts } from '../command-panels.ts'
+import type { SessionInfoFacts } from '../interaction/session-info-model.ts'
 import type { RemotePresentationFacts } from '../transcript/remote-model.ts'
 
 /** Native projection faces observed by the shared reference context document. */

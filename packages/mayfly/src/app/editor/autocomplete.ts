@@ -3,12 +3,7 @@
  * @module @ephemeral-ai/mayfly/remote/editor/autocomplete
  */
 
-import type {
-  MayflyAutocompleteItem,
-  MayflyAutocompleteProvider,
-  MayflyAutocompleteSuggestions,
-  MayflyComponents,
-} from '../../core.ts'
+import type { MayflyAutocompleteItem, MayflyAutocompleteProvider, MayflyAutocompleteSuggestions, MayflyComponents } from '../../core/types.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteNotice } from '../notice.ts'
 import type { EditorCommands } from './commands.ts'

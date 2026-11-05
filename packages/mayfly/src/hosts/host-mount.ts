@@ -7,9 +7,7 @@ import type { HostClient } from '../client/types.ts'
 import type { MayflyHostRemote } from './host-contract.ts'
 
 /** Generated Client-safe Remote artifact injected by the integration layer. */
-export type HostRemoteContribution = Parameters<ClientRemote['$mount']>[0]
-/** Disposer returned by the official Client Remote mount lifecycle. */
-export type HostRemoteDisposer = Awaited<ReturnType<ClientRemote['$mount']>>
+type HostRemoteContribution = Parameters<ClientRemote['$mount']>[0]
 
 /** Authoritative Host projection key consumed through ProjectionValueStore. */
 export const MAYFLY_CONVERSATION_PROJECTION = 'mayflyConversation'

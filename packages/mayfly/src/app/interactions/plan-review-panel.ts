@@ -5,13 +5,13 @@
 
 import type { MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply, MayflySurfaceNode } from '@ephemeral-ai/mayfly-ui'
 import type { QuestionAnswer, QuestionRequest } from './official.ts'
-import { DECISION, DecisionCard } from './decision-card.ts'
+import { DECISION, DecisionCard } from '../../components/decision-card.ts'
 import { readDecision } from './decision-actions.ts'
 
 type Question = QuestionRequest['questions'][number]
 type QuestionOption = NonNullable<Question['options']>[number]
 
-export interface PlanReviewChoices {
+interface PlanReviewChoices {
   readonly approve: QuestionOption
   readonly decline: QuestionOption
 }

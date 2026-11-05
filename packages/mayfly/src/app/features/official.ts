@@ -10,13 +10,13 @@ import type {} from '../../client/remote-face.ts'
 
 export type {
   JobFollowFrame,
-  JobFollowRequest,
-  JobKillValue,
-  JobListFrame,
+  
+  
+  
   JobView,
 } from '@deepseek-ai/dsh-api-job-controller/types'
-export type { GoalView } from '@deepseek-ai/dsh-goal/client'
-export type { ScheduleCatalogEntry, ScheduleRecord } from '@deepseek-ai/dsh-schedule/client'
+
+
 
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { HostClient } from '../../client/types.ts'

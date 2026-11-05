@@ -16,7 +16,7 @@ import {
   remoteErrorMessage,
   remoteValue,
 } from './official.ts'
-import { buildAccountPanel } from '../../configuration-panels.ts'
+import { buildAccountPanel } from '../../components/account-panel.ts'
 import type { MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
 import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
 
@@ -24,15 +24,11 @@ type OfficialValue<T> = T extends Promise<RemoteResult<infer Value>> ? Value : n
 
 /** Official safe account projection. */
 export type RemoteAccountView = OfficialValue<ReturnType<HostClient['remote']['account']['getState']>>
-/** Official display-safe profile response. */
-export type RemoteAccountProfile = OfficialValue<ReturnType<HostClient['remote']['account']['getProfile']>>
-/** Official Platform balance response; never an API-key-derived balance. */
-export type RemoteAccountBalance = OfficialValue<ReturnType<HostClient['remote']['account']['getBalance']>>
 /** Official request identity supplied by the local UI. */
-export type RemoteAccountClientMetadata = Parameters<HostClient['remote']['account']['startSignIn']>[0]
+type RemoteAccountClientMetadata = Parameters<HostClient['remote']['account']['startSignIn']>[0]
 
 /** Local presentation of one sign-in flow. */
-export interface RemoteSignInSnapshot {
+interface RemoteSignInSnapshot {
   readonly view: RemoteAccountView
   readonly stage: 'idle' | 'starting' | 'waiting' | 'finishing' | 'connected' | 'ended'
   readonly browser: 'pending' | 'opened' | 'failed'

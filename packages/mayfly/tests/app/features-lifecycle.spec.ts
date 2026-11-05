@@ -3,7 +3,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey } from '../../src/client/types.ts'
 import type { HostClient } from '../../src/client/types.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/app/features.ts'
-import { RemoteFeatureLifecycle, remoteSelectionKey } from '../../src/app/features/lifecycle.ts'
+import { RemoteFeatureLifecycle } from '../../src/app/features/lifecycle.ts'
 
 interface HostStateSnapshot {
   readonly generation: number
@@ -185,13 +185,5 @@ describe('RemoteFeatureLifecycle', () => {
     f.fireState()
     expect(f.lifecycle.currentGeneration()).toBe(current + 1)
     f.lifecycle.dispose()
-  })
-})
-
-describe('remoteSelectionKey', () => {
-  it('keys an absent selection as the empty string and an exact selection by Host, Session, and Client', () => {
-    expect(remoteSelectionKey(undefined)).toBe('')
-    const f = fixture()
-    expect(remoteSelectionKey(f.selection)).toBe('local\0session-1\0local')
   })
 })

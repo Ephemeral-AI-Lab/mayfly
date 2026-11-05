@@ -1,7 +1,7 @@
 /** Remote decision vocabulary stays live and releases refcounted catalogs with its actual Fibers. @module */
 
 import { Context } from '@deepseek-ai/cordis'
-import { MayflyLocaleService } from '../../src/frontend.ts'
+import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { expect, it } from 'vitest'
 import { mountRemoteInteractionLocale } from '../../src/app/interactions/locale.ts'

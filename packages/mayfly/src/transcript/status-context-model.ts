@@ -1,7 +1,6 @@
 /** Shared status-context presentation over readonly facts. @module */
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import type { ContextBreakdownProjection, ContextPressureProjection, TokenUsageProjection } from '@deepseek-ai/dsh-token-meter'
-import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import { SHED, shedNode } from './status-shed.ts'
 /** The native projections the compact row reads; composition is kept for one cursor cut. */
 export interface ContextStatusValues {
@@ -9,16 +8,6 @@ export interface ContextStatusValues {
   readonly pressure?: ContextPressureProjection | undefined
   /** Heuristic system/tools/message composition from the same cut; not the occupancy total. */
   readonly breakdown?: ContextBreakdownProjection | undefined
-}
-
-/**
- * The context occupancy of one step: the disjoint input-side token counts.
- * Re-exported so the `./status-context` subpath keeps its public surface.
- * @param usage - the step's token accounting.
- * @returns occupied context tokens.
- */
-export function contextTokens(usage: TokenUsage): number {
-  return usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
 }
 
 /**
@@ -72,7 +61,7 @@ export function contextPercent(used: number, max: number): number {
  * @param used - the occupied tokens.
  * @returns the share in percent.
  */
-export function cachePercent(cacheRead: number, used: number): number {
+function cachePercent(cacheRead: number, used: number): number {
   if (!Number.isFinite(cacheRead) || !Number.isFinite(used) || cacheRead <= 0 || used <= 0) return 0
   return Math.min(100, Math.floor((cacheRead / used) * 100))
 }

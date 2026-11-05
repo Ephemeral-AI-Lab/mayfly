@@ -22,24 +22,15 @@ import type {} from '@deepseek-ai/dsh-plugin-manager/types'
 import type {} from '@deepseek-ai/dsh-plugin-market/remote'
 import type {} from '@deepseek-ai/dsh-plugin-market/types'
 import type {} from '@deepseek-ai/dsh-schedule/remote'
-import type { RemoteStreamHandle } from '@deepseek-ai/dsh-typert-protocol'
 
-export type { RemoteStreamHandle }
 export type {
-  BundleDetail, BundleInfo, BundleRowInfo, ChangeResult, InspectOptions, InstallBundleOptions, InstallSpecKind,
-  ManagementError, PackageResult,
-  PluginChange, PluginEntryId, PluginInfo, PluginInspectProblem, PluginInstallCancellation, PluginInstallFailureKind,
-  PluginInstallLogChunk, PluginInstallProgress, PluginInstallRequestId, PluginRegistries, PluginSpecInspection,
-  PluginUpdateProgress, PluginUpdateResult, PluginUpdateStep, PluginVersion, PluginVersionList, RegistryAttempt,
-  ReadOnlyReason, Registry, RestartReason,
+   BundleInfo,  ChangeResult,   
+  ManagementError, 
+       
+      
+       
+    
 } from '@deepseek-ai/dsh-plugin-manager/types'
-export type {
-  MarketCompatibility, MarketIndexSummary, MarketInstallation, MarketInstallationStatus, MarketListingEntry,
-  MarketListingVersion, MarketQuery, MarketSearchResult, MarketSort, PluginDetail, PluginDetailDocumentId,
-  PluginDetailOrigin,
-} from '@deepseek-ai/dsh-plugin-market/types'
 
 /** Official plugin-manager namespace mounted by the api-remotes client handoff. */
 export type ClientPluginManager = ClientRemote['pluginManager']
-/** Official plugin-market namespace mounted by the api-remotes client handoff. */
-export type ClientPluginMarket = ClientRemote['pluginMarket']

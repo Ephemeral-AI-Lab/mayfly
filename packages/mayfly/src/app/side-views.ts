@@ -1,15 +1,15 @@
 /** Retained native side conversations, exact displayed bindings, and F7 recency. @module remote/side-views */
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
-import type { MayflyScreenService } from '../core.ts'
-import type { ToolPresentationSource } from '../transcript.ts'
-import { TranscriptController } from '../transcript.ts'
+import type { MayflyScreenService } from '../core/screen.ts'
+import type { ToolPresentationSource } from '../transcript/present.ts'
+import { TranscriptController } from '../transcript/transcript-model.ts'
 import type { HostClient, HostKey, SessionRef } from '../client/types.ts'
 import type { RemotePresentedViewFacts } from './operations/support.ts'
 import { RemoteConversationModelSource, type RemotePresentationFacts, type RemotePresentationSelection } from '../transcript/remote-model.ts'
 
 /** The transcript's main selection is independent of every side binding. */
-export const REMOTE_SIDE_VIEW_KEY = 'remote-side'
+const REMOTE_SIDE_VIEW_KEY = 'remote-side'
 const PRIMARY = 'remote'
 const MAX_SIDE_CONVERSATIONS = 32
 const keyOf = (ref: SessionRef): string => `${REMOTE_SIDE_VIEW_KEY}:${JSON.stringify([ref.host, ref.sessionId])}`

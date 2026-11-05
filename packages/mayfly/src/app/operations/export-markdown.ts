@@ -18,7 +18,7 @@ const ID_PREFIX_LENGTH = 8
 type ExportItem = Exclude<ConversationEntry, { readonly kind: 'compaction' | 'goal-change' | 'goal-round' }>
 
 /** Facts both export shapes render. */
-export interface RemoteExportInput {
+interface RemoteExportInput {
   readonly sessionId: string
   readonly workDir: string | undefined
   readonly events: readonly SessionWireEvent[]
@@ -123,7 +123,7 @@ export function remoteExportItems(projection: ConversationProjection): readonly 
 }
 
 /** Readable export facts come exclusively from the Host's complete conversation projection. */
-export interface RemoteReadableExportInput extends Omit<RemoteExportInput, 'events'> {
+interface RemoteReadableExportInput extends Omit<RemoteExportInput, 'events'> {
   readonly items: readonly ExportItem[]
 }
 

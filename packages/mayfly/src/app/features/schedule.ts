@@ -3,8 +3,8 @@
  * @module @ephemeral-ai/mayfly/remote/features/schedule
  */
 
-import type { MayflyTranslate } from '../../frontend.ts'
-import { interactionTranslator, mountInteractionLocale } from '../../command-panels.ts'
+import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
+import { interactionTranslator, mountInteractionLocale } from '../../interaction/locale.ts'
 import type { MayflyStatusRegistration } from '@ephemeral-ai/mayfly-ui'
 import type { HostClient } from '../../client/types.ts'
 import type { RemoteFeatureContext } from '../features.ts'

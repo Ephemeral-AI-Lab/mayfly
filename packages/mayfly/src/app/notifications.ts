@@ -5,9 +5,10 @@
  */
 
 import type { Context, Events } from '@deepseek-ai/cordis'
-import { ACTIVITY_LOCALE, mountTranscriptLocale, NotificationLine, type NotificationFacts, type NotificationKeyPart, type NotificationRowFacts } from '../editor-presentation.ts'
-import { memoizedLocaleTranslator } from '../frontend.ts'
-import type {} from '../core.ts'
+import { ACTIVITY_LOCALE, mountTranscriptLocale } from '../transcript/locale.ts'
+import { NotificationLine, type NotificationFacts, type NotificationKeyPart, type NotificationRowFacts } from '../components/notification-line.ts'
+import { memoizedLocaleTranslator } from '../frontend/locale.ts'
+
 import type { MayflyFeedback, MayflyFeedbackRecord, MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteNotice } from './notice.ts'
 

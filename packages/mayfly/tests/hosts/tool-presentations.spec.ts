@@ -1,6 +1,6 @@
 /** Exact native call identities, immutable result transport, incremental batches and lifecycle fences. @module */
 import { describe, expect, it, vi } from 'vitest'
-import type { ConversationProjection, ConversationToolEntry } from '../../src/conversation.ts'
+import type { ConversationProjection, ConversationToolEntry } from '@ephemeral-ai/mayfly-host/types'
 import type { HostClient, SessionRef } from '../../src/client/types.ts'
 import { HostKey } from '../../src/client/types.ts'
 import { RemoteToolPresentationCache, createMayflyToolPresentationResolver, remoteToolPresentationKey, type RemoteToolPresentationRequest, type RemoteToolPresentationGeneration } from '../../src/hosts/tool-presentations.ts'

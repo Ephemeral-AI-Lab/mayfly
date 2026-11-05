@@ -7,7 +7,7 @@ import type { HostClient, SessionRef } from '../../client/types.ts'
 import type { JobFollowFrame, JobView } from './official.ts'
 
 /** Exact generated job.follow opener; a Domain follow adapter can replace this seam without changing panels. */
-export interface RemoteJobFollowAdapter {
+interface RemoteJobFollowAdapter {
   open(client: HostClient, ref: SessionRef, id: JobView['id'], from: number | undefined, signal: AbortSignal): AsyncIterable<JobFollowFrame>
 }
 
@@ -21,7 +21,7 @@ export const generatedRemoteJobFollowAdapter: RemoteJobFollowAdapter = {
 }
 
 /** Current reader state; text is bounded presentation data, not a second Job registry. */
-export interface RemoteJobReaderSnapshot {
+interface RemoteJobReaderSnapshot {
   readonly job: JobView
   readonly text: string
   readonly dropped: boolean

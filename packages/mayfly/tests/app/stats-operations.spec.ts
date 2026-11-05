@@ -4,6 +4,7 @@ import type { MayflyStatsDigest, MayflyStatsHistory, MayflyStatsSession } from '
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflyUiActionEvent, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
 import { mountRemoteStatsOperations, remoteStatsDigest } from '../../src/app/operations/stats.ts'
+import { dayKey } from '../../src/interaction/stats-index/digest.ts'
 import { RemotePresentSlot, type RemoteOperationsContext } from '../../src/app/operations/support.ts'
 import type { RemoteBrowserOptions } from '../../src/app/panels/browser.ts'
 import { taskFixture, tick, activated, good, bad } from './task-feature-fixture.ts'
@@ -12,12 +13,12 @@ import { projection } from './approval-feature-fixture.ts'
 const seams = vi.hoisted(() => ({ browser: vi.fn(), prices: vi.fn(), account: vi.fn(), copy: vi.fn() }))
 vi.mock('../../src/app/panels/browser.ts', () => ({ openRemoteBrowser: seams.browser }))
 vi.mock('../../src/app/operations/stats-account.ts', () => ({ remoteStatsAccount: seams.account }))
-vi.mock('../../src/configuration-panels.ts', async original => ({ ...await original<object>(), loadModelsDevIndex: seams.prices }))
+vi.mock('../../src/interaction/models-dev.ts', async original => ({ ...await original<object>(), loadModelsDevIndex: seams.prices }))
 vi.mock('../../src/app/local/clipboard.ts', () => ({ copyLocalText: seams.copy }))
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const stop of cleanups.splice(0).reverse()) await stop(); vi.useRealTimers(); vi.restoreAllMocks(); for (const mock of Object.values(seams)) mock.mockReset() })
 const buckets = { input: 10, output: 5, cacheRead: 1, cacheWrite: 2 }
-const digest: MayflyStatsDigest = { id: 'session', cwd: '/host/home/work', firstAt: Date.now() - 1000, lastAt: Date.now(), days: [{ key: new Date().toISOString().slice(0, 10), turns: 2, models: [{ provider: 'p', model: 'm', peak: buckets, offPeak: buckets }] }] }
+const digest: MayflyStatsDigest = { id: 'session', cwd: '/host/home/work', firstAt: Date.now() - 1000, lastAt: Date.now(), days: [{ key: dayKey(Date.now()), turns: 2, models: [{ provider: 'p', model: 'm', peak: buckets, offPeak: buckets }] }] }
 const initial: MayflyStatsSession = { createdAt: 1000, cwd: digest.cwd, digest, status: 'idle', harnessVersion: '0.2.2-alpha.2' }
 const frame = (digests: readonly MayflyStatsDigest[] = [digest]): MayflyStatsHistory => ({ running: false, done: 1, total: 1, skipped: 0, failed: 0, digests })
 const eventContext = (): MayflyUiEventContext => ({ surfaceId: 'stats', source: [], signal: new AbortController().signal, revision: 1, operationId: 'action', report: vi.fn() })

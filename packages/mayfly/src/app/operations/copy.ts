@@ -4,7 +4,7 @@
  * @module @ephemeral-ai/mayfly/remote/operations/copy
  */
 
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import type { ConversationEntry, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
 import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
 import { RemoteFeatureController, remoteErrorMessage } from '../features/official.ts'

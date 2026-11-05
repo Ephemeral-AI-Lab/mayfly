@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { RemoteFeatureContext } from '../../src/app/features/contracts.ts'
-import { CordisRemoteLocalPresentation, remoteThemeName } from '../../src/app/features/presentation.ts'
+import { CordisRemoteLocalPresentation } from '../../src/app/features/presentation.ts'
 
-vi.mock('../../src/theme-dark.ts', () => ({ name: 'dark', apply: () => {} }))
-vi.mock('../../src/theme-builtin.ts', () => ({ name: 'builtin', apply: () => {} }))
-vi.mock('../../src/theme-auto.ts', () => ({ name: 'auto', apply: () => {} }))
-vi.mock('../../src/theme-custom.ts', () => ({ name: 'custom', apply: () => {} }))
+vi.mock('../../src/core/theme-dark.ts', () => ({ name: 'dark', apply: () => {} }))
+vi.mock('../../src/core/theme-builtin.ts', () => ({ name: 'builtin', apply: () => {} }))
+vi.mock('../../src/core/theme-auto.ts', () => ({ name: 'auto', apply: () => {} }))
+vi.mock('../../src/core/theme-custom.ts', () => ({ name: 'custom', apply: () => {} }))
 
 function fixture(theme = 'dark') {
   const state = { currentThemeKey: theme }
@@ -30,10 +30,6 @@ function fixture(theme = 'dark') {
 }
 
 describe('Remote local presentation lifecycle', () => {
-  it('names known themes and keeps unknown names readable', () => {
-    expect(remoteThemeName('dark')).toBe('Mayfly Dark')
-    expect(remoteThemeName('external-palette')).toBe('external-palette')
-  })
 
   it('reports locale changes, removes observers, and keeps absent services optional', async () => {
     const test = fixture()
@@ -223,7 +219,7 @@ describe('Remote local presentation lifecycle', () => {
   it('does not mount a fallback whose module finishes loading after unload', async () => {
     const loading = Promise.withResolvers<void>()
     const factory = vi.fn(async () => { await loading.promise; return { name: 'dark', apply: () => {} } })
-    vi.doMock('../../src/theme-dark.ts', factory)
+    vi.doMock('../../src/core/theme-dark.ts', factory)
     vi.resetModules()
     const test = fixture('light')
     test.plugin.mockRejectedValueOnce(new Error('palette failed'))
@@ -237,7 +233,7 @@ describe('Remote local presentation lifecycle', () => {
     } finally {
       loading.resolve()
       test.presentation.dispose()
-      vi.doMock('../../src/theme-dark.ts', () => ({ name: 'dark', apply: () => {} }))
+      vi.doMock('../../src/core/theme-dark.ts', () => ({ name: 'dark', apply: () => {} }))
       vi.resetModules()
     }
   })

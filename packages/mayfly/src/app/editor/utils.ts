@@ -3,7 +3,7 @@
  * @module @ephemeral-ai/mayfly/remote/editor/utils
  */
 
-import type { MayflyComponents, MayflySubmittedDraft } from '../../core.ts'
+import type { MayflyComponents, MayflySubmittedDraft } from '../../core/types.ts'
 import type { EditorCommandDescriptor, EditorParsedCommand } from './types.ts'
 
 /** Convert an unknown operation failure to bounded single-line editor feedback. */
@@ -35,7 +35,7 @@ export function canonicalCommandLine(command: EditorCommandDescriptor, rawInput:
 }
 
 /** One fuzzy match and whether an alias produced it. */
-export interface EditorCommandMatch<T extends EditorCommandDescriptor> {
+interface EditorCommandMatch<T extends EditorCommandDescriptor> {
   readonly command: T
   readonly viaAlias: boolean
 }

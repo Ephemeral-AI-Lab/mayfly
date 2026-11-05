@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/remote/features/provider-editor
  */
 import type { CredentialInfo, LlmDiscoveredModel, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
-import { loadModelsDevIndex } from '../../configuration-panels.ts'
+import { loadModelsDevIndex } from '../../interaction/models-dev.ts'
 import { panel, tabs, ui, type MayflyFieldAddress, type MayflyFormAddress, type MayflyUiActionReply } from '@ephemeral-ai/mayfly-ui'
 import type { RemoteFeatureContext } from './contracts.ts'
 import { onRemoteSettingsDocumentUpdated, RemoteCallError, type RemoteFeatureOperation, remoteValue } from './official.ts'
@@ -16,7 +16,7 @@ interface ProviderView { readonly descriptor: SettingsNamespaceView, readonly pr
 interface CustomModel { readonly contextWindow?: number, readonly maxTokens?: number, readonly reasoningEfforts?: Record<string, string> | false }
 
 /** A provider editor belongs to one exact attached Host operation. */
-export interface RemoteProviderEditorOptions {
+interface RemoteProviderEditorOptions {
   readonly operation: RemoteFeatureOperation
   readonly route: string
   readonly ns: string

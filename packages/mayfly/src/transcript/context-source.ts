@@ -12,7 +12,7 @@ interface Selection {
 }
 
 /** The displayed facts retain their selection's stable ref identity. */
-export interface RemoteTranscriptContextSourceOptions {
+interface RemoteTranscriptContextSourceOptions {
   readonly read: () => Selection
   readonly changed: () => void
 }

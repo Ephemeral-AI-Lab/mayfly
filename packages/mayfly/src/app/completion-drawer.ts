@@ -1,6 +1,8 @@
 /** The standalone editor uses the canonical core completion painter. @module remote/completion-drawer */
 import type { Context } from '@deepseek-ai/cordis'
-import { CompletionDrawer, type MayflyEditor, type MayflyScreenService, type MayflySemanticColors, type CompletionDrawerSource } from '../core.ts'
+import { CompletionDrawer, type CompletionDrawerSource } from '../core/completion-drawer.ts'
+import type { MayflyEditor, MayflySemanticColors } from '../core/types.ts'
+import type { MayflyScreenService } from '../core/screen.ts'
 
 /** Mount the reference completion palette above the same persistent editor. */
 export function mountRemoteCompletionDrawer(

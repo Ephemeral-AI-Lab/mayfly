@@ -4,7 +4,7 @@
  * @module @ephemeral-ai/mayfly/remote/operations/title
  */
 
-import { sanitizeTitleText, TITLE_MAX_CHARS } from '../../core.ts'
+import { sanitizeTitleText, TITLE_MAX_CHARS } from '../../core/terminal-escape.ts'
 import type { RemoteFeatureSelection } from '../features.ts'
 import { RemoteFeatureLifecycle } from '../features/lifecycle.ts'
 import { isRemoteRecord, registerRemoteOperationsLocale, remoteReadString, type RemoteOperationsContext } from './support.ts'

@@ -1,8 +1,9 @@
 /** Projection-derived activity, exact shared row height, and native decision presentation. @module */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
-import { compileMayflyUiNode, visibleWidth } from '../../src/core.ts'
-import { ActivityRow } from '../../src/editor-presentation.ts'
+import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
+import { visibleWidth } from '@earendil-works/pi-tui'
+import { ActivityRow } from '../../src/components/activity-row.ts'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { mountActivityFeature } from '../../src/app/features/activity.ts'
 import { approvalFixture, flushApproval } from './approval-feature-fixture.ts'

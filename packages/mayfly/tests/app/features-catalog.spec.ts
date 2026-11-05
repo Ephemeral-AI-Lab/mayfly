@@ -6,7 +6,7 @@ import type { HostClient, SessionRef } from '../../src/client/types.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../../src/app/features.ts'
 import type { RemoteBrowserOptions } from '../../src/app/panels/browser.ts'
 import { mountCatalogFeature } from '../../src/app/features/catalog.ts'
-import { mcpServerConfigNode as remoteMcpConfigNode, mcpServerItems as remoteMcpServerItems } from '../../src/command-panels.ts'
+import { serverConfigNode as remoteMcpConfigNode, serverItems as remoteMcpServerItems } from '../../src/interaction/catalog-model.ts'
 import type { MayflyMcpCatalog, MayflyMcpServer } from '@ephemeral-ai/mayfly-host/types'
 
 describe('unknown MCP transport state', () => {

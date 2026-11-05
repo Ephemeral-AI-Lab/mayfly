@@ -6,16 +6,13 @@
 
 import type { MayflyStatusRegistration, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext, MayflyUiNode, MayflyUiObservationEvent } from '@ephemeral-ai/mayfly-ui'
 import { ui } from '@ephemeral-ai/mayfly-ui'
-import { currentMayflySettings } from '../../settings.ts'
-import {
-  DEFAULT_MARKET_INDEX_URL, loadMarketCatalog, buildRows, defaultInstallSource, entrySupportsSource,
-  GROUP_MODES, groupRows, MARKET_TABS, marketEntryInstallBlock, isMayflyProductPackage, newerVersion, rowName, rowSpec, tabRows,
-  usefulInTui, detailFacts, groupModeLabel, tabFacts, listId, MARKET_BREAKPOINT,
-  PluginMarketplace, PluginMarketplaceLoading, PluginMarketplaceOffline, PluginMarketplaceUnavailable,
-  interactionTranslator, mountInteractionLocale, observeInteractionLocale,
-  type CatalogResult, type GroupMode, type InstallSource, type MarketRow, type MarketTab, type FactsEnv,
-  type MarketEntry, type MarketInstallRow,
-} from '../../plugin-marketplace.ts'
+import { currentMayflySettings } from '../../frontend/settings.ts'
+import { DEFAULT_MARKET_INDEX_URL, loadMarketCatalog, type CatalogResult } from '../../interaction/plugin-market/catalog.ts'
+import { buildRows, defaultInstallSource, entrySupportsSource, GROUP_MODES, groupRows, MARKET_TABS, marketEntryInstallBlock, isMayflyProductPackage, newerVersion, rowName, rowSpec, tabRows, usefulInTui, type GroupMode, type InstallSource, type MarketRow, type MarketTab } from '../../interaction/plugin-market/model.ts'
+import { detailFacts, groupModeLabel, tabFacts, type FactsEnv } from '../../interaction/plugin-market/facts.ts'
+import { listId, MARKET_BREAKPOINT, PluginMarketplace, PluginMarketplaceLoading, PluginMarketplaceOffline, PluginMarketplaceUnavailable } from '../../components/marketplace.ts'
+import { interactionTranslator, mountInteractionLocale, observeInteractionLocale } from '../../interaction/locale.ts'
+import { type MarketEntry, type MarketInstallRow } from '../../interaction/plugin-market/types.ts'
 import type { BundleInfo, ChangeResult, ManagementError, ClientPluginManager } from '../../client/remote-face.ts'
 import type { HostClient } from '../../client/types.ts'
 import { remoteValue } from '../features/official.ts'

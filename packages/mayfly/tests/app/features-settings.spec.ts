@@ -2,7 +2,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SettingsDescribeValue } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MayflySettingsDocument } from '@ephemeral-ai/mayfly-host/types'
-import { RemoteSettingsController, remoteMayflySettingsPersistence } from '../../src/app/features/settings.ts'
+import { RemoteSettingsController } from '../../src/app/features/settings.ts'
 import { RemoteCallError } from '../../src/app/features/official.ts'
 import { remoteSettingsSecretPath, remoteSettingsWithoutSecrets } from '../../src/app/features/settings-model.ts'
 import { configurationFixture, deferred, namespace, schemaJson } from './configuration-fixture.ts'
@@ -353,11 +353,6 @@ describe('programmatic native settings writes', () => {
     expect(remoteSettingsSecretPath(descriptor, ['apiKey'])).toBe(true)
     expect(remoteSettingsSecretPath(descriptor, ['visible'])).toBe(false)
     expect(remoteSettingsWithoutSecrets(schema, { apiKey: 'private', visible: 'yes', items: [{ secret: 'private', label: 'ok' }], dict: { a: 'private' } })).toEqual({ visible: 'yes', items: [{ label: 'ok' }], dict: {} })
-  })
-
-  it('reports Host schema availability from real namespaces only', () => {
-    expect(remoteMayflySettingsPersistence({ writable: true, hasDocument: true, namespaces: [namespace()] })).toBe('available')
-    expect(remoteMayflySettingsPersistence({ writable: true, hasDocument: true, namespaces: [] })).toBe('host-schema-required')
   })
 
   it('strips secrets through unions, intersections, transforms, and dictionary objects', () => {

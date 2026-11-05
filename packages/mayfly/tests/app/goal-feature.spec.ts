@@ -1,8 +1,8 @@
 /** Reference Goal status actions and native slash routing preserve exact invocation ownership. @module */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GoalProjection, GoalView } from '@deepseek-ai/dsh-goal/client'
-import { visibleWidth } from '../../src/core.ts'
-import { goalPanel, goalSummary } from '../../src/command-panels.ts'
+import { visibleWidth } from '@earendil-works/pi-tui'
+import { goalPanel, goalSummary } from '../../src/transcript/goal-model.ts'
 import { mountGoalFeature } from '../../src/app/features/goal.ts'
 import { EditorCommands } from '../../src/app/editor/commands.ts'
 import { remoteCommandCatalog } from '../../src/app/command-catalog.ts'

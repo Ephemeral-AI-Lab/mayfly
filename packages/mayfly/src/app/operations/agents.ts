@@ -1,7 +1,7 @@
 /** Native descendant browsing and exact-parent stops using the shared rc.2 tree. @module */
 import { SessionId } from '@deepseek-ai/dsh-session/types'
-import { agentsPanelModel, type MayflySubagentTreeEntry } from '../../command-panels.ts'
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { agentsPanelModel, type MayflySubagentTreeEntry } from '../../interaction/agents-model.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import type { MayflyTranslate, MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySubagentTreeEntry as HostTreeEntry } from '../../hosts/host-contract.ts'
 import { mayflyHostRemote } from '../../hosts/host-mount.ts'

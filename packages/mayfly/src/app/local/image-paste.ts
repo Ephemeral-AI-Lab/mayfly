@@ -21,7 +21,7 @@ export type ClipboardFailure =
   | { readonly kind: 'timeout' }
   | { readonly kind: 'failed', readonly detail: string }
 
-export type ClipboardImageResult =
+type ClipboardImageResult =
   | { readonly kind: 'image', readonly data: Uint8Array, readonly mediaType: ImageMediaType, readonly backend?: string, readonly fallback?: boolean }
   | { readonly kind: 'images', readonly images: readonly SaveImageAttachment[], readonly backend?: string, readonly fallback?: boolean }
   | ClipboardFailure

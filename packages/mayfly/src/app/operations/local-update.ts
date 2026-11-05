@@ -269,12 +269,12 @@ export class LocalFrontendUpdater {
     let tuiRoot: string
     try { text = await this.io.read(nested); tuiRoot = dirname(nested) } catch { text = await this.io.read(hoisted); tuiRoot = dirname(hoisted) }
     const manifest = JSON.parse(text) as { version?: unknown, dependencies?: Record<string, unknown> }
-    if (manifest.version !== version || manifest.dependencies?.['@ephemeral-ai/mayfly-ui'] !== version || manifest.dependencies?.['@ephemeral-ai/mayfly-host'] !== version) throw new Error('The staged split presentation versions are inconsistent')
+    if (manifest.version !== version || manifest.dependencies?.['@ephemeral-ai/mayfly-ui'] !== version || manifest.dependencies?.['@ephemeral-ai/mayfly-host'] !== version) throw new Error('The staged TUI dependency versions are inconsistent')
     for (const name of ['@ephemeral-ai/mayfly-ui', '@ephemeral-ai/mayfly-host']) {
       let shared: string
       try { shared = await this.io.read(join(tuiRoot, 'node_modules', name, 'package.json')) }
       catch { shared = await this.io.read(resolve(tuiRoot, '..', name.slice(name.indexOf('/') + 1), 'package.json')) }
-      if ((JSON.parse(shared) as { version?: unknown }).version !== version) throw new Error('The installed shared presentation version is inconsistent')
+      if ((JSON.parse(shared) as { version?: unknown }).version !== version) throw new Error('An installed TUI dependency version is inconsistent')
     }
   }
 }

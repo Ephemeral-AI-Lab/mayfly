@@ -1,4 +1,4 @@
-/** Frontend updater staging, exact release consistency and bounded I/O contracts. @module tests/remote/local-update */
+/** Frontend updater staging, exact release consistency and bounded I/O contracts. @module tests/app/local-update */
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
@@ -25,9 +25,9 @@ function fixture() {
     read: vi.fn(async path => {
       if (path.endsWith('.worker')) throw Object.assign(new Error('no worker'), { code: 'ENOENT' })
       const version = versionAt(path)
-      return JSON.stringify(path.endsWith('mayfly-remote/package.json')
-        ? { version, dependencies: { '@ephemeral-ai/mayfly': version, '@ephemeral-ai/mayfly-ui': version } }
-        : { name: '@ephemeral-ai/mayfly-cli', version, dependencies: { '@ephemeral-ai/mayfly-remote': version } })
+      return JSON.stringify(path.endsWith('/mayfly/package.json')
+        ? { version, dependencies: { '@ephemeral-ai/mayfly-host': version, '@ephemeral-ai/mayfly-ui': version } }
+        : { name: '@ephemeral-ai/mayfly-cli', version, dependencies: { '@ephemeral-ai/mayfly': version } })
     }),
     temporary: vi.fn(async () => '/tmp/mayfly-update'), write: vi.fn(async () => {}), append: vi.fn(async () => {}), remove: vi.fn(async () => {}),
     run: vi.fn(async (_command, args) => {
@@ -72,7 +72,7 @@ describe('frontend-local updater', () => {
     expect(test.installed()).toBe(current)
   })
 
-  it('stages both pinned graphs, validates exact Remote/presentation dependencies, smokes the real entries and restores offline', async () => {
+  it('stages both pinned graphs, validates exact TUI dependencies, smokes the real entries and restores offline', async () => {
     const test = fixture()
     const snapshot = await prepared(test)
     expect(snapshot).toMatchObject({ current, target, root, directory: '/tmp/mayfly-update', logPath: '/tmp/mayfly-update/update.log' })
@@ -106,25 +106,25 @@ describe('frontend-local updater', () => {
     expect(test.io.temporary).not.toHaveBeenCalled()
   })
 
-  it('falls back to the hoisted official Remote manifest and rejects inconsistent installed graphs', async () => {
+  it('falls back to the hoisted TUI manifest and rejects inconsistent installed graphs', async () => {
     const test = fixture()
     const snapshot = await prepared(test)
-    vi.mocked(test.io.read).mockImplementationOnce(async () => JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly-remote': target } }))
+    vi.mocked(test.io.read).mockImplementationOnce(async () => JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly': target } }))
       .mockRejectedValueOnce(new Error('nested missing'))
-      .mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly': target, '@ephemeral-ai/mayfly-ui': target } }))
+      .mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly-host': target, '@ephemeral-ai/mayfly-ui': target } }))
     await test.updater.install(snapshot)
-    expect(test.io.read).toHaveBeenCalledWith('/npm/node_modules/@ephemeral-ai/mayfly-remote/package.json')
+    expect(test.io.read).toHaveBeenCalledWith('/npm/node_modules/@ephemeral-ai/mayfly/package.json')
     vi.mocked(test.io.read).mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: {} }))
-    await expect(test.updater.install(snapshot)).rejects.toThrow('Launcher and Remote versions are inconsistent')
-    vi.mocked(test.io.read).mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly-remote': target } }))
+    await expect(test.updater.install(snapshot)).rejects.toThrow('Launcher and TUI versions are inconsistent')
+    vi.mocked(test.io.read).mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly': target } }))
       .mockResolvedValueOnce(JSON.stringify({ version: current, dependencies: {} }))
-    await expect(test.updater.install(snapshot)).rejects.toThrow('presentation versions are inconsistent')
-    vi.mocked(test.io.read).mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly-remote': target } }))
-      .mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly': current } }))
-    await expect(test.updater.install(snapshot)).rejects.toThrow('presentation versions are inconsistent')
-    vi.mocked(test.io.read).mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly-remote': target } }))
-      .mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly': target, '@ephemeral-ai/mayfly-ui': current } }))
-    await expect(test.updater.install(snapshot)).rejects.toThrow('presentation versions are inconsistent')
+    await expect(test.updater.install(snapshot)).rejects.toThrow('TUI dependency versions are inconsistent')
+    vi.mocked(test.io.read).mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly': target } }))
+      .mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly-host': current } }))
+    await expect(test.updater.install(snapshot)).rejects.toThrow('TUI dependency versions are inconsistent')
+    vi.mocked(test.io.read).mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly': target } }))
+      .mockResolvedValueOnce(JSON.stringify({ version: target, dependencies: { '@ephemeral-ai/mayfly-host': target, '@ephemeral-ai/mayfly-ui': current } }))
+    await expect(test.updater.install(snapshot)).rejects.toThrow('TUI dependency versions are inconsistent')
   })
 
   it('refuses a failed staged startup and propagates I/O/cancellation failures without installing', async () => {
@@ -233,12 +233,12 @@ it('verifies actual shared manifests after dependency declarations, including ho
   const snapshot = await prepared(test)
   const read = vi.mocked(test.io.read).getMockImplementation()!
   vi.mocked(test.io.read).mockImplementation(async path => {
-    if (path.endsWith('mayfly-ui/package.json') && path.includes('/node_modules/@ephemeral-ai/mayfly-remote/node_modules/')) throw new Error('shared package hoisted')
+    if (path.endsWith('mayfly-ui/package.json') && path.includes('/node_modules/@ephemeral-ai/mayfly/node_modules/')) throw new Error('shared package hoisted')
     return read(path)
   })
   await test.updater.stage(snapshot, signal())
   vi.mocked(test.io.read).mockImplementation(async path => path.endsWith('mayfly-ui/package.json') ? JSON.stringify({ version: 'wrong' }) : read(path))
-  await expect(test.updater.install(snapshot)).rejects.toThrow('installed shared presentation version is inconsistent')
+  await expect(test.updater.install(snapshot)).rejects.toThrow('installed TUI dependency version is inconsistent')
 })
 
 it('refuses unreadable, malformed and unconfirmed npm worker ownership before taking a transaction lock into mutation', async () => {

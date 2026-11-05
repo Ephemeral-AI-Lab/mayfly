@@ -1,10 +1,10 @@
 /** Reference workspace/session browser over authoritative native Client snapshots. @module */
 import type { SessionSummary, SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
-import {
-  SessionBrowser, sessionListItem, sessionWorkspaceTab, interactionTranslator, mountInteractionLocale,
-  type SessionBrowserFacts, type SessionListFacts, type SessionWorkspaceLabelFacts,
-} from '../../session-browser.ts'
+import { SessionBrowser, type SessionBrowserFacts } from '../../interaction/session-browser-model.ts'
+import { sessionListItem, type SessionListFacts } from '../../interaction/session-list-model.ts'
+import { sessionWorkspaceTab, type SessionWorkspaceLabelFacts } from '../../interaction/session-workspaces-model.ts'
+import { interactionTranslator, mountInteractionLocale } from '../../interaction/locale.ts'
 import type { MayflyUiActionEvent, MayflyUiActionReply, MayflyUiEventContext, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { HostClient, SessionRef } from '../../client/types.ts'
 import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
@@ -17,7 +17,7 @@ export interface RemoteSessionsBrowser {
 }
 
 /** Host paths and the integrator's independent child-conversation presentation. */
-export interface RemoteSessionsBrowserOptions {
+interface RemoteSessionsBrowserOptions {
   readonly home?: (client: HostClient) => string
   readonly directory?: () => string
   readonly openChild?: (client: HostClient, address: SubagentAddress, signal: AbortSignal) => Promise<void>

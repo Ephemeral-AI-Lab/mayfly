@@ -1,6 +1,6 @@
 /** Manifest composition uses one context, clears commands and unwinds partial mounts. @module */
 import { Context } from '@deepseek-ai/cordis'
-import { MayflyLocaleService } from '../../src/frontend.ts'
+import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RemoteFeatureContext, RemoteFeatureMountContext } from '../../src/app/features.ts'
 

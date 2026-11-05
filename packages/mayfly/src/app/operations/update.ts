@@ -1,10 +1,11 @@
 /** Explicit Host plus frontend upgrade, using native Host transactions and frontend-local staging.
  * @module remote/operations/update
  */
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import { setTimeout as delay } from 'node:timers/promises'
-import { currentMayflySettings } from '../../settings.ts'
-import { applyUpdateProgress, compareVersions, createUpdateProgressState, updatePanelModel, type UpdateProgressState } from '../../command-panels.ts'
+import { currentMayflySettings } from '../../frontend/settings.ts'
+import { applyUpdateProgress, createUpdateProgressState, updatePanelModel, type UpdateProgressState } from '../../interaction/update-model.ts'
+import { compareVersions } from '../../interaction/updater/version.ts'
 import { DECISION_NO, DECISION_YES, decisionStrip } from '@ephemeral-ai/mayfly-ui'
 import type { BundleInfo, ChangeResult } from '../../client/remote-face.ts'
 import { RemoteFeatureController, remoteErrorMessage, remoteValue, type RemoteFeatureOperation } from '../features/official.ts'

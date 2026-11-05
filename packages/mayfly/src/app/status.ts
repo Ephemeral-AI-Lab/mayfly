@@ -1,11 +1,14 @@
 /** Native projection status entries using the published Mayfly footer renderer. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
-import { buildConversationStatus, interactionTranslator } from '../command-panels.ts'
-import { buildModelStatusNode } from '../status-basic-model.ts'
-import { buildCwdStatusNode, shortenCwd } from '../status-cwd.ts'
-import { buildContextStatusNode, type ContextStatusValues } from '../status-context.ts'
-import { focusModeNode, mountStatusFooter, transcriptTranslator } from '../transcript.ts'
+import { buildConversationStatus } from '../components/conversation-status.ts'
+import { interactionTranslator } from '../interaction/locale.ts'
+import { buildModelStatusNode } from '../transcript/model-status.ts'
+import { buildCwdStatusNode, shortenCwd } from '../transcript/status-cwd-model.ts'
+import { buildContextStatusNode, type ContextStatusValues } from '../transcript/status-context-model.ts'
+import { focusModeNode } from '../transcript/status-focus.ts'
+import { mountStatusFooter } from '../transcript/status-rows.ts'
+import { transcriptTranslator } from '../transcript/locale.ts'
 import type { RemotePresentationFacts } from '../transcript/remote-model.ts'
 
 /** One authoritative Client snapshot paired with the current presentation. */
@@ -18,7 +21,7 @@ export interface RemoteStatusSnapshot {
 }
 
 /** Host-owned paths, including startup before any Session exists. */
-export interface RemoteStatusOptions {
+interface RemoteStatusOptions {
   readonly home?: () => string
   readonly directory?: () => string
 }

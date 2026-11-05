@@ -3,7 +3,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
-import { MayflyLocaleService } from '../../src/frontend.ts'
+import { MayflyLocaleService } from '../../src/frontend/locale.ts'
 import { mountRemoteProductivityLocales } from '../../src/app/features/locales.ts'
 
 describe('Remote productivity locale lifetime', () => {

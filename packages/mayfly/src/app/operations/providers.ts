@@ -5,7 +5,7 @@
  * @module @ephemeral-ai/mayfly/remote/operations/providers
  */
 
-import { memoizedLocaleTranslator } from '../../frontend.ts'
+import { memoizedLocaleTranslator } from '../../frontend/locale.ts'
 import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
 
 const zh: Readonly<Record<string, string>> = {

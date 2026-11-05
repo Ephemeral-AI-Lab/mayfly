@@ -2,9 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
-import { buildSessionEventRecords } from '@deepseek-ai/dsh-session-query'
 import { traceCatalog, traceDetail } from '../../src/remote/trace-catalog.ts'
-import { aggregateTraceItems as referenceAggregate } from '../../../mayfly/src/interaction/trace-aggregate.ts'
 
 const sessionId = SessionId('trace-session')
 const event = (seq: number, type: string, data: unknown): SessionEvent => ({ seq, time: 1_000 + seq, type, data }) as unknown as SessionEvent
@@ -20,10 +18,37 @@ function fixture(events = sample()) {
 const request = { sessionId, seq: 0, eventSeqs: [0, 1] }
 
 describe('native passive Session trace', () => {
-  it('uses the whole native log and surface records with the exact reference grouping and frozen output', async () => {
+  it('uses the whole native log and surface records with the rc.2 grouping and frozen output', async () => {
     const f = fixture()
     const rows = await traceCatalog(f.ctx, { sessionId }, new AbortController().signal)
-    expect(rows).toEqual(referenceAggregate(buildSessionEventRecords(sessionId, f.events) as unknown as Parameters<typeof referenceAggregate>[0], f.events as unknown as Parameters<typeof referenceAggregate>[1]))
+    expect(rows).toMatchInlineSnapshot(`
+      [
+        {
+          "eventSeqs": [
+            0,
+          ],
+          "lastSeq": 0,
+          "seq": 0,
+          "summary": "{"value":"one"}",
+          "surface": "log-only",
+          "time": 1000,
+          "title": "custom/event",
+          "type": "custom/event",
+        },
+        {
+          "eventSeqs": [
+            1,
+          ],
+          "lastSeq": 1,
+          "seq": 1,
+          "summary": "{"value":"two"}",
+          "surface": "log-only",
+          "time": 1001,
+          "title": "custom/event",
+          "type": "custom/event",
+        },
+      ]
+    `)
     expect(f.readSession).toHaveBeenCalledWith(sessionId); expect(f.activate).not.toHaveBeenCalled()
     expect(Object.isFrozen(rows)).toBe(true); expect(Object.isFrozen(rows[0])).toBe(true)
   })
