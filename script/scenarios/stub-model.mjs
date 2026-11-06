@@ -97,6 +97,12 @@ const BALANCES = {
 }
 const BALANCE_STATUS = { rejected: 401, down: 503 }
 
+const DEMO_SOURCES = [
+  { url: 'https://react.dev/learn/rendering-lists', title: 'Rendering Lists' },
+  { url: 'https://blog.example.dev/selection', title: 'Keeping selection by id' },
+  { url: 'https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Array/splice' },
+]
+
 /**
  * Start the stub. Requests without tools (title generation) get the title; the rest get the notice.
  * @param options - `balance`: the `/user/balance` answer (`ok`, `low`, `multi`, `insufficient`, or the statuses `rejected` and `down`).
@@ -124,8 +130,13 @@ export async function startStubModel({ balance = 'ok', probe = false } = {}) {
     request.on('end', () => {
       let body = {}
       try { body = JSON.parse(raw) } catch { /* answered as a prompt */ }
+      // The search a demo's web_search makes: a Messages request of its own, answered whole.
+      if (Array.isArray(body.tools) && body.tools.some(tool => tool.type === 'web_search_20250305')) {
+        response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ content: [{ type: 'web_search_tool_result', content: DEMO_SOURCES.map(source => ({ type: 'web_search_result', ...source })) }] }))
+        return
+      }
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' })
-      const step = toolDisplayInstruction(body)
+      const step = toolDisplayInstruction(body, `http://${request.headers.host}`)
       if (step !== undefined) {
         if (step.fail === true) response.destroy()
         else void writeStep(response, step)

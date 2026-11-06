@@ -35,7 +35,7 @@ const SESSION = [
     { content: 'Find why the selection is lost', status: 'in_progress' }, { content: 'Key the selection by id', status: 'pending' }, { content: 'Cover it with a test', status: 'pending' }, { content: 'Review the diff with subagents', status: 'pending' }, { content: 'Audit the dependencies', status: 'pending' },
   ] }]] },
   { calls: [['read', { file_path: 'src/list.ts', offset: 120, limit: 8 }], ['read', { file_path: 'package.json' }], ['read', { file_path: 'src/missing.ts' }]] },
-  { calls: [['grep', { pattern: 'onSelect', path: 'src', glob: '*.ts', case_insensitive: true }], ['glob', { pattern: '**/*.ts' }]] },
+  { calls: [['grep', { pattern: 'onSelect', path: 'src', include: '*.ts' }], ['glob', { pattern: '**/*.ts', path: 'src' }]] },
   { calls: [['mcp__github__search_issues', { query: 'is:open label:bug', per_page: 30 }], ['mcp__github__get_issue', { owner: 'acme', repo: 'web', issue_number: 1423 }], ['mcp__linear__search_issues', { query: 'list selection' }]] },
   { calls: [['mcp__browser__screenshot', { url: 'https://pi.dev' }]] },
   { calls: [['web_search', { queries: ['keep selection after array reorder'] }]] },
