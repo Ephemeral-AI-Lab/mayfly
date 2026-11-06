@@ -172,6 +172,7 @@ type MayflyInlineSpan = {
   emphasis?: 'normal' | 'strong'
   motion?: 'shimmer' | 'loader'                        // one channel per rich-text row
   variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'        // with motion: 'loader'; default 'gap'
+  elastic?: boolean                                    // gives way first on a one-row line that does not fit
 }
 ```
 
@@ -214,6 +215,11 @@ channel on its first frame, which is also what a screenshot shows:
 ![`richText` motion](/shots/richText-motion.svg)
 
 *A shimmering label and a breathing cell, both at their first frame (width 48).*
+
+On a one-row line (`overflow: 'truncate'`, or a list row's `labelSpans`) that is
+wider than its row, `elastic` spans give way before the end is clipped: the
+widest shortens behind an ellipsis, and once it would keep fewer than 3 cells
+all the elastic spans go. A failure reason after a long path survives this way.
 
 ```ts
 ui.stack.column([

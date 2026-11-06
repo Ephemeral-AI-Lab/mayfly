@@ -40,6 +40,11 @@ export interface MayflyInlineSpan {
   readonly motion?: 'shimmer' | 'loader'
   /** The animation of a `loader` span; `gap` by default. */
   readonly variant?: MayflyLoaderVariant
+  /**
+   * A one-row line wider than its row takes from its elastic spans before it clips its end, so what follows them survives:
+   * the widest shortens behind an ellipsis, and once it would keep fewer than 3 cells all of them go. Wrapping rows ignore it.
+   */
+  readonly elastic?: boolean
 }
 export interface MayflyField { readonly label: string, readonly value: readonly MayflyInlineSpan[] }
 

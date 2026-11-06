@@ -101,7 +101,7 @@ import { SearchInput } from './search-input.ts'
 import { UiLoaderAnimation, type UiAnimationClock } from './ui-loader-animation.ts'
 import { AdmissionRow } from './ui-admission.ts'
 import { BarredScrollView, ScrollRegion, SCROLL_DEFAULT_EXPANDED_HEIGHT, SCROLL_DEFAULT_HEIGHT, type BarredScrollViewOptions, type ScrollMemory } from './ui-scroll-region.ts'
-import { hasMotion, paintMotionSpans } from './ui-motion-text.ts'
+import { fitSpans, hasMotion, paintMotionSpans } from './ui-motion-text.ts'
 import { UiProgressTransitions } from './ui-progress-transition.ts'
 import { untranslated, type UiTranslateValues } from './ui-interaction-locale.ts'
 import { grammarHints, hintNotation, keyGrammar, type EscapeStep, type GrammarControl, type GrammarIntent, type GrammarMatch, type GrammarState, type PromptOperation } from './ui-key-grammar.ts'
@@ -1775,7 +1775,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
       // An animated row is the one row a clock tick repaints: it is not memoized, and it joins the clock while painted.
       countWork(options.counters, 'stringsMeasured')
       const presentation = options.components.presentation
-      const line = paintMotionSpans(node.spans, options.colors, motionFrame(options), { glyphs: presentation?.glyphs, reducedMotion: presentation?.reducedMotion })
+      const line = paintMotionSpans(node.overflow === 'truncate' ? fitSpans(node.spans, width) : node.spans, options.colors, motionFrame(options), { glyphs: presentation?.glyphs, reducedMotion: presentation?.reducedMotion })
       return node.overflow === 'truncate' ? [truncatedRow(line, width, options.components)] : options.components.wrapText(line, Math.max(1, width))
     }, options) : leaf(node, options, paint => contentLeafComponent(node, options, paint))
     case 'stack': {
