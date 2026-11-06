@@ -44,7 +44,7 @@ export function prepareSplitProfile({ root, dshBin, artifacts }) {
 }
 
 /** Wait for the actual Host's authenticated readiness URL; keep credentials in memory only. */
-export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe = false, startup, fixture, workspace, resumeRunDir }) {
+export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe = false, startup, fixture, workspace, resumeRunDir, overlay = [], realtime = false }) {
   const profile = prepareSplitProfile({ root, dshBin, artifacts })
   if (workspace !== undefined) { mkdirSync(workspace, { recursive: true }); profile.cwd = workspace }
   seedSplitNativeWorkspace(profile.cwd, fixture)
@@ -60,7 +60,8 @@ export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe 
     `- id: storage-json\n  config:\n    root: ${JSON.stringify(join(runDir, 'storages'))}`,
     '- id: session-title-llm\n  disabled: true',
     ...(fixture === 'native-agents' ? [`- insert:\n    - id: mayfly-split-agents-fixture\n      name: ${JSON.stringify(new URL('./split-agents-fixture.mjs', import.meta.url).href)}`] : []),
-    `- id: mayfly\n  config:\n    reducedMotion: true\n    updateCheck: false${startup === undefined ? '' : `\n    startup: ${JSON.stringify(startup)}`}`,
+    `- id: mayfly\n  config:\n    reducedMotion: ${String(!realtime)}\n    updateCheck: false${startup === undefined ? '' : `\n    startup: ${JSON.stringify(startup)}`}`,
+    ...overlay,
     ...(probe ? [
       '- id: user-approval\n  config:\n    policy: ask',
       `- insert:\n    - id: mayfly-split-parity-probe\n      name: ${JSON.stringify(new URL('./split-probe.mjs', import.meta.url).href)}`,
@@ -68,7 +69,7 @@ export async function launchSplitHost({ root, dshBin, artifacts, baseURL, probe 
   ].join('\n') + '\n')
   const child = spawn(dshBin, ['--profile', 'mayfly-split-test', '--patch', patch, '--host', '127.0.0.1', '--port', '0', '--no-open'], {
     cwd: profile.cwd,
-    env: { ...profile.env, DEEPSEEK_BASE_URL: `${baseURL}/v1`, MAYFLY_SPLIT_PROBE_LOG: auditLog, MAYFLY_SPLIT_CLOCK_RELEASE: clockRelease, NODE_OPTIONS: `--import=${new URL('./split-clock.mjs', import.meta.url).href}` },
+    env: { ...profile.env, DEEPSEEK_BASE_URL: `${baseURL}/v1`, MAYFLY_SPLIT_PROBE_LOG: auditLog, MAYFLY_SPLIT_CLOCK_RELEASE: clockRelease, ...realtime ? {} : { NODE_OPTIONS: `--import=${new URL('./split-clock.mjs', import.meta.url).href}` } },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let output = ''
