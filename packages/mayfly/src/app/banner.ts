@@ -27,6 +27,7 @@ export class RemoteBannerComponent implements MayflyComponent {
   private identity: unknown
   private session: RemotePresentationFacts['ref']
   private greeting: Pick<RemotePresentationFacts, 'model' | 'provider'> | undefined
+  private composed: { readonly inputs: readonly unknown[], readonly lines: string[] } | undefined
 
   constructor(
     private readonly colors: MayflySemanticColors,
@@ -34,7 +35,7 @@ export class RemoteBannerComponent implements MayflyComponent {
     private readonly facts: () => RemotePresentationFacts,
     private readonly options: RemoteBannerOptions = {},
   ) {
-    this.gutter = new GutterComponent({ render: width => this.compose(width), invalidate: () => {} })
+    this.gutter = new GutterComponent({ render: width => this.compose(width), invalidate: () => { this.composed = undefined } })
   }
 
   render(width: number): string[] {
@@ -60,23 +61,33 @@ export class RemoteBannerComponent implements MayflyComponent {
     }
     const route = current.ref === undefined ? this.greeting : current
     const components = this.options.components?.() ?? this.components
-    const deps = {
-      colors: this.options.colors?.() ?? this.colors,
-      strong: (text: string) => components.strong(text),
-      truncate: (text: string, target: number) => components.truncateToWidth(text, target, '…'),
-      visibleWidth: (text: string) => components.visibleWidth(text),
-      ascii: components.presentation?.glyphs === 'ascii',
-    }
+    const colors = this.options.colors?.() ?? this.colors
     const at = components.presentation?.reducedMotion === true ? undefined : this.options.flyInAt?.()
     const splash = this.options.splash?.()
     if (splash === 'pending') return []
-    if (splash !== undefined) return composeSplashLines(deps, splash, width, this.options.rows?.() ?? 1, at)
-    const rows = composeBannerLines(deps, {
-      version: MAYFLY_VERSION,
-      model: route.model ?? 'default',
-      provider: route.provider ?? 'default',
-      cwd: shortenHome(current.cwd || this.options.directory?.() || 'unknown', this.options.home?.() ?? ''),
-    }, width, at)
-    return ['', ...rows, '']
+    const rows = splash === undefined ? undefined : this.options.rows?.() ?? 1
+    const cwd = splash === undefined ? shortenHome(current.cwd || this.options.directory?.() || 'unknown', this.options.home?.() ?? '') : ''
+    // Every frame renders the banner. Its rows change only with these inputs,
+    // and returning the same rows lets the gutter keep its cached frame too.
+    const ascii = components.presentation?.glyphs === 'ascii'
+    const inputs = [width, components, colors, ascii, at, splash, rows, route.model, route.provider, cwd]
+    if (this.composed !== undefined && inputs.every((input, index) => Object.is(input, this.composed!.inputs[index]))) return this.composed.lines
+    const deps = {
+      colors,
+      strong: (text: string) => components.strong(text),
+      truncate: (text: string, target: number) => components.truncateToWidth(text, target, '…'),
+      visibleWidth: (text: string) => components.visibleWidth(text),
+      ascii,
+    }
+    const lines = splash !== undefined
+      ? composeSplashLines(deps, splash, width, rows!, at)
+      : ['', ...composeBannerLines(deps, {
+        version: MAYFLY_VERSION,
+        model: route.model ?? 'default',
+        provider: route.provider ?? 'default',
+        cwd,
+      }, width, at), '']
+    this.composed = { inputs, lines }
+    return lines
   }
 }

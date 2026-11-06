@@ -142,7 +142,7 @@ export class RemoteNotifications {
       this.timer = running ? setInterval(() => { this.group = (this.group + 1) % HINTS.length; this.refresh() }, 15_000) : undefined
       this.timer?.unref()
     }
-    const facts = this.panelOpen ? undefined : this.current()
+    const facts = this.panelOpen ? undefined : this.current(presentation)
     const shape = JSON.stringify([this.panelOpen, facts])
     if (shape === this.shape) return
     this.shape = shape
@@ -159,8 +159,7 @@ export class RemoteNotifications {
     this.pane.dispose()
   }
 
-  private current(): NotificationRowFacts {
-    const facts = this.presentation()
+  private current(facts = this.presentation()): NotificationRowFacts {
     const notice = visibleNotice(this.ctx.mayflyUiInteraction.notificationSnapshot(), facts.sessionId)
     const base = { ...notice === undefined ? {} : { notice }, ...this.chip === undefined ? {} : { chip: this.chip } }
     if (this.mode !== 'prompt') {

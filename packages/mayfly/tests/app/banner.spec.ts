@@ -43,6 +43,40 @@ function facts(model: string | undefined): RemotePresentationFacts {
 }
 
 describe('RemoteBannerComponent', () => {
+  it('keeps one composed frame while its inputs hold, and recomposes for each input and an invalidation', () => {
+    let current = facts('flash')
+    let glyphs: 'unicode' | 'ascii' = 'unicode'
+    let at: number | undefined
+    const presented = { ...components, get presentation() { return { ...components.presentation!, glyphs } } } as MayflyComponents
+    const banner = new RemoteBannerComponent(colors, presented, () => current, { flyInAt: () => at, home: () => '/home/host' })
+    const first = banner.render(100)
+    // Every frame renders the banner; equal facts return the same rows.
+    current = { ...current, active: true, phase: 'composing' }
+    expect(banner.render(100)).toBe(first)
+    current = { ...current, cwd: '/work/other' }
+    const moved = banner.render(100)
+    expect(moved).not.toBe(first)
+    expect(moved.join('\n')).toContain('/work/other')
+    expect(banner.render(80)).not.toBe(moved)
+    const narrow = banner.render(80)
+    expect(banner.render(80)).toBe(narrow)
+    glyphs = 'ascii'
+    const ascii = banner.render(80)
+    expect(ascii).not.toBe(narrow)
+    expect(plain(ascii).join('\n')).not.toContain('▄')
+    at = 10
+    const flying = banner.render(80)
+    expect(flying).not.toBe(ascii)
+    at = 20
+    expect(banner.render(80)).not.toBe(flying)
+    at = undefined
+    const rest = banner.render(80)
+    banner.invalidate()
+    const recomposed = banner.render(80)
+    expect(recomposed).not.toBe(rest)
+    expect(recomposed).toEqual(rest)
+  })
+
   it('keeps the sessionless greeting route across default picks and renderer invalidation, then follows native Session routes', () => {
     let current: RemotePresentationFacts = { ...facts('flash'), ref: undefined }
     const banner = new RemoteBannerComponent(colors, components, () => current)

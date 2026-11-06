@@ -110,7 +110,7 @@ export class RemoteSessionFactsSource {
         this.publish()
       }
       this.subscriptions = [
-        binding.session.subscribe(changed),
+        subscribeSessionChanges(binding.session, changed),
         ...REMOTE_SESSION_PROJECTION_KEYS.map(key => binding.session.projections.faceOf(key).subscribe(changed)),
       ]
     }
@@ -197,4 +197,37 @@ function readMessageText(content: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** The Client Session surface a change subscription reads. */
+type SessionSnapshotSource = Pick<SessionBinding['session'], 'getSnapshot' | 'subscribe'>
+
+/**
+ * Whether two Session snapshots hold the same value in every field.
+ * @param left - the snapshot last observed.
+ * @param right - the snapshot just published.
+ * @returns true when each field is identical, so the snapshot says nothing new.
+ */
+export function sameSessionSnapshot(left: SessionSnapshot, right: SessionSnapshot): boolean {
+  if (left === right) return true
+  const keys = Object.keys(right) as (keyof SessionSnapshot)[]
+  return keys.length === Object.keys(left).length && keys.every(key => Object.is(left[key], right[key]))
+}
+
+/**
+ * Subscribe to a Client Session's snapshot changes. The official Client
+ * publishes a fresh, field-identical snapshot with every event-window change,
+ * once per streamed chunk; only a snapshot that differs reaches the listener.
+ * @param session - the official Client Session.
+ * @param listener - called after a snapshot that changed a field.
+ * @returns the unsubscribe function.
+ */
+export function subscribeSessionChanges(session: SessionSnapshotSource, listener: () => void): () => void {
+  let last = session.getSnapshot()
+  return session.subscribe(() => {
+    const next = session.getSnapshot()
+    if (sameSessionSnapshot(last, next)) return
+    last = next
+    listener()
+  })
 }

@@ -884,3 +884,40 @@ describe('hidden native conversation views', () => {
     expect(publish).not.toHaveBeenCalled()
   })
 })
+
+describe('streamed chunk presentation', () => {
+  it('re-reads the footer and prompt facts for a live phase change, never for each chunk of one phase', () => {
+    const events = new TestEventSource()
+    // The Host projection holds no transient chunk, so a chunk changes only the event window.
+    const durable = projection<ConversationProjection>(foldConversation([turn(1, 1), user('question', 2)]))
+    const publish = vi.fn()
+    const onPresentation = vi.fn()
+    const source = new RemoteConversationModelSource(tools, publish, { onPresentation })
+    source.attach(events.binding({ mayflyConversation: durable, contextPressure: projection<unknown>(undefined) }))
+    events.append(turn(1, 1))
+    events.append(user('question', 2))
+    onPresentation.mockClear(); publish.mockClear()
+    const reasoning = (text: string, seq: number) => {
+      const chunk = live(text, 1, seq, 0)
+      return { ...chunk, event: { ...chunk.event, data: { ...chunk.event.data, chunk: { type: 'reasoning-delta' as const, index: 0, text } } } }
+    }
+    events.append(reasoning('Let me', 3))
+    expect(onPresentation).toHaveBeenCalledOnce()
+    expect(source.presentation()).toMatchObject({ active: true, phase: 'thinking' })
+    for (let seq = 4; seq < 24; seq += 1) events.append(reasoning(' think', seq))
+    expect(onPresentation).toHaveBeenCalledOnce()
+    expect(publish).toHaveBeenCalledTimes(21)
+    events.append(live('Hello', 1, 24, 1))
+    expect(onPresentation).toHaveBeenCalledTimes(2)
+    expect(source.presentation().phase).toBe('composing')
+    for (let seq = 25; seq < 45; seq += 1) events.append(live(' world', 1, seq, 1))
+    expect(onPresentation).toHaveBeenCalledTimes(2)
+    expect(source.snapshot().live?.entries.find(entry => entry.kind === 'transcript-assistant')).toMatchObject({ text: `Hello${' world'.repeat(20)}` })
+    // A durable event in the window, such as an admitted request, is presentation input.
+    events.append(requestHeader('provider', 'model', 'high', 45))
+    expect(onPresentation).toHaveBeenCalledTimes(3)
+    events.settleAssistant('attempt-1' as LlmAttemptId, assistant(`Hello${' world'.repeat(20)}`, 1, 46))
+    expect(onPresentation).toHaveBeenCalledTimes(4)
+    source.dispose()
+  })
+})

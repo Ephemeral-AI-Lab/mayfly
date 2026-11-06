@@ -12,6 +12,7 @@ import { resumedSessionMessage } from '../../transcript/resume-notice.ts'
 import { STATUS_TIPS } from '../../transcript/tips-content.ts'
 import { type MayflyDecisionWait } from '../../core/types.ts'
 import { contextPercent } from '../../transcript/status-context-model.ts'
+import { subscribeSessionChanges } from '../../hosts/session-facts.ts'
 import type { RemoteFeatureContext } from '../features.ts'
 import { ActivityRow as RemoteActivityRow, type ActivityPhase as RemoteActivityPhase } from '../../components/activity-row.ts'
 import {
@@ -75,6 +76,7 @@ class RemoteActivityController {
   private retrying: ConversationFacts['retrying'] | undefined
   private readonly timer: ReturnType<typeof setInterval>
   private disposed = false
+  private rowShape: string | undefined
 
   constructor(options: RemoteFeatureContext) {
     this.options = options
@@ -167,7 +169,7 @@ class RemoteActivityController {
         facts.subscribe(update),
         questions.subscribe(update),
         pressure.subscribe(update),
-        current.binding.session.subscribe(update),
+        subscribeSessionChanges(current.binding.session, update),
       ]
       update()
       const key = `${current.ref.host}\0${current.ref.sessionId}`
@@ -202,7 +204,7 @@ class RemoteActivityController {
     const waiting = this.waiting || this.decision !== undefined
     if ((!this.activity.active && !waiting) || (this.dialog && this.decision === undefined && !this.waiting)) {
       this.live = false
-      this.activityPane.set(null)
+      this.setRow(null)
       return
     }
     if (!this.live || this.activity.turn !== this.turn) this.nextTip()
@@ -224,14 +226,22 @@ class RemoteActivityController {
       ? [...new Set(this.activity.inFlight.flatMap(call => call.preparing === true || call.detail === undefined || call.detail === '' ? [] : [call.detail]))]
       : []
     const info = details.length === 0 ? undefined : `${details.slice(0, 3).join(' · ')}${details.length > 3 ? ` ${this.t('+{count} more', { count: details.length - 3 })}` : ''}`
-    this.activityPane.set(RemoteActivityRow({
+    this.setRow({
       phase,
       label: this.t(stage?.label ?? flight.key, 'values' in flight ? flight.values : undefined),
       ...stage === undefined ? {} : { labelTone: stage.tone, labelStrong: stage.strong },
       tail,
       ...info === undefined ? {} : { info },
       ...info === undefined ? { tip: `${this.t('Tip: ')}${this.t(this.tip)}` } : {},
-    }))
+    })
+  }
+
+  /** Publish the row unless it equals the published one: every publish recompiles the bottom lane. */
+  private setRow(row: Parameters<typeof RemoteActivityRow>[0] | null): void {
+    const shape = JSON.stringify(row)
+    if (shape === this.rowShape) return
+    this.rowShape = shape
+    this.activityPane.set(row === null ? null : RemoteActivityRow(row))
   }
 
   /** Report or withdraw the retry countdown; the 1s tick keeps the remaining seconds current. */

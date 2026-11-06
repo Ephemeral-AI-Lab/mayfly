@@ -89,6 +89,27 @@ describe('mountRemoteEditor', () => {
     handle.dispose()
   })
 
+  it('reads the presentation facts once per refresh for the notification row, the frame and the footer', async () => {
+    const { ctx, screen, components } = await fixture()
+    let title = 'First title'
+    const presentation = vi.fn(() => ({ title, running: true, slashHint: '/help' }))
+    const handle = mountRemoteEditor(ctx, screen, components, colors, { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }, presentation)
+    const dock = vi.mocked(screen.mountDockSlot).mock.calls[0]![1]!
+    expect(dock.render(80).join('\n')).toContain('First title')
+    presentation.mockClear()
+    handle.refresh()
+    expect(presentation).toHaveBeenCalledOnce()
+    title = 'Second title'
+    handle.refresh()
+    expect(presentation).toHaveBeenCalledTimes(2)
+    expect(dock.render(80).join('\n')).toContain('Second title')
+    // Outside a refresh, every read sees the current facts.
+    title = 'Third title'
+    handle.extensions.refreshPresentation()
+    expect(dock.render(80).join('\n')).toContain('Third title')
+    handle.dispose()
+  })
+
   it('submits trimmed text and keeps the original entry in local history', async () => {
     const { ctx, editor, screen, components } = await fixture()
     const actions = { submit: vi.fn(), onError: vi.fn(), cancel: vi.fn(), exit: vi.fn() }
