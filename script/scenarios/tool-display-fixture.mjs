@@ -76,6 +76,8 @@ const GOAL = [
   { calls: [['bash', { command: 'sleep 3 && echo "Tests  42 passed"', description: 'Run the tests' }]] },
   { calls: [['mcp__github__create_issue', { title: 'Release notes', teamId: 'ENG', description: 'Draft the notes for 0.1.5 and link every merged change.', labels: ['docs'], draft: true }]] },
   { say: 'The github token has expired, so the issue is not filed. The notes and tests are ready.', pace: 30 },
+  { calls: [['update_goal', { goal_id: '@goal', revision: '@goal', action: 'complete' }]] },
+  { say: 'The goal is complete.', pace: 30 },
 ]
 
 /** A run that outlives its call: its job is what `x` stops in the Workflow view. */
@@ -90,6 +92,14 @@ return await Promise.all([agent('demo:child:40000 Scan.', { label: 'scan the loc
 const SCRIPTS = { session: SESSION, goal: GOAL, background: BACKGROUND }
 
 const textOf = message => JSON.stringify(message.content ?? '')
+
+/** The goal `create_goal` answered with, whose exact id and revision `update_goal` must name. */
+function goalOf(messages) {
+  const text = messages.map(textOf).filter(value => value.includes('tool_result')).join('\n')
+  const id = /"id\\*":\s*\\*"([^"\\]+)/u.exec(text)?.[1]
+  const revision = /"revision\\*":\s*(\d+)/u.exec(text)?.[1]
+  return { goal_id: id ?? 'unknown', revision: revision === undefined ? 1 : Number(revision) }
+}
 
 /** The id of the first job a tool answered with, so `job_kill` names the job the demo really started. */
 function firstJobId(messages) {
@@ -125,7 +135,8 @@ export function toolDisplayInstruction(body, stubURL) {
   const missing = [...new Set(SCRIPTS[name].flatMap(each => each.calls ?? []).map(([tool]) => tool))].filter(tool => !offered.has(tool))
   const closing = position === steps.length - 1 && missing.length > 0 ? ` This preset does not offer ${missing.join(', ')}.` : ''
   const jobId = firstJobId(messages)
-  const resolved = input => input.job_id === '@first-job' ? { job_id: jobId ?? 'unknown' } : typeof input.url === 'string' ? { ...input, url: input.url.replace('@stub', stubURL) } : input
+  const goal = goalOf(messages)
+  const resolved = input => input.goal_id === '@goal' ? { ...input, ...goal } : input.job_id === '@first-job' ? { job_id: jobId ?? 'unknown' } : typeof input.url === 'string' ? { ...input, url: input.url.replace('@stub', stubURL) } : input
   return {
     ...step,
     ...(step.say === undefined ? {} : { say: `${step.say}${closing}` }),

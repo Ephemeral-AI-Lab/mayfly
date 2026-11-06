@@ -8,7 +8,7 @@ import { test } from 'node:test'
 import { seedToolDisplayWorkspace, toolDisplayInstruction } from '../scenarios/tool-display-fixture.mjs'
 
 const STUB = 'http://127.0.0.1:1'
-const ALL = ['todo_write', 'read', 'grep', 'glob', 'mcp__github__search_issues', 'mcp__github__get_issue', 'mcp__linear__search_issues', 'mcp__browser__screenshot', 'web_search', 'web_fetch', 'read_image', 'edit', 'apply_patch', 'write', 'bash', 'run_code', 'job_list', 'subagent', 'workflow', 'job_kill', 'create_goal', 'mcp__github__create_issue']
+const ALL = ['update_goal', 'todo_write', 'read', 'grep', 'glob', 'mcp__github__search_issues', 'mcp__github__get_issue', 'mcp__linear__search_issues', 'mcp__browser__screenshot', 'web_search', 'web_fetch', 'read_image', 'edit', 'apply_patch', 'write', 'bash', 'run_code', 'job_list', 'subagent', 'workflow', 'job_kill', 'create_goal', 'mcp__github__create_issue']
 const tools = names => names.map(name => ({ name }))
 const user = text => ({ role: 'user', content: text })
 const assistant = { role: 'assistant', content: [{ type: 'text', text: 'step' }] }
@@ -76,6 +76,9 @@ test('a child does as its own prompt says', () => {
 
 test('the goal script runs on its own', () => {
   assert.equal(toolDisplayInstruction({ tools: tools(ALL), messages: after('demo:goal', 0) }, STUB).calls[0][0], 'create_goal')
+  assert.deepEqual(toolDisplayInstruction({ tools: tools(ALL), messages: after('demo:goal', 5) }, STUB).calls[0], ['update_goal', { goal_id: 'unknown', revision: 1, action: 'complete' }])
+  const created = [...after('demo:goal', 1), { role: 'user', content: [{ type: 'tool_result', content: '{"goal":{"id":"goal-7","revision":3}}' }] }, ...after('demo:goal', 4).slice(1)]
+  assert.deepEqual(toolDisplayInstruction({ tools: tools(ALL), messages: created }, STUB).calls[0], ['update_goal', { goal_id: 'goal-7', revision: 3, action: 'complete' }])
   assert.equal(toolDisplayInstruction({ tools: tools(ALL), messages: after('demo:goal', 99) }, STUB).say, 'The demo script has finished.')
 })
 
