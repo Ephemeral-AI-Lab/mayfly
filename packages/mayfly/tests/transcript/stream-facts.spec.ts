@@ -675,3 +675,16 @@ describe('StreamFacts: what a view owns', () => {
     expect(rows.filter(row => row.kind === 'tool')).toMatchObject([{ state: 'error', outcome: 'failed' }])
   })
 })
+
+describe('the Session\'s directory', () => {
+  it('shows a call\'s path against it, in a run and in a block, and leaves one elsewhere whole', () => {
+    const read = (id: string, path: string): TranscriptEntryModel => ({
+      kind: 'transcript-read-group', id, seq: 1, updatedSeq: 1, turn: 1, step: 1,
+      reads: [{ callId: id, activity: 'read', detail: path, seq: 1, updatedSeq: 1, turn: 1, step: 1, name: 'read', startedAt: 0, endedAt: 1, path, state: 'ok' }],
+    })
+    const model = createTranscriptModel('spec', [read('a', '/work/src/a.ts')], false, 0, [{ turn: 1, startedAt: 0, endedAt: 1 }])
+    const row = (more: Partial<StreamInputs>) => new StreamFacts().build(model, inputs({ policy: { ...DEFAULT_TRANSCRIPT_PRESENTATION, mode: 'verbose', process: PROCESS_POLICIES.verbose }, ...more })).turns[0]!.rows.find(each => each.kind === 'tool')
+    expect(row({ cwd: '/work' })).toMatchObject({ target: 'src/a.ts' })
+    expect(row({})).toMatchObject({ target: '/work/src/a.ts' })
+  })
+})

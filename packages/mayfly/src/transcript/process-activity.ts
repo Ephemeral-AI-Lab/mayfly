@@ -34,6 +34,7 @@ export function toolActivity(name: string, call?: ToolCallView, result?: ToolRes
   if (name === 'run_code') return 'code'
   if (name === 'web_search') return 'webSearch'
   if (name === 'web_fetch') return 'webFetch'
+  if (name === 'skill') return 'skill'
   if (isSpawnToolName(name)) return 'subagents'
   if (name === 'workflow') return 'workflow'
   if (name.startsWith('job_')) return 'jobs'
@@ -152,7 +153,15 @@ export const PROCESS_DONE_ZH: Readonly<Record<string, string>> = {
   ' · Ctrl+O': ' · 按 Ctrl+O',
   '{count} line': '{count} 行',
   '{count} lines': '{count} 行',
-  '{shown} of {total} lines': '{total} 行中的 {shown} 行',
+  '{first}-{last} of {total}': '{first}-{last} 行，共 {total} 行',
+  '{pattern} in {path}': '{path} 中的 {pattern}',
+  'include {glob}': '包含 {glob}',
+  'cwd {path}': '目录 {path}',
+  'background': '后台',
+  'created': '新建',
+  'Loading skills': '正在加载技能',
+  '{count} skill': '{count} 个技能',
+  '{count} skills': '{count} 个技能',
   '{count} file': '{count} 个文件',
   '{count} files': '{count} 个文件',
   '{matches} in {files}': '{matches}，分布在 {files}',

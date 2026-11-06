@@ -47,9 +47,184 @@ const callOf = (entry: TranscriptEntryModel) => callsOf(entry, t, NOW)[0]!
 /** A verbose block, narrowed to its tool row. */
 const toolRow = (call: ReturnType<typeof callOf>, open: boolean) => verboseRow(call, open, t, 'verbose') as Extract<StreamRow, { kind: 'tool' }>
 
+describe('the facts each built-in tool reports', () => {
+  const cwd = { asked: new Map(), decided: new Map(), cwd: '/work' }
+  const under = (entry: TranscriptEntryModel) => callsOf(entry, t, NOW, cwd)[0]!
+
+  it('gives a read its window, and a whole file its lines', () => {
+    expect(callOf(readGroup({ range: { first: 120, last: 127 }, totalLines: 187 }))).toMatchObject({ outcome: ['120-127 of 187'], lines: 8 })
+    expect(callOf(readGroup({ range: { first: 1, last: 38 }, totalLines: 38 }))).toMatchObject({ outcome: ['38 lines'] })
+  })
+
+  it('gives an image read its format and sizes, and its failure its reason', () => {
+    const image = { mediaType: 'image/png', width: 1280, height: 720, bytes: 2048 }
+    expect(callOf(readGroup({ name: 'read_image', activity: 'readImage', image }))).toMatchObject({ name: 'ReadImage', outcome: ['png', '1280×720', '2 KB'] })
+    expect(callOf(readGroup({ name: 'read_image', activity: 'readImage', image, state: 'error', error: 'too large' }))).toMatchObject({ outcome: ['too large'] })
+  })
+
+  it('shows a path under the Session against it, and one elsewhere whole', () => {
+    expect(under(readGroup({ path: '/work/src/a.ts' }))).toMatchObject({ target: 'src/a.ts' })
+    expect(under(readGroup({ path: '/workshop/a.ts' }))).toMatchObject({ target: '/workshop/a.ts' })
+    expect(under(readGroup({ path: '/work\\a.ts' }))).toMatchObject({ target: 'a.ts' })
+    expect(callsOf(readGroup({ path: '/work/a.ts' }), t, NOW, { ...cwd, cwd: '' })[0]).toMatchObject({ target: '/work/a.ts' })
+    expect(under(tool({ name: 'edit', activity: 'edit', family: 'edit', change: { path: '/work/src/a.ts', added: 1, removed: 0, hunks: [], hiddenLines: 0 } }))).toMatchObject({ target: 'src/a.ts' })
+  })
+
+  it('gives a failure its reason without the thrower\'s prefix or the Session\'s directory', () => {
+    const message = 'Error: cannot read "/work/src/missing.ts": no such file'
+    const shown = 'cannot read "src/missing.ts": no such file'
+    expect(under(readGroup({ state: 'error', error: message }))).toMatchObject({ outcome: [shown] })
+    expect(under(searchGroup({ name: 'grep', pattern: 'x', state: 'error', error: message }))).toMatchObject({ outcome: [shown] })
+    expect(under(commandGroup({ state: 'error', error: message }))).toMatchObject({ outcome: [shown, undefined] })
+    expect(under(tool({ name: 'edit', activity: 'edit', family: 'edit', detail: 'a', result: { text: message, isError: true, endedAt: 1 } }))).toMatchObject({ outcome: [shown] })
+    expect(under(tool({ name: 'apply_patch', activity: 'edit', family: 'edit', detail: 'a', result: { text: message, isError: true, endedAt: 1 } }))).toMatchObject({ outcome: [shown] })
+    expect(under(tool({ name: 'mcp__a__b', activity: 'tools', family: 'other', detail: 'a', result: { text: message, isError: true, endedAt: 1_000 } }))).toMatchObject({ outcome: [shown, '1s'] })
+    // With no Session's directory only the prefix goes, and a reason of no words stays absent.
+    expect(callOf(readGroup({ state: 'error', error: 'Error: /work/x' }))).toMatchObject({ outcome: ['/work/x'] })
+    expect(callOf(readGroup({ state: 'error' })).outcome).toEqual([undefined])
+  })
+
+  it('gives a grep its scope in the target and its filter in the block, and a glob its pattern unquoted', () => {
+    const grep = under(searchGroup({ name: 'grep', pattern: 'onSelect', scope: '/work/src', include: '*.ts' }))
+    expect(grep).toMatchObject({ target: '"onSelect" in src', args: 'include *.ts' })
+    expect(toolRow(grep, false)).toMatchObject({ args: 'include *.ts' })
+    expect(callOf(searchGroup({ name: 'glob', pattern: '**/*.ts' }))).toMatchObject({ target: '**/*.ts' })
+    // A failed search has only its reason.
+    expect(toolRow(callOf(searchGroup({ name: 'grep', pattern: 'x', include: '*.ts', state: 'error', error: 'bad' })), false)).not.toHaveProperty('args')
+  })
+
+  it('opens a command with what it is for and where it ran, at the verbose tier only', () => {
+    const lone = callOf(tool({ terminal: { command: 'pnpm lint', description: 'Lint\nthe ui', cwd: 'packages/ui', output: 'ok' } }))
+    expect(lone.args).toBe('# Lint · cwd packages/ui')
+    expect(toolRow(lone, false)).toMatchObject({ args: '# Lint · cwd packages/ui', body: [{ text: 'ok' }] })
+    expect(verboseRow(lone, false, t, 'standard')).not.toHaveProperty('args')
+    expect(callOf(commandGroup({ description: 'Build' }))).toMatchObject({ args: '# Build' })
+    expect(callOf(commandGroup({ cwd: 'src' }))).toMatchObject({ args: 'cwd src' })
+    expect(callOf(commandGroup({ description: '' }))).not.toHaveProperty('args')
+    // A call in flight shows what it runs, not what it said about it.
+    expect(toolRow(callOf(tool({ terminal: { command: 'sleep 9', description: 'Wait' }, result: undefined })), false)).not.toHaveProperty('args')
+    // An opened call with nothing to show has an empty body; a patch that names no file says nothing of files.
+    const [bare, other] = [callOf(commandGroup({})), callOf(commandGroup({}))]
+    expect(standardRow([bare!, other!], t, NOW, new Set([bare!.id]))).toMatchObject({ items: [{}, {}] })
+    expect(callOf(tool({ name: 'apply_patch', activity: 'edit', family: 'other', detail: 'x', arguments: '{}' })).outcome).toEqual([])
+    // An opened call of a run carries it under its line.
+    const [first, second] = [callOf(commandGroup({ description: 'Build', previewLines: ['done'] })), callOf(commandGroup({}))]
+    const run = standardRow([first!, second!], t, NOW, new Set([first!.id]))
+    expect(run).toMatchObject({ items: [{ body: [{ text: '# Build', tone: 'muted' }, { text: 'done' }] }, {}] })
+  })
+
+  it('shows a command in the background by its command and purpose, and leaves the rest to its job', () => {
+    const entry = (result: Record<string, unknown>) => tool({ family: 'other', detail: 'Start the dev server', execute: { input: 'pnpm dev\nwait', note: 'Start the dev server' }, result: { text: 'started', isError: false, endedAt: 900, ...result } })
+    const call = callOf(entry({}))
+    expect(call).toMatchObject({ name: 'Bash', target: 'pnpm dev …', outcome: ['background'], args: '# Start the dev server' })
+    expect(call.body()).toEqual({ rows: [], total: 0 })
+    const failed = callOf(entry({ text: 'no jobs here', isError: true }))
+    expect(failed).toMatchObject({ state: 'error', outcome: ['no jobs here', '0.9s'] })
+    expect(failed.body().rows).toEqual([{ text: 'no jobs here' }])
+  })
+
+  it('opens a code run as its code and what it printed, each within half the block', () => {
+    const code = Array.from({ length: 8 }, (_, index) => `line${String(index)}()`).join('\n')
+    const run = tool({ name: 'run_code', activity: 'code', family: 'other', detail: 'Count the sites', arguments: JSON.stringify({ code }), result: { text: lines(5, 'out'), isError: false, endedAt: 1_000 } })
+    const call = callOf(run)
+    expect(call).toMatchObject({ name: 'RunCode', target: 'Count the sites', outcome: ['1s'] })
+    expect(toolRow(call, false).body).toEqual([
+      { text: 'code', tone: 'muted' },
+      { lead: ' 1', text: 'line0()' }, { lead: ' 2', text: 'line1()' }, { lead: ' 3', text: 'line2()' },
+      { lead: ' ', text: '… +5 more · Ctrl+O', tone: 'muted' },
+      { text: 'output', tone: 'muted' },
+      { lead: ' ', text: 'out 1' }, { lead: ' ', text: 'out 2' }, { lead: ' ', text: 'out 3' },
+      { lead: ' ', text: '… +2 more · Ctrl+O', tone: 'muted' },
+    ])
+    expect(toolRow(call, true).body).toHaveLength(15)
+    expect(verboseRow(call, false, t, 'standard')).not.toHaveProperty('body')
+    // While it runs, its code is its input; a run whose arguments still stream has what has come.
+    const running = callOf(tool({ name: 'run_code', activity: 'code', family: 'other', detail: 'x', arguments: JSON.stringify({ code }), result: undefined }))
+    expect(running).not.toHaveProperty('sections')
+    expect(running.input().total).toBe(8)
+    expect(verboseRow(running, false, t, 'standard')).toMatchObject({ body: [{ text: 'line0()' }, {}, {}], more: '… +5 more · Ctrl+O' })
+    expect(callOf(tool({ name: 'run_code', activity: 'code', family: 'other', detail: 'x', preparing: { characters: 9 }, arguments: '{"code":"a()\\nb(', result: undefined })).input().rows).toEqual([{ text: 'a()' }, { text: 'b(' }])
+  })
+
+  it('marks a new file, and a loaded skill has its name and no body until it fails', () => {
+    const write = (created: boolean) => tool({ name: 'write', activity: 'write', family: 'edit', change: { path: 'a.ts', added: 2, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 12, lines: 2, head: ['a', 'b'], created } } })
+    expect(callOf(write(true))).toMatchObject({ outcome: ['created', '2 lines', '12 B'] })
+    expect(callOf(write(false))).toMatchObject({ outcome: ['2 lines', '12 B'] })
+    const skill = callOf(tool({ name: 'skill', activity: 'skill', family: 'other', detail: 'reviewer', result: { text: 'the whole skill', isError: false, endedAt: 300 } }))
+    expect(skill).toMatchObject({ name: 'Skill', target: 'reviewer', label: 'reviewer' })
+    expect(skill.body()).toEqual({ rows: [], total: 0 })
+    expect(callOf(tool({ name: 'skill', activity: 'skill', family: 'other', detail: 'gone', result: { text: 'unknown skill', isError: true, endedAt: 300 } })).body().rows).toEqual([{ text: 'unknown skill' }])
+  })
+})
+
+describe('a patch', () => {
+  const FILES = [
+    { kind: 'M', path: '/work/src/list.ts', added: 1, removed: 1, hunks: [{ before: 'a', after: 'b' }], hiddenLines: 0 },
+    { kind: 'A', path: 'src/reorder.ts', added: 3, removed: 0, hunks: [{ before: '', after: 'x\ny\nz' }], hiddenLines: 2 },
+    { kind: 'D', path: 'src/legacy.md', added: 0, removed: 1, hunks: [{ before: 'old', after: '' }], hiddenLines: 0 },
+    { kind: 'R', path: 'src/menu.ts', from: 'src/menu-old.ts', added: 0, removed: 0, hunks: [], hiddenLines: 0 },
+  ]
+  const patch = (overrides: Record<string, unknown> = {}) => tool({ name: 'apply_patch', activity: 'edit', family: 'edit', detail: 'apply_patch', change: { path: FILES[0]!.path, added: 4, removed: 2, hunks: [], hiddenLines: 2, files: FILES }, ...overrides })
+  const cwd = { asked: new Map(), decided: new Map(), cwd: '/work' }
+
+  it('reads as its files and the diffstat over them, a tree at the standard tier', () => {
+    const call = callsOf(patch(), t, NOW, cwd)[0]!
+    expect(call).toMatchObject({ name: 'ApplyPatch', label: 'ApplyPatch', outcome: ['4 files'], state: 'ok' })
+    expect(call).not.toHaveProperty('target')
+    expect(verboseRow(call, false, t, 'standard', '/work')).toMatchObject({
+      stat: { added: 4, removed: 2 }, filesTree: true,
+      files: [
+        { kind: 'M', path: 'src/list.ts', stat: { added: 1, removed: 1 } },
+        { kind: 'A', path: 'src/reorder.ts' },
+        { kind: 'D', path: 'src/legacy.md' },
+        { kind: 'R', path: 'src/menu-old.ts → src/menu.ts' },
+      ],
+    })
+    expect(standardRow([call], t, NOW, undefined, '/work')).toMatchObject({ filesTree: true })
+    expect(standardRow([call], t, NOW, new Set([call.id]), '/work')).toMatchObject({ filesTree: false })
+  })
+
+  it('opens each file with its diff within the block\'s rows, and counts what it leaves out', () => {
+    const call = callsOf(patch(), t, NOW, cwd)[0]!
+    const closed = verboseRow(call, false, t, 'verbose', '/work') as Extract<StreamRow, { kind: 'tool' }>
+    expect(closed.filesTree).toBe(false)
+    expect(closed.files?.[0]?.diff?.[0]).toMatchObject({ before: 'a', after: 'b', language: 'typescript' })
+    expect(closed.files?.[2]?.diff?.[0]).toMatchObject({ before: 'old', after: '', language: 'markdown' })
+    // Only the rows that were cut from the patch's hunks are out here.
+    expect(closed.more).toBe('… +2 rows · Ctrl+O')
+    const tight = tool({ name: 'apply_patch', activity: 'edit', family: 'edit', detail: 'x', change: { path: 'a', added: 40, removed: 0, hiddenLines: 0, hunks: [], files: [{ kind: 'A', path: 'a', added: 40, removed: 0, hiddenLines: 0, hunks: [{ before: '', after: lines(40) }] }, { kind: 'A', path: 'b', added: 1, removed: 0, hiddenLines: 0, hunks: [{ before: '', after: 'one' }] }] } })
+    const cut = verboseRow(callOf(tight), false, t, 'verbose') as Extract<StreamRow, { kind: 'tool' }>
+    expect(cut.files?.[0]?.diff?.[0]?.maxRows).toBe(11)
+    expect(cut.files?.[1]).not.toHaveProperty('diff')
+    expect(cut.more).toBe('… +30 rows · Ctrl+O')
+    expect((verboseRow(callOf(tight), true, t, 'verbose') as Extract<StreamRow, { kind: 'tool' }>).more).toBe('… +2 rows')
+  })
+
+  it('fills in its files while the model writes them, with no counts, and has none at the compact tier', () => {
+    const arguments_ = JSON.stringify({ input: '*** Begin Patch\n*** Add File: src/a.ts\n+x\n*** Delete File: b.ts' }).slice(0, -2)
+    const call = callOf(tool({ name: 'apply_patch', activity: 'edit', family: 'edit', detail: 'x', preparing: { characters: 9 }, arguments: arguments_, result: undefined }))
+    expect(call).toMatchObject({ phase: 'preparing', state: 'pending', outcome: [] })
+    expect(verboseRow(call, false, t, 'standard')).toMatchObject({ filesTree: false, files: [{ kind: 'A', path: 'src/a.ts' }, { kind: 'D', path: 'b.ts' }] })
+    expect((verboseRow(call, false, t, 'standard') as Extract<StreamRow, { kind: 'tool' }>).files?.[0]).not.toHaveProperty('stat')
+    expect(verboseRow(call, false, t, 'compact')).not.toHaveProperty('files')
+    // Nothing named yet: no file facts at all.
+    expect(callOf(tool({ name: 'apply_patch', activity: 'edit', family: 'edit', detail: 'x', preparing: { characters: 1 }, arguments: '{', result: undefined }))).not.toHaveProperty('patch')
+  })
+
+  it('shows all of itself to a request, and a failure or a stop by what the Harness said', () => {
+    const waiting = callsOf(tool({ name: 'apply_patch', activity: 'edit', family: 'edit', detail: 'x', arguments: JSON.stringify({ input: '*** Add File: a\n+x' }), result: undefined }), t, NOW, { asked: new Map([[`c${String(seq)}`, { type: 'approval', index: 1, total: 1 }]]), decided: new Map() })[0]!
+    expect(verboseRow(waiting, false, t, 'compact')).toMatchObject({ state: 'waiting', stat: { added: 1, removed: 0 }, filesTree: false, files: [{ kind: 'A', path: 'a', diff: [{}] }] })
+    const stopped = callOf(tool({ name: 'apply_patch', activity: 'edit', family: 'edit', detail: 'x', result: { text: 'Patch stopped after 1 of 2 operations.\nCompleted:\nA a', isError: true, endedAt: 500 } }))
+    expect(stopped).toMatchObject({ state: 'error', outcome: ['Patch stopped after 1 of 2 operations.'] })
+    expect(toolRow(stopped, false)).toMatchObject({ body: [{ text: 'Patch stopped after 1 of 2 operations.' }, { text: 'Completed:' }, { text: 'A a' }] })
+    const cut = callOf(tool({ name: 'apply_patch', activity: 'edit', family: 'edit', detail: 'x', result: { text: 'aborted', isError: true, endedAt: 500, interruption: 'aborted' } }))
+    expect(cut).toMatchObject({ state: 'cancelled', outcome: ['interrupted'], interruption: 'aborted' })
+  })
+})
+
 describe('tool calls at the three tiers', () => {
   it('names each tool kind by its own name, with its target and outcome', () => {
-    expect(callOf(readGroup({ range: { first: 1, last: 100 }, totalLines: 342 }))).toMatchObject({ name: 'Read', target: 'src/a.ts', outcome: ['100 of 342 lines'] })
+    expect(callOf(readGroup({ range: { first: 1, last: 100 }, totalLines: 342 }))).toMatchObject({ name: 'Read', target: 'src/a.ts', outcome: ['1-100 of 342'] })
     expect(callOf(searchGroup({ name: 'grep', shape: 'matches', pattern: 'foo', total: 3, files: [{ path: 'a.ts', count: 2, previews: [] }, { path: 'b.ts', count: 1, previews: [] }] })))
       .toMatchObject({ name: 'Grep', target: '"foo"', outcome: ['3 matches in 2 files'] })
     expect(callOf(searchGroup({ name: 'glob', detail: '**/*.ts', shape: 'paths', pathsTotal: 0, paths: [] }))).toMatchObject({ name: 'Glob', target: '**/*.ts', outcome: ['no matches'] })
@@ -232,7 +407,7 @@ describe('read and search calls', () => {
 describe('command groups', () => {
   it('gives a command the lines it was given as its input, and a one-line command none', () => {
     const several = callOf(commandGroup({ command: 'cd a …', commandLines: ['cd a', 'make'] }))
-    expect(several.input()).toEqual({ rows: [{ text: 'cd a' }, { text: 'make' }], total: 2 })
+    expect(several.input()).toEqual({ rows: [{ text: 'cd a', lead: '$' }, { text: 'make', lead: ' ' }], total: 2 })
     expect(several.inputIsTarget).toBe(true)
     const single = callOf(commandGroup({}))
     expect(single.input()).toEqual({ rows: [], total: 0 })

@@ -88,6 +88,8 @@ export interface StreamInputs {
   readonly approvals?: readonly ApprovalMark[]
   /** The children the displayed conversation spawned, which a spawn's line follows. */
   readonly children?: SpawnedChildren
+  /** The displayed Session's working directory, which a path under it is shown against. */
+  readonly cwd?: string
   /** The context occupancy around each recent compaction, for its bar. */
   readonly compactions?: readonly CompactionMark[]
   /** The selected Agent's context window and occupancy, for a compaction whose marks have not landed. */
@@ -288,7 +290,7 @@ export class StreamFacts {
     this.reached = reach
     const runnable = new Set<string>()
     for (const entry of entries) if (isSemantic(entry) && isToolLike(entry) && !isUnmerged(entry)) runnable.add(entry.id)
-    const asked = requestOf(inputs.requests, inputs.approvals, inputs.children)
+    const asked = { ...requestOf(inputs.requests, inputs.approvals, inputs.children), ...inputs.cwd === undefined ? {} : { cwd: inputs.cwd } }
     const display = buildDisplay({
       entries: [...entries, ...liveEntries],
       policy: policy.process,
@@ -474,7 +476,7 @@ export class StreamFacts {
   }
 
   private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number, asked: CallFacts): readonly StreamRow[] {
-    if (item.kind === 'run') return [standardRow(item.calls, inputs.t, inputs.now, openedOf(item.calls, inputs.disclosure))]
+    if (item.kind === 'run') return [standardRow(item.calls, inputs.t, inputs.now, openedOf(item.calls, inputs.disclosure), inputs.cwd)]
     if (item.kind === 'turn-header') return [headerRow(item, inputs.t)]
     if (item.kind === 'process-title') return [titleRow(item, inputs.t)]
     // A hand-built model may carry canonical nodes between its entries: their text is all the stream keeps.
@@ -682,7 +684,7 @@ function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamI
     const calls = callsOf(entry, inputs.t, inputs.now, asked)
     return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending' || call.state === 'waiting' || call.state === 'error') : calls).map((call) => {
       const open = item.expanded || inputs.disclosure.rows.has(call.id)
-      return verboseRow(call, open, inputs.t, open && call.state === 'error' ? 'verbose' : item.tier ?? 'verbose')
+      return verboseRow(call, open, inputs.t, open && call.state === 'error' ? 'verbose' : item.tier ?? 'verbose', inputs.cwd)
     })
   }
   const row = entryRow(item, entry, inputs)

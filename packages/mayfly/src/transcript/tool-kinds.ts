@@ -66,6 +66,7 @@ const OVERRIDES: Readonly<Record<ProcessActivity, Partial<ToolKind>>> = {
   code: { headed: true, title: 'RunCode', unit: ['{count} run', '{count} runs'], running: 'Running code', preparing: 'Preparing to run code' },
   webSearch: { headed: true, title: 'WebSearch', unit: ['{count} search', '{count} searches'], running: 'Searching the web', preparing: 'Preparing to search the web' },
   webFetch: { headed: true, title: 'WebFetch', unit: ['{count} page', '{count} pages'], running: 'Visiting web pages', preparing: 'Preparing to visit web pages' },
+  skill: { headed: true, title: 'Skill', unit: ['{count} skill', '{count} skills'], running: 'Loading skills', preparing: 'Loading skills' },
   subagents: { owner: 'agents', placement: 'line', title: 'Subagent', unit: ['{count} subagent', '{count} subagents'], running: 'Coordinating subagents', preparing: 'Preparing to coordinate subagents' },
   workflow: { owner: 'workflow', placement: 'line', mergeable: false, title: 'Workflow', running: 'Running a workflow', preparing: 'Preparing a workflow' },
   jobs: { owner: 'jobs', placement: 'quiet', mergeable: false, title: 'Jobs', running: 'Checking jobs', preparing: 'Checking jobs' },

@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
-import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore } from '../../src/components/tool-line.ts'
+import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore, ToolPatchFileRow } from '../../src/components/tool-line.ts'
 import { TranscriptView, type StreamRow, type TranscriptViewFacts } from '../../src/components/transcript-view.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
@@ -87,13 +87,34 @@ describe('tool line glyphs and spans', () => {
     expect(spans).toEqual([
       { text: '✓ ', tone: 'success' },
       { text: 'WebSearch', tone: 'default', styles: ['strong'] },
-      { text: '(', tone: 'muted' },
-      { text: '"mayfly"', tone: 'accent' },
-      { text: ')', tone: 'muted' },
+      { text: '(', tone: 'muted', elastic: true },
+      { text: '"mayfly"', tone: 'accent', elastic: true },
+      { text: ')', tone: 'muted', elastic: true },
       { text: ' · 2 sources · 1s', tone: 'muted' },
     ])
     // A cancelled call's name is muted too, so the cut-off line reads as a line that did not finish.
     expect(ToolLine({ state: 'cancelled', name: 'Read' })[1]).toMatchObject({ text: 'Read', tone: 'muted' })
+  })
+
+  it('draws a patch\'s file as its kind, path and counts: with a bar under an open block, plain in a tree', () => {
+    const text = (spans: readonly { readonly text: string }[]) => spans.map(span => span.text).join('')
+    expect(text(ToolPatchFileRow({ kind: 'M', path: 'a.ts', stat: { added: 3, removed: 1 } }))).toBe('  M a.ts  +3 −1 ▮▮▮▮▮▮')
+    expect(text(ToolPatchFileRow({ kind: 'A', path: 'a.ts', stat: { added: 3, removed: 0 } }, 'middle'))).toBe('  ├ A a.ts · +3')
+    expect(text(ToolPatchFileRow({ kind: 'D', path: 'a.ts', stat: { added: 0, removed: 3 } }, 'last'))).toBe('  └ D a.ts · −3')
+    expect(text(ToolPatchFileRow({ kind: 'R', path: 'a.ts → b.ts', stat: { added: 0, removed: 0 } }, 'last'))).toBe('  └ R a.ts → b.ts')
+    expect(text(ToolPatchFileRow({ kind: 'A', path: 'a.ts' }))).toBe('  A a.ts')
+    expect(ToolPatchFileRow({ kind: 'D', path: 'a.ts' })[1]).toMatchObject({ tone: 'danger' })
+    expect(ToolPatchFileRow({ kind: 'A', path: 'a.ts' })[2]).toMatchObject({ elastic: true })
+  })
+
+  it('draws a block\'s args, and a patch\'s files with their diffs behind a lead, as rows of their own', () => {
+    const items = TranscriptView({ queued: [], turns: [{ rows: [{ kind: 'tool', id: 'p', state: 'ok', name: 'ApplyPatch', args: '# note', filesTree: false, files: [{ kind: 'M', path: 'a.ts', diff: [{ before: 'a', after: 'b', maxRows: 1 }, { before: 'c', after: 'd', language: 'typescript', start: 2, beforeStart: 2, numberWidth: 2, tail: 'more' }] }, { kind: 'A', path: 'b.ts' }] }] }] } as unknown as TranscriptViewFacts)
+    const ids = (items as { readonly items: readonly { readonly id: string, readonly bodyLead?: readonly { readonly text: string }[] }[] }).items
+    expect(ids.map(item => item.id)).toEqual(expect.arrayContaining(['p.args', 'p.file.0', 'p.file.0.diff.0', 'p.file.0.diff.1.gap', 'p.file.0.diff.1', 'p.file.1']))
+    expect(ids.find(item => item.id === 'p.file.0.diff.0')?.bodyLead).toEqual([{ text: '  ' }])
+    const tree = TranscriptView({ queued: [], turns: [{ rows: [{ kind: 'tool', id: 'p', state: 'ok', name: 'ApplyPatch', filesTree: true, files: [{ kind: 'M', path: 'a' }, { kind: 'A', path: 'b' }] }] }] } as unknown as TranscriptViewFacts) as { readonly items: readonly { readonly id: string, readonly label: string }[] }
+    expect(tree.items.find(item => item.id === 'p.file.0')?.label).toBe('  ├ M a')
+    expect(tree.items.find(item => item.id === 'p.file.1')?.label).toBe('  └ A b')
   })
 
   it('draws an edit\'s diffstat as its signed counts and a bar split by their share, each side keeping a cell', () => {
@@ -347,7 +368,7 @@ describe('interrupted tool calls', () => {
     }
     const narrow = drawn(facts([user(1, 'go'), cut('aborted'), cut('unknown', { id: 'k4' })], 'verbose'), 40)
     expect(narrow).toContain('  ⊘ Bash(sleep 9) · interrupted · 4.2s')
-    // The list clips the end of a line, so the longer reason gives its last words.
-    expect(narrow.some(row => row.startsWith('  ✗ Bash(sleep 9) · outcome unknown'))).toBe(true)
+    // The target gives way before the reason: nothing clips the outcome.
+    expect(narrow.find(row => row.startsWith('  ✗'))).toMatch(/^ {2}✗ Bash(\(.+…\))? · outcome unknown · 4\.2s$/u)
   })
 })

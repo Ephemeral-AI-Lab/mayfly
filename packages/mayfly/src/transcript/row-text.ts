@@ -4,7 +4,7 @@
  * with its output); `raw` is the model's own JSON. It runs on demand and never per publish.
  * @module
  */
-import type { CommandCallModel, ReadCallModel, SearchCallModel, TranscriptEntryModel } from '../frontend/models.ts'
+import type { CommandCallModel, ReadCallModel, SearchCallModel, TranscriptEntryModel, TranscriptPatchFileModel } from '../frontend/models.ts'
 import { partialStrings } from './partial-json.ts'
 
 /** Which form of a row's content is copied: for a person, or the model's JSON. */
@@ -22,7 +22,19 @@ const prefixed = (mark: string, text: string): string => text.split('\n').map(li
 
 type ToolEntry = Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>
 
-/** An edit as a diff and a write as the file's head; the model carries only a bounded cut of either, and the text says so. */
+/** One file's hunks under the names of its two sides. */
+function diffText(before: string, after: string, change: Pick<NonNullable<ToolEntry['change']>, 'hunks' | 'hiddenLines'>): string {
+  const hunks = change.hunks.map(hunk => join(['@@', hunk.before === '' ? undefined : prefixed('-', hunk.before), hunk.after === '' ? undefined : prefixed('+', hunk.after)]))
+  const hidden = change.hiddenLines > 0 ? `… ${String(change.hiddenLines)} more changed lines` : undefined
+  return join([`--- ${before}`, `+++ ${after}`, ...hunks, hidden])
+}
+
+/** One file of a patch, whose sides say what happened to it: an added file has no old side, a deleted one no new side, a moved one two names. */
+function patchFileText(file: TranscriptPatchFileModel): string {
+  return diffText(file.kind === 'A' ? '/dev/null' : file.from ?? file.path, file.kind === 'D' ? '/dev/null' : file.path, file)
+}
+
+/** An edit or a patch as a diff and a write as the file's head; the model carries only a bounded cut of either, and the text says so. */
 function changeText(entry: ToolEntry): string | undefined {
   const change = entry.change
   if (change === undefined) return undefined
@@ -30,14 +42,14 @@ function changeText(entry: ToolEntry): string | undefined {
     const more = change.write.lines > change.write.head.length ? `… ${String(change.write.lines - change.write.head.length)} more lines` : undefined
     return join([`--- /dev/null`, `+++ ${change.path}`, prefixed('+', change.write.head.join('\n')), more])
   }
-  const hunks = change.hunks.map(hunk => join(['@@', hunk.before === '' ? undefined : prefixed('-', hunk.before), hunk.after === '' ? undefined : prefixed('+', hunk.after)]))
-  const hidden = change.hiddenLines > 0 ? `… ${String(change.hiddenLines)} more changed lines` : undefined
-  return join([`--- ${change.path}`, `+++ ${change.path}`, ...hunks, hidden])
+  if (change.files !== undefined) return change.files.map(patchFileText).join('\n')
+  return diffText(change.path, change.path, change)
 }
 
 function toolText(entry: ToolEntry): string {
   const head = entry.detail === '' ? entry.name : `${entry.name}(${entry.detail})`
-  const plan = partialStrings(entry.arguments).fields['plan']
+  const fields = partialStrings(entry.arguments).fields
+  const plan = fields['plan']
   const web = entry.web === undefined ? undefined : entry.web.kind === 'search'
     ? entry.web.sources.map(source => source.title === undefined ? source.url : `${source.title} ${source.url}`).join('\n')
     : entry.web.url
@@ -46,7 +58,7 @@ function toolText(entry: ToolEntry): string {
   const diff = changeText(entry)
   if (diff !== undefined) return diff
   if (entry.terminal !== undefined) return join([`$ ${entry.terminal.command}`, output])
-  return join([head, web, output])
+  return join([head, entry.name === 'run_code' ? fields['code'] : undefined, web, output])
 }
 
 function readText(read: ReadCallModel): string {

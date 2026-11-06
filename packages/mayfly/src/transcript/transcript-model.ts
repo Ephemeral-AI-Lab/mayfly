@@ -46,7 +46,7 @@ export interface TranscriptControllerOptions {
   /** The clock a call that is in flight keeps its time by; absent, the stream's time only moves when it is published. */
   readonly tick?: TickSource
   /** The selected Agent's context window and occupancy and the marks around each recent compaction; read on every publish. */
-  readonly context?: () => { readonly marks?: readonly CompactionMark[] | undefined, readonly window?: number | undefined, readonly tokens?: number | undefined, readonly approvals?: readonly ApprovalMark[] | undefined, readonly children?: SpawnedChildren | undefined } | undefined
+  readonly context?: () => { readonly marks?: readonly CompactionMark[] | undefined, readonly window?: number | undefined, readonly tokens?: number | undefined, readonly approvals?: readonly ApprovalMark[] | undefined, readonly children?: SpawnedChildren | undefined, readonly cwd?: string | undefined } | undefined
   /** Where the references of the images the stream shows are kept for the byte loader. */
   readonly imageRefs?: Map<string, { readonly attachmentId: string, readonly mediaType: string }>
   /** What `c` and `Ctrl+G` do with the row under the cursor. */
@@ -744,7 +744,7 @@ export class TranscriptController {
     return result
   }
 
-  private compactionInputs(): { readonly compactions?: readonly CompactionMark[], readonly contextWindow?: number, readonly contextTokens?: number, readonly approvals?: readonly ApprovalMark[], readonly children?: SpawnedChildren } {
+  private compactionInputs(): { readonly compactions?: readonly CompactionMark[], readonly contextWindow?: number, readonly contextTokens?: number, readonly approvals?: readonly ApprovalMark[], readonly children?: SpawnedChildren, readonly cwd?: string } {
     const context = this.options.context?.()
     if (context === undefined) return {}
     return {
@@ -753,6 +753,7 @@ export class TranscriptController {
       ...context.tokens === undefined ? {} : { contextTokens: context.tokens },
       ...context.approvals === undefined ? {} : { approvals: context.approvals },
       ...context.children === undefined ? {} : { children: context.children },
+      ...context.cwd === undefined ? {} : { cwd: context.cwd },
     }
   }
 

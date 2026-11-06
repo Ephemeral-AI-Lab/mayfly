@@ -10,7 +10,7 @@ import fixture from '../fixtures/native-files-transport.json' with { type: 'json
 import { good, tick } from '../app/task-feature-fixture.ts'
 
 describe('native builtin filesystem cards', () => {
-  it('preserves actual Read line counts, Edit diffs and absolute Write preview through the Host/Remote boundary', async () => {
+  it('preserves actual Read line counts, Edit diffs and the Write preview, under the paths the model gave, through the Host/Remote boundary', async () => {
     // This wire fixture is verified against actual native definitions and
     // Host folds by host/tests/remote/native-files-cards.spec.ts. Keep Host
     // source and the shared renderer's source in their own TS native realms.
@@ -35,8 +35,8 @@ describe('native builtin filesystem cards', () => {
     expect(remote).toEqual(conversationTranscriptModel(projection, native))
     expect(remote.entries).toMatchObject([
       { kind: 'transcript-read-group', reads: [{ callId: 'native_files_read', path: 'parity-change.txt', range: { first: 1, last: 2 }, totalLines: 2, previewLines: [{ number: 1, text: 'before parity change' }, { number: 2, text: 'unchanged line' }] }] },
-      { kind: 'transcript-tool', change: { path: `${fixture.provenance.cwd}/parity-change.txt`, added: 1, removed: 1, hunks: [{ before: 'before parity change\nunchanged line', after: 'after parity change\nunchanged line' }] } },
-      { kind: 'transcript-tool', change: { path: `${fixture.provenance.cwd}/parity-deliverable.txt`, write: { lines: 2, head: ['Native delivered file', 'Exact preview 你好 🪰'] } } },
+      { kind: 'transcript-tool', change: { path: 'parity-change.txt', added: 1, removed: 1, hunks: [{ before: 'before parity change\nunchanged line', after: 'after parity change\nunchanged line' }] } },
+      { kind: 'transcript-tool', change: { path: 'parity-deliverable.txt', write: { lines: 2, head: ['Native delivered file', 'Exact preview 你好 🪰'] } } },
       { kind: 'transcript-tool' },
     ])
     expect(present).toHaveBeenCalledOnce()

@@ -72,12 +72,26 @@ export interface ToolCodeFacts {
   readonly start?: number
 }
 
+/** One file of a patch under its line: what happens to it, its path, its counts once they are known, and its diff once a block opens. */
+export interface ToolPatchFile {
+  readonly kind: 'A' | 'M' | 'D' | 'R'
+  readonly path: string
+  readonly stat?: ToolStat
+  readonly diff?: readonly ToolDiffHunk[]
+}
+
 /** The facts of a verbose block: the line, its body, and the row that says how much of the body is left out. */
 export interface ToolBlockFacts extends ToolLineFacts {
   readonly body?: readonly ToolBodyRow[]
   /** A file change's body: the hunks of an edit (each numbered from its own first row, the Harness gives no file line), or a write's code. */
   readonly diff?: readonly ToolDiffHunk[]
   readonly code?: ToolCodeFacts
+  /** What else the model said about the call, the muted row a block starts with. */
+  readonly args?: string
+  /** A patch's files, under its line. */
+  readonly files?: readonly ToolPatchFile[]
+  /** Whether the files read as a tree, each with its counts and no diff. */
+  readonly filesTree?: boolean
   /** A plan under review, as Markdown source of any length: the request's body, wrapped under the line. */
   readonly markdown?: string
   /** The translated `… +N more` row after a capped body. */
@@ -129,7 +143,7 @@ export function ToolLine(facts: ToolLineFacts): readonly MayflyInlineSpan[] {
   return [
     ...facts.state === 'pending' ? PENDING_GLYPH : [{ text: GLYPH[facts.state], tone: GLYPH_TONE[facts.state], ...(facts.state === 'waiting' ? { styles: ['strong'] as const } : {}) } as const],
     { text: facts.name, tone: facts.state === 'cancelled' ? 'muted' : 'default', styles: ['strong'] },
-    ...(facts.target === undefined ? [] : [{ text: '(', tone: 'muted' } as const, { text: facts.target, tone: 'accent' } as const, { text: ')', tone: 'muted' } as const]),
+    ...(facts.target === undefined ? [] : [{ text: '(', tone: 'muted', elastic: true } as const, { text: facts.target, tone: 'accent', elastic: true } as const, { text: ')', tone: 'muted', elastic: true } as const]),
     ...(facts.outcome === undefined ? [] : [{ text: ` · ${facts.outcome}`, tone: 'muted' } as const]),
     ...(facts.stat === undefined ? [] : [{ text: ' · ', tone: 'muted' } as const, ...ToolStatSpans(facts.stat)]),
   ]
@@ -142,18 +156,59 @@ export function ToolLine(facts: ToolLineFacts): readonly MayflyInlineSpan[] {
  * @returns the spans.
  */
 function ToolStatSpans(stat: ToolStat): readonly MayflyInlineSpan[] {
-  const total = stat.added + stat.removed
-  // Each side keeps at least one cell while it has any line.
-  const filled = total === 0 ? 0 : Math.min(STAT_BAR_CELLS - (stat.removed > 0 ? 1 : 0), Math.max(stat.added > 0 ? 1 : 0, Math.round(stat.added / total * STAT_BAR_CELLS)))
   return [
     { text: `+${String(stat.added)}`, tone: 'success' },
     { text: ' ', tone: 'muted' },
     { text: `−${String(stat.removed)}`, tone: 'danger' },
-    ...(total === 0 ? [] : [
-      { text: ' ', tone: 'muted' } as const,
-      ...(filled === 0 ? [] : [{ text: '▮'.repeat(filled), tone: 'success' } as const]),
-      ...(STAT_BAR_CELLS - filled === 0 ? [] : [{ text: '▮'.repeat(STAT_BAR_CELLS - filled), tone: 'danger' } as const]),
-    ]),
+    ...statBar(stat, STAT_BAR_CELLS),
+  ]
+}
+
+/** The bar of a diffstat, behind a space: each side keeps at least one cell while it has any line. */
+function statBar(stat: ToolStat, cells: number): readonly MayflyInlineSpan[] {
+  const total = stat.added + stat.removed
+  if (total === 0) return []
+  const filled = Math.min(cells - (stat.removed > 0 ? 1 : 0), Math.max(stat.added > 0 ? 1 : 0, Math.round(stat.added / total * cells)))
+  return [
+    { text: ' ', tone: 'muted' },
+    ...(filled === 0 ? [] : [{ text: '▮'.repeat(filled), tone: 'success' } as const]),
+    ...(cells - filled === 0 ? [] : [{ text: '▮'.repeat(cells - filled), tone: 'danger' } as const]),
+  ]
+}
+
+/** The mark of one line of a tree, the last closing it. */
+function treeMark(last: boolean): MayflyInlineSpan {
+  return { text: last ? '  └ ' : '  ├ ', tone: 'muted' }
+}
+
+const PATCH_KIND_TONE = { A: 'success', D: 'danger', M: 'warning', R: 'warning' } as const
+
+/** A file's counts, without the side it does not touch. */
+function patchCounts(stat: ToolStat): readonly MayflyInlineSpan[] {
+  return [
+    ...(stat.added === 0 ? [] : [{ text: `+${String(stat.added)}`, tone: 'success' } as const]),
+    ...(stat.added === 0 || stat.removed === 0 ? [] : [{ text: ' ', tone: 'muted' } as const]),
+    ...(stat.removed === 0 ? [] : [{ text: `−${String(stat.removed)}`, tone: 'danger' } as const]),
+  ]
+}
+
+/** Cells of the bar beside a patch's file: narrower than the call's own, which it sits under. */
+const PATCH_BAR_CELLS = 6
+
+/**
+ * The spans of one file of a patch: `M src/list.ts  +4 −2 ▮▮▮▮▮▮` under an open block, or `├ M src/list.ts · +4 −2` in a tree.
+ * @param file - the file.
+ * @param tree - where it stands in a tree, the last closing it; absent for a row of an open block.
+ * @returns the spans.
+ */
+export function ToolPatchFileRow(file: ToolPatchFile, tree?: 'middle' | 'last'): readonly MayflyInlineSpan[] {
+  const stat = file.stat
+  const counts = stat === undefined ? [] : patchCounts(stat)
+  return [
+    tree === undefined ? { text: '  ', tone: 'muted' } : treeMark(tree === 'last'),
+    { text: file.kind, tone: PATCH_KIND_TONE[file.kind] },
+    { text: ` ${file.path}`, tone: 'accent', elastic: true },
+    ...(counts.length === 0 ? [] : [{ text: tree === undefined ? '  ' : ' · ', tone: 'muted' } as const, ...counts, ...tree === undefined ? statBar(stat!, PATCH_BAR_CELLS) : []]),
   ]
 }
 
@@ -202,9 +257,9 @@ export function ToolGroupHead(facts: ToolGroupFacts): readonly MayflyInlineSpan[
  */
 export function ToolGroupItem(item: ToolGroupItemFacts, last: boolean): readonly MayflyInlineSpan[] {
   return [
-    { text: last ? '  └ ' : '  ├ ', tone: 'muted' },
+    treeMark(last),
     ...item.state === 'ok' ? [] : item.state === 'pending' ? ITEM_PENDING_GLYPH : [{ text: GLYPH[item.state], tone: GLYPH_TONE[item.state] } as const],
-    { text: item.label, tone: 'accent' },
+    { text: item.label, tone: 'accent', elastic: true },
     ...(item.outcome === undefined ? [] : [{ text: ` · ${item.outcome}`, tone: 'muted' } as const]),
   ]
 }
