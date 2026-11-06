@@ -42,6 +42,8 @@ import {
   pendingLastTool,
 } from './long-session.ts'
 import { codeDocument, type WorkloadEnvironment } from './workloads.ts'
+import { agentsPanel } from '../../src/app/panels/agents.ts'
+import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 
 export interface FrameRun {
   /** Runs the measured step once and paints the frames it asks for. */
@@ -500,6 +502,20 @@ export const FRAME_WORKLOADS: readonly FrameWorkload[] = [
         },
         dispose: () => stream.dispose(),
       }
+    },
+  },
+  {
+    id: 'W36', title: 'agents tick: the entered Agents view of 12 subagents takes its 1 Hz publish, with one row\'s figures changed (componentRenders, unitsCompiled, rowsPainted)',
+    async setup(counters, environment) {
+      const host = await FrameHost.boot(counters, environment)
+      const members = Array.from({ length: 12 }, (_, index) => ({ callId: `call-${String(index)}`, childId: `child-${String(index)}`, label: `Subagent ${String(index)}`, state: 'running' as const, startedAt: 0 }))
+      const panel = (output: number, now: number) => agentsPanel(members, [{ kind: 'child', id: 'child-0', outputTokens: output }] as never, () => undefined, now, interpolateLocaleMessage)
+      const pane = host.root.mayflyPanes.register({ id: 'perf.agents', title: 'Agents', placement: 'views', summary: { node: ui.text('agents 0/12') } }, panel(1_000, 41_000))
+      await host.frames()
+      if (!host.root.mayflyScreen.enterViews()) throw new Error('W36: the view did not enter')
+      await host.frames()
+      reset(counters)
+      return { step: async () => { pane.set(panel(2_000, 42_000)); await host.frames() }, dispose: () => host.dispose() }
     },
   },
   {

@@ -194,12 +194,17 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     const t = transcriptTranslator(ctx, 'transcript')
     const presentation = new TranscriptPresentationPolicy()
     followPresentationSettings(ctx, presentation, () => transcript?.refreshPresentationPolicy())
+    const childListeners = new Set<() => void>()
     transcriptContext = new RemoteTranscriptContextSource({
       read: () => {
         const facts = sideViews?.sessionFacts() ?? conversation!.sessionFacts()
         return { facts, client: facts.ref === undefined ? undefined : app?.registry.get(facts.ref.host) }
       },
-      changed: () => { if (!lifetime.signal.aborted) transcript?.republish() },
+      changed: () => {
+        if (lifetime.signal.aborted) return
+        transcript?.republish()
+        for (const listener of childListeners) listener()
+      },
     })
     transcript = new TranscriptController({
       t, presentation,
@@ -429,6 +434,11 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
       showPrimary: () => { sideViews!.showPrimary() },
       btw: app.btw,
       modelCatalog: host => conversation!.getModelCatalog(host),
+      children: () => transcriptContext!.snapshot()?.children,
+      subscribeChildren: (listener) => {
+        childListeners.add(listener)
+        return () => { childListeners.delete(listener) }
+      },
       present: (ref, binding, facts) => { sideViews!.present(binding, { ref, cwd: facts.cwd ?? '' }, facts) },
       closePresent: ref => { sideViews!.close(ref) },
       copy: (text) => editorComposition!.controller.copyText(text),

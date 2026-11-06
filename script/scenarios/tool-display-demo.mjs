@@ -33,6 +33,7 @@ process.stdout.write(`Send these prompts in the TUI. Each plays one session:
 
   demo:session   tools, MCP, a background job, subagents, a workflow
   demo:goal      a goal, its rounds, and a failed MCP call
+  demo:background  a background workflow that x stops in its view
 
 Quitting the TUI stops the Host and removes the workspace.
 `)

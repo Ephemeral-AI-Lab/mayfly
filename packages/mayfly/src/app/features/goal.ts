@@ -31,7 +31,7 @@ class RemoteGoalController extends RemoteFeatureController<RemoteFeatureContext>
     this.t = transcriptTranslator(options.ctx, 'remote-goal')
     this.lifecycle = new RemoteFeatureLifecycle(options, this.attach)
     this.notifications = options.ctx.mayflyUiInteraction.createNotificationOwner('remote.goal')
-    this.pane = options.ctx.mayflyPanes.register({ id: 'mayfly.view.goal', placement: 'views', priority: 13, onEvent: { action: this.act } }, null)
+    this.pane = options.ctx.mayflyPanes.register({ id: 'mayfly.view.goal', placement: 'views', priority: 14, onEvent: { action: this.act } }, null)
     this.offHostTopology = options.hosts.subscribe(this.reconcileHosts)
     this.offLocale = observeTranscriptLocale(options.ctx, () => { if (!this.retired) this.publish() })
     this.reconcileHosts()

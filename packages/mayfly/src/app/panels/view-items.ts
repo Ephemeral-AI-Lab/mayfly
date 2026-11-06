@@ -22,15 +22,17 @@ function remoteSummary(mark: MayflyInlineSpan, label: string, progress: string):
   return ui.richText([mark, { text: ' ' }, { text: `${label} `, tone: 'muted' }, { text: progress }])
 }
 
-/** Build the shared selectable list view with stable padding and hidden actions. */
-export function remoteViewList(id: string, items: readonly MayflyListItem[], actions: MayflyUiNode): MayflyUiNode {
-  const padding = Array.from({ length: Math.max(0, REMOTE_VIEW_PANEL_ROWS - items.length) }, (_, index): MayflyListItem => ({
+/** Build the shared selectable list view with stable padding and hidden actions; header rows take from the list's rows. */
+export function remoteViewList(id: string, items: readonly MayflyListItem[], actions: MayflyUiNode, header: readonly MayflyUiNode[] = []): MayflyUiNode {
+  const maxRows = REMOTE_VIEW_PANEL_ROWS - header.length
+  const padding = Array.from({ length: Math.max(0, maxRows - items.length) }, (_, index): MayflyListItem => ({
     id: `${id}-pad-${String(index)}`,
     label: '',
     gap: true,
   }))
   return ui.stack.column([
-    ui.list({ id, role: 'browse', items: [...items, ...padding], maxRows: REMOTE_VIEW_PANEL_ROWS, acceptVerb: 'open', autofocus: true }),
+    ...header,
+    ui.list({ id, role: 'browse', items: [...items, ...padding], maxRows, acceptVerb: 'open', autofocus: true }),
     actions,
   ])
 }

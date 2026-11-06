@@ -23,7 +23,6 @@ import { mountJobsFeature } from './features/jobs.ts'
 import { mountPlanFeature } from './features/plan.ts'
 import { mountScheduleFeature } from './features/schedule.ts'
 import { mountTodoFeature } from './features/todo.ts'
-import { mountWorkflowFeature } from './features/workflow.ts'
 import { mountRemoteProductivityLocales } from './features/locales.ts'
 
 /** Exact selected Client generation and borrowed binding, valid only while the accessor still returns it. */
@@ -96,7 +95,6 @@ const MOUNTS: readonly RemoteFeatureMount[] = [
   mountPlanFeature,
   mountScheduleFeature,
   mountJobsFeature,
-  mountWorkflowFeature,
   mountGitFeature,
   mountCatalogFeature,
 ]

@@ -1,6 +1,6 @@
 /**
  * The scripted session of the tool-display demo: the stub model asks for the real tools the design preview shows, in the
- * preview's order, so the owner judges the real product. A prompt names a script (`demo:session`, `demo:goal`), each model
+ * preview's order, so the owner judges the real product. A prompt names a script (`demo:session`, `demo:goal`, `demo:background`), each model
  * request answers the next step of it, and a step the running preset does not offer is left out and named in the last
  * reply. Subagents are told what to do through their own prompts (`demo:child:<ms>`, `demo:child-fail:<ms>`).
  * @module script/scenarios/tool-display-fixture
@@ -55,7 +55,7 @@ const SESSION = [
   { calls: [
     ['subagent', { description: 'Explore every caller', prompt: 'demo:child:9000 Explore every caller of reorder.' }],
     ['subagent', { description: 'Sweep the lint findings', prompt: 'demo:child-fail:14000 Sweep the oxlint findings.' }],
-    ['subagent', { description: 'Review the diff', prompt: 'demo:child:12000 Review the diff for regressions.', run_in_background: true }],
+    ['subagent', { description: 'Review the diff', prompt: 'demo:child:12000 Review the diff for regressions.' }],
   ] },
   { wait: 16_000, calls: [['workflow', { meta: { name: 'audit-deps', description: 'Audit the dependencies.', phases: [{ title: 'scan' }, { title: 'verify' }, { title: 'report' }] }, script: `
 phase('scan')
@@ -78,7 +78,16 @@ const GOAL = [
   { say: 'The github token has expired, so the issue is not filed. The notes and tests are ready.', pace: 30 },
 ]
 
-const SCRIPTS = { session: SESSION, goal: GOAL }
+/** A run that outlives its call: its job is what `x` stops in the Workflow view. */
+const BACKGROUND = [
+  { calls: [['workflow', { run_in_background: true, meta: { name: 'nightly-audit', description: 'Audit in the background.', phases: [{ title: 'scan' }] }, script: `
+phase('scan')
+return await Promise.all([agent('demo:child:40000 Scan.', { label: 'scan the lockfile' }), agent('demo:child:50000 Scan.', { label: 'scan the licences' })])
+` }]] },
+  { say: 'The audit runs in the background. Open the workflow view to stop it.', pace: 30 },
+]
+
+const SCRIPTS = { session: SESSION, goal: GOAL, background: BACKGROUND }
 
 const textOf = message => JSON.stringify(message.content ?? '')
 
@@ -104,9 +113,9 @@ export function toolDisplayInstruction(body, stubURL) {
     const offered = new Set(body.tools.map(tool => tool.name))
     return done ? { say: 'The child looked and found nothing further.', pace: 12 } : { wait: Number(ms) / 2, calls: offered.has('bash') ? [['bash', { command: `sleep ${String(Number(ms) / 2000)}`, description: 'Work' }]] : [] }
   }
-  const index = messages.findLastIndex(message => message.role === 'user' && /demo:(session|goal)\b/u.test(textOf(message)) && !textOf(message).includes('tool_result'))
+  const index = messages.findLastIndex(message => message.role === 'user' && /demo:(session|goal|background)\b/u.test(textOf(message)) && !textOf(message).includes('tool_result'))
   if (index < 0) return undefined
-  const [, name] = /demo:(session|goal)\b/u.exec(textOf(messages[index]))
+  const [, name] = /demo:(session|goal|background)\b/u.exec(textOf(messages[index]))
   const offered = new Set(body.tools.map(tool => tool.name))
   // A step whose tools the running preset lacks is left out, so the script keeps going and its last reply can name it.
   const steps = SCRIPTS[name].filter(step => step.calls === undefined || step.calls.some(([tool]) => offered.has(tool)))

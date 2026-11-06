@@ -131,7 +131,25 @@ const catalogs: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     '+{count} more': '另有 {count} 项',
     'Tip: ': '提示：',
   },
-  'remote-workflow': {},
+  'remote-workflow': {
+    'workflow': '工作流',
+    'workflow unavailable': '工作流不可用',
+    'completed': '已完成',
+    'failed': '失败',
+    'cancelled': '已取消',
+    'phase {current}/{total}': '阶段 {current}/{total}',
+    '{count} agent': '{count} 个子代理',
+    '{count} agents': '{count} 个子代理',
+    'Refresh': '刷新',
+    'refresh': '刷新',
+    'stop': '停止',
+    'Stop': '停止',
+    'Stop this workflow?': '停止此工作流？',
+    'Its job is asked to end; the agents it started stay browsable.': '其作业将被要求结束；它启动的子代理仍可浏览。',
+    'The workflow has ended': '工作流已结束',
+    'A foreground workflow stops with Esc': '前台工作流用 Esc 停止',
+    'Stopping {name}': '正在停止 {name}',
+  },
 }
 
 /** Every additional feature catalog by namespace; each carries the shared verbs. */

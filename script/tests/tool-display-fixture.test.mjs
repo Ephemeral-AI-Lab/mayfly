@@ -87,3 +87,8 @@ test('the workspace holds what the script reads and edits', () => {
     assert.match(readFileSync(join(cwd, 'src/menu-old.ts'), 'utf8'), /menu-old\.css/u)
   } finally { rmSync(cwd, { recursive: true, force: true }) }
 })
+
+test('a background script starts a run as a job', () => {
+  const step = toolDisplayInstruction({ tools: tools(ALL), messages: after('demo:background', 0) }, STUB)
+  assert.deepEqual(step.calls.map(([tool, input]) => [tool, input.run_in_background]), [['workflow', true]])
+})

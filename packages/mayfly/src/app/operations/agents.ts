@@ -9,6 +9,8 @@ import type { RemoteFeatureSelection } from '../features.ts'
 import { RemoteFeatureController, type RemoteFeatureOperation, remoteErrorMessage, remoteValue } from '../features/official.ts'
 import { openRemoteBrowser, type RemoteBrowserPanel } from '../panels/browser.ts'
 import { registerRemoteOperationsLocale, type RemoteOperationsContext } from './support.ts'
+import { mountAgentsView } from './agents-view.ts'
+import { mountWorkflowFeature } from '../features/workflow.ts'
 
 const COLD_ROLE = 'remote-agents-cold'
 const BLOCKED = {
@@ -29,6 +31,7 @@ const zh: Readonly<Record<string, string>> = {
   'no subagents in this session': '此会话没有子代理',
   'External subagents have no local conversation': '外部子代理没有本地对话',
   'Select a subagent first': '请先选择一个子代理',
+  'agents': '子代理', 'failed': '失败', 'stopped': '已停止', 'Using {tool}': '正在使用 {tool}', 'Thinking…': '思考中…', 'Writing…': '写作中…',
 }
 
 class RemoteAgentsController extends RemoteFeatureController<RemoteOperationsContext['base']> {
@@ -152,6 +155,40 @@ class RemoteAgentsController extends RemoteFeatureController<RemoteOperationsCon
     } finally { operation.dispose() }
   }
 
+  /** Run one view call as the primary Session's, like `/agents`: its tree holds every descendant the displayed view can name. */
+  private async onPrimary<T>(signal: AbortSignal, work: (current: RemoteFeatureSelection, operation: RemoteFeatureOperation) => Promise<T>): Promise<T | undefined> {
+    const current = this.context.hosts.current()
+    const operation = current === undefined ? undefined : this.sessionOperation(current, signal)
+    if (current === undefined || operation === undefined) return undefined
+    try { return await work(current, operation) } finally { operation.dispose() }
+  }
+
+  /** The tree for a view's figures. */
+  async viewTree(signal: AbortSignal): Promise<readonly HostTreeEntry[] | undefined> {
+    return await this.onPrimary(signal, (current, operation) => this.tree(current, operation))
+  }
+
+  /** Stop one child from a view. */
+  async viewStop(id: string, signal: AbortSignal): Promise<MayflyUiActionReply> {
+    return await this.onPrimary(signal, (current, operation) => this.stop(current, id, operation)) ?? { kind: 'cancelled' }
+  }
+
+  /** Open one child from a view; the access comes from the child's own row in the native tree. */
+  async viewOpen(id: string, signal: AbortSignal): Promise<MayflyUiActionReply> {
+    return await this.onPrimary(signal, async (current, operation): Promise<MayflyUiActionReply> => {
+      const entries = await this.tree(current, operation).catch((error: unknown) => remoteErrorMessage(error))
+      if (typeof entries === 'string') return operation.valid() ? { kind: 'failed', message: entries } : { kind: 'cancelled' }
+      if (!operation.valid()) return { kind: 'cancelled' }
+      const entry = entries.find(candidate => String(candidate.id) === id)
+      if (entry?.kind !== 'child') return { kind: 'failed', message: this.t('Select a subagent first') }
+      if (entry.mode === 'external') return { kind: 'failed', message: this.t('External subagents have no local conversation') }
+      return await this.openChild(current, entry, operation)
+    }) ?? { kind: 'cancelled' }
+  }
+
+  /** Why the native stop would refuse a row, in the reader's language. */
+  blocked(reason: keyof typeof BLOCKED): string { return this.t(BLOCKED[reason]) }
+
   readonly execute = async (rawInput: string, caller: AbortSignal): Promise<void> => {
     if (caller.aborted || this.stopped) return
     const input = rawInput.trim()
@@ -174,12 +211,22 @@ class RemoteAgentsController extends RemoteFeatureController<RemoteOperationsCon
   }
 }
 
-/** Mount the native descendant tree command; unload retires local work only. */
+/** Mount the native descendant tree command and the views that open and stop its children; unload retires local work only. */
 export function mountRemoteAgentsOperations(context: RemoteOperationsContext): () => void {
   const controller = new RemoteAgentsController(context)
   const unregister = context.base.commands.register({
     name: 'agents', description: 'Browse this session\'s subagents, view one, or stop a continuable child',
     input: { hint: '[stop <id>]' }, execute: controller.execute,
   })
-  return () => { unregister(); controller.dispose() }
+  const open = (id: string, signal: AbortSignal): Promise<MayflyUiActionReply> => controller.viewOpen(id, signal)
+  const offAgents = mountAgentsView(context.base, {
+    tree: signal => controller.viewTree(signal),
+    stop: (id, signal) => controller.viewStop(id, signal),
+    open,
+    blocked: reason => controller.blocked(reason),
+    children: () => context.options.children?.(),
+    subscribeChildren: listener => context.options.subscribeChildren?.(listener) ?? (() => {}),
+  })
+  const offWorkflow = mountWorkflowFeature(context.base, { open })
+  return () => { offWorkflow(); offAgents(); unregister(); controller.dispose() }
 }

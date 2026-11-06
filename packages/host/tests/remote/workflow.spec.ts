@@ -66,7 +66,7 @@ const info = (id: string): { id: string, meta: { name: string, phases?: readonly
 describe('mayflyWorkflowProjectionDefinition', () => {
   it('pins its key, version, and wire summary exclusion', () => {
     expect(mayflyWorkflowProjectionDefinition.key).toBe('mayflyWorkflow')
-    expect(mayflyWorkflowProjectionDefinition.stateVersion).toBe(1)
+    expect(mayflyWorkflowProjectionDefinition.stateVersion).toBe(2)
     expect(mayflyWorkflowProjectionDefinition.wire.summary).toBe(false)
   })
 
@@ -123,17 +123,21 @@ describe('mayflyWorkflowProjectionDefinition', () => {
     }
   })
 
-  it('clears every settled or interrupted run at the next turn start', () => {
-    const state = run([
+  it('clears every settled or interrupted run at the next turn start, once it has been over for ten seconds', () => {
+    const settled = [
       event('tool-workflow/run-start', { runId: 'open', name: 'a' }, 10),
       event('turn/end', { reason: { kind: 'interrupted' } }, 20),
       event('tool-workflow/run-start', { runId: 'done', name: 'b' }, 21),
       event('tool-workflow/run-end', { runId: 'done', stopReason: 'completed' }, 22),
-      event('turn/start', { turn: 2 }, 23),
-    ])
+    ]
     // A new turn is a clean panel: both the interrupted run and the settled
     // one are gone, and a still-open run would be the only survivor.
-    expect(state.runs).toEqual([])
+    expect(run([...settled, event('turn/start', { turn: 2 }, 10_022)]).runs).toEqual([])
+    // A turn that starts right away, as a killed background run's notice does, leaves the view its hold.
+    expect(run([...settled, event('turn/start', { turn: 2 }, 23)]).runs.map(each => (each as { readonly id: string }).id)).toEqual(['open', 'done'])
+    expect(run([...settled, event('turn/start', { turn: 2 }, 10_020)]).runs.map(each => (each as { readonly id: string }).id)).toEqual(['done'])
+    const unended = { sessionId: 's', runs: [{ id: 'old', name: 'old', phasesSeen: [], agents: [], startedAt: 1, stopReason: 'completed' }] }
+    expect(mayflyWorkflowProjectionDefinition.apply(unended as never, event('turn/start', { turn: 2 }, 10_022) as never).runs).toEqual([])
   })
 })
 

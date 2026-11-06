@@ -62,7 +62,9 @@ function fixture(options: { readonly empty?: boolean, readonly noCallbacks?: boo
   const modelCatalog = vi.fn(() => undefined)
   const primary = () => current
   const showPrimary = vi.fn()
-  const handle = mountRemoteOperationsComposition(base, { localCwd: '/local', btw: { retainColdSubagentView: retain, retainBtwView: retainBtw, current: activeBtw, close: closeBtw } as never, ...options.noCallbacks ? {} : { present, closePresent, copy, modelCatalog, primary, showPrimary } })
+  const children = vi.fn(() => undefined)
+  const subscribeChildren = vi.fn(() => () => {})
+  const handle = mountRemoteOperationsComposition(base, { localCwd: '/local', btw: { retainColdSubagentView: retain, retainBtwView: retainBtw, current: activeBtw, close: closeBtw } as never, ...options.noCallbacks ? {} : { present, closePresent, copy, modelCatalog, primary, showPrimary, children, subscribeChildren } })
   const contexts = mounts.mount.mock.calls.map(call => call[0] as RemoteOperationsContext)
   return { base, ref, address, binding, client, list, subagentAddress, refreshProjections, retain, retainBtw, leases, activeBtw, closeBtw, present, closePresent, copy, modelCatalog, primary, showPrimary, handle, contexts,
     topology, connection,
@@ -73,6 +75,14 @@ function fixture(options: { readonly empty?: boolean, readonly noCallbacks?: boo
 }
 
 describe('retained child operation composition', () => {
+  it('hands the stream\'s child states to the operations', () => {
+    const f = fixture()
+    const options = (mounts.mount.mock.calls.at(-1)![0] as RemoteOperationsContext).options
+    expect(options.children?.()).toBeUndefined()
+    expect(options.subscribeChildren?.(() => {})).toBeTypeOf('function')
+    f.handle.dispose()
+  })
+
   it('reads live access from the passive native whole list before presenting a continuable child', async () => {
     const f = fixture()
     f.list.mockResolvedValueOnce({ ok: true, value: { items: [

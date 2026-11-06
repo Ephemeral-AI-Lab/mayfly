@@ -5,12 +5,17 @@ import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type { MayflyUiActionEvent, MayflyUiEventContext } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySubagentTreeEntry } from '../../src/hosts/host-contract.ts'
 import { mountRemoteAgentsOperations } from '../../src/app/operations/agents.ts'
+import type { AgentsViewSeam } from '../../src/app/operations/agents-view.ts'
+import type { WorkflowViewSeam } from '../../src/app/features/workflow.ts'
 import { RemotePresentSlot, type RemoteOperationsContext } from '../../src/app/operations/support.ts'
 import type { RemoteBrowserOptions } from '../../src/app/panels/browser.ts'
 import { taskFixture, tick, activated, good, bad } from './task-feature-fixture.ts'
 
 const native = vi.hoisted(() => ({ browser: vi.fn() }))
 vi.mock('../../src/app/panels/browser.ts', () => ({ openRemoteBrowser: native.browser }))
+const views = vi.hoisted(() => ({ agents: vi.fn(), workflow: vi.fn() }))
+vi.mock('../../src/app/operations/agents-view.ts', () => ({ mountAgentsView: views.agents }))
+vi.mock('../../src/app/features/workflow.ts', () => ({ mountWorkflowFeature: views.workflow }))
 const eventContext = (signal = new AbortController().signal): MayflyUiEventContext => ({ surfaceId: 'mayfly.agents', source: [], signal, revision: 1, operationId: 'action', report: vi.fn() })
 const choose = (id?: string, controlId = 'subagents'): MayflyUiActionEvent => ({ kind: 'selection-accept', controlId, selectedIds: id === undefined ? [] : [id], pagePath: [] })
 const stopEvent = (id?: string): MayflyUiActionEvent => ({ ...activated('stop'), ...id === undefined ? {} : { inputs: { actionId: 'stop', draftRevision: 1, source: [], forms: [], selections: [{ pagePath: [], controlId: 'subagents', selectedIds: [id] }] } } })
@@ -18,7 +23,7 @@ const row = (id: string, extra: Partial<Extract<MayflySubagentTreeEntry, { reado
   kind: 'child', id: SessionId(id), parentId: SessionId('session'), depth: 1, activity: 'inactive', hasChildren: false, mode: 'continuable', label: id, ...extra,
 })
 const cleanups: Array<() => Promise<void>> = []
-afterEach(async () => { for (const stop of cleanups.splice(0).reverse()) await stop(); vi.restoreAllMocks(); native.browser.mockReset() })
+afterEach(async () => { for (const stop of cleanups.splice(0).reverse()) await stop(); vi.restoreAllMocks(); native.browser.mockReset(); views.agents.mockReset(); views.workflow.mockReset() })
 
 async function fixture(selected = true, primary = false) {
   const f = await taskFixture(selected)
@@ -52,12 +57,15 @@ async function fixture(selected = true, primary = false) {
     if (closeOnOpen) result.close()
     return result
   })
+  const released: string[] = []
+  views.agents.mockReturnValue(() => { released.push('agents') })
+  views.workflow.mockReturnValue(() => { released.push('workflow') })
   const stop = mountRemoteAgentsOperations(context)
   cleanups.push(async () => { stop(); presentSlot.dispose(); await f.dispose() })
   const act = async (event: MayflyUiActionEvent, signal?: AbortSignal) => await panels.at(-1)!.options.action!(event, eventContext(signal))
   const open = async (signal?: AbortSignal) => { await f.run('agents', '', signal); return panels.at(-1)! }
   const text = () => JSON.stringify(panels.at(-1)!.options.view())
-  return { ...f, context, primarySelection, tree, stopping, present, closePresent, retain, release, addresses, panels, stop, act, open, text, showPrimary, catalogListeners,
+  return { ...f, released, seam: views.agents.mock.calls.at(-1)![1] as AgentsViewSeam, workflowSeam: views.workflow.mock.calls.at(-1)![1] as WorkflowViewSeam, context, primarySelection, tree, stopping, present, closePresent, retain, release, addresses, panels, stop, act, open, text, showPrimary, catalogListeners,
     setEntries: (next: readonly MayflySubagentTreeEntry[]) => { entries = next },
     catalog: () => { for (const listener of catalogListeners) listener() },
     closeDuringOpen: () => { closeOnOpen = true },
@@ -323,5 +331,60 @@ describe('browser read lifecycle', () => {
       expect(f.tree).toHaveBeenCalledTimes(reads)
       f.stop()
     } finally { vi.useRealTimers() }
+  })
+})
+
+describe('the calls the views share with /agents', () => {
+  const live = () => new AbortController().signal
+
+  it('reads, stops and opens as the primary Session, and unmounts both views', async () => {
+    const f = await fixture(true, true)
+    expect(views.agents.mock.calls.at(-1)![0]).toBe(f.options)
+    expect(await f.seam.tree(live())).toHaveLength(5)
+    expect(f.tree).toHaveBeenCalledWith({ sessionId: 'session' }, expect.any(AbortSignal))
+    await expect(f.seam.stop('child', live())).resolves.toMatchObject({ kind: 'completed' })
+    expect(f.stopping).toHaveBeenCalledWith({ sessionId: 'session', childSessionId: 'child' }, expect.any(AbortSignal))
+    await expect(f.workflowSeam.open('child', live())).resolves.toEqual({ kind: 'completed' })
+    expect(f.present).toHaveBeenCalledOnce()
+    expect(f.seam.blocked('not-live')).toBe('Not live; there is nothing to stop')
+    f.stop()
+    expect(f.released).toEqual(['workflow', 'agents'])
+  })
+
+  it('refuses a diagnostic row, an unknown id and an external child, and reports a tree that cannot be read', async () => {
+    const f = await fixture()
+    await expect(f.seam.open('diagnostic', live())).resolves.toEqual({ kind: 'failed', message: 'Select a subagent first' })
+    await expect(f.seam.open('nobody', live())).resolves.toEqual({ kind: 'failed', message: 'Select a subagent first' })
+    await expect(f.seam.open('external', live())).resolves.toEqual({ kind: 'failed', message: 'External subagents have no local conversation' })
+    f.tree.mockResolvedValueOnce(bad('no tree') as never)
+    await expect(f.seam.open('child', live())).resolves.toEqual({ kind: 'failed', message: 'no tree' })
+    expect(f.retain).not.toHaveBeenCalled()
+  })
+
+  it('answers cancelled once the selection or the caller is gone', async () => {
+    const f = await fixture()
+    const gone = new AbortController()
+    f.tree.mockImplementationOnce(async () => { gone.abort(); return bad('late') as never })
+    await expect(f.seam.open('child', gone.signal)).resolves.toEqual({ kind: 'cancelled' })
+    const raced = new AbortController()
+    f.tree.mockImplementationOnce(async () => { raced.abort(); return good([row('child')]) })
+    await expect(f.seam.open('child', raced.signal)).resolves.toEqual({ kind: 'cancelled' })
+    f.select(false)
+    await expect(f.seam.tree(live())).resolves.toBeUndefined()
+    await expect(f.seam.stop('child', live())).resolves.toEqual({ kind: 'cancelled' })
+    await expect(f.seam.open('child', live())).resolves.toEqual({ kind: 'cancelled' })
+  })
+
+  it('reads children through the integrator and works without its listener', async () => {
+    const f = await fixture()
+    const seam = f.seam
+    expect(seam.children()).toBeUndefined()
+    expect(seam.subscribeChildren(() => {})).toBeTypeOf('function')
+    seam.subscribeChildren(() => {})()
+    const children = { byId: new Map(), byCall: new Map() }
+    const off = vi.fn()
+    Object.assign(f.context.options, { children: () => children, subscribeChildren: () => off })
+    expect(seam.children()).toBe(children)
+    expect(seam.subscribeChildren(() => {})).toBe(off)
   })
 })
