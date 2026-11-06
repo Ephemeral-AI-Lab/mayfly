@@ -18,7 +18,6 @@ import { isCancelled, type CommandCallModel, type ProcessActivity, type ReadCall
 import type { StreamRow } from '../components/transcript-view.ts'
 import type { ToolBodyRow, ToolDiffHunk, ToolLineState, ToolStat } from '../components/tool-line.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
-import { parseActivationResult } from './child-agent-model.ts'
 import { trimContext, WRITE_HEAD_LINES } from './conversation-model.ts'
 import { elapsedText } from './process-activity.ts'
 import { partialStrings } from './partial-json.ts'
@@ -104,8 +103,6 @@ export interface Call {
   readonly file?: { readonly stat: ToolStat, readonly statInLine: boolean, readonly content: () => ChangeBody }
   /** A plan that was under review, once the user has decided it: its Markdown, which Ctrl+O opens again. */
   readonly plan?: string
-  /** A subagent spawn: the child the native activation result names exactly. */
-  readonly spawn?: { readonly childId?: string }
   /** A call that waits on the user's decision: what the request shows under its line (the command, the asker's reason, a warning), or the plan under review. */
   readonly waiting?: { readonly rows: readonly ToolBodyRow[], readonly markdown?: string }
 }
@@ -115,11 +112,13 @@ export type SpawnedChild = { readonly state: 'running' } | { readonly state: 'se
 
 /**
  * The children of the displayed conversation, by their session id. A spawn
- * finds its child through the native activation result's id only; prompt text
- * is presentation, never correlation.
+ * finds its child through the native catalog (see `spawnedChildIds`); prompt
+ * text is presentation, never correlation.
  */
 export interface SpawnedChildren {
   readonly byId: ReadonlyMap<string, SpawnedChild>
+  /** Which child each spawn call started, by call id. */
+  readonly byCall: ReadonlyMap<string, string>
   /** The stream producer may retain a prompt index; presentation never reads it. */
   readonly byPrompt?: ReadonlyMap<string, SpawnedChild>
 }
@@ -521,7 +520,6 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
     outcome,
     startedAt: entry.startedAt,
     ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
-    ...(entry.activity === 'subagents' ? { spawn: spawnOf(entry) } : {}),
     // A command on one line is its line; the rows under a call are the lines the line cannot carry.
     ...(planText === undefined || planText.trim() === '' ? {} : { plan: sanitizePluginText(planText) }),
     input: () => further.total > 1 ? further : NO_ROWS,
@@ -541,12 +539,6 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
   }
 }
 
-/** What finds a spawn's child: the exact id carried by the native activation result. */
-function spawnOf(entry: ToolEntry): NonNullable<Call['spawn']> {
-  const childId = parseActivationResult(entry.result?.text)?.subagentId
-  return childId === undefined ? {} : { childId }
-}
-
 /**
  * A spawn whose child is known reads as the child does: a child still working
  * keeps the call pending (with the time so far), a child that settled gives the
@@ -555,8 +547,9 @@ function spawnOf(entry: ToolEntry): NonNullable<Call['spawn']> {
  * finished at once.
  */
 function whileSpawned(call: Call, children: SpawnedChildren | undefined, t: MayflyTranslate, now: number): Call {
-  if (call.spawn?.childId === undefined || children === undefined || call.state !== 'ok') return call
-  const child = children.byId.get(call.spawn.childId)
+  if (call.activity !== 'subagents' || call.state !== 'ok') return call
+  const childId = children?.byCall.get(call.callId)
+  const child = childId === undefined ? undefined : children?.byId.get(childId)
   if (child === undefined) return call
   const { endedAt: _ended, ...open } = call
   if (child.state === 'running') {

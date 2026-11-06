@@ -124,6 +124,7 @@ export async function subagentTree(ctx: Context, request: MayflyHostSessionReque
     const facts = values.mayflyConversationFacts
     const timing = values.subagentTiming
     const blocked = stopBlocked(ctx, entries, entry)
+    const currentTool = facts?.inFlight?.find(call => call.preparing !== true)?.name
     rows.push(Object.freeze({
       ...entry,
       ...label === undefined ? {} : { label },
@@ -131,6 +132,10 @@ export async function subagentTree(ctx: Context, request: MayflyHostSessionReque
       live: agent !== undefined,
       ...metrics,
       ...typeof facts?.epochTokens === 'number' ? { tokens: facts.epochTokens } : {},
+      ...typeof facts?.epochOutputTokens === 'number' ? { outputTokens: facts.epochOutputTokens } : {},
+      ...typeof facts?.epochTokens === 'number' ? { inputTokens: Math.max(0, facts.epochTokens - (facts.epochOutputTokens ?? 0)) } : {},
+      ...currentTool === undefined ? {} : { currentTool },
+      ...facts?.outputProgress === undefined ? {} : { outputProgress: facts.outputProgress },
       ...typeof facts?.epochToolCount === 'number' ? { toolCount: facts.epochToolCount } : {},
       ...typeof timing?.settledMs === 'number' ? { settledMs: timing.settledMs } : {},
       ...typeof timing?.active?.since === 'number' ? { activeSince: timing.active.since } : {},

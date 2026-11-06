@@ -12,7 +12,10 @@ import { homedir } from 'node:os'
 import { describe, it } from 'vitest'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
-import { workflowNode, type WorkflowRunState } from '../../src/transcript/workflow-model.ts'
+import type { MayflyWorkflowRun } from '../../src/hosts/host-contract.ts'
+import { agentsPanel } from '../../src/app/panels/agents.ts'
+import { workflowPanel } from '../../src/app/panels/workflow.ts'
+import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { composeBannerLines, shortenHome } from '../../src/transcript/banner-model.ts'
 import { composeSplashLines } from '../../src/transcript/splash.ts'
 import { fakeMayflyComponents } from './helpers.ts'
@@ -65,11 +68,21 @@ describe('transcript width-scan', () => {
         endedAt: undefined,
         agentsStarted: undefined,
         attributed: true,
-      } satisfies WorkflowRunState
-      const node = workflowNode([run], 1_000)
+      }
+      const node = workflowPanel([run as unknown as MayflyWorkflowRun], () => undefined, 1_000, interpolateLocaleMessage)
       if (node === null) throw new Error('workflow width fixture did not render')
       for (const width of SCAN_WIDTHS) {
-        expectLinesFit(`WorkflowPane/${name}`, renderNode(node, width), width)
+        expectLinesFit(`WorkflowView/${name}`, renderNode(node, width), width)
+      }
+    })
+
+    it(`agents view survives ${name}`, () => {
+      const members = [{ callId: 'call', childId: 'child', label: text, state: 'running' as const, startedAt: 0 }, { callId: 'gone', label: text, state: 'failed' as const, startedAt: 0, endedAt: 1 }]
+      const tree = [{ kind: 'child', id: 'child', currentTool: text, inputTokens: 48_000, outputTokens: 6_400, liveChars: 80 }] as never
+      const node = agentsPanel(members, tree, () => undefined, 90_000, interpolateLocaleMessage)
+      if (node === null) throw new Error('agents width fixture did not render')
+      for (const width of SCAN_WIDTHS) {
+        expectLinesFit(`AgentsView/${name}`, renderNode(node, width), width)
       }
     })
 

@@ -82,6 +82,9 @@ function updateRun(state: MayflyWorkflowSnapshot, id: string, update: (run: Mayf
   return frozen({ ...state, runs })
 }
 
+/** How long a settled run survives a new turn: at least the hold of the TUI's Workflow view. */
+const SETTLED_RUN_KEEP_MS = 10_000
+
 function interruptRuns(state: MayflyWorkflowSnapshot, time: number): MayflyWorkflowSnapshot {
   let changed = false
   const runs = state.runs.map((run): MayflyWorkflowRun => {
@@ -100,7 +103,8 @@ function interruptRuns(state: MayflyWorkflowSnapshot, time: number): MayflyWorkf
 function foldWorkflow(state: MayflyWorkflowSnapshot, event: SessionEvent): MayflyWorkflowSnapshot {
   switch (event.type) {
     case 'turn/start': {
-      const runs = state.runs.filter(run => run.stopReason === undefined && run.interrupted !== true)
+      // A killed background run starts a turn at once; its view still shows how it ended for a moment.
+      const runs = state.runs.filter(run => (run.stopReason === undefined && run.interrupted !== true) || event.time - (run.endedAt ?? 0) < SETTLED_RUN_KEEP_MS)
       return runs.length === state.runs.length ? state : frozen({ ...state, runs })
     }
     case 'turn/end':
@@ -175,7 +179,7 @@ export const mayflyWorkflowProjectionDefinition: WorkflowProjectionDefinition = 
     summary: false,
     view: state => state,
   },
-  stateVersion: 1,
+  stateVersion: 2,
 }
 
 interface LiveRun {

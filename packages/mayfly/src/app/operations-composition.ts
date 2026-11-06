@@ -45,6 +45,10 @@ export interface RemoteOperationsCompositionOptions {
   readonly closePresent?: RemoteOperationsOptions['closePresent']
   /** Copy text through the integrator's clipboard path. */
   readonly copy?: RemoteOperationsOptions['copy']
+  /** The states of the displayed parent's children, the same ones the stream reads. */
+  readonly children?: RemoteOperationsOptions['children']
+  /** Listen to those states changing. */
+  readonly subscribeChildren?: RemoteOperationsOptions['subscribeChildren']
   /** Read native model metadata from the primary owner's current exact Host catalog. */
   readonly modelCatalog?: RemoteOperationsOptions['modelCatalog']
 }
@@ -97,6 +101,8 @@ export function mountRemoteOperationsComposition(
       present: (ref, binding, facts) => { presentSlot.present(ref, binding, facts) },
       closePresent: ref => { presentSlot.close(ref) },
       ...options.copy === undefined ? {} : { copy: options.copy },
+      ...options.children === undefined ? {} : { children: options.children },
+      ...options.subscribeChildren === undefined ? {} : { subscribeChildren: options.subscribeChildren },
       ...options.modelCatalog === undefined ? {} : { modelCatalog: options.modelCatalog },
     },
     presentSlot,

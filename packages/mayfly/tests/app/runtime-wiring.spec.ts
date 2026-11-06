@@ -360,8 +360,21 @@ describe('standalone Remote runtime wiring', () => {
     expect(context.read()).toEqual({ facts: wiring.primaryFacts, client })
     expect(context.read().facts.ref).toBe(ref)
     expect(wiring.transcript!.context!()).toBe(wiring.contextSnapshot)
+    const childrenChanged = vi.fn()
+    const offChildren = wiring.operations!.subscribeChildren!(childrenChanged)
     context.changed()
     expect(wiring.republish).toHaveBeenCalledOnce()
+    expect(childrenChanged).toHaveBeenCalledOnce()
+    offChildren()
+    context.changed()
+    expect(childrenChanged).toHaveBeenCalledOnce()
+    expect(wiring.republish).toHaveBeenCalledTimes(2)
+    wiring.republish.mockClear()
+    wiring.republish()
+    wiring.contextSnapshot = { children: { byId: new Map(), byCall: new Map() } } as never
+    expect(wiring.operations!.children!()).toBe((wiring.contextSnapshot as { children: unknown }).children)
+    wiring.contextSnapshot = undefined as never
+    expect(wiring.operations!.children!()).toBeUndefined()
     const childFacts: RemoteSessionFactsSnapshot = { ref: child, cwd: '/child', session: undefined, values: { contextPressure: { pressureTokens: 40 } }, queue: [] }
     wiring.sideStatus = childFacts
     expect(context.read()).toEqual({ facts: childFacts, client })

@@ -661,12 +661,13 @@ describe('a run of calls as a standard block', () => {
 })
 
 describe('a spawn line that follows its child', () => {
-  /** A subagent spawn call: the model's call and the native activation result naming its child. */
+  /** A subagent spawn call: the model's call and its acknowledgement; the catalog names its child. */
   const spawn = (overrides: Record<string, unknown> = {}): TranscriptEntryModel => tool({
-    name: 'subagent', family: 'agent', activity: 'subagents', detail: 'Audit the facts', arguments: JSON.stringify({ description: 'Audit the facts', prompt: 'audit it' }),
-    startedAt: NOW - 3_000, result: { text: JSON.stringify({ kind: 'activation', subagentId: 'child-1' }), isError: false, endedAt: NOW - 2_900 }, ...overrides,
+    callId: 'spawn-1', name: 'subagent', family: 'agent', activity: 'subagents', detail: 'Audit the facts', arguments: JSON.stringify({ description: 'Audit the facts', prompt: 'audit it' }),
+    startedAt: NOW - 3_000, result: { text: 'started', isError: false, endedAt: NOW - 2_900 }, ...overrides,
   })
   const child = (state: 'running' | 'ok' | 'failed' | 'stopped', endedAt?: number) => ({
+    byCall: new Map([['spawn-1', 'child-1']]),
     byId: new Map([['child-1', state === 'running' ? { state: 'running' as const } : { state: 'settled' as const, failed: state === 'failed', ...state === 'stopped' ? { stopped: true } : {}, ...endedAt === undefined ? {} : { endedAt } }]]),
   })
   const facts = (children: ReturnType<typeof child>) => ({ asked: new Map(), decided: new Map(), children })
@@ -687,12 +688,14 @@ describe('a spawn line that follows its child', () => {
     expect(call(spawn(), child('ok'))).toMatchObject({ phase: 'settled', endedAt: NOW - 2_900 })
   })
 
-  it('leaves a call with no activation id alone, however its prompt reads', () => {
-    const promptOnly = { byId: new Map(), byPrompt: new Map([['audit it', { state: 'running' as const }]]) }
+  it('leaves a call the catalog names no child for alone, however its prompt or result reads', () => {
+    const promptOnly = { byId: new Map(), byCall: new Map(), byPrompt: new Map([['audit it', { state: 'running' as const }]]) }
     expect(call(spawn({ result: undefined }), promptOnly)).toMatchObject({ state: 'pending', phase: 'running' })
     expect(call(spawn(), promptOnly)).toMatchObject({ state: 'ok' })
-    // Model-facing stream prose is not an activation result either.
-    expect(call(spawn({ result: { text: 'started subagent child-1', isError: false, endedAt: NOW - 2_900 } }), child('running'))).toMatchObject({ state: 'ok' })
+    // Result text never names the child.
+    expect(call(spawn({ result: { text: 'child-1', isError: false, endedAt: NOW - 2_900 } }), { byId: child('running').byId, byCall: new Map() })).toMatchObject({ state: 'ok' })
+    // A child the catalog names but has no state for yet reads as the call does.
+    expect(call(spawn(), { byId: new Map(), byCall: child('running').byCall })).toMatchObject({ state: 'ok' })
     // Only a call that is running or done reads as its child; a failed call keeps its own failure.
     expect(call(spawn({ result: { text: 'boom', isError: true, endedAt: NOW - 2_900 } }), child('running'))).toMatchObject({ state: 'error' })
   })
@@ -784,10 +787,10 @@ describe('remaining tool-call fact shapes', () => {
 
   it('settles a spawn on a child that reports no end without an end time of its own', () => {
     const entry = tool({
-      name: 'subagent', family: 'agent', activity: 'subagents', detail: 'Audit', arguments: '{}', startedAt: NOW - 3_000,
-      result: { text: JSON.stringify({ kind: 'activation', subagentId: 'child-1' }), isError: false },
+      callId: 'spawn-1', name: 'subagent', family: 'agent', activity: 'subagents', detail: 'Audit', arguments: '{}', startedAt: NOW - 3_000,
+      result: { text: 'started', isError: false },
     })
-    const call = callsOf(entry, t, NOW, { asked: new Map(), decided: new Map(), children: { byId: new Map([['child-1', { state: 'settled', failed: false }]]) } })[0]!
+    const call = callsOf(entry, t, NOW, { asked: new Map(), decided: new Map(), children: { byCall: new Map([['spawn-1', 'child-1']]), byId: new Map([['child-1', { state: 'settled', failed: false }]]) } })[0]!
     expect(call).toMatchObject({ state: 'ok', phase: 'settled', outcome: [undefined, undefined] })
     expect(call).not.toHaveProperty('endedAt')
   })

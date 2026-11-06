@@ -2,13 +2,13 @@
 import { describe, expect, it } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { HostKey } from '../../src/client/types.ts'
-import { remoteTranscriptChildIds, remoteTranscriptContext, type RemoteTranscriptCatalog } from '../../src/transcript/context.ts'
+import { remoteTranscriptChildIds, remoteTranscriptContext, type RemoteTranscriptCatalog, spawnedChildIds } from '../../src/transcript/context.ts'
 import { catalog, facts, ref, summary } from './context-fixture.ts'
 
 describe('displayed transcript context', () => {
   it('reads only the displayed whole parent snapshot and preserves native mark and approval identities', () => {
     expect(remoteTranscriptContext({ ...facts(), ref: undefined })).toBeUndefined()
-    expect(remoteTranscriptContext(facts())).toEqual({ children: { byId: new Map(), byPrompt: new Map() } })
+    expect(remoteTranscriptContext(facts())).toEqual({ children: { byId: new Map(), byCall: new Map(), byPrompt: new Map() } })
     const marks = [{ id: 'compact', before: 800, after: 120, window: 1000 }]
     const approvals = [{ id: 'approval', callId: 'call', outcome: 'rejected' }]
     const snapshot = facts({ mayflyConversationFacts: { active: false, compactions: marks, approvals }, contextPressure: { contextWindow: 1000, projectedTokens: 140, pressureTokens: 120 } })
@@ -17,10 +17,21 @@ describe('displayed transcript context', () => {
     expect(context.approvals).toBe(approvals)
     expect(context).toMatchObject({ window: 1000, tokens: 140 })
     expect(remoteTranscriptContext(facts({ contextPressure: { projectedTokens: 'pending', pressureTokens: 72 } }))!.tokens).toBe(72)
-    expect(remoteTranscriptContext(facts({ contextPressure: { contextWindow: 'unknown', pressureTokens: 'unknown' }, mayflyConversationFacts: { active: false, compactions: false, approvals: {} } }))).toEqual({ children: { byId: new Map(), byPrompt: new Map() } })
+    expect(remoteTranscriptContext(facts({ contextPressure: { contextWindow: 'unknown', pressureTokens: 'unknown' }, mayflyConversationFacts: { active: false, compactions: false, approvals: {} } }))).toEqual({ children: { byId: new Map(), byCall: new Map(), byPrompt: new Map() } })
     for (const invalid of [null, [], 5, { active: 'false' }]) {
       expect(remoteTranscriptContext(facts({ mayflyConversationFacts: invalid, contextPressure: invalid }))!.marks).toBeUndefined()
     }
+  })
+
+  it('finds each spawn call its child through the catalog: same description in spawn order, and a failed call claims nothing', () => {
+    const call = (callId: string, description: unknown, isError?: boolean) => ({ seq: 1, turn: 1, step: 1, callId, name: 'subagent', arguments: JSON.stringify({ description }), startedAt: 0, ...isError === undefined ? {} : { result: { text: '', isError, endedAt: 1 } } })
+    const catalog = [null, { id: 7, label: 'A' }, { id: 'no-label' }, { id: 'a1', label: 'A' }, { id: 'b1', label: 'B' }, { id: 'a2', label: 'A' }, { id: 'workflow-child', label: 'scan' }]
+    const calls = [call('failed', 'A', true), call('first', 'A', false), call('pending', 'B'), call('second', 'A'), call('third', 'A'), call('nameless', 7)]
+    expect([...spawnedChildIds(calls, catalog)]).toEqual([['first', 'a1'], ['pending', 'b1'], ['second', 'a2']])
+    expect([...spawnedChildIds(calls, 'not a catalog')]).toEqual([])
+    const displayed = remoteTranscriptContext(facts({ mayflyConversationFacts: { active: true, agentCalls: calls }, subagentCatalog: catalog }))!
+    expect([...displayed.children!.byCall]).toEqual([['first', 'a1'], ['pending', 'b1'], ['second', 'a2']])
+    expect([...remoteTranscriptContext(facts({ mayflyConversationFacts: { active: true, agentCalls: 'bad' }, subagentCatalog: catalog }))!.children!.byCall]).toEqual([])
   })
 
   it('admits only the exact Host and displayed parent’s authoritative direct-child identities', () => {

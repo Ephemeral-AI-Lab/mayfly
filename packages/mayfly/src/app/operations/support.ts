@@ -14,6 +14,7 @@ import type {
 import type { HostClient, HostKey, SessionRef } from '../../client/types.ts'
 import type { RemoteBtwService } from '../../hosts/btw.ts'
 import type { HostViewLease } from '../../hosts/host-registry.ts'
+import type { SpawnedChildren } from '../../transcript/tool-calls.ts'
 import { remoteValue } from '../features/official.ts'
 import type { RemoteFeatureContext, RemoteFeatureSelection } from '../features.ts'
 
@@ -43,6 +44,10 @@ export interface RemoteOperationsOptions {
   readonly closePresent?: (ref?: SessionRef) => void
   /** Copy text through the integrator's clipboard path. */
   readonly copy?: (text: string) => Promise<'native' | 'osc52' | void>
+  /** The states of the displayed parent's children, the same ones the stream reads. */
+  readonly children?: () => SpawnedChildren | undefined
+  /** Listen to those states changing. */
+  readonly subscribeChildren?: (listener: () => void) => () => void
   /** Borrow the primary conversation owner's exact Host metadata without another cache. */
   readonly modelCatalog?: (host: HostKey) => ModelCatalog | undefined
 }

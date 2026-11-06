@@ -26,7 +26,7 @@ class RemoteTodoController {
     mountTranscriptLocale(options.ctx, 'remote-todo', TRANSCRIPT_LOCALE)
     this.t = transcriptTranslator(options.ctx, 'remote-todo')
     this.lifecycle = new RemoteFeatureLifecycle(options, this.attach)
-    this.pane = options.ctx.mayflyPanes.register({ id: 'mayfly.view.todo', title: this.t('Todo'), placement: 'views', priority: 14 }, null)
+    this.pane = options.ctx.mayflyPanes.register({ id: 'mayfly.view.todo', title: this.t('Todo'), placement: 'views', priority: 15 }, null)
     this.offSettings = options.ctx.on('mayfly/settings-source-ready', this.publish)
     this.offDocument = options.ctx.on('settings/document-updated', ns => { if (String(ns) === 'mayfly') this.publish() })
     this.offLocale = observeTranscriptLocale(options.ctx, this.publish)

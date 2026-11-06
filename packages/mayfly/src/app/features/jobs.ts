@@ -130,7 +130,8 @@ class RemoteJobsController {
 
   private readonly publish = (): void => {
     if (this.disposed) return
-    const jobs = this.jobs()
+    // A background workflow run is the Workflow view's; `/jobs` still lists it.
+    const jobs = this.jobs().filter(job => job.kind !== 'workflow')
     const live = jobs.filter(isRemoteJobLive)
     if (live.length > 0) {
       if (!this.batchLive) {

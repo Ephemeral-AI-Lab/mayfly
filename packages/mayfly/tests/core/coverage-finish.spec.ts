@@ -17,7 +17,6 @@ import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { placeholderLadder, placeholderState } from '../../src/interaction/placeholder.ts'
 import { themeIdea } from '../../src/interaction/theme-names.ts'
-import { agentPhasePresentation } from '../../src/transcript/agent-presentation.ts'
 import { elapsedText } from '../../src/transcript/process-activity.ts'
 import { AdmissionRow } from '../../src/core/ui-admission.ts'
 import { paintDrawer } from '../../src/core/completion-drawer.ts'
@@ -149,10 +148,6 @@ describe('pure interaction labels', () => {
 })
 
 describe('transcript presentation helpers', () => {
-  it('labels the waiting phase with its warning marker', () => {
-    expect(agentPhasePresentation('waiting')).toEqual({ label: 'waiting', marker: '●', tone: 'warning' })
-  })
-
   it('reports a ten-second elapsed line in seconds below the minute', () => {
     expect(elapsedText(10_000)).toBe('10s')
     expect(elapsedText(60_000)).toBe('1m 0s')

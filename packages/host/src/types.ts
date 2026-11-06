@@ -14,7 +14,7 @@ import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools/presen
 import type { TypertResource } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceChangesSummary, WorkspaceFileDiff } from '@deepseek-ai/dsh-workspace-changes/types'
 import type { WorkflowAgentOutcome, WorkflowPhase, WorkflowStopReason } from '@deepseek-ai/dsh-workflow/types'
-import type { ConversationJson } from './conversation/types.ts'
+import type { ConversationJson, OutputProgress } from './conversation/types.ts'
 
 export type * from './conversation/types.ts'
 export type * from './remote/stats-contract.ts'
@@ -437,6 +437,13 @@ export type MayflySubagentTreeEntry = SubagentListEntry & {
   readonly depth: number
   readonly live?: boolean
   readonly tokens?: number
+  /** Input with its cache: `tokens` less `outputTokens`, over the settled steps. */
+  readonly inputTokens?: number
+  readonly outputTokens?: number
+  /** The first tool the child runs now (arguments complete), when it runs one. */
+  readonly currentTool?: string
+  /** The attempt streaming now, for the rate a row shows. */
+  readonly outputProgress?: OutputProgress
   readonly toolCount?: number
   readonly liveChars?: number
   readonly settledMs?: number
