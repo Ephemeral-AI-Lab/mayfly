@@ -189,7 +189,7 @@ export function ToolGroupHead(facts: ToolGroupFacts): readonly MayflyInlineSpan[
     ...facts.state === 'pending' ? PENDING_GLYPH : [{ text: GLYPH[facts.state], tone: GLYPH_TONE[facts.state] } as const],
     { text: facts.name, tone: facts.state === 'cancelled' ? 'muted' : 'default', styles: ['strong'] },
     ...(facts.head === '' ? [] : [{ text: ` · ${facts.head}`, tone: 'muted' } as const]),
-    ...(facts.failed === undefined ? [] : [{ text: ` · ${facts.failed}`, tone: facts.state === 'partial' ? 'warning' : 'danger' } as const]),
+    ...(facts.failed === undefined ? [] : [{ text: ` · ${facts.failed}`, tone: facts.state === 'partial' || facts.state === 'pending' ? 'warning' : 'danger' } as const]),
     ...(facts.interrupted === undefined ? [] : [{ text: ` · ${facts.interrupted}`, tone: 'muted' } as const]),
   ]
 }

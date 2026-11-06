@@ -115,6 +115,9 @@ describe('tool line glyphs and spans', () => {
     const head = ToolGroupHead({ state: 'ok', name: 'Bash', head: '3 calls · 6s', items: [] })
     expect(head.map(span => span.text).join('')).toBe('✓ Bash · 3 calls · 6s')
     expect(ToolGroupHead({ state: 'partial', name: 'Bash', head: '3 calls', failed: '1 failed', items: [] }).at(-1)).toEqual({ text: ' · 1 failed', tone: 'warning' })
+    // While the rest still run a failure is a warning; only a block that has ended in failure is an error.
+    expect(ToolGroupHead({ state: 'pending', name: 'Subagent', head: '1/3', failed: '1 failed', items: [] }).at(-1)).toEqual({ text: ' · 1 failed', tone: 'warning' })
+    expect(ToolGroupHead({ state: 'error', name: 'Bash', head: '3 calls', failed: '3 failed', items: [] }).at(-1)).toEqual({ text: ' · 3 failed', tone: 'danger' })
     expect(ToolGroupItem({ state: 'ok', label: 'pnpm test', outcome: '4.2s' }, false).map(span => span.text).join('')).toBe('  ├ pnpm test · 4.2s')
     expect(ToolGroupItem({ state: 'error', label: 'pnpm build', outcome: 'exit 1' }, true).map(span => span.text).join('')).toBe('  └ ✗ pnpm build · exit 1')
   })
@@ -132,7 +135,7 @@ describe('tool calls at the three tiers', () => {
       .toMatchObject({ name: 'WebFetch', target: 'https://x.dev/a', outcome: ['200', '2 KB', 'truncated', '4.2s'] })
     expect(callOf(other({ name: 'web_search', activity: 'webSearch', detail: 'mayfly', web: { kind: 'search', sources: [{ url: 'https://a' }, { url: 'https://b' }], truncated: false }, result: { text: 'ok', isError: false, endedAt: 1_000 } })))
       .toMatchObject({ name: 'WebSearch', target: '"mayfly"', outcome: ['2 sources', '1s'] })
-    expect(callOf(other({ name: 'todo_write', activity: 'plan', detail: '', arguments: '{"todos":[{"content":"a"},{"content":"b"}]}' })))
+    expect(callOf(other({ name: 'todo_write', activity: 'todo', detail: '', arguments: '{"todos":[{"content":"a"},{"content":"b"}]}' })))
       .toMatchObject({ name: 'TodoWrite' })
     expect(callOf(other({ name: 'subagent', activity: 'subagents', detail: 'Review', result: { text: 'done', isError: false, endedAt: 9_000 } })))
       .toMatchObject({ name: 'Subagent', target: 'Review' })

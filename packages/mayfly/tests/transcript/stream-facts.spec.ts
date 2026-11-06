@@ -204,20 +204,21 @@ describe('StreamFacts', () => {
     const turns = [{ turn: 1, startedAt: NOON - 4_000 }]
     const lineOf = (more: Partial<StreamInputs>): string => JSON.stringify(new StreamFacts().build(model([user(1, 'go'), spawn()], turns), inputs(more)).turns[0]!.rows)
 
-    it('reads running while its child works, and settled with its child\'s end once it ends', () => {
+    it('reads pending with no time of its own while its child works, and settled with its child\'s end once it ends', () => {
       const running = { byCall: new Map([['spawn-1', 'child-1']]), byId: new Map([['child-1', { state: 'running' as const }]]), byPrompt: new Map() }
-      expect(lineOf({ children: running })).toContain('running')
+      expect(lineOf({ children: running })).toContain('"state":"pending"')
+      expect(lineOf({ children: running })).not.toContain('"outcome"')
       const settled = { byCall: new Map([['spawn-1', 'child-1']]), byId: new Map([['child-1', { state: 'settled' as const, failed: true, endedAt: NOON - 500 }]]), byPrompt: new Map() }
       expect(lineOf({ children: settled })).toContain('failed')
-      expect(lineOf({})).not.toContain('running')
+      expect(lineOf({})).not.toContain('"state":"pending"')
     })
 
     it('keeps following its child while a request waits on another call, and when the first request names no call', () => {
       const running = { byCall: new Map([['spawn-1', 'child-1']]), byId: new Map([['child-1', { state: 'running' as const }]]), byPrompt: new Map() }
-      expect(lineOf({ children: running, requests: [{ type: 'approval', callId: 'other-call', reason: 'removes files' } as never] })).toContain('running')
-      expect(lineOf({ children: running, requests: [{ type: 'approval', toolName: 'bash', reason: 'asks first' } as never] })).toContain('running')
+      expect(lineOf({ children: running, requests: [{ type: 'approval', callId: 'other-call', reason: 'removes files' } as never] })).toContain('"state":"pending"')
+      expect(lineOf({ children: running, requests: [{ type: 'approval', toolName: 'bash', reason: 'asks first' } as never] })).toContain('"state":"pending"')
       // A request with no reason asks the same, and a child-less stream is unchanged.
-      expect(lineOf({ requests: [{ type: 'plan', callId: 'other-call' } as never] })).not.toContain('running')
+      expect(lineOf({ requests: [{ type: 'plan', callId: 'other-call' } as never] })).not.toContain('"state":"pending"')
     })
   })
 })
@@ -610,5 +611,67 @@ describe('StreamFacts: canonical notes, plural counts, and compact call tiers', 
     const entry = { ...tool(1, 'bash', 'ls'), id: 'tool:flat', callId: 'c-flat' } as TranscriptEntryModel
     const facts = new StreamFacts().build(createTranscriptModel('spec', [user(1, 'q'), entry]), inputs())
     expect(rowsOf(facts.turns[0]).find(row => row.kind === 'tool')).toBeDefined()
+  })
+})
+
+describe('StreamFacts: what a view owns', () => {
+  const owned = (turn: number, name: string, activity: string, callId: string, more: Record<string, unknown> = {}): TranscriptEntryModel => ({ ...tool(turn, name, 'do it'), callId, activity, ...more } as TranscriptEntryModel)
+  const failing = { result: { text: 'boom', isError: true, endedAt: 2 } }
+  const turns = [{ turn: 1, startedAt: NOON, endedAt: NOON + 9_000, outcome: 'completed' as const }]
+  const live = [{ turn: 1, startedAt: NOON }]
+  const policy = (mode: keyof typeof PROCESS_POLICIES): TranscriptPresentationSnapshot => ({ ...DEFAULT_TRANSCRIPT_PRESENTATION, mode, process: PROCESS_POLICIES[mode] })
+  const fan = (): TranscriptEntryModel[] => [user(1, 'go'), owned(1, 'subagent', 'subagents', 'a'), owned(1, 'subagent', 'subagents', 'b'), owned(1, 'subagent', 'subagents', 'c')]
+  const children = {
+    byCall: new Map([['a', 'A'], ['b', 'B'], ['c', 'C']]),
+    byId: new Map([['A', { state: 'settled' as const, failed: false }], ['B', { state: 'settled' as const, failed: true }], ['C', { state: 'running' as const }]]),
+  }
+
+  it('gathers a fan-out of spawns into one line that counts them as they settle, and a lone spawn stays its own line', () => {
+    const stream = new StreamFacts()
+    const row = rowsOf(stream.build(model(fan(), live, true), inputs({ children })).turns[0]).find(item => item.kind === 'tools')
+    expect(row).toMatchObject({ state: 'pending', name: 'Subagent', head: '2/3', failed: '1 failed', items: [] })
+    expect(stream.locate(row!.id)).toMatchObject({ view: 'mayfly.view.agents' })
+    const lone = rowsOf(new StreamFacts().build(model([user(1, 'go'), owned(1, 'subagent', 'subagents', 'a')], live, true), inputs()).turns[0]).at(-1)
+    expect(lone).toMatchObject({ kind: 'tool', name: 'Subagent', target: 'do it' })
+    expect(lone).not.toHaveProperty('body')
+  })
+
+  it('draws a spawn and a workflow as lines at every tier above the compact one, each moving to its view', () => {
+    for (const mode of ['standard', 'detailed', 'verbose'] as const) {
+      const stream = new StreamFacts()
+      const rows = rowsOf(stream.build(model([user(1, 'go'), owned(1, 'subagent', 'subagents', 'a'), owned(1, 'workflow', 'workflow', 'w')], turns), inputs({ policy: policy(mode) })).turns[0]).filter(row => row.kind === 'tool')
+      expect(rows.map(row => row.kind === 'tool' && row.name)).toEqual(['Subagent', 'Workflow'])
+      expect(rows.map(row => row.kind === 'tool' && row.body)).toEqual([undefined, undefined])
+      expect(rows.map(row => stream.locate(row.id)?.view)).toEqual(['mayfly.view.agents', 'mayfly.view.workflow'])
+    }
+  })
+
+  it('leaves a spawn that waits on the user in place: the request is on its line, and no view has it yet', () => {
+    const stream = new StreamFacts()
+    const entry = owned(1, 'subagent', 'subagents', 'a', { result: undefined })
+    const request = { type: 'approval', callId: 'a', reason: 'asks first' } as never
+    const rows = rowsOf(stream.build(model([user(1, 'go'), entry], live, true), inputs({ requests: [request] })).turns[0])
+    expect(rows.at(-1)).toMatchObject({ kind: 'tool', state: 'waiting' })
+    expect(stream.locate(rows.at(-1)!.id)).not.toHaveProperty('view')
+    // Compact keeps it too, though it draws no other spawn in flight.
+    const compact = rowsOf(new StreamFacts().build(model([user(1, 'go'), entry], live, true), inputs({ requests: [request], policy: policy('compact') })).turns[0])
+    expect(compact.at(-1)).toMatchObject({ kind: 'tool', state: 'waiting' })
+    expect(rowsOf(new StreamFacts().build(model([user(1, 'go'), entry], live, true), inputs({ policy: policy('compact') })).turns[0]).some(row => row.kind === 'tool')).toBe(false)
+  })
+
+  it('keeps a failure\'s line under the compact title, which opens to its output, and folds the rest', () => {
+    const entries = [user(1, 'go'), tool(1, 'bash', 'ok'), owned(1, 'bash', 'commands', 'x', failing), assistant(1, 'done')]
+    const row = (open: boolean) => rowsOf(new StreamFacts().build(model(entries, turns), inputs({ policy: policy('compact'), disclosure: { ...NO_DISCLOSURE, rows: new Set(open ? [entries[2]!.id] : []) } })).turns[0])
+    expect(row(false).map(item => item.kind)).toEqual(['prompt', 'title', 'tool', 'answer'])
+    expect(row(false)[1]).toMatchObject({ text: '2 tool calls', failed: '1 failed', partial: true })
+    expect(row(false)[2]).toMatchObject({ state: 'error', outcome: 'boom' })
+    expect(row(false)[2]).not.toHaveProperty('body')
+    expect(row(true)[2]).toMatchObject({ body: [{ text: 'boom' }] })
+  })
+
+  it('names a spawn\'s failure from its child, in the title and on its line, at the compact tier', () => {
+    const rows = rowsOf(new StreamFacts().build(model(fan(), turns), inputs({ policy: policy('compact'), children })).turns[0])
+    expect(rows[1]).toMatchObject({ kind: 'title', text: '3 subagents', failed: '1 failed' })
+    expect(rows.filter(row => row.kind === 'tool')).toMatchObject([{ state: 'error', outcome: 'failed' }])
   })
 })

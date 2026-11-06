@@ -89,6 +89,7 @@ function harness(options: Partial<TranscriptControllerOptions> = {}, attach = tr
     watchContentTail: () => () => {},
     contentTail: () => undefined,
     requestRender: vi.fn(),
+    enterViews: vi.fn(() => true),
   } as unknown as TranscriptScreen
   const modes: string[] = []
   const controller = new TranscriptController({ t: interpolateLocaleMessage, queued: () => [], focusMode: mode => { modes.push(mode) }, ...options })
@@ -203,6 +204,20 @@ describe('Enter on a row', () => {
     expect(call).toBeDefined()
     accept(call)
     expect(slot.focusRows.at(-1)).toBe(call)
+  })
+
+  it('moves to the view a spawn or a workflow belongs to, and leaves the row as it was', () => {
+    const { controller, slot, screen, accept, ids } = harness()
+    const line = (name: string, activity: string, id: string): TranscriptEntryModel => ({ kind: 'transcript-tool', id, seq: 2, updatedSeq: 2, turn: 1, step: 1, callId: id, name, family: 'other', activity, detail: 'go', arguments: '{}', startedAt: 0, result: { text: 'ok', isError: false, endedAt: 1 } } as TranscriptEntryModel)
+    controller.setView('main', modelOf([user(1, 'go'), line('subagent', 'subagents', 'spawn'), line('workflow', 'workflow', 'flow')]))
+    controller.show('main')
+    const published = slot.published.length
+    expect(ids()).toContain('spawn')
+    accept('spawn')
+    expect(screen.enterViews).toHaveBeenLastCalledWith('mayfly.view.agents')
+    accept('flow')
+    expect(screen.enterViews).toHaveBeenLastCalledWith('mayfly.view.workflow')
+    expect(slot.published).toHaveLength(published)
   })
 
   it('does nothing for an Enter that names no row, a row nothing stands behind, or a conversation that is gone', () => {

@@ -460,6 +460,16 @@ function answeredQuestions(entry: ToolEntry, t: MayflyTranslate): { readonly cou
   return { count: rows.length, rows }
 }
 
+/** What a workflow's or a job's call is about, which its generic salient argument does not name: the run, the job. */
+function ownedTarget(entry: ToolEntry): string | undefined {
+  if (entry.activity !== 'workflow' && entry.activity !== 'jobs') return undefined
+  // A workflow's name is inside its `meta` object; its arguments may still be streaming, so the reader starts at that object.
+  const named = entry.activity === 'workflow'
+    ? partialStrings(entry.arguments.slice(Math.max(0, entry.arguments.search(/"meta"\s*:/u) + 1)).replace(/^meta"\s*:/u, '')).fields['name']
+    : partialStrings(entry.arguments).fields['job_id']
+  return named === undefined ? undefined : ellipsize(sanitizePluginText(named), TARGET_MAX_CHARS)
+}
+
 function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
   const exit = exitText(entry.terminal?.exitCode, entry.terminal?.signal, t)
   const interruption = entry.result?.interruption
@@ -469,7 +479,7 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
   // A call whose arguments still stream names the target as far as they have gone.
   const fields = entry.preparing === undefined ? undefined : partialStrings(entry.arguments).fields
   const command = entry.terminal?.command ?? (entry.activity === 'commands' ? fields?.['command'] : undefined)
-  const salient = ellipsize(sanitizePluginText(fields === undefined ? entry.detail : argumentDetail(fields)), TARGET_MAX_CHARS)
+  const salient = ownedTarget(entry) ?? ellipsize(sanitizePluginText(fields === undefined ? entry.detail : argumentDetail(fields)), TARGET_MAX_CHARS)
   const further = command === undefined ? NO_ROWS : allLines(command)
   // The arguments the model gave: a command, a query, an address, else the salient one (not the tool's own name).
   const target = command !== undefined ? ellipsize(`${linesOf(command).find(line => line.trim() !== '') ?? command}${further.total > 1 ? ' …' : ''}`, COMMAND_MAX_CHARS)
@@ -527,6 +537,8 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
     body: () => {
       // A decided plan reads as the plan itself (its Markdown), not the tool's one-line answer.
       if (plan) return NO_ROWS
+      // A view owns what such a call started; only why it failed is the stream's to say.
+      if (kindOf(entry.activity).owner !== undefined && state !== 'error') return NO_ROWS
       if (web?.kind === 'search') {
         return { rows: web.sources.map(source => bodyRow(source.title === undefined ? source.url : `${source.title} · ${source.url.replace(/^[a-z][a-z0-9+.-]*:\/\//iu, '')}`)), total: web.sources.length }
       }
@@ -541,19 +553,19 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate): Call {
 
 /**
  * A spawn whose child is known reads as the child does: a child still working
- * keeps the call pending (with the time so far), a child that settled gives the
- * call its own time and, when it failed, its failure. The activation
+ * keeps the call pending (the Agents view has its time), a child that settled
+ * gives the call its own time and, when it failed, its failure. The activation
  * acknowledgement lands within milliseconds, so the call alone would read
  * finished at once.
  */
-function whileSpawned(call: Call, children: SpawnedChildren | undefined, t: MayflyTranslate, now: number): Call {
+function whileSpawned(call: Call, children: SpawnedChildren | undefined, t: MayflyTranslate): Call {
   if (call.activity !== 'subagents' || call.state !== 'ok') return call
   const childId = children?.byCall.get(call.callId)
   const child = childId === undefined ? undefined : children?.byId.get(childId)
   if (child === undefined) return call
   const { endedAt: _ended, ...open } = call
   if (child.state === 'running') {
-    return { ...open, state: 'pending', phase: 'running', outcome: [t('running'), pendingElapsed(Math.max(0, now - call.startedAt))] }
+    return { ...open, state: 'pending', phase: 'running', outcome: [] }
   }
   const endedAt = child.endedAt ?? call.endedAt
   return {
@@ -572,11 +584,11 @@ function pendingElapsed(ms: number): string | undefined {
 
 /**
  * A call that is in flight, as the stream shows it: once it runs, its time so far is its outcome. While the model still
- * writes its arguments it has no time of its own (the activity row counts the turn's).
+ * writes its arguments it has no time of its own (the activity row counts the turn's), nor while a view owns the time.
  */
 function whilePending(call: Call, now: number): Call {
   if (call.state !== 'pending') return call
-  return { ...call, outcome: call.phase === 'preparing' ? [] : [pendingElapsed(Math.max(0, now - call.startedAt))] }
+  return { ...call, outcome: call.phase === 'preparing' || kindOf(call.activity).owner !== undefined ? [] : [pendingElapsed(Math.max(0, now - call.startedAt))] }
 }
 
 /**
@@ -604,13 +616,13 @@ export function callsOf(entry: TranscriptEntryModel, t: MayflyTranslate, now: nu
   return calls.map((call) => {
     const request = call.state === 'pending' && call.phase === 'running' ? requests?.asked.get(call.callId) : undefined
     if (request !== undefined) return awaiting(call, request, entry, t)
-    return decided(whileSpawned(whilePending(call, now), requests?.children, t, now), requests?.decided.get(call.callId), t)
+    return decided(whileSpawned(whilePending(call, now), requests?.children, t), requests?.decided.get(call.callId), t)
   })
 }
 
 /** A settled call that was put to the user says what the user decided: `allowed` before its outcome, `rejected` in place of the failure. */
 function decided(call: Call, decision: 'allowed' | 'rejected' | undefined, t: MayflyTranslate): Call {
-  if (decision === undefined || call.activity === 'plan') return call
+  if (decision === undefined) return call
   if (decision === 'allowed' && call.state === 'ok') return { ...call, outcome: [t('allowed'), ...call.outcome] }
   if (decision === 'rejected' && call.state === 'error') return { ...call, outcome: [t('rejected')] }
   return call
@@ -792,7 +804,8 @@ export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 
 
 /**
  * A run of calls of one kind as a standard block, from the first call on: the tool's name and what the calls count, and a line
- * per call that changes in place as the call runs and settles. A single call is its own line.
+ * per call that changes in place as the call runs and settles. A single call is its own line. A fan-out of calls a view
+ * owns (spawns) is the head alone: how many have settled, and how they went.
  * @param calls - the run's calls, in flight or settled, all of one category.
  * @param t - translator for the transcript namespace.
  * @param now - the time, which a block with a call in flight measures its own against.
@@ -816,7 +829,8 @@ export function standardRow(calls: readonly Call[], t: MayflyTranslate, now: num
   // Calls stopped or never started are not failures: they are counted apart, in the head's muted tail.
   const interrupted = calls.filter(call => call.state === 'cancelled').length
   const names = [...new Set(calls.map(call => call.name))]
-  const head = [
+  const fanOut = kindOf(first.activity).placement === 'line'
+  const head = fanOut ? `${String(calls.filter(call => call.state !== 'pending').length)}/${String(calls.length)}` : [
     unitPhrase(first.activity, calls.length, t),
     lines === undefined || lines === 0 ? undefined : t('{count} lines', { count: lines }),
     matches === undefined || matches === 0 ? undefined : t(matches === 1 ? '{count} match' : '{count} matches', { count: matches }),
@@ -830,7 +844,7 @@ export function standardRow(calls: readonly Call[], t: MayflyTranslate, now: num
     head: sanitizePluginText(head),
     ...(failed === 0 ? {} : { failed: t('{count} failed', { count: failed }) }),
     ...(interrupted === 0 ? {} : { interrupted: t('{count} interrupted', { count: interrupted }) }),
-    items: calls.map((call) => {
+    items: fanOut ? [] : calls.map((call) => {
       const outcome = outcomeText(call)
       // An opened call shows what its Verbose block would, in place under its line: the block around it stays a run.
       const open = opened.has(call.id) ? verboseRow(call, true, t, 'verbose') : undefined

@@ -10,7 +10,7 @@ import { openTurns, type Disclosure } from './disclosure.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
 import { diffStat, elapsedText } from './process-activity.ts'
 import { callsOf, standardRow, verboseRow, type Call, type CallFacts, type SpawnedChildren } from './tool-calls.ts'
-import { kindOf } from './tool-kinds.ts'
+import { kindOf, ownerViewOf } from './tool-kinds.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize } from './present.ts'
 import { partText, type CopyMode, type RowPart } from './row-text.ts'
@@ -150,6 +150,8 @@ type RowOwner = {
   readonly parts: readonly string[]
   /** A run's head or one of its calls: the run's id and the ids of the calls it holds, so Enter opens a call without leaving the run. */
   readonly run?: { readonly head: string, readonly calls: readonly string[] }
+  /** The view that has this row's detail, so Enter moves there rather than opening the row. */
+  readonly view?: string
 } & (
   /** Headers and titles always stand for their own turn; canonical entry notes may stand outside one. */
   | { readonly kind: 'header' | 'title', readonly turn: number }
@@ -286,6 +288,7 @@ export class StreamFacts {
     this.reached = reach
     const runnable = new Set<string>()
     for (const entry of entries) if (isSemantic(entry) && isToolLike(entry) && !isUnmerged(entry)) runnable.add(entry.id)
+    const asked = requestOf(inputs.requests, inputs.approvals, inputs.children)
     const display = buildDisplay({
       entries: [...entries, ...liveEntries],
       policy: policy.process,
@@ -298,11 +301,12 @@ export class StreamFacts {
       scope: inputs.disclosure.recent ? new Set() : reach,
       flat: model.streaming === undefined,
       runningHeader: inputs.liveTurnHeader,
+      waiting: new Set(asked.asked.keys()),
+      children: inputs.children,
     })
     const lifecycle = new Map((model.turns ?? []).map(turn => [turn.turn, turn]))
     const buckets: { readonly turn: number, readonly rows: StreamRow[] }[] = []
     let lead: StreamRow[] = []
-    const asked = requestOf(inputs.requests, inputs.approvals, inputs.children)
     runsOf(display, inputs.t, inputs.now, asked).forEach((item, position) => {
       const turn = turnOf(item)
       const built = this.rowsOf(item, inputs, position, asked)
@@ -534,8 +538,16 @@ function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, appro
 function ownerOf(item: DisplayItem | RunUnit, turn: number | undefined, row: StreamRow): RowOwner {
   if (item.kind === 'turn-header') return { kind: 'header', turn: item.turn, parts: [] }
   if (item.kind === 'process-title') return { kind: 'title', turn: item.turn, parts: [] }
-  if (item.kind === 'run') return { kind: 'entries', turn, parts: item.calls.map(call => call.id), run: runOf(item) }
-  return { kind: 'entries', turn, parts: [row.id] }
+  const view = row.kind !== 'tool' || row.state !== 'waiting' ? viewOfItem(item) : undefined
+  const moves = view === undefined ? {} : { view }
+  if (item.kind === 'run') return { kind: 'entries', turn, parts: item.calls.map(call => call.id), run: runOf(item), ...moves }
+  return { kind: 'entries', turn, parts: [row.id], ...moves }
+}
+
+/** The view that has the detail of a spawn's or a workflow's line. */
+function viewOfItem(item: EntryItem | RunUnit): string | undefined {
+  if (item.kind === 'run') return ownerViewOf(item.calls[0]!.activity)
+  return item.entry.kind === 'transcript-tool' ? ownerViewOf(item.entry.activity) : undefined
 }
 
 function runOf(run: RunUnit): NonNullable<RowOwner['run']> {
@@ -665,9 +677,13 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
 /** The rows of one entry: none for an empty one, one per call for a tool, group, or run of calls drawn as verbose blocks. */
 function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs, asked: CallFacts): readonly StreamRow[] {
   if (isToolLike(entry)) {
-    // At the compact level a call in flight is its line alone, and one that waits on the user stays open; what has settled is the title's.
+    // At the compact level a call in flight is its line alone, and one that waits on the user stays open; what has settled is
+    // the title's, but for a failure, which keeps its line and opens from it.
     const calls = callsOf(entry, inputs.t, inputs.now, asked)
-    return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending' || call.state === 'waiting') : calls).map(call => verboseRow(call, item.expanded || inputs.disclosure.rows.has(call.id), inputs.t, item.tier ?? 'verbose'))
+    return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending' || call.state === 'waiting' || call.state === 'error') : calls).map((call) => {
+      const open = item.expanded || inputs.disclosure.rows.has(call.id)
+      return verboseRow(call, open, inputs.t, open && call.state === 'error' ? 'verbose' : item.tier ?? 'verbose')
+    })
   }
   const row = entryRow(item, entry, inputs)
   return row === undefined ? [] : [row]

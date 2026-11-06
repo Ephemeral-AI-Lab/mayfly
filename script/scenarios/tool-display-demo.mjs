@@ -22,6 +22,8 @@ const mcpEntry = createRequire(mcpClient).resolve('@deepseek-ai/dsh-mcp-client')
 const mcpServer = fileURLToPath(new URL('./tool-display-mcp.mjs', import.meta.url))
 
 const overlay = ['github', 'linear', 'browser'].map(server => `- insert:\n    - id: demo-mcp-${server}\n      name: ${JSON.stringify(`file://${mcpEntry}`)}\n      config:\n        transport: stdio\n        serverName: ${server}\n        command: ${JSON.stringify(process.execPath)}\n        args: [${JSON.stringify(mcpServer)}, ${server}]`)
+// A level to start at, so all four can be judged without going through the settings.
+if (process.env.TOOL_DISPLAY_LEVEL !== undefined) overlay.push(`- id: mayfly\n  config:\n    transcriptView: ${process.env.TOOL_DISPLAY_LEVEL}`)
 
 mkdirSync(artifacts, { recursive: true })
 const workspace = mkdtempSync(join(artifacts, 'workspace-'))

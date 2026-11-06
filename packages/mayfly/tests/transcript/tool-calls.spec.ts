@@ -9,7 +9,7 @@ import { DEFAULT_TRANSCRIPT_PRESENTATION, PROCESS_POLICIES, type TranscriptPrese
 import type { StreamRow } from '../../src/components/transcript-view.ts'
 import { NO_DISCLOSURE } from '../../src/transcript/disclosure.ts'
 import { StreamFacts, type StreamInputs } from '../../src/transcript/stream-facts.ts'
-import { callsOf, standardRow, verboseRow, VERBOSE_BODY_ROWS, OPEN_BODY_ROWS } from '../../src/transcript/tool-calls.ts'
+import { callsOf, standardRow, verboseRow, VERBOSE_BODY_ROWS, OPEN_BODY_ROWS, type Call } from '../../src/transcript/tool-calls.ts'
 
 const t = interpolateLocaleMessage
 const NOON = Date.UTC(2026, 0, 1, 12, 5)
@@ -410,7 +410,7 @@ describe('lone tool calls', () => {
 
 describe('plan calls', () => {
   const plan = (text: string, overrides: Record<string, unknown> = {}): TranscriptEntryModel => tool({
-    name: 'exit_plan_mode', activity: 'plan', family: 'other', detail: '', terminal: undefined, arguments: JSON.stringify({ plan: '1. read\n2. write\n3) test\nnote' }),
+    name: 'exit_plan_mode', activity: 'tools', family: 'other', detail: '', terminal: undefined, arguments: JSON.stringify({ plan: '1. read\n2. write\n3) test\nnote' }),
     result: { text, isError: false, endedAt: 1_000 }, ...overrides,
   })
   const rejected = (text: string): TranscriptEntryModel => plan(text, { result: { text, isError: true, endedAt: 1_000 } })
@@ -502,14 +502,14 @@ describe('calls that wait on the user', () => {
   })
 
   it('names a plan under review for what it is, with its steps and its Markdown, and drops the tool\'s target', () => {
-    const entry = tool({ callId: 'wait', name: 'exit_plan_mode', activity: 'plan', detail: 'plan', terminal: undefined, arguments: JSON.stringify({ plan: '1. a\n2. b' }), result: undefined, startedAt: NOW - 1_000 })
+    const entry = tool({ callId: 'wait', name: 'exit_plan_mode', activity: 'tools', detail: 'plan', terminal: undefined, arguments: JSON.stringify({ plan: '1. a\n2. b' }), result: undefined, startedAt: NOW - 1_000 })
     const call = waiting(entry, { type: 'plan', index: 1, total: 1, reason: 'ready' })
     expect(call).toMatchObject({ state: 'waiting', name: 'Plan ready for review', label: 'Plan ready for review', outcome: ['2 steps'] })
     expect(call).not.toHaveProperty('target')
     expect(call.waiting).toEqual({ rows: [{ text: 'ready', tone: 'muted' }], markdown: '1. a\n2. b' })
     expect(blockAt(call, 'standard')).toMatchObject({ markdown: '1. a\n2. b' })
     // A plan whose text has not arrived has no Markdown to show.
-    const empty = waiting(tool({ callId: 'wait', name: 'exit_plan_mode', activity: 'plan', terminal: undefined, arguments: '{}', result: undefined, startedAt: NOW - 1_000 }), { type: 'plan', index: 1, total: 1 })
+    const empty = waiting(tool({ callId: 'wait', name: 'exit_plan_mode', activity: 'tools', terminal: undefined, arguments: '{}', result: undefined, startedAt: NOW - 1_000 }), { type: 'plan', index: 1, total: 1 })
     expect(empty.waiting).toEqual({ rows: [] })
     expect(empty.outcome).toEqual([undefined])
   })
@@ -521,7 +521,7 @@ describe('calls that wait on the user', () => {
     // A decision that does not fit how the call ended changes nothing.
     expect(decide(tool({ callId: 'd', terminal: { command: 'ls', exitCode: 1 }, result: { text: 'no', isError: true, endedAt: 4_200 } }), 'allowed').outcome).toEqual(['exit 1', '4.2s'])
     expect(decide(tool({ callId: 'd', terminal: { command: 'ls', exitCode: 0 } }), 'rejected').outcome).toEqual(['4.2s'])
-    expect(decide(tool({ callId: 'd', name: 'exit_plan_mode', activity: 'plan', terminal: undefined, arguments: '{}' }), 'allowed')).toMatchObject({ name: 'Plan approved' })
+    expect(decide(tool({ callId: 'd', name: 'exit_plan_mode', activity: 'tools', terminal: undefined, arguments: '{}' }), 'allowed')).toMatchObject({ name: 'Plan approved' })
   })
 
   it('takes no calls from an entry that is not a tool, and shows a call in its first second with no time', () => {
@@ -676,7 +676,7 @@ describe('a spawn line that follows its child', () => {
   it('stays pending while its child works, though its activation acknowledgement landed at once', () => {
     expect(call(spawn())).toMatchObject({ state: 'ok' })
     const running = call(spawn(), child('running'))
-    expect(running).toMatchObject({ state: 'pending', phase: 'running', outcome: ['running', '3s'] })
+    expect(running).toMatchObject({ state: 'pending', phase: 'running', outcome: [] })
     expect(running).not.toHaveProperty('endedAt')
   })
 
@@ -781,7 +781,7 @@ describe('remaining tool-call fact shapes', () => {
     // A result with no text is not a question batch, and no feedback text in a failed plan is no revision.
     const bare = callOf(tool({ name: 'ask_user_question', family: 'other', activity: 'questions', result: { isError: false, endedAt: 1 } }))
     expect(bare.name).toBe('AskUserQuestion')
-    const plan = callOf(tool({ name: 'exit_plan_mode', activity: 'plan', family: 'other', detail: '', terminal: undefined, arguments: JSON.stringify({ plan: '1. a' }), result: { isError: true, endedAt: 1 } }))
+    const plan = callOf(tool({ name: 'exit_plan_mode', activity: 'tools', family: 'other', detail: '', terminal: undefined, arguments: JSON.stringify({ plan: '1. a' }), result: { isError: true, endedAt: 1 } }))
     expect(plan).toMatchObject({ state: 'error', name: 'Plan rejected', outcome: ['1 step', undefined] })
   })
 
@@ -799,5 +799,35 @@ describe('remaining tool-call fact shapes', () => {
     const row = blockAt(callOf(liveFile('edit', '{"file_path":"notes","old_string":"a","new_string":"b"')), 'standard')
     expect(row.diff).toBeDefined()
     expect(row).not.toHaveProperty('moreBefore')
+  })
+})
+
+describe('calls a view owns', () => {
+  const owned = (activity: 'subagents' | 'workflow' | 'jobs' | 'todo' | 'goal', overrides: Record<string, unknown> = {}): TranscriptEntryModel => tool({ name: activity === 'workflow' ? 'workflow' : 'x', family: 'other', activity, detail: 'do it', terminal: undefined, ...overrides })
+
+  it('has no body and no clock: only why one failed is the stream\'s to say', () => {
+    for (const activity of ['subagents', 'workflow', 'jobs', 'todo', 'goal'] as const) {
+      expect(callsOf(owned(activity), t, NOW)[0]!.body().rows).toEqual([])
+      expect(callsOf(owned(activity, { result: undefined, startedAt: NOW - 9_000 }), t, NOW)[0]!.outcome).toEqual([])
+      expect(callsOf(owned(activity, { result: { text: 'boom', isError: true, endedAt: NOW } }), t, NOW)[0]!.body().rows).toMatchObject([{ text: 'boom' }])
+    }
+    expect(callsOf(tool({ result: undefined, startedAt: NOW - 9_000, terminal: undefined, family: 'other', activity: 'tools' }), t, NOW)[0]!.outcome).toEqual(['9s'])
+  })
+
+  it('names the run a workflow is and the job a job call is about, as far as the arguments have gone', () => {
+    const call = (activity: 'workflow' | 'jobs', args: string, more: Record<string, unknown> = {}) => callsOf(owned(activity, { detail: '', arguments: args, ...more }), t, NOW)[0]!
+    expect(call('workflow', JSON.stringify({ script: 'phase("meta")', meta: { name: 'audit-deps', phases: [] } })).target).toBe('audit-deps')
+    expect(call('workflow', '{"meta": {"name":"aud', { result: undefined, preparing: { startedAt: NOW } }).target).toBe('aud')
+    expect(call('workflow', '{"script":"x"}')).not.toHaveProperty('target')
+    expect(call('jobs', JSON.stringify({ job_id: 'job-3' })).target).toBe('job-3')
+    expect(call('jobs', '{}')).not.toHaveProperty('target')
+  })
+
+  it('counts a fan-out of spawns on one line with no call rows; other runs keep theirs', () => {
+    const spawn = (callId: string, result?: unknown): readonly Call[] => callsOf(owned('subagents', { name: 'subagent', callId, result }), t, NOW)
+    const row = standardRow([...spawn('a', { text: 'x', isError: false, endedAt: NOW }), ...spawn('b')], t, NOW)
+    expect(row).toMatchObject({ kind: 'tools', state: 'pending', name: 'Subagent', head: '1/2', items: [] })
+    const failed = standardRow([...spawn('a', { text: 'x', isError: false, endedAt: NOW }), ...spawn('b', { text: 'boom', isError: true, endedAt: NOW })], t, NOW)
+    expect(failed).toMatchObject({ state: 'partial', head: '2/2', failed: '1 failed', items: [] })
   })
 })

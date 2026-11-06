@@ -33,7 +33,7 @@ import {
 type Source = TranscriptModel | (() => TranscriptModel | null)
 
 /** The screen as the transcript uses it: the L1 contract and the conversation node slot. */
-export type TranscriptScreen = MayflyScreen & Pick<MayflyScreenService, 'mountNodeSlot' | 'mountSearchLine' | 'contentTail' | 'watchContentTail' | 'scrollContentTo'>
+export type TranscriptScreen = MayflyScreen & Pick<MayflyScreenService, 'mountNodeSlot' | 'mountSearchLine' | 'contentTail' | 'watchContentTail' | 'scrollContentTo' | 'enterViews'>
 
 /** What the controller reads besides the models: the policy, the translator, and the messages queued behind the stream. */
 export interface TranscriptControllerOptions {
@@ -912,6 +912,11 @@ export class TranscriptController {
     }
     const owner = itemId === undefined ? undefined : facts?.locate(itemId)
     if (facts === undefined || owner === undefined) return
+    // A view has this row's detail: the row has nothing to open, so Enter moves there, and does nothing once the view has gone.
+    if (owner.view !== undefined) {
+      this.screen?.enterViews(owner.view)
+      return
+    }
     this.cursorIds = undefined
     // A header, a compact title, and the closing line stand for their turn: the cursor follows to the turn's other row.
     if (owner.kind !== 'entries') {

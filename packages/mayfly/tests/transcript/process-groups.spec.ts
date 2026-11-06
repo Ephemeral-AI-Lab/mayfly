@@ -3,7 +3,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { TranscriptEntryModel, TranscriptModel, TranscriptTurnModel } from '../../src/frontend/models.ts'
-import { buildDisplay, memberFacts, runningTurnOf, type DisplayItem } from '../../src/transcript/process-groups.ts'
+import { buildDisplay, memberFacts, neverDrawn, runningTurnOf, type DisplayItem } from '../../src/transcript/process-groups.ts'
+import type { SpawnedChildren } from '../../src/transcript/tool-calls.ts'
 import { PROCESS_POLICIES, type TranscriptViewMode } from '../../src/transcript/presentation-policy.ts'
 import { withOverrides, type Overrides } from '../fixture-fields.ts'
 
@@ -53,6 +54,8 @@ interface PlanOptions {
   readonly flat?: boolean
   readonly previousSeq?: number
   readonly runningHeader?: boolean
+  readonly waiting?: readonly string[]
+  readonly children?: SpawnedChildren
 }
 
 function plan(entries: readonly Entry[], mode: TranscriptViewMode, options: PlanOptions = {}): DisplayItem[] {
@@ -61,6 +64,8 @@ function plan(entries: readonly Entry[], mode: TranscriptViewMode, options: Plan
     open: new Set(options.open ?? []), rows: new Set(), scope: new Set(options.scope ?? [1]), flat: options.flat ?? false,
     ...(options.previousSeq === undefined ? {} : { previousSeq: options.previousSeq }),
     ...(options.runningHeader === undefined ? {} : { runningHeader: options.runningHeader }),
+    ...(options.waiting === undefined ? {} : { waiting: new Set(options.waiting) }),
+    ...(options.children === undefined ? {} : { children: options.children }),
   })
 }
 
@@ -249,5 +254,86 @@ describe('work-details display plan', () => {
     expect(runningTurnOf(model({ live: { turn: 2, step: 0, entries: [] }, turns: closed }), entries)).toBe(2)
     // The display plan's last line of defense: a recorded end closes the turn no matter which runningTurn the caller resolved.
     expect(shape(plan(turnOne(), 'compact', { runningTurn: 1 }))).toEqual(['user', 'title:3:hint', 'assistant', 'assistant'])
+  })
+})
+
+describe('placement: what a view owns leaves the stream', () => {
+  const failing = { result: { text: 'boom', isError: true, endedAt: 1 } }
+  const todo = (overrides: Overrides<ToolEntry> = {}): TranscriptEntryModel => tool(1, { name: 'todo_write', activity: 'todo', detail: '', ...overrides })
+  const poll = (overrides: Overrides<ToolEntry> = {}): TranscriptEntryModel => tool(1, { name: 'job_output', activity: 'jobs', detail: 'job-3', ...overrides })
+  const title = (items: readonly DisplayItem[]) => items.find(item => item.kind === 'process-title')
+  const drawn = (items: readonly DisplayItem[]): string[] => items.flatMap(item => item.kind === 'entry' && item.entry.kind === 'transcript-tool' ? [item.entry.name] : [])
+
+  it('never draws a hidden call, at any level or opened, and a turn of nothing else has no title and no header', () => {
+    for (const mode of ['compact', 'standard', 'detailed', 'verbose'] as const) {
+      expect(shape(plan([user(1), todo(), reply(1, 1, 'done')], mode))).toEqual(['user', 'assistant'])
+      expect(shape(plan([user(1), todo(), reply(1, 1, 'done')], mode, { open: [1] }))).toEqual(['user+', 'assistant+'])
+      expect(shape(plan([user(1), tool(1, { name: 'create_goal', activity: 'goal', detail: 'ship' })], mode))).toEqual(['user'])
+    }
+    expect(drawn(plan([user(1), todo()], 'standard', { flat: true }))).toEqual([])
+  })
+
+  it('draws a quiet call only at the verbose blocks, and never counts it', () => {
+    const entries = [user(1), tool(1), poll(), poll()]
+    expect(drawn(plan(entries, 'standard'))).toEqual(['bash'])
+    expect(drawn(plan(entries, 'detailed', { runningTurn: 1, turns: running }))).toEqual(['bash'])
+    expect(drawn(plan(entries, 'verbose'))).toEqual(['bash', 'job_output', 'job_output'])
+    expect(drawn(plan(entries, 'standard', { open: [1] }))).toEqual(['bash', 'job_output', 'job_output'])
+    expect(plan(entries, 'verbose').find(item => item.kind === 'turn-header')).toMatchObject({ toolCalls: 1 })
+    expect(title(plan(entries, 'compact'))).toMatchObject({ toolCalls: 1 })
+    expect(shape(plan([user(1), poll()], 'standard'))).toEqual(['user'])
+  })
+
+  it('draws a failure whatever its placement, counts it, and keeps its line under the compact title', () => {
+    const entries = [user(1), todo(failing), poll(failing), tool(1)]
+    for (const mode of ['standard', 'detailed', 'verbose', 'compact'] as const) expect(drawn(plan(entries, mode))).toEqual(['todo_write', 'job_output', ...mode === 'compact' ? [] : ['bash']])
+    expect(title(plan(entries, 'compact'))).toMatchObject({ toolCalls: 3, failed: 2 })
+    expect(tiers(plan(entries, 'compact'))).toEqual(['tool:compact', 'tool:compact'])
+  })
+
+  it('draws a hidden or quiet call while the request on the card is about it', () => {
+    const asked = { result: undefined, callId: 'ask' }
+    expect(drawn(plan([user(1), todo(asked)], 'standard', { runningTurn: 1, turns: running, waiting: ['ask'] }))).toEqual(['todo_write'])
+    expect(drawn(plan([user(1), poll(asked)], 'compact', { runningTurn: 1, turns: running, waiting: ['ask'] }))).toEqual(['job_output'])
+    expect(drawn(plan([user(1), todo(asked)], 'standard', { runningTurn: 1, turns: running, waiting: ['other'] }))).toEqual([])
+  })
+
+  it('leaves a call in flight that a view owns out of the compact level, but not one it does not', () => {
+    const spawn = tool(1, { name: 'subagent', activity: 'subagents', detail: 'Review', result: undefined })
+    const flow = tool(1, { name: 'workflow', activity: 'workflow', detail: 'audit', result: undefined })
+    const own = tool(1, { result: undefined })
+    const items = plan([user(1), spawn, flow, own], 'compact', { runningTurn: 1, turns: running })
+    expect(drawn(items)).toEqual(['bash'])
+    expect(title(items)).toMatchObject({ toolCalls: 2, subagents: 1 })
+    // A settled turn cannot be in flight, so it has nothing left to draw.
+    expect(drawn(plan([user(1), spawn, flow], 'compact'))).toEqual([])
+    // A group entry in flight is not a call a view owns.
+    expect(tiers(plan([user(1), reads(1, ['pending'])], 'compact', { runningTurn: 1, turns: running }))).toEqual(['read-group:compact'])
+  })
+
+  it('reads a spawn as its child does: running, failed, stopped, and at the child\'s end', () => {
+    const spawn = (): TranscriptEntryModel => tool(1, { name: 'subagent', activity: 'subagents', detail: 'Review', callId: 'a', startedAt: 10 })
+    const children = (child: SpawnedChildren['byId'] extends ReadonlyMap<string, infer V> ? V : never): SpawnedChildren => ({ byCall: new Map([['a', 'A']]), byId: new Map([['A', child]]) })
+    expect(memberFacts(spawn(), false, children({ state: 'running' }))[0]).toMatchObject({ running: true, failed: false })
+    expect(memberFacts(spawn(), true, children({ state: 'running' }))[0]).toMatchObject({ running: false })
+    expect(memberFacts(spawn(), false, children({ state: 'settled', failed: true, endedAt: 50 }))[0]).toMatchObject({ running: false, failed: true, endedAt: 50 })
+    expect(memberFacts(spawn(), false, children({ state: 'settled', failed: false, stopped: true }))[0]).toMatchObject({ failed: false, interrupted: true, endedAt: 1 })
+    // Nothing is known of a child the catalog does not name, or of a spawn with no result or a failed one.
+    expect(memberFacts(spawn(), false, { byCall: new Map(), byId: new Map() })[0]).toMatchObject({ running: false, failed: false })
+    expect(memberFacts(spawn(), false, { byCall: new Map([['a', 'gone']]), byId: new Map() })[0]).toMatchObject({ running: false })
+    expect(memberFacts(tool(1, { name: 'subagent', activity: 'subagents', callId: 'a', result: undefined }), false, children({ state: 'settled', failed: true }))[0]).toMatchObject({ running: true, failed: false })
+    expect(memberFacts(tool(1, { name: 'subagent', activity: 'subagents', callId: 'a', ...failing }), false, children({ state: 'running' }))[0]).toMatchObject({ running: false, failed: true })
+    // The title's numbers come through the same reading.
+    const items = plan([user(1), spawn(), tool(1)], 'compact', { children: children({ state: 'settled', failed: true }) })
+    expect(title(items)).toMatchObject({ subagents: 1, failed: 1 })
+    expect(drawn(items)).toEqual(['subagent'])
+  })
+
+  it('tells a search which entries have no row at any level', () => {
+    expect(neverDrawn(todo())).toBe(true)
+    expect(neverDrawn(todo(failing))).toBe(false)
+    expect(neverDrawn(poll())).toBe(false)
+    expect(neverDrawn(tool(1))).toBe(false)
+    expect(neverDrawn(user(1))).toBe(false)
   })
 })

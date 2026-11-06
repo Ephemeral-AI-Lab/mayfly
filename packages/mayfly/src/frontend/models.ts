@@ -33,7 +33,7 @@ interface TranscriptThinkingModel extends TranscriptEntryBase {
  * Upstream Chat process-activity vocabulary: the category one process member
  * contributes to group titles and turn counts.
  */
-export type ProcessActivity = 'read' | 'readImage' | 'write' | 'search' | 'edit' | 'commands' | 'code' | 'webSearch' | 'webFetch' | 'subagents' | 'plan' | 'questions' | 'tools'
+export type ProcessActivity = 'read' | 'readImage' | 'write' | 'search' | 'edit' | 'commands' | 'code' | 'webSearch' | 'webFetch' | 'subagents' | 'workflow' | 'jobs' | 'todo' | 'goal' | 'questions' | 'tools'
 /** One turn's lifecycle times, copied from the conversation projection. */
 export interface TranscriptTurnModel { readonly turn: number; readonly startedAt: number; readonly endedAt?: number | undefined; readonly outcome?: string | undefined }
 /** Terminal-card facts of one command call. */
