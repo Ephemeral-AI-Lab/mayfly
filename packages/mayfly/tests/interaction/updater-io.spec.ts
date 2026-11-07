@@ -8,8 +8,9 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { homedir } from 'node:os'
+import { setTimeout as pause } from 'node:timers/promises'
 import { join } from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
 
 registerTempDirCleanup()
@@ -52,13 +53,31 @@ describe('updater/io defaultSpawnOnce', () => {
   })
 
   it('escalates to SIGKILL when the child traps SIGTERM', async () => {
-    const script = 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'
-    const outcome = await updaterInternals.spawnOnce(NODE, ['-e', script], {
-      timeoutMs: 100,
-      killGraceMs: 150,
-    })
-    expect(outcome.timedOut).toBe(true)
-    expect(outcome.signal).toBe('SIGKILL')
+    const directory = mkdtempTracked('mayfly-kill-ready-')
+    const ready = join(directory, 'ready')
+    const trapped = join(directory, 'trapped')
+    const script = `const { writeFileSync } = require('node:fs'); process.on('SIGTERM', () => writeFileSync(${JSON.stringify(trapped)}, '')); writeFileSync(${JSON.stringify(ready)}, ''); setInterval(() => {}, 1000)`
+    // Advance the deadline only after the real child installed its handler.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const pending = updaterInternals.spawnOnce(NODE, ['-e', script], { timeoutMs: 100, killGraceMs: 150 })
+    const waitFor = async (file: string) => {
+      const deadline = performance.now() + 5000
+      while (!existsSync(file) && performance.now() < deadline) await pause(10)
+      expect(existsSync(file)).toBe(true)
+    }
+    try {
+      await waitFor(ready)
+      vi.advanceTimersByTime(100)
+      await waitFor(trapped)
+      vi.advanceTimersByTime(150)
+      const outcome = await pending
+      expect(outcome.timedOut).toBe(true)
+      expect(outcome.signal).toBe('SIGKILL')
+    } finally {
+      vi.runAllTimers()
+      vi.useRealTimers()
+      await pending
+    }
   })
 
   it('layers explicit env entries over the process environment', async () => {

@@ -26,7 +26,7 @@ pnpm release:preflight --artifact "$VERSION"
 
 Immutable reference mentions and private historical skills are excluded from automatic version replacement. Exact internal dependency pins are validated and advanced with the four release manifests plus the Website manifest.
 
-The 0.1.5-rc.2 release uses an explicit prerelease version while npm latest stays at 0.1.5. The monotonic version helper intentionally rejects stable-to-RC changes, so this requested release updates the coordinated markers directly and validates them with preflight.
+The 0.1.6-rc.1 release targets the `rc` channel while npm `latest` stays at 0.1.5.
 
 The version bump supports `pnpm release:version <version> --dry-run` and checks
 all release markers before writing. Write a substantive first entry in the

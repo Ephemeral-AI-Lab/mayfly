@@ -2,7 +2,7 @@
 
 此候选版本只发布到 `rc` 通道，稳定的 `latest` 仍为 `0.1.5`。请使用下方的精确版本号安装。
 
-Mayfly 0.1.5-rc.2 使用一个 CLI 管理后台 Host 和独立 TUI，运行时固定为官方 Harness `0.2.2-rc.1`，需要 Node `>=24.9.0`。安装器同时安装四个匹配版本的包，不修改单独安装的全局 `dsh`。
+Mayfly 0.1.6-rc.1 使用一个 CLI 管理后台 Host 和独立 TUI，运行时固定为官方 Harness `0.2.2-rc.1`，需要 Node `>=24.9.0`。安装器同时安装四个匹配版本的包，不修改单独安装的全局 `dsh`。
 
 ## 从已有分体开发版升级
 
@@ -13,7 +13,7 @@ Mayfly 0.1.5-rc.2 使用一个 CLI 管理后台 Host 和独立 TUI，运行时�
 mayfly server disable --profile <original-profile>
 mayfly server stop --profile <original-profile>
 # 备份 MAYFLY_HOME 后升级外部安装
-npm install -g @ephemeral-ai/mayfly-cli@0.1.5-rc.2
+npm install -g @ephemeral-ai/mayfly-cli@0.1.6-rc.1
 mayfly server upgrade --profile <original-profile>
 mayfly server start --profile <original-profile>
 mayfly server status --profile <original-profile>
@@ -30,7 +30,7 @@ mayfly --profile <original-profile>
 
 ## 从旧版单进程 Mayfly 迁移
 
-旧版常用 `~/.dsh`，0.1.5-rc.2 的默认目录是 `~/.mayfly`，其中 `harness/` 存放原生 Host 数据。设置 `DSH_HOME` 不会覆盖 CLI 的托管数据根；需要改变根目录时设置 `MAYFLY_HOME`。
+旧版常用 `~/.dsh`，0.1.6-rc.1 的默认目录是 `~/.mayfly`，其中 `harness/` 存放原生 Host 数据。设置 `DSH_HOME` 不会覆盖 CLI 的托管数据根；需要改变根目录时设置 `MAYFLY_HOME`。
 
 本版没有旧 profile 或 Session 数据的自动导入工具。保留旧安装和 `~/.dsh` 的备份，通过旧版 `/export` 保存需要的对话，在新安装中重新配置 provider、权限和插件。不要把旧版共享 renderer 当作新 Host bundle 安装，也不要把整个旧 profile 复制进托管目录。已有数据的格式转换由原生 Harness 负责，不能用修改 Mayfly 版本标记代替。
 

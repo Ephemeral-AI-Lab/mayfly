@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest'
 import { MAYFLY_VERSION } from '../../src/transcript/banner-content.ts'
 
 /** The published release version (the website's advertised number). */
-const RELEASE_VERSION = '0.1.5-rc.2'
+const RELEASE_VERSION = '0.1.6-rc.1'
 /** The harness prerelease line every dsh pin rides. */
 const HARNESS_LINE = '0.2.2-rc.1'
 

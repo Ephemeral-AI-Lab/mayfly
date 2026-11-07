@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "version": "0.1.5-rc.2",
+  "version": "0.1.6-rc.1",
   "harness": "0.2.2-rc.1",
   "reference": "sha512-KsNwfM4EN2rizHkPKVoHUXrRH2+WppR7zor6VnEhAJrO11AY6h/02tt5I0BOX04r8+CUfbqTvh5zmLoXl9kj8w==",
-  "decision": "The 0.1.5-rc.2 candidate retains the previous exact native-fact, partial-API and command-catalog decisions. Updated release copy and question rendering require fresh owner acceptance before release; no new owner-design rows are accepted by this candidate policy. Raw strict differences and immutable reference goldens remain unchanged.",
+  "decision": "The 0.1.6-rc.1 candidate retains the previous exact native-fact, partial-API and command-catalog decisions. Updated release copy and question rendering require fresh owner acceptance before release; no new owner-design rows are accepted by this candidate policy. Raw strict differences and immutable reference goldens remain unchanged.",
   "sources": {
-    "packages/mayfly/src/transcript/banner-content.ts": "c4f70fd29a3192b033f3e19daf17896a753adc61057104f33faa26a56a38a3d4",
-    "packages/mayfly/src/interaction/changelog-content.ts": "696b1bf555915b437c2e6b7e9a11e72f823d9567f2c1e8f435d8ba30cda1e4db",
+    "packages/mayfly/src/transcript/banner-content.ts": "3819672718beabc62f5b9095a63a8331fc990d111454cfd86e7742e996eee979",
+    "packages/mayfly/src/interaction/changelog-content.ts": "23f8ead98591e6d8d783bd1b84c505e87bb0d3ddd5019c0712b1ff005a897421",
     "packages/mayfly/src/interaction/session-info-model.ts": "3357e21a17de6b371f7cd39631260efd2a807b339640336a1862ae0cb142fdf4",
     "packages/mayfly/src/interaction/stats-facts.ts": "3d3f28fce00915b81cc4bbc51345affba06ec5626f80c32c3f612be7178ba0ea",
     "packages/mayfly/src/transcript/status-context-model.ts": "c1c9665e46e1faff520ee7e948628c39db459afe7c28647f66989847dea6dd26",

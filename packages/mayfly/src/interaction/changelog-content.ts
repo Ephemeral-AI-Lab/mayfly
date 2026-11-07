@@ -22,7 +22,7 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
-    version: '0.1.5-rc.2',
+    version: '0.1.6-rc.1',
     summary: 'Prepare the four-package Host and independent TUI release, with explicit source composition, bounded live rendering and complete release coverage on Harness 0.2.2-rc.1.',
     highlights: [
       'Four-package release - publish mayfly-ui, mayfly-host, mayfly and mayfly-cli together. The former mayfly-remote package is removed; the TUI exposes only the root, ./client and ./bin entries.',
@@ -32,7 +32,7 @@ export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
       'Release checks - restore editor lifecycle and conversation mapping tests at the current frontend boundary, cover cancellation and stale callbacks, and make statistics snapshots portable across timezones.',
     ],
     knownIssues: [
-      'This version is published to the rc channel. The stable latest channel remains 0.1.5; install 0.1.5-rc.2 explicitly when testing this candidate.',
+      'This version is published to the rc channel. The stable latest channel remains 0.1.5; install 0.1.6-rc.1 explicitly when testing this candidate.',
       'The immutable 0.1.4-rc.2 reference has a file-preview dependency defect; release verification retains that evidence and runs the complete candidate file workflow.',
     ],
   },
