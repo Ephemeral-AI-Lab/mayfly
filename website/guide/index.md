@@ -18,7 +18,7 @@ pnpm run build
 node packages/cli/lib/bin.js --profile mayfly-dev
 ```
 
-匹配发布集发布后，使用 `npm install -g @ephemeral-ai/mayfly-cli` 安装，日常直接执行 `mayfly`。
+匹配发布集发布后，使用 `npm install -g @ephemeral-ai/mayfly-cli@0.1.6-rc.1` 安装，日常直接执行 `mayfly`。
 
 ```sh
 mayfly server              # 等同于 start，后台运行

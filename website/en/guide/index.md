@@ -20,7 +20,7 @@ pnpm run build
 node packages/cli/lib/bin.js --profile mayfly-dev
 ```
 
-After a matching release is published, install with `npm install -g @ephemeral-ai/mayfly-cli` and run `mayfly`.
+After a matching release is published, install with `npm install -g @ephemeral-ai/mayfly-cli@0.1.6-rc.1` and run `mayfly`.
 
 ```sh
 mayfly server              # same as start; runs in the background

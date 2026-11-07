@@ -7,7 +7,7 @@ brandHero:
   name: mayfly
   tagline: ephemeral agents, enduring works
   versionNote: v0.1.6-rc.1 · 预览版
-  install: npm -g install @ephemeral-ai/mayfly-cli
+  install: npm -g install @ephemeral-ai/mayfly-cli@0.1.6-rc.1
   copyLabel: 复制
   copiedLabel: 已复制
   actions:
