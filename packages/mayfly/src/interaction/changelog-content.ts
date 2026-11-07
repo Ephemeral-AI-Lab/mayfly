@@ -22,6 +22,21 @@ export interface ChangelogEntry {
 /** Mayfly releases, newest first. */
 export const CHANGELOG_ENTRIES: readonly ChangelogEntry[] = [
   {
+    version: '0.1.5-rc.2',
+    summary: 'Prepare the four-package Host and independent TUI release, with explicit source composition, bounded live rendering and complete release coverage on Harness 0.2.2-rc.1.',
+    highlights: [
+      'Four-package release - publish mayfly-ui, mayfly-host, mayfly and mayfly-cli together. The former mayfly-remote package is removed; the TUI exposes only the root, ./client and ./bin entries.',
+      'TUI extensions - compose ordinary Cordis plugins through run(argv, { plugins }); Host plugins use native Harness services and focused serializable Remote methods across the official Client transport.',
+      'Interaction and tools - retain per-view disclosure, row editing, wizard navigation and responsive tool summaries through the shared UI controls.',
+      'Live rendering - reuse list windows between control walking and painting, preserve durable transcript entries during live updates, and gate transient conversion separately without relaxing existing work budgets.',
+      'Release checks - restore editor lifecycle and conversation mapping tests at the current frontend boundary, cover cancellation and stale callbacks, and make statistics snapshots portable across timezones.',
+    ],
+    knownIssues: [
+      'This version is published to the rc channel. The stable latest channel remains 0.1.5; install 0.1.5-rc.2 explicitly when testing this candidate.',
+      'The immutable 0.1.4-rc.2 reference has a file-preview dependency defect; release verification retains that evidence and runs the complete candidate file workflow.',
+    ],
+  },
+  {
     version: '0.1.5',
     summary: 'Run Mayfly as a native background Host and an independent terminal frontend, with one command for startup and service management, aligned with Harness 0.2.2-rc.1.',
     highlights: [

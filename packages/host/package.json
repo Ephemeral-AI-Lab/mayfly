@@ -9,7 +9,7 @@
     "host",
     "cordis"
   ],
-  "version": "0.1.5",
+  "version": "0.1.5-rc.2",
   "publishConfig": {
     "access": "public"
   },

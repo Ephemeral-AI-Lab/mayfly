@@ -1,6 +1,8 @@
 # Upgrades and existing data
 
-Mayfly 0.1.5 uses one CLI to manage a background Host and an independent TUI. It pins official Harness `0.2.2-rc.1` and requires Node `>=24.9.0`. The installer installs all five matching packages without changing a separately installed global `dsh`.
+This candidate is published only to the `rc` channel; stable `latest` remains `0.1.5`. Use the exact version below to install it.
+
+Mayfly 0.1.5-rc.2 uses one CLI to manage a background Host and an independent TUI. It pins official Harness `0.2.2-rc.1` and requires Node `>=24.9.0`. The installer installs all four matching packages without changing a separately installed global `dsh`.
 
 ## Upgrade an existing split development installation
 
@@ -11,7 +13,7 @@ Exit every TUI, let Host work finish, and stop the old instance using its origin
 mayfly server disable --profile <original-profile>
 mayfly server stop --profile <original-profile>
 # Back up MAYFLY_HOME before upgrading the external installation
-npm install -g @ephemeral-ai/mayfly-cli@0.1.5
+npm install -g @ephemeral-ai/mayfly-cli@0.1.5-rc.2
 mayfly server upgrade --profile <original-profile>
 mayfly server start --profile <original-profile>
 mayfly server status --profile <original-profile>
@@ -28,7 +30,7 @@ To roll back, stop the new instance, reinstall the recorded old CLI version, res
 
 ## Migrate from the old single-process Mayfly
 
-Older installations normally used `~/.dsh`. The 0.1.5 default is `~/.mayfly`, with native Host data in `harness/`. Setting `DSH_HOME` does not override the CLI-managed data root; use `MAYFLY_HOME` to change that root.
+Older installations normally used `~/.dsh`. The 0.1.5-rc.2 default is `~/.mayfly`, with native Host data in `harness/`. Setting `DSH_HOME` does not override the CLI-managed data root; use `MAYFLY_HOME` to change that root.
 
 This release has no automatic importer for old profiles or Session data. Keep the old installation and a backup of `~/.dsh`, export conversations you need with its `/export` command, and configure providers, permissions, and plugins in the new installation. Do not install the old shared renderer as a new Host bundle or copy the entire old profile into the managed directory. Native Harness owns persisted format conversion; changing a Mayfly version marker cannot replace that conversion.
 

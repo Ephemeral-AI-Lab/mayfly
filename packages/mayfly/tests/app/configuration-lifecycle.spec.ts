@@ -105,3 +105,18 @@ describe('Remote configuration Host preference subscriptions', () => {
     expect(mocks.ready).toHaveBeenCalledOnce()
   })
 })
+
+it('owns and retires the default local presentation when no adapter is supplied', () => {
+  const first = configurationFixture(vi.fn(), { session: false })
+  const { presentation: _presentation, ...base } = first.context
+  const unsubscribe = vi.fn()
+  const subscribeLocale = vi.fn(() => unsubscribe)
+  const features = createRemoteConfigurationFeatures({ ...base, subscribeLocale } as unknown as RemoteConfigurationMountContext, {} as RemoteConfigurationAdapters)
+  try {
+    expect(subscribeLocale).toHaveBeenCalledOnce()
+    expect(mocks.preferences).toHaveBeenCalledWith(first.client)
+    features.dispose()
+    features.dispose()
+    expect(unsubscribe).toHaveBeenCalledOnce()
+  } finally { features.dispose(); first.dispose() }
+})

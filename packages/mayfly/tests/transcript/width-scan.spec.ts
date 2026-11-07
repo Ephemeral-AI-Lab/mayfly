@@ -9,7 +9,7 @@
  */
 
 import { homedir } from 'node:os'
-import { describe, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from '../../src/core/types.ts'
 import type { MayflyWorkflowRun } from '../../src/hosts/host-contract.ts'
@@ -100,6 +100,8 @@ describe('transcript width-scan', () => {
         truncate: (t: string, target: number) => components.truncateToWidth(t, target),
         visibleWidth: (t: string) => components.visibleWidth(t),
       }
+      expect(shortenHome('/home/example', '/home/example')).toBe('~')
+      expect(composeBannerLines(deps, content, 0)).toEqual([])
       for (const width of SCAN_WIDTHS) expectLinesFit(`Banner/${name}`, composeBannerLines(deps, content, width), width)
     })
   }

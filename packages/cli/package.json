@@ -1,7 +1,7 @@
 {
   "name": "@ephemeral-ai/mayfly-cli",
   "description": "Mayfly terminal UI and background Host management",
-  "version": "0.1.5",
+  "version": "0.1.5-rc.2",
   "publishConfig": {
     "access": "public"
   },
@@ -33,8 +33,8 @@
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.2-rc.1",
     "@deepseek-ai/dsh-atomic-write": "0.2.2-rc.1",
-    "@ephemeral-ai/mayfly-host": "0.1.5",
-    "@ephemeral-ai/mayfly": "0.1.5"
+    "@ephemeral-ai/mayfly-host": "0.1.5-rc.2",
+    "@ephemeral-ai/mayfly": "0.1.5-rc.2"
   },
   "keywords": [
     "dsh",

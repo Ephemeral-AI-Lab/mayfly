@@ -24,7 +24,9 @@ pnpm run check -- --tier full
 pnpm release:preflight --artifact "$VERSION"
 ```
 
-Immutable reference mentions and private historical skills are excluded from automatic version replacement. Exact internal dependency pins are validated and advanced with the five manifests.
+Immutable reference mentions and private historical skills are excluded from automatic version replacement. Exact internal dependency pins are validated and advanced with the four release manifests plus the Website manifest.
+
+The 0.1.5-rc.2 release uses an explicit prerelease version while npm latest stays at 0.1.5. The monotonic version helper intentionally rejects stable-to-RC changes, so this requested release updates the coordinated markers directly and validates them with preflight.
 
 The version bump supports `pnpm release:version <version> --dry-run` and checks
 all release markers before writing. Write a substantive first entry in the
@@ -50,12 +52,12 @@ before reviewing or changing a release policy.
 form additionally checks the packed package set. These commands do not
 publish or replace the registry-install matrix.
 
-`check:pack` writes `.artifacts/pack/index.json` and five tarballs, then runs
+`check:pack` writes `.artifacts/pack/index.json` and four tarballs, then runs
 manifest/export/bin/protocol checks, publint, AreTheTypesWrong, package budgets,
 and an external UI-kit install fixture. Release automation publishes those
 exact artifacts and does not rebuild.
 
-`@ephemeral-ai/mayfly-cli` ships one unified bin with exact matching Host, Remote,
+`@ephemeral-ai/mayfly-cli` ships one unified bin with exact matching Host, TUI,
 and official dsh runtime dependencies. It carries no runtime archives and does
 not change a separate global dsh installation. Existing initialized profiles
 refuse a recorded release mismatch. The supported managed upgrade uses the external installer followed by explicit server upgrade on the stopped original profile; see the bilingual Website upgrade guide. No silent profile upgrade is performed.

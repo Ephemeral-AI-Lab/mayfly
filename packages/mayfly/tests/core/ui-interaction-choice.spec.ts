@@ -365,3 +365,14 @@ describe('list rows: edges of the model', () => {
     expect(choicePinned({ ...seeded, segments: { a: 'gone' } }, 'a')).toBeNull()
   })
 })
+
+it('contains dangling and cyclic ancestry and restores the top ancestor on collapse', () => {
+  const orphan = ui.list({ id: 'orphan', role: 'choose', tree: true, selectedIds: ['child'], items: [{ id: 'child', label: 'Target', parentId: 'missing' }] })
+  expect(createChoiceState(orphan).visibleTreeIndices).toEqual([])
+  expect(createChoiceState({ ...orphan, filter: 'Target' }).visibleTreeIndices).toEqual([0])
+  const cycle = ui.list({ id: 'cycle', role: 'browse', tree: true, items: [{ id: 'a', label: 'A', parentId: 'b' }, { id: 'b', label: 'B', parentId: 'a' }] })
+  expect(reduceChoice(createChoiceState(cycle), { kind: 'expand-all' }).visibleTreeIndices).toEqual([])
+  const nested = createChoiceState({ ...tree, selectedIds: ['leaf'] })
+  expect(nested.focusedId).toBe('leaf')
+  expect(reduceChoice(nested, { kind: 'collapse-all' })).toMatchObject({ focusedId: 'root', expandedIds: [] })
+})

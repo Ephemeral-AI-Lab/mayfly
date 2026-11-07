@@ -2358,6 +2358,8 @@ export class MayflyUiSurfaceRuntime {
   readonly rows = new UiRowCache()
   /** The flow lists this surface has painted, by control key: a repaint reconciles items instead of painting them all. */
   private readonly flowLists = new Map<string, FlowListPainter>()
+  /** Reuse a list's cursor window across the control walk and paint in one compilation. */
+  private listWindows = new WeakMap<MayflyListNode, { readonly state: UiChoiceState | undefined, readonly size: number, readonly rows: readonly VirtualListEntry[] }>()
   /** The painted content segments this surface's leaves produced; the renderer's one shared cache by default. */
   readonly content: MayflyContentCache
   private readonly ownsContent: boolean
@@ -2530,6 +2532,7 @@ export class MayflyUiSurfaceRuntime {
     this.options = options
     this.layoutViewport = setLayoutViewport
     this.listRowBudget = undefined
+    this.listWindows = new WeakMap()
     this.controls.resetGeneration()
     this.generation += 1
     this.touch()
@@ -2736,6 +2739,8 @@ export class MayflyUiSurfaceRuntime {
       ? safeViewport(this.options.getViewport).rows
       : rowLimit
     const size = Math.min(count, Math.max(1, Math.floor(limit)) + 4)
+    const previous = this.listWindows.get(node)
+    if (previous !== undefined && previous.state === state && previous.size === size) return previous.rows
     const cursor = state === undefined ? 0 : choiceVisiblePosition(state)
     const start = Math.max(0, Math.min(count - size, cursor - Math.floor(size / 2)))
     const window = Array.from({ length: size }, (_, offset) => {
@@ -2747,6 +2752,7 @@ export class MayflyUiSurfaceRuntime {
       return { index, position: start + offset, item, depth: 0, last: false, expandable: !always && item.body !== undefined, open: always || (item.body !== undefined && item.expanded === true) }
     })
     countWork(this.options?.counters, 'itemsWalked', window.length)
+    this.listWindows.set(node, { state, size, rows: window })
     return window
   }
 
@@ -2900,6 +2906,7 @@ export class MayflyUiSurfaceRuntime {
     this.live = false
     if (this.ownsContent) this.content.clear()
     this.flowLists.clear()
+    this.listWindows = new WeakMap()
     for (const lease of this.textEditors.values()) releaseTextEditor(lease)
     this.textEditors.clear()
     this.promptEditors.clear()

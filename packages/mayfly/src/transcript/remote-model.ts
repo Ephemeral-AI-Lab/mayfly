@@ -396,6 +396,7 @@ function withLiveOverlay(
     `live:${live.attemptId}:${String(toolsRevision)}`,
     undefined,
     counters,
+    'liveEntriesMapped',
   )
   const durableIds = new Set(durable.entries.map(entry => entry.id))
   // A call the attempt still writes is here only until the Host commits it: its durable row has the same id and wins.

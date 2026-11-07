@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "version": "0.1.5",
+  "version": "0.1.5-rc.2",
   "harness": "0.2.2-rc.1",
   "reference": "sha512-KsNwfM4EN2rizHkPKVoHUXrRH2+WppR7zor6VnEhAJrO11AY6h/02tt5I0BOX04r8+CUfbqTvh5zmLoXl9kj8w==",
-  "decision": "Owner accepted the 0.1.5 runtime and Website on 2026-11-04. Harness rc.1 promotes the accepted alpha.3 runtime; only explicit version text changes are reviewed again. These are release differences, never strict parity or replacement reference goldens.",
+  "decision": "The 0.1.5-rc.2 candidate retains the previous exact native-fact, partial-API and command-catalog decisions. Updated release copy and question rendering require fresh owner acceptance before release; no new owner-design rows are accepted by this candidate policy. Raw strict differences and immutable reference goldens remain unchanged.",
   "sources": {
-    "packages/mayfly/src/transcript/banner-content.ts": "9fb9ebd4c023b27538b665adb7ac905ef8d9988f7de78f0a8b7ac261ae193ff8",
-    "packages/mayfly/src/interaction/changelog-content.ts": "f9083276119a4c719386b4e842bad41c7c9d53f6959474893e4276a227495dea",
+    "packages/mayfly/src/transcript/banner-content.ts": "c4f70fd29a3192b033f3e19daf17896a753adc61057104f33faa26a56a38a3d4",
+    "packages/mayfly/src/interaction/changelog-content.ts": "696b1bf555915b437c2e6b7e9a11e72f823d9567f2c1e8f435d8ba30cda1e4db",
     "packages/mayfly/src/interaction/session-info-model.ts": "3357e21a17de6b371f7cd39631260efd2a807b339640336a1862ae0cb142fdf4",
     "packages/mayfly/src/interaction/stats-facts.ts": "3d3f28fce00915b81cc4bbc51345affba06ec5626f80c32c3f612be7178ba0ea",
     "packages/mayfly/src/transcript/status-context-model.ts": "c1c9665e46e1faff520ee7e948628c39db459afe7c28647f66989847dea6dd26",
@@ -109,7 +109,7 @@
       "category": "native-fact",
       "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
-        "text": "  ░░░░░░░░░░░░░░░░░░░░    System prompt:        █ 747 (0.1%)",
+        "text": "  \u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591    System prompt:        \u2588 747 (0.1%)",
         "styles": [
           {
             "from": 2,
@@ -134,7 +134,7 @@
         ]
       },
       "candidate": {
-        "text": "  ░░░░░░░░░░░░░░░░░░░░    System prompt:        █ 1.1k (0.1%)",
+        "text": "  \u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591    System prompt:        \u2588 1.1k (0.1%)",
         "styles": [
           {
             "from": 2,
@@ -246,7 +246,7 @@
       "category": "partial-api",
       "reason": "The independent TUI lacks a native hot-load entry; the accepted command roster explicitly labels this API limitation instead of promising unsupported behavior.",
       "reference": {
-        "text": "    Mayfly Cordis  Mayfly 终端 UI 的创造模式：上游 Cordis 能力，加会话内热挂…",
+        "text": "    Mayfly Cordis  Mayfly \u7ec8\u7aef UI \u7684\u521b\u9020\u6a21\u5f0f\uff1a\u4e0a\u6e38 Cordis \u80fd\u529b\uff0c\u52a0\u4f1a\u8bdd\u5185\u70ed\u6302\u2026",
         "styles": [
           {
             "from": 4,
@@ -261,7 +261,7 @@
         ]
       },
       "candidate": {
-        "text": "    Mayfly Cordis  TUI 热挂载 API 暂缺；Mayfly 创造模式支持 Host 扩展与用户组…",
+        "text": "    Mayfly Cordis  TUI \u70ed\u6302\u8f7d API \u6682\u7f3a\uff1bMayfly \u521b\u9020\u6a21\u5f0f\u652f\u6301 Host \u6269\u5c55\u4e0e\u7528\u6237\u7ec4\u2026",
         "styles": [
           {
             "from": 4,
@@ -285,7 +285,7 @@
       "category": "native-fact",
       "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
-        "text": "  → 1. DeepSeek/DeepSeek-V4.1-Flash ✓  977k context",
+        "text": "  \u2192 1. DeepSeek/DeepSeek-V4.1-Flash \u2713  977k context",
         "styles": [
           {
             "from": 2,
@@ -315,7 +315,7 @@
         ]
       },
       "candidate": {
-        "text": "  → 1. DeepSeek/DeepSeek-V4.1-Flash ✓  1m context",
+        "text": "  \u2192 1. DeepSeek/DeepSeek-V4.1-Flash \u2713  1m context",
         "styles": [
           {
             "from": 2,
@@ -403,7 +403,7 @@
       "category": "native-fact",
       "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
-        "text": "    ● Thinking: high",
+        "text": "    \u25cf Thinking: high",
         "styles": [
           {
             "from": 4,
@@ -423,7 +423,7 @@
         ]
       },
       "candidate": {
-        "text": "    ○ Thinking: high (default)",
+        "text": "    \u25cb Thinking: high (default)",
         "styles": [
           {
             "from": 4,
@@ -452,7 +452,7 @@
       "category": "native-fact",
       "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
-        "text": "  Enter choose · Delete use default · Esc close",
+        "text": "  Enter choose \u00b7 Delete use default \u00b7 Esc close",
         "styles": [
           {
             "from": 2,
@@ -487,7 +487,7 @@
         ]
       },
       "candidate": {
-        "text": "  ←/→ thinking · Enter choose · Esc close",
+        "text": "  \u2190/\u2192 thinking \u00b7 Enter choose \u00b7 Esc close",
         "styles": [
           {
             "from": 2,
@@ -531,7 +531,7 @@
       "category": "release-content",
       "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
       "reference": {
-        "text": "  ── v0.1.4-rc.2 · current ─────────────────────────────────────────────────",
+        "text": "  \u2500\u2500 v0.1.4-rc.2 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -541,7 +541,7 @@
         ]
       },
       "candidate": {
-        "text": "  ── v0.1.5 · current ──────────────────────────────────────────────────────",
+        "text": "  \u2500\u2500 v0.1.5 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -870,7 +870,7 @@
       "category": "release-content",
       "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
       "reference": {
-        "text": "  ── v0.1.4-rc.2 · current ─────────",
+        "text": "  \u2500\u2500 v0.1.4-rc.2 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -880,7 +880,7 @@
         ]
       },
       "candidate": {
-        "text": "  ── v0.1.5 · current ──────────────",
+        "text": "  \u2500\u2500 v0.1.5 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -1044,7 +1044,7 @@
       "category": "release-content",
       "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
       "reference": {
-        "text": "  ── v0.1.4-rc.2 · current ─────────────────────────────────────────────────────────────────────────────────────────",
+        "text": "  \u2500\u2500 v0.1.4-rc.2 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -1054,7 +1054,7 @@
         ]
       },
       "candidate": {
-        "text": "  ── v0.1.5 · current ──────────────────────────────────────────────────────────────────────────────────────────────",
+        "text": "  \u2500\u2500 v0.1.5 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -1466,7 +1466,7 @@
       "category": "release-content",
       "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
       "reference": {
-        "text": "  ── v0.1.4-rc.1 ───────────────────────────────────────────────────────────────────────────────────────────────────",
+        "text": "  \u2500\u2500 v0.1.4-rc.1 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -1738,7 +1738,7 @@
         ]
       },
       "candidate": {
-        "text": "  ── v0.1.4-rc.2 ───────────────────────────────────────────────────────────────────────────────────────────────────",
+        "text": "  \u2500\u2500 v0.1.4-rc.2 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -1786,7 +1786,7 @@
       "category": "native-fact",
       "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
-        "text": "  Context:           1% · 32 / 977k",
+        "text": "  Context:           1% \u00b7 32 / 977k",
         "styles": [
           {
             "from": 2,
@@ -1801,7 +1801,7 @@
         ]
       },
       "candidate": {
-        "text": "  Context:           1% · 32 / 1M",
+        "text": "  Context:           1% \u00b7 32 / 1M",
         "styles": [
           {
             "from": 2,
@@ -1825,7 +1825,7 @@
       "category": "native-fact",
       "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
-        "text": "  Version:           Mayfly 0.1.4-rc.2 · Harness 0.2.1-rc.2",
+        "text": "  Version:           Mayfly 0.1.4-rc.2 \u00b7 Harness 0.2.1-rc.2",
         "styles": [
           {
             "from": 2,
@@ -1840,7 +1840,7 @@
         ]
       },
       "candidate": {
-        "text": "  Version:           Mayfly 0.1.5 · Harness 0.2.2-rc.1",
+        "text": "  Version:           Mayfly 0.1.5 \u00b7 Harness 0.2.2-rc.1",
         "styles": [
           {
             "from": 2,
@@ -1864,7 +1864,7 @@
       "category": "native-fact",
       "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
-        "text": "  Context:           1% · 32 / 977k",
+        "text": "  Context:           1% \u00b7 32 / 977k",
         "styles": [
           {
             "from": 2,
@@ -1879,7 +1879,7 @@
         ]
       },
       "candidate": {
-        "text": "  Context:           1% · 32 / 1M",
+        "text": "  Context:           1% \u00b7 32 / 1M",
         "styles": [
           {
             "from": 2,
@@ -1903,7 +1903,7 @@
       "category": "native-fact",
       "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
       "reference": {
-        "text": "  Version:           Mayfly 0.1.4-rc.2 · Harness 0.2.1-rc.2",
+        "text": "  Version:           Mayfly 0.1.4-rc.2 \u00b7 Harness 0.2.1-rc.2",
         "styles": [
           {
             "from": 2,
@@ -1918,7 +1918,7 @@
         ]
       },
       "candidate": {
-        "text": "  Version:           Mayfly 0.1.5 · Harness 0.2.2-rc.1",
+        "text": "  Version:           Mayfly 0.1.5 \u00b7 Harness 0.2.2-rc.1",
         "styles": [
           {
             "from": 2,

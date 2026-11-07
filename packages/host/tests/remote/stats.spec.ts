@@ -8,7 +8,7 @@ import type { MayflyStatsHistory } from '../../src/remote/stats-contract.ts'
 import { StatsHistory, statsSession } from '../../src/remote/stats.ts'
 
 const contexts: Context[] = []
-afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
+afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose(); vi.unstubAllEnvs() })
 const id = SessionId('current')
 const event = (type: string, time: number, data: unknown = {}): SessionEvent => ({ seq: 0, type, time, data }) as SessionEvent
 const turn = (time = Date.parse('2026-10-05T01:00:00Z')) => event('turn/start', time)
@@ -31,6 +31,9 @@ function fixture(count = 2) {
 
 describe('Host rc.2 statistics digests', () => {
   it('keeps the rc.2 digest for complete logs and preserves zero, invalid and missing usage semantics', () => {
+    // The immutable digest below uses Los Angeles local days. Peak pricing
+    // remains Beijing-based regardless of the Host's local calendar.
+    vi.stubEnv('TZ', 'America/Los_Angeles')
     const monday = Date.parse('2026-10-05T00:00:00Z')
     const hours = [0, 1, 3, 4, 5, 6, 9, 10, 11]
     const events = [event('custom/test', monday), ...hours.flatMap(hour => [message('deepseek', monday + hour * 3_600_000), message('deepseek-official', monday + hour * 3_600_000)]),
@@ -216,6 +219,20 @@ describe('Host rc.2 statistics digests', () => {
     `)
     expect(Object.isFrozen(digest.days[0]!.models[0]!.peak)).toBe(true)
     expect(statsDigest('empty', undefined, [event('custom/test', monday)])).toBeUndefined()
+  })
+
+  it.each([
+    ['UTC', '2026-10-05'],
+    ['America/Los_Angeles', '2026-10-04'],
+    ['Asia/Shanghai', '2026-10-05'],
+  ])('uses %s local days without changing Beijing peak pricing', (zone, key) => {
+    vi.stubEnv('TZ', zone)
+    const at = Date.parse('2026-10-05T01:00:00Z')
+    const digest = statsDigest('s', undefined, [turn(at), message('deepseek', at)])!
+    expect(digest.days).toEqual([{ key, turns: 1, models: [{ provider: 'deepseek', model: 'm',
+      peak: { input: 10, output: 5, cacheRead: 2, cacheWrite: 1 },
+      offPeak: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    }] }])
   })
 
   it('reads a passive current Session and releases the observation at success and late cancellation', async () => {

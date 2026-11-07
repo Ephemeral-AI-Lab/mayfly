@@ -66,7 +66,7 @@ in a node.
   prop is stable, a translator passed as `MayflyTranslate` included; see
   [Public UI kit](/en/plugins/ui-kit).
 
-The defaults below describe the current Mayfly TUI in `0.1.5`. The wire
+The defaults below describe the current Mayfly TUI in `0.1.5-rc.2`. The wire
 contract promises field semantics, not exact border glyphs, color values, or
 key bindings.
 

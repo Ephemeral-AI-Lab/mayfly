@@ -133,3 +133,8 @@ describe('direct plugin services and lifecycle', () => {
     expect(manifest.bin).toEqual({ 'mayfly-ecosystem': 'lib/bin.js' })
   })
 })
+
+it('starts the installed ecosystem executable with the process arguments', async () => {
+  await import('../../mayfly-ecosystem/src/bin.ts')
+  expect(bin.run).toHaveBeenLastCalledWith(process.argv.slice(2), { plugins: composed })
+})

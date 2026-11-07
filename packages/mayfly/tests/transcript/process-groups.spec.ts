@@ -337,3 +337,9 @@ describe('placement: what a view owns leaves the stream', () => {
     expect(neverDrawn(user(1))).toBe(false)
   })
 })
+
+it('keeps an active overlay when durable history has no semantic entries yet', () => {
+  const live = reply(1, 1, 'First answer')
+  const model: TranscriptModel = { kind: 'transcript', id: 'first-live', generation: 0, entries: [{ kind: 'text', content: 'notice' }], live: { turn: 1, step: 1, entries: [live] } }
+  expect(runningTurnOf(model, model.entries)).toBe(1)
+})

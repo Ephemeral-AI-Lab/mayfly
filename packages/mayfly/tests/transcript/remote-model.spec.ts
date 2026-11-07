@@ -16,6 +16,8 @@ import { RemoteConversationModelSource, remoteEffectiveReasoningEffort } from '.
 import type { ToolPresentationSource } from '../../src/transcript/present.ts'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 
+import { createWorkCounters } from '../../src/core/ui-work-counters.ts'
+
 const tools = { get: () => undefined } as ToolPresentationSource
 
 function nativeCatalog(effort = 'high'): ModelCatalog {
@@ -936,4 +938,24 @@ describe('streamed chunk presentation', () => {
     expect(onPresentation).toHaveBeenCalledTimes(4)
     source.dispose()
   })
+})
+
+it('counts bounded live conversion separately and preserves the durable history during a text delta', () => {
+  const events = new TestEventSource()
+  const counters = createWorkCounters()
+  const source = new RemoteConversationModelSource(tools, vi.fn(), { counters })
+  try {
+    source.attach(events.binding())
+    events.append(turn(1, 1))
+    events.append(user('question', 2))
+    events.append(live('Hel', 1, 2.5, 0))
+    const durable = source.snapshot().entries
+    Object.assign(counters, createWorkCounters())
+    events.append(live('lo', 1, 2.6, 1))
+    expect(source.snapshot().entries[0]).toBe(durable[0])
+    expect(source.snapshot().live?.entries).toMatchObject([{ text: 'Hello' }])
+    expect(counters.entriesMapped).toBe(0)
+    // This fixture notifies both its whole projection and live frame; both conversions remain visible.
+    expect(counters.liveEntriesMapped).toBe(2)
+  } finally { source.dispose() }
 })

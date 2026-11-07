@@ -1,6 +1,6 @@
 /** Shared catalog edge facts and narrow/wide layouts without native owners. @module */
 import { describe, expect, it } from 'vitest'
-import { firstSentence, resourceBodyPanel, serverConfigNode, toolDetailBody, toolPanel, type McpServerFacts } from '../../src/interaction/catalog-model.ts'
+import { firstSentence, resourcePanel, serverItems, serverPage, resourceBodyPanel, serverConfigNode, toolDetailBody, toolPanel, type McpServerFacts } from '../../src/interaction/catalog-model.ts'
 import { ADVERSARIAL, SCAN_WIDTHS, expectLinesFit } from '../core/width-scan.ts'
 import { createRealSurface, probeComponents } from '../design/probe.ts'
 
@@ -26,4 +26,11 @@ describe('readonly reference catalog edges', () => {
       try { expectLinesFit(`catalog-edges/${name}`, surface.render(), width) } finally { surface.dispose() }
     }
   })
+})
+
+it('sorts equal-status servers by name and keeps malformed resources inspectable', () => {
+  expect(serverItems({ servers: [{ ...server, entryId: 'z', serverName: 'Zulu' }, { ...server, entryId: 'a', serverName: 'Alpha' }], orphanCount: 0 }, t).map(row => row.id)).toEqual(['a', 'z'])
+  const resource = { templates: false, items: [{}], cursor: undefined, loading: false, loaded: true, error: undefined }
+  expect(JSON.stringify(resourcePanel(server, resource, 0, t))).toContain('"value":""')
+  expect(JSON.stringify(serverPage(server, 'resources', resource, t))).toContain('"label":"0"')
 })

@@ -986,3 +986,9 @@ describe('contentNodeSource', () => {
   })
 })
 
+
+it('round-trips source anchors through styled rich text without losing span offsets', () => {
+  const source = contentNodeSource({ kind: 'rich-text', spans: [{ text: 'first ', styles: ['strong'] }, { text: 'second' }] }, 6, makeEnv().env)
+  expect(source.rowOf!(6)).toBe(1)
+  expect(source.offsetOf!(1)).toBe(6)
+})

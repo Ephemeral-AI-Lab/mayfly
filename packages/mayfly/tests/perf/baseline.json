@@ -352,6 +352,7 @@
     "bytesWritten": 0
   },
   "W29": {
+    "liveEntriesMapped": 1,
     "nodesValidated": 6,
     "unitsCompiled": 4,
     "rowsPainted": 18,
@@ -484,6 +485,7 @@
     "bytesWritten": 0
   },
   "W34": {
+    "liveEntriesMapped": 1,
     "nodesValidated": 6,
     "unitsCompiled": 4,
     "rowsPainted": 2,

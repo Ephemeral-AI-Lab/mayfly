@@ -274,3 +274,10 @@ describe('onScreen', () => {
     expect(onScreen(child, 1)).toBe(true)
   })
 })
+
+it('pads a fixed-basis sibling when the column contains lazy rows', () => {
+  const stack = new ColumnStack()
+  stack.addChild(leaf(() => lazyRows(1, ['lazy'])))
+  stack.addChild(rows('fixed'), { basis: 3 })
+  expect([...stack.render(20)]).toEqual(['lazy', 'fixed', '', ''])
+})

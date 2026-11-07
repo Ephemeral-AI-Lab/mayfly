@@ -661,6 +661,7 @@ export function conversationTranscriptModel(
   renderRevision?: string,
   caches?: TranscriptModelCaches,
   counters?: MayflyWorkCounters,
+  entryCounter: 'entriesMapped' | 'liveEntriesMapped' = 'entriesMapped',
 ): TranscriptModel {
   const entries: TranscriptEntryModel[] = []
   let run: ResolvedTool[] = []
@@ -696,7 +697,7 @@ export function conversationTranscriptModel(
       if (entry.kind !== 'thinking' || (run.length > 0 && run.at(-1)!.entry.step !== entry.step)) flushRun()
       let model = caches?.entries.get(entry)
       if (model === undefined) {
-        countWork(counters, 'entriesMapped')
+        countWork(counters, entryCounter)
         model = entryModel(entry)
         caches?.entries.set(entry, model)
       }
@@ -707,7 +708,7 @@ export function conversationTranscriptModel(
        an entry-keyed cache re-resolves only the calls that changed. */
     let resolved = caches?.tools.get(entry)
     if (resolved === undefined) {
-      countWork(counters, 'entriesMapped')
+      countWork(counters, entryCounter)
       resolved = resolveTool(entry, tools)
       caches?.tools.set(entry, resolved)
     }

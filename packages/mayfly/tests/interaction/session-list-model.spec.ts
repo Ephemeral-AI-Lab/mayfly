@@ -104,5 +104,6 @@ describe('sessionDetailNode', () => {
     expect(detail).not.toContain('Parent session')
     expect(detail.match(/—/g)?.length).toBe(5)
     expect(detail).not.toContain('Preset')
+    expect(text(sessionDetailNode({ id: 'model-only', running: false, archived: false, current: false, reminders: false, migrationRequired: false, model: { model: 'chat', provider: 'deepseek' } }, NOW, t))).toContain('chat (deepseek)')
   })
 })

@@ -35,6 +35,7 @@ describe('buildStatusFooter', () => {
       .toEqual(['first  tie-a  tie-b  last'])
     // No priority means priority zero, ahead of the ranked ones.
     expect(rows([entry('ranked', 'ranked', { priority: 1 }), entry('plain', 'plain')])).toEqual(['plain  ranked'])
+    expect(rows([entry('b', 'beta'), entry('a', 'alpha')])).toEqual(['alpha  beta'])
   })
 
   it('puts an entry in its band: the left cluster first, the right one at the edge', () => {
