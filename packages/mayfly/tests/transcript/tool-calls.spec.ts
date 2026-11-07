@@ -9,7 +9,7 @@ import { DEFAULT_TRANSCRIPT_PRESENTATION, PROCESS_POLICIES, type TranscriptPrese
 import type { StreamRow } from '../../src/components/transcript-view.ts'
 import { NO_DISCLOSURE } from '../../src/transcript/disclosure.ts'
 import { StreamFacts, type StreamInputs } from '../../src/transcript/stream-facts.ts'
-import { callsOf, standardRow, verboseRow, VERBOSE_BODY_ROWS, OPEN_BODY_ROWS, type Call } from '../../src/transcript/tool-calls.ts'
+import { callsOf, runKey, standardRow, verboseRow, VERBOSE_BODY_ROWS, OPEN_BODY_ROWS, type Call } from '../../src/transcript/tool-calls.ts'
 
 const t = interpolateLocaleMessage
 const NOON = Date.UTC(2026, 0, 1, 12, 5)
@@ -237,8 +237,8 @@ describe('tool calls at the three tiers', () => {
       .toMatchObject({ name: 'WebFetch', target: 'https://x.dev/a', outcome: ['200', '2 KB', 'truncated', '4.2s'] })
     expect(callOf(tool({ name: 'web_search', activity: 'webSearch', detail: 'mayfly', web: { kind: 'search', sources: [{ url: 'https://a' }, { url: 'https://b' }], truncated: false }, result: { text: 'ok', isError: false, endedAt: 1_000 } })))
       .toMatchObject({ name: 'WebSearch', target: '"mayfly"', outcome: ['2 sources', '1s'] })
-    const mcp = callOf(tool({ name: 'mcp__github__search_issues', activity: 'tools', detail: '' }))
-    expect(mcp).toMatchObject({ name: 'github › search_issues' })
+    const mcp = callOf(tool({ name: 'mcp__github__search_issues', activity: 'mcp', detail: '' }))
+    expect(mcp).toMatchObject({ server: 'github', name: 'search_issues' })
     expect(mcp).not.toHaveProperty('target')
     expect(callOf(tool({ name: 'custom_tool', activity: 'tools', detail: 'q' }))).toMatchObject({ name: 'CustomTool', target: 'q', label: 'CustomTool(q)' })
   })
@@ -702,6 +702,77 @@ describe('calls that wait on the user', () => {
   it('takes no calls from an entry that is not a tool, and shows a call in its first second with no time', () => {
     expect(callsOf({ ...base(1), id: 'user:x', kind: 'transcript-user', text: 'go', attachments: [] } as TranscriptEntryModel, t, NOW)).toEqual([])
     expect(callsOf(tool({ result: undefined, startedAt: NOW - 400 }), t, NOW)[0]!.outcome).toEqual([undefined])
+  })
+})
+
+describe('calls to MCP tools', () => {
+  const mcp = (name: string, args: unknown, result?: Record<string, unknown>, more: Record<string, unknown> = {}): TranscriptEntryModel => tool({
+    name: `mcp__${name}`, family: 'other', activity: 'mcp', detail: 'salient', arguments: JSON.stringify(args),
+    ...(result === undefined ? { result: undefined } : { result: { isError: false, endedAt: 1_100, ...result } }), ...more,
+  })
+  const PICTURE = { mediaType: 'image/png', width: 800, height: 600, bytes: 2_048 }
+
+  it('names the tool and its server apart, with its arguments as the target', () => {
+    const row = toolRow(callOf(mcp('github__get_issue', { owner: 'acme', repo: 'web' }, { text: 'plain' })), false)
+    expect(row).toMatchObject({ server: 'github', name: 'get_issue', target: 'owner=acme, repo=web' })
+    expect(toolRow(callOf(mcp('cut_name', {}, { text: 'plain' })), false)).not.toHaveProperty('server')
+    expect(toolRow(callOf(mcp('cut_name', {}, { text: 'plain' })), false)).not.toHaveProperty('target')
+  })
+
+  it('says how many items a JSON list holds, one in the singular, and otherwise its size in bytes', () => {
+    expect(callOf(mcp('s__t', {}, { text: '[1,2,3]' })).outcome).toEqual(['3 items', '1.1s'])
+    expect(callOf(mcp('s__t', {}, { text: '[1]' })).outcome).toEqual(['1 item', '1.1s'])
+    expect(callOf(mcp('s__t', {}, { text: '{"a":1}' })).outcome).toEqual(['7 B', '1.1s'])
+    expect(callOf(mcp('s__t', {}, { text: '新' })).outcome).toEqual(['3 B', '1.1s'])
+  })
+
+  it('says what one picture is and how many several are, with a row for each over the text beside them', () => {
+    const one = callOf(mcp('s__t', {}, { text: 'caption\n[image]' }, { images: [PICTURE] }))
+    expect(one.outcome).toEqual(['png', '800×600', '2 KB', '1.1s'])
+    expect(one.body()).toEqual({ rows: [{ text: '[image image/png 800×600]' }, { text: 'caption' }], total: 2 })
+    expect(callOf(mcp('s__t', {}, { text: '[image]\n[image]' }, { images: [PICTURE, PICTURE] })).outcome).toEqual(['2 images', '1.1s'])
+  })
+
+  it('opens as rows to read when its result is JSON, and as its text when not', () => {
+    expect(callOf(mcp('s__t', {}, { text: '{"title":"x","state":"open"}' })).body()).toEqual({ rows: [{ text: 'title: x' }, { text: 'state: open' }], total: 2 })
+    expect(callOf(mcp('s__t', {}, { text: 'one\ntwo' })).body()).toEqual({ rows: [{ text: 'one' }, { text: 'two' }], total: 2 })
+    const long = callOf(mcp('s__t', {}, { text: JSON.stringify(Array.from({ length: OPEN_BODY_ROWS + 5 }, (_, index) => index)) })).body()
+    expect(long.rows).toHaveLength(OPEN_BODY_ROWS)
+    expect(long.total).toBe(OPEN_BODY_ROWS + 5)
+  })
+
+  it('keeps the reason of a failure on its line and the words of it under the line', () => {
+    const failed = callOf(mcp('github__create_issue', { title: 'x', labels: ['docs'] }, { text: 'Error: 401 Bad credentials\nThe token has expired.', isError: true }))
+    expect(failed).toMatchObject({ state: 'error', outcome: ['401 Bad credentials', '1.1s'] })
+    expect(toolRow(failed, false)).toMatchObject({ args: 'labels=["docs"]', body: [{ text: '401 Bad credentials' }, { text: 'The token has expired.' }] })
+    expect(toolRow(callOf(mcp('s__t', {}, { text: 'Error: 401 Bad credentials', isError: true })), false)).not.toHaveProperty('body')
+    expect(toolRow(callOf(mcp('s__t', {}, { text: 'x'.repeat(90), isError: true })), false).body).toEqual([{ text: 'x'.repeat(90) }])
+  })
+
+  it('lists what the line left out when the user decides on the call', () => {
+    const entry = mcp('github__create_issue', { title: 'x', labels: ['docs'] })
+    const asked = new Map([[(entry as { callId: string }).callId, { type: 'approval' as const, index: 1, total: 1 }]])
+    expect(callsOf(entry, t, NOW, { asked, decided: new Map() })[0]!.waiting!.rows).toEqual([{ text: 'labels=["docs"]', tone: 'muted' }])
+    const bare = mcp('github__get_me', { id: 1 })
+    expect(callsOf(bare, t, NOW, { asked: new Map([[(bare as { callId: string }).callId, { type: 'approval' as const, index: 1, total: 1 }]]), decided: new Map() })[0]!.waiting!.rows).toEqual([])
+  })
+
+  it('reads a run as its server, each line the tool and its arguments', () => {
+    const calls = [mcp('github__search_issues', { query: 'bug' }, { text: '[1]' }), mcp('github__get_issue', { id: 1 }, { text: 'x' })].map(callOf)
+    expect(standardRow(calls, t, NOW)).toMatchObject({ kind: 'tools', name: 'github', head: '2 calls · 1.1s', items: [{ label: 'search_issues(bug)', outcome: '1 item · 1.1s' }, { label: 'get_issue(1)', outcome: '1 B · 1.1s' }] })
+  })
+
+  it('reads a run with no server by the tool it repeats', () => {
+    const calls = [mcp('cut', {}, { text: 'x' }), mcp('cut', {}, { text: 'x' })].map(callOf)
+    expect(standardRow(calls, t, NOW)).toMatchObject({ name: 'cut' })
+  })
+
+  it('keeps a run to one server, and any other category to its category', () => {
+    const key = (entry: TranscriptEntryModel) => runKey(callOf(entry))
+    expect(key(mcp('github__a', {}, { text: 'x' }))).toBe(key(mcp('github__b', {}, { text: 'x' })))
+    expect(key(mcp('github__a', {}, { text: 'x' }))).not.toBe(key(mcp('linear__a', {}, { text: 'x' })))
+    expect(key(mcp('cut', {}, { text: 'x' }))).toBe('mcp:cut')
+    expect(key(tool())).toBe('commands')
   })
 })
 

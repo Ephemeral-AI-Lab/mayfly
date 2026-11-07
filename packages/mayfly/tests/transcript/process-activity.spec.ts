@@ -16,6 +16,7 @@ describe('process activity', () => {
       .toEqual(['read', 'readImage', 'search', 'search', 'search', 'write', 'edit', 'edit', 'commands', 'commands', 'commands', 'code', 'webSearch', 'webFetch', 'subagents', 'subagents', 'workflow', 'jobs', 'jobs', 'todo', 'goal', 'goal', 'goal', 'questions', 'questions', 'tools'])
     expect(toolActivity('skill')).toBe('skill')
     expect(toolActivity('mcp_shell', { card: 'terminal', title: 'ls' })).toBe('commands')
+    expect(toolActivity('mcp__github__get_issue')).toBe('mcp')
     expect(toolActivity('str_replace_editor', { card: 'diff', title: 'x', diffs: [] })).toBe('edit')
     expect(toolActivity('reader', undefined, { card: 'read', path: 'a', offset: 1, lines: [], totalLines: 0 })).toBe('read')
     expect(toolActivity('finder', undefined, { card: 'search', shape: 'paths', paths: [], truncated: false, total: 0 })).toBe('search')

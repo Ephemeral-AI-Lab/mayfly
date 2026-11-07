@@ -9,7 +9,7 @@ import { compactElapsedMs } from './agent-presentation.ts'
 import { openTurns, type Disclosure } from './disclosure.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
 import { diffStat, elapsedText } from './process-activity.ts'
-import { callsOf, standardRow, verboseRow, type Call, type CallFacts, type SpawnedChildren } from './tool-calls.ts'
+import { callsOf, runKey, standardRow, verboseRow, type Call, type CallFacts, type SpawnedChildren } from './tool-calls.ts'
 import { kindOf, ownerViewOf } from './tool-kinds.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize } from './present.ts'
@@ -663,7 +663,7 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
           units.push({ kind: 'run', turn: item.entry.turn, calls: [call] })
           continue
         }
-        if (run !== undefined && run.calls[0]!.activity !== call.activity) flush()
+        if (run !== undefined && runKey(run.calls[0]!) !== runKey(call)) flush()
         if (run === undefined) run = { turn: item.entry.turn, calls: [] }
         run.calls.push(call)
       }

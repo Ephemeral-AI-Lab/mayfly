@@ -25,6 +25,7 @@ import { patchFiles } from './patch-files.ts'
 import { ellipsize } from './present.ts'
 import { deletesFiles } from './request-facts.ts'
 import { kindOf, unitPhrase } from './tool-kinds.ts'
+import { mcpArguments, mcpNameOf, mcpResultRows } from './tool-calls-mcp.ts'
 
 /** Rows a verbose block's body shows. */
 export const VERBOSE_BODY_ROWS = 6
@@ -87,6 +88,8 @@ export interface Call {
   readonly phase: CallPhase
   /** The tool's name as the model requested it, in the display form (`Read`, `WebSearch`). */
   readonly name: string
+  /** The MCP server the tool is on, which a line names before the tool and a run of its calls names as its head. */
+  readonly server?: string
   readonly target?: string
   /** What a line of a standard block calls it: the target, or the name and target of a tool the head does not name. */
   readonly label: string
@@ -173,12 +176,10 @@ function interruptionText(interruption: ToolInterruption | undefined, t: MayflyT
 }
 
 /**
- * The display form of a tool's name: `web_search` reads `WebSearch`, and `mcp__github__search_issues` reads
- * `github › search_issues`. The name is the tool's own, never a verb of ours.
+ * The display form of a tool's name: `web_search` reads `WebSearch`. The name is the tool's own, never a verb of ours; an
+ * MCP tool keeps the name its server gave it (`mcpNameOf`).
  */
 function nameOf(name: string): string {
-  const mcp = /^mcp__(.+?)__(.+)$/u.exec(name)
-  if (mcp !== null) return `${mcp[1]!} › ${mcp[2]!}`
   return name.split('_').filter(part => part !== '').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('')
 }
 
@@ -575,12 +576,38 @@ function ownedTarget(entry: ToolEntry): string | undefined {
   return named === undefined ? undefined : ellipsize(sanitizePluginText(named), TARGET_MAX_CHARS)
 }
 
+/** What came of a call to an MCP tool that worked: its pictures, else how many items a JSON list holds, else its size. */
+function mcpOutcome(images: NonNullable<ToolEntry['images']>, text: string, t: MayflyTranslate): readonly string[] {
+  if (images.length === 1) return imageFacts(images[0]!)
+  if (images.length > 1) return [t('{count} images', { count: images.length })]
+  const items = mcpResultRows(text)?.items
+  return [items === undefined ? sizeText(new TextEncoder().encode(text).length) : t(items === 1 ? '{count} item' : '{count} items', { count: items })]
+}
+
+/** A call to an MCP tool's body: a row per picture, then its result, as rows to read when that is JSON. */
+function mcpBody(images: NonNullable<ToolEntry['images']>, text: string): Body {
+  const pictures = images.map(image => bodyRow(`[image ${image.mediaType} ${String(image.width)}×${String(image.height)}]`))
+  const rows = mcpResultRows(text)?.lines
+  // The result's text holds a bare `[image]` where each picture was, which the row above says better.
+  const written = images.length === 0 ? text : text.split('\n').filter(line => line !== '[image]').join('\n')
+  const shown = rows === undefined ? headOf(written, OPEN_BODY_ROWS) : { rows: rows.slice(0, OPEN_BODY_ROWS).map(line => bodyRow(line)), total: rows.length }
+  return { rows: [...pictures, ...shown.rows], total: pictures.length + shown.total }
+}
+
+/** Why a call to an MCP tool failed, under its line: without the thrower's prefix, and nothing when the line already said it all. */
+function mcpFailure(text: string): Body {
+  const words = text.replace(/^Error: /u, '').trim()
+  return !words.includes('\n') && words.length <= REASON_MAX_CHARS ? NO_ROWS : headOf(words, OPEN_BODY_ROWS)
+}
+
 function loneCall(entry: ToolEntry, t: MayflyTranslate, cwd: string | undefined): Call {
   const exit = exitText(entry.terminal?.exitCode, entry.terminal?.signal, t)
   const interruption = entry.result?.interruption
   const state = stateOf(entry.result === undefined ? 'pending' : entry.result.isError || exit !== undefined ? 'error' : 'ok', interruption)
   const web = entry.web
   const text = entry.result?.text ?? ''
+  const mcp = entry.activity === 'mcp' ? { ...mcpNameOf(entry.name), ...mcpArguments(entry.arguments) } : undefined
+  const images = entry.images ?? []
   // A call whose arguments still stream names the target as far as they have gone.
   const fields = entry.preparing === undefined ? undefined : partialStrings(entry.arguments).fields
   // A command in the background has no terminal: it starts, and a job has it from then on.
@@ -591,7 +618,8 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate, cwd: string | undefined)
   const salient = ownedTarget(entry) ?? ellipsize(sanitizePluginText(fields === undefined ? entry.detail : argumentDetail(fields)), TARGET_MAX_CHARS)
   const further = command === undefined ? NO_ROWS : allLines(command)
   // The arguments the model gave: a command, a query, an address, else the salient one (not the tool's own name).
-  const target = command !== undefined ? ellipsize(`${linesOf(command).find(line => line.trim() !== '') ?? command}${further.total > 1 ? ' …' : ''}`, COMMAND_MAX_CHARS)
+  const target = mcp !== undefined ? mcp.target
+    : command !== undefined ? ellipsize(`${linesOf(command).find(line => line.trim() !== '') ?? command}${further.total > 1 ? ' …' : ''}`, COMMAND_MAX_CHARS)
     : web?.kind === 'fetch' ? web.url
     : entry.activity === 'webSearch' && salient !== '' ? `"${salient}"`
     : salient === '' || salient === entry.name ? undefined : salient
@@ -600,6 +628,7 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate, cwd: string | undefined)
     if (interruption !== undefined) outcome.push(interruptionText(interruption, t))
     else if (state === 'error') outcome.push(exit ?? reason(text, cwd))
     else if (background) outcome.push(t('background'))
+    else if (mcp !== undefined) outcome.push(...mcpOutcome(images, text, t))
     else if (web?.kind === 'fetch') {
       outcome.push(String(web.statusCode), `${String(Math.max(1, Math.round(text.length / 1024)))} KB`, web.truncated ? t('truncated') : undefined)
     } else if (web?.kind === 'search') {
@@ -612,7 +641,7 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate, cwd: string | undefined)
   const plan = entry.name === 'exit_plan_mode' && (state === 'ok' || (state === 'error' && interruption === undefined))
   const revision = plan && state === 'error' ? /their feedback: ([\s\S]+)$/u.exec(entry.result?.text ?? '')?.[1] : undefined
   const sentBack = revision !== undefined && revision.trim() !== ''
-  const name = plan ? t(state === 'ok' ? 'Plan approved' : sentBack ? 'Plan sent back' : 'Plan rejected') : nameOf(entry.name)
+  const name = plan ? t(state === 'ok' ? 'Plan approved' : sentBack ? 'Plan sent back' : 'Plan rejected') : mcp?.tool ?? nameOf(entry.name)
   const planText = plan ? partialStrings(entry.arguments).fields['plan'] : undefined
   // A question the user answered reads as what happened; Verbose lists each question with its answer.
   const answered = entry.activity === 'questions' && state === 'ok' && interruption === undefined ? answeredQuestions(entry, t) : undefined
@@ -635,6 +664,7 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate, cwd: string | undefined)
     ...(interruption === undefined ? {} : { interruption }),
     phase: phaseOf(state, entry.preparing !== undefined),
     name,
+    ...(mcp?.server === undefined ? {} : { server: mcp.server }),
     ...(target === undefined || plan ? {} : { target }),
     label: plan ? name : kindOf(entry.activity).headed ? target ?? name : `${name}${target === undefined ? '' : `(${target})`}`,
     outcome,
@@ -643,6 +673,7 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate, cwd: string | undefined)
     // A command on one line is its line; the rows under a call are the lines the line cannot carry.
     ...(planText === undefined || planText.trim() === '' ? {} : { plan: sanitizePluginText(planText) }),
     ...(entry.activity === 'commands' ? commandArgs(entry.terminal?.description ?? entry.execute?.note, entry.terminal?.cwd, t) : {}),
+    ...(mcp?.args === undefined ? {} : { args: mcp.args }),
     ...(code === undefined || state === 'pending' ? {} : { sections: (): readonly CallSection[] => codeSections(code, text) }),
     input: () => code !== undefined ? allLines(code) : further.total > 1 ? { rows: promptRows(further.rows), total: further.total } : NO_ROWS,
     ...(further.total > 1 ? { inputIsTarget: true } : {}),
@@ -653,6 +684,7 @@ function loneCall(entry: ToolEntry, t: MayflyTranslate, cwd: string | undefined)
       if (kindOf(entry.activity).owner !== undefined && state !== 'error') return NO_ROWS
       // A loaded skill's text is the model's, and a background command's output is its job's.
       if ((entry.activity === 'skill' || background) && state !== 'error') return NO_ROWS
+      if (mcp !== undefined) return state === 'ok' ? mcpBody(images, text) : mcpFailure(text)
       if (web?.kind === 'search') {
         return { rows: web.sources.map(source => bodyRow(source.title === undefined ? source.url : `${source.title} · ${source.url.replace(/^[a-z][a-z0-9+.-]*:\/\//iu, '')}`)), total: web.sources.length }
       }
@@ -778,6 +810,8 @@ function awaiting(call: Call, request: CallRequest, entry: TranscriptEntryModel,
     if (lines.length > OPEN_BODY_ROWS) rows.push(bodyRow(t('… +{count} more', { count: lines.length - OPEN_BODY_ROWS }), undefined, 'muted'))
     if (deletesFiles(lines.length > 0 ? lines.join('\n') : call.target ?? '')) rows.push(bodyRow(t('⚠ deletes files'), undefined, 'warning'))
   }
+  // The line of a call to an MCP tool counts what it left out, and the user decides on all of it.
+  if (call.activity === 'mcp' && call.args !== undefined) rows.push(bodyRow(call.args, undefined, 'muted'))
   if (request.reason !== undefined && request.reason !== '') rows.push(bodyRow(request.reason, undefined, 'muted'))
   const place = request.total > 1 ? t('{index} of {total} waiting', { index: request.index, total: request.total }) : t('waiting')
   const waiting = { rows, ...(markdown === undefined ? {} : { markdown }) }
@@ -934,6 +968,7 @@ export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 
     id: call.id,
     state: call.state,
     name: sanitizePluginText(call.name),
+    ...(call.server === undefined ? {} : { server: sanitizePluginText(call.server) }),
     // A running command that spans several lines shows them under the bare tool name; the target comes back with the result.
     ...(call.target === undefined || call.target === '' || ((running || asking) && call.inputIsTarget === true && rows.length > 0) ? {} : { target: sanitizePluginText(call.target) }),
     ...(outcome === undefined ? {} : { outcome }),
@@ -947,6 +982,15 @@ export function verboseRow(call: Call, open: boolean, t: MayflyTranslate, tier: 
     ...(moreBefore === undefined ? {} : { moreBefore }),
     ...(more === undefined || body.tail === true ? {} : { more }),
   }
+}
+
+/**
+ * What a run of calls has in common: their category, or for MCP tools their server, which a run reads as.
+ * @param call - a call.
+ * @returns the key consecutive calls must share to be one run.
+ */
+export function runKey(call: Call): string {
+  return call.activity === 'mcp' ? `mcp:${call.server ?? call.name}` : call.activity
 }
 
 /**
@@ -988,7 +1032,7 @@ export function standardRow(calls: readonly Call[], t: MayflyTranslate, now: num
     kind: 'tools',
     id: first.id,
     state: running ? 'pending' : failed > 0 ? (calls.some(call => call.state === 'ok') ? 'partial' : 'error') : calls.some(call => call.state === 'cancelled') ? 'cancelled' : 'ok',
-    name: sanitizePluginText(names.length === 1 ? names[0]! : kindOf(first.activity).title),
+    name: sanitizePluginText(first.server ?? (names.length === 1 ? names[0]! : kindOf(first.activity).title)),
     head: sanitizePluginText(head),
     ...(failed === 0 ? {} : { failed: t('{count} failed', { count: failed }) }),
     ...(interrupted === 0 ? {} : { interrupted: t('{count} interrupted', { count: interrupted }) }),

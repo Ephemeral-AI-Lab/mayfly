@@ -199,14 +199,12 @@ function firstNonEmptyLine(text: string): string | undefined {
   return text.split('\n').find(line => line.trim() !== '')
 }
 
-/** The picture among a result's blocks: the attachment an image read answered with. */
-function imageOf(content: readonly unknown[] | undefined): ReadCallModel['image'] {
-  for (const block of content ?? []) {
-    const attachment = readArgumentRecord(readArgumentRecord(block)['attachment'])
-    const { mediaType, width, height, bytes } = attachment
-    if (typeof mediaType === 'string' && typeof width === 'number' && typeof height === 'number' && typeof bytes === 'number') return { mediaType, width, height, bytes }
-  }
-  return undefined
+/** The pictures among a result's blocks: the attachments a call answered with. */
+function imagesOf(content: readonly unknown[] | undefined): readonly NonNullable<ReadCallModel['image']>[] {
+  return (content ?? []).flatMap((block) => {
+    const { mediaType, width, height, bytes } = readArgumentRecord(readArgumentRecord(block)['attachment'])
+    return typeof mediaType === 'string' && typeof width === 'number' && typeof height === 'number' && typeof bytes === 'number' ? [{ mediaType, width, height, bytes }] : []
+  })
 }
 
 /** Build one read call's renderer-neutral facts from entry, arguments, and views. */
@@ -226,7 +224,7 @@ function readCallModel(resolved: ResolvedTool): ReadCallModel {
   const limit = typeof record['limit'] === 'number' ? record['limit'] : undefined
   const lines = view?.lines ?? []
   const state = outcome === undefined ? 'pending' : outcome.isError ? 'error' : 'ok'
-  const image = imageOf(entry.result?.content)
+  const image = imagesOf(entry.result?.content)[0]
   // state 'error' implies entry.result exists: the outcome derives from it.
   return {
     callId: entry.callId,
@@ -545,6 +543,7 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, counter
   const execute = executeModel(resolved)
   // A patch reads from its own text, so it needs no presenter (one may still be on its way).
   const change = family === 'edit' || resolved.entry.name === 'write' || resolved.entry.name === 'apply_patch' ? fileChangeModel(resolved, counters) : undefined
+  const images = entry.name.startsWith('mcp__') ? imagesOf(entry.result?.content) : []
   const presentation = call === undefined && result === undefined
     ? undefined
     : createToolPresentationModel({
@@ -569,6 +568,7 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, counter
     ...(terminal === undefined ? {} : { terminal }),
     ...(execute === undefined ? {} : { execute }),
     ...(web === undefined ? {} : { web }),
+    ...(images.length === 0 ? {} : { images }),
     ...(change === undefined ? {} : { change }),
     arguments: entry.arguments,
     startedAt: entry.startedAt,

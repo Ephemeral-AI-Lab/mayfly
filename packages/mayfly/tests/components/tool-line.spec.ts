@@ -76,6 +76,9 @@ describe('tool line glyphs and spans', () => {
     expect(plain(ToolLine({ state: 'cancelled', name: 'Bash', target: 'sleep 9' }))).toBe('⊘ Bash(sleep 9)')
     expect(plain(ToolLine({ state: 'waiting', name: 'Bash', target: 'rm -rf dist', outcome: '1 of 3 waiting' }))).toBe('? Bash(rm -rf dist) · 1 of 3 waiting')
     expect(plain(ToolLine({ state: 'returned', name: 'Plan sent back' }))).toBe('↩ Plan sent back')
+    const onServer = ToolLine({ state: 'ok', server: 'github', name: 'get_issue', target: 'id=1' })
+    expect(plain(onServer)).toBe('✓ github › get_issue(id=1)')
+    expect(onServer[1]).toEqual({ text: 'github › ', tone: 'muted' })
     // A call in flight leads with a breathing dot, a motion span only a row body may paint.
     const pending = ToolLine({ state: 'pending', name: 'Bash', target: 'pnpm test' })
     expect(pending[0]).toEqual({ text: '', motion: 'loader', variant: 'breath' })
@@ -162,8 +165,8 @@ describe('tool calls at the three tiers', () => {
       .toMatchObject({ name: 'Subagent', target: 'Review' })
     // A generic tool falls back to its own name, and its detail in the parentheses.
     expect(callOf(other({ name: 'custom_tool', activity: 'tools', detail: 'q' }))).toMatchObject({ name: 'CustomTool', target: 'q', label: 'CustomTool(q)' })
-    const mcp = callOf(other({ name: 'mcp__github__search_issues', activity: 'tools', detail: '' }))
-    expect(mcp).toMatchObject({ name: 'github › search_issues' })
+    const mcp = callOf(other({ name: 'mcp__github__search_issues', activity: 'mcp', detail: '' }))
+    expect(mcp).toMatchObject({ server: 'github', name: 'search_issues' })
     expect(mcp).not.toHaveProperty('target')
   })
 

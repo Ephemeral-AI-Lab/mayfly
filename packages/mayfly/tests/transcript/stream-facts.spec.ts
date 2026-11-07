@@ -676,6 +676,17 @@ describe('StreamFacts: what a view owns', () => {
   })
 })
 
+describe('StreamFacts: calls to MCP tools', () => {
+  const mcp = (name: string): TranscriptEntryModel => ({ ...tool(1, `mcp__${name}`, ''), activity: 'mcp' } as TranscriptEntryModel)
+
+  it('gathers consecutive calls to one server into a run, and starts another at the next server', () => {
+    const settled = inputs({ policy: { ...DEFAULT_TRANSCRIPT_PRESENTATION, process: PROCESS_POLICIES.standard } })
+    const facts = new StreamFacts().build(model([user(1, 'q'), mcp('github__a'), mcp('github__b'), mcp('linear__a')], [{ turn: 1, startedAt: NOON, endedAt: NOON + 9 }]), settled)
+    const rows = rowsOf(facts.turns.at(-1)).filter(row => row.kind === 'tools' || row.kind === 'tool')
+    expect(rows).toMatchObject([{ kind: 'tools', name: 'github', head: expect.stringContaining('2 calls') as string }, { kind: 'tool', server: 'linear', name: 'a' }])
+  })
+})
+
 describe('the Session\'s directory', () => {
   it('shows a call\'s path against it, in a run and in a block, and leaves one elsewhere whole', () => {
     const read = (id: string, path: string): TranscriptEntryModel => ({

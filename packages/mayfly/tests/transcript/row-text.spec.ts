@@ -52,6 +52,10 @@ describe('partText in text mode', () => {
     expect(text(entry(tool({ name: 'custom', detail: '', arguments: '{"code":"print(1)"}', result: { text: '1', isError: false, endedAt: 1 } })))).toBe('custom\n1')
   })
 
+  it('gives a call to an MCP tool the arguments its line shows, so a search finds them', () => {
+    expect(text(entry(tool({ name: 'mcp__s__t', activity: 'mcp', detail: '', arguments: '{"owner":"acme"}', result: { text: 'done', isError: false, endedAt: 1 } })))).toBe('mcp__s__t\n{"owner":"acme"}\ndone')
+  })
+
   it('gives a write as its new file head, and names the lines past the head', () => {
     const write = tool({ name: 'write', activity: 'write', change: { path: 'new.txt', added: 5, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 40, lines: 5, head: ['一', 'two'] } } })
     expect(text(entry(write))).toBe('--- /dev/null\n+++ new.txt\n+一\n+two\n… 3 more lines')

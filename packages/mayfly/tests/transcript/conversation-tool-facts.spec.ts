@@ -29,6 +29,15 @@ describe('the facts of a call', () => {
     expect((modelOf('read_image', { file_path: 'a.png' }, undefined, { call }) as { reads: readonly object[] }).reads[0]).not.toHaveProperty('image')
   })
 
+  it('carries every picture an MCP tool answered with, and none on another tool or a result without one', () => {
+    const attachment = { mediaType: 'image/png', width: 8, height: 6, bytes: 90 }
+    const content = [{ type: 'image', attachment }, { type: 'text', text: 'x' }, { type: 'image', attachment }]
+    expect(modelOf('mcp__s__t', {}, { content }, {})).toMatchObject({ activity: 'mcp', images: [attachment, attachment] })
+    expect(modelOf('mcp__s__t', {}, { content: [{ type: 'text', text: 'x' }] }, {})).not.toHaveProperty('images')
+    expect(modelOf('mcp__s__t', {}, undefined, {})).not.toHaveProperty('images')
+    expect(modelOf('custom', {}, { content }, {})).not.toHaveProperty('images')
+  })
+
   it('reads a search\'s scope and filter from its arguments, and an empty one as none', () => {
     const call = { card: 'generic', title: 'Grep', kind: 'search' }
     expect(modelOf('grep', { pattern: 'x', path: 'src', include: '*.ts' }, undefined, { call })).toMatchObject({ searches: [{ scope: 'src', include: '*.ts' }] })

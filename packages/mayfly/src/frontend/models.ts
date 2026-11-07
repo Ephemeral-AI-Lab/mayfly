@@ -33,7 +33,7 @@ interface TranscriptThinkingModel extends TranscriptEntryBase {
  * Upstream Chat process-activity vocabulary: the category one process member
  * contributes to group titles and turn counts.
  */
-export type ProcessActivity = 'read' | 'readImage' | 'write' | 'search' | 'edit' | 'commands' | 'code' | 'webSearch' | 'webFetch' | 'skill' | 'subagents' | 'workflow' | 'jobs' | 'todo' | 'goal' | 'questions' | 'tools'
+export type ProcessActivity = 'read' | 'readImage' | 'write' | 'search' | 'edit' | 'commands' | 'code' | 'webSearch' | 'webFetch' | 'skill' | 'subagents' | 'workflow' | 'jobs' | 'todo' | 'goal' | 'questions' | 'mcp' | 'tools'
 /** One turn's lifecycle times, copied from the conversation projection. */
 export interface TranscriptTurnModel { readonly turn: number; readonly startedAt: number; readonly endedAt?: number | undefined; readonly outcome?: string | undefined }
 /** Terminal-card facts of one command call. */
@@ -107,6 +107,8 @@ export interface TranscriptToolModel extends TranscriptEntryBase {
   /** What a call that executes outside a terminal card was given: a background command and its description. */
   readonly execute?: { readonly input: string; readonly note?: string }
   readonly web?: TranscriptWebModel
+  /** The pictures a call to an MCP tool answered with. */
+  readonly images?: readonly NonNullable<ReadCallModel['image']>[]
   /** The change an edit or write made, once it settled without an error. */
   readonly change?: TranscriptFileChangeModel
   readonly arguments: string

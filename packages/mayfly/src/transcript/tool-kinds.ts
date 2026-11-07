@@ -73,6 +73,7 @@ const OVERRIDES: Readonly<Record<ProcessActivity, Partial<ToolKind>>> = {
   todo: { ...PLAN_KIND, owner: 'todo' },
   goal: { ...PLAN_KIND, owner: 'goal' },
   questions: { title: 'Questions', unit: ['{count} question', '{count} questions'], running: 'Waiting for your action', preparing: 'Preparing questions' },
+  mcp: {},
   tools: {},
 }
 

@@ -50,12 +50,12 @@ const approvedPresentation = new Set([
   // Remaining plain panels; completion, skills and status use the shared
   // renderer and have no business-owned padding.
   "padding:packages/mayfly/src/app/panels.ts:return missing > 0 ? `${row}${' '.repeat(missing)}` : row",
+  "pointer:packages/mayfly/src/components/tool-line.ts:...(facts.server === undefined ? [] : [{ text: `${facts.server} \u203a `, tone: 'muted' } as const]),",
   "pointer:packages/mayfly/src/interaction/update-model.ts:{ kind: 'divider', label: `v${fromVersion} \u2192 v${toVersion}` },",
   // A version transition caption in the shared decision strip, not a selection pointer.
   "pointer:packages/mayfly/src/app/operations/update.ts:`v${from} \u2192 v${to}`,",
   "pointer:packages/mayfly/src/transcript/stream-facts.ts:const tokens = mark?.before !== undefined && mark.after !== undefined ? `${approx(mark.before)} \u2192 ${approx(mark.after)} ${t('tokens')}`",
   "pointer:packages/mayfly/src/transcript/tool-calls.ts:const shownPath = (file: TranscriptPatchFileModel): string => file.from === undefined ? underCwd(file.path, cwd) : `${underCwd(file.from, cwd)} \u2192 ${underCwd(file.path, cwd)}`",
-  "pointer:packages/mayfly/src/transcript/tool-calls.ts:if (mcp !== null) return `${mcp[1]!} \u203a ${mcp[2]!}`",
 ])
 
 interface Audit {

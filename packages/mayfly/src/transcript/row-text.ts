@@ -58,7 +58,7 @@ function toolText(entry: ToolEntry): string {
   const diff = changeText(entry)
   if (diff !== undefined) return diff
   if (entry.terminal !== undefined) return join([`$ ${entry.terminal.command}`, output])
-  return join([head, entry.name === 'run_code' ? fields['code'] : undefined, web, output])
+  return join([head, entry.name === 'run_code' ? fields['code'] : entry.activity === 'mcp' ? entry.arguments : undefined, web, output])
 }
 
 function readText(read: ReadCallModel): string {

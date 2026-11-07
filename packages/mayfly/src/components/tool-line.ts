@@ -21,6 +21,8 @@ interface ToolLineFacts {
   readonly state: ToolLineState
   /** The tool's name, in bold (`Read`, `Bash`, `WebSearch`). */
   readonly name: string
+  /** The MCP server the tool is on, muted before its name. */
+  readonly server?: string
   /** What the call was given, shown in parentheses after the name: a path, a pattern, a command, an address. */
   readonly target?: string
   /** What came of it: a count, an exit status, a time. */
@@ -142,6 +144,7 @@ const PENDING_GLYPH: readonly MayflyInlineSpan[] = [{ text: '', motion: 'loader'
 export function ToolLine(facts: ToolLineFacts): readonly MayflyInlineSpan[] {
   return [
     ...facts.state === 'pending' ? PENDING_GLYPH : [{ text: GLYPH[facts.state], tone: GLYPH_TONE[facts.state], ...(facts.state === 'waiting' ? { styles: ['strong'] as const } : {}) } as const],
+    ...(facts.server === undefined ? [] : [{ text: `${facts.server} › `, tone: 'muted' } as const]),
     { text: facts.name, tone: facts.state === 'cancelled' ? 'muted' : 'default', styles: ['strong'] },
     ...(facts.target === undefined ? [] : [{ text: '(', tone: 'muted', elastic: true } as const, { text: facts.target, tone: 'accent', elastic: true } as const, { text: ')', tone: 'muted', elastic: true } as const]),
     ...(facts.outcome === undefined ? [] : [{ text: ` · ${facts.outcome}`, tone: 'muted' } as const]),

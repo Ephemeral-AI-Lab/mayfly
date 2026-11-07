@@ -41,6 +41,7 @@ export function toolActivity(name: string, call?: ToolCallView, result?: ToolRes
   if (name === 'todo_write') return 'todo'
   if (GOAL_TOOLS.has(name)) return 'goal'
   if (name === 'ask_user_question' || name === 'request_user_input') return 'questions'
+  if (name.startsWith('mcp__')) return 'mcp'
   if (call?.card === 'terminal' || result?.card === 'terminal') return 'commands'
   if (call?.card === 'diff' || result?.card === 'diff') return 'edit'
   if (result?.card === 'read') return 'read'
@@ -168,6 +169,8 @@ export const PROCESS_DONE_ZH: Readonly<Record<string, string>> = {
   'no matches': '无匹配',
   '{count} path': '{count} 个路径',
   '{count} paths': '{count} 个路径',
+  '{count} item': '{count} 项',
+  '{count} items': '{count} 项',
   '{count} source': '{count} 个来源',
   '{count} sources': '{count} 个来源',
   '{count} image': '{count} 张图片',
