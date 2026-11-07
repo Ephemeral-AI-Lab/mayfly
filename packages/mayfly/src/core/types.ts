@@ -624,6 +624,12 @@ export interface MayflyEditor extends MayflyFocusable {
    */
   getText(): string
   /**
+   * Where the caret stands, as an offset into the text with lines joined by `\n`. An editor holding a paste marker
+   * counts the marker's text, not what it expands to.
+   * @returns the offset, in UTF-16 code units.
+   */
+  caretOffset(): number
+  /**
    * Replace the current text.
    * @param text - the new content.
    */

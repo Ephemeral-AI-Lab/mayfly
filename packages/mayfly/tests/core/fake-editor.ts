@@ -17,6 +17,7 @@ export function createFakeEditor(): MayflyEditor {
     disableSubmit: false,
     getText: () => value,
     getExpandedText: () => value,
+    caretOffset: () => value.length,
     setText: (text: string) => { value = text },
     handleInput: (data: string) => {
       if (editor.onKey?.(data) === true) return

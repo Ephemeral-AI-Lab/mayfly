@@ -14,7 +14,7 @@ import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
 import type { MayflyComponent, MayflyComponents, MayflyFocusable } from '../../src/core/types.ts'
 import {
   measuredLaneRows,
-  normalizeNavigationInput,
+  normalizeKeyInput,
   normalizeWheelInput,
   startMayflyTerminal,
   wheelReport,
@@ -1950,17 +1950,44 @@ describe('input listeners on the stable reference', () => {
     ] as const
 
     for (const [codepoint, normalized] of enhanced) {
-      expect(normalizeNavigationInput(`\x1b[${codepoint};1:1u`)).toBe(normalized)
-      expect(normalizeNavigationInput(`\x1b[${codepoint};1:2u`)).toBe(normalized)
+      expect(normalizeKeyInput(`\x1b[${codepoint};1:1u`)).toBe(normalized)
+      expect(normalizeKeyInput(`\x1b[${codepoint};1:2u`)).toBe(normalized)
     }
   })
 
   it('preserves enhanced navigation releases, modifiers, and unrelated input', () => {
-    expect(normalizeNavigationInput('\x1b[57419;1:3u')).toBeUndefined()
-    expect(normalizeNavigationInput('\x1b[57419;2:1u')).toBeUndefined()
-    expect(normalizeNavigationInput('\x1b[57417;5:1u')).toBeUndefined()
-    expect(normalizeNavigationInput('text')).toBeUndefined()
-    expect(normalizeNavigationInput('\x1b[99999;1:1u')).toBeUndefined()
+    expect(normalizeKeyInput('\x1b[57419;1:3u')).toBeUndefined()
+    expect(normalizeKeyInput('\x1b[57419;2:1u')).toBeUndefined()
+    expect(normalizeKeyInput('\x1b[57417;5:1u')).toBeUndefined()
+    expect(normalizeKeyInput('text')).toBeUndefined()
+    expect(normalizeKeyInput('\x1b[57376;1:1u')).toBeUndefined()
+  })
+
+  it('gives every raw-key path one Backspace, Esc, and Ctrl+C, however the terminal encodes them', () => {
+    for (const backspace of ['\x7f', '\x1b[127u', '\x1b[127;1u', '\x1b[127;1:1u', '\x1b[127;1:2u', '\x1b[27;1;127~', '\x1b[127;2u']) {
+      expect(normalizeKeyInput(backspace)).toBe('\x7f')
+    }
+    for (const escape of ['\x1b', '\x1b[27u', '\x1b[27;1u', '\x1b[27;1:1u']) expect(normalizeKeyInput(escape)).toBe('\x1b')
+    for (const interrupt of ['\x03', '\x1b[99;5u', '\x1b[99;5:1u']) expect(normalizeKeyInput(interrupt)).toBe('\x03')
+    // A release is not a press, and a word-delete chord keeps its modifier.
+    expect(normalizeKeyInput('\x1b[127;1:3u')).toBeUndefined()
+    expect(normalizeKeyInput('\x1b[27;1:3u')).toBeUndefined()
+    expect(normalizeKeyInput('\x1b[127;3u')).toBeUndefined()
+    expect(normalizeKeyInput('\x1b[127;5u')).toBeUndefined()
+  })
+
+  it('decodes encoded printable keys to their characters, and nothing else', () => {
+    expect(normalizeKeyInput('\x1b[97u')).toBe('a')
+    expect(normalizeKeyInput('\x1b[97;1:2u')).toBe('a')
+    expect(normalizeKeyInput('\x1b[97:65;2u')).toBe('A')
+    expect(normalizeKeyInput('\x1b[32u')).toBe(' ')
+    expect(normalizeKeyInput('\x1b[49u')).toBe('1')
+    expect(normalizeKeyInput('\x1b[27;1;97~')).toBe('a')
+    expect(normalizeKeyInput('\x1b[20013u')).toBe('中')
+    expect(normalizeKeyInput('\x1b[97;1:3u')).toBeUndefined()
+    expect(normalizeKeyInput('\x1b[97;5u')).toBeUndefined()
+    expect(normalizeKeyInput('\x1b[97;3u')).toBeUndefined()
+    expect(normalizeKeyInput('a')).toBeUndefined()
   })
 
   it('normalizes SGR and legacy wheel reports at the core input boundary', () => {

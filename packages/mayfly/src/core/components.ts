@@ -570,6 +570,11 @@ class EditorAdapter implements MayflyEditor {
     this.editor.setAutocompleteProvider(provider)
   }
 
+  caretOffset(): number {
+    const { line, col } = this.editor.getCursor()
+    return this.editor.getLines().slice(0, line).reduce((offset, text) => offset + text.length + 1, col)
+  }
+
   getExpandedText(): string {
     return this.editor.getExpandedText()
   }

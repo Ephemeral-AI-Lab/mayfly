@@ -288,8 +288,8 @@ export interface MayflyListItem {
   /** Shared decision shown before accepting this single row. */
   readonly confirm?: string | MayflyConfirmation
   /**
-   * The row is a text field typed in place (an `Other` answer): while the cursor is on it, printable keys edit its text
-   * instead of choosing or filtering, and the row counts as selected while the text is not empty. The text lives in the
+   * The row is a text field typed in place (an `Other` answer): while the cursor is on it, the keys that edit text edit
+   * it instead of choosing or filtering, and the row counts as selected while the text is not empty. The text lives in the
    * surface model and is reported in the submission's `selections[].inputs`, keyed by item id.
    */
   readonly input?: { readonly placeholder?: string }

@@ -6,6 +6,7 @@
  * @module @ephemeral-ai/mayfly/core/ui-compiler
  */
 
+import { stripVTControlCharacters } from 'node:util'
 import type {
   MayflyActionItem,
   MayflyChartNode,
@@ -1243,7 +1244,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
           ...(expandable ? { expandable: true } : {}),
           ...(enterToggles ? { enterToggles: true } : {}),
           ...(stuckLeft ? { stuckLeft: true as const } : {}),
-          ...(item.input === undefined ? {} : { input: true as const }),
+          ...(item.input === undefined ? {} : { input: runtime.rowInputEdges(list, item) }),
           ...(list.acceptVerb === undefined ? {} : { verb: list.acceptVerb }),
           ...(list.hintLabel === undefined ? {} : { label: list.hintLabel }),
         }
@@ -1290,6 +1291,7 @@ function grammarStateFor(state: FocusState, options: RuntimeCompilerOptions, con
     ],
     tabs: groups.some(group => group.kind === 'tabs'),
     ...tabsLabel,
+    ...(tabsHint?.kind === 'event' && tabsHint.tabs?.wizard === true ? { wizard: true } : {}),
     ...(railBack ? { railBack: true } : {}),
     ...(active !== undefined && controls.findIndex(candidate => candidate.group === active.group) === controls.indexOf(active) ? { groupStart: true } : {}),
     groups: groups.length,
@@ -1333,7 +1335,7 @@ function matchesBinding(match: GrammarMatch, data: string, keymap: MayflyKeymap 
     case 'key': return matchesKeyId(data, match.key)
     case 'digit': return data.length === 1 && data >= '1' && data <= '9'
     case 'text': return (match.space || data !== ' ') && startsText(data)
-    case 'backspace': return data === '\x7f' || data === '\b'
+    case 'backspace': return isBackspace(data)
     case 'any': return true
   }
 }
@@ -1433,9 +1435,21 @@ function contextKeyHintComponent(state: FocusState, options: RuntimeCompilerOpti
   return staticComponent(width => open?.() === false ? [] : contextKeyHintRows(state, options, width, mode, escapeLabel, indent), options, false)
 }
 
+const PASTE_START = '\x1b[200~'
+
 /** Printable text or the opening of a bracketed paste. */
 function startsText(data: string): boolean {
-  return data.includes('\x1b[200~') || /^[^\x00-\x1f\x7f-\x9f]+$/u.test(data)
+  return data.includes(PASTE_START) || /^[^\x00-\x1f\x7f-\x9f]+$/u.test(data)
+}
+
+/** Backspace, in the bytes the terminal input boundary leaves it as (`normalizeKeyInput`). */
+function isBackspace(data: string): boolean {
+  return data === '\x7f' || data === '\b'
+}
+
+/** A paste as a text row holds it: its line breaks stay, the markers and other control bytes do not. */
+function pastedText(data: string): string {
+  return stripVTControlCharacters(data).replace(/\r\n?/gu, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/gu, '')
 }
 
 interface TextEditorLease {
@@ -1982,6 +1996,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
             marker: focus.marker,
             selectedIds: choice?.selectedIds ?? listSelectedIds(node),
             inputs: choice?.inputs,
+            inputCaret: options.listRuntime.rowInputCaret(node, choice),
             segment,
             segmentLabel: coreText(options, 'Options'),
             body: paintBody,
@@ -2014,6 +2029,7 @@ function compileUnit(node: CompilableNode, state: FocusState, options: RuntimeCo
               after: visibleCount - entries.at(-1)!.position - 1,
               total: visibleCount,
               inputs: choice?.inputs,
+              inputCaret: options.listRuntime.rowInputCaret(node, choice),
               translate,
               flow: options.listRuntime.flow,
               locate,
@@ -2361,6 +2377,7 @@ export class MayflyUiSurfaceRuntime {
   private readonly nodePages = new WeakMap<object, MayflyPagePath>()
   private readonly tabDefinitions = new Map<string, Extract<MayflyUiNode, { readonly kind: 'tabs' }>>()
   private readonly searches = new Map<string, SearchInput>()
+  private readonly rowInputs = new Map<string, MayflyEditor>()
   private readonly textEditors = new Map<string, TextEditorLease>()
   /** The terminal editor each prompt leases, by control key, and the prompts the tree now holds. */
   private readonly promptEditors = new Map<string, UiPromptEditor>()
@@ -2662,6 +2679,31 @@ export class MayflyUiSurfaceRuntime {
 
   fieldAddress(key: string): MayflyFieldAddress | undefined { return this.fieldAddresses.get(key) }
 
+  /** The editor behind an `input` row, holding what the choice says the row holds. It edits and is never drawn. */
+  rowInput(node: MayflyListNode, item: MayflyListItem): MayflyEditor {
+    const pagePath = this.pagePath(node)
+    const key = controlKey('list', node.id, item.id, pagePath)
+    let editor = this.rowInputs.get(key)
+    if (editor === undefined) { editor = this.options!.components.createEditor(); this.rowInputs.set(key, editor) }
+    const text = this.interaction?.choice({ pagePath, controlId: node.id })?.inputs?.[item.id] ?? ''
+    if (editor.getExpandedText() !== text) editor.setText(text)
+    return editor
+  }
+
+  /** Where the caret of an `input` row stands against the ends of its text; an empty text is at both. */
+  rowInputEdges(node: MayflyListNode, item: MayflyListItem): { readonly atStart: boolean, readonly atEnd: boolean } {
+    const editor = this.rowInput(node, item)
+    const caret = editor.caretOffset()
+    return { atStart: caret === 0, atEnd: caret === editor.getExpandedText().length }
+  }
+
+  /** The caret of the list's cursor row while it holds typed text; a row not yet edited has its caret after the text. */
+  rowInputCaret(node: MayflyListNode, choice: UiChoiceState | undefined): number | undefined {
+    const id = choice?.focusedId
+    if (id === undefined || choice?.inputs?.[id] === undefined) return undefined
+    return this.rowInputs.get(controlKey('list', node.id, id, this.pagePath(node)))?.caretOffset()
+  }
+
   listRowLimit(viewportRows: number): number { return this.flow ? Number.MAX_SAFE_INTEGER : Math.min(viewportRows, this.listRowBudget ?? viewportRows) }
 
   setListRowBudget(rows: number | undefined): void { this.listRowBudget = rows }
@@ -2865,6 +2907,7 @@ export class MayflyUiSurfaceRuntime {
     this.tabDefinitions.clear()
     for (const search of this.searches.values()) search.clear()
     this.searches.clear()
+    this.rowInputs.clear()
     this.fieldKinds.clear()
     this.fieldOwners.clear()
     this.fieldRecency.clear()
@@ -3717,11 +3760,11 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'row-input': {
         const row = active as Extract<ControlDescriptor, { readonly kind: 'event' }>
         const item = admittedListItem(row.listEntry!.node.items, row.listEntry!.index)!
-        const text = model!.choice(listAddress!)?.inputs?.[item.id] ?? ''
-        // A paste arrives in one chunk; control bytes and bracketed-paste markers are not text.
-        const typed = data.replace(/\x1b\[20[01]~/gu, '').replace(/[\x00-\x1f\x7f-\x9f]/gu, '')
-        const next = intent.op === 'clear' ? '' : intent.op === 'backspace' ? Array.from(text).slice(0, -1).join('') : `${text}${typed}`
-        model!.updateChoice(listAddress!, { kind: 'input', id: item.id, text: next })
+        const editor = this.surfaceRuntime.rowInput(row.listEntry!.node, item)
+        // A paste arrives in one chunk. It goes in as plain text, so the editor holds no paste marker the caret would count.
+        if (data.includes(PASTE_START)) editor.insertText(pastedText(data))
+        else editor.handleInput?.(data)
+        model!.updateChoice(listAddress!, { kind: 'input', id: item.id, text: editor.getExpandedText() })
         return
       }
       case 'search-clear': {
@@ -3733,7 +3776,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'search-type': {
         // The grammar routes only text, Backspace, and paste chunks here, all of which the search input accepts.
         const search = this.surfaceRuntime.search(listNode!)
-        search.handleInput(data, data === '\x7f' || data === '\b')
+        search.handleInput(data, isBackspace(data))
         model!.updateChoice(listAddress!, { kind: 'query', query: search.text })
         return
       }
@@ -3804,7 +3847,7 @@ class CompiledSurface implements MayflyEditorShellComponent {
       case 'text-begin': {
         const text = active as Extract<ControlDescriptor, { readonly kind: 'text' }>
         this.state.setEditing(text.key)
-        if (startsText(data)) {
+        if (startsText(data) || isBackspace(data)) {
           const editor = this.state.textEditor(text.field, text.key)
           editor.focused = this.state.focused
           editor.handleInput?.(data)
