@@ -40,6 +40,11 @@ export interface MayflyInlineSpan {
   readonly motion?: 'shimmer' | 'loader'
   /** The animation of a `loader` span; `gap` by default. */
   readonly variant?: MayflyLoaderVariant
+  /**
+   * A one-row line wider than its row takes from its elastic spans before it clips its end, so what follows them survives:
+   * the widest shortens behind an ellipsis, and once it would keep fewer than 3 cells all of them go. Wrapping rows ignore it.
+   */
+  readonly elastic?: boolean
 }
 export interface MayflyField { readonly label: string, readonly value: readonly MayflyInlineSpan[] }
 
@@ -283,8 +288,8 @@ export interface MayflyListItem {
   /** Shared decision shown before accepting this single row. */
   readonly confirm?: string | MayflyConfirmation
   /**
-   * The row is a text field typed in place (an `Other` answer): while the cursor is on it, printable keys edit its text
-   * instead of choosing or filtering, and the row counts as selected while the text is not empty. The text lives in the
+   * The row is a text field typed in place (an `Other` answer): while the cursor is on it, the keys that edit text edit
+   * it instead of choosing or filtering, and the row counts as selected while the text is not empty. The text lives in the
    * surface model and is reported in the submission's `selections[].inputs`, keyed by item id.
    */
   readonly input?: { readonly placeholder?: string }

@@ -1,5 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "rootDir": "src", "outDir": "lib/types", "tsBuildInfoFile": "../../node_modules/.cache/mayfly-tsb/example-ecosystem.tsbuildinfo" },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/mayfly" },
+    { "path": "../header" },
+    { "path": "../right-inspector" },
+    { "path": "../bottom-log" },
+    { "path": "../overlay" },
+    { "path": "../ui-gallery" }
+  ]
 }

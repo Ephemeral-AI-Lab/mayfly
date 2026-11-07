@@ -1,22 +1,38 @@
 /**
- * The Website's app shots, painted from the accepted goldens of their catalog scenarios (`shots` in
- * `script/scenarios/catalog.mjs`): each golden grid is written back into a headless terminal, text and styles, and
- * painted by the SVG painter of the component shots. The scenarios pin the banner's version to a placeholder, which a
- * shot shows as the released version. Needs no build. @module script/shots/app
+ * The Website's app shots, painted from accepted cell grids under `script/shots/grids/`: each grid is written back
+ * into a headless terminal, text and styles, and painted by the SVG painter of the component shots. The grids pin the
+ * banner's version to a placeholder, which a shot shows as the released version. Needs no build. @module script/shots/app
  */
 
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 import { parseManifestText } from '../package-contract.mjs'
-import { APP_SHOTS, scenarioNamed } from '../scenarios/catalog.mjs'
-import { goldenPath } from '../scenarios/golden.mjs'
 import { parseGrid, styleSgr } from '../scenarios/grid.mjs'
-import { RUNNER_CONFIG } from '../scenarios/runner.mjs'
 import { paintTerminalSvg } from './svg.mjs'
 
 const require = createRequire(import.meta.url)
 // @xterm/headless@6 ships CJS-only; the ESM namespace lacks named exports.
 const { Terminal } = require('@xterm/headless')
+
+/** The placeholder the accepted grids show where the banner's version goes. */
+const PINNED_VERSION = 'scenario'
+
+/** Each shot under `website/public/shots/`, and the accepted grid it is painted from. */
+export const APP_SHOTS = Object.freeze([
+  { id: 'app-conversation', scene: 'app-conversation', checkpoint: 'end', cols: 80, rows: 24 },
+  { id: 'app-trace', scene: 'app-trace', checkpoint: 'detail', cols: 80, rows: 24 },
+  { id: 'app-permission', scene: 'app-permission', checkpoint: 'picker', cols: 80, rows: 24 },
+  // Six rows taller, so the agents pane is not cut to its overflow row; the width keeps the shots' scale.
+  { id: 'app-agents', scene: 'app-agents', checkpoint: 'running', cols: 80, rows: 30 },
+  { id: 'app-sessions', scene: 'app-sessions', checkpoint: 'workspaces', cols: 80, rows: 24 },
+  { id: 'app-session-workspace', scene: 'app-sessions', checkpoint: 'workspace', cols: 80, rows: 24 },
+].map(Object.freeze))
+
+/** The accepted grid of one shot. */
+export function gridPath(shot) {
+  return fileURLToPath(new URL(`./grids/${shot.scene}/${shot.checkpoint}@${String(shot.cols)}x${String(shot.rows)}.grid`, import.meta.url))
+}
 
 /** The released version a shot's banner shows. */
 export const RELEASED_VERSION = parseManifestText(readFileSync(new URL('../../packages/mayfly/package.json', import.meta.url), 'utf8'), 'packages/mayfly/package.json').version
@@ -30,7 +46,7 @@ const write = (terminal, data) => new Promise(resolve => { terminal.write(data, 
  * @param {string} version
  */
 export function withVersion(grid, version) {
-  const pinned = RUNNER_CONFIG['mayfly-banner'].displayVersion
+  const pinned = PINNED_VERSION
   const placeholder = `mayfly ${pinned}`
   const versionPlaceholder = `Version:   ${pinned}`
   const row = grid.lines.findIndex(line => line.trimEnd().endsWith(placeholder) || line.trimEnd().endsWith(versionPlaceholder))
@@ -83,15 +99,13 @@ export async function gridTerminal(grid) {
 }
 
 /**
- * Paint one app shot from its golden.
- * @param {{ id: string, scenario: string, checkpoint: string, cols: number, rows: number }} shot - an entry of `APP_SHOTS`.
+ * Paint one app shot from its accepted grid.
+ * @param {{ id: string, scene: string, checkpoint: string, cols: number, rows: number }} shot - an entry of `APP_SHOTS`.
  * @param {string} [version] - the version the banner shows.
  * @returns {Promise<string>} the SVG document.
  */
 export async function paintAppShot(shot, version = RELEASED_VERSION) {
-  if (scenarioNamed(shot.scenario) === undefined) throw new Error(`${shot.id}: no scenario ${shot.scenario}`)
-  const file = goldenPath(shot.scenario, shot.checkpoint, shot.cols, shot.rows)
-  const grid = withVersion(parseGrid(readFileSync(file, 'utf8')), version)
+  const grid = withVersion(parseGrid(readFileSync(gridPath(shot), 'utf8')), version)
   const terminal = await gridTerminal(grid)
   try {
     return await paintTerminalSvg(terminal, { cols: shot.cols, rows: shot.rows })
@@ -100,4 +114,3 @@ export async function paintAppShot(shot, version = RELEASED_VERSION) {
   }
 }
 
-export { APP_SHOTS }

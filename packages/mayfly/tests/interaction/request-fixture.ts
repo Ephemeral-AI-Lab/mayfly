@@ -1,60 +1,14 @@
-/** Native request services and real shared UI/compiler fixtures.
- * @module @ephemeral-ai/mayfly/tests/interaction/request-fixture
- */
-import { Context } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
-import UserQuestionService from '@deepseek-ai/dsh-user-questions'
-import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
-import { vi, type Mock } from 'vitest'
-import * as uiProvider from '../../../ui/src/provider.ts'
-import * as frontend from '../../src/frontend/index.ts'
-import * as nativeFrontend from '../../src/interaction/native-frontend.ts'
-import { MayflyCurrentAgentService } from '../../src/app/current-agent.ts'
-import { MayflyConversationsService } from '../../src/app/conversation-views.ts'
 import { MayflyUiSurfaceRuntime, compileMayflyUiSurfaceNode } from '../../src/core/ui-compiler.ts'
 import type { UiSurfaceModel } from '../../src/core/ui-interaction-surface.ts'
 import type { MayflyComponents, MayflyMarkdownOptions } from '../../src/core/types.ts'
 import { visibleWidth, truncateToWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { createFakeEditor } from '../core/fake-editor.ts'
-import { FakeMayflyComponents, FakeMayflyMarkdown, FakeScreen, FakeTheme } from './fakes.ts'
+import { FakeMayflyMarkdown } from './fakes.ts'
 import { plainColors } from '../helpers.ts'
 
 const colors = plainColors()
 const components = { createEditor: createFakeEditor, createMarkdown: (options: MayflyMarkdownOptions) => new FakeMayflyMarkdown(options), visibleWidth, truncateToWidth, wrapText: wrapTextWithAnsi } as unknown as MayflyComponents
 export const flushRequests = () => new Promise<void>(resolve => { setImmediate(resolve) })
-
-export async function requestFixture(ctx = new Context()) {
-  const steer: Mock = vi.fn()
-  const agent = { id: 'current', steer } as unknown as Agent
-  const otherSteer: Mock = vi.fn()
-  const other = { id: 'other', steer: otherSteer } as unknown as Agent
-  const agents = new Map([[agent.id, agent], [other.id, other]])
-  ctx.provide('agents', { get: (id: Agent['id']) => agents.get(id), roots: () => [...agents.values()] } as never)
-  const app = await ctx.plugin({ name: 'test-current-agent', inject: ['agents'], apply(owner: Context) { new MayflyCurrentAgentService(owner, new MayflyConversationsService(owner)) } })
-  ctx.mayflyConversations.selectPrimary(agent)
-  await ctx.plugin(uiProvider)
-  await ctx.plugin(UserQuestionService)
-  /* questions-plugin mounts plan documents through the screen/components/theme
-     seam; provide the recording fakes so its inject resolves headlessly. */
-  const screen = new FakeScreen()
-  const theme = new FakeTheme()
-  const fakeComponents = new FakeMayflyComponents()
-  ctx.provide('mayflyScreen', screen as never)
-  ctx.provide('mayflyTheme', theme as never)
-  ctx.provide('mayflyComponents', fakeComponents as never)
-  await ctx.plugin(frontend)
-  const front = await ctx.plugin(nativeFrontend)
-  await flushRequests()
-  const model = (prefix = 'mayfly.questions.') => {
-    const entry = ctx.mayflyOverlays.list().findLast(entry => entry.id.startsWith(prefix))
-    if (entry === undefined) throw new Error('No request overlay')
-    const model = ctx.mayflyUiInteraction.get('overlay', entry.id)!
-    if (model.node === null) throw new Error(JSON.stringify(model.feedbackSnapshot()))
-    return model
-  }
-  const approve = (extra: Partial<ApprovalRequest> = {}) => ctx.waterfall('approval/request', { agent, toolName: 'bash', ...extra }, () => Promise.resolve<ApprovalOutcome>('unavailable'))
-  return { ctx, agent, other, agents, steer, app, front, model, approve, screen, theme, fakeComponents }
-}
 
 export function renderRequest(
   model: UiSurfaceModel,

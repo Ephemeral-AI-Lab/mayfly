@@ -1,12 +1,4 @@
-/**
- * One stored session folded into the few figures `/stats` History and Models need: the turns and the tokens of each
- * local day, per model and split by DeepSeek's peak hours. Pure: the index reads the log and keeps only this.
- *
- * @module @ephemeral-ai/mayfly/interaction/stats-index/digest
- */
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { TokenBuckets } from '../usage.ts'
-import { isPeakRequest } from '../pricing.ts'
 
 /** Token buckets that are still being added to. */
 export type MutableBuckets = { -readonly [Key in keyof TokenBuckets]: TokenBuckets[Key] }
@@ -53,42 +45,3 @@ export function addBuckets(into: MutableBuckets, usage: TokenBuckets): void {
   into.output += usage.output
 }
 
-const count = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
-
-/**
- * Fold a session's events. A session with no turn and no usage has no digest.
- * @param id - the session id.
- * @param cwd - its working directory, when the header has one.
- * @param events - its events in order.
- * @returns the digest, or undefined for an empty session.
- */
-export function foldDigest(id: string, cwd: string | undefined, events: Iterable<SessionEvent>): SessionDigest | undefined {
-  const days = new Map<string, DayDigest>()
-  let firstAt = Number.POSITIVE_INFINITY
-  let lastAt = Number.NEGATIVE_INFINITY
-  const day = (time: number): DayDigest => {
-    const key = dayKey(time)
-    let entry = days.get(key)
-    if (entry === undefined) { entry = { turns: 0, models: new Map() }; days.set(key, entry) }
-    return entry
-  }
-  for (const event of events) {
-    if (event.type === 'turn/start') {
-      day(event.time).turns += 1
-    } else if (event.type === 'assistant/message') {
-      const usage = event.data.usage
-      if (usage === undefined) continue
-      const source = event.data.message.source
-      const peak = isPeakRequest(source.provider, event.time)
-      const entry = day(event.time)
-      const key = `${source.provider}\u0000${source.model}`
-      let model = entry.models.get(key)
-      if (model === undefined) { model = { provider: source.provider, model: source.model, peak: emptyBuckets(), offPeak: emptyBuckets() }; entry.models.set(key, model) }
-      addBuckets(peak ? model.peak : model.offPeak, { input: count(usage.inputTokens), cacheRead: count(usage.cacheReadTokens), cacheWrite: count(usage.cacheWriteTokens), output: count(usage.outputTokens) })
-    } else continue
-    firstAt = Math.min(firstAt, event.time)
-    lastAt = Math.max(lastAt, event.time)
-  }
-  if (days.size === 0) return undefined
-  return { id, cwd, firstAt, lastAt, days }
-}

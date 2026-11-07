@@ -3,13 +3,13 @@ import { flyInRows, markColumns, restRows, type MarkTextRun } from '../core/quad
 import type { MayflyColorFn, MayflySemanticColors } from '../core/types.ts'
 import { MARK_BEAT, MARK_ROWS } from './banner-art.ts'
 /** Below this content width the banner drops the mark and shows its four lines alone. */
-export const BANNER_MIN_WIDTH = 40
+const BANNER_MIN_WIDTH = 40
 
 /** Blank columns between the mark and the four lines. */
 const MARK_GAP = 2
 
 /** The slogan; brand identity stays English in every locale. */
-export const SLOGAN = 'ephemeral agents, enduring works'
+const SLOGAN = 'ephemeral agents, enduring works'
 
 /**
  * Shorten a path by replacing the home-directory prefix with `~` — the exact
@@ -26,7 +26,7 @@ export function shortenHome(path: string, home: string): string {
 }
 
 /** The banner's rendered facts. */
-export interface BannerContent {
+interface BannerContent {
   /** The version beside the brand word. */
   readonly version: string
   /** The model id for the model line. */
@@ -38,7 +38,7 @@ export interface BannerContent {
 }
 
 /** The theme and measuring primitives `composeBannerLines` needs. */
-export interface BannerDeps {
+interface BannerDeps {
   /** The semantic color table. */
   readonly colors: MayflySemanticColors
   /** Renderer-owned strong emphasis. */

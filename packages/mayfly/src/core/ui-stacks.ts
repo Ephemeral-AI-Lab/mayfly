@@ -16,7 +16,7 @@ import { blankRows, concatRows, declaredWidthOf, isVirtualRows, rowSourceOf, sli
 import { visibleWidth } from './width.ts'
 
 /** A leaf that can fill the height a row settles on, used by a vertical divider between columns. */
-export interface FillHeightComponent {
+interface FillHeightComponent {
   renderHeight?: (height: number, width: number) => string[]
 }
 

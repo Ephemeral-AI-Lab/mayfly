@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { compileMayflyUiNode } from '../../src/core/ui-compiler.ts'
-import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore } from '../../src/components/tool-line.ts'
+import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore, ToolPatchFileRow } from '../../src/components/tool-line.ts'
 import { TranscriptView, type StreamRow, type TranscriptViewFacts } from '../../src/components/transcript-view.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/models.ts'
@@ -76,6 +76,9 @@ describe('tool line glyphs and spans', () => {
     expect(plain(ToolLine({ state: 'cancelled', name: 'Bash', target: 'sleep 9' }))).toBe('⊘ Bash(sleep 9)')
     expect(plain(ToolLine({ state: 'waiting', name: 'Bash', target: 'rm -rf dist', outcome: '1 of 3 waiting' }))).toBe('? Bash(rm -rf dist) · 1 of 3 waiting')
     expect(plain(ToolLine({ state: 'returned', name: 'Plan sent back' }))).toBe('↩ Plan sent back')
+    const onServer = ToolLine({ state: 'ok', server: 'github', name: 'get_issue', target: 'id=1' })
+    expect(plain(onServer)).toBe('✓ github › get_issue(id=1)')
+    expect(onServer[1]).toEqual({ text: 'github › ', tone: 'muted' })
     // A call in flight leads with a breathing dot, a motion span only a row body may paint.
     const pending = ToolLine({ state: 'pending', name: 'Bash', target: 'pnpm test' })
     expect(pending[0]).toEqual({ text: '', motion: 'loader', variant: 'breath' })
@@ -87,13 +90,34 @@ describe('tool line glyphs and spans', () => {
     expect(spans).toEqual([
       { text: '✓ ', tone: 'success' },
       { text: 'WebSearch', tone: 'default', styles: ['strong'] },
-      { text: '(', tone: 'muted' },
-      { text: '"mayfly"', tone: 'accent' },
-      { text: ')', tone: 'muted' },
+      { text: '(', tone: 'muted', elastic: true },
+      { text: '"mayfly"', tone: 'accent', elastic: true },
+      { text: ')', tone: 'muted', elastic: true },
       { text: ' · 2 sources · 1s', tone: 'muted' },
     ])
     // A cancelled call's name is muted too, so the cut-off line reads as a line that did not finish.
     expect(ToolLine({ state: 'cancelled', name: 'Read' })[1]).toMatchObject({ text: 'Read', tone: 'muted' })
+  })
+
+  it('draws a patch\'s file as its kind, path and counts: with a bar under an open block, plain in a tree', () => {
+    const text = (spans: readonly { readonly text: string }[]) => spans.map(span => span.text).join('')
+    expect(text(ToolPatchFileRow({ kind: 'M', path: 'a.ts', stat: { added: 3, removed: 1 } }))).toBe('  M a.ts  +3 −1 ▮▮▮▮▮▮')
+    expect(text(ToolPatchFileRow({ kind: 'A', path: 'a.ts', stat: { added: 3, removed: 0 } }, 'middle'))).toBe('  ├ A a.ts · +3')
+    expect(text(ToolPatchFileRow({ kind: 'D', path: 'a.ts', stat: { added: 0, removed: 3 } }, 'last'))).toBe('  └ D a.ts · −3')
+    expect(text(ToolPatchFileRow({ kind: 'R', path: 'a.ts → b.ts', stat: { added: 0, removed: 0 } }, 'last'))).toBe('  └ R a.ts → b.ts')
+    expect(text(ToolPatchFileRow({ kind: 'A', path: 'a.ts' }))).toBe('  A a.ts')
+    expect(ToolPatchFileRow({ kind: 'D', path: 'a.ts' })[1]).toMatchObject({ tone: 'danger' })
+    expect(ToolPatchFileRow({ kind: 'A', path: 'a.ts' })[2]).toMatchObject({ elastic: true })
+  })
+
+  it('draws a block\'s args, and a patch\'s files with their diffs behind a lead, as rows of their own', () => {
+    const items = TranscriptView({ queued: [], turns: [{ rows: [{ kind: 'tool', id: 'p', state: 'ok', name: 'ApplyPatch', args: '# note', filesTree: false, files: [{ kind: 'M', path: 'a.ts', diff: [{ before: 'a', after: 'b', maxRows: 1 }, { before: 'c', after: 'd', language: 'typescript', start: 2, beforeStart: 2, numberWidth: 2, tail: 'more' }] }, { kind: 'A', path: 'b.ts' }] }] }] } as unknown as TranscriptViewFacts)
+    const ids = (items as { readonly items: readonly { readonly id: string, readonly bodyLead?: readonly { readonly text: string }[] }[] }).items
+    expect(ids.map(item => item.id)).toEqual(expect.arrayContaining(['p.args', 'p.file.0', 'p.file.0.diff.0', 'p.file.0.diff.1.gap', 'p.file.0.diff.1', 'p.file.1']))
+    expect(ids.find(item => item.id === 'p.file.0.diff.0')?.bodyLead).toEqual([{ text: '  ' }])
+    const tree = TranscriptView({ queued: [], turns: [{ rows: [{ kind: 'tool', id: 'p', state: 'ok', name: 'ApplyPatch', filesTree: true, files: [{ kind: 'M', path: 'a' }, { kind: 'A', path: 'b' }] }] }] } as unknown as TranscriptViewFacts) as { readonly items: readonly { readonly id: string, readonly label: string }[] }
+    expect(tree.items.find(item => item.id === 'p.file.0')?.label).toBe('  ├ M a')
+    expect(tree.items.find(item => item.id === 'p.file.1')?.label).toBe('  └ A b')
   })
 
   it('draws an edit\'s diffstat as its signed counts and a bar split by their share, each side keeping a cell', () => {
@@ -115,6 +139,9 @@ describe('tool line glyphs and spans', () => {
     const head = ToolGroupHead({ state: 'ok', name: 'Bash', head: '3 calls · 6s', items: [] })
     expect(head.map(span => span.text).join('')).toBe('✓ Bash · 3 calls · 6s')
     expect(ToolGroupHead({ state: 'partial', name: 'Bash', head: '3 calls', failed: '1 failed', items: [] }).at(-1)).toEqual({ text: ' · 1 failed', tone: 'warning' })
+    // While the rest still run a failure is a warning; only a block that has ended in failure is an error.
+    expect(ToolGroupHead({ state: 'pending', name: 'Subagent', head: '1/3', failed: '1 failed', items: [] }).at(-1)).toEqual({ text: ' · 1 failed', tone: 'warning' })
+    expect(ToolGroupHead({ state: 'error', name: 'Bash', head: '3 calls', failed: '3 failed', items: [] }).at(-1)).toEqual({ text: ' · 3 failed', tone: 'danger' })
     expect(ToolGroupItem({ state: 'ok', label: 'pnpm test', outcome: '4.2s' }, false).map(span => span.text).join('')).toBe('  ├ pnpm test · 4.2s')
     expect(ToolGroupItem({ state: 'error', label: 'pnpm build', outcome: 'exit 1' }, true).map(span => span.text).join('')).toBe('  └ ✗ pnpm build · exit 1')
   })
@@ -132,14 +159,14 @@ describe('tool calls at the three tiers', () => {
       .toMatchObject({ name: 'WebFetch', target: 'https://x.dev/a', outcome: ['200', '2 KB', 'truncated', '4.2s'] })
     expect(callOf(other({ name: 'web_search', activity: 'webSearch', detail: 'mayfly', web: { kind: 'search', sources: [{ url: 'https://a' }, { url: 'https://b' }], truncated: false }, result: { text: 'ok', isError: false, endedAt: 1_000 } })))
       .toMatchObject({ name: 'WebSearch', target: '"mayfly"', outcome: ['2 sources', '1s'] })
-    expect(callOf(other({ name: 'todo_write', activity: 'plan', detail: '', arguments: '{"todos":[{"content":"a"},{"content":"b"}]}' })))
+    expect(callOf(other({ name: 'todo_write', activity: 'todo', detail: '', arguments: '{"todos":[{"content":"a"},{"content":"b"}]}' })))
       .toMatchObject({ name: 'TodoWrite' })
     expect(callOf(other({ name: 'subagent', activity: 'subagents', detail: 'Review', result: { text: 'done', isError: false, endedAt: 9_000 } })))
       .toMatchObject({ name: 'Subagent', target: 'Review' })
     // A generic tool falls back to its own name, and its detail in the parentheses.
     expect(callOf(other({ name: 'custom_tool', activity: 'tools', detail: 'q' }))).toMatchObject({ name: 'CustomTool', target: 'q', label: 'CustomTool(q)' })
-    const mcp = callOf(other({ name: 'mcp__github__search_issues', activity: 'tools', detail: '' }))
-    expect(mcp).toMatchObject({ name: 'github › search_issues' })
+    const mcp = callOf(other({ name: 'mcp__github__search_issues', activity: 'mcp', detail: '' }))
+    expect(mcp).toMatchObject({ server: 'github', name: 'search_issues' })
     expect(mcp).not.toHaveProperty('target')
   })
 
@@ -344,7 +371,7 @@ describe('interrupted tool calls', () => {
     }
     const narrow = drawn(facts([user(1, 'go'), cut('aborted'), cut('unknown', { id: 'k4' })], 'verbose'), 40)
     expect(narrow).toContain('  ⊘ Bash(sleep 9) · interrupted · 4.2s')
-    // The list clips the end of a line, so the longer reason gives its last words.
-    expect(narrow.some(row => row.startsWith('  ✗ Bash(sleep 9) · outcome unknown'))).toBe(true)
+    // The target gives way before the reason: nothing clips the outcome.
+    expect(narrow.find(row => row.startsWith('  ✗'))).toMatch(/^ {2}✗ Bash(\(.+…\))? · outcome unknown · 4\.2s$/u)
   })
 })

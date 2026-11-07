@@ -6,7 +6,6 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEventRecord } from '@deepseek-ai/dsh-session-query'
 import { aggregateTraceItems } from '../../src/remote/trace-aggregate.ts'
-import { aggregateTraceItems as referenceAggregate } from '../../../mayfly/src/interaction/trace-aggregate.ts'
 
 const sessionId = 'trace' as never
 
@@ -38,7 +37,48 @@ describe('aggregateTraceItems', () => {
       event(5, 'assistant/message', { turn: 1, step: 1, message: { content: [] }, stream: [] }),
       attempt(6, 'reasoning-chunks', 'ignored'),
     ]
-    expect(aggregateTraceItems(records, events)).toEqual(referenceAggregate(records as unknown as Parameters<typeof referenceAggregate>[0], events as unknown as Parameters<typeof referenceAggregate>[1]))
+    expect(aggregateTraceItems(records, events)).toMatchInlineSnapshot(`
+      [
+        {
+          "eventSeqs": [
+            1,
+            2,
+          ],
+          "lastSeq": 2,
+          "seq": 1,
+          "summary": "No need",
+          "surface": "current",
+          "time": 1,
+          "title": "Thinking",
+          "type": "assistant/attempt",
+        },
+        {
+          "eventSeqs": [
+            3,
+            4,
+          ],
+          "lastSeq": 4,
+          "seq": 3,
+          "summary": "answer now",
+          "surface": "current",
+          "time": 3,
+          "title": "Assistant draft",
+          "type": "assistant/attempt",
+        },
+        {
+          "eventSeqs": [
+            5,
+          ],
+          "lastSeq": 5,
+          "seq": 5,
+          "summary": "{"turn":1,"step":1,"message":{"content":[]},"stream":[]}",
+          "surface": "current",
+          "time": 5,
+          "title": "Assistant answer",
+          "type": "assistant/message",
+        },
+      ]
+    `)
     expect(aggregateTraceItems(records, events)).toMatchObject([
       { seq: 1, lastSeq: 2, eventSeqs: [1, 2], title: 'Thinking', summary: 'No need' },
       { seq: 3, lastSeq: 4, eventSeqs: [3, 4], title: 'Assistant draft', summary: 'answer now' },

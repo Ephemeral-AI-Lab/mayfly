@@ -1,35 +1,39 @@
 /** Transient-only public assistant presentation without a native Session service. @module */
 import { describe, expect, it } from 'vitest'
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import ts from 'typescript'
 import type { AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
-import { transientAssistantConversation } from '../../src/conversation/transient.ts'
+import { transientAssistantProjection, type TransientCursor } from '../../src/conversation/transient.ts'
+import { foldAssistantStreamRecords, initialAssistantStream } from '../../../host/src/conversation/stream-accumulator.ts'
 import { foldConversationProjection, initialConversationState } from '../../../host/src/conversation/projection.ts'
 
-async function runtimeClosure(entry: string, visited = new Set<string>()): Promise<ReadonlySet<string>> {
-  if (visited.has(entry)) return visited
-  visited.add(entry)
-  const parsed = ts.createSourceFile(entry, await readFile(entry, 'utf8'), ts.ScriptTarget.Latest, true)
-  for (const statement of parsed.statements) {
-    if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue
-    if (ts.isExportDeclaration(statement) && (statement.isTypeOnly || (statement.exportClause !== undefined && ts.isNamedExports(statement.exportClause) && statement.exportClause.elements.every(item => item.isTypeOnly)))) continue
-    if (ts.isImportDeclaration(statement)) {
-      const clause = statement.importClause
-      if (clause?.isTypeOnly === true || (clause !== undefined && clause.name === undefined && clause.namedBindings !== undefined && ts.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every(item => item.isTypeOnly))) continue
+/** The named runtime imports every TUI source takes from Host's conversation subpath. */
+async function hostConversationImports(directory: string, names = new Set<string>()): Promise<ReadonlySet<string>> {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = resolve(directory, entry.name)
+    if (entry.isDirectory()) { await hostConversationImports(path, names); continue }
+    if (!entry.name.endsWith('.ts')) continue
+    const parsed = ts.createSourceFile(path, await readFile(path, 'utf8'), ts.ScriptTarget.Latest, true)
+    for (const statement of parsed.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue
+      if (statement.moduleSpecifier.text !== '@ephemeral-ai/mayfly-host/conversation' || statement.importClause?.isTypeOnly === true) continue
+      const bindings = statement.importClause?.namedBindings
+      if (bindings === undefined || !ts.isNamedImports(bindings)) { names.add('*'); continue }
+      for (const item of bindings.elements) if (!item.isTypeOnly) names.add((item.propertyName ?? item.name).text)
     }
-    const path = statement.moduleSpecifier
-    if (path !== undefined && ts.isStringLiteral(path) && path.text.startsWith('.')) await runtimeClosure(resolve(entry, '..', path.text), visited)
   }
-  return visited
+  return names
+}
+
+function transientAssistantConversation(stream: readonly AssistantStreamRecord[], cursor: TransientCursor) {
+  return transientAssistantProjection(foldAssistantStreamRecords(initialAssistantStream(), stream), cursor)
 }
 
 describe('transient assistant conversation', () => {
-  it('keeps the durable fold unreachable from public conversation and transcript runtime graphs', async () => {
-    for (const entry of ['conversation.ts', 'transcript.ts']) {
-      const modules = await runtimeClosure(resolve(import.meta.dirname, '../../src', entry))
-      expect([...modules].filter(path => path.endsWith('/conversation/projection.ts'))).toEqual([])
-    }
+  it('takes only the stream and detail helpers from the Host conversation subpath, never its durable fold', async () => {
+    const names = await hostConversationImports(resolve(import.meta.dirname, '../../src'))
+    expect([...names].toSorted()).toEqual(['argumentDetail', 'foldAssistantStreamRecords', 'initialAssistantStream', 'toolDetail', 'toolEntryId'])
   })
 
   it.each(([
@@ -55,6 +59,18 @@ describe('transient assistant conversation', () => {
     ])
     expect(projection.streaming).toBe(true)
     expect(projection.settledSteps).toEqual([])
+  })
+
+  it('carries a call the attempt still writes under the id its durable row will have, with what it has written so far', () => {
+    const projection = transientAssistantConversation([
+      { type: 'chunk', time: 10, chunk: { type: 'text-delta', index: 0, text: 'answer' } },
+      { type: 'chunk', time: 20, chunk: { type: 'tool-call-delta', index: 1, id: 'c1', name: 'write', argumentsDelta: '{"file' } },
+      { type: 'chunk', time: 30, chunk: { type: 'tool-call-delta', index: 1, id: 'c1', argumentsDelta: '_path":"a' } },
+    ] as readonly AssistantStreamRecord[], { seq: 7, time: 30, turn: 2, step: 3 })
+    expect(projection.entries.at(-1)).toEqual({
+      kind: 'tool', id: 'tool:c1', seq: 7, updatedSeq: 7, turn: 2, step: 3, callId: 'c1', name: 'write', arguments: '{"file_path":"a',
+      startedAt: 20, channel: 'transcript', preparing: { characters: 15 },
+    })
   })
 
   it('keeps an empty transient window empty', () => {

@@ -32,12 +32,8 @@ export const RELEASE_PACKAGE_DIRS = [
   'packages/ui',
   'packages/host',
   'packages/mayfly',
-  'packages/remote',
   'packages/cli',
 ]
-
-/** Packages validated independently but deliberately excluded from release. */
-export const VALIDATION_PACKAGE_DIRS = []
 
 /** Publish-shaped ecosystem examples built and validated outside the release set. */
 export const ECOSYSTEM_PACKAGE_DIRS = [
@@ -50,11 +46,8 @@ export const ECOSYSTEM_PACKAGE_DIRS = [
   'examples/mayfly-ecosystem',
 ]
 
-/** Backward-compatible name used by release/check-pack callers. */
-export const PACKAGE_DIRS = RELEASE_PACKAGE_DIRS
-
-/** All packages with buildable runtime entries, including validation plugins. */
-export const BUILD_PACKAGE_DIRS = [...RELEASE_PACKAGE_DIRS, ...VALIDATION_PACKAGE_DIRS, ...ECOSYSTEM_PACKAGE_DIRS]
+/** All packages with buildable runtime entries. */
+export const BUILD_PACKAGE_DIRS = [...RELEASE_PACKAGE_DIRS, ...ECOSYSTEM_PACKAGE_DIRS]
 
 /**
  * Parse manifest JSON after refusing duplicate object keys. `JSON.parse`

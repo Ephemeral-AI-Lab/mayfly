@@ -9,6 +9,7 @@ export default defineConfig({
     startup: 'src/startup.ts',
     settings: 'src/settings.ts',
     'types/types': 'src/types.ts',
+    conversation: 'src/conversation.ts',
   },
   outDir: 'lib',
   format: ['esm'],
@@ -18,5 +19,7 @@ export default defineConfig({
   dts: false,
   clean: false,
   sourcemap: true,
+  // Code the entries share lands under fixed names that one files entry publishes; anything else in lib/ stays guarded.
+  outputOptions: { chunkFileNames: 'chunks/[name].js' },
   plugins: [sourceDecoratorsPlugin(), typertPlugin({ mode: 'package', faces: ['host'] })],
 })

@@ -68,6 +68,33 @@ export const SPLIT_LOCAL_SHELL_STEPS = Object.freeze([
   ...send('!node -e ""'), { step: 'until', text: '(no output)' }, checkpoint('shell-empty'),
 ])
 
+/**
+ * Text keys through the real terminal path, in the encodings a kitty-protocol terminal or multiplexer may send: the
+ * question row's editor and arrows, a slash filter, and Backspace on a field not yet being edited. Behavior only, since
+ * rc.2 has none of it.
+ */
+export const SPLIT_TEXT_KEY_STEPS = Object.freeze([
+  { step: 'until', text: 'Ask anything' },
+  ...send('native:question:wizard'), { step: 'until', text: 'Choose a delivery route' },
+  key('right'), { step: 'until', text: 'Choose the scopes' }, key('left'), { step: 'until', text: 'Choose a delivery route' },
+  key('end'), { step: 'type', text: 'xyzzy' }, { step: 'until', text: 'xyzzy' },
+  key('\u001b[127;1:1u'), { step: 'until-gone', text: 'xyzzy' }, { step: 'until', text: 'xyzz' },
+  key('\u001b[127u'), { step: 'until-gone', text: 'xyzz' }, { step: 'until', text: 'xyz' },
+  key('left'), { step: 'type', text: 'Q' }, { step: 'until', text: 'xyQz' },
+  key('home'), { step: 'type', text: 'P' }, { step: 'until', text: 'PxyQz' }, checkpoint('text-keys-caret'),
+  key('ctrl+u'), { step: 'until-gone', text: 'PxyQz' }, { step: 'until', text: 'xyQz' },
+  key('alt+right'), { step: 'until', text: 'Choose the scopes' }, key('alt+left'), { step: 'until', text: 'xyQz' },
+  key('enter'), { step: 'until', text: 'Choose the scopes' }, key('space'), key('enter'),
+  { step: 'until', text: 'Add a delivery note' }, { step: 'type', text: 'note' }, key('enter'),
+  key('end'), key('enter'), { step: 'until', text: 'Native question finished: wizard' },
+  ...send('/skills'), { step: 'until', text: 'Skills' }, key('/'), { step: 'type', text: 'zzq' }, { step: 'until', text: 'zzq' },
+  key('\u001b[127;1u'), { step: 'until-gone', text: 'zzq' }, key('\u001b[27u'), key('\u001b[27u'), { step: 'until-gone', text: 'zz' },
+  ...send('/rename Seed title'), { step: 'until', text: 'renamed session to Seed title' },
+  ...send('/rename'), { step: 'until', text: 'Rename session' }, { step: 'until', text: 'Seed title' },
+  key('\u001b[127;1:1u'), { step: 'until-gone', text: 'Seed title' }, { step: 'until', text: 'Seed titl' }, checkpoint('text-keys-rename'),
+  { step: 'type', text: 'e' }, { step: 'until', text: 'Seed title' }, key('\u001b[27u'), key('\u001b[27u'), { step: 'until-gone', text: 'Rename session' },
+])
+
 /** Rename through the actual title editor, including persistence and dirty cancellation. */
 export const SPLIT_RENAME_STEPS = Object.freeze([
   { step: 'until', text: 'Ask anything' },
@@ -104,4 +131,5 @@ export const SPLIT_INPUT_CASES = Object.freeze({
   'editor-feedback': { profileTag: 'input-feedback-v1', steps: SPLIT_EDITOR_FEEDBACK_STEPS },
   'local-shell': { profileTag: 'input-shell-v1', steps: SPLIT_LOCAL_SHELL_STEPS },
   rename: { profileTag: 'input-rename-v1', steps: SPLIT_RENAME_STEPS },
+  'text-keys': { profileTag: 'input-text-keys-v1', steps: SPLIT_TEXT_KEY_STEPS, splitOnly: true },
 })

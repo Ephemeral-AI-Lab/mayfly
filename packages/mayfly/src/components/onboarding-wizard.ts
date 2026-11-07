@@ -19,7 +19,7 @@ export const ONBOARDING_STARTUP_FIELD = 'startup'
 export const ONBOARDING_CONNECT_LIST = 'connect-options'
 export const ONBOARDING_KEY_FORM = 'key-form'
 export const ONBOARDING_KEY_FIELD = 'key'
-export const ONBOARDING_START_LIST = 'start'
+const ONBOARDING_START_LIST = 'start'
 /** The ids of the sign-in page on the Connect step: what its events are read by. */
 export const ONBOARDING_SIGN_IN: SignInIds = {
   pagePath: [{ controlId: ONBOARDING_WIZARD, itemId: ONBOARDING_CONNECT }],
@@ -28,8 +28,6 @@ export const ONBOARDING_SIGN_IN: SignInIds = {
 }
 
 export type OnboardingStepId = typeof ONBOARDING_PREFERENCES | typeof ONBOARDING_CONNECT | typeof ONBOARDING_READY
-/** The rows of the Connect list. */
-export type OnboardingConnectChoice = 'account' | 'key' | 'skip'
 
 export interface OnboardingPresetRow {
   readonly id: string

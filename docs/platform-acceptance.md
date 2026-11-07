@@ -6,7 +6,7 @@ Linux runners prepare a systemd user manager and its D-Bus environment; macOS ru
 
 `script/smoke-platform-pty.mjs` exercises:
 
-- All five resolved package versions and authenticated official HTTP/WebSocket Session list/create/open.
+- All four resolved package versions and authenticated official HTTP/WebSocket Session list/create/open.
 - Native service startup, login enable/disable preserving the running Host, owned-child crash recovery, and restart rotating credentials.
 - Independent TUI startup, Unicode bracketed paste, backspace, 100/40/100-column resize and the command panel.
 - Clean terminal restoration, TUI exit keeping Host alive, redacted logs, and explicit stop preventing recovery.

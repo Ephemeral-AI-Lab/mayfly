@@ -16,9 +16,10 @@
  * @module @ephemeral-ai/mayfly/core/content-rows
  */
 
-import type { MayflyContentField, MayflyContentNode, MayflyField, MayflyMarkdownNode, MayflyRichTextNode, MayflySection, MayflySectionContentNode, MayflyTextStyle, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
+import type { MayflyContentField, MayflyContentNode, MayflyField, MayflyInlineSpan, MayflyMarkdownNode, MayflyRichTextNode, MayflySection, MayflySectionContentNode, MayflyTextStyle, MayflyTone, MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MarkdownTheme } from '@earendil-works/pi-tui'
 import { fieldText } from './field-text.ts'
+import { fitSpans } from './ui-motion-text.ts'
 import { commonPrefix } from './text-match.ts'
 import { CONTENT_SEGMENT_LINES, CONTENT_SEGMENT_UNITS, extendMergedLines, indexContent, indexMergedLines, scanContentLines, type ContentIndex, type ContentLineScan } from './content-segments.ts'
 import { alignDiffLines, diffModel, paintDiffSegment, type DiffModel, type DiffSegment, type DiffStyle } from './diff-align.ts'
@@ -1112,9 +1113,9 @@ function richTextSource(node: MayflyRichTextNode, width: number, env: ContentRow
   if (!Array.isArray(node.spans)) throw new TypeError('rich-text spans must be an array')
   const spans: SanitizedSpan[] = node.spans.map(span => {
     if (typeof span !== 'object' || span === null) throw new TypeError('rich-text span must be an object')
-    return { tone: span.tone, styles: span.styles, text: sanitizePluginText(requireText(span.text, 'rich-text span text')) }
+    return { tone: span.tone, styles: span.styles, text: sanitizePluginText(requireText(span.text, 'rich-text span text')), ...(span.elastic === true ? { elastic: true } : {}) }
   })
-  if (node.overflow === 'truncate') return eagerRow(truncatedRow(spans.map(span => paintSpan(span, env.colors)).join(''), width, env.components), env)
+  if (node.overflow === 'truncate') return eagerRow(truncatedRow(fitSpans(spans as readonly MayflyInlineSpan[], width).map(span => paintSpan(span, env.colors)).join(''), width, env.components), env)
   const raw = spans.map(span => span.text).join('')
   const index = indexedField(node, () => raw, env).index
   return new SegmentedContent(index, () => raw, width, (segment, at) => {

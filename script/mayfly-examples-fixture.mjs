@@ -30,13 +30,13 @@ for (let index = 0; index < args.length; index += 1) {
 }
 
 const scenarios = [
-  'composition.five-direct-rows',
+  'composition.five-plugins',
   'user-kit.public-component',
   'header.pane-lifecycle',
   'right-inspector.pane-lifecycle',
   'bottom-log.pane-lifecycle',
   'ui-gallery.pane-lifecycle',
-  'overlay.command-and-lifecycle',
+  'overlay.editor-action-and-lifecycle',
   'direct.status-and-editor-lifecycle',
 ]
 const fixtureRoot = await mkdtemp(join(tmpdir(), 'mayfly-examples-fixture-'))
@@ -88,6 +88,8 @@ async function scenario(name, run) {
 
 const packageDirs = [
   'packages/ui',
+  'packages/host',
+  'packages/mayfly',
   'examples/mayfly-user-kit',
   'examples/header',
   'examples/right-inspector',
@@ -142,9 +144,7 @@ try {
   }
 
   const dependencies = Object.fromEntries([...tarballs].map(([name, tarball]) => [name, `file:${tarball}`]))
-  dependencies['@deepseek-ai/cordis'] = '4.0.4'
-  dependencies['@deepseek-ai/dsh-commands'] = harnessLine
-  dependencies['@deepseek-ai/dsh-settings'] = harnessLine
+  dependencies['@deepseek-ai/cordis'] = '4.1.0'
   const workspace = parseYaml(readFileSync(join(ROOT, 'pnpm-workspace.yaml'), 'utf8'))
   const pinnedSuffix = `@${supportedHarnessLine}`
   const harnessOverrides = Object.fromEntries(workspace.minimumReleaseAgeExclude
@@ -173,14 +173,13 @@ try {
     }
   }
   walkHarnessPackages(join(fixtureRoot, 'node_modules'), report.harnessPackages)
-  ensure(report.harnessPackages['@deepseek-ai/dsh-commands'] === harnessLine, 'EXAMPLES_HARNESS_LINE_MISMATCH', `dsh commands resolved to ${String(report.harnessPackages['@deepseek-ai/dsh-commands'])}`)
+  ensure(Object.keys(report.harnessPackages).length > 0, 'EXAMPLES_HARNESS_MISSING', 'the packed TUI resolved no dsh packages')
   for (const [name, version] of Object.entries(report.harnessPackages)) ensure(version === harnessLine, 'EXAMPLES_HARNESS_LINE_MISMATCH', `${name} resolved to ${version}`)
 
   const fixtureRequire = createRequire(join(fixtureRoot, 'fixture.mjs'))
   const load = name => import(pathToFileURL(fixtureRequire.resolve(name)).href)
-  const [cordis, dshSettings, provider, kit, header, inspector, bottomLog, overlay, gallery] = await Promise.all([
+  const [cordis, provider, kit, header, inspector, bottomLog, overlay, gallery, ecosystem] = await Promise.all([
     load('@deepseek-ai/cordis'),
-    load('@deepseek-ai/dsh-settings'),
     load('@ephemeral-ai/mayfly-ui/provider'),
     load('@mayfly-example/user-kit'),
     load('@mayfly-example/header'),
@@ -188,78 +187,27 @@ try {
     load('@mayfly-example/bottom-log'),
     load('@mayfly-example/overlay'),
     load('@mayfly-example/ui-gallery'),
+    load('@mayfly-example/ecosystem'),
   ])
-  /** Plain-value unwrap: volatile config cells implement the shared `.get()` protocol. */
-  const plain = value => value !== null && typeof value?.get === 'function' ? plain(value.get())
-    : Array.isArray(value) ? value.map(plain)
-    : value !== null && typeof value === 'object'
-      ? Object.fromEntries(Object.entries(value).map(([key, child]) => [key, plain(child)]))
-      : value
-  /** The `settings` service double: `register()` stands in for a Loader patch row. */
-  class MemorySettings extends cordis.Service {
-    writable = true
-    documentPath = ''
-    entries = new Map()
-    constructor(ctx) { super(ctx, 'settings') }
-    register(ns, schema, owner) {
-      if (this.entries.has(ns)) throw new Error(`settings namespace "${ns}" already registered`)
-      const entry = { schema, user: {}, revision: 0 }
-      this.entries.set(ns, entry)
-      this.ctx.emit('settings/document-updated', ns, 0)
-      owner?.effect?.(() => () => {
-        this.entries.delete(ns)
-        entry.revision += 1
-        this.ctx.emit('settings/document-updated', ns, entry.revision)
-      })
-    }
-    resolved(entry) { return plain(entry.schema(entry.user)) }
-    get(ns) { return this.resolved(this.entries.get(ns)) }
-    describe() {
-      return [...this.entries].map(([ns, entry]) => ({
-        ns, autoGenerate: true, schema: {}, revision: entry.revision, applies: 'live',
-        value: this.resolved(entry), user: { ...entry.user },
-      }))
-    }
-    async mutate(ns, ops, expected) {
-      const entry = this.entries.get(ns)
-      if (entry === undefined) throw new Error(`No configurable plugin entry "${ns}"`)
-      if (expected !== undefined && entry.revision !== expected) throw new dshSettings.SettingsConflictError(ns, expected, entry.revision)
-      for (const op of ops) {
-        let node = entry.user
-        for (const segment of op.path.slice(0, -1)) {
-          const child = node[segment]
-          node = child !== null && typeof child === 'object' ? child : (node[segment] = {})
-        }
-        const key = op.path.at(-1)
-        if (op.op === 'set') node[key] = op.value
-        else delete node[key]
-      }
-      entry.revision += 1
-      this.ctx.emit('settings/document-updated', ns, entry.revision)
-    }
-    async prepareDocument() { return this.documentPath }
-    configure() { return () => {} }
-  }
-
-  await scenario('composition.five-direct-rows', async () => {
+  await scenario('composition.five-plugins', async () => {
     const root = join(fixtureRoot, 'node_modules', '@mayfly-example', 'ecosystem')
-    const patch = parseYaml(readFileSync(join(root, 'cordis.patch.yml'), 'utf8'))
-    const rows = patch.flatMap(entry => entry.insert ?? [])
-    ensure(rows.length === 5, 'EXAMPLES_COMPOSITION_ROWS', `composition has ${String(rows.length)} rows`)
-    ensure(rows.map(row => row.name).join('\n') === pluginNames.join('\n'), 'EXAMPLES_COMPOSITION_ORDER', 'composition rows differ from direct plugin packages')
+    const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    ensure(manifest.dsh === undefined && !existsSync(join(root, 'cordis.patch.yml')), 'EXAMPLES_COMPOSITION_BUNDLE', 'the composition still ships a dsh bundle')
+    ensure(typeof ecosystem.start === 'function', 'EXAMPLES_COMPOSITION_START', 'the composition exports no start')
+    ensure(ecosystem.plugins.map(plugin => plugin.name).join('\n') === pluginNames.join('\n'), 'EXAMPLES_COMPOSITION_ORDER', 'composed plugins differ from the direct plugin packages')
     const expectedInject = new Map([
       ['@mayfly-example/header', ['mayflyPanes']],
       ['@mayfly-example/right-inspector', ['mayflyPanes']],
       ['@mayfly-example/bottom-log', ['mayflyPanes']],
-      ['@mayfly-example/overlay', ['commands', 'settings', 'mayflyOverlays']],
+      ['@mayfly-example/overlay', ['mayflyEditorExtensions', 'mayflyOverlays']],
       ['@mayfly-example/ui-gallery', ['mayflyPanes']],
     ])
-    for (const row of rows) {
-      const module = await load(row.name)
+    for (const plugin of ecosystem.plugins) {
+      const module = await load(plugin.name)
       ensure(
-        row.id === row.name && module.inject.join('\n') === expectedInject.get(row.name)?.join('\n'),
+        module === plugin && module.inject.join('\n') === expectedInject.get(plugin.name)?.join('\n'),
         'EXAMPLES_DIRECT_INJECT',
-        `${row.name} does not declare its direct services`,
+        `${plugin.name} does not declare its direct services`,
       )
     }
   })
@@ -288,19 +236,15 @@ try {
     })
   }
 
-  await scenario('overlay.command-and-lifecycle', async () => {
+  await scenario('overlay.editor-action-and-lifecycle', async () => {
     const ctx = new cordis.Context()
     const apiFiber = await ctx.plugin(provider)
-    const settingsFiber = await ctx.plugin(MemorySettings)
-    let command
-    ctx.provide('commands', {
-      register(definition) { command = definition; return () => { command = undefined } },
-    })
     const pluginFiber = await ctx.plugin(overlay)
-    ctx.settings.register(overlay.SETTINGS_NAMESPACE, overlay.Config, pluginFiber.ctx)
-    ensure(command?.name === 'example-overlay', 'EXAMPLES_DSH_COMMAND', 'overlay did not register through dsh commands')
-    const result = await command.handler({ rawInput: '' })
-    ensure(result.kind === 'success' && ctx.mayflyOverlays.list()[0]?.id === overlay.overlayRequest.id, 'EXAMPLES_OVERLAY_DIRECT', 'command did not open the direct overlay')
+    const extension = ctx.mayflyEditorExtensions.list().find(entry => entry.id === 'example.overlay.open')
+    ensure(extension?.decoration.actions?.[0]?.key === overlay.OPEN_KEY, 'EXAMPLES_OVERLAY_ACTION', 'overlay declared no editor action')
+    const context = (id, source) => ({ surfaceId: id, source, revision: 1, operationId: 'packed', signal: new AbortController().signal, report() {} })
+    await extension.definition.onEvent.action({ kind: 'activate', pagePath: [], controlId: 'open', actionId: 'open' }, context(extension.id, []))
+    ensure(ctx.mayflyOverlays.list()[0]?.id === overlay.overlayRequest.id, 'EXAMPLES_OVERLAY_DIRECT', 'the editor action did not open the direct overlay')
     const entry = ctx.mayflyOverlays.list()[0]
     const prepared = await entry.events.prepare({
       kind: 'submit', controlId: 'settings', pagePath: [],
@@ -308,13 +252,11 @@ try {
         pagePath: [{ controlId: 'settings-pages', itemId: 'connection' }], formId: 'settings', draftRevision: 1,
         fields: [{ id: 'name', change: 'set', value: 'Packed settings' }],
       }] },
-    }, { surfaceId: entry.id, source: entry.source, revision: 1, operationId: 'packed-save', signal: new AbortController().signal, report() {} })
+    }, context(entry.id, entry.source))
     ensure(prepared.reply?.kind === 'accepted' && prepared.publish(), 'EXAMPLES_OVERLAY_SAVE', 'overlay did not publish its structured settings acknowledgement')
-    ensure(ctx.settings.get(overlay.SETTINGS_NAMESPACE)?.connection.name === 'Packed settings', 'EXAMPLES_OVERLAY_SETTINGS', 'overlay did not write native settings')
+    ensure(ctx.mayflyOverlays.list()[0]?.source[0]?.revision === 1, 'EXAMPLES_OVERLAY_STATE', 'overlay did not keep the saved values')
     await pluginFiber.dispose()
-    ensure(ctx.mayflyOverlays.list().length === 0, 'EXAMPLES_OVERLAY_UNLOAD', 'overlay survived Fiber unload')
-    ensure(ctx.settings.describe().length === 0, 'EXAMPLES_OVERLAY_NAMESPACE_UNLOAD', 'overlay namespace survived Fiber unload')
-    await settingsFiber.dispose()
+    ensure(ctx.mayflyOverlays.list().length === 0 && ctx.mayflyEditorExtensions.list().length === 0, 'EXAMPLES_OVERLAY_UNLOAD', 'overlay survived Fiber unload')
     await apiFiber.dispose()
   })
 

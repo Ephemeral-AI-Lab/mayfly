@@ -1,4 +1,4 @@
-/** Real HTTP/WebSocket Host plus an independently spawned Remote terminal. @module script/scenarios/split-runner */
+/** Real HTTP/WebSocket Host plus an independently spawned TUI terminal. @module script/scenarios/split-runner */
 
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -27,7 +27,7 @@ export const SPLIT_SMOKE_STEPS = Object.freeze([
   { step: 'type', text: '/new' }, { step: 'key', name: 'enter' }, { step: 'checkpoint', name: 'new-session' },
 ])
 
-/** No mocks or injected Remote state: every UI operation runs through the built product and its real transport. */
+/** No mocks or injected TUI state: every UI operation runs through the built product and its real transport. */
 export async function runSplitScenario({ root, dshBin, artifacts, cols = 80, rows = 24, referenceDir, steps = SPLIT_SMOKE_STEPS, probe = false, network = false, startup, fixture, workspace, scenario = 'smoke' }) {
   mkdirSync(artifacts, { recursive: true })
   const stub = await startStubModel({ probe })
@@ -45,22 +45,22 @@ export async function runSplitScenario({ root, dshBin, artifacts, cols = 80, row
     const env = { ...host.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8', TZ: 'UTC', MAYFLY_DSH_STARTUP_URL: startupUrl, MAYFLY_CWD: host.cwd, MAYFLY_SPLIT_CLOCK_RELEASE: host.clockRelease, NODE_OPTIONS: `--import=${new URL('./split-clock.mjs', import.meta.url).href}` }
     for (const name of ['CI', 'COLUMNS', 'LINES', 'NO_COLOR', 'FORCE_COLOR', 'MAYFLY_SESSION_ID', 'MAYFLY_TASK']) delete env[name]
     const captured = await captureSplitTerminal({
-      bin: process.execPath, args: [join(root, 'packages/remote/lib/remote-bin.js')], cwd: host.cwd,
-      env, cols, rows, steps, stub, startupUrl, startupReady: splitStartupReadiness(JSON.parse(readFileSync(join(root, 'packages/remote/package.json'), 'utf8')).version),
+      bin: process.execPath, args: [join(root, 'packages/mayfly/lib/bin.js')], cwd: host.cwd,
+      env, cols, rows, steps, stub, startupUrl, startupReady: splitStartupReadiness(JSON.parse(readFileSync(join(root, 'packages/mayfly/package.json'), 'utf8')).version),
       audit: step => awaitProbeAudit(host.auditLog, step),
       network: action => {
         if (forwarding === undefined || !['drop', 'restore'].includes(action)) throw new Error(`Invalid network action ${action}`)
         forwarding[action]()
       },
-      alive: () => { if (host.child.exitCode !== null || host.child.signalCode !== null) throw new Error('Host exited while Remote was attached') },
+      alive: () => { if (host.child.exitCode !== null || host.child.signalCode !== null) throw new Error('Host exited while the TUI was attached') },
       onCheckpoint: checkpoint => writeFileSync(join(artifacts, `${checkpoint.name}-${checkpoint.cols}x${checkpoint.rows}.grid`), checkpoint.grid),
       beforeExit: async () => { writeFileSync(host.clockRelease, 'release'); await sleep(30) },
     })
     checkpoints = captured.checkpoints
     failures.push(...captured.failures)
-    writeFileSync(join(artifacts, 'remote.ansi'), captured.output)
+    writeFileSync(join(artifacts, 'tui.ansi'), captured.output)
     writeFileSync(join(artifacts, 'exit.json'), `${JSON.stringify(captured.exit ?? null, null, 2)}\n`)
-    if (host.child.exitCode !== null || host.child.signalCode !== null) failures.push('Detaching Remote stopped the Host')
+    if (host.child.exitCode !== null || host.child.signalCode !== null) failures.push('Detaching the TUI stopped the Host')
     if (referenceDir !== undefined) failures.push(...compareSplitReference(referenceDir, checkpoints, { cols, rows, steps, startup }))
   } catch (error) {
     failures.push(redactSplitOutput(error instanceof Error ? error.stack ?? error.message : String(error), host?.startupUrl))

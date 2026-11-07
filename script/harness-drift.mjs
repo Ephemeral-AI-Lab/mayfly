@@ -3,7 +3,7 @@
 // harness line against the registry.
 //
 // Division of labour: packages/mayfly/tests/transcript/version.spec.ts owns
-// INTERNAL consistency (every pin in this repo agrees with HARNESS_LINE);
+// INTERNAL consistency (every pin in this repo agrees with the Host's pinned line);
 // this script owns EXTERNAL freshness (that line vs the registry channel:
 // alpha -> `alpha`, rc -> `next`, stable -> `latest`). The other tags are
 // reported for information only. The spec cannot see the registry; this
@@ -178,7 +178,7 @@ const EXIT_CODES = { SYNC: 0, BUMP_READY: 10, MINOR_JUMP: 20, PARTIAL: 30 }
 
 async function main() {
   if (harnessLine === undefined) {
-    console.error('harness-drift: HARNESS_LINE constant not found in packages/mayfly/src/interaction/session-commands.ts')
+    console.error('harness-drift: the @deepseek-ai/dsh-session peer is missing from packages/host/package.json')
     process.exit(1)
   }
   const names = watchedPackages()

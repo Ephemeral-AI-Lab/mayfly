@@ -26,7 +26,7 @@
 #
 # Why the agent may never touch .github/: GITHUB_TOKEN cannot push commits
 # that modify workflow files — GitHub rejects the push outright. ci.yml's
-# CLI pin is derived from HARNESS_LINE (script/harness-line.mjs), so a line
+# CLI pin is derived from the Host manifest (script/harness-line.mjs), so a line
 # bump has no reason to touch a workflow file at all.
 #
 # The dispatch `apply` input is an explicit human intent: it may be run
@@ -133,7 +133,7 @@ jobs:
       - run: pnpm typecheck && pnpm lint && pnpm diagrams:check && pnpm build && pnpm check:lib
       - run: pnpm exec vitest run --coverage
       - run: npm install -g "@deepseek-ai/dsh@${{ env.DRIFT_TARGET }}"
-      - run: pnpm smoke:happy
+      - run: node script/split-parity.mjs --scenario smoke
       - name: Push automation branch and upsert the PR (all gates green)
         run: |
           git config user.name 'github-actions[bot]'
@@ -144,7 +144,7 @@ jobs:
           git push --force origin automation/harness-bump
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           title="harness-drift: bump ${DRIFT_CURRENT} → ${DRIFT_TARGET} (auto)"
-          body="Automated harness-line bump. The full gate set (typecheck / lint / diagrams / build / check:lib / vitest coverage / smoke:happy against ${DRIFT_TARGET}) ran INSIDE the drift run — a GITHUB_TOKEN-opened PR does not trigger ci.yml on its own, so the PR's checks tab stays empty by design; see ${run_url}. The human merge push re-triggers main's ci.yml as the final check. Review the narrative edits (roadmap R1 row, session-title bridge verdict) alongside the pins."
+          body="Automated harness-line bump. The full gate set (typecheck / lint / diagrams / build / check:lib / vitest coverage / split smoke against ${DRIFT_TARGET}) ran INSIDE the drift run — a GITHUB_TOKEN-opened PR does not trigger ci.yml on its own, so the PR's checks tab stays empty by design; see ${run_url}. The human merge push re-triggers main's ci.yml as the final check. Review the narrative edits (roadmap R1 row, session-title bridge verdict) alongside the pins."
           number=$(gh pr list --head automation/harness-bump --state open --json number --jq '.[0].number')
           if [ -n "$number" ]; then
             gh pr edit "$number" --title "$title" --body "$body"

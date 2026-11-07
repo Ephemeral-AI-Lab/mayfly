@@ -52,12 +52,8 @@ export interface FilesBrowserFacts {
 }
 
 /** The list id of one file in a turn summary; the seq keeps turns apart. */
-export function filesChangedId(seq: number, index: number): string {
+function filesChangedId(seq: number, index: number): string {
   return `changes:${String(seq)}:${String(index)}`
-}
-
-export function filesRowId(row: FilesRow): string {
-  return row.kind === 'delivered' ? row.file.id : filesChangedId(row.latest.seq, row.index)
 }
 
 /**

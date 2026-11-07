@@ -17,7 +17,7 @@
 
 [English](README.md) | 中文
 
-Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的独立终端前端。产品由两个进程组成：原生 dsh **Host** 和通过官方 HTTP/WebSocket Client 连接的 **Remote TUI**。Host 持有 Agent、模型、工具和 Session；TUI 持有输入、主题、面板与终端渲染。关闭 TUI 只解除连接，Host 上的工作继续运行。
+Mayfly 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的独立终端前端。产品由两个进程组成：原生 dsh **Host** 和通过官方 HTTP/WebSocket Client 连接的独立 **TUI**。Host 持有 Agent、模型、工具和 Session；TUI 持有输入、主题、面板与终端渲染。关闭 TUI 只解除连接，Host 上的工作继续运行。
 
 当前开发分支面向官方 Harness `0.2.2-rc.1`。已发布的 Mayfly `0.1.4-rc.2` 是外观、按键和工作流不可改写的参照。分体实现复用共享展示层；完整视觉一致性仍须按照[分体式验证](docs/split-parity-validation.md)完成验收。
 
@@ -53,7 +53,7 @@ DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
 /path/to/dsh --profile mayfly-split-accept
 
 # 终端 2：TUI；复制 Host 打印的认证 URL
-MAYFLY_DSH_STARTUP_URL='<Host 打印的 URL>' script/mayfly-remote.sh
+MAYFLY_DSH_STARTUP_URL='<Host 打印的 URL>' script/mayfly-tui.sh
 ```
 
 模型凭据、provider 设置、权限预设和 session 文件归 Host 所有。Host 就绪后打印一行 `mayfly host: <url>`。认证 URL 通过 `MAYFLY_DSH_STARTUP_URL` 提供；TUI 拒绝通过命令行参数传入凭据。`--host` 只接受不含密钥的 HTTP(S) URL，token 仍从环境变量取得。
@@ -63,12 +63,12 @@ TUI 支持初始任务、恢复已有 Session，以及指定 Host 工作目录�
 ```sh
 # 在当前终端设置一次认证 URL
 export MAYFLY_DSH_STARTUP_URL='<Host 打印的 URL>'
-script/mayfly-remote.sh '解释这个仓库'
-script/mayfly-remote.sh --resume <session-id>
-script/mayfly-remote.sh --cwd /path/on/host '运行相关检查'
+script/mayfly-tui.sh '解释这个仓库'
+script/mayfly-tui.sh --resume <session-id>
+script/mayfly-tui.sh --cwd /path/on/host '运行相关检查'
 ```
 
-对应参数缺省时，`MAYFLY_SESSION_ID`、`MAYFLY_CWD` 和 `MAYFLY_TASK` 提供默认值。没有初始任务和恢复 id 时，启动界面在第一条 prompt 前不创建 Session。`/new` 和 `/clear` 返回该界面，不创建空 Session，也不停止已有工作。修改源码后运行 `pnpm run build`，依赖图变化后重新运行安装器。统一 CLI 在启动并发现本机后台 Host 后，通过同一个 Remote 入口连接。
+对应参数缺省时，`MAYFLY_SESSION_ID`、`MAYFLY_CWD` 和 `MAYFLY_TASK` 提供默认值。没有初始任务和恢复 id 时，启动界面在第一条 prompt 前不创建 Session。`/new` 和 `/clear` 返回该界面，不创建空 Session，也不停止已有工作。修改源码后运行 `pnpm run build`，依赖图变化后重新运行安装器。统一 CLI 在启动并发现本机后台 Host 后，通过同一个 TUI 入口连接。
 
 ## 使用 TUI
 
@@ -99,7 +99,7 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 | 范围 | 已实现行为与剩余边界 |
 | --- | --- |
 | `/mcp` 连接信息 | 官方 alpha.3 没有已配置服务器或传输健康状态的公共目录。面板只能列出通过工具 schema 发现的服务器，连接状态显示未知，transport/endpoint 缺省。资源、模板和明确的资源读取走原生工具；提供可选脱敏目录的组合可补充连接信息。 |
-| Remote TUI 扩展热挂载 | Host bundle 变更使用原生 plugin manager。官方 API 没有动态 TUI 扩展挂载入口，preset 浏览器会明确标注此限制。前端扩展需要源码集成并重启 TUI。 |
+| TUI 扩展热挂载 | Host bundle 变更使用原生 plugin manager。官方 API 没有动态 TUI 扩展挂载入口，preset 浏览器会明确标注此限制。TUI 插件通过源码组合加入，并需要重启 TUI。 |
 | 冷子会话工具卡片与控制 | 原生历史和投影可被动读取。没有活跃子 Agent 时，自定义 presenter 降级为通用持久工具卡片，依赖 Agent 的控制报告不可用。浏览不会激活子 Agent 或借用父 Agent；明确的 continuable 子会话回复走原生寻址路径。 |
 | `/update` Host 启动检查 | `/update [<version>]` 先准备并检查前端精确发布依赖图，经确认后升级两端、验证版本，并在失败时补偿恢复。`/update recover` 在原 Host 上恢复中断的事务。官方 Host API 没有独立 Host 启动检查；确认页和结果页会明确要求重启两进程并验证 Host 启动。链接、只读或非 npm 前端安装使用原安装方式升级。 |
 
@@ -111,13 +111,12 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 
 ## 架构与扩展
 
-发布集包含五个包：
+发布集包含四个包：
 
 | 包 | 职责 |
 | --- | --- |
-| `@ephemeral-ai/mayfly-host` | 原生 Host composition、持久 Mayfly 投影和生成的 `mayflyHost` Remote 方法。 |
-| `@ephemeral-ai/mayfly-remote` | 官方 Client transport、Host/Session 选择、功能控制器和独立 TUI composition。 |
-| `@ephemeral-ai/mayfly` | 共享 renderer、主题、编辑器/会话控制器和只读展示 subpath；不发布根插件、dsh bundle、patch 或 preset 载荷。 |
+| `@ephemeral-ai/mayfly-host` | 原生 Host composition、持久 Mayfly 投影、生成的 `mayflyHost` Remote 方法，以及 TUI 导入的 DTO 与对话 fold。 |
+| `@ephemeral-ai/mayfly` | 独立 TUI：官方 Client transport、Host/Session 选择、功能控制器、renderer、主题和编辑器/会话控制器。公共入口为根入口、`./client` 和 `./bin`；不发布 Host 插件、dsh bundle、patch 或 preset 载荷。 |
 | `@ephemeral-ai/mayfly-ui` | 渲染无关的节点契约、builder 和四个 UI service/provider。 |
 | `@ephemeral-ai/mayfly-cli` | 统一管理后台 Host 并启动独立 TUI 的全局 CLI。 |
 
@@ -127,8 +126,8 @@ Enter 通过官方 Client 排队发送 prompt，Ctrl+Enter 发送 steer。只读
 flowchart TB
     HOST["原生 dsh Host 进程<br/>dsh-base · dsh-web-app · mayfly-host"]
     STATE["原生 Agent · Session · 模型 · 工具<br/>持久 Mayfly 投影"]
-    WIRE["官方 Client HTTP/WebSocket<br/>可序列化 Remote DTO · 原生文件路由"]
-    REMOTE["独立 Remote TUI 进程<br/>HostKey + SessionRef 选择 · 本地功能状态"]
+    WIRE["官方 Client HTTP/WebSocket<br/>可序列化 Host DTO · 原生文件路由"]
+    REMOTE["独立 TUI 进程<br/>HostKey + SessionRef 选择 · 本地功能状态"]
     UI["四项 Mayfly 直接 UI 服务<br/>pane · status · overlay · editor extension"]
     CORE["共享 Mayfly core<br/>唯一 pi-tui · ANSI · 终端 · 宽度 owner"]
     TERM["终端"]
@@ -142,7 +141,7 @@ flowchart TB
 ```
 <!-- END diagram:mayfly-layers -->
 
-Host 插件是使用原生 dsh service 的普通 Cordis 插件。TUI 插件在前端自己的 Cordis tree 中，通过 `mayflyPanes`、`mayflyStatus`、`mayflyOverlays` 和 `mayflyEditorExtensions` 贡献节点。需要 Host 状态时，使用官方 Client/Remote 协议及可序列化 DTO；Agent、Session、Tool Definition、回调和 renderer 对象不跨进程。已移除的进程内 `mayflyCurrentAgent` 和 app/interaction 入口不再是公共扩展 API。当前边界见[架构](docs/mayfly-architecture.md)与[服务边界](docs/mayfly-seams.md)。
+Host 插件是使用原生 dsh service 的普通 Cordis 插件。TUI 插件在前端自己的 Cordis tree 中，通过 `mayflyPanes`、`mayflyStatus`、`mayflyOverlays` 和 `mayflyEditorExtensions` 贡献节点；源码组合把它们传给 `@ephemeral-ai/mayfly/bin` 的 `run(argv, { plugins })`，做法同 `examples/mayfly-ecosystem`。需要 Host 状态时，使用官方 Client/Remote 协议及可序列化 DTO；Agent、Session、Tool Definition、回调和 renderer 对象不跨进程。已移除的进程内 `mayflyCurrentAgent` 和 app/interaction 入口不再是公共扩展 API。当前边界见[架构](docs/mayfly-architecture.md)与[服务边界](docs/mayfly-seams.md)。
 
 ## 开发与验证
 

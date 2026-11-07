@@ -12,7 +12,7 @@
 import { panel, ui, type MayflyListItem, type MayflySurfaceNode } from '@ephemeral-ai/mayfly-ui'
 
 /** The thinking control of one row. */
-export interface ModelPickerStrip {
+interface ModelPickerStrip {
   /** The levels the model exposes, in order. */
   readonly efforts: readonly string[]
   /** The provider's default level, when known: the strip's inherited option. */
@@ -22,7 +22,7 @@ export interface ModelPickerStrip {
 }
 
 /** One model of the catalog. */
-export interface ModelPickerRow {
+interface ModelPickerRow {
   readonly id: string
   /** `<provider>/<model>`. */
   readonly label: string
@@ -37,7 +37,7 @@ export interface ModelPickerRow {
 }
 
 /** The facts of one picker. */
-export interface ModelPickerFacts {
+interface ModelPickerFacts {
   readonly title: string
   /** The muted description under the title. */
   readonly description: string
@@ -99,7 +99,7 @@ export function ModelPicker(facts: ModelPickerFacts): MayflySurfaceNode {
 }
 
 /** The facts of the `/effort` panel. Every text is final (translated by the command that publishes the facts). */
-export interface EffortPickerFacts {
+interface EffortPickerFacts {
   readonly title: string
   /** The muted description: the model and its provider default. */
   readonly description: string

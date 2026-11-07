@@ -134,7 +134,8 @@ describe('native Workflow live catalog', () => {
     off()
     const count = notices.length
     parent.append('turn/start', { turn: 1 })
-    expect(catalog.snapshot(ctx, parent).runs).toEqual([])
+    // The live record is gone; the durable fold keeps the run for the view's hold.
+    expect(catalog.snapshot(ctx, parent).runs.map(run => [run.id, run.stopReason])).toEqual([['settled', 'completed']])
     expect(notices).toHaveLength(count)
   })
 

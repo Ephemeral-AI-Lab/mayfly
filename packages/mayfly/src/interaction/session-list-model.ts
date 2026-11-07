@@ -1,10 +1,3 @@
-/** Pure `/sessions` rows and detail sheets over native Session Controller
- * summaries: the name, activity, tokens, and model come from the listing's
- * projection hints, and the detail sheet may replace them with one exact
- * projection read. Harness owns the session header, log, and projections.
- * @module @ephemeral-ai/mayfly/interaction/session-list-model
- */
-import type { SessionProjectionValues, SessionSummary } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionStatsProjection } from '@deepseek-ai/dsh-session-stats'
 // Empty type imports carry the projection declarations read below.
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
@@ -12,7 +5,7 @@ import type {} from '@deepseek-ai/dsh-session-title'
 import type {} from '@deepseek-ai/dsh-token-meter'
 import { ui, type MayflyField, type MayflyListCell, type MayflyListItem, type MayflyTone, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflyTranslate } from '../frontend/locale.ts'
-import { shortenCwd } from '../transcript/status-cwd.ts'
+import { shortenCwd } from '../transcript/status-cwd-model.ts'
 import { formatCreated } from './session-info-model.ts'
 import { formatTokens, totalTokens, type TokenBuckets } from './usage.ts'
 
@@ -43,58 +36,6 @@ export interface SessionListFacts {
   /** Whole-log turn/step counts and model/tool times, when cached. */
   readonly stats?: SessionStatsProjection
   readonly model?: { readonly provider: string, readonly model: string, readonly reasoningEffort?: string }
-}
-
-/** Listing-time context the summary itself does not carry. */
-interface SessionListContext {
-  /**
-   * Exact projections from one detail read, or undefined to use the summary's
-   * listing hints. A migration-required read carries cached values only.
-   */
-  readonly values?: SessionProjectionValues | undefined
-  readonly archived: boolean
-  readonly current: boolean
-  /** Sessions with at least one active Host reminder; absent without Schedule. */
-  readonly reminders?: ReadonlySet<string>
-  /** The listing time, for running sessions and relative ages. */
-  readonly now: number
-}
-
-/**
- * Project one native session summary into display facts.
- * @param summary - the session-controller list row.
- * @param context - exact projections, archive, current-session, and time context.
- * @returns the display facts.
- */
-export function sessionListFacts(summary: SessionSummary, context: SessionListContext): SessionListFacts {
-  const values: SessionProjectionValues = { ...summary.projections?.values, ...context.values }
-  const title = values.title?.trim()
-  const metadata = values.sessionListMetadata
-  const stats = values.sessionStats
-  const promptedAt = metadata?.lastPromptAt
-    ?? (stats !== undefined && stats.turns > 0 ? summary.updatedAt : undefined)
-  const usage = values.tokenUsage
-  const model = values.modelSelection?.lastUsed ?? values.modelSelection?.next ?? undefined
-  const preset = values.agentPreset ?? undefined
-  const cwd = summary.cwd
-  const lastActiveAt = summary.running ? context.now : promptedAt
-  return {
-    id: String(summary.sessionId),
-    ...(title === undefined || title === '' ? {} : { title }),
-    ...(cwd === undefined ? {} : { cwd }),
-    ...(lastActiveAt === undefined ? {} : { lastActiveAt }),
-    running: summary.running,
-    archived: context.archived,
-    current: context.current,
-    reminders: context.reminders?.has(String(summary.sessionId)) ?? false,
-    migrationRequired: summary.formatStatus === 'migration-required',
-    ...(summary.parentSessionId === undefined ? {} : { parentId: String(summary.parentSessionId) }),
-    ...(summary.origin === undefined ? {} : { origin: summary.origin }),
-    ...(preset === undefined ? {} : { preset }),
-    ...(usage === undefined ? {} : { tokens: { input: usage.uncachedInputTokens, cacheRead: usage.cacheReadTokens, cacheWrite: usage.cacheWriteTokens, output: usage.outputTokens } }),
-    ...(stats === undefined ? {} : { stats }),
-    ...(model === undefined ? {} : { model }),
-  }
 }
 
 /**

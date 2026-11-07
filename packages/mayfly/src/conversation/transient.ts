@@ -1,15 +1,21 @@
 /** Transient assistant presentation from one official Client attempt window. @module */
-import type { AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
-import type { ConversationEntry, ConversationProjection } from './types.ts'
-import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
+import type { ConversationEntry, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
+import { toolEntryId, type initialAssistantStream } from '@ephemeral-ai/mayfly-host/conversation'
 
-/** Render only the selected live attempt; durable history remains a Host projection. */
-export function transientAssistantConversation(
-  stream: readonly AssistantStreamRecord[],
-  cursor: { readonly seq: number, readonly time: number, readonly turn: number, readonly step: number },
-): ConversationProjection {
+/** One attempt's folded visible output, as the shared Host stream fold returns it. */
+export type AssistantStreamDraft = ReturnType<typeof initialAssistantStream>
+
+/** Cursor of the attempt's latest live chunk. */
+export interface TransientCursor {
+  readonly seq: number
+  readonly time: number
+  readonly turn: number
+  readonly step: number
+}
+
+/** Render only the selected, already folded live attempt; durable history remains a Host projection. */
+export function transientAssistantProjection(draft: AssistantStreamDraft, cursor: TransientCursor): ConversationProjection {
   const { seq, turn, step } = cursor
-  const draft = foldAssistantStreamRecords(initialAssistantStream(), stream)
   const base = { seq, updatedSeq: seq, turn, step }
   const entries: ConversationEntry[] = []
   if (draft.reasoning.trim() !== '') entries.push({
@@ -21,6 +27,10 @@ export function transientAssistantConversation(
   if (draft.text !== '') entries.push({
     ...base, kind: 'assistant', id: `assistant:${String(turn)}:${String(step)}`,
     text: draft.text, streaming: draft.phase === 'composing',
+  })
+  for (const call of draft.preparing ?? []) entries.push({
+    ...base, kind: 'tool', id: toolEntryId(call.id), callId: call.id, name: call.name, arguments: call.arguments,
+    startedAt: call.startedAt, channel: 'transcript', preparing: { characters: call.characters },
   })
   return { entries, streaming: true, settledSteps: [], turns: [] }
 }

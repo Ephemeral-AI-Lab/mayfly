@@ -11,7 +11,11 @@
     "src/types.ts",
     "src/conversation/types.ts",
     "src/remote/stats-contract.ts",
-    "src/remote/trace-contract.ts"
+    "src/remote/trace-contract.ts",
+    "src/conversation.ts",
+    "src/conversation/activity-detail.ts",
+    "src/conversation/output-progress.ts",
+    "src/conversation/stream-accumulator.ts"
   ],
   "references": []
 }

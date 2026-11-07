@@ -1,12 +1,13 @@
 /**
  * The stream search: which places of a session match a pattern, in the order the stream shows them: every occurrence is a stop. A part is one entry, or
  * one call of a group entry, and is searched by the text a person reads (`row-text.ts`), so a detail a level hides is
- * found too. The pattern is a regular expression, case-insensitive unless it holds a capital letter (smart case). The
+ * found too; a call the stream never draws is not searched, because a stop there would have no row. The pattern is a regular expression, case-insensitive unless it holds a capital letter (smart case). The
  * search reaches every turn of the model, whether or not the stream mounts it. It runs on demand, per pattern and per
  * model, and holds nothing.
  * @module
  */
 import type { TranscriptEntryModel, TranscriptModel } from '../frontend/models.ts'
+import { neverDrawn } from './process-groups.ts'
 import { partText, type RowPart } from './row-text.ts'
 
 /** The most matches one part contributes: a part of a few thousand lines cannot make a search of a million stops. */
@@ -77,7 +78,7 @@ export function findHits(model: TranscriptModel, pattern: SearchPattern): Search
   const orders = new Map<string, number>()
   let order = 0
   for (const entry of [...model.entries, ...(model.live?.entries ?? [])]) {
-    if (!isSemantic(entry)) continue
+    if (!isSemantic(entry) || neverDrawn(entry)) continue
     for (const part of partsOf(entry)) {
       if (!turnStart.has(entry.turn)) turnStart.set(entry.turn, order)
       orders.set(part.id, order)

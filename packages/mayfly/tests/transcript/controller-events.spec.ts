@@ -15,7 +15,7 @@ import type { TranscriptEntryModel, TranscriptModel } from '../../src/frontend/m
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import type { TickSource } from '../../src/transcript/tick.ts'
 import { TranscriptPresentationPolicy } from '../../src/transcript/presentation-policy.ts'
-import { appendTranscriptNode, createTranscriptModel, TranscriptController, type TranscriptControllerOptions, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
+import { createTranscriptModel, TranscriptController, type TranscriptControllerOptions, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
 const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, attachments: [] })
 const answer = (turn: number, text: string): TranscriptEntryModel => ({ id: `assistant:${String(turn)}`, kind: 'transcript-assistant', seq: turn, updatedSeq: turn, turn, step: 2, text, streaming: false })
@@ -89,6 +89,7 @@ function harness(options: Partial<TranscriptControllerOptions> = {}, attach = tr
     watchContentTail: () => () => {},
     contentTail: () => undefined,
     requestRender: vi.fn(),
+    enterViews: vi.fn(() => true),
   } as unknown as TranscriptScreen
   const modes: string[] = []
   const controller = new TranscriptController({ t: interpolateLocaleMessage, queued: () => [], focusMode: mode => { modes.push(mode) }, ...options })
@@ -108,16 +109,6 @@ const compactPolicy = (): TranscriptPresentationPolicy => {
   policy.apply({ transcriptView: 'compact' })
   return policy
 }
-
-describe('building a model by hand', () => {
-  it('appends an entry to a model and keeps its turns, generation, and streaming unless told otherwise', () => {
-    const base = createTranscriptModel('s', [user(1, 'one')], true, 4, [{ turn: 1, startedAt: 0 }])
-    const next = appendTranscriptNode(base, answer(1, 'two'))
-    expect(next).toMatchObject({ id: 's', generation: 4, streaming: true, turns: [{ turn: 1, startedAt: 0 }] })
-    expect(next.entries.map(entry => entry.kind)).toEqual(['transcript-user', 'transcript-assistant'])
-    expect(appendTranscriptNode(base, answer(1, 'two'), false).streaming).toBe(false)
-  })
-})
 
 describe('a controller with nothing to show', () => {
   it('ignores a refresh until a view is displayed and the screen is attached', () => {
@@ -213,6 +204,20 @@ describe('Enter on a row', () => {
     expect(call).toBeDefined()
     accept(call)
     expect(slot.focusRows.at(-1)).toBe(call)
+  })
+
+  it('moves to the view a spawn or a workflow belongs to, and leaves the row as it was', () => {
+    const { controller, slot, screen, accept, ids } = harness()
+    const line = (name: string, activity: string, id: string): TranscriptEntryModel => ({ kind: 'transcript-tool', id, seq: 2, updatedSeq: 2, turn: 1, step: 1, callId: id, name, family: 'other', activity, detail: 'go', arguments: '{}', startedAt: 0, result: { text: 'ok', isError: false, endedAt: 1 } } as TranscriptEntryModel)
+    controller.setView('main', modelOf([user(1, 'go'), line('subagent', 'subagents', 'spawn'), line('workflow', 'workflow', 'flow')]))
+    controller.show('main')
+    const published = slot.published.length
+    expect(ids()).toContain('spawn')
+    accept('spawn')
+    expect(screen.enterViews).toHaveBeenLastCalledWith('mayfly.view.agents')
+    accept('flow')
+    expect(screen.enterViews).toHaveBeenLastCalledWith('mayfly.view.workflow')
+    expect(slot.published).toHaveLength(published)
   })
 
   it('does nothing for an Enter that names no row, a row nothing stands behind, or a conversation that is gone', () => {
@@ -318,7 +323,7 @@ describe('focus moving in and out of the stream', () => {
 describe('the inputs a published stream reads', () => {
   it('carries the compaction marks, the context window, the tokens, and the approvals it was given', () => {
     const compaction = { id: 'cmp', kind: 'transcript-compaction', seq: 2, updatedSeq: 2, turn: 1, state: 'ok', trigger: 'auto', startedAt: 0, compactionId: 'c-1', summary: 'kept', shadowedCount: 4 } as unknown as TranscriptEntryModel
-    const context = vi.fn(() => ({ marks: [{ id: 'c-1', before: 80_000, after: 20_000, window: 100_000 }], window: 100_000, tokens: 20_000, approvals: [] }) as never)
+    const context = vi.fn(() => ({ marks: [{ id: 'c-1', before: 80_000, after: 20_000, window: 100_000 }], window: 100_000, tokens: 20_000, approvals: [], children: { byId: new Map(), byCall: new Map() }, cwd: '/work' }) as never)
     const { controller, listOf } = harness({ context })
     controller.setView('main', modelOf([user(1, 'go'), compaction]))
     controller.show('main')

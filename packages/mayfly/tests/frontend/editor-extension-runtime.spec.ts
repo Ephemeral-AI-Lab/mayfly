@@ -4,7 +4,8 @@ import type { MayflyAutocompleteProvider, MayflyEditorSubmitAttempt } from '../.
 import type { MayflyUiEvent } from '@ephemeral-ai/mayfly-ui'
 import { EditorExtensionRuntime, type EditorExtensionRuntimeBindings } from '../../src/frontend/editor-extension-runtime.ts'
 import { Editor } from '../../src/components/editor.ts'
-import { fakeMayflyContext, FakeMayflyEditor } from '../interaction/fakes.ts'
+import { FakeMayflyEditor } from '../interaction/fakes.ts'
+import { editorContext as fakeMayflyContext } from './editor-extension-fixture.ts'
 
 const cleanup: Array<() => void> = []
 afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); vi.restoreAllMocks(); vi.useRealTimers() })
@@ -14,11 +15,9 @@ function fixture() {
   const editor = new FakeMayflyEditor()
   const notices = vi.fn()
   const barriers = vi.spyOn(editor, 'setSubmitBarrier')
-  const nativeSources = vi.spyOn(ctx.mayflyPromptEditor, 'listAutocompleteSources')
-  const nativeSubscribe = vi.spyOn(ctx.mayflyPromptEditor, 'subscribeEditorState')
   const runtime = new EditorExtensionRuntime({ ctx, editor, report: notices, frame: ({ parked }) => Editor({ shell: false, parked }) })
   cleanup.push(() => { runtime.dispose() })
-  return { ctx, editor, runtime, notices, nativeSources, nativeSubscribe, barrier: () => barriers.mock.calls.at(-1)![0]! }
+  return { ctx, editor, runtime, notices, barrier: () => barriers.mock.calls.at(-1)![0]! }
 }
 
 function bindings(provider: MayflyAutocompleteProvider): EditorExtensionRuntimeBindings {
@@ -62,8 +61,6 @@ describe('shared editor extension owner', () => {
     f.barrier()(submit)
     expect(submit.commit).toHaveBeenCalledOnce()
     expect(transform).not.toHaveBeenCalled()
-    expect(f.nativeSources).not.toHaveBeenCalled()
-    expect(f.nativeSubscribe).not.toHaveBeenCalled()
   })
 
   it('replaces exact source owners and makes older unsubscribe and queued callbacks inert', async () => {

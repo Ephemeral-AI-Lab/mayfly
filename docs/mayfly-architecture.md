@@ -1,6 +1,6 @@
 # Mayfly architecture
 
-Mayfly has one product deployment: a native dsh Host and an independent Remote
+Mayfly has one product deployment: a native dsh Host and an independent
 TUI. The Host runs official Harness `0.2.2-rc.1`, `dsh-base`, `dsh-web-app`,
 and the Mayfly Host bundle. The TUI connects through the official Client API.
 Closing or detaching the TUI releases Client resources and keeps Host work alive.
@@ -11,8 +11,8 @@ Closing or detaching the TUI releases Client resources and keeps Host work alive
 flowchart TB
     HOST["native dsh Host process<br/>dsh-base · dsh-web-app · mayfly-host"]
     STATE["native Agents · Sessions · models · tools<br/>durable Mayfly projections"]
-    WIRE["official Client HTTP/WebSocket<br/>serializable Remote DTOs · native file routes"]
-    REMOTE["independent Remote TUI process<br/>HostKey + SessionRef selection · local feature state"]
+    WIRE["official Client HTTP/WebSocket<br/>serializable Host DTOs · native file routes"]
+    REMOTE["independent TUI process<br/>HostKey + SessionRef selection · local feature state"]
     UI["four direct Mayfly UI services<br/>panes · status · overlays · editor extensions"]
     CORE["shared Mayfly core<br/>only pi-tui · ANSI · terminal · width owner"]
     TERM["terminal"]
@@ -30,29 +30,26 @@ flowchart TB
 
 | Package | Responsibility |
 | --- | --- |
-| `@ephemeral-ai/mayfly-host` | Host bundle, settings namespace, durable projections, focused `mayflyHost` Remote namespace, startup URL printer |
-| `@ephemeral-ai/mayfly-remote` | Client transport, multi-Host selection, feature controllers and writes, standalone TUI composition |
-| `@ephemeral-ai/mayfly` | Shared renderer, themes, readonly presentation, editor and transcript controllers; no public root plugin or native composition |
+| `@ephemeral-ai/mayfly-host` | Host bundle, settings namespace, durable projections, focused `mayflyHost` Client namespace, startup URL printer |
+| `@ephemeral-ai/mayfly` | The independent TUI: Client transport, multi-Host selection, feature controllers and writes, renderer, themes, editor and transcript controllers; public root, `./client`, and `./bin`; no Host plugin or native composition |
 | `@ephemeral-ai/mayfly-ui` | Renderer-neutral contracts, builders, and four direct UI services/provider |
-| `@ephemeral-ai/mayfly-cli` | Unified CLI with exact Host/Remote/Harness dependencies; local background service management and independent TUI dispatch |
+| `@ephemeral-ai/mayfly-cli` | Unified CLI with exact Host/TUI/Harness dependencies; local background service management and independent TUI dispatch |
 
 The Host and TUI each have their own Cordis tree. Host plugins use documented
 native dsh services in their owning process. TUI plugins contribute through
 `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and
-`mayflyEditorExtensions`. Cross-process calls use serializable Remote DTOs;
+`mayflyEditorExtensions`. Cross-process calls use serializable Host-owned DTOs;
 Agent, Session, tool definitions, callbacks, and renderer objects never cross.
-The shared package's old app, interaction, startup, patch, and preset payload
-are private source/reference fixtures and are excluded from publication.
 
 ## State and lifetime
 
 Harness owns Agent, Session, model, tool, persistence, and durable projection
 state. Host registers `mayflyConversation`, `mayflyConversationFacts`, and
-related presentation projections. Remote consumes whole current snapshots;
+related presentation projections. The TUI consumes whole current snapshots;
 its event window only overlays the current assistant attempt. It never folds
 a second durable conversation history or facts store.
 
-Remote owns the selected `HostKey` plus `SessionRef`, startup coordination,
+The TUI owns the selected `HostKey` plus `SessionRef`, startup coordination,
 open side-view descriptors, local drafts, operation feedback, and renderer
 preferences. Every identity and asynchronous write includes the selected Host.
 Only the displayed conversation and its F7 counterpart retain bindings;
@@ -73,9 +70,9 @@ unfinished first turn. The authorized Host command reads the exact observation
 cursor and supplies it to native Session Controller fork; Harness balances any
 open turn. The returned inherited boundary controls the side view's transcript
 floor. A genuinely empty source uses native creation with the effective Host
-directory and source preset, so it has no inherited floor. Remote restores the
+directory and source preset, so it has no inherited floor. The TUI restores the
 source model and clears inherited pending Inbox rows before the child prompt.
-Before the source records a model route, Remote reads the native Host default;
+Before the source records a model route, the TUI reads the native Host default;
 this read does not record a parent selection or pin a default reasoning effort.
 
 Registrations, listeners, timers, requests, and pending acknowledgements belong
@@ -114,7 +111,7 @@ Use the root [installation instructions](../README.md#unified-command).
 For explicit native development, `script/install-dev.sh` builds and links only the Host bundle into a dedicated
 `mayfly-*` profile using the selected exact-line `DSH_BIN`. Start that Host,
 then pass its authenticated readiness URL through `MAYFLY_DSH_STARTUP_URL` to
-`script/mayfly-remote.sh`. Tokens never enter argv or ordinary diagnostics.
+`script/mayfly-tui.sh`. Tokens never enter argv or ordinary diagnostics.
 
 The npm `0.1.4-rc.2` artifact is an immutable UI/workflow oracle, not a second
 product deployment. [Split validation](./split-parity-validation.md) requires
@@ -129,30 +126,32 @@ architectural acceptance. Public seams require real consumers, exact-Host and
 Session isolation, replay/abort/late-result tests, width coverage, publication
 closure, and a dedicated real Host/TUI profile acceptance.
 
-## Historical composition fixture
+## TUI composition
 
-The diagram below records the private in-process source fixture used by older
-component and composition tests. It is retained as historical test context;
-it does not describe the current installation, published exports, or runtime.
+The TUI is its own Cordis tree. It loads the UI provider, the core, and the
+built-in features, then each source-composition plugin passed to
+`run(argv, { plugins })` from `@ephemeral-ai/mayfly/bin`, in order and in its
+own Fiber, before attaching to a Host. Installing a Host bundle never mounts a
+TUI contribution.
 
 <!-- BEGIN diagram:mayfly-composition -->
 <!-- single source: docs/diagrams/mayfly-composition.mmd — edit the .mmd, then `pnpm run diagrams:sync` -->
 ```mermaid
 flowchart TB
-    BASE["dsh-base"]
-    subgraph GRAPH["flat Cordis sibling graph"]
-        SUPPORT["dsh support rows<br/>subagent settings · presets · host runner · workspace<br/>connection · file upload · session controller · session stats"]
-        UI["@ephemeral-ai/mayfly-ui provider<br/>four direct UI registries"]
-        RUNTIME["@ephemeral-ai/mayfly runtime rows<br/>frontend · conversation · app · core<br/>transcript · status · panes · interaction"]
-        PLUGINS["external Cordis plugins"]
+    HOST["native dsh Host<br/>dsh-base · dsh-web-app · mayfly-host"]
+    subgraph TUI["independent TUI Cordis tree"]
+        UI["@ephemeral-ai/mayfly-ui provider<br/>four frontend-local UI registries"]
+        CORE["@ephemeral-ai/mayfly core<br/>frontend · theme · core renderer"]
+        FEATURES["built-in features<br/>sessions · settings · commands · panes · status"]
+        PLUGINS["source-composition plugins<br/>run(argv, { plugins })"]
     end
-    NATIVE["native dsh services"]
+    CLIENT["official Client HTTP/WebSocket"]
 
-    BASE --> NATIVE
-    NATIVE --> SUPPORT
-    NATIVE --> RUNTIME
-    NATIVE --> PLUGINS
-    UI --> RUNTIME
+    UI --> CORE
+    CORE --> FEATURES
+    FEATURES --> PLUGINS
     UI --> PLUGINS
+    FEATURES --> CLIENT
+    CLIENT --> HOST
 ```
 <!-- END diagram:mayfly-composition -->

@@ -22,7 +22,7 @@ const STEP_ROOM = 12
 const TRACK_MIN = 28
 const DEFAULT_TAG = ' (default)'
 
-export interface SliderPaint {
+interface SliderPaint {
   readonly node: MayflySliderNode
   /** The surface model's state; absent outside an interactive surface, where the node's seed is drawn. */
   readonly model: UiSliderModel | undefined

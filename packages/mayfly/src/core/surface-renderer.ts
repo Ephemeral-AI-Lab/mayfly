@@ -162,7 +162,7 @@ function leadsWithRule(node: MayflyUiNode): boolean {
  * tails. Panes that end in a fold footer (a fold footer such as the todo panel's) rely
  * on this predicate staying true, so their specs pin it against the real node.
  */
-export function endsWithAffordance(node: MayflyUiNode): boolean {
+function endsWithAffordance(node: MayflyUiNode): boolean {
   if (node.kind !== 'stack' || node.direction !== 'column' || (node.gap ?? 0) !== 0) return false
   const unconditionalMutedText = (child: MayflyUiChild | undefined): boolean =>
     child?.node.kind === 'text' && child.node.tone === 'muted' && (child.when ?? child.tab) === undefined

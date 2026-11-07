@@ -66,7 +66,7 @@ in a node.
   prop is stable, a translator passed as `MayflyTranslate` included; see
   [Public UI kit](/en/plugins/ui-kit).
 
-The defaults below describe the current Mayfly TUI in `0.1.5`. The wire
+The defaults below describe the current Mayfly TUI in `0.1.6-rc.1`. The wire
 contract promises field semantics, not exact border glyphs, color values, or
 key bindings.
 
@@ -172,6 +172,7 @@ type MayflyInlineSpan = {
   emphasis?: 'normal' | 'strong'
   motion?: 'shimmer' | 'loader'                        // one channel per rich-text row
   variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'        // with motion: 'loader'; default 'gap'
+  elastic?: boolean                                    // gives way first on a one-row line that does not fit
 }
 ```
 
@@ -214,6 +215,11 @@ channel on its first frame, which is also what a screenshot shows:
 ![`richText` motion](/shots/richText-motion.svg)
 
 *A shimmering label and a breathing cell, both at their first frame (width 48).*
+
+On a one-row line (`overflow: 'truncate'`, or a list row's `labelSpans`) that is
+wider than its row, `elastic` spans give way before the end is clipped: the
+widest shortens behind an ellipsis, and once it would keep fewer than 3 cells
+all the elastic spans go. A failure reason after a long path survives this way.
 
 ```ts
 ui.stack.column([
@@ -1589,8 +1595,9 @@ not repeat generic keyboard teaching in a surface footer:
   steps control by control.
 - Up/Down move between rows and fields and never change a value. Left/Right
   move along action rows and tab strips, adjust a focused select or row segment,
-  and open or close tree branches. Alt+Left/Right switch tabs from anywhere; in
-  a wizard, moving forward validates the step being left.
+  and open or close tree branches; on a wizard's option row they change step.
+  Alt+Left/Right switch tabs from anywhere; in a wizard, moving forward validates
+  the step being left.
 - Movement does not wrap, and disabled items never receive focus. Single lists
   activate with Enter; multiple lists toggle with Space and confirm with Enter;
   actions accept Enter or Space.

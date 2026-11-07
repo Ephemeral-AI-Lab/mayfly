@@ -1,7 +1,8 @@
 /** Canonical chart adapter behavior over simple-ascii-chart. */
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { formatChartNumber, renderChartRows } from '../../src/core/chart-renderer.ts'
+import { formatChartNumber } from '../../src/core/chart-format.ts'
+import { renderChartRows } from '../../src/core/chart-renderer.ts'
 import type { MayflyComponents, MayflySemanticColors } from '../../src/core/types.ts'
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from '../../src/core/width.ts'
 import { identity, plainColors } from '../helpers.ts'

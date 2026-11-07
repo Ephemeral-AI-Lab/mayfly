@@ -5,7 +5,8 @@
  * members; a reply, a user message, an error, or an interruption closes the
  * current group. A call in flight is a line of its own at every level. At the compact level a turn's process is collected
  * into one line (`▸ 6 tool calls`) that stands where its first call was and counts up as the turn works, so nothing folds
- * away at the end; a running turn has no header unless its tree has no activity row. Rendering and width live elsewhere.
+ * away at the end; a running turn has no header unless its tree has no activity row. A tool's placement decides here whether
+ * a call is drawn at all, and a failure or a call waiting on the user is drawn whatever it says. Rendering and width live elsewhere.
  *
  * @module @ephemeral-ai/mayfly/transcript/process-groups
  */
@@ -13,6 +14,8 @@
 import { isCancelled, type ToolInterruption, type TranscriptEntryModel, type TranscriptModel, type TranscriptTurnModel } from '../frontend/models.ts'
 import type { ProcessPolicy } from './presentation-policy.ts'
 import { summarizeProcess, type ProcessMemberFact } from './process-activity.ts'
+import type { SpawnedChild, SpawnedChildren } from './tool-calls.ts'
+import { kindOf } from './tool-kinds.ts'
 
 type Entry = TranscriptModel['entries'][number]
 
@@ -95,6 +98,10 @@ interface DisplayInput {
   readonly previousSeq?: number | undefined
   /** Whether a running turn keeps its live header (trees without an activity row). */
   readonly runningHeader?: boolean | undefined
+  /** The call the request on the card is about: drawn whatever its placement, because the user decides on it. */
+  readonly waiting?: ReadonlySet<string> | undefined
+  /** The children spawned, whose outcomes are their spawns' outcomes. */
+  readonly children?: SpawnedChildren | undefined
 }
 
 function isSemantic(entry: Entry): entry is TranscriptEntryModel {
@@ -122,24 +129,36 @@ function times(call: { readonly startedAt: number, readonly endedAt?: number }):
   return { startedAt: call.startedAt, ...(call.endedAt === undefined ? {} : { endedAt: call.endedAt }) }
 }
 
+/** The child a settled spawn started: its acknowledgement says nothing of how the work went. */
+function childOf(entry: Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>, children: SpawnedChildren | undefined): SpawnedChild | undefined {
+  if (entry.activity !== 'subagents' || entry.result === undefined || entry.result.isError) return undefined
+  const id = children?.byCall.get(entry.callId)
+  return id === undefined ? undefined : children?.byId.get(id)
+}
+
 /**
  * The summary facts one process member contributes.
  * @param entry - a process member entry.
  * @param closed - whether its turn has ended (nothing still runs).
+ * @param children - the children spawned: a spawn runs, fails, and ends as its child does.
  * @returns zero or more member facts; reasoning contributes none.
  */
-export function memberFacts(entry: Entry, closed: boolean): ProcessMemberFact[] {
+export function memberFacts(entry: Entry, closed: boolean, children?: SpawnedChildren): ProcessMemberFact[] {
   switch (entry.kind) {
-    case 'transcript-tool':
+    case 'transcript-tool': {
+      const child = childOf(entry, children)
+      const settled = child?.state === 'settled' ? child : undefined
+      const endedAt = settled?.endedAt ?? entry.result?.endedAt
       return [{
         activity: entry.activity,
-        running: !closed && entry.result === undefined,
+        running: !closed && (entry.result === undefined || child?.state === 'running'),
         ...(entry.preparing === undefined ? {} : { preparing: true }),
-        ...outcomeFacts(entry.result?.isError === true || exitFailed(entry), entry.result?.interruption),
+        ...settled?.stopped === true ? { failed: false, interrupted: true } : outcomeFacts(entry.result?.isError === true || exitFailed(entry) || settled?.failed === true, entry.result?.interruption),
         startedAt: entry.startedAt,
-        ...(entry.result === undefined ? {} : { endedAt: entry.result.endedAt }),
+        ...(endedAt === undefined ? {} : { endedAt }),
         ...(entry.change === undefined ? {} : { added: entry.change.added, removed: entry.change.removed }),
       }]
+    }
     case 'transcript-read-group':
       return entry.reads.map(read => ({ activity: read.activity, running: !closed && read.state === 'pending', ...outcomeFacts(read.state === 'error', read.interruption), ...times(read) }))
     case 'transcript-search-group':
@@ -149,6 +168,41 @@ export function memberFacts(entry: Entry, closed: boolean): ProcessMemberFact[] 
     default:
       return []
   }
+}
+
+/** Whether a settled call went wrong, which no placement hides. */
+function failedCall(entry: Extract<TranscriptEntryModel, { readonly kind: 'transcript-tool' }>, children: SpawnedChildren | undefined): boolean {
+  return memberFacts(entry, true, children)[0]!.failed === true
+}
+
+/**
+ * Whether the stream never draws an entry, at any tier: a search has nowhere to land on it.
+ * @param entry - a transcript entry.
+ * @returns whether it is a hidden call that did not fail.
+ */
+export function neverDrawn(entry: Entry): boolean {
+  return entry.kind === 'transcript-tool' && kindOf(entry.activity).placement === 'hidden' && !failedCall(entry, undefined)
+}
+
+/** Whether a tier that shows only the calls that matter leaves a call out: a hidden one at any view, a quiet one short of the verbose blocks. */
+function leftOut(entry: Entry, view: ProcessPolicy['liveProcess'], input: DisplayInput): boolean {
+  if (entry.kind !== 'transcript-tool') return false
+  const { placement } = kindOf(entry.activity)
+  if (placement !== 'hidden' && (placement !== 'quiet' || view === 'cards')) return false
+  return input.waiting?.has(entry.callId) !== true && !failedCall(entry, input.children)
+}
+
+/** Whether a call counts towards a turn's numbers: what is only there at the Verbose tier does not, unless it failed. */
+function counted(entry: Entry, children: SpawnedChildren | undefined): boolean {
+  return entry.kind !== 'transcript-tool' || kindOf(entry.activity).placement !== 'quiet' || failedCall(entry, children)
+}
+
+/** Whether a call keeps its line under the compact title: it failed, or it is in flight and no view owns the watching of it. */
+function keepsLine(entry: Entry, closed: boolean, input: DisplayInput): boolean {
+  const facts = memberFacts(entry, closed, input.children)
+  if (facts.some(fact => fact.failed === true)) return true
+  if (!facts.some(fact => fact.running)) return false
+  return entry.kind !== 'transcript-tool' || kindOf(entry.activity).owner === undefined || input.waiting?.has(entry.callId) === true
 }
 
 /**
@@ -207,11 +261,11 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     }
     // One turn block: contiguous entries of the same turn, canonical nodes included.
     const turn = first.turn
-    const block: Entry[] = []
+    const whole: Entry[] = []
     while (index < entries.length) {
       const entry = entries[index]!
       if (isSemantic(entry) && entry.turn !== turn) break
-      block.push(entry)
+      whole.push(entry)
       index += 1
     }
     // A flat model carries no lifecycle: its pending calls stay pending. A turn
@@ -220,17 +274,18 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     const closed = !input.flat && (info?.endedAt !== undefined || turn !== input.runningTurn)
     const inScope = input.scope.has(turn)
     const expandedTurn = input.open.has(turn)
+    const policy = input.policy
+    const view = expandedTurn || input.flat ? 'cards' : closed ? policy.settledProcess : policy.liveProcess
+    const block = whole.filter(entry => !leftOut(entry, view, input))
     if (input.flat || !block.some(isMember)) {
       for (const entry of block) items.push(plainEntry(entry, expandedTurn, inScope))
       continue
     }
     const lead = block.findIndex(entry => entry.kind !== 'transcript-user')
     const rest = block.slice(lead)
-    const policy = input.policy
-    const view = expandedTurn ? 'cards' : closed ? policy.settledProcess : policy.liveProcess
     // The step the model works in: at the `current` view its calls are verbose blocks and the steps before it collapse.
     const currentStep = rest.reduce((latest, entry) => isSemantic(entry) && 'step' in entry ? Math.max(latest, entry.step) : latest, -1)
-    const facts = rest.filter(isMember).flatMap(entry => memberFacts(entry, closed)).filter(fact => fact.preparing !== true)
+    const facts = rest.filter(isMember).filter(entry => counted(entry, input.children)).flatMap(entry => memberFacts(entry, closed, input.children)).filter(fact => fact.preparing !== true)
     const subagents = facts.filter(fact => fact.activity === 'subagents').length
     for (const entry of block.slice(0, lead)) items.push(plainEntry(entry, expandedTurn, inScope))
     // The activity row owns a running turn's lifecycle; only a tree without
@@ -257,10 +312,9 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
     }
     // The compact level: the turn's calls are one line where its first call was, and only what is in flight keeps its own line.
     if (view === 'collect') {
-      const calls = rest.filter(isMember).flatMap(entry => memberFacts(entry, closed)).filter(fact => fact.preparing !== true)
-      const settled = calls.every(fact => !fact.running)
-      const summary = summarizeProcess(calls.filter(fact => !fact.running))
-      let collected = calls.length === 0
+      const settled = facts.every(fact => !fact.running)
+      const summary = summarizeProcess(facts.filter(fact => !fact.running))
+      let collected = facts.length === 0
       for (const entry of rest) {
         if (!isMember(entry)) {
           items.push(plainEntry(entry, expandedTurn, inScope))
@@ -273,7 +327,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
             id: `process:${String(turn)}`,
             turn,
             seq: (entry as TranscriptEntryModel).seq,
-            toolCalls: calls.length - subagents,
+            toolCalls: facts.length - subagents,
             subagents,
             failed: summary.failed,
             interrupted: summary.interrupted,
@@ -282,8 +336,7 @@ export function buildDisplay(input: DisplayInput): DisplayItem[] {
             hint: inScope && !expandedTurn,
           })
         }
-        const inFlight = entry.kind === 'transcript-thinking' ? entry.streaming : memberFacts(entry, closed).some(fact => fact.running)
-        if (inFlight) items.push(plainEntry(entry, expandedTurn, inScope, 'compact'))
+        if (entry.kind === 'transcript-thinking' ? entry.streaming : keepsLine(entry, closed, input)) items.push(plainEntry(entry, expandedTurn, inScope, 'compact'))
         else lastSeq = (entry as TranscriptEntryModel).seq
       }
       continue

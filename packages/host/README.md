@@ -9,7 +9,7 @@ the Web-only `harness-dev-context` system-prompt sections and the
 `DSH_WEB_URL` shell context. The model is not told that a terminal user is
 operating the Web GUI.
 
-The independent frontend is `@ephemeral-ai/mayfly-remote`; the Host does not embed it.
+The independent frontend is the `@ephemeral-ai/mayfly` TUI; the Host does not embed it.
 
 ## Mayfly creative preset
 
@@ -20,8 +20,7 @@ processes, and loads its own `cordis-plugin-development`,
 `mayfly-plugin-development`, and `editing-cordis-compositions` skills from the
 published Host payload. Select it with `/preset mayfly-cordis` where the native
 Session turn-boundary guard permits a preset change. Registration and skill
-loading belong to Host; the shared renderer package ships no legacy preset or
-in-process composition.
+loading belong to Host; the TUI package ships no preset.
 
 Creative mode can inspect native services and author ordinary persistent Host
 bundles and Agent presets. Harness `0.2.2-rc.1` supplies only
@@ -93,7 +92,7 @@ Start both processes in separate terminals:
 /path/to/dsh --profile mayfly-host-accept
 
 # TUI; copy the URL from the Host's single readiness line
-MAYFLY_DSH_STARTUP_URL='<authenticated-url>' script/mayfly-remote.sh
+MAYFLY_DSH_STARTUP_URL='<authenticated-url>' script/mayfly-tui.sh
 ```
 
 Never put that URL in argv or commit it. Host settings, credentials, workspace,
@@ -104,5 +103,4 @@ the first prompt. Closing the TUI leaves Host work running.
 After source edits, rebuild with `pnpm run build` and restart the affected
 process. Reinstall the dedicated profile when the dependency graph changes.
 The split packages in this branch are development artifacts; published-package
-installation requires a matching verified release set. The old in-process
-Mayfly composition is not an alternate supported installation.
+installation requires a matching verified release set.

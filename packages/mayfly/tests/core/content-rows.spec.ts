@@ -305,6 +305,8 @@ describe('contentNodeSource', () => {
     expect(materialized).toEqual(['plain accented'])
     const truncated = source({ kind: 'rich-text', overflow: 'truncate', spans: [{ text: 'long '.repeat(30).trim() }] }, 10)
     expect(visibleWidth(truncated.rows[0]!)).toBeLessThanOrEqual(10)
+    const elastic = source({ kind: 'rich-text', overflow: 'truncate', spans: [{ text: 'path/to/a/long/file', elastic: true }, { text: ' · exit 1' }] }, 16)
+    expect(plainText(elastic.rows[0]!)).toBe('path/t… · exit 1')
   })
 
   it('is marker-free and declares a width without reading a row', () => {
@@ -984,3 +986,9 @@ describe('contentNodeSource', () => {
   })
 })
 
+
+it('round-trips source anchors through styled rich text without losing span offsets', () => {
+  const source = contentNodeSource({ kind: 'rich-text', spans: [{ text: 'first ', styles: ['strong'] }, { text: 'second' }] }, 6, makeEnv().env)
+  expect(source.rowOf!(6)).toBe(1)
+  expect(source.offsetOf!(1)).toBe(6)
+})

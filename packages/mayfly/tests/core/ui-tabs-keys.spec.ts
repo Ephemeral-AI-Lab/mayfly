@@ -102,12 +102,10 @@ describe('the rail', () => {
     }
   })
 
-  it('becomes the horizontal strip below 60 columns, with Alt+←/→ and Enter', () => {
+  it('becomes the horizontal strip below 60 columns, with ←/→, Alt+←/→ and Enter', () => {
     const view = open(settings(selectPage), 58)
     expect(view.hint()).toBe('Enter open · Alt+←/→ tabs · Esc close')
     view.press(KEY.right)
-    expect(view.tabs()).toEqual([])
-    view.press(KEY.altRight)
     expect(view.tabs()).toEqual(['perm'])
     view.press(KEY.altLeft, KEY.altLeft)
     expect(view.tabs()).toEqual(['perm', 'model', 'general'])

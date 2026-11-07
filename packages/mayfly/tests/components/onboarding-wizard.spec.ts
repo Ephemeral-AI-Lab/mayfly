@@ -38,3 +38,11 @@ it('starts on Preferences without a driven step and never selects a permission t
   expect(model.form(address)?.fields.permission?.value).toBe('read-only')
   model.dispose()
 })
+
+it('omits permission selection when the Host has not supplied a permission catalog', () => {
+  const facts: OnboardingFacts = { preferences: {
+    language: { value: 'en', theme: 'dark', languages: [{ id: 'en', label: 'English' }], themes: [{ id: 'dark', label: 'Dark' }] },
+    startup: { value: 'conversation', options: [{ id: 'conversation', label: 'Conversation' }] },
+  }, connect: { canSignIn: false, keyEntry: false }, summary: [] }
+  expect(JSON.stringify(onboardingWizard(facts, labels))).not.toContain('"id":"permission"')
+})

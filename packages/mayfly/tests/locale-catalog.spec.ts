@@ -17,10 +17,13 @@ import { COMMON_LOCALE } from '../src/frontend/common-locale.ts'
 import { INTERACTION_LOCALE } from '../src/interaction/locale.ts'
 import { CORE_CONTEXT_HINT_LOCALE } from '../src/core/context-hint-locale.ts'
 import { ACTIVITY_LOCALE, TRANSCRIPT_LOCALE } from '../src/transcript/locale.ts'
+import { REMOTE_CONFIGURATION_LOCALE } from '../src/app/features/locale.ts'
+import { REMOTE_PRODUCTIVITY_LOCALES } from '../src/app/features/locales.ts'
+import { REMOTE_INTERACTION_LOCALE } from '../src/app/interactions/locale.ts'
 import { analyzeSource } from './locale-scan.ts'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../src')
-const CATALOG_FILE = /(?:^|\/)(?:[^/]*-)?locale\.ts$/u
+const CATALOG_FILE = /(?:^|\/)(?:[^/]*-)?locales?\.ts$/u
 
 const CATALOGS: Readonly<Record<string, { readonly en: Readonly<Record<string, string>>; readonly zh: Readonly<Record<string, string>> }>> = {
   common: COMMON_LOCALE,
@@ -28,6 +31,9 @@ const CATALOGS: Readonly<Record<string, { readonly en: Readonly<Record<string, s
   'core-context-hints': CORE_CONTEXT_HINT_LOCALE,
   transcript: TRANSCRIPT_LOCALE,
   'transcript.activity': ACTIVITY_LOCALE,
+  'remote-configuration': REMOTE_CONFIGURATION_LOCALE,
+  'remote-interactions': REMOTE_INTERACTION_LOCALE,
+  ...REMOTE_PRODUCTIVITY_LOCALES,
 }
 
 function sourceFiles(directory: string): string[] {
@@ -60,6 +66,10 @@ const scans = files.map(file => {
   const rel = relative(SRC, file)
   return { file, rel, analysis: analyzeSource(program, file, readFileSync(file, 'utf8')) }
 })
+/** Inline catalogs beside their translator calls, by `file` and key. */
+const inline = scans
+  .filter(entry => !CATALOG_FILE.test(entry.rel))
+  .flatMap(entry => [...entry.analysis.catalogKeys].map(key => ({ rel: entry.rel, key })))
 const sourceLiterals = new Set(scans
   .filter(entry => !CATALOG_FILE.test(entry.rel))
   .flatMap(entry => [...entry.analysis.literals]))
@@ -77,7 +87,7 @@ describe('locale catalogs', () => {
   })
 
   it('requires every translator key to exist in a catalog', () => {
-    const known = new Set(Object.values(CATALOGS).flatMap(catalog => Object.keys(catalog.en)))
+    const known = new Set([...Object.values(CATALOGS).flatMap(catalog => Object.keys(catalog.en)), ...inline.map(entry => entry.key)])
     const missing = scans
       .filter(entry => entry.analysis.translatorFile && !CATALOG_FILE.test(entry.rel))
       .flatMap(entry => entry.analysis.translatorKeys
@@ -90,7 +100,8 @@ describe('locale catalogs', () => {
     const dead = Object.entries(CATALOGS).flatMap(([namespace, catalog]) => Object.keys(catalog.zh)
       .filter(key => !sourceLiterals.has(key))
       .map(key => `${namespace} ${JSON.stringify(key)}`))
-    expect(dead.sort()).toEqual([])
+    const deadInline = inline.filter(entry => !sourceLiterals.has(entry.key)).map(entry => `${entry.rel} ${JSON.stringify(entry.key)}`)
+    expect([...dead, ...deadInline].sort()).toEqual([])
   })
 
   it('keeps the zh glossary consistent', () => {

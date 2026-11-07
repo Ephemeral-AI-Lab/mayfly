@@ -18,4 +18,4 @@ npm publish --access public
 创建与 npm 发布是两个独立动作。
 
 Host bundle 可[提交到插件市场](/market/submit)，供用户通过 `/plugin` 发现。前端 UI
-package 当前仍需源码集成到 Remote、构建并重启；发布本身不会建立 TUI 安装或热加载路径。
+package 需加入 TUI 源码组合（`run(argv, { plugins })`），再构建并重启；发布本身不会建立 TUI 安装或热加载路径。

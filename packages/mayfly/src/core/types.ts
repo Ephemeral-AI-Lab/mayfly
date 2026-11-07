@@ -624,6 +624,12 @@ export interface MayflyEditor extends MayflyFocusable {
    */
   getText(): string
   /**
+   * Where the caret stands, as an offset into the text with lines joined by `\n`. An editor holding a paste marker
+   * counts the marker's text, not what it expands to.
+   * @returns the offset, in UTF-16 code units.
+   */
+  caretOffset(): number
+  /**
    * Replace the current text.
    * @param text - the new content.
    */
@@ -1070,6 +1076,8 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'mayfly/decision-wait-changed'(wait: MayflyDecisionWait | undefined): void
+    /** The calls whose arguments the attempt still writes, whenever that set changes. */
+    'mayfly/preparing-calls'(calls: readonly { readonly callId: string, readonly name: string }[]): void
     /**
      * The requests waiting on the user changed: a request was asked, queued behind another, or settled. The first of
      * `requests` is the one the decision card shows; the rest wait their turn in the order they were asked. The stream

@@ -201,3 +201,12 @@ describe('AdmissionRow', () => {
     }
   })
 })
+
+it('does not underline a dropped child beside an admitted marked child', () => {
+  const component = (text: string) => ({ render: () => [text], invalidate() {} })
+  const row = new AdmissionRow({ components, colors, children: () => [
+    { forms: [{ rank: 0, component: component('kept') }], band: 'left', mark: 'underline', priority: 0 },
+    { forms: [{ rank: 0, component: component('dropped') }], band: 'left', mark: 'underline', priority: 1, overflow: 'hide' },
+  ] })
+  expect(row.render(5).map(line => line.replaceAll('\x1b[0m', ''))).toEqual(['kept', '━━━━'])
+})

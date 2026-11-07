@@ -189,7 +189,7 @@ try {
   ], env)
   if (install.code !== 0) throw new Error(`packed CLI install failed${install.timedOut ? ' (300s timeout)' : ''}:\n${install.stderr.slice(-20_000)}\n${install.stdout.slice(-5000)}`)
 
-  for (const name of ['@ephemeral-ai/mayfly-host', '@ephemeral-ai/mayfly-remote', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui']) {
+  for (const name of ['@ephemeral-ai/mayfly-host', '@ephemeral-ai/mayfly', '@ephemeral-ai/mayfly-ui']) {
     if (!requested.has(name)) throw new Error(`packed CLI install never requested ${name}`)
     const manifest = JSON.parse(readFileSync(join(cliRoot, 'node_modules', ...name.split('/'), 'package.json'), 'utf8'))
     if (manifest.version !== version) throw new Error(`${name}: expected ${version}, got ${manifest.version}`)
@@ -214,7 +214,7 @@ try {
     throw new Error('packed CLI created a legacy runtime cache or profile')
   }
 
-  console.log(`CLI_LOCAL_REGISTRY_SMOKE_PASS mayfly=${version} remote=${version} hostProcesses=0`)
+  console.log(`CLI_LOCAL_REGISTRY_SMOKE_PASS mayfly=${version} tui=${version} hostProcesses=0`)
 } finally {
   server.closeAllConnections()
   await new Promise(resolve => server.close(resolve))

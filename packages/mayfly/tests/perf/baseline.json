@@ -352,6 +352,7 @@
     "bytesWritten": 0
   },
   "W29": {
+    "liveEntriesMapped": 1,
     "nodesValidated": 6,
     "unitsCompiled": 4,
     "rowsPainted": 18,
@@ -484,6 +485,7 @@
     "bytesWritten": 0
   },
   "W34": {
+    "liveEntriesMapped": 1,
     "nodesValidated": 6,
     "unitsCompiled": 4,
     "rowsPainted": 2,
@@ -526,5 +528,27 @@
     "streamRowsBuilt": 0,
     "rowsWritten": 39,
     "bytesWritten": 6666
+  },
+  "W36": {
+    "nodesValidated": 0,
+    "unitsCompiled": 3,
+    "rowsPainted": 11,
+    "rowsMaterialized": 0,
+    "segmentsPainted": 0,
+    "linesEstimated": 0,
+    "stringsMeasured": 9,
+    "componentRenders": 2,
+    "controlWalks": 1,
+    "reconciles": 4,
+    "layoutPasses": 1,
+    "clockTicks": 0,
+    "keymapSnapshots": 0,
+    "itemsWalked": 58,
+    "entriesMapped": 0,
+    "toolModelsBuilt": 0,
+    "diffsComputed": 0,
+    "streamRowsBuilt": 0,
+    "rowsWritten": 0,
+    "bytesWritten": 0
   }
 }

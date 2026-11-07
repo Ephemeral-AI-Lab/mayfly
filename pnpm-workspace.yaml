@@ -1,7 +1,5 @@
 packages:
   - 'packages/*'
-  # The independent Frontend resolves its published dependency graph separately.
-  - '!packages/remote'
   - 'examples/*'
   - 'website'
 
@@ -25,14 +23,11 @@ allowBuilds:
   node-pty: false
   protobufjs: false
 
-# Keep each Cordis generation on its own optional plugin generation. Sharing
-# Include across them creates duplicate Context declaration merges.
+# Pin Cordis 4.1.0's optional plugins to the generation it declares merges for.
 overrides:
-  # Link the independently locked, not-yet-published Remote bin and client-safe Host artifact for local development.
-  '@ephemeral-ai/mayfly-remote': 'link:packages/remote'
+  # Link the exact-version launcher dependencies to their workspace packages for local development.
+  '@ephemeral-ai/mayfly': 'link:packages/mayfly'
   '@ephemeral-ai/mayfly-host': 'link:packages/host'
-  '@deepseek-ai/cordis@4.0.5>@deepseek-ai/cordis-plugin-include': '1.0.10'
-  '@deepseek-ai/cordis@4.0.5>@deepseek-ai/cordis-plugin-timer': '1.1.7'
   '@deepseek-ai/cordis@4.1.0>@deepseek-ai/cordis-plugin-include': '1.1.0'
   '@deepseek-ai/cordis@4.1.0>@deepseek-ai/cordis-plugin-timer': '1.2.0'
 

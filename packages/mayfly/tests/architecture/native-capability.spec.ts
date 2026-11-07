@@ -1,7 +1,10 @@
 /**
- * Architecture guard for native-first capability ownership: every projection key,
- * service, and registration must name a native or Mayfly-owned capability, and
- * the terminal must not guess host internals or keep a parallel session store.
+ * Architecture guard for native-first capability ownership across the split.
+ * The Host plugin runs in the dsh process: every service it reads, projection
+ * key it reads or registers, and command it registers must name a native or
+ * Mayfly-owned capability. The TUI runs its own Cordis tree: it reads only
+ * official Client projection faces of those keys, and its frontend commands
+ * never take a native Host command's name.
  *
  * The allowlists are the contract in `docs/native-capability-map.md`; a new key,
  * service, or command name is added there and here together.
@@ -12,8 +15,8 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const root = resolve(import.meta.dirname, '../..')
-const sourceRoot = resolve(root, 'src')
+const tuiRoot = resolve(import.meta.dirname, '../../src')
+const hostRoot = resolve(import.meta.dirname, '../../../host/src')
 
 /** Native projection keys Mayfly is allowed to read. */
 const NATIVE_PROJECTIONS = new Set([
@@ -34,50 +37,52 @@ const NATIVE_PROJECTIONS = new Set([
   'contextBreakdown',
   'sessionListMetadata',
   'agentPreset',
+  'inbox',
+  'imageLimits',
+  'turnOutline',
 ])
 
-/** Mayfly-owned projection keys, each justified in the capability map. */
+/** Mayfly-owned projection keys the Host registers, each justified in the capability map. */
 const MAYFLY_PROJECTIONS = new Set([
   'mayflyConversation',
   'mayflyConversationFacts',
   'mayflyDeliverables',
+  'mayflyJobs',
+  'mayflyWorkflow',
+  'mayflyRetraction',
 ])
 
-/** Native services, plus the one explicit durable read `/save` needs. */
-const NATIVE_SERVICES = new Set([
+/** The native services the Host plugin reads, exactly. */
+const HOST_SERVICES = new Set([
   'agentDefaultModel',
-  'agentPresets',
   'agents',
   'appExit',
-  'attachments',
+  'approval',
   'authorization',
-  'cmdlineArgs',
-  'commands',
+  'connection',
   'credentials',
-  'deepseekAccount',
-  'fileReferences',
   'fs',
-  'goals',
-  'jobs',
+  'invocation',
   'llm',
-  'loader',
+  'mcpResources',
   'permissionPresets',
-  'pluginManager',
-  'schedule',
+  'profileContext',
   'sessionController',
-  'sessionPersistence',
   'sessionProjections',
   'sessionQuery',
   'sessions',
   'settings',
+  'shell',
   'skills',
   'subagents',
   'tools',
-  'userQuestions',
-  'webServer',
+  'webApp',
   'workspaceChanges',
   'workspaceRegistry',
 ])
+
+/** The official Client services the TUI reads from its own tree, exactly. */
+const CLIENT_SERVICES = new Set(['connection', 'remote', 'fileUpload', 'sessions', 'workspaces'])
 
 /** Cordis members a plugin may use on `ctx` without asking a capability map. */
 const CORDIS_MEMBERS = new Set([
@@ -103,24 +108,20 @@ const CORDIS_MEMBERS = new Set([
   'set',
 ])
 
-/** Native command names Mayfly must never register. */
-const NATIVE_COMMANDS = new Set(['permission', 'export', 'plan', 'goal', 'compact', 'feedback'])
+/**
+ * Native Host command names a frontend command never takes. `/plan` (sessionless
+ * startup intent) and `/export` (a local file) are documented frontend commands.
+ */
+const NATIVE_COMMANDS = new Set(['permission', 'goal', 'compact', 'feedback'])
 
-/** Command names this suite uses to prove the allowlist is live. */
+/** Frontend command names that prove the allowlist is live. */
 const MAYFLY_ONLY_COMMANDS = ['permissions', 'save'] as const
 
 /** Fields the presentation-only facts projection no longer carries. */
 const REMOVED_FACT_FIELDS = ['todos', 'contextTokens', 'contextWindow', 'flowUp', 'reasoningEffort'] as const
 
-/** The operation paths that must resolve the working directory through the projection. */
-const OPERATION_PATHS = [
-  'interaction/skills-catalog.ts',
-  'interaction/editor-plus.ts',
-  'interaction/deliverables-command.ts',
-  'interaction/session-export.ts',
-  'transcript/status-cwd.ts',
-  'transcript/status-git.ts',
-]
+/** Host files that read the immutable header directory: workspace identity, and the fallback without a working-directory service. */
+const HEADER_CWD_READERS = ['remote/stats.ts', 'remote/session.ts']
 
 /** Source with comments removed, so a rule reads code and not prose. */
 function codeOf(source: string): string {
@@ -129,8 +130,8 @@ function codeOf(source: string): string {
     .replace(/\/\/[^\n]*/gu, '')
 }
 
-/** Every `.ts` file under `src`, recursively. */
-function sourceFiles(directory = sourceRoot): string[] {
+/** Every `.ts` file under `directory`, recursively. */
+function sourceFiles(directory: string): string[] {
   const files: string[] = []
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = resolve(directory, entry.name)
@@ -140,9 +141,9 @@ function sourceFiles(directory = sourceRoot): string[] {
   return files
 }
 
-/** The source text of every file, keyed by its path. */
-function sources(): ReadonlyMap<string, string> {
-  return new Map(sourceFiles().map(path => [path, codeOf(readFileSync(path, 'utf8'))]))
+/** The source text of every file under `directory`, keyed by its path. */
+function sources(directory: string): ReadonlyMap<string, string> {
+  return new Map(sourceFiles(directory).map(path => [path, codeOf(readFileSync(path, 'utf8'))]))
 }
 
 /** The single-quoted string literals in `text`. */
@@ -189,8 +190,8 @@ function callsIn(code: string, pattern: RegExp): string[] {
   return calls
 }
 
-/** Projection keys used by `snapshot`, `stateOf`, or `onChanged` calls. */
-function projectionKeys(code: string): string[] {
+/** Projection keys a Host plugin reads through `sessionProjections`. */
+function hostProjectionKeys(code: string): string[] {
   const keys = new Set<string>()
   for (const method of ['snapshot', 'stateOf', 'onChanged']) {
     for (const call of callsIn(code, new RegExp(`(?:sessionProjections|projections)\\??\\.${method}\\(`, 'gu'))) {
@@ -200,9 +201,10 @@ function projectionKeys(code: string): string[] {
   return [...keys]
 }
 
-/** Constant key arrays that name projections (`SESSION_INFO_KEYS`, `CONTEXT_KEYS`, `MODE_KEYS`, …). */
-function constantKeys(code: string): string[] {
+/** Projection keys the TUI reads through official Client faces, and constant key arrays naming projections. */
+function tuiProjectionKeys(code: string): string[] {
   const keys = new Set<string>()
+  for (const match of code.matchAll(/faceOf\('([^']+)'\)/gu)) keys.add(match[1]!)
   for (const match of code.matchAll(/const [A-Z][A-Z_]*KEYS\s*=\s*(?:new Set\()?\[([\s\S]*?)\]/gu)) {
     const values = literals(match[1]!)
     // Key-grammar constants also end in KEYS; only arrays naming projections are in scope.
@@ -212,7 +214,12 @@ function constantKeys(code: string): string[] {
   return [...keys]
 }
 
-/** Service names read through `ctx.get`, injection arrays, or `ctx.inject`. */
+/** Projection keys a Host definition registers. */
+function registeredKeys(code: string): string[] {
+  return [...code.matchAll(/Projection(?:Definition)?(?::\s*\w+)?\s*=\s*\{\s*key:\s*'([^']+)'/gu)].map(match => match[1]!)
+}
+
+/** Service names read through `ctx.get`, injection arrays, `ctx.inject`, or a `ctx` member. */
 function serviceNames(code: string): string[] {
   const names = new Set<string>()
   for (const match of code.matchAll(/ctx\.get\('([^']+)'\)/gu)) names.add(match[1]!)
@@ -228,10 +235,10 @@ function serviceNames(code: string): string[] {
   return [...names]
 }
 
-/** Registered Mayfly command names. */
+/** Registered command names. */
 function commandNames(code: string): string[] {
   const names = new Set<string>()
-  for (const call of [...callsIn(code, /commands\.register\(/gu), ...callsIn(code, /registerOwnedCommand\(/gu)]) {
+  for (const call of callsIn(code, /commands\.register\(/gu)) {
     const match = /name:\s*'([^']+)'/u.exec(call)
     if (match !== null) names.add(match[1]!)
   }
@@ -241,16 +248,6 @@ function commandNames(code: string): string[] {
 /** Whether a projection key is native or Mayfly-owned. */
 function isAllowedProjection(key: string): boolean {
   return NATIVE_PROJECTIONS.has(key) || MAYFLY_PROJECTIONS.has(key)
-}
-
-/** Whether a service is native, Cordis infrastructure, or Mayfly's. */
-function isAllowedService(name: string): boolean {
-  return NATIVE_SERVICES.has(name) || CORDIS_MEMBERS.has(name) || /^mayfly[A-Z]/u.test(name)
-}
-
-/** Whether a Mayfly command name collides with a native command. */
-function isNativeCommand(name: string): boolean {
-  return NATIVE_COMMANDS.has(name)
 }
 
 /** The `{ ... }` body of an interface or object literal after `marker`. */
@@ -272,73 +269,42 @@ function bodyAfter(code: string, marker: RegExp): string {
   return code.slice(start)
 }
 
-describe('native capability ownership', () => {
-  it('reads only native projections and the three justified Mayfly keys', () => {
+describe('Host native capability ownership', () => {
+  it('reads only native projections and the Mayfly keys, and registers exactly the Mayfly keys', () => {
+    const read = new Set<string>()
+    const registered: string[] = []
+    for (const code of sources(hostRoot).values()) {
+      for (const key of hostProjectionKeys(code)) read.add(key)
+      registered.push(...registeredKeys(code))
+    }
+    expect([...read].filter(key => !isAllowedProjection(key))).toEqual([])
+    expect([...read].some(key => NATIVE_PROJECTIONS.has(key))).toBe(true)
+    expect(registered.toSorted()).toEqual([...MAYFLY_PROJECTIONS].toSorted())
+  })
+
+  it('uses exactly the mapped native services, Cordis infrastructure, or Mayfly services', () => {
     const found = new Set<string>()
-    for (const code of sources().values()) for (const key of projectionKeys(code)) found.add(key)
-    const unknown = [...found].filter(key => !isAllowedProjection(key))
-    expect(unknown).toEqual([])
-    for (const code of sources().values()) {
-      for (const key of constantKeys(code)) expect(isAllowedProjection(key), key).toBe(true)
-    }
-    // Mayfly registers only the three justified keys.
-    const conversation = resolve(sourceRoot, 'conversation')
-    for (const path of sourceFiles(conversation)) {
-      const code = codeOf(readFileSync(path, 'utf8'))
-      for (const match of code.matchAll(/key:\s*'([^']+)'/gu)) expect(MAYFLY_PROJECTIONS, path).toContain(match[1]!)
-    }
-    // The allowlist itself stays live: both halves are used.
-    expect([...found].some(key => NATIVE_PROJECTIONS.has(key))).toBe(true)
-    expect([...found].some(key => MAYFLY_PROJECTIONS.has(key))).toBe(true)
+    for (const code of sources(hostRoot).values()) for (const name of serviceNames(code)) found.add(name)
+    expect([...found].filter(name => !HOST_SERVICES.has(name) && !CORDIS_MEMBERS.has(name) && !/^mayfly[A-Z]/u.test(name))).toEqual([])
+    expect([...HOST_SERVICES].filter(name => !found.has(name))).toEqual([])
   })
 
-  it('uses only native services, Cordis infrastructure, or Mayfly services', () => {
-    const found = new Set<string>()
-    for (const code of sources().values()) for (const name of serviceNames(code)) found.add(name)
-    const unknown = [...found].filter(name => !isAllowedService(name))
-    expect(unknown).toEqual([])
+  it('registers no native command', () => {
+    for (const [path, code] of sources(hostRoot)) expect(commandNames(code), path).toEqual([])
   })
 
-  it('registers no native command name and keeps /permissions and /save Mayfly-only', () => {
-    const names = new Set<string>()
-    for (const code of sources().values()) for (const name of commandNames(code)) names.add(name)
-    expect([...names].filter(isNativeCommand)).toEqual([])
-    for (const name of MAYFLY_ONLY_COMMANDS) expect(names, name).toContain(name)
-    expect(names).not.toContain('permission')
-    expect(names).not.toContain('export')
-  })
-
-  it('never writes the profile patch, guesses FiberState/MCP numbers, or names old delegation modes', () => {
-    for (const [path, code] of sources()) {
-      expect(code, path).not.toMatch(/\bFiberState\b|\bfiberState\b/u)
-      expect(code, path).not.toMatch(/\bstarted subagent\b|\brun_in_background\b|\bbackgroundMode\b/u)
-      expect(code, path).not.toMatch(/(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|rename|renameSync|copyFile|copyFileSync)\([^)]*cordis\.patch\.yml/su)
-      expect(code, path).not.toMatch(/\$DSH_HOME[\s\S]{0,120}cordis\.patch\.yml/u)
+  it('reads the working directory through the projection, and the header only for workspace identity or its fallback', () => {
+    for (const [path, code] of sources(hostRoot)) {
+      if (!code.includes('.header.cwd')) continue
+      expect(HEADER_CWD_READERS.some(relative => path.endsWith(relative)), path).toBe(true)
     }
-  })
-
-  it('resolves the working directory through the projection in current-operation paths', () => {
-    for (const relative of OPERATION_PATHS) {
-      const code = codeOf(readFileSync(resolve(sourceRoot, relative), 'utf8'))
-      expect(code, relative).not.toContain('.header.cwd')
-      expect(code, relative).toMatch(/agentDirectory|sessionDirectory|workingDirectory/u)
-    }
-  })
-
-  it('browses sessions through the native controller, never persistence or the projection cache', () => {
-    for (const [path, code] of sources()) {
-      expect(code, path).not.toContain('sessionProjectionCache')
-      expect(code, path).not.toContain('readColdSessionLog')
-      if (!path.endsWith('interaction/session-export.ts')) expect(code, path).not.toContain('sessionPersistence')
-    }
-    const listing = codeOf(readFileSync(resolve(sourceRoot, 'interaction/session-list-reads.ts'), 'utf8'))
-    expect(listing).toContain('sessionController')
-    expect(listing).not.toContain('sessionPersistence')
+    const session = codeOf(readFileSync(resolve(hostRoot, 'remote/session.ts'), 'utf8'))
+    expect(session).toMatch(/sessionProjections\.snapshot\(session, \['workingDirectory'\]\)\.values\.workingDirectory \?\? session\.header\.cwd/u)
   })
 
   it('keeps mayflyConversationFacts free of removed domain fields', () => {
-    const facts = codeOf(readFileSync(resolve(sourceRoot, 'conversation/facts.ts'), 'utf8'))
-    const types = codeOf(readFileSync(resolve(root, '../host/src/conversation/types.ts'), 'utf8'))
+    const facts = codeOf(readFileSync(resolve(hostRoot, 'conversation/facts.ts'), 'utf8'))
+    const types = codeOf(readFileSync(resolve(hostRoot, 'conversation/types.ts'), 'utf8'))
     const schema = bodyAfter(facts, /conversationFactsSchema\s*=\s*z\.object/u)
     const shape = bodyAfter(types, /export interface ConversationFacts\s*/u)
     expect(schema).not.toBe('')
@@ -351,9 +317,53 @@ describe('native capability ownership', () => {
       expect(shape, field).not.toMatch(new RegExp(`\\b${field}\\??\\s*:`, 'u'))
     }
   })
+})
 
-  it('reads code, not comments', () => {
+describe('TUI native capability ownership', () => {
+  it('reads only native and Host-registered Mayfly projection faces', () => {
+    const found = new Set<string>()
+    for (const code of sources(tuiRoot).values()) for (const key of tuiProjectionKeys(code)) found.add(key)
+    expect([...found].filter(key => !isAllowedProjection(key))).toEqual([])
+    expect([...found].some(key => NATIVE_PROJECTIONS.has(key))).toBe(true)
+    expect([...found].some(key => MAYFLY_PROJECTIONS.has(key))).toBe(true)
+  })
+
+  it('uses exactly the official Client services, Cordis infrastructure, and Mayfly services in its own tree', () => {
+    const found = new Set<string>()
+    for (const code of sources(tuiRoot).values()) for (const name of serviceNames(code)) found.add(name)
+    expect([...found].filter(name => !CLIENT_SERVICES.has(name) && !CORDIS_MEMBERS.has(name) && !/^mayfly[A-Z]/u.test(name))).toEqual([])
+    expect([...CLIENT_SERVICES].filter(name => !found.has(name))).toEqual([])
+  })
+
+  it('never takes a native Host command name and keeps /permissions and /save Mayfly-only', () => {
+    const names = new Set<string>()
+    for (const code of sources(tuiRoot).values()) for (const name of commandNames(code)) names.add(name)
+    expect([...names].filter(name => NATIVE_COMMANDS.has(name))).toEqual([])
+    for (const name of MAYFLY_ONLY_COMMANDS) expect(names, name).toContain(name)
+  })
+})
+
+describe('both halves', () => {
+  it('never write the profile patch, guess FiberState/MCP numbers, or name old delegation modes', () => {
+    for (const [path, code] of [...sources(hostRoot), ...sources(tuiRoot)]) {
+      expect(code, path).not.toMatch(/\bFiberState\b|\bfiberState\b/u)
+      expect(code, path).not.toMatch(/\bstarted subagent\b|\brun_in_background\b|\bbackgroundMode\b/u)
+      expect(code, path).not.toMatch(/(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|rename|renameSync|copyFile|copyFileSync)\([^)]*cordis\.patch\.yml/su)
+      expect(code, path).not.toMatch(/\$DSH_HOME[\s\S]{0,120}cordis\.patch\.yml/u)
+    }
+  })
+
+  it('browse sessions through the native controller, never persistence or the projection cache', () => {
+    for (const [path, code] of [...sources(hostRoot), ...sources(tuiRoot)]) {
+      expect(code, path).not.toContain('sessionProjectionCache')
+      expect(code, path).not.toContain('readColdSessionLog')
+      expect(code, path).not.toContain('sessionPersistence')
+    }
+  })
+
+  it('read code, not comments', () => {
     expect(codeOf("// run_in_background and FiberState are prose\nconst a = 1")).not.toMatch(/run_in_background|FiberState/u)
-    expect(projectionKeys(codeOf("// sessionProjections.snapshot(session, ['bogus'])\nconst a = 1"))).toEqual([])
+    expect(hostProjectionKeys(codeOf("// sessionProjections.snapshot(session, ['bogus'])\nconst a = 1"))).toEqual([])
+    expect(tuiProjectionKeys(codeOf("// faceOf('bogus')\nconst a = 1"))).toEqual([])
   })
 })

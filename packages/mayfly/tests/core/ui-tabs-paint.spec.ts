@@ -171,3 +171,10 @@ describe('the shape of a rail', () => {
     expect(tabsShape(strip, 20)).toBe(strip)
   })
 })
+
+it('shows the wizard review step without a misleading progress fraction', () => {
+  const node = ui.tabs({ id: 'review', mode: 'wizard', activeId: 'review', items: [{ id: 'one', label: 'One' }, { id: 'review', label: 'Review', review: true }] })
+  const rows = plain(paintTabs(node, 80, idle, bare, ['one']))
+  expect(rows[0]).toContain('Review')
+  expect(rows.join('')).not.toMatch(/\d\/\d/u)
+})

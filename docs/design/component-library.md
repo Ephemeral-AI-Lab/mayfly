@@ -853,7 +853,8 @@ against its theme background (a guard test in the implementation asserts it).
 ```
 
 `Alt+←`/`Alt+→` switch tabs from anywhere outside text editing and open pickers; plain
-`←`/`→` stay with the page (lists, scroll, search, detail). `Enter` on a focused strip
+`←`/`→` stay with the page (lists, scroll, search, detail), except that they move a focused
+strip and walk a wizard from its option rows (§5.8). `Enter` on a focused strip
 descends into the page; the strip's selected chip does not change when focus leaves it.
 A **wizard** keeps its ordered step marks and heavy rule and is not an ordinary tab. `Esc`
 walks back, and a forward switch runs the same validation as the step's own Next, so an
@@ -1107,6 +1108,7 @@ pane too (§3.3).
 | --- | --- | --- |
 | Agents | `● agents 1/3` (`✓` when all settled, `✕` when one failed; stays for the conversation) | a list with a cursor, one line per subagent of the conversation, completed ones included; `Enter` opens that agent's conversation, `x` stops it (§5.5) |
 | Jobs | `● jobs 2` (`✓ jobs 3/3` for five seconds when the last one settles, `✕` when one failed; then it leaves) | a list with a cursor, live jobs first; `Enter` opens the job's output, `x` stops a running job (§5.5) |
+| Workflow | `● workflow 2/7` (agents settled over agents started; `✓` when all settled, `✕` when one failed; holds five seconds after the last run settles, then it leaves) | one line per run above its members; `x` stops a background run through its job; a foreground run ends with `Esc` (§5.5) |
 | Goal | `● goal 2/8` (`○` disarmed, `⏸` paused, `✕` blocked) | the goal's objective and its keys (§5.4) |
 | Todo | `● todo 2/12` | the todo list (§5.4) |
 
@@ -1222,10 +1224,9 @@ stream already shows (§5.3.1).
     ⎿ Tip: /btw asks a side question while it runs
 ```
 
-- **The line under the header** is a tip while the stream shows the current action (every level but
-  Compact), and the one-line detail (the latest reasoning paragraph, the running command or path or query) at
-  Compact, where the stream shows no process. It always leads with `⎿`, drops the `⎿` below 40 columns, and
-  is blank when hints are off (`quietHints: off`) or nothing applies.
+- **The line under the header** names the tools in flight when they differ (`⎿ Read · github › get_issue`, three names and
+  `+N more`); otherwise it is a tip, at every level. A call's arguments are on its own line in the stream, never here. It
+  always leads with `⎿`, drops the `⎿` below 40 columns, and is blank when hints are off (`quietHints: off`) or nothing applies.
 - **Height.** Three rows while a turn runs (a leading spacer, the header, and the line under it), and the row under them is the notification
   pane's (§5.2), so nothing shifts between phases. Idle renders nothing of its own.
 - **Narrow widths** shed, in order: the header tail (time, counters, rate), then the `⎿` connector.
@@ -1242,20 +1243,48 @@ Phases and what each shows:
   ✶ Pondering · 3s · ↑30.2k ↓80           bloom glyph; the thinking ladder (§5.3.1); tip underneath
   ⡀ Writing · 20s · ↓240 · 38 tok/s       fill glyph; the answer streams in the stream
   ● Running commands                      still ●, shimmering label; the call and its time are in the stream
+  ● Preparing to edit files               the same, while the model still writes the call's arguments
+  ● Calling github                        MCP calls say their server; a tool on several servers says how many tools
+  ● Reading files · 3 in flight           several of one tool; `oldest 12s` joins from ten seconds on
+  ● Running 2 tools · oldest 12s          different tools; their names are on the line under it
   ● Waiting for your approval · 45s       breathing ●; the request is in the stream and the panel
   ■ interrupting…                         static; held 600 ms
 ```
 
-Settled calls are one static line: glyph, past-tense verb, target, outcome.
+Settled calls are one static line: glyph, the tool's own name, what it was given, what came of it. The target gives way
+first on a narrow row (a span marked `elastic`), so an outcome or a reason survives: `└ ✗ src… · cannot read "src/missing.ts": not found`.
 
 ```
-✓ Read pane-activity.ts · 481 lines
-✓ Searched "activity" · 47 matches in 12 files
-✓ Ran pnpm run check:lib · 4.2s
-✗ Ran pnpm run lint · exit 1 · 3s
-✓ Fetched pi.dev/docs/latest/tui · 200 · 18 KB
-▸ Read 3 files · Searched code · Ran 2 commands · 6s        ← folded turn, Ctrl+O
+✓ Read(src/list.ts) · 120-127 of 128
+✓ ReadImage(docs/shot.png) · png · 800×600 · 2 KB
+✓ Grep("onSelect" in src) · 5 matches in 3 files            include *.ts on the row under it
+✓ Glob(**/*.ts in src) · 38 paths
+✓ Bash(pnpm test) · 4.2s                                    # Run the tests · cwd src on the row under it
+✓ Bash(pnpm dev) · background                               its output belongs to the Jobs view
+✗ Bash(pnpm lint) · exit 1 · 3s
+✓ Write(tests/a.spec.ts) · created · 39 lines · 1.9 KB
+✓ ApplyPatch · 3 files · +4 −3 ▮▮▮▮▮▮▮▮
+✓ WebSearch("keep selection") · 3 sources · 0.1s
+✓ WebFetch(pi.dev/docs) · 200 · 18 KB
+✓ Skill(release-notes)
+✓ RunCode · 1.2s                                            `code` and `output` sections when it opens
+✓ github › get_issue(owner=acme, repo=web, issue_number=1423) · 2.1 KB · 0.4s
+✓ github · 2 calls · 1.5s                                   a run of one server, a tree of `tool(arguments)`
+✗ github › create_issue(title="Notes", teamId=ENG, +2) · 401 Bad credentials · 0.5s
+▸ 9 tool calls · 6s · 1 failed · Ctrl+O to expand           Compact; a failed call keeps its own line under it
 ```
+
+Paths show under the Session's directory, as the model gave them. A failure's reason drops the thrower's `Error: ` prefix and that directory.
+
+**MCP calls.** A lone scalar argument reads as its value; several read as up to three scalars, `key=value`, within 60
+characters, then `+N`. What the line leaves out is listed on the row under it at Verbose and on a request the user decides
+on. A result says what can be known of it: `N items` for a JSON list, the format and size of a picture, else its size. The Harness flattens results to text, so it cannot say `12 issues`.
+A block opens JSON as rows to read, a row per item or field. A run gathers calls to one server.
+
+**Views own what outlives a call.** A tool's placement (`transcript/tool-kinds.ts`) says where its calls are drawn: `full`
+is a record with a body; `line` is one line whose detail is its view's (a spawn, a workflow; `Enter` moves there); `quiet`
+is drawn only at Verbose (a job poll); `hidden` is never drawn (todo and goal calls). A call that failed or waits on the user is drawn
+whatever its placement says.
 
 **Edit is a diff; Write is code.**
 
@@ -1280,10 +1309,11 @@ Settled calls are one static line: glyph, past-tense verb, target, outcome.
   `…`. The code of a removed line has a **red background** and the code of an added line a **green one**, to the full
   width; the line numbers stay plain muted text (a quiet gutter, the tints from the diff color tokens). The `−`/`+`
   keeps the meaning without color.
-- Multi-file patches list `A`/`M`/`D` with a per-file stat; a failed edit puts
-  the reason on the `⎿` line.
-- **Write** is not a diff, because there is nothing to compare: collapsed it is one line, `✓ Wrote path · 84 lines ·
-  3.1 KB · Ctrl+O expand`; expanded it shows the file as **syntax-highlighted code with line numbers**
+- A patch reads its files from the patch itself, because the applied metadata leaves out added files and move
+  destinations: a tree of `A`/`M`/`D`/`R` with per-file counts at Standard (`R old → new`), and each file's diff once a block opens.
+  A patch the Harness stopped reads as failed. A failed edit puts the reason on its line.
+- **Write** is not a diff, because there is nothing to compare: collapsed it is one line, `✓ Write(path) · created · 84 lines ·
+  3.1 KB` (`created` only for a new file); expanded it shows the file as **syntax-highlighted code with line numbers**
   (`ui.code` with `numbered`), no `+` markers and no bands.
 
 ### 5.3.1 Stream and activity row: division of labor
@@ -1296,7 +1326,7 @@ place draws, not what each place knows.
 | --- | --- | --- |
 | Reasoning text, answer text | the stream, as it arrives | the activity row |
 | A tool call, its arguments, its output, its outcome | the stream's call block | the activity row |
-| How long a call has been running | the call block (`● Bash(pnpm test) · 4s`) | the activity row |
+| How long a call has been running | the call block (`● Bash(pnpm test) · 4s`); the row says only how old the oldest of several is, from ten seconds on | the activity row, for one call |
 | How long the model has been thinking, tokens in and out, tokens per second | the activity row, while the phase lasts | the live reasoning row (a settled reasoning row keeps its final duration) |
 | The phase word (Deep diving, Thinking, Writing, Running commands, Waiting for you) | the activity row | the stream |
 | A request that waits on you (approval, plan review, question) | the stream row and the panel; the activity row only breathes and names the wait | — |
@@ -1325,7 +1355,7 @@ the stream is never empty while the row is busy.
 
 **One clock, one list.** The stream's pending lines and the row take their seconds from one host tick and one format
 (whole seconds while a call runs, tenths once it settled), and the row's tool phase names the calls in flight (the
-`inFlight` fact: `Running commands`, or `Running 3 tools` for several kinds), the list the pending lines are drawn from,
+`inFlight` fact: `Running commands`, or `Running 3 tools` for several kinds, plus the calls the current attempt still writes), the list the pending lines are drawn from,
 so the two never disagree about what runs. The thinking ladder counts from the reasoning phase's own session timestamp.
 
 **The thinking ladder.** The thinking label is a character, not a status: it deepens with the seconds spent in the
@@ -1390,21 +1420,19 @@ and `✓ agents 3/3` (`✕` when one failed) when all have settled. `Alt+↓` op
 the row, a list of every subagent with a cursor (the one panel that is not a plain scroll, because a row has to be chosen):
 
 ```
-  ● review(bg)   Using bash                         ↑48k  ↓6.4k  47 tok/s · 41s
-  ● explore(fg)  Thinking…                                   ↑61k  ↓1.2k · 12s
-  ✓ plan(bg)     Draft migration plan                        ↑11k  ↓2.0k · 12s
-  ✕ lint(fg)     Sweep oxlint findings                              ↑17k · 9s
+  ● Review the diff        Using bash               ↑48k  ↓6.4k  47 tok/s · 41s
+  ● Explore every caller   Thinking…                       ↑61k  ↓1.2k · 12s
+  ✓ Draft migration plan                                   ↑11k  ↓2.0k · 12s
+  ✕ Sweep oxlint findings                                         ↑17k · 9s
 
-  ↑/↓ select · Enter open · x stop · b background · Esc back
+  ↑/↓ select · Enter open · x stop · Esc back
 ```
 
-- **Foreground and background.** A **foreground** subagent is a spawn call still without its result: it blocks the turn
-  that spawned it. A **background** one carries its `started subagent` acknowledgement (or `run_in_background`) and does
-  not. Each row says which (`(fg)`, `(bg)` after the name). `b` would move the chosen foreground one to the background; dsh has no call that
-  ends a running foreground call early, so `b` is listed and says why it is unavailable until dsh offers one.
+- **No foreground or background.** The Harness has no such mode: a spawn is answered at once and its child runs on, so
+  rows carry no `(fg)`/`(bg)` and there is no `b`. Its call finds its child through the native catalog, never through the acknowledgement's text.
 - **Failed and stopped.** A subagent that failed on its own reads `✕ … failed` (and turns the item `✕`); one the user stopped (an interrupt, an abort, or `x` in the panel) reads `⊘ … stopped` and is no failure. The stream's spawn line says the same (`✕ … failed`, `⊘ … stopped`).
 - **Own subagents only.** The item lists the subagents the displayed conversation spawned itself. A `/btw` side conversation or a subagent conversation inherits its parent's log, but not its subagents: it has no Agents item unless it spawns its own, and never shows the main conversation's.
-- **Rows.** The mark, the agent's name with `(fg)` or `(bg)`, and what it does now (its streamed activity while it
+- **Rows.** The mark, the agent's label (its spawn description; the Harness has no separate name), and what it does now (its streamed activity while it
   works: `Thinking…`, `Writing…`, `Using bash`; its task once it settled), in columns that line up down the list. At the right edge,
   two spaces apart, then the time behind a small dot as the Activity row has it (`· 41s`): in (`↑48k`: input with its cache, settled steps) and out (`↓6.4k`: settled steps plus
   the streaming attempt's estimate), the output rate while it streams (`47 tok/s`), and the time last. A figure that is
@@ -1416,8 +1444,8 @@ the row, a list of every subagent with a cursor (the one panel that is not a pla
   resumable, or read-only, comes from the child; `F7` returns to the parent, and `F8` closes the child and returns to this view), `x` is the common `delete` meaning (§3.5): it **stops**
   a continuable child behind the shared Yes/No with No focused first (no Stop button), through the one stop `/agents` uses.
   A row that cannot take a key says why in place of it. `Esc` leaves one layer.
-- **The spawn line.** In the stream, a spawn whose child still runs reads `● Subagent(task) · running in background`, and
-  follows the child: `✓ … · 41s` when it settles, `✕ … · failed` when it fails.
+- **The spawn line.** In the stream, several spawns read as one line that counts them (`● Subagent · 1/3`, `⚠ Subagent · 3/3 · 1 failed`), and a single one as
+  `● Subagent(task)`, with no clock of its own because the view has the time: `✓ … · 41s` when it settles, `✗ … · failed` when it fails. `Enter` on it moves to this view.
 - **Conversation keys.** `F7 btw · F8 close` (or `detach`) sit at the right of the notification pane (in place of its idle hint) whenever two or more
   conversations exist, and the conversation chip in the status row names the displayed one (§3.3).
 - **Motion.** The item has no clock of its own beyond the shared one-second tick that runs the times.
@@ -1447,6 +1475,10 @@ settled ones (newest first):
   `running`, then calls `jobs.kill`. A stopping or settled row says why `x` cannot act. `/jobs` remains the browser for
   finished jobs when `viewHistory` is off; the reader reached from `/jobs` (or a child opened from `/agents`) returns to that
   command's own page on `Esc`, never to the views: only what the view opened returns to the view.
+
+**Workflow** follows the item rules. The item counts the agents of its runs, settled over started, and holds five seconds
+after the last run settles. The panel has one line per run (at most three heads) above its members, each a mark, a label and a phase. `x` stops a
+background run through its job. A foreground run has no native stop: `Esc` ends it with the turn, and `x` on it does nothing, because a hidden action shows no reason. Background workflow jobs leave the Jobs list. In the stream a run is one line, `✓ Workflow(name) · 20s`.
 
 ### 5.6 Transcript
 
@@ -1760,7 +1792,7 @@ button.
 Questions takes the whole editor slot and hides the status row (`coverStatus: true`): the question is the only
 thing on screen below the conversation, with no status facts under it.
 
-**Built from:** `surface`, `tabs` (wizard), `list` (numbered or multiple), `form` (Other), `text`. Scene: Questions.
+**Built from:** `surface`, `tabs` (wizard), `list` (numbered or multiple, with an `input` row for Other), `text`. Scene: Questions.
 
 **Shared wizard.** Questions, onboarding (6c.4) and the provider forms (`/provider add|edit`, the price form) are
 all multi-step forms. They share one wizard pattern (`patterns.wizard`, built in Phase 6 round R5): a step strip, a
@@ -1787,9 +1819,10 @@ row typed in place.
 ╰──────────────────────────────────────────────────────────────────────╯
 ```
 
-**`←` and `→` move directly between questions** from any option row, because an option row has nothing for them to
-adjust. In the `Other` text field the arrows keep moving the caret (and `←` at the start of the field is the first
-key the ladder of §4.5 hands on), and `Alt+←`/`Alt+→` switch question from anywhere, including there.
+**`←` and `→` move directly between questions** from any option row and from an empty `Other`, because those rows have
+nothing for them to adjust. Once `Other` holds text the arrows move its caret (`←` at the start of the text is the first
+key the ladder of §4.5 hands on, and `→` at its end does nothing), and `Alt+←`/`Alt+→` switch question from anywhere,
+including there.
 The Review page lists every answer (`— skipped` in warning), `1`–`3` jump to a question,
 and `Submit answers` sends everything. Below 60 columns the strip collapses to
 `Region · 2/3 ›`. There are no `Back`/`Next`/`Cancel` buttons: `Alt+←→`, `Enter`, and `Esc`

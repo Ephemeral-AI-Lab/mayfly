@@ -6,13 +6,13 @@ import { panel, ui, type MayflyContentChunk, type MayflyListItem, type MayflyTon
 import type { MayflyTranslate } from '../frontend/locale.ts'
 const STATUS_TONE: Readonly<Record<JobView['status'], MayflyTone>> = { running: 'primary', stopping: 'warning', completed: 'success', killed: 'muted', failed: 'danger' }
 
-export function isLiveJob(job: JobView): boolean { return job.status === 'running' || job.status === 'stopping' }
+function isLiveJob(job: JobView): boolean { return job.status === 'running' || job.status === 'stopping' }
 
-export function sortJobs(jobs: readonly JobView[]): readonly JobView[] {
+function sortJobs(jobs: readonly JobView[]): readonly JobView[] {
   return [...jobs.filter(isLiveJob).toSorted((a, b) => a.startedAt - b.startedAt), ...jobs.filter(job => !isLiveJob(job)).toSorted((a, b) => (b.finishedAt ?? b.startedAt) - (a.finishedAt ?? a.startedAt))]
 }
 
-export function formatJobDuration(startedAt: number, now: number): string {
+function formatJobDuration(startedAt: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - startedAt) / 1000))
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.floor(seconds / 60)
@@ -21,7 +21,7 @@ export function formatJobDuration(startedAt: number, now: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`
 }
 
-export function jobItems(jobs: readonly JobView[], now: number, t: MayflyTranslate): readonly MayflyListItem[] {
+function jobItems(jobs: readonly JobView[], now: number, t: MayflyTranslate): readonly MayflyListItem[] {
   return sortJobs(jobs).map(job => ({
     id: String(job.id), label: job.label,
     cells: [

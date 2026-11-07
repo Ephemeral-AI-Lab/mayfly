@@ -64,6 +64,9 @@ subset Mayfly consumes and the rules that keep it native.
 | `contextBreakdown` | `@deepseek-ai/dsh-token-meter` | `/context` composition |
 | `sessionListMetadata` | `@deepseek-ai/dsh-api-session-controller` | sessions list last-prompt time |
 | `agentPreset` | `@deepseek-ai/dsh-agent-preset-registry` | preset display |
+| `inbox` | `@deepseek-ai/dsh-agent-loop` | queued prompts and question replies |
+| `imageLimits` | `@deepseek-ai/dsh-api-session-controller` | prompt image admission |
+| `turnOutline` | `@deepseek-ai/dsh-session-turn-outline` | status and pane surfaces |
 
 Host plugins read with `ctx.sessionProjections.snapshot(session, keys)`,
 `stateOf` for host-only state, and `onChanged` for subscriptions. A session
@@ -111,6 +114,16 @@ fallback only when no working-directory service is composed.
 | Permissions | `ctx.permissionPresets` | catalog/current; `/permission` remains native |
 | Session query | `ctx.sessionQuery` | `/trace`, `/stats` history; no second log store |
 | Persistence | native Session Query/controller | Host passive presentation queries; no TUI filesystem access or persistence-based session browsing |
+| Startup URL | `ctx.connection` / `ctx.webApp` | the authenticated advertised URL `mayfly-host-startup` hands to the TUI |
+| Invocation | `ctx.invocation` | the calling connection behind an authorization request |
+| Sandbox and approval | `ctx.shell` / `ctx.approval` | sandbox mode and approval policy shown in catalog details |
+| Profile | `ctx.profileContext` | the profile directory the settings document locks |
+| Agent files | Agent `ctx.fs` | delivered-file identity for `/files` |
+| Application exit | `ctx.appExit` | Host shutdown |
+
+The TUI's own Cordis tree holds only the official Client services
+(`connection`, `remote`, `fileUpload`, `sessions`, `workspaces`), Cordis
+infrastructure, and Mayfly services.
 
 These services stay in the Host process. Remote uses their existing official
 Remote namespaces, Session faces, and native file routes. The focused
@@ -174,8 +187,24 @@ additional frontend-local connection commands.
 
 ## Enforcement
 
-`tests/architecture/native-capability.spec.ts` scans source for projection and
-service names, command registrations, direct profile writes, loader internals,
-session-browsing persistence reads, current-operation header cwd reads, and
-known prose/flag guesses. A new key or service must be added here with its
-native owner; a Mayfly-owned key must be justified under the rules above.
+`packages/mayfly/tests/architecture/native-capability.spec.ts` scans the Host
+and TUI sources for projection and service names, registered projection keys,
+command registrations, direct profile writes, loader internals,
+session-browsing persistence reads, header cwd reads, and known prose/flag
+guesses. A new key or service must be added here with its native owner; a
+Mayfly-owned key must be justified under the rules above.
+
+## Tool display: facts the Harness does not offer
+
+Mayfly's stream shows what these calls report. These stay partial until the Harness offers them:
+
+| Would show | What exists | What Mayfly shows |
+| --- | --- | --- |
+| A typed count on an MCP result (`12 issues`) | The bridge flattens a result to text; `structuredContent` does not reach the durable result | `N items` for a JSON list, else the size |
+| A resource link as a link | The bridge writes `Resource link: name (uri)` into the text | That text |
+| Edit `3 replaced` | No replacement count in the result metadata | The diffstat |
+| Grep's case flag | `grep` takes `pattern`, `path`, `include` | Those |
+| A background command's job id on its line | Only the rendered `started background job <id>`, which is never parsed | `background`; the Jobs view has the job |
+| A spawn's foreground or background mode | No such mode; a spawn is answered at once | The Agents view holds the child; the activity row counts a spawn only until its answer |
+| Stopping a foreground workflow | No native call | `Esc` ends it with the turn; `x` does nothing on it |
+

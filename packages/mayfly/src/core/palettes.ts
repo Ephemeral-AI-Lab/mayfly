@@ -17,7 +17,7 @@ import { colorsFromForegrounds, themeModel, type MayflyBackgroundHexes, type May
 import type { MayflySemanticColors } from './types.ts'
 
 /** One built-in palette. */
-export interface MayflyPalette {
+interface MayflyPalette {
   /** The `/theme` key and the `mayfly.theme` setting value. */
   readonly key: string
   /** The display name. A proper noun, never translated. */
