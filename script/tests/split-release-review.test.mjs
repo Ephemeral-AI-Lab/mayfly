@@ -123,6 +123,20 @@ test('content decisions bind an exact named row, its style, dimensions and ownin
   rejected(sample, /Reviewed source changed/u)
 })
 
+test('an owner-design decision reviews its exact row, and any other category is still refused', t => {
+  const sample = fixture(t)
+  const decision = { scenario: 'smoke', checkpoint: 'startup', cols: 40, rows: 2, row: 1, category: 'owner-design', reason: 'The owner accepted this exact row in a live review.', reference: { text: '  Esc close', styles: [] }, candidate: { text: '  Owner accepted', styles: [] } }
+  sample.update(grid => ({ ...grid, lines: [grid.lines[0], decision.candidate.text] }))
+  rejected(sample, /Unreviewed text\/style difference/u)
+  sample.policy.decisions.push(decision)
+  const result = reviewSplitReleaseSuite(sample)
+  assert.equal(result.status, 'passed-with-reviewed-differences')
+  assert.equal(result.results[0].reviewedDifferences.at(-1).rule, 'owner-design')
+  assert.equal(result.strictParityVerified, false)
+  decision.category = 'taste'
+  rejected(sample, /Missing or unknown exact row decision/u)
+})
+
 test('required release changes cannot silently revert to reference text and pass as strict exact', t => {
   const sample = fixture(t)
   sample.update(() => parseGrid(sample.reference))

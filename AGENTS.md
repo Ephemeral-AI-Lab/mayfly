@@ -61,7 +61,9 @@ Full/PR gates retain raw strict results and separately validate the source-bound
 release decisions in `script/scenarios/split-release-policy.json`. A reviewed
 release result is not strict parity. New versions, changed reviewed sources,
 unknown rows/styles and runtime failures require fresh review; never expand
-the policy to make an unexplained failure pass. Reference defects still run
+the policy to make an unexplained failure pass. A deliberate difference from the reference
+is recorded as an `owner-design` row only after the owner accepted that exact
+row live; such a row is a reviewed result, not strict parity. Reference defects still run
 the complete candidate workflow and retain their original failure evidence.
 
 The integrator owns package contracts, manifests, locks, public entries, and
