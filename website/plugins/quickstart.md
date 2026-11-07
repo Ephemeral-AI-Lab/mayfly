@@ -36,15 +36,25 @@ export function apply(ctx: Context): void {
 }
 ```
 
-在专用 worktree 的 Remote composition 中通过普通 `ctx.plugin(entry)` 挂载，
-构建后启动对应 Host/TUI：
+把它组合进自己的 TUI 入口。`@ephemeral-ai/mayfly/bin` 的 `run` 就是 `mayfly`
+命令本身，接受相同的选项和环境变量；插件在内置功能之后加载进 TUI 的 Cordis
+树，并随 TUI 一同卸载：
 
-```sh
-PROFILE=mayfly-build-health script/install-dev.sh
-dsh --profile mayfly-build-health
-MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh
+```ts
+import { run } from '@ephemeral-ai/mayfly/bin'
+import * as buildHealth from '@acme/build-health-ui'
+
+await run(process.argv.slice(2), { plugins: [buildHealth] })
 ```
 
-当前没有公共的外部 TUI 插件安装或热加载入口。依赖 Host 状态时，Remote consumer
-通过官方 Client 或 focused Mayfly Host DTO 获取事实，再把 readonly 节点交给 UI。
-修改源码后 rebuild；依赖变化后重新安装专用 profile。不要使用生产 `mayfly` 验收。
+与 `mayfly` 一样另外启动 Host，再用 Host 的 startup URL 运行这个入口：
+
+```sh
+dsh --profile mayfly-build-health
+MAYFLY_DSH_STARTUP_URL='<Host URL>' node ./build-health-tui.js
+```
+
+`examples/mayfly-ecosystem` 是一个完整的组合。TUI 插件没有安装器或热加载：组合就是
+一个普通程序。TUI 的树提供四个 UI service，但没有原生 dsh service；需要 Host 状态的
+TUI 插件通过官方 Client 或 focused Mayfly Host DTO 获取事实，再发布 readonly 节点。
+不要使用生产 `mayfly` 验收。

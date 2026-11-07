@@ -5,7 +5,7 @@ import { panel, ui, type MayflyListItem, type MayflyUiNode } from '@ephemeral-ai
 import type { MayflyLocaleId, MayflyTranslate } from '../frontend/locale.ts'
 
 /** Renderer-neutral timing facts supplied by the native or independent owner. */
-export type ScheduleRecord = { readonly id: string, readonly title: string, readonly scheduledAt: string } & (
+type ScheduleRecord = { readonly id: string, readonly title: string, readonly scheduledAt: string } & (
   | { readonly kind: 'every', readonly everySeconds: number }
   | { readonly kind: 'daily' | 'weekly' | 'cron', readonly timeZone: string }
   | { readonly kind: 'after' | 'at' | 'rrule' }
@@ -14,8 +14,6 @@ export type ScheduleRecord = { readonly id: string, readonly title: string, read
 type TimeUnit = 'day' | 'hour' | 'minute' | 'second'
 
 const SECOND_MS = 1_000
-/** How often an open reminder catalog repaints its relative labels. */
-export const SCHEDULE_TICK_MS = SECOND_MS
 const SECOND_UNIT = { unit: 'second', seconds: 1 } as const
 const UNIT_SECONDS: readonly { unit: TimeUnit; seconds: number }[] = [
   { unit: 'day', seconds: 86_400 },
@@ -37,7 +35,7 @@ function unitLabel(unit: TimeUnit, value: number, t: MayflyTranslate): string {
 }
 
 /** Pick the largest exact whole unit without rounding the durable interval. */
-export function formatReminderFrequency(record: ScheduleRecord, t: MayflyTranslate): string {
+function formatReminderFrequency(record: ScheduleRecord, t: MayflyTranslate): string {
   if (record.kind === 'daily') return t('Daily')
   if (record.kind === 'weekly') return t('Weekly')
   if (record.kind === 'cron') return t('Cron')
@@ -62,7 +60,7 @@ function formatReminderLocalTime(scheduledAt: string, locale?: MayflyLocaleId): 
 }
 
 /** Human relative target using the largest natural clock unit. */
-export function formatReminderRelative(scheduledAt: string, now: number, t: MayflyTranslate): string {
+function formatReminderRelative(scheduledAt: string, now: number, t: MayflyTranslate): string {
   const difference = Date.parse(scheduledAt) - now
   if (difference === 0) return t('Due now')
   const absoluteSeconds = Math.abs(difference) / SECOND_MS

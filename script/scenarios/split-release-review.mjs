@@ -156,7 +156,7 @@ export function reviewSplitReleaseSuite({ root, artifacts, suite, scenarios, pol
             else {
               const decision = policy.decisions.find(item => item.scenario === name && item.checkpoint === checkpoint.name && item.cols === checkpoint.cols && item.rows === checkpoint.rows && item.row === row)
               requireFact(decision !== undefined && same(decision.reference, before) && same(decision.candidate, after), `Unreviewed text/style difference: ${name}/${checkpoint.name} row ${row}`)
-              requireFact(typeof decision.reason === 'string' && decision.reason.length >= 20 && ['release-content', 'native-fact', 'partial-api', 'command-catalog'].includes(decision.category), 'Missing or unknown exact row decision')
+              requireFact(typeof decision.reason === 'string' && decision.reason.length >= 20 && ['release-content', 'native-fact', 'partial-api', 'command-catalog', 'owner-design'].includes(decision.category), 'Missing or unknown exact row decision')
               rule = decision.category
             }
             review.reviewedDifferences.push({ checkpoint: checkpoint.name, row, rule, referenceSha256: hash(JSON.stringify(before)), candidateSha256: hash(JSON.stringify(after)) })

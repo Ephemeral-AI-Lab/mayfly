@@ -20,7 +20,7 @@ import { collectChangedFiles, defaultBase } from './change-files.mjs'
 import { changedLines, uncoveredChangedLines } from './verify/coverage-diff.mjs'
 import { vitestFailures, writeReport } from './verify/report.mjs'
 import { classifyChanges, promoteToFull, repositoryGraph } from './verify/select.mjs'
-import { OUTPUT, PERF_RESULTS, SCENARIO_RESULTS, SPLIT_RESULTS, SPLIT_REVIEW_RESULTS, TIERS, VITEST_RESULTS, stepsFor } from './verify/steps.mjs'
+import { OUTPUT, SPLIT_RESULTS, SPLIT_REVIEW_RESULTS, TIERS, VITEST_RESULTS, stepsFor } from './verify/steps.mjs'
 
 /**
  * Parse the command line.
@@ -62,34 +62,9 @@ function runStep(step, { root, log, verbose }) {
   })
 }
 
-/** The failures a scenario run reports: a checkpoint that differs (with its rows), is new, a broken run, an orphan. */
-export function scenarioFailures(results) {
-  const failures = []
-  for (const result of results.results ?? []) {
-    const file = `scenario ${result.name}`
-    const size = `${String(result.cols)}x${String(result.rows)}`
-    for (const entry of result.checkpoints) {
-      const look = entry.png === undefined ? '' : `\nLook: ${entry.png}${entry.basePng === undefined ? '' : ` (the merge base: ${entry.basePng})`}`
-      if (entry.status === 'differs') failures.push({ kind: 'scenario', file, test: `${entry.checkpoint} at ${size} differs from its golden`, message: `${entry.diff.join('\n')}${look}` })
-      else if (entry.status === 'new') failures.push({ kind: 'scenario', file, test: `${entry.checkpoint} at ${size} has no golden`, message: `accept it with the update command below${look}` })
-    }
-    for (const failure of result.failures) failures.push({ kind: 'scenario', file, test: `the run at ${size}`, message: failure })
-  }
-  for (const orphan of results.orphans ?? []) failures.push({ kind: 'scenario', file: orphan, test: 'no checkpoint writes this golden', message: 'remove it with the update command below' })
-  return failures
-}
-
 /** Strict reference differences and real split failures; these can never be accepted as candidate goldens. */
 export function splitFailures(results) {
   return (results.results ?? []).flatMap(result => (result.failures ?? []).map(message => ({ kind: 'split', file: `split ${result.scenario}`, test: result.scenario === 'network' ? 'real network recovery' : 'published rc.2 parity', message })))
-}
-
-/** The failures of a perf run: a ceiling broken, or a run that broke. */
-export function perfFailures(results) {
-  return [
-    ...(results.scenarios ?? []).flatMap(scenario => (scenario.breaches ?? []).map(breach => ({ kind: 'perf', file: `perf ${scenario.name}`, test: `${breach.span} ${breach.metric}`, message: `${String(breach.value)} is past its ceiling ${String(breach.ceiling)}` }))),
-    ...(results.failures ?? []).filter(failure => !failure.includes('past its ceiling')).map(failure => ({ kind: 'perf', message: failure })),
-  ]
 }
 
 const tail = (file, lines = 30) => readFileSync(file, 'utf8').replace(/\x1b\[[0-9;?]*[A-Za-z]/gu, '').split('\n').slice(-lines).join('\n').trim()
@@ -120,17 +95,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const results = []
     const failures = []
     let stopped = false
-    let perf
     let splitReview
     for (const [index, step] of steps.entries()) {
       if (stopped) { results.push({ name: step.name, status: 'skip', durationMs: 0, command: shell(step) }); continue }
       const log = join(output, 'steps', `${String(index + 1).padStart(2, '0')}-${slug(step.name)}.log`)
       const vitestResults = join(root, VITEST_RESULTS)
-      const scenarioResults = join(root, SCENARIO_RESULTS)
-      const perfResults = join(root, PERF_RESULTS)
       const splitResults = join(root, SPLIT_RESULTS)
       // Preserve each kind's evidence when a later step runs (especially full coverage before PTY).
-      const stepResults = { specs: vitestResults, coverage: vitestResults, scenarios: scenarioResults, perf: perfResults, split: splitResults }[step.kind]
+      const stepResults = { specs: vitestResults, coverage: vitestResults, split: splitResults }[step.kind]
       if (stepResults !== undefined) rmSync(stepResults, { force: true })
       if (step.kind === 'split') rmSync(join(root, SPLIT_REVIEW_RESULTS), { force: true })
       const begin = performance.now()
@@ -139,18 +111,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const status = code === 0 ? 'pass' : 'fail'
       results.push({ name: step.name, status, durationMs, command: shell(step), log: relative(root, log) })
       if (step.kind === 'split' && existsSync(join(root, SPLIT_REVIEW_RESULTS))) splitReview = JSON.parse(readFileSync(join(root, SPLIT_REVIEW_RESULTS), 'utf8'))
-      if (step.kind === 'perf' && existsSync(perfResults)) {
-        const measured = JSON.parse(readFileSync(perfResults, 'utf8'))
-        perf = { mode: measured.mode, baseline: measured.baseline, regressions: measured.regressions ?? [], improvements: measured.improvements ?? [] }
-      }
       process.stdout.write(`${status === 'pass' ? '✓' : '✗'} ${step.name} (${seconds(durationMs)})${status === 'fail' ? ` — ${relative(root, log)}` : ''}\n`)
       if (status === 'pass') continue
       const specFailures = step.kind === 'split'
         ? splitReview !== undefined ? splitReview.failures.map(message => ({ kind: 'split-review', message })) : existsSync(splitResults) ? splitFailures(JSON.parse(readFileSync(splitResults, 'utf8'))) : []
-        : step.kind === 'perf'
-        ? existsSync(perfResults) ? perfFailures(JSON.parse(readFileSync(perfResults, 'utf8'))) : []
-        : step.kind === 'scenarios'
-        ? existsSync(scenarioResults) ? scenarioFailures(JSON.parse(readFileSync(scenarioResults, 'utf8'))) : []
         : step.kind !== undefined && existsSync(vitestResults) ? vitestFailures(JSON.parse(readFileSync(vitestResults, 'utf8')), root).map(failure => ({ kind: 'spec', ...failure })) : []
       if (specFailures.length > 0) failures.push(...specFailures.map(failure => ({ step: step.name, ...failure })))
       else failures.push({ step: step.name, message: tail(log), log: relative(root, log) })
@@ -160,19 +124,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const advised = tier === 'pr' && options.coverageAdvice && steps.some(step => step.kind === 'coverage') && existsSync(coverageFile)
     const uncovered = advised ? uncoveredChangedLines(JSON.parse(readFileSync(coverageFile, 'utf8')), changedLines(root, base, plan.files.filter(file => existsSync(join(root, file)))), root) : []
     const failedSpecs = [...new Set(failures.flatMap(failure => failure.kind === 'spec' ? [failure.file] : []))]
-    const failedScenarios = [...new Set(failures.flatMap(failure => failure.kind === 'scenario' && failure.file.startsWith('scenario ') ? [failure.file.slice('scenario '.length)] : []))]
     const failedSplit = [...new Set(failures.flatMap(failure => failure.kind === 'split' ? [failure.file.slice('split '.length)] : []))]
     const rerun = [
       ...failedSplit.map(scenario => `node script/split-parity.mjs --scenario ${scenario}`),
       ...failedSpecs.length > 0 ? [`pnpm exec vitest run ${failedSpecs.join(' ')}`] : [],
-      ...failedScenarios.length > 0 ? [`pnpm run scenarios -- ${failedScenarios.join(' ')}`, `pnpm run frame <scenario>   # look at a checkpoint (.grid, .txt, .svg)`, `pnpm run scenarios -- --update ${failedScenarios.join(' ')}   # accept what the product paints now`] : [],
-      ...failures.some(failure => failure.kind === 'scenario' && !failure.file.startsWith('scenario ')) ? ['pnpm run scenarios -- --update'] : [],
       ...results.filter(result => result.status === 'fail' && !failures.some(failure => failure.step === result.name && failure.file !== undefined)).map(result => result.command),
     ]
     const verdict = results.some(result => result.status === 'fail') ? 'fail' : 'pass'
     writeReport(output, {
       tier, base, verdict, durationMs: Math.round(performance.now() - started), files: plan.files, reasons: plan.reasons,
-      manualAcceptance: plan.manualAcceptance, steps: results, tests: plan.tests, failures, uncovered, rerun, perf, splitReview,
+      manualAcceptance: plan.manualAcceptance, steps: results, tests: plan.tests, failures, uncovered, rerun, splitReview,
     })
     for (const failure of failures.filter(entry => entry.file !== undefined).slice(0, 10)) process.stdout.write(`  ✗ ${failure.file} › ${failure.test}\n`)
     process.stdout.write(`check: ${verdict === 'pass' ? 'PASS' : 'FAIL'} (${tier}, ${seconds(performance.now() - started)}) — ${relative(root, join(output, 'summary.md'))}\n`)

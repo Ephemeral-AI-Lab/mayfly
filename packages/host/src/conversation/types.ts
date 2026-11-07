@@ -98,6 +98,8 @@ export interface ConversationToolEntry extends ConversationEntryBase {
   readonly startedAt: number
   readonly channel: 'transcript' | 'todo' | 'agents'
   readonly result?: ConversationToolResult | undefined
+  /** On a client's transient overlay only: the call's arguments still stream, this many characters so far. Never durable. */
+  readonly preparing?: { readonly characters: number } | undefined
 }
 
 /** Structured turn failure. */
@@ -252,10 +254,10 @@ export interface ConversationFacts {
     readonly preparing?: boolean | undefined
   }> | undefined
   /**
-   * The non-spawn calls in flight: committed and awaiting their result, or (from the live draft) still streaming their
-   * arguments. The stream's pending lines and the activity row's tool phase both read this one list.
+   * The non-spawn calls committed and awaiting their result, with when each started. A call whose arguments still stream
+   * is not here yet: it lives in the Client's event window, the attempt's transient overlay.
    */
-  readonly inFlight?: readonly Readonly<{ readonly callId: string, readonly name: string, readonly detail?: string | undefined, readonly preparing?: boolean | undefined }>[] | undefined
+  readonly inFlight?: readonly Readonly<{ readonly callId: string, readonly name: string, readonly startedAt: number }>[] | undefined
   /** A provider request being retried after a failure: which retry, when it was scheduled, and how long it waits. */
   readonly retrying?: Readonly<{ readonly retry: number, readonly maxRetries: number, readonly at: number, readonly delayMs: number, readonly reason?: string | undefined, readonly status?: number | undefined }> | undefined
   /** The context occupancy around each recent compaction, kept so its settled row reads the same numbers for good. */

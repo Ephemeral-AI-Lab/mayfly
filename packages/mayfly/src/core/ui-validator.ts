@@ -443,6 +443,8 @@ function span(value: unknown, path: string, state: ValidationState, motion = fal
     const motionValue = own(object, 'motion', path)
     const variantValue = own(object, 'variant', path)
     const content = clipped ? label(required(object, 'text', path), `${path}.text`) : text(required(object, 'text', path), `${path}.text`)
+    const elasticValue = own(object, 'elastic', path)
+    const elastic = elasticValue === undefined ? undefined : boolean(elasticValue, `${path}.elastic`)
     if (motionValue === undefined && variantValue !== undefined) invalid(`${path}.variant needs a loader motion`)
     if (motionValue !== undefined) {
       if (!motion) invalid(`${path}.motion is only supported in rich text outside status nodes`)
@@ -451,7 +453,7 @@ function span(value: unknown, path: string, state: ValidationState, motion = fal
       if (channel === 'shimmer' && (content === '' || variantValue !== undefined)) invalid(`${path} shimmer needs text and takes no variant`)
       return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles'), motion: channel, ...optional(variantValue === undefined ? undefined : enumeration(variantValue, ['bloom', 'fill', 'gap', 'breath', 'pulse'] as const, `${path}.variant`), 'variant') }
     }
-    return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles') }
+    return { text: content, ...optional(tone, 'tone'), ...optional(styles, 'styles'), ...optional(elastic, 'elastic') }
   })
 }
 

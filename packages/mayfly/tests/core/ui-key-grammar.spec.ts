@@ -2,7 +2,7 @@
  * @module @ephemeral-ai/mayfly/tests/core/ui-key-grammar
  */
 import { describe, expect, it } from 'vitest'
-import { ACTION_FOCUS_NEXT, ACTION_FOCUS_PREV, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SUBMIT, printableKey } from '../../src/core/key-actions.ts'
+import { ACTION_END, ACTION_FOCUS_NEXT, ACTION_FOCUS_PREV, ACTION_HOME, ACTION_MOVE_DOWN, ACTION_MOVE_UP, ACTION_NEXT_TAB, ACTION_PREV_TAB, ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_SUBMIT, printableKey } from '../../src/core/key-actions.ts'
 import { grammarHints, keyGrammar, type GrammarControl, type GrammarState } from '../../src/core/ui-key-grammar.ts'
 
 function state(overrides: Partial<GrammarState>): GrammarState {
@@ -90,11 +90,39 @@ describe('tabs, rails, and the ← ladder in the grammar', () => {
     expect(grammarHints(keyGrammar(rail)).map(hint => [hint.id, hint.label, hint.actions])).toEqual([
       ['navigate', 'labels', [ACTION_MOVE_UP, ACTION_MOVE_DOWN]], ['activate', 'open', [ACTION_SEGMENT_RIGHT]],
     ])
-    // Plain arrows never switch a horizontal strip; Alt+←/→ does, and the strip's hint names it.
+    // Plain arrows move a focused strip; the hint keeps naming Alt+←/→, which also work from the page.
     const strip = state({ tabs: true, control: { kind: 'tab' }, siblings: 3 })
-    expect(intents(strip, ACTION_SEGMENT_LEFT)).toEqual([])
-    expect(intents(strip, ACTION_SEGMENT_RIGHT)).toEqual([])
+    expect(intents(strip, ACTION_SEGMENT_LEFT)).toEqual(['tab-switch'])
+    expect(intents(strip, ACTION_SEGMENT_RIGHT)).toEqual(['tab-switch'])
     expect(grammarHints(keyGrammar(strip)).find(hint => hint.id === 'tabs')).toMatchObject({ compact: 'Alt+←→' })
+  })
+
+  it('walks a wizard with the plain arrows only from a row that has no use for them', () => {
+    const row = { kind: 'row', role: 'choose', multiple: false, tree: false } as const
+    const hinted = (control: GrammarState['control'], extra: Partial<GrammarState> = {}) => grammarHints(keyGrammar(state({ tabs: true, wizard: true, control, ...extra }))).find(hint => hint.id === 'tabs')
+    expect(intents({ tabs: true, wizard: true, control: row }, ACTION_SEGMENT_RIGHT)).toEqual(['tab-switch'])
+    expect(hinted(row)).toMatchObject({ label: 'tabs', actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] })
+    expect(hinted(row, { tabsLabel: 'question' })).toMatchObject({ label: 'question' })
+    // A search names only what ends it; the keys stay.
+    expect(hinted(row, { list: { filterable: true, searching: true, query: true, pasting: false } })).toBeUndefined()
+    for (const own of [{ ...row, segment: 'thinking' }, { ...row, tree: true }, { ...row, expandable: true }, { ...row, input: { atStart: false, atEnd: true } }]) {
+      expect(hinted(own)?.actions).toEqual([ACTION_PREV_TAB, ACTION_NEXT_TAB])
+    }
+    expect(intents({ tabs: true, control: row }, ACTION_SEGMENT_RIGHT)).toEqual(['navigate'])
+  })
+
+  it('gives a text row its caret keys once it holds text', () => {
+    const row = { kind: 'row', role: 'choose', multiple: false, tree: false } as const
+    // The first binding that matches handles the key.
+    const first = (input: { readonly atStart: boolean, readonly atEnd: boolean }, id: string) => intents({ control: { ...row, input } }, id)[0]
+    const empty = { atStart: true, atEnd: true }
+    expect(first(empty, ACTION_SEGMENT_LEFT)).toBe('navigate')
+    expect(first(empty, ACTION_HOME)).toBe('list-move')
+    const inside = { atStart: false, atEnd: false }
+    for (const id of [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT, ACTION_HOME, ACTION_END]) expect(first(inside, id)).toBe('row-input')
+    expect(first(inside, ACTION_MOVE_UP)).toBe('list-move')
+    expect(first({ atStart: true, atEnd: false }, ACTION_SEGMENT_LEFT)).toBe('navigate')
+    expect(first({ atStart: false, atEnd: true }, ACTION_SEGMENT_RIGHT)).toBe('swallow')
   })
 
   it('words the tab switch with the strip\'s hint word, and binds the focus levels everywhere outside editing', () => {

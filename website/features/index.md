@@ -15,7 +15,7 @@ Mayfly 在 Harness `0.2.2-rc.1` 上运行原生 dsh Host 与独立 Remote TUI，
 
 - core 是唯一 pi-tui/raw-terminal owner；
 - status producer 直接注册到 `mayflyStatus`；
-- activity、queue、todo、agents、workflow pane 直接注册到 `mayflyPanes`；
+- activity 与通知面板，以及 agents、jobs、workflow、goal、todo 视图直接注册到 `mayflyPanes`；
 - BTW、subagent 与已存储的 child 都在同一个 transcript 面板中渲染；live 会话驱动完整主布局，cold/one-shot 会话从原生历史读取，标为只读或可恢复；
 - Remote jobs footer、`/jobs` 与 `/agents` 消费原生 transport 事实和 focused Host DTO；
 - overlay 由 `mayflyOverlays` 渲染；

@@ -11,8 +11,17 @@
 import type { MayflyTranslate } from '../frontend/locale.ts'
 import type { ProcessActivity } from '../frontend/models.ts'
 
+/** The bottom view that owns what a call starts or changes, so the stream need not repeat it. */
+export type ToolOwner = 'agents' | 'jobs' | 'workflow' | 'todo' | 'goal'
+
+/**
+ * Where a call is drawn: `full` is a record with a body; `line` is one line, its detail its view's; `quiet` is drawn only at
+ * the Verbose tier; `hidden` is never drawn. A call that failed or waits on the user is drawn whatever its placement.
+ */
+export type ToolPlacement = 'full' | 'line' | 'quiet' | 'hidden'
+
 /** What one category of tool does in the stream. */
-export interface ToolKind {
+interface ToolKind {
   /** Whether the head of a run names what the calls did, so a call's line in the run is just its target. */
   readonly headed: boolean
   /** The tool's own name, for the head of a group whose calls are not all of one tool (`Read`, `WebSearch`). */
@@ -27,6 +36,9 @@ export interface ToolKind {
   readonly mergeable: boolean
   /** Whether the call's input grows in its block while the model writes it (a file change). */
   readonly streams: boolean
+  /** The view that owns the category's detail: its calls have no body, and no clock while they run. */
+  readonly owner?: ToolOwner
+  readonly placement: ToolPlacement
 }
 
 const BASE: ToolKind = {
@@ -37,7 +49,11 @@ const BASE: ToolKind = {
   preparing: 'Preparing tool calls',
   mergeable: true,
   streams: false,
+  placement: 'full',
 }
+
+/** The plan's calls, which the todo and goal views and the durable goal rows say in full. */
+const PLAN_KIND: Partial<ToolKind> = { placement: 'hidden', mergeable: false, title: 'Plan', unit: ['{count} update', '{count} updates'], running: 'Updating the plan', preparing: 'Preparing to update the plan' }
 
 /** The categories that differ from the base. Searches, code runs, web searches, and plan updates name no object, so their phrase counts the times. */
 const OVERRIDES: Readonly<Record<ProcessActivity, Partial<ToolKind>>> = {
@@ -50,9 +66,14 @@ const OVERRIDES: Readonly<Record<ProcessActivity, Partial<ToolKind>>> = {
   code: { headed: true, title: 'RunCode', unit: ['{count} run', '{count} runs'], running: 'Running code', preparing: 'Preparing to run code' },
   webSearch: { headed: true, title: 'WebSearch', unit: ['{count} search', '{count} searches'], running: 'Searching the web', preparing: 'Preparing to search the web' },
   webFetch: { headed: true, title: 'WebFetch', unit: ['{count} page', '{count} pages'], running: 'Visiting web pages', preparing: 'Preparing to visit web pages' },
-  subagents: { title: 'Subagent', unit: ['{count} subagent', '{count} subagents'], running: 'Coordinating subagents', preparing: 'Preparing to coordinate subagents' },
-  plan: { title: 'Plan', unit: ['{count} update', '{count} updates'], running: 'Updating the plan', preparing: 'Preparing to update the plan' },
+  skill: { headed: true, title: 'Skill', unit: ['{count} skill', '{count} skills'], running: 'Loading skills', preparing: 'Loading skills' },
+  subagents: { owner: 'agents', placement: 'line', title: 'Subagent', unit: ['{count} subagent', '{count} subagents'], running: 'Coordinating subagents', preparing: 'Preparing to coordinate subagents' },
+  workflow: { owner: 'workflow', placement: 'line', mergeable: false, title: 'Workflow', running: 'Running a workflow', preparing: 'Preparing a workflow' },
+  jobs: { owner: 'jobs', placement: 'quiet', mergeable: false, title: 'Jobs', running: 'Checking jobs', preparing: 'Checking jobs' },
+  todo: { ...PLAN_KIND, owner: 'todo' },
+  goal: { ...PLAN_KIND, owner: 'goal' },
   questions: { title: 'Questions', unit: ['{count} question', '{count} questions'], running: 'Waiting for your action', preparing: 'Preparing questions' },
+  mcp: {},
   tools: {},
 }
 
@@ -68,6 +89,16 @@ export function kindOf(activity: ProcessActivity): ToolKind {
 }
 
 /**
+ * The view a line of the category moves to: Enter on a spawn or a workflow opens the view that has its detail.
+ * @param activity - the category a call counts under.
+ * @returns the view's id, or `undefined` when a line of the category opens in place.
+ */
+export function ownerViewOf(activity: ProcessActivity): string | undefined {
+  const kind = KINDS[activity]
+  return kind.placement === 'line' ? `mayfly.view.${kind.owner!}` : undefined
+}
+
+/**
  * What a group of calls of one category counts: `3 files`, `3 calls`.
  * @param activity - the calls' category.
  * @param count - how many calls.
@@ -78,22 +109,3 @@ export function unitPhrase(activity: ProcessActivity, count: number, t: MayflyTr
   return t(KINDS[activity].unit[count === 1 ? 0 : 1], { count })
 }
 
-/** A call in flight as the activity row sees it. */
-export interface FlightCall {
-  readonly activity: ProcessActivity
-  /** Whether the call's arguments still stream. */
-  readonly preparing: boolean
-}
-
-/**
- * The activity row's label for the calls in flight: one category names itself (`Running commands`), several say how many
- * calls run. The same list gives the stream its pending lines, so the row and the stream always speak of the same calls.
- * @param calls - the calls in flight; at least one.
- * @returns the untranslated label and its values.
- */
-export function flightLabel(calls: readonly FlightCall[]): { readonly key: string, readonly values?: { readonly count: number } } {
-  const first = calls[0]!
-  const preparing = calls.every(call => call.preparing)
-  if (calls.every(call => call.activity === first.activity)) return { key: preparing ? KINDS[first.activity].preparing : KINDS[first.activity].running }
-  return { key: preparing ? 'Preparing {count} tool calls' : 'Running {count} tools', values: { count: calls.length } }
-}

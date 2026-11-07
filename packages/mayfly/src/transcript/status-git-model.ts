@@ -2,7 +2,7 @@
 import type { MayflyStatusNode } from '@ephemeral-ai/mayfly-ui'
 import { SHED, shedNode } from './status-shed.ts'
 /** The git facts behind the badge. */
-export interface GitBadgeStatus {
+interface GitBadgeStatus {
   /** Checked-out branch name. */
   readonly branch: string
   /** Whether the working tree or index carries any change. */
@@ -22,7 +22,7 @@ export interface GitBadgeStatus {
  * probe failed or timed out, so dirty/ahead/behind are unknown — rendered
  * as `branch [?]`, never as a clean tree.
  */
-export interface GitUnknownBadgeStatus {
+interface GitUnknownBadgeStatus {
   /** Checked-out branch name. */
   readonly branch: string
   /** Discriminant: always true, marks the tree state as unknown. */

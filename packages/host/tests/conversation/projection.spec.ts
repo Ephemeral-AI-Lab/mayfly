@@ -14,7 +14,6 @@ import {
   settleKey,
 } from '../../src/conversation/projection.ts'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { conversationProjectionDefinition as privateDefinition, foldConversationProjection as privateFold } from '../../../mayfly/src/conversation/projection.ts'
 
 /** One session event carrying only the fields the fold reads. */
 function event(type: string, data: object, time = 1, seq = 1, surfaceOp?: string): SessionEvent {
@@ -34,7 +33,6 @@ describe('conversationProjectionDefinition', () => {
 
   const projectors = [
     { definition: conversationProjectionDefinition, fold: foldConversationProjection },
-    { definition: privateDefinition, fold: (state: ReturnType<typeof initialConversationState>, item: SessionEvent) => privateFold(state, item as never) },
   ]
   it.each(projectors)('preserves safe file metadata, attachment order and checkpoint replay', ({ definition, fold }) => {
     const file = { type: 'file', attachment: { attachmentId: 'file-one', name: 'report.txt', bytes: 6, target: '/private/target', path: '/private/path' } }

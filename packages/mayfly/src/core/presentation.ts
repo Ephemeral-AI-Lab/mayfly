@@ -68,16 +68,6 @@ export function readPresentation(ctx: Context): MayflyPresentation {
   return resolvePresentation(settings)
 }
 
-/**
- * Whether two presentations paint the same.
- * @param left - one presentation.
- * @param right - the other.
- * @returns true when every field matches.
- */
-export function samePresentation(left: MayflyPresentation, right: MayflyPresentation): boolean {
-  return left.glyphs === right.glyphs && left.monochrome === right.monochrome && left.reducedMotion === right.reducedMotion
-}
-
 const bold: MayflyColorFn = text => `\x1b[1m${text}\x1b[22m`
 const dim: MayflyColorFn = text => `\x1b[2m${text}\x1b[22m`
 const plain: MayflyColorFn = text => text

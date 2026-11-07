@@ -29,7 +29,7 @@ export const DECISION = {
 } as const
 
 /** A hidden key of the card: it runs from anywhere on the card, with the hint the row shows for it. */
-export interface DecisionCardKey {
+interface DecisionCardKey {
   readonly id: string
   readonly semantic: 'copy' | 'external'
   readonly label: string

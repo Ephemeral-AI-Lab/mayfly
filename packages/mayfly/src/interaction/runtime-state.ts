@@ -41,7 +41,6 @@ export class InteractionStateService extends Service {
   readonly sessionless = new SessionlessCommandRegistry()
   readonly draft = new DraftStash()
   settingsSource: () => MayflySettings
-  lastAppliedTheme: MayflySettings['theme'] = 'dark'
   currentThemeKey = 'dark'
   modelsDevCache: { at: number, index: ModelsDevIndex } | undefined
   updateInFlight = false

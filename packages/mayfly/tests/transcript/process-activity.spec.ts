@@ -4,17 +4,19 @@
 import { describe, expect, it } from 'vitest'
 import { interpolateLocaleMessage, type MayflyTranslate } from '../../src/frontend/locale.ts'
 import { diffStat, elapsedText, summarizeProcess, toolActivity, type ProcessMemberFact } from '../../src/transcript/process-activity.ts'
-import { flightLabel, kindOf, unitPhrase } from '../../src/transcript/tool-kinds.ts'
-import { ACTIVITY_LOCALE, TRANSCRIPT_LOCALE } from '../../src/transcript/locale.ts'
+import { unitPhrase } from '../../src/transcript/tool-kinds.ts'
+import { TRANSCRIPT_LOCALE } from '../../src/transcript/locale.ts'
 
 const zh: MayflyTranslate = (key, values) => interpolateLocaleMessage(TRANSCRIPT_LOCALE.zh[key] ?? key, values)
 const member = (activity: ProcessMemberFact['activity'], overrides: Partial<ProcessMemberFact> = {}): ProcessMemberFact => ({ activity, running: false, ...overrides })
 
 describe('process activity', () => {
   it('classifies by the upstream name table, then by presenter vocabulary', () => {
-    expect(['read', 'read_image', 'grep', 'glob', 'cordis_inspect', 'write', 'edit', 'apply_patch', 'bash', 'pwsh', 'terminal_x', 'run_code', 'web_search', 'web_fetch', 'subagent', 'subagent_fork', 'todo_write', 'get_goal', 'ask_user_question', 'request_user_input', 'mystery'].map(name => toolActivity(name)))
-      .toEqual(['read', 'readImage', 'search', 'search', 'search', 'write', 'edit', 'edit', 'commands', 'commands', 'commands', 'code', 'webSearch', 'webFetch', 'subagents', 'subagents', 'plan', 'plan', 'questions', 'questions', 'tools'])
+    expect(['read', 'read_image', 'grep', 'glob', 'cordis_inspect', 'write', 'edit', 'apply_patch', 'bash', 'pwsh', 'terminal_x', 'run_code', 'web_search', 'web_fetch', 'subagent', 'subagent_fork', 'workflow', 'job_output', 'job_kill', 'todo_write', 'create_goal', 'update_goal', 'get_goal', 'ask_user_question', 'request_user_input', 'mystery'].map(name => toolActivity(name)))
+      .toEqual(['read', 'readImage', 'search', 'search', 'search', 'write', 'edit', 'edit', 'commands', 'commands', 'commands', 'code', 'webSearch', 'webFetch', 'subagents', 'subagents', 'workflow', 'jobs', 'jobs', 'todo', 'goal', 'goal', 'goal', 'questions', 'questions', 'tools'])
+    expect(toolActivity('skill')).toBe('skill')
     expect(toolActivity('mcp_shell', { card: 'terminal', title: 'ls' })).toBe('commands')
+    expect(toolActivity('mcp__github__get_issue')).toBe('mcp')
     expect(toolActivity('str_replace_editor', { card: 'diff', title: 'x', diffs: [] })).toBe('edit')
     expect(toolActivity('reader', undefined, { card: 'read', path: 'a', offset: 1, lines: [], totalLines: 0 })).toBe('read')
     expect(toolActivity('finder', undefined, { card: 'search', shape: 'paths', paths: [], truncated: false, total: 0 })).toBe('search')
@@ -68,20 +70,5 @@ describe('process activity', () => {
     expect(elapsedText(9_960)).toBe('10s')
     expect(elapsedText(3_000)).toBe('3s')
     expect(elapsedText(65_000)).toBe('1m 5s')
-  })
-
-  it('names running and preparing categories for the activity row, one category by name and several by count', () => {
-    expect(kindOf('commands').running).toBe('Running commands')
-    expect(kindOf('subagents').running).toBe('Coordinating subagents')
-    expect(kindOf('edit').preparing).toBe('Preparing to edit files')
-    expect(flightLabel([{ activity: 'commands', preparing: false }, { activity: 'commands', preparing: false }])).toEqual({ key: 'Running commands' })
-    expect(flightLabel([{ activity: 'edit', preparing: true }])).toEqual({ key: 'Preparing to edit files' })
-    expect(flightLabel([{ activity: 'read', preparing: false }, { activity: 'commands', preparing: false }])).toEqual({ key: 'Running {count} tools', values: { count: 2 } })
-    expect(flightLabel([{ activity: 'read', preparing: true }, { activity: 'edit', preparing: true }])).toEqual({ key: 'Preparing {count} tool calls', values: { count: 2 } })
-    expect(ACTIVITY_LOCALE.zh[kindOf('commands').running]).toBe('正在运行命令')
-    expect(ACTIVITY_LOCALE.zh[kindOf('write').preparing]).toBe('准备写入文件')
-    // The retired reasoning-group titles are gone from both catalogs.
-    expect(TRANSCRIPT_LOCALE.zh['Analyzing the request']).toBeUndefined()
-    expect(TRANSCRIPT_LOCALE.zh['Analysis completed']).toBeUndefined()
   })
 })

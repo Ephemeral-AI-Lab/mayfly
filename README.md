@@ -17,7 +17,7 @@
 
 English | [中文](README.zh.md)
 
-Mayfly is an independent terminal frontend for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The product runs as two processes: a native dsh **Host** and a **Remote TUI** connected through the official HTTP/WebSocket Client. The Host owns Agents, models, tools, and Sessions; the TUI owns input, themes, panels, and terminal rendering. Closing the TUI detaches it while Host work continues.
+Mayfly is an independent terminal frontend for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The product runs as two processes: a native dsh **Host** and an independent **TUI** connected through the official HTTP/WebSocket Client. The Host owns Agents, models, tools, and Sessions; the TUI owns input, themes, panels, and terminal rendering. Closing the TUI detaches it while Host work continues.
 
 This development branch targets official Harness `0.2.2-rc.1`. The published Mayfly `0.1.4-rc.2` is the immutable reference for appearance, keys, and workflows. Shared presentation is being carried into the split runtime; complete visual parity still requires the acceptance described in [split validation](docs/split-parity-validation.md).
 
@@ -53,7 +53,7 @@ The installer builds the workspace, creates a dedicated profile from the native 
 /path/to/dsh --profile mayfly-split-accept
 
 # Terminal 2: TUI; copy the authenticated URL printed by the Host
-MAYFLY_DSH_STARTUP_URL='<URL printed by Host>' script/mayfly-remote.sh
+MAYFLY_DSH_STARTUP_URL='<URL printed by Host>' script/mayfly-tui.sh
 ```
 
 Model credentials, provider settings, permission presets, and session files belong to the Host. The Host emits one `mayfly host: <url>` readiness line. Supply that authenticated URL through `MAYFLY_DSH_STARTUP_URL`; the TUI rejects credentials in command-line arguments. `--host` accepts a non-secret HTTP(S) URL while obtaining its token from the environment.
@@ -63,12 +63,12 @@ The TUI supports an initial task, an existing Session, and a Host working direct
 ```sh
 # Set the authenticated URL once in this terminal
 export MAYFLY_DSH_STARTUP_URL='<URL printed by Host>'
-script/mayfly-remote.sh 'Explain this repository'
-script/mayfly-remote.sh --resume <session-id>
-script/mayfly-remote.sh --cwd /path/on/host 'Run the relevant checks'
+script/mayfly-tui.sh 'Explain this repository'
+script/mayfly-tui.sh --resume <session-id>
+script/mayfly-tui.sh --cwd /path/on/host 'Run the relevant checks'
 ```
 
-`MAYFLY_SESSION_ID`, `MAYFLY_CWD`, and `MAYFLY_TASK` provide defaults when corresponding arguments are absent. A launch without a task or resume id stays sessionless until the first prompt. `/new` and `/clear` return to that start view without creating an empty Session or stopping existing work. Rebuild with `pnpm run build` after source edits; rerun the installer when the dependency graph changes. The unified CLI uses this same Remote entry after starting and discovering its local background Host.
+`MAYFLY_SESSION_ID`, `MAYFLY_CWD`, and `MAYFLY_TASK` provide defaults when corresponding arguments are absent. A launch without a task or resume id stays sessionless until the first prompt. `/new` and `/clear` return to that start view without creating an empty Session or stopping existing work. Rebuild with `pnpm run build` after source edits; rerun the installer when the dependency graph changes. The unified CLI uses this same TUI entry after starting and discovering its local background Host.
 
 ## Use the TUI
 
@@ -99,7 +99,7 @@ These rows describe the remaining official API limits. Additional capabilities b
 | Area | Implemented behavior and remaining boundary |
 | --- | --- |
 | `/mcp` connection details | Official alpha.3 exposes no public configured-server/transport-health catalog. The panel lists servers discoverable from tool schemas and shows unknown connection state and absent transport/endpoint values. Resources/templates and explicit resource reads use native tools. A composition providing the optional sanitized catalog can add connection details. |
-| Remote TUI extension hot loading | Host bundle changes use the native plugin manager. The official API provides no dynamic TUI extension mount; the preset browser marks this boundary. Frontend extensions require source integration and a TUI restart. |
+| TUI extension hot loading | Host bundle changes use the native plugin manager. The official API provides no dynamic TUI extension mount; the preset browser marks this boundary. TUI plugins join through a source composition and a TUI restart. |
 | Cold child tool cards and controls | Passive native history and projections work. Without a live child Agent, custom presenters use generic durable tool cards and Agent-scoped controls report unavailable. Browsing never activates a child or borrows its parent's Agent. An explicit continuable-child reply uses the native addressed path. |
 | `/update` Host startup check | `/update [<version>]` stages and checks the exact frontend release graph, confirms, upgrades both installations, verifies versions, and compensates failed changes. `/update recover` restores an interrupted transaction on its original Host. The official Host API provides no isolated Host boot check; the confirmation and result explicitly require restarting both processes and checking Host startup. Linked/read-only and non-npm frontend installations use their original installer. |
 
@@ -111,13 +111,12 @@ Updates hold one cross-process lock through staging, installation, verification,
 
 ## Architecture and extensions
 
-The release set contains five packages:
+The release set contains four packages:
 
 | Package | Responsibility |
 | --- | --- |
-| `@ephemeral-ai/mayfly-host` | Native Host composition, durable Mayfly projections, and generated `mayflyHost` Remote methods. |
-| `@ephemeral-ai/mayfly-remote` | Official Client transport, Host/Session selection, feature controllers, and standalone TUI composition. |
-| `@ephemeral-ai/mayfly` | Shared renderer, themes, editor/transcript controllers, and readonly presentation subpaths. No root plugin, dsh bundle, patch, or preset payload is published. |
+| `@ephemeral-ai/mayfly-host` | Native Host composition, durable Mayfly projections, generated `mayflyHost` Remote methods, and the DTOs and conversation fold the TUI imports. |
+| `@ephemeral-ai/mayfly` | The independent TUI: official Client transport, Host/Session selection, feature controllers, renderer, themes, and editor/transcript controllers. Its public surface is the root, `./client`, and `./bin`; no Host plugin, dsh bundle, patch, or preset payload is published. |
 | `@ephemeral-ai/mayfly-ui` | Renderer-neutral node contracts, builders, and the four UI services/provider. |
 | `@ephemeral-ai/mayfly-cli` | Unified CLI for background Host management and independent TUI startup. |
 
@@ -127,8 +126,8 @@ The release set contains five packages:
 flowchart TB
     HOST["native dsh Host process<br/>dsh-base · dsh-web-app · mayfly-host"]
     STATE["native Agents · Sessions · models · tools<br/>durable Mayfly projections"]
-    WIRE["official Client HTTP/WebSocket<br/>serializable Remote DTOs · native file routes"]
-    REMOTE["independent Remote TUI process<br/>HostKey + SessionRef selection · local feature state"]
+    WIRE["official Client HTTP/WebSocket<br/>serializable Host DTOs · native file routes"]
+    REMOTE["independent TUI process<br/>HostKey + SessionRef selection · local feature state"]
     UI["four direct Mayfly UI services<br/>panes · status · overlays · editor extensions"]
     CORE["shared Mayfly core<br/>only pi-tui · ANSI · terminal · width owner"]
     TERM["terminal"]
@@ -142,7 +141,7 @@ flowchart TB
 ```
 <!-- END diagram:mayfly-layers -->
 
-Host plugins are ordinary Cordis plugins using documented native dsh services. TUI plugins contribute nodes through `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and `mayflyEditorExtensions` in the TUI's own Cordis tree. A plugin needing Host state uses the official Client/Remote protocol and serializable DTOs; Agent, Session, Tool Definition, callbacks, and renderer objects never cross processes. The removed in-process `mayflyCurrentAgent` and app/interaction entries are not public extension APIs. [Architecture](docs/mayfly-architecture.md) and [service seams](docs/mayfly-seams.md) describe the current boundaries.
+Host plugins are ordinary Cordis plugins using documented native dsh services. TUI plugins contribute nodes through `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and `mayflyEditorExtensions` in the TUI's own Cordis tree; a source composition passes them to `run(argv, { plugins })` from `@ephemeral-ai/mayfly/bin`, as `examples/mayfly-ecosystem` does. A plugin needing Host state uses the official Client/Remote protocol and serializable DTOs; Agent, Session, Tool Definition, callbacks, and renderer objects never cross processes. The removed in-process `mayflyCurrentAgent` and app/interaction entries are not public extension APIs. [Architecture](docs/mayfly-architecture.md) and [service seams](docs/mayfly-seams.md) describe the current boundaries.
 
 ## Development and verification
 

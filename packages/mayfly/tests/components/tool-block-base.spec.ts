@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import type { TranscriptEntryModel } from '../../src/frontend/models.ts'
 import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { callsOf, verboseRow, STANDARD_INPUT_ROWS } from '../../src/transcript/tool-calls.ts'
-import { flightLabel, kindOf } from '../../src/transcript/tool-kinds.ts'
+import { kindOf } from '../../src/transcript/tool-kinds.ts'
 import type { StreamRow } from '../../src/components/transcript-view.ts'
 
 const t = interpolateLocaleMessage
@@ -37,13 +37,6 @@ describe('the tool block base', () => {
     expect(kindOf('write')).toMatchObject({ mergeable: false, streams: true, title: 'Write' })
     // A category that names no descriptor of its own takes the base: a generic tool, mergeable, with the generic phrases.
     expect(kindOf('tools')).toMatchObject({ headed: false, title: 'Tools', mergeable: true, streams: false, running: 'Calling tools', preparing: 'Preparing tool calls' })
-  })
-
-  it('names a running category by its descriptor, and a mixed flight by its count', () => {
-    expect(flightLabel([{ activity: 'edit', preparing: true }])).toEqual({ key: 'Preparing to edit files' })
-    expect(flightLabel([{ activity: 'subagents', preparing: false }, { activity: 'subagents', preparing: false }])).toEqual({ key: 'Coordinating subagents' })
-    expect(flightLabel([{ activity: 'read', preparing: false }, { activity: 'commands', preparing: false }])).toEqual({ key: 'Running {count} tools', values: { count: 2 } })
-    expect(flightLabel([{ activity: 'read', preparing: false }, { activity: 'read', preparing: false }])).toEqual({ key: 'Reading files' })
   })
 })
 

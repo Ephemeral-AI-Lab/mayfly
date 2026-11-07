@@ -1,9 +1,8 @@
 # Mayfly package and release workflow
 
-The split runtime publishes five packages in lockstep:
-`@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`,
-`@ephemeral-ai/mayfly-host`, `@ephemeral-ai/mayfly-remote`, and
-`@ephemeral-ai/mayfly-cli`. The exact release order lives in
+The split runtime publishes four packages in lockstep:
+`@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly-host`,
+`@ephemeral-ai/mayfly`, and `@ephemeral-ai/mayfly-cli`. The exact release order lives in
 `script/package-contract.mjs`. The supported Harness line is `0.2.2-rc.1`.
 The published `@ephemeral-ai/mayfly@0.1.4-rc.2` remains an immutable parity
 reference; choose a new, unpublished version before releasing the split packages.
@@ -61,7 +60,7 @@ and official dsh runtime dependencies. It carries no runtime archives and does
 not change a separate global dsh installation. Existing initialized profiles
 refuse a recorded release mismatch. The supported managed upgrade uses the external installer followed by explicit server upgrade on the stopped original profile; see the bilingual Website upgrade guide. No silent profile upgrade is performed.
 
-The GitHub repository owns an `npm` environment. Until all five packages have
+The GitHub repository owns an `npm` environment. Until all four packages have
 trusted publishing configured, that environment must provide an `NPM_TOKEN`
 secret whose npm identity can publish under `@ephemeral-ai`. The release jobs
 use the environment for both the candidate publish and dist-tag promotion;

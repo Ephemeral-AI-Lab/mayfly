@@ -1,27 +1,28 @@
 /** Shared readonly conversation projection to transcript model mapping. @module */
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ToolCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
-import type { ConversationEntry, ConversationProjection, ConversationToolEntry } from '../conversation/types.ts'
-import { type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptFileChangeModel, type TranscriptModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type ToolInterruption, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
-import { diffChangeCounts } from '../core/diff-align.ts'
+import type { ConversationEntry, ConversationProjection, ConversationToolEntry } from '@ephemeral-ai/mayfly-host/types'
+import { type CommandCallModel, type ReadCallModel, type SearchCallModel, type TranscriptCommandGroupModel, type TranscriptEntryModel, type TranscriptFileChangeModel, type TranscriptModel, type TranscriptPatchFileModel, type TranscriptToolModel, type TranscriptReadGroupModel, type TranscriptSearchGroupModel, type ToolInterruption, type TranscriptTerminalModel, type TranscriptToolFamily, type TranscriptTurnModel, type TranscriptWebModel } from '../frontend/models.ts'
+import { diffChangeCounts, trimContext } from '../core/diff-align.ts'
 import { countWork, type MayflyWorkCounters } from '../core/ui-work-counters.ts'
 import { createToolPresentationModel } from './tool-model.ts'
 import { createTranscriptModel } from './transcript-model.ts'
 import { ellipsize, parseToolArguments, resolveCallView, resolveResultView, type ToolPresentationSource } from './present.ts'
-import { toolDetail } from '../conversation/activity-detail.ts'
+import { toolDetail } from '@ephemeral-ai/mayfly-host/conversation'
+import { patchFiles } from './patch-files.ts'
 import { toolActivity } from './process-activity.ts'
 
 /** Preview lines a read window carries: the body of its verbose block, opened to every row by Ctrl+O. */
-export const READ_PREVIEW_LINE_LIMIT = 40
+const READ_PREVIEW_LINE_LIMIT = 40
 
 /** Match previews a search file carries for the body of its verbose block. */
-export const SEARCH_PREVIEW_MATCH_LIMIT = 3
+const SEARCH_PREVIEW_MATCH_LIMIT = 3
 
 /** Path rows a glob call carries for the body of its verbose block. */
-export const SEARCH_PATH_LIMIT = 40
+const SEARCH_PATH_LIMIT = 40
 
 /** Output-tail rows a command carries for the body of its verbose block. */
-export const COMMAND_PREVIEW_LINE_LIMIT = 40
+const COMMAND_PREVIEW_LINE_LIMIT = 40
 
 /** Lines of a multi-line command that a call carries as its input rows. */
 const COMMAND_INPUT_LINE_LIMIT = 40
@@ -52,10 +53,10 @@ interface CachedToolGroup {
 }
 
 /**
- * Identity caches for one conversation source. Entries are keyed by their
- * registry-owned wire objects, which the projection retains across whole
- * values; presenters and models are keyed by the resolved tool they belong to.
- * A source replaces the whole object on attach and the tool half on a
+ * Identity caches for one conversation source. Entries are keyed by the
+ * decoded objects of one Host value, so a new value maps every entry again;
+ * presenters and models are keyed by the resolved tool they belong to. A
+ * source replaces the whole object on attach and the tool half on a
  * tools/change, so a stale presenter is never served.
  */
 export interface TranscriptModelCaches {
@@ -198,6 +199,14 @@ function firstNonEmptyLine(text: string): string | undefined {
   return text.split('\n').find(line => line.trim() !== '')
 }
 
+/** The pictures among a result's blocks: the attachments a call answered with. */
+function imagesOf(content: readonly unknown[] | undefined): readonly NonNullable<ReadCallModel['image']>[] {
+  return (content ?? []).flatMap((block) => {
+    const { mediaType, width, height, bytes } = readArgumentRecord(readArgumentRecord(block)['attachment'])
+    return typeof mediaType === 'string' && typeof width === 'number' && typeof height === 'number' && typeof bytes === 'number' ? [{ mediaType, width, height, bytes }] : []
+  })
+}
+
 /** Build one read call's renderer-neutral facts from entry, arguments, and views. */
 function readCallModel(resolved: ResolvedTool): ReadCallModel {
   const { entry, args, outcome, result } = resolved
@@ -215,6 +224,7 @@ function readCallModel(resolved: ResolvedTool): ReadCallModel {
   const limit = typeof record['limit'] === 'number' ? record['limit'] : undefined
   const lines = view?.lines ?? []
   const state = outcome === undefined ? 'pending' : outcome.isError ? 'error' : 'ok'
+  const image = imagesOf(entry.result?.content)[0]
   // state 'error' implies entry.result exists: the outcome derives from it.
   return {
     callId: entry.callId,
@@ -235,6 +245,7 @@ function readCallModel(resolved: ResolvedTool): ReadCallModel {
     ...(lines.length === 0 ? {} : {
       previewLines: lines.slice(0, READ_PREVIEW_LINE_LIMIT).map(line => ({ number: line.number, text: line.text })),
     }),
+    ...(image === undefined ? {} : { image }),
   }
 }
 
@@ -271,6 +282,8 @@ function searchCallModel(resolved: ResolvedTool): SearchCallModel {
     step: entry.step,
     ...callFacts(entry),
     ...(pattern === undefined ? {} : { pattern }),
+    ...(typeof record['path'] === 'string' && record['path'] !== '' ? { scope: record['path'] } : {}),
+    ...(typeof record['include'] === 'string' && record['include'] !== '' ? { include: record['include'] } : {}),
     ...(view === undefined ? {} : { shape: view.shape }),
     ...(view?.shape === 'matches' ? {
       files: view.files.map(file => ({
@@ -353,6 +366,8 @@ function commandCallModel(resolved: ResolvedTool): CommandCallModel {
     ...callFacts(entry),
     command,
     ...(commandLines === undefined ? {} : { commandLines }),
+    ...(callView?.description === undefined ? {} : { description: callView.description }),
+    ...(callView?.cwd === undefined ? {} : { cwd: callView.cwd }),
     state,
     ...(resultView?.exitCode === undefined ? {} : { exitCode: resultView.exitCode }),
     ...(resultView?.signal === undefined ? {} : { signal: resultView.signal }),
@@ -393,9 +408,47 @@ function terminalModel(resolved: ResolvedTool): TranscriptTerminalModel | undefi
   return {
     command,
     ...(call?.description === undefined ? {} : { description: call.description }),
+    ...(call?.cwd === undefined ? {} : { cwd: call.cwd }),
     ...(result?.output === undefined ? {} : { output: result.output }),
     ...(result?.exitCode === undefined ? {} : { exitCode: result.exitCode }),
     ...(result?.signal === undefined ? {} : { signal: result.signal }),
+  }
+}
+
+/** What a call that executes outside a terminal card was given: the presenter's raw input, and its one line of text. */
+function executeModel(resolved: ResolvedTool): TranscriptToolModel['execute'] {
+  const call = resolved.call
+  if (call?.card !== 'generic' || call.kind !== 'execute' || typeof call.rawInput !== 'string') return undefined
+  const note = call.content?.[0]
+  return { input: call.rawInput, ...(note?.type === 'text' ? { note: note.text } : {}) }
+}
+
+/** Whether the Harness stopped a patch partway: the call did not fail, but not everything it asked for happened. */
+function patchStopped(entry: ConversationToolEntry): boolean {
+  return entry.name === 'apply_patch' && readArgumentRecord(entry.result?.meta)['stopped'] === true
+}
+
+/** The hunks a patch's deleted file loses, which only the applied metadata has: the patch names the file and no text. */
+function deletedFile(file: TranscriptPatchFileModel, diffs: readonly { readonly path: string, readonly oldText: string | null, readonly newText: string }[]): TranscriptPatchFileModel {
+  const gone = file.kind === 'D' ? diffs.find(diff => diff.oldText !== null && (diff.path === file.path || diff.path.endsWith(`/${file.path}`))) : undefined
+  if (gone === undefined) return file
+  const before = gone.oldText!
+  return { ...file, removed: textLines(before).length, hunks: [{ before, after: '' }] }
+}
+
+/** The change a patch made: every file it names, from the patch itself, with the counts over all of them. */
+function patchChange(resolved: ResolvedTool): TranscriptFileChangeModel | undefined {
+  const input = readArgumentRecord(resolved.args)['input']
+  const applied = resolved.result?.card === 'diff' ? resolved.result.diffs : []
+  const files = patchFiles(typeof input === 'string' ? input : '').map(file => deletedFile(file, applied))
+  if (files.length === 0) return undefined
+  return {
+    path: files[0]!.path,
+    added: files.reduce((sum, file) => sum + file.added, 0),
+    removed: files.reduce((sum, file) => sum + file.removed, 0),
+    hunks: files.flatMap(file => file.hunks),
+    hiddenLines: files.reduce((sum, file) => sum + file.hiddenLines, 0),
+    files,
   }
 }
 
@@ -417,25 +470,6 @@ function textLines(text: string): string[] {
   return lines
 }
 
-/** Unchanged lines a hunk keeps around its change: the Harness sends three, the diff body shows one. */
-const FILE_CHANGE_CONTEXT_LINES = 1
-
-/**
- * A hunk with its unchanged lines around the change cut down to {@link FILE_CHANGE_CONTEXT_LINES} on each side, so the diff
- * body needs no `⋯` for context it does not draw. A change still being written has no end to compare yet (`tail: false`).
- */
-export function trimContext(before: string, after: string, tail = true): { readonly before: string, readonly after: string } {
-  const a = before === '' ? [] : before.split('\n')
-  const b = after === '' ? [] : after.split('\n')
-  let prefix = 0
-  while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix += 1
-  let suffix = 0
-  while (tail && suffix < a.length - prefix && suffix < b.length - prefix && a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix += 1
-  const dropHead = Math.max(0, prefix - FILE_CHANGE_CONTEXT_LINES)
-  const dropTail = Math.max(0, suffix - FILE_CHANGE_CONTEXT_LINES)
-  return { before: a.slice(dropHead, a.length - dropTail).join('\n'), after: b.slice(dropHead, b.length - dropTail).join('\n') }
-}
-
 /** The first `max` lines of a text (the whole text when it is shorter). */
 function headLines(text: string, max: number): { readonly text: string, readonly cut: boolean } {
   let at = -1
@@ -452,10 +486,13 @@ function headLines(text: string, max: number): { readonly text: string, readonly
  */
 function fileChangeModel(resolved: ResolvedTool, counters?: MayflyWorkCounters): TranscriptFileChangeModel | undefined {
   const { entry, outcome, call, result } = resolved
-  if (entry.result === undefined || entry.result.isError) return undefined
+  if (entry.result === undefined || entry.result.isError || patchStopped(entry)) return undefined
+  if (entry.name === 'apply_patch') return patchChange(resolved)
   const diffs = result?.card === 'diff' ? result.diffs : call?.card === 'diff' ? call.diffs : undefined
   if (diffs === undefined || diffs.length === 0) return undefined
-  const path = diffs[0]!.path
+  // The path the model gave: the applied metadata's is canonical and absolute.
+  const given = readArgumentRecord(resolved.args)['file_path']
+  const path = typeof given === 'string' && given !== '' ? given : diffs[0]!.path
   const isWrite = entry.name === 'write'
   // A write is code, not a diff: the new text's size and head, from what the call gave.
   const operation = (outcome?.meta as { readonly operation?: unknown } | undefined)?.operation
@@ -491,7 +528,7 @@ function fileChangeModel(resolved: ResolvedTool, counters?: MayflyWorkCounters):
     removed,
     hunks: [],
     hiddenLines: 0,
-    write: { bytes: Buffer.byteLength(text, 'utf8'), lines: lines.length, head: lines.slice(0, WRITE_HEAD_LINES) },
+    write: { bytes: Buffer.byteLength(text, 'utf8'), lines: lines.length, head: lines.slice(0, WRITE_HEAD_LINES), created },
   }
 }
 
@@ -503,7 +540,10 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, counter
   const { entry, outcome, call, result } = resolved
   const terminal = terminalModel(resolved)
   const web = webModel(resolved)
-  const change = family === 'edit' || resolved.entry.name === 'write' ? fileChangeModel(resolved, counters) : undefined
+  const execute = executeModel(resolved)
+  // A patch reads from its own text, so it needs no presenter (one may still be on its way).
+  const change = family === 'edit' || resolved.entry.name === 'write' || resolved.entry.name === 'apply_patch' ? fileChangeModel(resolved, counters) : undefined
+  const images = entry.name.startsWith('mcp__') ? imagesOf(entry.result?.content) : []
   const presentation = call === undefined && result === undefined
     ? undefined
     : createToolPresentationModel({
@@ -524,9 +564,12 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, counter
     name: entry.name,
     family,
     ...processFacts(resolved),
+    ...(entry.preparing === undefined ? {} : { preparing: entry.preparing }),
     ...(call === undefined ? {} : { title: call.title }),
     ...(terminal === undefined ? {} : { terminal }),
+    ...(execute === undefined ? {} : { execute }),
     ...(web === undefined ? {} : { web }),
+    ...(images.length === 0 ? {} : { images }),
     ...(change === undefined ? {} : { change }),
     arguments: entry.arguments,
     startedAt: entry.startedAt,
@@ -535,7 +578,8 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, counter
       result: {
         text: entry.result.text,
         fullText: entry.result.text,
-        isError: entry.result.isError,
+        // A stopped patch reads as what it is everywhere: the call did not do what it asked.
+        isError: entry.result.isError || patchStopped(entry),
         endedAt: entry.result.endedAt,
         ...interruptionFacts(entry),
       },
@@ -667,7 +711,8 @@ export function conversationTranscriptModel(
       resolved = resolveTool(entry, tools)
       caches?.tools.set(entry, resolved)
     }
-    const family = toolFamily(resolved)
+    // A call whose arguments still stream has no shape yet to group by.
+    const family = entry.preparing === undefined ? toolFamily(resolved) : 'other'
     const continuesRun = runFamily !== undefined
       && family === runFamily
       && entry.turn === run[0]!.entry.turn

@@ -40,5 +40,6 @@
   "W33a": { "nodesValidated": 3, "unitsCompiled": 4, "rowsPainted": 1, "stringsMeasured": 41, "componentRenders": 3, "controlWalks": 1, "reconciles": 2, "layoutPasses": 1, "clockTicks": 1, "itemsWalked": 146, "streamRowsBuilt": 105 },
   "W33b": { "nodesValidated": 9, "unitsCompiled": 4, "rowsPainted": 2, "stringsMeasured": 41, "componentRenders": 3, "controlWalks": 1, "reconciles": 2, "layoutPasses": 1, "clockTicks": 1, "itemsWalked": 165, "streamRowsBuilt": 105 },
   "W34": { "nodesValidated": 6, "unitsCompiled": 4, "rowsPainted": 2, "rowsMaterialized": 2, "segmentsPainted": 1, "linesEstimated": 2, "stringsMeasured": 40, "componentRenders": 3, "controlWalks": 1, "reconciles": 2, "layoutPasses": 1, "itemsWalked": 147, "streamRowsBuilt": 99, "rowsWritten": 1, "bytesWritten": 177 },
-  "W35": { "stringsMeasured": 3, "rowsWritten": 39, "bytesWritten": 6666 }
+  "W35": { "stringsMeasured": 3, "rowsWritten": 39, "bytesWritten": 6666 },
+  "W36": { "unitsCompiled": 3, "rowsPainted": 11, "stringsMeasured": 9, "componentRenders": 2, "controlWalks": 1, "reconciles": 4, "layoutPasses": 1, "itemsWalked": 58 }
 }

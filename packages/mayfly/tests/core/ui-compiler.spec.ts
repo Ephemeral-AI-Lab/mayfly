@@ -71,6 +71,7 @@ function createTestEditor(): MayflyEditor {
     submit: () => { if (!editor.disableSubmit) editor.onSubmit?.(value) },
     getText: () => value,
     getExpandedText: () => value,
+    caretOffset: () => cursor,
     setText: (text: string) => { value = text; cursor = text.length },
     renderContent: (width: number, masked = false) => {
       const shown = masked ? '•'.repeat(value.length) : value
@@ -2810,7 +2811,7 @@ describe('interactive prompt, slider, and list inputs', () => {
     model.dispose()
   })
 
-  it('types into a list row input, backspaces, and clears it with Ctrl+U', () => {
+  it('types into a list row input and backspaces it empty', () => {
     const node = ui.list({
       id: 'answers', role: 'choose', selectedIds: [],
       items: [{ id: 'q', label: 'Why?', input: { placeholder: 'answer' } }],
@@ -2824,7 +2825,7 @@ describe('interactive prompt, slider, and list inputs', () => {
     expect(model.choice({ pagePath: [], controlId: 'answers' })?.inputs?.['q']).toBe('ye')
     focus.handleInput?.('\x7f')
     expect(model.choice({ pagePath: [], controlId: 'answers' })?.inputs?.['q']).toBe('y')
-    focus.handleInput?.('\x15')
+    focus.handleInput?.('\x7f')
     // An empty row input is dropped from the drafts.
     expect(model.choice({ pagePath: [], controlId: 'answers' })?.inputs?.['q']).toBeUndefined()
     runtime.dispose()

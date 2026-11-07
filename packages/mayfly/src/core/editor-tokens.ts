@@ -50,7 +50,7 @@ export interface EditorTokenPaints {
 }
 
 /** One stretch of a text: plain, or the content of a pasted block that a marker can stand for. */
-export type FoldSegment = { readonly paste: false, readonly text: string } | { readonly paste: true, readonly text: string }
+type FoldSegment = { readonly paste: false, readonly text: string } | { readonly paste: true, readonly text: string }
 
 /**
  * Cut a text around the places where a pasted block's content appears, in text order: the editor folds each such

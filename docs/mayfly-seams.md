@@ -25,6 +25,48 @@ recorded-file and MCP-resource reads. It is
 not a generic filesystem, arbitrary-tool, or Host lifecycle API. Its generated
 DTO contract lives in `packages/host/src/types.ts` and the Host package README.
 
+### Native gaps
+
+Each `mayflyHost` method stands in for a missing native Remote API and retires
+once that API exists. `packages/host/src/remote/native-gaps.ts` holds the
+record; its spec checks one entry per `@Remote` method, the scope against the
+declared resources, and this table. A `session` method declares the Session it
+reads; a `host` method needs global Host authorization. `statsHistory` names a
+Session but suppresses that resource on purpose.
+
+| Method | Scope | Missing native API |
+| --- | --- | --- |
+| `capabilities` | host | Mayfly's own handshake: no native API describes a Mayfly Host composition, its protocol, or its features. |
+| `btwFork` | session | No native Remote operation forks the exact current tail, including an unfinished first turn, for a side question. |
+| `presentTools` | session | Native tool presentation runs against in-process Agent tool definitions; no Remote operation presents tool entries. |
+| `followWorkflow` | session | No native Remote stream follows complete Workflow state. |
+| `gitStatus` | session | No native Remote reads the Git status of a Session's working copy. |
+| `mcpCatalog` | session | No public catalog of configured MCP servers and their transport health. |
+| `toolCatalog` | session | No native Remote returns a Session's construction-frozen tool schema catalog. |
+| `skillCatalog` | session | No native Remote lists user-invocable skills with their source and provider details. |
+| `retractTurn` | session | No native Remote retracts a running tool-free turn. |
+| `modelCatalogDetails` | host | Native model catalogs omit the context windows and reasoning details that provider adapters resolve. |
+| `defaultModel` | host | agentDefaultModel has no Remote face for the Session-independent default. |
+| `authorize` | host | Native credential authorization has no Remote stream for its prompts and addressed answers. |
+| `cancelAuthorization` | host | No native Remote cancels one credential's authorization attempt. |
+| `permissionCatalogDetails` | session | No native Remote resolves permission bundles with the passive Session or Host-default yolo state. |
+| `deliveredFile` | session | No native Remote reads a recorded delivered file through the exact Agent's filesystem. |
+| `latestWorkspaceChanges` | session | workspaceChanges has no Remote read of the latest retained summary that leaves the Agent inactive. |
+| `traceCatalog` | session | No native Remote reads the canonical trace timeline passively. |
+| `traceDetail` | session | No native Remote reads raw trace events with their relationship metadata. |
+| `statsSession` | session | No native Remote reads a passive Session statistics digest. |
+| `statsHistory` | host | No native Remote scans the global Session corpus for statistics; the scan requires global Host authorization. |
+| `providerBalance` | host | No native Remote reads the official API-key balance. |
+| `readSettingsDocument` | host | Native settings Remotes edit keys, not the raw settings document with its content revision. |
+| `writeSettingsDocument` | host | No native compare-and-write of the raw settings document under the profile lock. |
+| `subagentTree` | session | subagents has no Remote read of the complete descendant tree with live readonly metrics. |
+| `subagentStop` | session | No native Remote stops a continuable cold descendant without resuming it. |
+| `workspaceChangesSummary` | session | workspaceChanges has no Remote read of a per-turn change summary. |
+| `workspaceChangesDiff` | session | workspaceChanges has no Remote read of a per-turn file comparison. |
+| `workspacePath` | host | workspaceRegistry has no Remote lookup by canonical path that never creates a workspace. |
+| `listMcpResources` | session | mcpResources has no Remote face for listing resources and templates. |
+| `readMcpResource` | session | mcpResources has no Remote face for reading a resource body. |
+
 `statsHistory` requires global Host authorization before any catalog or history
 read, including requests limited to the current workspace. `statsSession`
 requires only the named Session's authorization. Raw settings-document saves

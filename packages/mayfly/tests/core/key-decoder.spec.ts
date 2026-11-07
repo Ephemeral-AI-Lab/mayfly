@@ -6,13 +6,13 @@
 import { StdinBuffer } from '@earendil-works/pi-tui/dist/stdin-buffer.js'
 import { describe, expect, it, vi } from 'vitest'
 import { matchesKeyId } from '../../src/core/key-matching.ts'
-import { joinSplitModifiers, normalizeFunctionKeyInput, normalizeNavigationInput, startMayflyTerminal, withJoinedModifiers } from '../../src/core/terminal.ts'
+import { joinSplitModifiers, normalizeFunctionKeyInput, normalizeKeyInput, startMayflyTerminal, withJoinedModifiers } from '../../src/core/terminal.ts'
 import { FakeTerminal } from './fake-terminal.ts'
 
 /** Feed one terminal read through the real input path and collect the sequences a listener would see. */
 async function decode(...chunks: string[]): Promise<string[]> {
   const seen: string[] = []
-  const join = joinSplitModifiers(data => seen.push(normalizeNavigationInput(data) ?? normalizeFunctionKeyInput(data) ?? data))
+  const join = joinSplitModifiers(data => seen.push(normalizeKeyInput(data) ?? normalizeFunctionKeyInput(data) ?? data))
   const buffer = new StdinBuffer({ escapeTimeout: 5 })
   buffer.on('data', join)
   for (const chunk of chunks) {

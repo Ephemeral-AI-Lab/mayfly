@@ -264,8 +264,9 @@ export class ViewsLane implements MayflyViewsSource {
     if (!this.entered) return
     this.entered = false
     this.changed()
-    this.host?.release()
+    // Announced first: what takes the focus back says so itself, and has the last word.
     this.announceEntered()
+    this.host?.release()
   }
 
   /** The surface manager calls this when focus moved off the lane by any other path. */

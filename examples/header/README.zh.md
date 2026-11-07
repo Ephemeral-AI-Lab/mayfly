@@ -3,9 +3,13 @@
 这是一个 opt-in Mayfly 插件，通过公开 `header` pane lane 显示紧凑的工作区
 摘要。它消费 `@mayfly-example/user-kit`，在窄视口下按策略隐藏。
 
-```sh
-dsh plugin --profile mayfly-dev add @mayfly-example/header
+把它组合进一个 TUI 入口；入口接受与 `mayfly` 相同的选项和环境变量：
+
+```ts
+import { run } from '@ephemeral-ai/mayfly/bin'
+import * as header from '@mayfly-example/header'
+
+await run(process.argv.slice(2), { plugins: [header] })
 ```
 
-包内自带单行 `cordis.patch.yml`，安装即激活；卸载时 pane 随 Cordis Fiber
-一同清理。
+TUI 退出时，pane 随 Cordis Fiber 一同清理。

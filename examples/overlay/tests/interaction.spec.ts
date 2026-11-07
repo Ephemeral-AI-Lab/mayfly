@@ -1,23 +1,12 @@
-/** Real native-settings edits from an ordinary external overlay consumer.
+/** The settings overlay of an ordinary external consumer: opened from its editor action, saved into plugin state.
  * @module @mayfly-example/overlay/tests/interaction
  */
-import { Context, Service } from '@deepseek-ai/cordis'
-import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
+import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MayflyOverlayEntry } from '../../../packages/ui/src/contracts.ts'
 import * as provider from '../../../packages/ui/src/provider.ts'
 import * as frontend from '../../../packages/mayfly/src/frontend/index.ts'
 import * as overlay from '../src/index.ts'
-import { MemorySettings } from './settings.ts'
-
-class Commands extends Service {
-  open: (() => unknown) | undefined
-  constructor(ctx: Context) { super(ctx, 'commands') }
-  register(command: { readonly handler: () => unknown }): () => void {
-    this.open = command.handler
-    return this.ctx.effect(() => () => { this.open = undefined })
-  }
-}
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
@@ -27,18 +16,18 @@ const address = (itemId: string) => ({ pagePath: [{ controlId: 'settings-pages',
 async function setup(open = true) {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(MemorySettings)
-  await ctx.plugin(Commands)
   await ctx.plugin(provider)
   await ctx.plugin(frontend)
   const consumer = await ctx.plugin(overlay)
-  const commands = ctx.commands as unknown as Commands
-  const settings = ctx.settings as unknown as MemorySettings
-  // The Loader row id is the namespace in a real host; the double's
-  // fiber-scoped registration stands in for it.
-  settings.register(overlay.SETTINGS_NAMESPACE, overlay.Config, { owner: consumer.ctx })
-  if (open) commands.open!()
-  return { ctx, consumer, commands, settings, model: () => ctx.mayflyUiInteraction.get('overlay', overlay.overlayRequest.id) }
+  const extension = () => ctx.mayflyEditorExtensions.list().find(entry => entry.id === 'example.overlay.open')
+  const activate = async (actionId = 'open') => {
+    const entry = extension()!
+    await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: actionId, actionId }, {
+      surfaceId: entry.id, operationId: 'example-open', source: [], revision: entry.revision, signal: new AbortController().signal, report: vi.fn(),
+    })
+  }
+  if (open) await activate()
+  return { ctx, consumer, extension, activate, model: () => ctx.mayflyUiInteraction.get('overlay', overlay.overlayRequest.id) }
 }
 
 const requestContext = (entry: MayflyOverlayEntry, signal = new AbortController().signal) => ({
@@ -50,37 +39,44 @@ function submission(entry: MayflyOverlayEntry, forms: readonly unknown[] = [], s
 }
 
 describe('external settings overlay', () => {
-  it('saves both pages once through the native namespace and reads them back when reopened', async () => {
-    const { ctx, model: currentModel, settings, commands } = await setup()
+  it('declares its opening action on a modifier key beside the editor', async () => {
+    const { extension } = await setup(false)
+    expect(extension()!.decoration.actions).toEqual([{ id: 'open', label: 'Example settings', key: overlay.OPEN_KEY }])
+    expect(overlay.OPEN_KEY).toBe('alt+o')
+  })
+
+  it('saves both pages once into plugin state and reads them back when reopened', async () => {
+    const { ctx, model: currentModel, activate } = await setup()
     const model = currentModel()!
     expect(model).toBeDefined()
     model.edit({ ...address('connection'), fieldId: 'name' }, 'Primary')
     model.activateTab({ pagePath: [], controlId: 'settings-pages' }, 'workspace')
     model.edit({ ...address('workspace'), fieldId: 'name' }, 'Secondary')
     model.edit({ ...address('workspace'), fieldId: 'limit' }, '250')
-    expect(settings.writes).toBe(0)
     model.invoke('save')
     model.invoke('save')
     await flush()
-    expect(settings.writes).toBe(1)
-    expect(settings.get(overlay.SETTINGS_NAMESPACE)).toEqual({ connection: { name: 'Primary', transport: 'local', enabled: true }, workspace: { name: 'Secondary', limit: 250 } })
     expect(model.dirty).toBe(false)
     expect(ctx.mayflyOverlays.list()[0]!.update.reason).toBe('ack')
+    expect(ctx.mayflyOverlays.list()[0]!.source).toEqual([{ resourceId: 'mayfly-example-overlay.settings', revision: 1 }])
     model.invoke('cancel')
     await flush()
     expect(ctx.mayflyOverlays.list()).toEqual([])
-    commands.open!()
+    await activate()
     const reopened = ctx.mayflyUiInteraction.get('overlay', overlay.overlayRequest.id)!
     expect(reopened).not.toBe(model)
+    expect(reopened.form(address('connection'))!.fields.name!.value).toBe('Primary')
     expect(reopened.form(address('workspace'))!.fields.name!.value).toBe('Secondary')
   })
 
-  it('retains a live draft on repeated command entry and requires confirmation before discarding', async () => {
-    const { ctx, model: currentModel, commands, settings } = await setup()
+  it('focuses the open overlay on a repeated action, keeps its draft, and confirms before discarding', async () => {
+    const { ctx, model: currentModel, activate } = await setup()
     const model = currentModel()!
+    const initial = ctx.mayflyOverlays.list()[0]!
     model.edit({ ...address('connection'), fieldId: 'name' }, 'Draft')
-    commands.open!()
+    await activate()
     expect(ctx.mayflyUiInteraction.get('overlay', overlay.overlayRequest.id)).toBe(model)
+    expect(ctx.mayflyOverlays.list()[0]!.focusRevision).toBeGreaterThan(initial.focusRevision)
     model.invoke('cancel')
     expect(model.decisionNode).toBeDefined()
     model.answerDecision(false)
@@ -89,55 +85,32 @@ describe('external settings overlay', () => {
     model.answerDecision(true)
     await flush()
     expect(ctx.mayflyOverlays.list()).toEqual([])
-    expect(settings.writes).toBe(0)
   })
 
-  it('shows a conflict from an external native write and preserves the unsaved field', async () => {
-    const { model: currentModel, settings } = await setup()
-    const model = currentModel()!
-    model.edit({ ...address('connection'), fieldId: 'name' }, 'Draft')
-    await settings.mutate(overlay.SETTINGS_NAMESPACE, [{ op: 'set', path: ['connection', 'name'], value: 'External' }])
-    expect(model.form(address('connection'))!.fields.name).toMatchObject({ value: 'Draft', conflict: true })
-    model.invoke('save')
-    await flush()
-    expect(settings.writes).toBe(1)
-    model.updateForm(address('connection'), { kind: 'resolve-conflict', fieldId: 'name', choice: 'draft' })
-    model.invoke('save')
-    await flush()
-    expect(settings.writes).toBe(2)
-    expect(model.dirty).toBe(false)
-    expect(settings.get(overlay.SETTINGS_NAMESPACE)).toMatchObject({ connection: { name: 'Draft' } })
+  it('ignores other editor actions', async () => {
+    const { ctx, activate } = await setup(false)
+    await activate('other')
+    expect(ctx.mayflyOverlays.list()).toEqual([])
   })
 
-  it('unloads its command, namespace, registration, and model through the consumer Fiber', async () => {
-    const { ctx, consumer, commands, model: currentModel, settings } = await setup()
+  it('unloads its editor action, overlay, model, and saved values with the consumer Fiber', async () => {
+    const { ctx, consumer, model: currentModel, extension } = await setup()
     const model = currentModel()!
     model.edit({ ...address('workspace'), fieldId: 'name' }, 'Transient')
     await consumer.dispose()
-    expect(commands.open).toBeUndefined()
+    expect(extension()).toBeUndefined()
     expect(ctx.mayflyOverlays.list()).toEqual([])
     expect(ctx.mayflyUiInteraction.list()).toEqual([])
     expect(model.disposed).toBe(true)
-    expect(settings.describe()).toEqual([])
+    await ctx.plugin(overlay)
+    const entry = ctx.mayflyEditorExtensions.list()[0]!
+    await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'open', actionId: 'open' }, {
+      surfaceId: entry.id, operationId: 'example-reopen', source: [], revision: entry.revision, signal: new AbortController().signal, report: vi.fn(),
+    })
+    expect(ctx.mayflyOverlays.list()[0]!.source).toEqual([{ resourceId: 'mayfly-example-overlay.settings', revision: 0 }])
   })
 
-  it('refreshes only its namespace before, during, and after an active overlay', async () => {
-    const bench = await setup(false)
-    await bench.settings.mutate(overlay.SETTINGS_NAMESPACE, [{ op: 'set', path: ['connection', 'name'], value: 'Before open' }])
-    bench.ctx.emit('settings/document-updated', 'other' as never, 1)
-    expect(bench.model()).toBeUndefined()
-    bench.commands.open!()
-    const initial = bench.ctx.mayflyOverlays.list()[0]!
-    bench.commands.open!()
-    expect(bench.ctx.mayflyOverlays.list()[0]!.focusRevision).toBeGreaterThan(initial.focusRevision)
-    await bench.settings.mutate(overlay.SETTINGS_NAMESPACE, [{ op: 'set', path: ['workspace', 'name'], value: 'Live' }])
-    expect(bench.ctx.mayflyOverlays.list()[0]!.revision).toBeGreaterThan(initial.revision)
-    bench.ctx.mayflyOverlays.close(overlay.overlayRequest.id)
-    await bench.settings.mutate(overlay.SETTINGS_NAMESPACE, [{ op: 'set', path: ['workspace', 'name'], value: 'Closed' }])
-    expect(bench.ctx.mayflyOverlays.list()).toEqual([])
-  })
-
-  it('defends direct action inputs and accepts reset and no-op submissions', async () => {
+  it('defends direct action inputs, applies resets, and answers a stale form with a conflict', async () => {
     const bench = await setup()
     const entry = bench.ctx.mayflyOverlays.list()[0]!
     const action = entry.definition.onEvent!.action!
@@ -151,52 +124,26 @@ describe('external settings overlay', () => {
       [{ pagePath: [], formId: 'other', fields: [] }],
       [{ pagePath: [{ controlId: 'settings-pages', itemId: 'other' }], formId: 'settings', fields: [] }],
       [{ pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'unknown', value: 1, change: 'set' }] }],
+      [{ pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'name', value: ' ', change: 'set' }] }],
+      [{ pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'transport', value: 'carrier', change: 'set' }] }],
+      [{ pagePath: address('workspace').pagePath, formId: 'settings', fields: [{ id: 'limit', value: 0, change: 'set' }] }],
     ]) expect(await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, forms) as never }, requestContext(entry))).toMatchObject({ kind: 'failed' })
 
-    const accepted = await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, [
-      { pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'name', value: 'Default', change: 'reset' }, { id: 'enabled', value: true, change: 'unchanged' }] },
-      { pagePath: address('workspace').pagePath, formId: 'settings', fields: [{ id: 'limit', value: 100, change: 'unchanged' }] },
+    const changed = await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, [
+      { pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'name', value: 'Changed', change: 'set' }, { id: 'enabled', value: false, change: 'set' }] },
     ]) as never }, requestContext(entry))
-    expect(accepted).toMatchObject({ kind: 'accepted' })
-    expect(await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, [
-      { pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'enabled', value: true, change: 'unchanged' }] },
-    ]) as never }, requestContext(entry))).toMatchObject({ kind: 'accepted' })
-  })
-
-  it('contains cancellation after mutate and maps conflict and persistence failures', async () => {
-    const form = [{ pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'name', value: 'Changed', change: 'set' }] }]
-
-    const cancelled = await setup()
-    const cancelledEntry = cancelled.ctx.mayflyOverlays.list()[0]!
-    const original = cancelled.settings.mutate.bind(cancelled.settings)
-    const gate = Promise.withResolvers<void>()
-    const mutate = vi.spyOn(cancelled.settings, 'mutate').mockImplementationOnce(async (...args) => { await gate.promise; return original(...args) })
-    const controller = new AbortController()
-    const pending = cancelledEntry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(cancelledEntry, form) as never }, requestContext(cancelledEntry, controller.signal))
-    await vi.waitFor(() => expect(mutate).toHaveBeenCalled())
-    controller.abort()
-    gate.resolve()
-    expect(await pending).toEqual({ kind: 'cancelled' })
-
-    for (const [error, kind] of [
-      [new SettingsConflictError(overlay.SETTINGS_NAMESPACE as never, 0, 1), 'conflict'],
-      [new Error('disk failed'), 'failed'],
-    ] as const) {
-      const bench = await setup()
-      const entry = bench.ctx.mayflyOverlays.list()[0]!
-      vi.spyOn(bench.settings, 'mutate').mockRejectedValueOnce(error)
-      expect(await entry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, form) as never }, requestContext(entry))).toMatchObject({ kind })
-    }
-
-    const rejected = await setup()
-    const rejectedEntry = rejected.ctx.mayflyOverlays.list()[0]!
-    const failure = Promise.withResolvers<never>()
-    const failedMutate = vi.spyOn(rejected.settings, 'mutate').mockReturnValueOnce(failure.promise)
-    const rejectedController = new AbortController()
-    const result = rejectedEntry.definition.onEvent!.action!({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(rejectedEntry, form) as never }, requestContext(rejectedEntry, rejectedController.signal))
-    await vi.waitFor(() => expect(failedMutate).toHaveBeenCalled())
-    rejectedController.abort()
-    failure.reject(new Error('cancelled'))
-    expect(await result).toEqual({ kind: 'cancelled' })
+    expect(changed).toMatchObject({ kind: 'accepted', source: [{ revision: 1 }] })
+    // The form still carries revision 0: a second save from it would overwrite the first.
+    expect(await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry) as never }, requestContext(entry))).toMatchObject({ kind: 'conflict' })
+    const reset = await action({ kind: 'submit', pagePath: [], controlId: 'submit', submission: submission(entry, [
+      { pagePath: address('connection').pagePath, formId: 'settings', fields: [{ id: 'name', value: 'Changed', change: 'reset' }, { id: 'enabled', value: false, change: 'unchanged' }] },
+    ], [{ resourceId: 'mayfly-example-overlay.settings', revision: 1 }]) as never }, requestContext(entry))
+    expect(reset).toMatchObject({ kind: 'accepted', source: [{ revision: 2 }] })
+    await bench.activate()
+    bench.ctx.mayflyOverlays.close(overlay.overlayRequest.id)
+    await bench.activate()
+    const reopened = bench.ctx.mayflyUiInteraction.get('overlay', overlay.overlayRequest.id)!
+    expect(reopened.form(address('connection'))!.fields.name!.value).toBe(overlay.defaults.connection.name)
+    expect(reopened.form(address('connection'))!.fields.enabled!.value).toBe(false)
   })
 })

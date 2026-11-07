@@ -27,5 +27,6 @@ export function shortenCwd(path: string, home: string, platform: NodeJS.Platform
 export function buildCwdStatusNode(text: string): MayflyStatusNode | null {
   if (text === '') return null
   const leaf = text.split('/').filter(segment => segment.length > 0 && segment !== '…' && segment !== '~').at(-1)
-  return shedNode({ kind: 'text', content: text, tone: 'muted' }, leaf === undefined || leaf === text ? [] : [{ rank: SHED.cwd, node: { kind: 'text', content: leaf, tone: 'muted' } }])
+  const gone = { rank: SHED.directory, node: null }
+  return shedNode({ kind: 'text', content: text, tone: 'muted' }, leaf === undefined || leaf === text ? [gone] : [{ rank: SHED.cwd, node: { kind: 'text', content: leaf, tone: 'muted' } }, gone])
 }

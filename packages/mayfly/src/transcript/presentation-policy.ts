@@ -18,13 +18,13 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-settings'
 
 /** Default count of newest transcript turns kept mounted. */
-export const DEFAULT_WINDOW_TURNS = 15
+const DEFAULT_WINDOW_TURNS = 15
 /** Most-recent turns reached by the Ctrl-O expansion toggle. */
-export const DEFAULT_EXPAND_TURNS = 3
+const DEFAULT_EXPAND_TURNS = 3
 /** Raw-line threshold above which a user message folds. */
-export const DEFAULT_USER_FOLD_LINES = 10
+const DEFAULT_USER_FOLD_LINES = 10
 /** Raw-character threshold above which a user message folds. */
-export const DEFAULT_USER_FOLD_CHARS = 1000
+const DEFAULT_USER_FOLD_CHARS = 1000
 
 /** The Harness work-details mode persisted in `mayfly.transcriptView`. */
 export type TranscriptViewMode = 'compact' | 'standard' | 'detailed' | 'verbose'

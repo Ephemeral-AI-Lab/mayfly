@@ -65,7 +65,8 @@ block of both Website key references against it.
   `←`/`→` adjust a row segment, open or close a tree branch, or otherwise leave
   the list for the nearest control beside it. `Enter` chooses (or opens for
   `role: 'browse'`); in multi-select lists `Space` toggles and `Enter` commits.
-- **Text fields.** Typing or `Enter` starts editing; while editing, `Enter`
+- **Text fields.** Typing, `Backspace`, or `Enter` starts editing (`Enter` submits
+  instead when the form declares `enterSubmits`); while editing, `Enter`
   confirms and moves on (or submits when the form declares `enterSubmits`),
   and `Alt+Enter` inserts a textarea newline. `Tab` takes the first completion
   the typed text starts, while the field has `suggestions` and one matches. A
@@ -87,8 +88,14 @@ block of both Website key references against it.
   `Enter` applies, and `Tab`/`Shift+Tab` apply the candidate (or toggled set)
   before moving to the next group.
 - **Tabs.** `←`/`→` move along a focused tab strip; `Alt+←/→` switch tabs from
-  anywhere. A wizard runs the same step validation on a forward tab switch as
-  on its Next action.
+  anywhere. In a wizard, a plain `←`/`→` on an option row walk the steps too,
+  because such a row has nothing for them to adjust. A wizard runs the same step
+  validation on a forward tab switch as on its Next action.
+- **Text rows.** A list row with an `input` is edited in place by the same editor
+  a form field uses. Once it holds text, `←`/`→` and `Home`/`End` move its caret;
+  `←` at the start goes on down the ladder and `→` at the end does nothing. `↑`/`↓`
+  leave the row, `Enter` accepts it, and a key never adds a line break: only a paste
+  brings one.
 - **Actions.** `Enter` or `Space` runs the focused action; arrows move between
   actions. Declared accelerators run their action directly.
 

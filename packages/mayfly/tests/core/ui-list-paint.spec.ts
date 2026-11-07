@@ -18,6 +18,19 @@ const on = (key: string): PatternFocus => ({ key, focused: true, marker: '|' })
 const specs = (items: readonly MayflyListItem[], extra: Partial<ListRowSpec> = {}): ListRowSpec[] => items.map((item, position) => ({ item, depth: 0, last: false, expandable: false, open: false, position, ...extra }))
 
 describe('list rows', () => {
+  it('takes a row\'s width from its elastic spans before the end, and drops them once they would say nothing', () => {
+    const label = (...spans: MayflyListItem['labelSpans'] & object) => ({ id: 'a', label: 'x', labelSpans: spans })
+    const row = (item: MayflyListItem, width: number) => plain(renderList(ui.list({ id: 'l', role: 'browse', selectedIds: [], items: [item] }), width, 3, idle, colors, 0))[0]
+    const tool = label({ text: 'Bash' }, { text: '(', elastic: true }, { text: 'pnpm run everything', elastic: true }, { text: ')', elastic: true }, { text: ' · exit 1' })
+    expect(row(tool, 60)).toBe('  Bash(pnpm run everything) · exit 1')
+    expect(row(tool, 26)).toBe('  Bash(pnpm run…) · exit 1')
+    // Fewer than 3 cells would be left of the target: it goes, its parentheses too.
+    expect(row(tool, 19)).toBe('  Bash · exit 1')
+    // Without an elastic span the end is what clips; a wrapping row wraps instead.
+    expect(row(label({ text: 'pnpm run everything' }, { text: ' · exit 1' }), 20)).toBe('  pnpm run everythi…')
+    expect(row({ ...label({ text: 'pnpm run everything', elastic: true }, { text: ' · exit 1' }), wrap: true }, 20)).toBe('  pnpm run')
+  })
+
   it('draws the gutter, indent, tree guides, disclosure, and the cursor row bold with its arrow only while focused', () => {
     const items: MayflyListItem[] = [
       { id: 'a', label: 'Alpha', indent: 2 },

@@ -163,6 +163,9 @@ describe('MayflyScreenService', () => {
     lane.bind(host)
     const target = { focused: false, render: () => ['panel row'], invalidate: () => {}, handleInput: () => {} }
     lane.register({ id: 'jobs', summary: { node: { kind: 'text', content: 'jobs' } } }).setPanel(target, target)
+    expect(screen.enterViews('missing')).toBe(false)
+    expect(screen.enterViews('jobs')).toBe(true)
+    screen.leaveViews()
     expect(screen.enterViews()).toBe(true)
     expect(panel.render(40)).toEqual([' panel row'])  // inside the footer's one-column gutter
     expect(() => panel.invalidate()).not.toThrow()

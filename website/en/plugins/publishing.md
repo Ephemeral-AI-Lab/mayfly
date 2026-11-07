@@ -18,4 +18,4 @@ npm publish --access public
 Publish only after explicit authorization for the exact package, version, and
 tag. GitHub repository creation and npm publication are separate actions.
 
-Host bundles can be [submitted to the Marketplace](/en/market/submit) for discovery through `/plugin`. A frontend UI package currently requires source integration into Remote, a build, and a restart; publishing it does not create a TUI installation or hot-loading path.
+Host bundles can be [submitted to the Marketplace](/en/market/submit) for discovery through `/plugin`. A frontend UI package joins a TUI source composition (`run(argv, { plugins })`), then a build and a restart; publishing it does not create a TUI installation or hot-loading path.

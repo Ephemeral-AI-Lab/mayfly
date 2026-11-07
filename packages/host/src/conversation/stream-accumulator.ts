@@ -25,6 +25,16 @@ export interface AssistantStreamState {
   readonly reasoningEndedAt?: number
 }
 
+/**
+ * The id of the entry a tool call opens and its result completes. A call the attempt still writes has the same id on the
+ * client's overlay, so the durable entry replaces it.
+ * @param callId - the call's id.
+ * @returns the entry's id.
+ */
+export function toolEntryId(callId: string): string {
+  return `tool:${callId}`
+}
+
 /** Empty attempt before its first visible output. */
 export function initialAssistantStream(): AssistantStreamState {
   return { reasoning: '', text: '', phase: 'waiting', outputProgress: undefined, updatedAt: 0, chars: 0 }

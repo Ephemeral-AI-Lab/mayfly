@@ -526,5 +526,27 @@
     "streamRowsBuilt": 0,
     "rowsWritten": 39,
     "bytesWritten": 6666
+  },
+  "W36": {
+    "nodesValidated": 0,
+    "unitsCompiled": 3,
+    "rowsPainted": 11,
+    "rowsMaterialized": 0,
+    "segmentsPainted": 0,
+    "linesEstimated": 0,
+    "stringsMeasured": 9,
+    "componentRenders": 2,
+    "controlWalks": 1,
+    "reconciles": 4,
+    "layoutPasses": 1,
+    "clockTicks": 0,
+    "keymapSnapshots": 0,
+    "itemsWalked": 58,
+    "entriesMapped": 0,
+    "toolModelsBuilt": 0,
+    "diffsComputed": 0,
+    "streamRowsBuilt": 0,
+    "rowsWritten": 0,
+    "bytesWritten": 0
   }
 }

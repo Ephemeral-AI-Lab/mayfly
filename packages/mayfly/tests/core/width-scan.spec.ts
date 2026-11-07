@@ -55,6 +55,7 @@ function scanEditor(text: string): MayflyEditor {
     setGhostHint: () => {},
     setAutocompleteProvider: () => {},
     getExpandedText: () => text,
+    caretOffset: () => text.length,
     renderContent: width => wrapTextWithAnsi(text, Math.max(1, width)),
     insertText: () => {},
     render: width => wrapTextWithAnsi(text, Math.max(1, width)),

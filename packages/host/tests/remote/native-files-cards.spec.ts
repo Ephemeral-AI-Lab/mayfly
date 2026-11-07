@@ -5,8 +5,8 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { foldConversationProjection, initialConversationState } from '../../src/conversation/projection.ts'
 import { presentTool } from '../../src/remote/presentation.ts'
 import { nativeFilePresenters } from './native-files-presenters.ts'
-import events from '../../../remote/tests/fixtures/native-files-wave24.json' with { type: 'json' }
-import transport from '../../../remote/tests/fixtures/native-files-transport.json' with { type: 'json' }
+import events from '../fixtures/native-files-wave24.json' with { type: 'json' }
+import transport from '../../../mayfly/tests/fixtures/native-files-transport.json' with { type: 'json' }
 
 describe('actual native filesystem presenter transport', () => {
   it('produces the committed wire fixture from untouched native PTY events and real pinned builtin definitions', () => {

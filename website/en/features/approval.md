@@ -22,7 +22,7 @@ Requests from other agents (not the one displayed) don't open a panel — they p
 
 `ctx.userQuestions` requests (clarifying questions and the like) open one panel with a page per question:
 
-- a tab per question (its header, or `Q{n}`) shows progress; answered steps carry `✓`. `←` / `→` on the tab strip or `Alt+←` / `Alt+→` anywhere switch questions, and moving forward validates the current one, like **Next**;
+- a tab per question (its header, or `Q{n}`) shows progress; answered steps carry `✓`. `←` / `→` on the tab strip or an option row (or an empty **Other**) and `Alt+←` / `Alt+→` anywhere switch questions, and moving forward validates the current one, like **Next**;
 - options are numbered: `1`–`9` or ↑↓ + `Enter` choose, and a single choice advances to the next question (the last one submits). Single-choice questions end with **No selection**; multi-choice toggles with `Space` and confirms with `Enter`;
 - every question has an **Other** field (the only field when there are no options): typing starts an answer, `Enter` advances or submits, `Alt+Enter` adds a line;
 - **Back** and **Next** buttons sit under each question; **Submit answers** and **Cancel** sit under the panel;

@@ -70,14 +70,14 @@ test('the release bump computes consistent changes without writing files', () =>
     }
   }
   assert.equal(changes.has('docs/package-release.md'), false, 'immutable published reference is not a release marker')
-  const remote = join(root, 'packages/remote/package.json')
-  const broken = JSON.parse(readFileSync(remote, 'utf8'))
+  const tui = join(root, 'packages/mayfly/package.json')
+  const broken = JSON.parse(readFileSync(tui, 'utf8'))
   broken.dependencies['@ephemeral-ai/mayfly-host'] = OTHER
-  writeFileSync(remote, JSON.stringify(broken))
+  writeFileSync(tui, JSON.stringify(broken))
   assert.ok(checkReleaseReadiness(root, CURRENT).some(problem => problem.includes('dependencies @ephemeral-ai/mayfly-host')))
   assert.throws(() => releaseVersionChanges(root, NEXT), /dependencies @ephemeral-ai\/mayfly-host/u)
   broken.dependencies['@ephemeral-ai/mayfly-host'] = CURRENT
-  writeFileSync(remote, JSON.stringify(broken))
+  writeFileSync(tui, JSON.stringify(broken))
   const cli = join(root, 'packages/cli/package.json')
   writeFileSync(cli, readFileSync(cli, 'utf8').replace(CURRENT, OTHER))
   assert.throws(() => releaseVersionChanges(root, NEXT), new RegExp(`expected ${literal(CURRENT)}`, 'u'))

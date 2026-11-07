@@ -9,7 +9,6 @@ interface InteractionNotificationOwner {
   clear(id: string): void
   clearAll(): void
 }
-export type InteractionFeedbackReporter = (id: string, feedback: MayflyFeedback) => void
 
 /** Create one producer identity and retire only its records with the calling Fiber. */
 export function createInteractionNotificationOwner(ctx: Context, label: string, scope: () => MayflyUiScope): InteractionNotificationOwner {

@@ -4,10 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { ModelsDevCost } from '../../src/interaction/models-dev.ts'
-import {
-  DEEPSEEK_PRICES_AS_OF, formatMoney, isDeepseekPeak, isPeakRequest, moneyOf, priceFor,
-  type ModelTokens, type PriceSources, type UserPrice,
-} from '../../src/interaction/pricing.ts'
+import { formatMoney, moneyOf, priceFor, type ModelTokens, type PriceSources, type UserPrice } from '../../src/interaction/pricing.ts'
 import type { TokenBuckets } from '../../src/interaction/usage.ts'
 
 const buckets = (input = 0, output = 0, cacheRead = 0, cacheWrite = 0): TokenBuckets => ({ input, cacheRead, cacheWrite, output })
@@ -18,32 +15,6 @@ const cost = (input: number, output: number, cacheRead?: number, cacheWrite?: nu
   input, output, ...cacheRead === undefined ? {} : { cacheRead }, ...cacheWrite === undefined ? {} : { cacheWrite },
 })
 const user = (price: Partial<UserPrice> = {}): UserPrice => ({ input: 1, output: 2, currency: 'USD', ...price })
-
-/** Beijing 09:00 on a Monday, the first peak hour of the week. */
-const MONDAY_NINE = Date.UTC(2026, 9, 19, 1, 0)
-const HOUR = 3_600_000
-
-describe('isDeepseekPeak', () => {
-  it('counts the two Beijing work-hour windows on weekdays', () => {
-    expect(isDeepseekPeak(MONDAY_NINE)).toBe(true)
-    expect(isDeepseekPeak(MONDAY_NINE + 3 * HOUR)).toBe(false) // 12:00 break
-    expect(isDeepseekPeak(MONDAY_NINE + 5 * HOUR)).toBe(true) // 14:00
-    expect(isDeepseekPeak(MONDAY_NINE + 9 * HOUR)).toBe(false) // 18:00
-    expect(isDeepseekPeak(MONDAY_NINE - HOUR)).toBe(false) // 08:00
-  })
-
-  it('treats Saturday and Sunday as off-peak all day', () => {
-    expect(isDeepseekPeak(Date.UTC(2026, 9, 24, 1, 0))).toBe(false)
-    expect(isDeepseekPeak(Date.UTC(2026, 9, 25, 1, 0))).toBe(false)
-  })
-
-  it('bills only DeepSeek routes by that calendar', () => {
-    expect(isPeakRequest('deepseek-official', MONDAY_NINE)).toBe(true)
-    expect(isPeakRequest('deepseek', MONDAY_NINE)).toBe(true)
-    expect(isPeakRequest('deepseek', MONDAY_NINE + 3 * HOUR)).toBe(false)
-    expect(isPeakRequest('openrouter', MONDAY_NINE)).toBe(false)
-  })
-})
 
 describe('priceFor', () => {
   it('uses a user price first, with its cache prices falling back to input', () => {
@@ -78,13 +49,6 @@ describe('priceFor', () => {
       input: 21, output: 42, cacheRead: 21, cacheWrite: 21, source: 'models.dev', approx: true,
     })
     expect(priceFor('acme', 'one', false, 'USD', sources({ modelsDev: { lookupCost: () => cost(1, 2, 0.1, 0.2) } }))).toMatchObject({ cacheRead: 0.1, cacheWrite: 0.2 })
-  })
-
-  it('answers undefined when no source prices the model or a DeepSeek tier is unknown', () => {
-    expect(priceFor('acme', 'one', false, 'USD', sources())).toBeUndefined()
-    expect(priceFor('deepseek-official', 'unknown-model', false, 'USD', sources())).toBeUndefined()
-    expect(priceFor('deepseek-official', 'unknown-model', false, 'USD', sources({ modelsDev: { lookupCost: () => undefined } }))).toBeUndefined()
-    expect(DEEPSEEK_PRICES_AS_OF).toBe('2026-10-14')
   })
 })
 

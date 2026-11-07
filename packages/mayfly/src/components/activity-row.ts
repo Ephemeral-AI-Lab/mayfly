@@ -2,7 +2,7 @@
  * The activity row: the one present-tense block above the editor, always three rows high while a turn is live: a leading
  * spacer, a header (the phase's glyph and label and a muted tail of counts), and one line under it. The row before the editor under it
  * belongs to the notification line, so the editor never shifts between phases. The line under the header, after a `⎿`,
- * is what the turn is doing that the stream does not say (the arguments of the calls in flight), else a teaching tip,
+ * is what the turn is doing that the stream does not say (the different tools in flight), else a teaching tip,
  * or blank: the row has one effect at every work-details level. The glyph or the label moves, never both: a model phase animates its
  * glyph over a still label, a running tool keeps a still `●` while its label shimmers, a wait breathes its `●`, and a
  * stop is static. A pure function of facts: the texts arrive translated and final, the clock and the motion belong to
@@ -26,7 +26,7 @@ export interface ActivityFacts {
   readonly labelStrong?: boolean
   /** The muted counts after the label (`8s`, `↑30.2k ↓1.1k`, `38 tok/s`), joined by ` · `. */
   readonly tail?: readonly string[]
-  /** What the turn is doing that the stream does not say (the running calls' arguments): it takes the line under the header. */
+  /** What the turn is doing that the stream does not say (the names of different tools in flight): it takes the line under the header. */
   readonly info?: string
   /** The line under the header when there is no info: a teaching tip. */
   readonly tip?: string

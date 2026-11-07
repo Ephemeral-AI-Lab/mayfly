@@ -1,13 +1,3 @@
-/**
- * The facts of the conversation stream: the display plan of one transcript model (`buildDisplay`, the presentation
- * policy's window and Ctrl-O reach) mapped to the rows `TranscriptView` draws, turn by turn. A row is rebuilt on every
- * pass and kept by identity while its content is equal, so a settled turn publishes the same frozen items and only the
- * live turn's rows change. Texts leave here translated and sanitized; times leave formatted.
- *
- * @module @ephemeral-ai/mayfly/transcript/stream-facts
- */
-
-import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { MayflyDecisionRequest } from '../core/types.ts'
 import { textOf, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { sanitizePluginText } from '../core/plugin-view.ts'
@@ -19,14 +9,14 @@ import { compactElapsedMs } from './agent-presentation.ts'
 import { openTurns, type Disclosure } from './disclosure.ts'
 import { buildDisplay, runningTurnOf, type DisplayItem, type EntryItem, type ProcessTitleItem, type TurnHeaderItem } from './process-groups.ts'
 import { diffStat, elapsedText } from './process-activity.ts'
-import { callsOf, standardRow, verboseRow, type Call, type CallFacts, type SpawnedChildren } from './tool-calls.ts'
-import { kindOf } from './tool-kinds.ts'
+import { callsOf, runKey, standardRow, verboseRow, type Call, type CallFacts, type SpawnedChildren } from './tool-calls.ts'
+import { kindOf, ownerViewOf } from './tool-kinds.ts'
 import type { TranscriptPresentationSnapshot } from './presentation-policy.ts'
 import { ellipsize } from './present.ts'
 import { partText, type CopyMode, type RowPart } from './row-text.ts'
 import { contextPercent, formatTokens } from './status-context-model.ts'
 import { COMPACTION_DRAIN_MS, type CompactionFacts } from '../components/compaction-row.ts'
-import type { ApprovalMark, CompactionMark } from '../conversation/types.ts'
+import type { ApprovalMark, CompactionMark } from '@ephemeral-ai/mayfly-host/types'
 import type { TranscriptCompactionModel } from '../frontend/models.ts'
 
 /** Characters of a salient argument kept on a row. */
@@ -98,6 +88,8 @@ export interface StreamInputs {
   readonly approvals?: readonly ApprovalMark[]
   /** The children the displayed conversation spawned, which a spawn's line follows. */
   readonly children?: SpawnedChildren
+  /** The displayed Session's working directory, which a path under it is shown against. */
+  readonly cwd?: string
   /** The context occupancy around each recent compaction, for its bar. */
   readonly compactions?: readonly CompactionMark[]
   /** The selected Agent's context window and occupancy, for a compaction whose marks have not landed. */
@@ -121,18 +113,6 @@ function sanitizedOf(entry: { readonly text: string }): string {
 
 function isSemantic(entry: Entry): entry is TranscriptEntryModel {
   return entry.kind.startsWith('transcript-')
-}
-
-/** One line of a user message for a queued row: its text, and a count of its images. */
-export function userMessageText(message: UserMessage): string {
-  const text = message.content
-    .filter(block => block.type === 'text')
-    .map(block => block.text)
-    .join(' ')
-    .replace(/[\r\n]+/g, ' ')
-    .trim()
-  const images = message.content.filter(block => block.type === 'image').length
-  return [text, ...(images === 0 ? [] : [`[${images} image${images === 1 ? '' : 's'}]`])].filter(Boolean).join(' ')
 }
 
 /** The wall-clock time a turn started, as `HH:MM` in the local zone. */
@@ -167,11 +147,13 @@ function sameRow(left: StreamRow, right: StreamRow): boolean {
 }
 
 /** What a stream row stands for: the turn it sits in and the entries (or calls of them) it draws. */
-export type RowOwner = {
+type RowOwner = {
   /** Entry ids, or the ids of calls inside group entries (`<entry>:<call>`). */
   readonly parts: readonly string[]
   /** A run's head or one of its calls: the run's id and the ids of the calls it holds, so Enter opens a call without leaving the run. */
   readonly run?: { readonly head: string, readonly calls: readonly string[] }
+  /** The view that has this row's detail, so Enter moves there rather than opening the row. */
+  readonly view?: string
 } & (
   /** Headers and titles always stand for their own turn; canonical entry notes may stand outside one. */
   | { readonly kind: 'header' | 'title', readonly turn: number }
@@ -308,6 +290,7 @@ export class StreamFacts {
     this.reached = reach
     const runnable = new Set<string>()
     for (const entry of entries) if (isSemantic(entry) && isToolLike(entry) && !isUnmerged(entry)) runnable.add(entry.id)
+    const asked = { ...requestOf(inputs.requests, inputs.approvals, inputs.children), ...inputs.cwd === undefined ? {} : { cwd: inputs.cwd } }
     const display = buildDisplay({
       entries: [...entries, ...liveEntries],
       policy: policy.process,
@@ -320,11 +303,12 @@ export class StreamFacts {
       scope: inputs.disclosure.recent ? new Set() : reach,
       flat: model.streaming === undefined,
       runningHeader: inputs.liveTurnHeader,
+      waiting: new Set(asked.asked.keys()),
+      children: inputs.children,
     })
     const lifecycle = new Map((model.turns ?? []).map(turn => [turn.turn, turn]))
     const buckets: { readonly turn: number, readonly rows: StreamRow[] }[] = []
     let lead: StreamRow[] = []
-    const asked = requestOf(inputs.requests, inputs.approvals, inputs.children)
     runsOf(display, inputs.t, inputs.now, asked).forEach((item, position) => {
       const turn = turnOf(item)
       const built = this.rowsOf(item, inputs, position, asked)
@@ -492,7 +476,7 @@ export class StreamFacts {
   }
 
   private rowsOf(item: DisplayItem | RunUnit, inputs: StreamInputs, position: number, asked: CallFacts): readonly StreamRow[] {
-    if (item.kind === 'run') return [standardRow(item.calls, inputs.t, inputs.now, openedOf(item.calls, inputs.disclosure))]
+    if (item.kind === 'run') return [standardRow(item.calls, inputs.t, inputs.now, openedOf(item.calls, inputs.disclosure), inputs.cwd)]
     if (item.kind === 'turn-header') return [headerRow(item, inputs.t)]
     if (item.kind === 'process-title') return [titleRow(item, inputs.t)]
     // A hand-built model may carry canonical nodes between its entries: their text is all the stream keeps.
@@ -556,8 +540,16 @@ function requestOf(requests: readonly MayflyDecisionRequest[] | undefined, appro
 function ownerOf(item: DisplayItem | RunUnit, turn: number | undefined, row: StreamRow): RowOwner {
   if (item.kind === 'turn-header') return { kind: 'header', turn: item.turn, parts: [] }
   if (item.kind === 'process-title') return { kind: 'title', turn: item.turn, parts: [] }
-  if (item.kind === 'run') return { kind: 'entries', turn, parts: item.calls.map(call => call.id), run: runOf(item) }
-  return { kind: 'entries', turn, parts: [row.id] }
+  const view = row.kind !== 'tool' || row.state !== 'waiting' ? viewOfItem(item) : undefined
+  const moves = view === undefined ? {} : { view }
+  if (item.kind === 'run') return { kind: 'entries', turn, parts: item.calls.map(call => call.id), run: runOf(item), ...moves }
+  return { kind: 'entries', turn, parts: [row.id], ...moves }
+}
+
+/** The view that has the detail of a spawn's or a workflow's line. */
+function viewOfItem(item: EntryItem | RunUnit): string | undefined {
+  if (item.kind === 'run') return ownerViewOf(item.calls[0]!.activity)
+  return item.entry.kind === 'transcript-tool' ? ownerViewOf(item.entry.activity) : undefined
 }
 
 function runOf(run: RunUnit): NonNullable<RowOwner['run']> {
@@ -671,7 +663,7 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
           units.push({ kind: 'run', turn: item.entry.turn, calls: [call] })
           continue
         }
-        if (run !== undefined && run.calls[0]!.activity !== call.activity) flush()
+        if (run !== undefined && runKey(run.calls[0]!) !== runKey(call)) flush()
         if (run === undefined) run = { turn: item.entry.turn, calls: [] }
         run.calls.push(call)
       }
@@ -687,9 +679,13 @@ function runsOf(display: readonly DisplayItem[], t: MayflyTranslate, now: number
 /** The rows of one entry: none for an empty one, one per call for a tool, group, or run of calls drawn as verbose blocks. */
 function entryRows(item: EntryItem, entry: TranscriptEntryModel, inputs: StreamInputs, asked: CallFacts): readonly StreamRow[] {
   if (isToolLike(entry)) {
-    // At the compact level a call in flight is its line alone, and one that waits on the user stays open; what has settled is the title's.
+    // At the compact level a call in flight is its line alone, and one that waits on the user stays open; what has settled is
+    // the title's, but for a failure, which keeps its line and opens from it.
     const calls = callsOf(entry, inputs.t, inputs.now, asked)
-    return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending' || call.state === 'waiting') : calls).map(call => verboseRow(call, item.expanded || inputs.disclosure.rows.has(call.id), inputs.t, item.tier ?? 'verbose'))
+    return (item.tier === 'compact' ? calls.filter(call => call.state === 'pending' || call.state === 'waiting' || call.state === 'error') : calls).map((call) => {
+      const open = item.expanded || inputs.disclosure.rows.has(call.id)
+      return verboseRow(call, open, inputs.t, open && call.state === 'error' ? 'verbose' : item.tier ?? 'verbose', inputs.cwd)
+    })
   }
   const row = entryRow(item, entry, inputs)
   return row === undefined ? [] : [row]

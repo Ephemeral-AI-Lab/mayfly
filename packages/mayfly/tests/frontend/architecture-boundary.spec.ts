@@ -57,7 +57,7 @@ function runtimeSpecifiers(source: string): string[] {
 
 describe('frontend runtime architecture boundary', () => {
   it('keeps every public runtime entry free of retired Agent lookup and development-only parsers', async () => {
-    const manifest = JSON.parse(await readFile(resolve(root, 'packages/mayfly/package.json'), 'utf8')) as { exports: Record<string, { default?: string }>, dependencies: Record<string, string>, devDependencies: Record<string, string> }
+    const manifest = JSON.parse(await readFile(resolve(root, 'packages/mayfly/package.json'), 'utf8')) as { exports: Record<string, { default?: string }>, dependencies: Record<string, string> }
     const visited = new Set<string>()
     const visit = async (file: string): Promise<void> => {
       if (visited.has(file)) return
@@ -65,7 +65,8 @@ describe('frontend runtime architecture boundary', () => {
       const source = await readFile(file, 'utf8')
       expect(source, file).not.toContain('mayflyCurrentAgent')
       for (const target of runtimeSpecifiers(source)) {
-        expect(target, file).not.toMatch(/^(?:commander|yaml|@ephemeral-ai\/mayfly-host)(?:\/|$)/u)
+        // The Host plugin runs in dsh; the TUI reaches it only through its client subpaths.
+        expect(target, file).not.toMatch(/^(?:commander|yaml)(?:\/|$)|^@ephemeral-ai\/mayfly-host(?!\/(?:remote|types|conversation)$)/u)
         if (target.startsWith('.')) await visit(resolve(file, '..', target))
       }
     }
@@ -75,10 +76,7 @@ describe('frontend runtime architecture boundary', () => {
       }
     }
     expect(visited.size).toBeGreaterThan(100)
-    for (const dependency of ['commander', 'yaml']) {
-      expect(manifest.dependencies[dependency]).toBeUndefined()
-      expect(manifest.devDependencies[dependency]).toBeTypeOf('string')
-    }
+    for (const dependency of ['commander', 'yaml']) expect(manifest.dependencies[dependency]).toBeUndefined()
   })
   it('follows runtime imports while erasing every type-only import and export form', () => {
     expect(runtimeSpecifiers(`
@@ -116,14 +114,14 @@ describe('frontend runtime architecture boundary', () => {
     expect(visited.has(resolve(root, 'packages/mayfly/src/core/ui-interaction-document.ts'))).toBe(true)
   })
 
-  it('loads the built frontend entry with pi-tui unavailable', async () => {
-    const { stdout } = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', `
+  it('loads the frontend layer with pi-tui unavailable', async () => {
+    const { stdout } = await promisify(execFile)(process.execPath, ['--experimental-transform-types', '--no-warnings=ExperimentalWarning', '--input-type=module', '-e', `
       import { registerHooks } from 'node:module'
       registerHooks({ resolve(specifier, context, next) {
         if (specifier.startsWith('@earendil-works/pi-tui')) throw new Error('terminal renderer loaded by frontend')
         return next(specifier, context)
       } })
-      const frontend = await import('./packages/mayfly/lib/frontend.js')
+      const frontend = await import('./packages/mayfly/src/frontend/index.ts')
       if (typeof frontend.apply !== 'function') throw new Error('frontend entry missing')
       process.stdout.write('headless frontend loaded')
     `], { cwd: root })

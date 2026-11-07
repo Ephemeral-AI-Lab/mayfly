@@ -1,20 +1,20 @@
 # Mayfly plugin development
 
-Mayfly has two independent Cordis trees: the native dsh Host and the Remote TUI.
+Mayfly has two independent Cordis trees: the native dsh Host and the TUI.
 Plugins remain ordinary `name / inject / apply(ctx)` entries; their dependencies
 must exist in the process where they run.
 
 | Location | Services | Installation and execution |
 | --- | --- | --- |
 | Host | Native commands, sessionProjections, tools, settings, and other services | Native Host bundles and plugin manager |
-| Remote TUI | Official Client, frontend state, and four Mayfly UI services | Currently requires source integration into Remote composition, a build, and a TUI restart |
+| TUI | Official Client, frontend state, and four Mayfly UI services | Source composition through `run(argv, { plugins })` from `@ephemeral-ai/mayfly/bin`, a build, and a TUI restart |
 
-TUI features read Host data through official Client/Remote calls and serializable
+TUI features read Host data through official Client calls and serializable
 DTOs. Agent, Session, Tool Definition, callback, and renderer objects do not cross
 processes. Mayfly Host supplies additional transport capabilities through public
 native APIs; this project does not modify dsh upstream to provide them.
 
-A static UI plugin integrated into Remote composition looks like this:
+A static UI plugin for a TUI source composition looks like this:
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
@@ -32,9 +32,8 @@ export function apply(ctx: Context): void {
 }
 ```
 
-Installing a Host plugin does not mount a TUI contribution. Shared
-`@ephemeral-ai/mayfly` provides the renderer and readonly presentation subpaths;
-it publishes no root plugin, Host patch, or preset.
+Installing a Host plugin does not mount a TUI contribution. `@ephemeral-ai/mayfly`
+is the TUI itself; it publishes no Host plugin, Host patch, or preset.
 
 Use the [quickstart](/en/plugins/quickstart) for the Host or TUI integration path.
 The [Harness reference](https://deepseek-harness.github.io/deepseek-harness/reference/)

@@ -177,7 +177,7 @@ export function paintPrompt(paint: PromptPaint): string[] {
 }
 
 /** What the host-editor painter reads: the node, the width, the palette, and the host's buffer. */
-export interface HostedPromptPaint {
+interface HostedPromptPaint {
   readonly node: MayflyPromptNode
   readonly width: number
   readonly colors: MayflySemanticColors

@@ -2,10 +2,9 @@
 
 ## Why not a plain `npm install @ephemeral-ai/mayfly`?
 
-The shared package contains renderer and readonly presentation subpaths. The
-current product uses `mayfly-host` in a native dsh profile and an independent
-`mayfly-remote` TUI. The unified `mayfly-cli` depends on exact Host, Remote
-and official Harness versions. `mayfly server` manages the background Host;
+`@ephemeral-ai/mayfly` is the independent TUI alone; it needs a Host. The
+current product uses `mayfly-host` in a native dsh profile and that TUI. The
+unified `mayfly-cli` depends on exact Host, TUI, and official Harness versions. `mayfly server` manages the background Host;
 `mayfly` automatically starts and connects to its local instance. Follow the [split quickstart](/en/guide/).
 Published `v0.1.4-rc.2` is the immutable UI reference; current development targets
 Harness `0.2.2-rc.1` and requires matching verified build artifacts.

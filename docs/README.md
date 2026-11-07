@@ -41,9 +41,8 @@ Host/Remote transport, PTY lifecycle scenarios, and cell-grid comparison.
 Runtime claims come from implementation and validation, not the title or
 completion labels of an older plan.
 
-The historical workbench (`pnpm run dev`, `scenario`, and `frame`) and design
-prototypes remain useful source fixtures. Their old in-process profiles are
-not a second supported product deployment or proof of split visual parity.
+The design prototypes remain useful source fixtures. They are not a second
+supported product deployment or proof of split visual parity.
 Use the root README's dedicated Host profile and independent TUI launch for
 current acceptance.
 

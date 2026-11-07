@@ -14,7 +14,7 @@ import { expectFrozenJson } from './frozen-frame.ts'
 
 registerTempDirCleanup()
 const contexts: Context[] = []
-const clientRequire = createRequire(new URL('../../../remote/package.json', import.meta.url))
+const clientRequire = createRequire(new URL('../../../mayfly/package.json', import.meta.url))
 const { TypertRegistry } = await import(pathToFileURL(clientRequire.resolve('@deepseek-ai/dsh-typert-registry')).href)
 const { TypertGatewayService } = await import(pathToFileURL(clientRequire.resolve('@deepseek-ai/dsh-api-gateway')).href)
 type HostService = InstanceType<typeof MayflyHostService>

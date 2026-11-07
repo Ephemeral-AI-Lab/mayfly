@@ -12,7 +12,7 @@
 
 import { freezeWire, ui, type MayflyInlineSpan, type MayflyListHighlight, type MayflyListItem, type MayflyListNode, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 import { CompactionRow, type CompactionFacts } from './compaction-row.ts'
-import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore, type ToolBlockFacts, type ToolGroupFacts } from './tool-line.ts'
+import { ToolBody, ToolGroupHead, ToolGroupItem, ToolLine, ToolMore, ToolPatchFileRow, type ToolBlockFacts, type ToolDiffHunk, type ToolGroupFacts } from './tool-line.ts'
 
 /** A prompt shows at most this many lines; opening it (or a search hit inside it) shows the rest. */
 export const PROMPT_MAX_LINES = 4
@@ -21,7 +21,7 @@ export const PROMPT_MAX_LINES = 4
 const DIFF_CONTEXT = 1
 
 /** The tallest a prompt's picture paints, in terminal rows. */
-export const PROMPT_IMAGE_MAX_ROWS = 12
+const PROMPT_IMAGE_MAX_ROWS = 12
 
 /** One image attached to a prompt: the reference the host resolves to bytes, and the text shown until it does. */
 export interface StreamImage {
@@ -173,6 +173,31 @@ function runItems(row: Extract<StreamRow, { readonly kind: 'tools' }>): readonly
   return [head, ...items]
 }
 
+/** The hunks of one change, each a diff of its own, under a row and behind `lead`. */
+function diffItems(id: string, hunks: readonly ToolDiffHunk[], lead: string): readonly MayflyListItem[] {
+  return hunks.flatMap((hunk, index): MayflyListItem[] => [
+    // The hunks of one change are apart in the file: a `⋯` stands between them.
+    ...(index === 0 ? [] : [line(`${id}.diff.${String(index)}.gap`, [span(`${lead}  ⋯`, 'muted')])]),
+    {
+      id: `${id}.diff.${String(index)}`,
+      label: '',
+      body: ui.diff(hunk.before, hunk.after, {
+        hunkHeader: false,
+        context: DIFF_CONTEXT,
+        ...(hunk.maxRows === undefined ? {} : { maxRows: hunk.maxRows }),
+        ...(hunk.tail === undefined ? {} : { tail: hunk.tail }),
+        ...(hunk.language === undefined ? {} : { language: hunk.language }),
+        ...(hunk.start === undefined ? {} : { start: hunk.start }),
+        ...(hunk.beforeStart === undefined ? {} : { beforeStart: hunk.beforeStart }),
+        ...(hunk.numberWidth === undefined ? {} : { numberWidth: hunk.numberWidth }),
+      }),
+      bodyAlways: true,
+      // A lead puts the body on the line itself (no blank head row); the diff's own indent sets its column.
+      bodyLead: [span(lead)],
+    },
+  ])
+}
+
 function rowParts(row: Exclude<StreamRow, { readonly kind: 'tools' }>): readonly [MayflyListItem, ...MayflyListItem[]] {
   switch (row.kind) {
     case 'prompt':
@@ -205,30 +230,15 @@ function rowParts(row: Exclude<StreamRow, { readonly kind: 'tools' }>): readonly
       row.state === 'pending'
         ? { id: row.id, label: row.name, body: ui.richText(ToolLine(row), { overflow: 'truncate' }), bodyAlways: true, bodyLead: [span('')] } satisfies MayflyListItem
         : line(row.id, ToolLine(row)),
+      ...(row.args === undefined ? [] : [line(`${row.id}.args`, ToolMore(row.args))]),
       ...(row.moreBefore === undefined ? [] : [line(`${row.id}.before`, ToolMore(row.moreBefore))]),
       ...(row.body ?? []).map((part, index) => line(`${row.id}.body.${String(index)}`, ToolBody(part))),
-      // An edit's hunks, each a diff of its own (the band behind the changed code, one number per row from the hunk's first row); a write's code.
-      ...(row.diff ?? []).flatMap((hunk, index): MayflyListItem[] => [
-        // The hunks of one edit are apart in the file: a `⋯` stands between them.
-        ...(index === 0 ? [] : [line(`${row.id}.diff.${String(index)}.gap`, [span('  ⋯', 'muted')])]),
-        {
-          id: `${row.id}.diff.${String(index)}`,
-          label: '',
-          body: ui.diff(hunk.before, hunk.after, {
-            hunkHeader: false,
-            context: DIFF_CONTEXT,
-            ...(hunk.maxRows === undefined ? {} : { maxRows: hunk.maxRows }),
-            ...(hunk.tail === undefined ? {} : { tail: hunk.tail }),
-            ...(hunk.language === undefined ? {} : { language: hunk.language }),
-            ...(hunk.start === undefined ? {} : { start: hunk.start }),
-            ...(hunk.beforeStart === undefined ? {} : { beforeStart: hunk.beforeStart }),
-            ...(hunk.numberWidth === undefined ? {} : { numberWidth: hunk.numberWidth }),
-          }),
-          bodyAlways: true,
-          // A lead puts the body on the line itself (no blank head row); the diff's own indent sets its column.
-          bodyLead: [span('')],
-        },
+      ...(row.files ?? []).flatMap((file, index, files): MayflyListItem[] => [
+        line(`${row.id}.file.${String(index)}`, ToolPatchFileRow(file, row.filesTree !== true ? undefined : index === files.length - 1 ? 'last' : 'middle')),
+        ...diffItems(`${row.id}.file.${String(index)}`, file.diff ?? [], '  '),
       ]),
+      // An edit's hunks, each a diff of its own (the band behind the changed code, one number per row from the hunk's first row); a write's code.
+      ...diffItems(row.id, row.diff ?? [], ''),
       ...(row.code === undefined ? [] : [{
         id: `${row.id}.code`,
         label: '',
@@ -371,7 +381,7 @@ function withUniqueIds(items: MayflyListItem[]): MayflyListItem[] {
 export const STREAM = Object.freeze({ list: 'stream', keys: 'stream.keys', copy: 'copy', copyRaw: 'copy-raw', open: 'open', queuedEdit: 'queued-edit', queuedSteer: 'queued-steer', queuedCancel: 'queued-cancel', queuedUndo: 'queued-undo', findDown: 'find-down', findUp: 'find-up', matchPrev: 'match-prev', matchNext: 'match-next', matchAgain: 'match-again', matchBack: 'match-back' })
 
 /** Where the stream's cursor is sent from outside: the newest row when the reader moves focus up into the stream. */
-export interface StreamCursor {
+interface StreamCursor {
   /** Changes every time the cursor is sent; the list moves it once per value. */
   readonly rev: number
   /** The rows to land on, the first that the stream draws; the newest row when none is given or none is drawn. */

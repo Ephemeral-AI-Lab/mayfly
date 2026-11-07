@@ -14,8 +14,7 @@ import { interpolateLocaleMessage } from '../../src/frontend/locale.ts'
 import { STREAM } from '../../src/components/transcript-view.ts'
 import { NEW_MESSAGES_HISTORY_ROWS, NEW_MESSAGES_VISIBLE_MS } from '../../src/transcript/new-messages.ts'
 import { NEW_MESSAGES_ROWS } from '../../src/components/transcript-view.ts'
-import { DEFAULT_TRANSCRIPT_PRESENTATION } from '../../src/transcript/presentation-policy.ts'
-import { appendTranscriptNode, createTranscriptModel, PUBLISH_INTERVAL_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
+import { createTranscriptModel, PUBLISH_INTERVAL_MS, TranscriptController, type TranscriptScreen } from '../../src/transcript/transcript-model.ts'
 
 const user = (turn: number, text: string): TranscriptEntryModel => ({ id: `user:${String(turn)}`, kind: 'transcript-user', seq: turn, updatedSeq: turn, turn, text, attachments: [] })
 const answer = (turn: number, text: string): TranscriptEntryModel => ({ id: `assistant:${String(turn)}`, kind: 'transcript-assistant', seq: turn, updatedSeq: turn, turn, step: 2, text, streaming: false })
@@ -291,21 +290,6 @@ describe('controller models and presentation', () => {
     b.press(STREAM.queuedSteer)
     b.state.onFocusChange!(false)
     expect(b.focusRows).toEqual([])
-    b.controller.dispose()
-  })
-
-  it('builds and appends models without folding events, and exposes the default policy', () => {
-    const first = createTranscriptModel('a', [user(1, 'one')], false, 3, [{ turn: 1, startedAt: 0 }])
-    expect(first).toMatchObject({ id: 'a', generation: 3, streaming: false, turns: [{ turn: 1, startedAt: 0 }] })
-    const appended = appendTranscriptNode(first, user(2, 'two'), true)
-    expect(appended).toMatchObject({ id: 'a', generation: 3, streaming: true })
-    expect(appended.entries).toHaveLength(2)
-    expect(appended.turns).toEqual(first.turns)
-    const b = bench()
-    expect(b.controller.presentationPolicy()).toBe(DEFAULT_TRANSCRIPT_PRESENTATION)
-    b.controller.refreshPresentationPolicy()
-    b.controller.refreshLocale()
-    expect(b.screen.requestRender).toHaveBeenCalledWith(true)
     b.controller.dispose()
   })
 })

@@ -31,7 +31,7 @@ export type UiSliderIntent =
   | { readonly kind: 'accept' }
 
 /** What a reduction asks the surface model to tell the host. */
-export type UiSliderEffect = { readonly kind: 'accept', readonly value: string | null }
+type UiSliderEffect = { readonly kind: 'accept', readonly value: string | null }
 
 const enabled = (definition: MayflySliderNode): readonly MayflySliderLevel[] => definition.levels.filter(level => level.disabled !== true)
 

@@ -6,9 +6,8 @@
 
 import { fileURLToPath } from 'node:url'
 import { normalizeChangedFiles } from '../change-files.mjs'
-import { CATALOG } from '../scenarios/catalog.mjs'
 import { buildGraph, CODE_FILE, covers, dependents, NODE_TEST_FILE, SPEC_FILE } from './graph.mjs'
-import { CHECKS, DATA_READS, GLOBAL, INERT, SCENARIO_ALL, SCENARIO_PIPELINE, SCENARIO_SMOKE, STRUCTURAL } from './inputs.mjs'
+import { CHECKS, DATA_READS, GLOBAL, INERT, RUNTIME_SOURCE, STRUCTURAL } from './inputs.mjs'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 
@@ -22,43 +21,6 @@ export function promoteToFull(plan, reason) {
     reasons: [...new Set([...plan.reasons, reason])],
     checks: { ...plan.checks, lint: true, typecheck: true, build: true, checkLib: true, examples: true, agentDocs: true, diagrams: true },
   }
-}
-
-/** Whether a catalog `covers` glob names a path: `*` within one segment, a trailing `/` for everything under it. */
-export function coversPath(glob, file) {
-  const pattern = new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/gu, '\\$&').replaceAll('*', '[^/]*')}${glob.endsWith('/') ? '' : '$'}`, 'u')
-  return pattern.test(file)
-}
-
-/**
- * The scenarios a change can show, each with why: a golden its own scenario, a covered source the scenarios that cover
- * it, a change the graph carries to the scenario command every scenario, and any other product source the smoke set.
- */
-function selectScenarios(graph, files) {
-  const why = {}
-  const add = (name, chain) => { if (CATALOG[name]?.demo === true) return; why[`scenario ${name}`] ??= [...chain, `scenario ${name}`] }
-  const goldens = files.filter(file => file.startsWith('script/scenarios/golden/'))
-  for (const file of goldens) {
-    const name = file.split('/')[3]
-    if (Object.hasOwn(CATALOG, name)) add(name, [file])
-  }
-  const others = files.filter(file => !goldens.includes(file))
-  const reached = dependents(graph, others)
-  // Machinery is the run/content/compare pipeline, not everything the command's own imports reach: an outside file
-  // the pipeline loads changes every run, an orchestration-only import (the change-set parser, the shots painter)
-  // changes none.
-  const pipeline = SCENARIO_PIPELINE.map(root => reached.get(root)).find(chain => chain !== undefined)
-  const inside = others.find(file => SCENARIO_ALL.test(file))
-  const machinery = pipeline !== undefined ? [...pipeline, 'script/scenarios.mjs'] : inside === undefined ? undefined : [inside]
-  if (machinery !== undefined) for (const name of Object.keys(CATALOG)) add(name, machinery)
-  for (const file of others) {
-    const covered = Object.entries(CATALOG).filter(([, scenario]) => scenario.covers.some(glob => coversPath(glob, file)))
-    for (const [name] of covered) add(name, [file])
-    // A source no golden scenario covers still shows on screen: the smoke set checks it (perf coverage measures cost).
-    const smoke = SCENARIO_SMOKE.find(rule => rule.pattern.test(file))
-    if (!covered.some(([, scenario]) => scenario.perf === undefined) && smoke !== undefined) for (const name of smoke.scenarios) add(name, [file])
-  }
-  return why
 }
 
 const graphs = new Map()
@@ -104,7 +66,7 @@ export function classifyChanges(inputFiles, { graph = repositoryGraph() } = {}) 
     if (global !== undefined) {
       full = true
       reasons.push(`${file}: ${global.reason}`)
-      if (/^(?:pnpm-lock\.yaml|pnpm-workspace\.yaml|script\/package-contract\.mjs|packages\/mayfly\/(?:cordis\.patch\.yml|presets\/.*))$/u.test(file)) checks.pack = true
+      if (/^(?:pnpm-lock\.yaml|pnpm-workspace\.yaml|script\/package-contract\.mjs)$/u.test(file)) checks.pack = true
     } else if (!claimed(graph, file)) {
       full = true
       reasons.push(`${file}: no rule claims this path`)
@@ -114,7 +76,10 @@ export function classifyChanges(inputFiles, { graph = repositoryGraph() } = {}) 
     if (/^(?:packages|examples)\/[^/]+\/src\/.+\.ts$/u.test(file)) checks.build = true
     if (/^(?:packages|examples)\/.+\.(?:[cm]?ts|tsx)$/u.test(file) && present.has(file)) checks.lint = true
     if (CODE_FILE.test(file) && !file.startsWith('docs/')) checks.typecheck = true
-    if (/^packages\/(?:mayfly\/(?:src\/|presets\/|cordis\.patch\.yml)|ui\/src\/)/u.test(file)) manualAcceptance.add('runtime-profile')
+    if (RUNTIME_SOURCE.test(file)) {
+      checks.smoke = true
+      manualAcceptance.add('runtime-profile')
+    }
   }
 
   // Everything the changed paths reach: the specs and workflow tests to run, and the checks whose entry they reach.
@@ -130,20 +95,13 @@ export function classifyChanges(inputFiles, { graph = repositoryGraph() } = {}) 
     why[file] = chain
   }
   for (const [name, check] of Object.entries(CHECKS)) if (check.entry !== undefined && reached.has(check.entry)) checks[name] = true
-  const scenarioWhy = selectScenarios(graph, files)
-  Object.assign(why, scenarioWhy)
-  const selected = Object.keys(scenarioWhy).map(key => key.slice('scenario '.length))
-  // A manual review has no goldens and is judged by the owner against an
-  // external Host, so it never joins the automated scenario run.
-  const scenarios = selected.filter(name => CATALOG[name].perf === undefined && CATALOG[name].manual !== true)
-  const perf = selected.filter(name => CATALOG[name].perf !== undefined)
 
   const plan = {
     files,
     mode: full ? 'full' : files.length === 0 ? 'none' : 'changed',
     reasons: [...new Set(reasons)],
     checks,
-    tests: { specs: specs.sort(), nodeTests: nodeTests.sort(), scenarios: scenarios.sort(), perf: perf.sort(), why },
+    tests: { specs: specs.sort(), nodeTests: nodeTests.sort(), why },
     manualAcceptance: [...manualAcceptance],
   }
   return full ? promoteToFull(plan, 'full gate required by change classification') : plan

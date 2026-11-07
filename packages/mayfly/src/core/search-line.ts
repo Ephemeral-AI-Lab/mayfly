@@ -37,7 +37,7 @@ export interface MayflySearchLine {
 }
 
 /** What the line paints with, read when it paints: the renderer binds after the screen exists. */
-export interface MayflySearchLineHost {
+interface MayflySearchLineHost {
   readonly colors: () => MayflySemanticColors | undefined
   readonly keymap: () => MayflyKeymap | undefined
   readonly requestRender: () => void

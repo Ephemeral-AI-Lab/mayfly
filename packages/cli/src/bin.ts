@@ -3,7 +3,7 @@
  * Unified terminal launcher and local background Host management.
  * @module @ephemeral-ai/mayfly-cli/bin
  */
-import { run, validateArguments } from '@ephemeral-ai/mayfly-remote/remote-bin'
+import { run, validateArguments } from '@ephemeral-ai/mayfly/bin'
 import { parse, HELP } from './options.ts'
 import { ensure, manage, ownBin } from './manager.ts'
 import { packageManifest } from './profiles.ts'
@@ -25,7 +25,7 @@ try {
     else if (process.env.MAYFLY_DSH_STARTUP_URL || options.remote.some(arg => /^--host(?:=|$)/u.test(arg))) await run(options.remote)
     else {
       const state = await ensure(options, ownBin(), text => process.stderr.write(text))
-      await run(options.remote, state.url!)
+      await run(options.remote, { localStartupUrl: state.url! })
     }
   }
 } catch (error) {

@@ -4,7 +4,7 @@ import type { MayflyTranslate } from '../frontend/locale.ts'
 import { itemSummary, viewPanel } from './view-items.ts'
 
 /** Native readonly Goal facts needed by either frontend's status renderer. */
-export interface GoalPresentation {
+interface GoalPresentation {
   readonly id: string
   readonly revision: number
   readonly objective: string
@@ -39,7 +39,7 @@ function markOf(goal: Shown): MayflyInlineSpan {
 }
 
 /** What the item renders from. */
-export interface GoalItemState {
+interface GoalItemState {
   /** The current goal, if any. */
   readonly goal: GoalPresentation | undefined
   /** The goal that just completed: its rounds over their cap; it leaves the row after {@link GOAL_DONE_LINGER_MS}. */

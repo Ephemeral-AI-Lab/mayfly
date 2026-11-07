@@ -18,7 +18,7 @@ function filesUnder(dir, accept, result = []) {
 
 /** A checkout revision is observational only; hash emitted runtime bytes before and after a real capture. */
 export function builtSplitRuntime(root) {
-  const files = Object.fromEntries(['ui', 'mayfly', 'host', 'remote'].flatMap(name => filesUnder(join(root, 'packages', name, 'lib'), path => path.endsWith('.js'))).map(path => [relative(root, path), digest(readFileSync(path))]))
+  const files = Object.fromEntries(['ui', 'mayfly', 'host'].flatMap(name => filesUnder(join(root, 'packages', name, 'lib'), path => path.endsWith('.js'))).map(path => [relative(root, path), digest(readFileSync(path))]))
   return { sha256: digest(JSON.stringify(files)), files }
 }
 

@@ -86,10 +86,10 @@ try {
   const expected = JSON.parse(readFileSync(installedManifests(entry)[0], 'utf8')).version
   for (const file of installedManifests(entry)) assert.equal(JSON.parse(readFileSync(file, 'utf8')).version, expected)
   assert.match(await cli(['status']), /running/u)
-  const remote = createRequire(entry).resolve('@ephemeral-ai/mayfly-remote/client')
-  const { smokeHostClient } = await import(pathToFileURL(remote).href)
+  const client = createRequire(entry).resolve('@ephemeral-ai/mayfly/client')
+  const { smokeHostClient } = await import(pathToFileURL(client).href)
   await smokeHostClient({ key: 'platform-smoke', startupUrl, cwd: workspace })
-  scenarios.push('five-package-version', 'authenticated-http-websocket')
+  scenarios.push('four-package-version', 'authenticated-http-websocket')
   await cli(['enable'])
   assert.equal(readRecord().generation, first.generation)
   await cli(['disable'])

@@ -12,26 +12,37 @@ transcript 层把会话事件流折叠为条目并渲染。本页描述你会看
 
 会话记录只用过去时，底部 activity 行只用现在时：所有实时信息——spinner、回合耗时、当前步骤与吞吐——只出现在 [activity 行](/features/panes)，会话记录中没有任何一行会计时或说明正在运行什么。`mayfly.transcriptView` 沿用 Harness Chat 的模式名，每升一级多展示一层工作：
 
-| 模式 | 运行中回合 | 已完成回合 | 已停止/失败回合 | activity 行详情 |
-| --- | --- | --- | --- | --- |
-| Compact | 只显示消息 | 标题 + 最终回答 | 过去时分组标题 | — |
-| Standard（默认） | 消息、文件修改卡片、过去时分组标题 | 标题 + 文件修改卡片 + 最终回答 | 分组标题 + 文件修改卡片 | 命令、路径、查询或思考内容 |
-| Detailed | 所有卡片实时显示 | 标题 + 文件修改卡片 + 最终回答 | 分组标题 + 文件修改卡片 | — |
-| Verbose | 所有卡片实时显示 | 保持展开 | 所有卡片 | — |
+| 模式 | 运行中回合 | 已完成回合 | 已停止/失败回合 |
+| --- | --- | --- | --- |
+| Compact | 只显示消息 | 标题 + 最终回答 | 过去时分组标题 |
+| Standard（默认） | 消息、文件修改卡片、过去时分组标题 | 标题 + 文件修改卡片 + 最终回答 | 分组标题 + 文件修改卡片 |
+| Detailed | 所有卡片实时显示 | 标题 + 文件修改卡片 + 最终回答 | 分组标题 + 文件修改卡片 |
+| Verbose | 所有卡片实时显示 | 保持展开 | 所有卡片 |
 
 - **回合标题** —— 含过程的回合在结束时才出现标题行：`用时 38s`、`已停止` 或 `处理失败`，并附工具调用与 subagent 计数（派生 subagent 只计为 subagent，不计为工具调用）。运行中的回合没有标题行，耗时由 activity 行显示。正常完成的回合把过程与中间回复折叠到这一行下；被停止、失败或插话（steer）的回合不折叠。
 - **过程分组** —— 两段回复之间的思考与工具调用组成一组。分组标题只总结已完成的工作，如 `已读取文件并搜索代码`、`执行了命令 · 1 个失败`。仍在运行、或只含思考的分组在有工作完成前不显示标题。
-- **文件修改** —— 从 Standard 起，presenter 声明 diff 卡的调用（`Write <path>`、`Edit <path>`、`apply_patch`）直接显示为 diff 卡片，把前后的分组隔开，并在回合折叠后依然可见，代码改动与最终回答并列呈现。Compact 把它们计入其他工作。
+- **文件修改** —— 从 Standard 起，presenter 声明 diff 卡的调用（`Write(path)`、`Edit(path)`、`ApplyPatch`）直接显示为 diff 卡片，把前后的分组隔开，并在回合折叠后依然可见，代码改动与最终回答并列呈现。Compact 把它们计入其他工作。
 - **Ctrl-O** —— 展开最近 **3 个回合**（`expandTurns`）的折叠、分组与卡片内容。只在按键能生效的范围内提示按键；更早的回合只说明隐藏了多少内容。
 
 ## 工具卡片
 
-- **终端卡** —— `$ command` 加 `exit N` 或 `signal` 标记（失败显示 `✗`）与运行时长；正文是描述与输出的最后三行；Ctrl-O 显示完整的有界输出。
-- **diff 卡** —— presenter 标题（`Edit src/auth.ts · +1 −1`）加逐文件统一 diff（LCS 行级着色）；折叠态至多 12 行。
-- **presenter 卡** —— 其他声明了 presenter 的工具显示自己的调用标题与结果预览（文本三行）。
-- **分组调用** —— 同一 step 内连续的文件读取、代码搜索与命令合并为一张树形卡（`Read 3 files`、`Searched 2 patterns`、`Ran 3 commands`）；部分失败显示 `◐` 与逐项 `✗`，非零退出码同样算失败。
-- **单行调用** —— 委派、计划与目标更新、提问、网页检索、skill 与 agent 消息各占一行（`✓ 已搜索网页 · vitest vi.fn · 5 个来源`、`? Also fix signup? → No`）；Ctrl-O 展开有界结果。
-- **回退卡** —— 没有 presenter 的工具显示 `Used name (关键参数)`（MCP 工具显示为 `server › tool`）与结果预览；JSON 结果展开时格式化显示。
+每个调用一行：字形、工具自己的名称、传入的内容、结果。行变窄时目标先让位，保留结果或失败原因。
+
+```
+✓ Read(src/list.ts) · 120-127 of 128
+✓ Grep("onSelect" in src) · 5 matches in 3 files
+✓ Bash(pnpm test) · 4.2s
+✗ Bash(pnpm lint) · exit 1 · 3s
+✓ Write(tests/a.spec.ts) · created · 39 lines · 1.9 KB
+✓ WebSearch("keep selection") · 3 sources · 0.1s
+✓ github › get_issue(owner=acme, repo=web, issue_number=1423) · 2.1 KB · 0.4s
+✗ github › create_issue(title="Notes", teamId=ENG, +2) · 401 Bad credentials · 0.5s
+```
+
+- **命令** —— 占一行；展开后增加描述与工作目录，以及输出的最后几行，Ctrl-O 显示完整的有界输出。后台命令显示 `background`，输出归 Jobs 视图。
+- **文件修改** —— 标题（`Edit(src/auth.ts) · +1 −1`）加统一 diff（LCS 行级着色）；折叠态至多 12 行。patch 从补丁本身读取文件，显示 `A`/`M`/`D`/`R` 树与逐文件计数，展开后显示每个文件的 diff。
+- **分组调用** —— 连续的读取、搜索与命令合并为一棵树，标题行计数；失败的成员保留自己的 `✗`，非零退出码同样算失败。
+- **MCP 调用** —— `server › tool(参数)`：单个标量参数直接显示其值，多个时显示最多三个 `key=value`（60 个字符以内），其余为 `+N`。其余参数在 Verbose 与需要你决定的请求中列在下一行。连续调用同一 server 时归入该 server 名下（`github · 2 calls`）。结果只说能确定的内容：JSON 列表为 `N items`，图片为格式和尺寸，其他为大小。Harness 把结果压平成文本，所以没有 `12 issues` 这样的类型化计数。JSON 展开后按行阅读。
 - 回合结束时仍未得到结果的调用显示 `⊘ 已取消`。
 
 ## 长会话窗口
@@ -40,5 +51,5 @@ transcript 层把会话事件流折叠为条目并渲染。本页描述你会看
 
 ## 特例
 
-- 委派（`subagent`、`subagent_*`）与 `todo_write` 调用作为单行过程成员出现；agents 与 todo 面板仍是它们的实时呈现面（见[底部面板](/features/panes)）。
+- 比单次调用存续更久的内容归它的视图，所以会话流少记这些（见[底部面板](/features/panes)）。spawn 与 workflow 各占一行，在该行按 `Enter` 移到视图。job 轮询只在 Verbose 显示。todo 与 goal 调用从不显示。失败或等待你处理的调用不论类别都会显示。
 - harness 注入的合成消息（工作区指令、上下文快照等）**零呈现**——内容照发模型，但会话流不留痕迹（见 [FAQ](/guide/faq)）。

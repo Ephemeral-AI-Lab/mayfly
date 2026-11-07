@@ -5,7 +5,7 @@ import { browser, panel, ui, type MayflyActionItem, type MayflyField, type Mayfl
 import type { MayflyTranslate } from '../frontend/locale.ts'
 
 /** Renderer-neutral native tool schema, including an actually absent parameters field. */
-export interface ToolSchemaFacts {
+interface ToolSchemaFacts {
   readonly name: string
   readonly description: string
   readonly parameters?: unknown
@@ -19,7 +19,7 @@ export interface McpServerFacts {
   readonly toolsVisible: readonly ToolSchemaFacts[]
 }
 /** One whole MCP catalog supplied by its exact Session owner. */
-export interface McpCatalogFacts {
+interface McpCatalogFacts {
   readonly servers: readonly McpServerFacts[]
   readonly orphanCount: number
 }
@@ -28,14 +28,6 @@ export function firstSentence(description: string): string {
   const line = description.split(/\r?\n/u).map(line => line.trim()).find(line => line.length > 0) ?? ''
   const end = /(?<=[.!?])\s|(?<=[。！？])(?=.)/u.exec(line)
   return end === null ? line : line.slice(0, end.index)
-}
-
-export function sortedSchemas(schemas: readonly ToolSchemaFacts[]): readonly ToolSchemaFacts[] {
-  return schemas.toSorted((left, right) => left.name.localeCompare(right.name))
-}
-
-export function toolItems(schemas: readonly ToolSchemaFacts[]): readonly MayflyListItem[] {
-  return sortedSchemas(schemas).map(schema => ({ id: schema.name, label: schema.name, detail: firstSentence(schema.description) }))
 }
 
 /** The schema body without a surface, shared by the browser and the standalone detail view. */
@@ -49,14 +41,6 @@ export function toolDetailBody(schema: ToolSchemaFacts, t: MayflyTranslate): May
   ]), { scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })])
 }
 
-export const detailActions = (t: MayflyTranslate) => ui.actions({ id: 'tool-actions', items: [{ id: 'refresh', label: t('Refresh'), hintLabel: t('refresh'), semantic: 'refresh', hidden: true }] })
-
-/** Preserve the full description and JSON Schema; core alone wraps their text. */
-export function toolDetailNode(schema: ToolSchemaFacts, t: MayflyTranslate): MayflyUiNode {
-  return ui.surface({ title: schema.name, chrome: 'overlay', padding: 1, child: ui.stack.column([toolDetailBody(schema, t), detailActions(t)]) })
-}
-
-
 /** One list page for the tool browser. */
 function toolList(id: string, items: readonly MayflyListItem[], t: MayflyTranslate): MayflyUiNode {
   return ui.list({
@@ -64,7 +48,6 @@ function toolList(id: string, items: readonly MayflyListItem[], t: MayflyTransla
     empty: ui.empty({ title: t('No tools visible to this session') }),
   })
 }
-
 
 const STATUS_ORDER: readonly McpServerFacts['status'][] = ['unknown', 'no-tools', 'restricted', 'synced']
 const STATUS_TONE: Readonly<Record<McpServerFacts['status'], MayflyTone>> = { unknown: 'muted', synced: 'success', restricted: 'warning', 'no-tools': 'warning' }
@@ -187,14 +170,8 @@ export function resourceBodyPanel(server: McpServerFacts, state: { readonly body
   return panel({ title: state.bodyLabel ?? t('Resources'), subtitle: server.serverName, escapeLabel: 'back', body: ui.stack.column([ui.child(ui.scroll(ui.text(text === '' ? t('(no output)') : text, { overflow: 'wrap' }), { id: 'resource-body', scrollbar: true }), { basis: 0, grow: 1, minSize: 1 })]) })
 }
 
-/** The server page with its Tools, Configuration, and Resources tabs, as its own panel. */
-export function mcpServerNode(server: McpServerFacts, t: MayflyTranslate): MayflyUiNode {
-  return serverPage(server, 'tools', undefined, t)
-}
-
-
 /** The rows of one resource or template page: the name, with the URI as the row's description. */
-export function resourceItems(items: readonly Record<string, unknown>[]): readonly MayflyListItem[] {
+function resourceItems(items: readonly Record<string, unknown>[]): readonly MayflyListItem[] {
   return items.map((item, index) => ({
     id: String(index),
     label: String(item.name ?? item.uri ?? item.uriTemplate ?? index),

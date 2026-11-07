@@ -1,18 +1,18 @@
 # Repository guidance
 
 Mayfly is an out-of-tree, ESM-only TypeScript terminal frontend for DeepSeek
-Harness, deployed as a native Host and independent Remote TUI. Use the Node range and pinned pnpm in `package.json`. Runtime imports
-resolve built `lib/`; rebuild before testing installed profiles.
+Harness, deployed as a native Host and an independent TUI. Use the Node range
+and pinned pnpm in `package.json`. Runtime imports resolve built `lib/`; rebuild
+before testing installed profiles.
 
 Read the owning package's instructions before editing:
 
 | Area | Ownership |
 | --- | --- |
 | [packages/ui](packages/ui/AGENTS.md) | Renderer-neutral contracts, builders, UI services |
-| [packages/mayfly](packages/mayfly/AGENTS.md) | Shared renderer and readonly presentation subpaths |
-| [packages/host](packages/host/AGENTS.md) | Native Host composition, projections, focused Remote methods |
-| [packages/remote](packages/remote/AGENTS.md) | Official Client transport, frontend state/writes, standalone TUI |
-| [packages/cli](packages/cli/AGENTS.md) | Unified CLI, local services, exact Host/Remote/Harness dependencies |
+| [packages/mayfly](packages/mayfly/AGENTS.md) | Independent TUI: renderer core, Client transport, frontend state/writes, source composition |
+| [packages/host](packages/host/AGENTS.md) | Native Host composition, projections, DTOs and fold, focused Remote methods |
+| [packages/cli](packages/cli/AGENTS.md) | Unified CLI, local services, exact Host/TUI/Harness dependencies |
 | [examples](examples/AGENTS.md) | Publish-shaped external consumers and composition |
 
 Current architecture: [docs/README.md](docs/README.md). Consult the
@@ -24,15 +24,17 @@ History and release notes do not define current behavior.
 
 - Consume native dsh services directly. Mayfly UI contributions use only
   `mayflyPanes`, `mayflyStatus`, `mayflyOverlays`, and `mayflyEditorExtensions`.
-- Harness owns Agent/session/domain state in the Host. Remote owns HostKey +
+- Harness owns Agent/session/domain state in the Host. The TUI owns HostKey +
   SessionRef selection, startup coordination, and frontend state. Host
   Agent-scoped calls resolve the exact selected Agent. No Agent or Session
   object crosses processes; `mayflyCurrentAgent` is not a public split seam.
 - The Host and TUI have separate Cordis trees. Use official Client transport
   and native Remote namespaces; focused Mayfly Host methods carry serializable
-  DTOs. Remote consumes whole durable projections and overlays only transient
-  current-attempt content, never a second durable history fold. The shared
-  Mayfly package publishes no root plugin, Host patch, or preset payload.
+  DTOs. The TUI consumes whole durable projections and overlays only transient
+  current-attempt content, never a second durable history fold. The TUI package
+  publishes no Host plugin, patch, or preset payload; its public surface is the
+  root, `./client`, and `./bin`, and a source composition adds TUI plugins
+  through `run(argv, { plugins })`.
 - Events are facts, projections are readonly current state, actions are
   structured writes. Renderers must not fold session events into a second
   domain store. Wire models contain no Agent/Session, Promise, callback,
@@ -59,11 +61,13 @@ Full/PR gates retain raw strict results and separately validate the source-bound
 release decisions in `script/scenarios/split-release-policy.json`. A reviewed
 release result is not strict parity. New versions, changed reviewed sources,
 unknown rows/styles and runtime failures require fresh review; never expand
-the policy to make an unexplained failure pass. Reference defects still run
+the policy to make an unexplained failure pass. A deliberate difference from the reference
+is recorded as an `owner-design` row only after the owner accepted that exact
+row live; such a row is a reviewed result, not strict parity. Reference defects still run
 the complete candidate workflow and retain their original failure evidence.
 
 The integrator owns package contracts, manifests, locks, public entries, and
-runtime composition. Host, Remote, and independent validation workers use
+runtime composition. Host, TUI, and independent validation workers use
 separate worktrees and commit scoped changes. Each implementation includes
 meaningful local tests; the independent verifier owns reference artifacts and
 real HTTP/WebSocket plus PTY evidence. Validate the combined integration commit.
@@ -106,7 +110,7 @@ worktree and branch. Never link a checkout into production `mayfly`; use
 3. Runtime behavior, public seams, composition, preset payload, and shipped
    skills require `PROFILE=mayfly-<tag> script/install-dev.sh` and relevant
    headless/PTY smoke. Give both launch commands: `dsh --profile mayfly-<tag>`
-   for the Host, then `MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh`
+   for the Host, then `MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-tui.sh`
    for the TUI. Include the primary workflow, expected result, fallback or
    narrow-width/lifecycle case, and nearby regression checks. Rebuild after source
    edits; reinstall when dependencies change. A mixed Website/runtime change
@@ -137,9 +141,8 @@ Keep README language variants in sync. AGENTS files contain durable boundaries
 and verification triggers, not change history or test-result snapshots. Update
 them when ownership, lifecycle, public surfaces, or required checks change.
 There is no maintainer `.agents/skills` layer. The three shipped skills in
-`packages/host/presets/mayfly-cordis/skills/` teach Host extensions, Remote
-source integration, and user-owned compositions against the official Harness
-APIs. They are not required for ordinary repository development. The historical
-`packages/mayfly/presets/` payload remains a private reference fixture; the
-shared renderer does not publish presets or skills. Run `check:agent-docs`
-after editing either agent guidance or the shipped Host skills.
+`packages/host/presets/mayfly-cordis/skills/` teach Host extensions, TUI
+source composition, and user-owned compositions against the official Harness
+APIs. They are not required for ordinary repository development. The TUI
+package publishes no presets or skills. Run `check:agent-docs` after editing
+either agent guidance or the shipped Host skills.
