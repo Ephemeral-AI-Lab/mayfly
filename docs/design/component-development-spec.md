@@ -17,9 +17,9 @@ only once the effect is final (§3). The Website is never part of a round (§1 r
    produces one demonstrable visual effect or one group of effects judged together. A part never ends in "the data
    layer is done" or "the types compile": if the owner cannot see it, it is not a part (it belongs to the part that
    shows it).
-2. **A demo with every part, on the real product, with mock commands.** The demo is a catalog scenario
-   (`script/scenarios/catalog.mjs`) that the owner opens with `pnpm run scenario <name>`: the real `dsh`, with its
-   replay played into the live session, no model, no tools, no quota (root `AGENTS.md`, *Review loop*). The agent never
+2. **A demo with every part, on the real product, with mock commands.** The demo is a script under `script/scenarios/`
+   that the owner runs (`node script/scenarios/tool-display-demo.mjs` is the pattern): the real Host and TUI, a stub
+   model calling real tools in a throwaway workspace, no provider, no quota. The agent never
    asks the owner to judge a screenshot in place of running the scenario, and never shows a demo as a Claude web
    artifact, a Claude Docs page, an HTML page, or any other browser page. A demo is a terminal, like the prototype's
    `.mjs`.
@@ -39,15 +39,10 @@ only once the effect is final (§3). The Website is never part of a round (§1 r
 7. **Design, ask, then build.** A round starts as a design: Claude Code analyzes the round under plan mode and writes
    the solution; the owner approves it. Claude then asks the owner every open choice with something to look at (§6),
    and the two confirm the final effect. Development begins only after that.
-8. **Scenarios after the build, and no rush to test.** When development is done Claude writes the scenario code (§8)
-   as **one scenario for the round**, a long conversation that strings all of the round's effects together, and tells
-   the owner its command and the brief. It does not run the tests
-   at this point: the owner verifies and adjusts the effect, Claude applies it, and the loop repeats until the owner
-   says the effect is final.
-9. **Test last, in a session of its own.** Tests, decision tests, goldens, and the round and pr tiers run only after the
-   final effect is confirmed (§3 steps 7-8), and they run in a separate session on a smaller, faster model (Haiku) that
-   works from a test hand-off brief (§3.1). The design and build session writes the brief and does not run the tiers.
-   Nothing is golden, finalized, or merged before that.
+8. **Tests with the code.** Root `AGENTS.md` wins here: each implementation includes its meaningful tests and runs the selected
+   gates before the hand-off, in the same session. The demo strings the round's effects into one long conversation; the
+   owner verifies and adjusts the effect, Claude applies it, and the loop repeats until the owner says the effect is final.
+9. **Nothing is golden before acceptance.** Goldens and parity decisions come from live frames the owner accepted, and nothing is finalized or merged before that.
 10. **The Website waits for the release.** No round or pr-tier step builds, previews, checks, or tests the Website,
     and a round does not edit Website pages, app shots, or the `app-*` goldens unless the owner asks. The Website is
     tested once, when a new version is released.
@@ -360,7 +355,7 @@ How a part applies it:
 3. **A call in flight is a pending line in the stream at every level, Compact included** (component-library §5.3.1; this
    replaces the 3b.1 rule that a running call had no block): `● Bash(command) · 4s`, the dot breathing, the call's own
    time ticking, its input below it by tier (the tool block base, below). The activity row names the phase only
-   (`Running commands`), with no call time and no detail at any level. A call settles into `✓`, `✗`, or `⊘` in place.
+   (`Running commands`, or `Calling github`), with no one call's time and no arguments at any level. A call settles into `✓`, `✗`, or `⊘` in place.
 4. **A blank row separates every row of a turn** (prompt, header, each block, answer, reasoning, the interruption mark).
 5. **A call is named by its tool, not by a verb of ours:** `✓ **Read**(path) · 481 lines`, `✓ **WebSearch**("query") · 2 sources`, `✓ **Bash**(command) · 4.2s`, with the output on the lines under it and no `⎿` mark. The name is the tool's own in PascalCase (`web_search` is `WebSearch`, an MCP tool is `server › tool`), the arguments are shown as given, and the row clips at the end at narrow widths.
 
@@ -370,7 +365,10 @@ Where the code lives (what the next tool part reuses):
   `current`, `cards`) and `settledProcess` (`titles`, `blocks`, `cards`), plus `foldCompletedTurns` (only Compact).
   `transcript/process-groups.ts` stamps each tool entry with a `tier` (`verbose` or `standard`); `Ctrl+O` is a turn's
   `expanded` flag and lifts the body cap.
-- `transcript/tool-calls.ts` reduces every call to one `Call` (id, activity, state, verb, target, label, outcome parts,
+- `transcript/tool-kinds.ts` is a tool's row: what it counts, its labels, whether it merges, and its `placement` and `owner`
+  view. `transcript/tool-calls-mcp.ts` reads an MCP tool's name, arguments and JSON result. `transcript/row-text.ts` is the text behind
+  copy, the editor and search, so a field the stream draws belongs there too.
+- `transcript/tool-calls.ts` reduces every call to one `Call` (id, activity, state, name, target, label, outcome parts,
   times, and a lazy `body()`), and lays the same facts out as a verbose block (`verboseRow`) or a standard block
   (`standardRow`). A new tool gets a `Call` builder and a body; the compact tier is `processTitle` over its activity
   (`process-activity.ts`: `COUNT_PHRASE` and the zh copy beside it).
