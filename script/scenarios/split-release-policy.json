@@ -3,7 +3,7 @@
   "version": "0.1.6-rc.1",
   "harness": "0.2.2-rc.1",
   "reference": "sha512-KsNwfM4EN2rizHkPKVoHUXrRH2+WppR7zor6VnEhAJrO11AY6h/02tt5I0BOX04r8+CUfbqTvh5zmLoXl9kj8w==",
-  "decision": "The 0.1.6-rc.1 candidate retains the previous exact native-fact, partial-API and command-catalog decisions. Updated release copy and question rendering require fresh owner acceptance before release; no new owner-design rows are accepted by this candidate policy. Raw strict differences and immutable reference goldens remain unchanged.",
+  "decision": "The owner accepted the 0.1.6-rc.1 dedicated-profile workflows, LAN Website, release copy and four exact question rows live on 2026-11-08, then explicitly confirmed acceptance in the release conversation. This policy binds the 43 release-content rows and four owner-design rows shown in that review, retains the previous exact native-fact, partial-API and command-catalog decisions, and preserves the immutable reference and raw strict failures. A reviewed release result is not strict parity.",
   "sources": {
     "packages/mayfly/src/transcript/banner-content.ts": "3819672718beabc62f5b9095a63a8331fc990d111454cfd86e7742e996eee979",
     "packages/mayfly/src/interaction/changelog-content.ts": "23f8ead98591e6d8d783bd1b84c505e87bb0d3ddd5019c0712b1ff005a897421",
@@ -11,7 +11,13 @@
     "packages/mayfly/src/interaction/stats-facts.ts": "3d3f28fce00915b81cc4bbc51345affba06ec5626f80c32c3f612be7178ba0ea",
     "packages/mayfly/src/transcript/status-context-model.ts": "c1c9665e46e1faff520ee7e948628c39db459afe7c28647f66989847dea6dd26",
     "packages/mayfly/src/app/operations/files.ts": "d458ec2b8361133cc8531e58fa9327ede3f907550ec54279e004f877a117657f",
-    "packages/host/presets/mayfly-cordis.patch.yml": "76a511a0c0e076dc00e0d2b3c45cce0a3c3f35eb2f18213ed6359d6923492639"
+    "packages/host/presets/mayfly-cordis.patch.yml": "76a511a0c0e076dc00e0d2b3c45cce0a3c3f35eb2f18213ed6359d6923492639",
+    "packages/mayfly/src/components/tool-line.ts": "2ab82ff68d55bfa3baa12b92a0945dc6d2db756a0879964a7d4750408b96228b",
+    "packages/mayfly/src/core/content-rows.ts": "d6838511bad622e8a2ddbc8ab3598e2bd1be62269ff2148c638b608f073224d9",
+    "packages/mayfly/src/core/ui-compiler.ts": "bdce2392826a0ae39385023b41e984ddedfa9586ecbae06d06535d4afa8eacc6",
+    "packages/mayfly/src/core/ui-interaction-surface.ts": "7663bd8c250a97bf18c3214a9dca38c4254ecd8218c46348a799978e59618875",
+    "packages/mayfly/src/core/keymap.ts": "ab073f8dcc2b0b3fb480251a4d99da7fe3c1633d9a9db71d0690dc47ff2b42d4",
+    "packages/mayfly/src/app/interactions/question-wizard.ts": "e75718260c088913534fd8a43cedce041043664597033cf534d0a0abdcb352cf"
   },
   "nativeFacts": {
     "panels": {
@@ -165,8 +171,8 @@
       "cols": 80,
       "rows": 24,
       "row": 20,
-      "category": "native-fact",
-      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the Version panel names the exact four-package 0.1.6-rc.1 candidate rather than the historical published reference.",
       "reference": {
         "text": "  Mayfly:  v0.1.4-rc.2",
         "styles": [
@@ -183,7 +189,7 @@
         ]
       },
       "candidate": {
-        "text": "  Mayfly:  v0.1.5",
+        "text": "  Mayfly:  v0.1.6-rc.1",
         "styles": [
           {
             "from": 2,
@@ -192,7 +198,7 @@
           },
           {
             "from": 11,
-            "to": 16,
+            "to": 21,
             "style": "fg:#ededf2"
           }
         ]
@@ -529,7 +535,7 @@
       "rows": 24,
       "row": 11,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  \u2500\u2500 v0.1.4-rc.2 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
@@ -541,7 +547,7 @@
         ]
       },
       "candidate": {
-        "text": "  \u2500\u2500 v0.1.5 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+        "text": "  \u2500\u2500 v0.1.6-rc.1 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -558,7 +564,7 @@
       "rows": 24,
       "row": 12,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  A fix-only follow-up to 0.1.4-rc.1: /btw stays open and keeps the primary",
         "styles": [
@@ -570,11 +576,11 @@
         ]
       },
       "candidate": {
-        "text": "  Run Mayfly as a native background Host and an independent terminal",
+        "text": "  Prepare the four-package Host and independent TUI release, with explicit",
         "styles": [
           {
             "from": 2,
-            "to": 67,
+            "to": 73,
             "style": "fg:#ededf2"
           }
         ]
@@ -587,7 +593,7 @@
       "rows": 24,
       "row": 13,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  queue out, session browsing survives service proxies, start-time preset",
         "styles": [
@@ -599,11 +605,11 @@
         ]
       },
       "candidate": {
-        "text": "  frontend, with one command for startup and service management, aligned",
+        "text": "  source composition, bounded live rendering and complete release coverage",
         "styles": [
           {
             "from": 2,
-            "to": 71,
+            "to": 73,
             "style": "fg:#ededf2"
           }
         ]
@@ -616,7 +622,7 @@
       "rows": 24,
       "row": 14,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  and plan selection work before the first session, and conversation",
         "styles": [
@@ -628,11 +634,11 @@
         ]
       },
       "candidate": {
-        "text": "  with Harness 0.2.2-rc.1.",
+        "text": "  on Harness 0.2.2-rc.1.",
         "styles": [
           {
             "from": 2,
-            "to": 25,
+            "to": 23,
             "style": "fg:#ededf2"
           }
         ]
@@ -645,7 +651,7 @@
       "rows": 24,
       "row": 15,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  disclosure stays per view.",
         "styles": [
@@ -657,7 +663,7 @@
         ]
       },
       "candidate": {
-        "text": "  Highlights:   Split runtime - the Host owns Agents, Sessions and durable",
+        "text": "  Highlights:   Four-package release - publish mayfly-ui, mayfly-host,",
         "styles": [
           {
             "from": 2,
@@ -679,7 +685,7 @@
       "rows": 24,
       "row": 16,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  Highlights: /btw - the side conversation owns its Agent for its whole",
         "styles": [
@@ -696,7 +702,7 @@
         ]
       },
       "candidate": {
-        "text": "  projections; the independent TUI uses official HTTP and WebSocket Client",
+        "text": "  mayfly and mayfly-cli together. The former mayfly-remote package is",
         "styles": [
           {
             "from": 2,
@@ -713,7 +719,7 @@
       "rows": 24,
       "row": 17,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  life, so it stays open after the answer and accepts follow-ups; the",
         "styles": [
@@ -725,11 +731,11 @@
         ]
       },
       "candidate": {
-        "text": "  transport and can detach without stopping remote work.",
+        "text": "  removed; the TUI exposes only the root, ./client and ./bin entries.",
         "styles": [
           {
             "from": 2,
-            "to": 55,
+            "to": 68,
             "style": "fg:#ededf2"
           }
         ]
@@ -742,7 +748,7 @@
       "rows": 24,
       "row": 18,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  inherited inbox is cleared before the question, keeping the primary's",
         "styles": [
@@ -754,7 +760,7 @@
         ]
       },
       "candidate": {
-        "text": "  Highlights:   Unified command - mayfly opens the TUI and starts its local",
+        "text": "  Highlights:   TUI extensions - compose ordinary Cordis plugins through",
         "styles": [
           {
             "from": 2,
@@ -776,7 +782,7 @@
       "rows": 24,
       "row": 19,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  queued and steering messages in the primary.",
         "styles": [
@@ -788,7 +794,7 @@
         ]
       },
       "candidate": {
-        "text": "  Host when needed; mayfly server starts in the background and supports",
+        "text": "  run(argv, { plugins }); Host plugins use native Harness services and",
         "styles": [
           {
             "from": 2,
@@ -805,7 +811,7 @@
       "rows": 24,
       "row": 20,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  Highlights: Conversation disclosure - fold state follows each conversation",
         "styles": [
@@ -822,11 +828,11 @@
         ]
       },
       "candidate": {
-        "text": "  start, stop, restart, status, logs, enable, disable and explicit profile",
+        "text": "  focused serializable Remote methods across the official Client transport.",
         "styles": [
           {
             "from": 2,
-            "to": 77,
+            "to": 74,
             "style": "fg:#ededf2"
           }
         ]
@@ -839,7 +845,7 @@
       "rows": 24,
       "row": 21,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  view, and a turn folded under Ctrl+O no longer opens by itself.",
         "styles": [
@@ -851,11 +857,16 @@
         ]
       },
       "candidate": {
-        "text": "  upgrade.",
+        "text": "  Highlights:   Interaction and tools - retain per-view disclosure, row",
         "styles": [
           {
             "from": 2,
-            "to": 9,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 77,
             "style": "fg:#ededf2"
           }
         ]
@@ -868,7 +879,7 @@
       "rows": 16,
       "row": 8,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  \u2500\u2500 v0.1.4-rc.2 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
@@ -880,7 +891,7 @@
         ]
       },
       "candidate": {
-        "text": "  \u2500\u2500 v0.1.5 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+        "text": "  \u2500\u2500 v0.1.6-rc.1 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -897,7 +908,7 @@
       "rows": 16,
       "row": 9,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  A fix-only follow-up to",
         "styles": [
@@ -909,7 +920,7 @@
         ]
       },
       "candidate": {
-        "text": "  Run Mayfly as a native background",
+        "text": "  Prepare the four-package Host and",
         "styles": [
           {
             "from": 2,
@@ -926,7 +937,7 @@
       "rows": 16,
       "row": 10,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  0.1.4-rc.1: /btw stays open and",
         "styles": [
@@ -938,11 +949,11 @@
         ]
       },
       "candidate": {
-        "text": "  Host and an independent terminal",
+        "text": "  independent TUI release, with",
         "styles": [
           {
             "from": 2,
-            "to": 33,
+            "to": 30,
             "style": "fg:#ededf2"
           }
         ]
@@ -955,7 +966,7 @@
       "rows": 16,
       "row": 11,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  keeps the primary queue out,",
         "styles": [
@@ -967,11 +978,11 @@
         ]
       },
       "candidate": {
-        "text": "  frontend, with one command for",
+        "text": "  explicit source composition,",
         "styles": [
           {
             "from": 2,
-            "to": 31,
+            "to": 29,
             "style": "fg:#ededf2"
           }
         ]
@@ -984,7 +995,7 @@
       "rows": 16,
       "row": 12,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  session browsing survives service",
         "styles": [
@@ -996,11 +1007,11 @@
         ]
       },
       "candidate": {
-        "text": "  startup and service management,",
+        "text": "  bounded live rendering and",
         "styles": [
           {
             "from": 2,
-            "to": 32,
+            "to": 27,
             "style": "fg:#ededf2"
           }
         ]
@@ -1013,7 +1024,7 @@
       "rows": 16,
       "row": 13,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  proxies, start-time preset and",
         "styles": [
@@ -1025,11 +1036,11 @@
         ]
       },
       "candidate": {
-        "text": "  aligned with Harness 0.2.2-rc.1.",
+        "text": "  complete release coverage on",
         "styles": [
           {
             "from": 2,
-            "to": 33,
+            "to": 29,
             "style": "fg:#ededf2"
           }
         ]
@@ -1042,7 +1053,7 @@
       "rows": 40,
       "row": 15,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  \u2500\u2500 v0.1.4-rc.2 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
@@ -1054,7 +1065,7 @@
         ]
       },
       "candidate": {
-        "text": "  \u2500\u2500 v0.1.5 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+        "text": "  \u2500\u2500 v0.1.6-rc.1 \u00b7 current \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
         "styles": [
           {
             "from": 2,
@@ -1071,13 +1082,600 @@
       "rows": 40,
       "row": 16,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
         "text": "  A fix-only follow-up to 0.1.4-rc.1: /btw stays open and keeps the primary queue out, session browsing survives",
         "styles": [
           {
             "from": 2,
             "to": 111,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  Prepare the four-package Host and independent TUI release, with explicit source composition, bounded live",
+        "styles": [
+          {
+            "from": 2,
+            "to": 106,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 17,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  service proxies, start-time preset and plan selection work before the first session, and conversation disclosure",
+        "styles": [
+          {
+            "from": 2,
+            "to": 113,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  rendering and complete release coverage on Harness 0.2.2-rc.1.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 63,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 18,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  stays per view.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 16,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  Highlights:   Four-package release - publish mayfly-ui, mayfly-host, mayfly and mayfly-cli together. The former",
+        "styles": [
+          {
+            "from": 2,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 19,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  Highlights: /btw - the side conversation owns its Agent for its whole life, so it stays open after the answer and",
+        "styles": [
+          {
+            "from": 2,
+            "to": 12,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 14,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  mayfly-remote package is removed; the TUI exposes only the root, ./client and ./bin entries.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 93,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 20,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  accepts follow-ups; the inherited inbox is cleared before the question, keeping the primary's queued and steering",
+        "styles": [
+          {
+            "from": 2,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  Highlights:   TUI extensions - compose ordinary Cordis plugins through run(argv, { plugins }); Host plugins use",
+        "styles": [
+          {
+            "from": 2,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 21,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  messages in the primary.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 25,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  native Harness services and focused serializable Remote methods across the official Client transport.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 102,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 22,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  Highlights: Conversation disclosure - fold state follows each conversation view, and a turn folded under Ctrl+O no",
+        "styles": [
+          {
+            "from": 2,
+            "to": 12,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 14,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  Highlights:   Interaction and tools - retain per-view disclosure, row editing, wizard navigation and responsive",
+        "styles": [
+          {
+            "from": 2,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 23,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  longer opens by itself.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 24,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  tool summaries through the shared UI controls.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 47,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 24,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  Highlights: Session browsing - retain the native session catalog across Cordis traceable service proxies, so",
+        "styles": [
+          {
+            "from": 2,
+            "to": 12,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 14,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  Highlights:   Live rendering - reuse list windows between control walking and painting, preserve durable",
+        "styles": [
+          {
+            "from": 2,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 25,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  /sessions and /stats keep their rows.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 38,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  transcript entries during live updates, and gate transient conversion separately without relaxing existing work",
+        "styles": [
+          {
+            "from": 2,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 26,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  Highlights: Startup - /preset and plan mode now run before the first session is created, and the pre-refactor",
+        "styles": [
+          {
+            "from": 2,
+            "to": 12,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 14,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  budgets.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 9,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 27,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  error formatters are restored after the port.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 46,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  Highlights:   Release checks - restore editor lifecycle and conversation mapping tests at the current frontend",
+        "styles": [
+          {
+            "from": 2,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 28,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  \u2500\u2500 v0.1.4-rc.1 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+        "styles": [
+          {
+            "from": 2,
+            "to": 115,
+            "style": "fg:#45406b"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  boundary, cover cancellation and stale callbacks, and make statistics snapshots portable across timezones.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 107,
+            "style": "fg:#ededf2"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 29,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  Align with Harness 0.2.1-rc.2, add the compose layer and the themed launch surfaces, and finish the Phase 7",
+        "styles": [
+          {
+            "from": 2,
+            "to": 108,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  Known issues: This version is published to the rc channel. The stable latest channel remains 0.1.5; install",
+        "styles": [
+          {
+            "from": 2,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 117,
+            "style": "fg:#e8a838"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 30,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  performance pass with live-stream and transcript fixes.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 56,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  0.1.6-rc.1 explicitly when testing this candidate.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 51,
+            "style": "fg:#e8a838"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 31,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  Highlights:   Harness 0.2.1-rc.2 - consume native current-state projections, session browsing, subagent and job",
+        "styles": [
+          {
+            "from": 2,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  Known issues: The immutable 0.1.4-rc.2 reference has a file-preview dependency defect; release verification",
+        "styles": [
+          {
+            "from": 2,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 117,
+            "style": "fg:#e8a838"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 32,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  activations, settings, MCP, permission surfaces, the plugin manager, and file references through the pinned native",
+        "styles": [
+          {
+            "from": 2,
+            "to": 117,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  retains that evidence and runs the complete candidate file workflow.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 69,
+            "style": "fg:#e8a838"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 33,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  services.",
+        "styles": [
+          {
+            "from": 2,
+            "to": 10,
+            "style": "fg:#ededf2"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  \u2500\u2500 v0.1.5 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+        "styles": [
+          {
+            "from": 2,
+            "to": 115,
+            "style": "fg:#45406b"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "changelog",
+      "checkpoint": "changelog-wide",
+      "cols": 120,
+      "rows": 40,
+      "row": 34,
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
+      "reference": {
+        "text": "  Highlights:   Compose layer - introduce the shared compose layer and unify panels so every overlay and pane uses",
+        "styles": [
+          {
+            "from": 2,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 117,
             "style": "fg:#ededf2"
           }
         ]
@@ -1098,15 +1696,15 @@
       "checkpoint": "changelog-wide",
       "cols": 120,
       "rows": 40,
-      "row": 17,
+      "row": 35,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
-        "text": "  service proxies, start-time preset and plan selection work before the first session, and conversation disclosure",
+        "text": "  one layout, focus, and key model.",
         "styles": [
           {
             "from": 2,
-            "to": 113,
+            "to": 34,
             "style": "fg:#ededf2"
           }
         ]
@@ -1127,15 +1725,20 @@
       "checkpoint": "changelog-wide",
       "cols": 120,
       "rows": 40,
-      "row": 18,
+      "row": 36,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
-        "text": "  stays per view.",
+        "text": "  Highlights:   Component-library rounds - the status area and views, the editor and command palette, first-run",
         "styles": [
           {
             "from": 2,
-            "to": 16,
+            "to": 14,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 16,
+            "to": 117,
             "style": "fg:#ededf2"
           }
         ]
@@ -1161,20 +1764,15 @@
       "checkpoint": "changelog-wide",
       "cols": 120,
       "rows": 40,
-      "row": 19,
+      "row": 37,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "reason": "The owner accepted this release content on 2026-11-08: the 0.1.6-rc.1 release copy describes the four-package native Host and independent TUI split and its verification repairs.",
       "reference": {
-        "text": "  Highlights: /btw - the side conversation owns its Agent for its whole life, so it stays open after the answer and",
+        "text": "  onboarding and account sign-in, /stats, the plugin marketplace, the launch screen, and the theme picker.",
         "styles": [
           {
             "from": 2,
-            "to": 12,
-            "style": "fg:#9aa3b8"
-          },
-          {
-            "from": 14,
-            "to": 117,
+            "to": 105,
             "style": "fg:#ededf2"
           }
         ]
@@ -1191,639 +1789,453 @@
       }
     },
     {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 20,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "scenario": "questions",
+      "checkpoint": "question-one-narrow",
+      "cols": 40,
+      "rows": 16,
+      "row": 6,
+      "category": "owner-design",
+      "reason": "The owner accepted this exact row live on 2026-11-08: at 40 columns, elastic tool arguments retain the closing parenthesis and truncate the argument one character earlier.",
       "reference": {
-        "text": "  accepts follow-ups; the inherited inbox is cleared before the question, keeping the primary's queued and steering",
+        "text": "  \u25cf AskUserQuestion(Choose a delivery\u2026",
         "styles": [
           {
             "from": 2,
-            "to": 117,
+            "to": 2,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 3,
+            "to": 3,
             "style": "fg:#ededf2"
+          },
+          {
+            "from": 4,
+            "to": 18,
+            "style": "fg:#ededf2 b"
+          },
+          {
+            "from": 19,
+            "to": 19,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 20,
+            "to": 36,
+            "style": "fg:#c9c0f0"
           }
         ]
       },
       "candidate": {
-        "text": "  Highlights:   Unified command - mayfly opens the TUI and starts its local Host when needed; mayfly server starts",
+        "text": "  \u25cf AskUserQuestion(Choose a deliver\u2026)",
         "styles": [
           {
             "from": 2,
-            "to": 14,
+            "to": 2,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 3,
+            "to": 3,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 4,
+            "to": 18,
+            "style": "fg:#ededf2 b"
+          },
+          {
+            "from": 19,
+            "to": 19,
             "style": "fg:#9aa3b8"
           },
           {
-            "from": 16,
-            "to": 117,
-            "style": "fg:#ededf2"
+            "from": 20,
+            "to": 36,
+            "style": "fg:#c9c0f0"
+          },
+          {
+            "from": 37,
+            "to": 37,
+            "style": "fg:#9aa3b8"
           }
         ]
       }
     },
     {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 21,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  messages in the primary.",
-        "styles": [
-          {
-            "from": 2,
-            "to": 25,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  in the background and supports start, stop, restart, status, logs, enable, disable and explicit profile upgrade.",
-        "styles": [
-          {
-            "from": 2,
-            "to": 113,
-            "style": "fg:#ededf2"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 22,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  Highlights: Conversation disclosure - fold state follows each conversation view, and a turn folded under Ctrl+O no",
-        "styles": [
-          {
-            "from": 2,
-            "to": 12,
-            "style": "fg:#9aa3b8"
-          },
-          {
-            "from": 14,
-            "to": 117,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  Highlights:   Native supervision - Linux uses systemd user services, macOS uses LaunchAgents, and Windows uses the",
-        "styles": [
-          {
-            "from": 2,
-            "to": 14,
-            "style": "fg:#9aa3b8"
-          },
-          {
-            "from": 16,
-            "to": 117,
-            "style": "fg:#ededf2"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
+      "scenario": "questions",
+      "checkpoint": "question-wizard-route",
+      "cols": 80,
+      "rows": 24,
       "row": 23,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "category": "owner-design",
+      "reason": "The owner accepted this exact row live on 2026-11-08: the wizard uses plain left and right arrows for question navigation, and this hint names the current keys.",
       "reference": {
-        "text": "  longer opens by itself.",
+        "text": "  \u2191/\u2193 options \u00b7 Enter choose \u00b7 Alt+\u2190/\u2192 question \u00b7 Esc cancel",
         "styles": [
           {
-            "from": 2,
-            "to": 24,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  Mayfly hidden supervisor with authenticated local control and bounded crash recovery. Login startup is opt-in.",
-        "styles": [
-          {
-            "from": 2,
-            "to": 111,
-            "style": "fg:#ededf2"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 24,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  Highlights: Session browsing - retain the native session catalog across Cordis traceable service proxies, so",
-        "styles": [
-          {
-            "from": 2,
-            "to": 12,
-            "style": "fg:#9aa3b8"
+            "from": 0,
+            "to": 1,
+            "style": "fg:#5c6476"
           },
           {
-            "from": 14,
-            "to": 117,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  Highlights:   Harness 0.2.2-rc.1 - update the complete Host and Client dependency line and consume the native task",
-        "styles": [
-          {
             "from": 2,
-            "to": 14,
-            "style": "fg:#9aa3b8"
+            "to": 4,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 6,
+            "to": 15,
+            "style": "fg:#5c6476"
           },
           {
             "from": 16,
-            "to": 117,
+            "to": 20,
             "style": "fg:#ededf2"
+          },
+          {
+            "from": 22,
+            "to": 30,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 31,
+            "to": 37,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 39,
+            "to": 49,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 50,
+            "to": 52,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 54,
+            "to": 59,
+            "style": "fg:#5c6476"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  \u2191/\u2193 options \u00b7 Enter choose \u00b7 \u2190/\u2192 question \u00b7 Esc cancel",
+        "styles": [
+          {
+            "from": 0,
+            "to": 1,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 2,
+            "to": 4,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 6,
+            "to": 15,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 16,
+            "to": 20,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 22,
+            "to": 30,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 31,
+            "to": 33,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 35,
+            "to": 45,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 46,
+            "to": 48,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 50,
+            "to": 55,
+            "style": "fg:#5c6476"
           }
         ]
       }
     },
     {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 25,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "scenario": "questions",
+      "checkpoint": "question-wizard-scopes",
+      "cols": 80,
+      "rows": 24,
+      "row": 23,
+      "category": "owner-design",
+      "reason": "The owner accepted this exact row live on 2026-11-08: the wizard uses plain left and right arrows for question navigation, and this hint names the current keys.",
       "reference": {
-        "text": "  /sessions and /stats keep their rows.",
+        "text": "  Space toggle \u00b7 Enter choose \u00b7 Alt+\u2190/\u2192 question \u00b7 Esc back",
         "styles": [
           {
+            "from": 0,
+            "to": 1,
+            "style": "fg:#5c6476"
+          },
+          {
             "from": 2,
+            "to": 6,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 8,
+            "to": 16,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 17,
+            "to": 21,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 23,
+            "to": 31,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 32,
             "to": 38,
             "style": "fg:#ededf2"
+          },
+          {
+            "from": 40,
+            "to": 50,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 51,
+            "to": 53,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 55,
+            "to": 58,
+            "style": "fg:#5c6476"
           }
         ]
       },
       "candidate": {
-        "text": "  catalog with exact involved-Session filtering.",
+        "text": "  Space toggle \u00b7 Enter choose \u00b7 \u2190/\u2192 question \u00b7 Esc back",
         "styles": [
           {
-            "from": 2,
-            "to": 47,
-            "style": "fg:#ededf2"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 26,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  Highlights: Startup - /preset and plan mode now run before the first session is created, and the pre-refactor",
-        "styles": [
-          {
-            "from": 2,
-            "to": 12,
-            "style": "fg:#9aa3b8"
+            "from": 0,
+            "to": 1,
+            "style": "fg:#5c6476"
           },
           {
-            "from": 14,
-            "to": 117,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  Highlights:   Release verification - build clean split artifacts before typechecking, invoke pnpm without platform",
-        "styles": [
-          {
             "from": 2,
-            "to": 14,
-            "style": "fg:#9aa3b8"
+            "to": 6,
+            "style": "fg:#ededf2"
           },
           {
-            "from": 16,
-            "to": 117,
-            "style": "fg:#ededf2"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 27,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  error formatters are restored after the port.",
-        "styles": [
+            "from": 8,
+            "to": 16,
+            "style": "fg:#5c6476"
+          },
           {
-            "from": 2,
+            "from": 17,
+            "to": 21,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 23,
+            "to": 31,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 32,
+            "to": 34,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 36,
             "to": 46,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  shell shims, keep all five package dependencies exact, and exercise background lifecycle with native PTY and",
-        "styles": [
+            "style": "fg:#5c6476"
+          },
           {
-            "from": 2,
-            "to": 117,
+            "from": 47,
+            "to": 49,
             "style": "fg:#ededf2"
+          },
+          {
+            "from": 51,
+            "to": 54,
+            "style": "fg:#5c6476"
           }
         ]
       }
     },
     {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 28,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
+      "scenario": "questions",
+      "checkpoint": "question-wizard-review",
+      "cols": 80,
+      "rows": 24,
+      "row": 23,
+      "category": "owner-design",
+      "reason": "The owner accepted this exact row live on 2026-11-08: the wizard uses plain left and right arrows for question navigation, and this hint names the current keys.",
       "reference": {
-        "text": "  \u2500\u2500 v0.1.4-rc.1 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+        "text": "  \u2191/\u2193 options \u00b7 Enter choose \u00b7 Alt+\u2190/\u2192 question \u00b7 Esc back",
         "styles": [
           {
-            "from": 2,
-            "to": 115,
-            "style": "fg:#45406b"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  ConPTY.",
-        "styles": [
+            "from": 0,
+            "to": 1,
+            "style": "fg:#5c6476"
+          },
           {
             "from": 2,
-            "to": 8,
+            "to": 4,
             "style": "fg:#ededf2"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 29,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  Align with Harness 0.2.1-rc.2, add the compose layer and the themed launch surfaces, and finish the Phase 7",
-        "styles": [
+          },
           {
-            "from": 2,
-            "to": 108,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  Known issues: The default data root is ~/.mayfly. Existing ~/.dsh data is not imported automatically; follow the",
-        "styles": [
-          {
-            "from": 2,
-            "to": 14,
-            "style": "fg:#9aa3b8"
+            "from": 6,
+            "to": 15,
+            "style": "fg:#5c6476"
           },
           {
             "from": 16,
-            "to": 117,
-            "style": "fg:#e8a838"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 30,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  performance pass with live-stream and transcript fixes.",
-        "styles": [
-          {
-            "from": 2,
-            "to": 56,
+            "to": 20,
             "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  upgrade and migration guide before changing installations.",
-        "styles": [
-          {
-            "from": 2,
-            "to": 59,
-            "style": "fg:#e8a838"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 31,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  Highlights:   Harness 0.2.1-rc.2 - consume native current-state projections, session browsing, subagent and job",
-        "styles": [
-          {
-            "from": 2,
-            "to": 14,
-            "style": "fg:#9aa3b8"
           },
           {
-            "from": 16,
-            "to": 117,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  Known issues: CLI-managed linked Host profiles require the external installer followed by mayfly server upgrade on",
-        "styles": [
-          {
-            "from": 2,
-            "to": 14,
-            "style": "fg:#9aa3b8"
+            "from": 22,
+            "to": 30,
+            "style": "fg:#5c6476"
           },
           {
-            "from": 16,
-            "to": 117,
-            "style": "fg:#e8a838"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 32,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  activations, settings, MCP, permission surfaces, the plugin manager, and file references through the pinned native",
-        "styles": [
-          {
-            "from": 2,
-            "to": 117,
+            "from": 31,
+            "to": 37,
             "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  the stopped original profile; /update cannot replace this installation. Ordinary startup refuses mixed release",
-        "styles": [
-          {
-            "from": 2,
-            "to": 117,
-            "style": "fg:#e8a838"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 33,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  services.",
-        "styles": [
-          {
-            "from": 2,
-            "to": 10,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  versions.",
-        "styles": [
-          {
-            "from": 2,
-            "to": 10,
-            "style": "fg:#e8a838"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 34,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  Highlights:   Compose layer - introduce the shared compose layer and unify panels so every overlay and pane uses",
-        "styles": [
-          {
-            "from": 2,
-            "to": 14,
-            "style": "fg:#9aa3b8"
           },
           {
-            "from": 16,
-            "to": 117,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  Known issues: The native Harness does not expose a Remote TUI hot-load API. Host and browser Cordis plugins cannot",
-        "styles": [
-          {
-            "from": 2,
-            "to": 14,
-            "style": "fg:#9aa3b8"
+            "from": 39,
+            "to": 49,
+            "style": "fg:#5c6476"
           },
           {
-            "from": 16,
-            "to": 117,
-            "style": "fg:#e8a838"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 35,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  one layout, focus, and key model.",
-        "styles": [
-          {
-            "from": 2,
-            "to": 34,
+            "from": 50,
+            "to": 52,
             "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  inject frontend UI services across the process boundary.",
-        "styles": [
+          },
           {
-            "from": 2,
+            "from": 54,
             "to": 57,
-            "style": "fg:#e8a838"
+            "style": "fg:#5c6476"
           }
         ]
-      }
-    },
-    {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 36,
-      "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  Highlights:   Component-library rounds - the status area and views, the editor and command palette, first-run",
+      },
+      "candidate": {
+        "text": "  \u2191/\u2193 options \u00b7 Enter choose \u00b7 \u2190/\u2192 question \u00b7 Esc back",
         "styles": [
           {
+            "from": 0,
+            "to": 1,
+            "style": "fg:#5c6476"
+          },
+          {
             "from": 2,
-            "to": 14,
-            "style": "fg:#9aa3b8"
+            "to": 4,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 6,
+            "to": 15,
+            "style": "fg:#5c6476"
           },
           {
             "from": 16,
-            "to": 117,
+            "to": 20,
             "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  \u2500\u2500 v0.1.4-rc.2 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
-        "styles": [
+          },
           {
-            "from": 2,
-            "to": 115,
-            "style": "fg:#45406b"
+            "from": 22,
+            "to": 30,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 31,
+            "to": 33,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 35,
+            "to": 45,
+            "style": "fg:#5c6476"
+          },
+          {
+            "from": 46,
+            "to": 48,
+            "style": "fg:#ededf2"
+          },
+          {
+            "from": 50,
+            "to": 53,
+            "style": "fg:#5c6476"
           }
         ]
       }
     },
     {
-      "scenario": "changelog",
-      "checkpoint": "changelog-wide",
-      "cols": 120,
-      "rows": 40,
-      "row": 37,
+      "scenario": "stats",
+      "checkpoint": "stats-session",
+      "cols": 80,
+      "rows": 24,
+      "row": 16,
+      "category": "native-fact",
+      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reference": {
+        "text": "  Context:           1% \u00b7 32 / 977k",
+        "styles": [
+          {
+            "from": 2,
+            "to": 19,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 21,
+            "to": 34,
+            "style": "fg:#4ec87e"
+          }
+        ]
+      },
+      "candidate": {
+        "text": "  Context:           1% \u00b7 32 / 1M",
+        "styles": [
+          {
+            "from": 2,
+            "to": 19,
+            "style": "fg:#9aa3b8"
+          },
+          {
+            "from": 21,
+            "to": 32,
+            "style": "fg:#4ec87e"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "stats",
+      "checkpoint": "stats-session",
+      "cols": 80,
+      "rows": 24,
+      "row": 21,
       "category": "release-content",
-      "reason": "The accepted 0.1.5 release notes replace the old current-release text at this exact width; surrounding panel geometry, cursor and all other rows remain strict.",
-      "reference": {
-        "text": "  onboarding and account sign-in, /stats, the plugin marketplace, the launch screen, and the theme picker.",
-        "styles": [
-          {
-            "from": 2,
-            "to": 105,
-            "style": "fg:#ededf2"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  A fix-only follow-up to 0.1.4-rc.1: /btw stays open and keeps the primary queue out, session browsing survives",
-        "styles": [
-          {
-            "from": 2,
-            "to": 111,
-            "style": "fg:#ededf2"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "stats",
-      "checkpoint": "stats-session",
-      "cols": 80,
-      "rows": 24,
-      "row": 16,
-      "category": "native-fact",
-      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
-      "reference": {
-        "text": "  Context:           1% \u00b7 32 / 977k",
-        "styles": [
-          {
-            "from": 2,
-            "to": 19,
-            "style": "fg:#9aa3b8"
-          },
-          {
-            "from": 21,
-            "to": 34,
-            "style": "fg:#4ec87e"
-          }
-        ]
-      },
-      "candidate": {
-        "text": "  Context:           1% \u00b7 32 / 1M",
-        "styles": [
-          {
-            "from": 2,
-            "to": 19,
-            "style": "fg:#9aa3b8"
-          },
-          {
-            "from": 21,
-            "to": 32,
-            "style": "fg:#4ec87e"
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "stats",
-      "checkpoint": "stats-session",
-      "cols": 80,
-      "rows": 24,
-      "row": 21,
-      "category": "native-fact",
-      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "reason": "The owner accepted this release content on 2026-11-08: the session statistics version field names Mayfly 0.1.6-rc.1 alongside the current native Harness 0.2.2-rc.1.",
       "reference": {
         "text": "  Version:           Mayfly 0.1.4-rc.2 \u00b7 Harness 0.2.1-rc.2",
         "styles": [
@@ -1840,7 +2252,7 @@
         ]
       },
       "candidate": {
-        "text": "  Version:           Mayfly 0.1.5 \u00b7 Harness 0.2.2-rc.1",
+        "text": "  Version:           Mayfly 0.1.6-rc.1 \u00b7 Harness 0.2.2-rc.1",
         "styles": [
           {
             "from": 2,
@@ -1849,7 +2261,7 @@
           },
           {
             "from": 21,
-            "to": 53,
+            "to": 58,
             "style": "fg:#ededf2"
           }
         ]
@@ -1900,8 +2312,8 @@
       "cols": 80,
       "rows": 24,
       "row": 21,
-      "category": "native-fact",
-      "reason": "The native Harness 0.2.2-rc.1 reports these version, context and adapter-default selection facts; retain the captured native values and exact field styling.",
+      "category": "release-content",
+      "reason": "The owner accepted this release content on 2026-11-08: the session statistics version field names Mayfly 0.1.6-rc.1 alongside the current native Harness 0.2.2-rc.1.",
       "reference": {
         "text": "  Version:           Mayfly 0.1.4-rc.2 \u00b7 Harness 0.2.1-rc.2",
         "styles": [
@@ -1918,7 +2330,7 @@
         ]
       },
       "candidate": {
-        "text": "  Version:           Mayfly 0.1.5 \u00b7 Harness 0.2.2-rc.1",
+        "text": "  Version:           Mayfly 0.1.6-rc.1 \u00b7 Harness 0.2.2-rc.1",
         "styles": [
           {
             "from": 2,
@@ -1927,7 +2339,7 @@
           },
           {
             "from": 21,
-            "to": 53,
+            "to": 58,
             "style": "fg:#ededf2"
           }
         ]
