@@ -1,4 +1,4 @@
-/** Verify the five-package graph actually resolved by the installed split CLI. @module script/verify-installed-mayfly */
+/** Verify the four-package graph actually resolved by the installed split CLI. @module script/verify-installed-mayfly */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { installedCli, installedManifests } from './installed-cli.mjs'
@@ -14,4 +14,4 @@ for (const file of installedManifests(installedCli())) {
 const profile = process.env.MAYFLY_SMOKE_PROFILE ?? 'mayfly-release'
 const marker = JSON.parse(readFileSync(join(home, 'harness/profiles', profile, 'mayfly-install.json'), 'utf8'))
 if (marker.version !== expected) throw new Error(`managed Host profile: expected ${expected}, got ${marker.version}`)
-console.log(`installed Mayfly set: five resolved packages and managed Host profile at ${expected}`)
+console.log(`installed Mayfly set: four resolved packages and managed Host profile at ${expected}`)

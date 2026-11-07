@@ -13,7 +13,7 @@ import { summarizeToolText } from './envelope.ts'
 import { summarizeToolCall } from './present.ts'
 
 /** Official facts required to build one renderer-neutral tool card. */
-export interface ToolPresentationFacts {
+interface ToolPresentationFacts {
   readonly id: string
   readonly name: string
   readonly call?: ToolCallView

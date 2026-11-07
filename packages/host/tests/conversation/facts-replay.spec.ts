@@ -82,7 +82,7 @@ describe('mayflyConversationFacts projection', () => {
   })
 
   it('invalidates checkpoints after the facts became presentation-only', () => {
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(13)
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(14)
   })
 
   it('memoizes the view per state and keeps a repeated spawn result identical', () => {
@@ -414,8 +414,8 @@ describe('mayflyConversationFacts projection', () => {
     let state = foldConversationFacts(initialConversationFacts(), event('tool/call', { turn: 1, step: 0, callId: 'f1', name: 'read', arguments: '{"path":"a.ts"}' }))
     state = foldConversationFacts(state, event('tool/call', { turn: 1, step: 0, callId: 'f2', name: 'bash', arguments: 'not json' }))
     expect(state.inFlight).toEqual([
-      { callId: 'f1', name: 'read', detail: expect.any(String) },
-      { callId: 'f2', name: 'bash', detail: '' },
+      { callId: 'f1', name: 'read', startedAt: expect.any(Number) },
+      { callId: 'f2', name: 'bash', startedAt: expect.any(Number) },
     ])
     state = foldConversationFacts(state, event('tool/result', toolResult('f1', [])))
     expect(state.inFlight?.map(call => call.callId)).toEqual(['f2'])

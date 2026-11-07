@@ -4,8 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
 import { withOverrides } from '../fixture-fields.ts'
-import { acknowledgeChoice, choiceError, choicePinned, choiceReportedSegment, choiceRow, choiceSegment, focusableListItem, choiceVisibleCount, choiceVisibleIndex, choiceVisiblePosition, createChoiceState, reconcileChoice, reduceChoice, visibleChoiceIndices } from '../../src/core/ui-interaction-choice.ts'
-import { admittedListItem } from '../../src/core/ui-validator.ts'
+import { acknowledgeChoice, choiceError, choicePinned, choiceReportedSegment, choiceRow, choiceSegment, focusableListItem, choiceVisibleCount, createChoiceState, reconcileChoice, reduceChoice } from '../../src/core/ui-interaction-choice.ts'
 
 const tree = ui.list({ id: 'tree', role: 'choose', tree: true, selectedIds: [], filterable: true, items: [
   { id: 'root', label: 'Root' },
@@ -15,61 +14,6 @@ const tree = ui.list({ id: 'tree', role: 'choose', tree: true, selectedIds: [], 
 ] })
 
 describe('shared tree choice', () => {
-  it('discloses branches, keeps focus visible on collapse, and decorates without changing ids', () => {
-    let state = createChoiceState(tree)
-    expect(visibleChoiceIndices(state)).toEqual([0, 3])
-    expect(visibleChoiceIndices(state)).toBe(state.visibleTreeIndices)
-    expect(choiceVisibleCount(state)).toBe(2)
-    expect(choiceVisiblePosition(state)).toBe(0)
-    expect(choiceVisibleIndex(state, 1)).toBe(3)
-    state = reduceChoice(state, { kind: 'expand', id: 'root' })
-    expect(visibleChoiceIndices(state)).toEqual([0, 1, 3])
-    state = reduceChoice(state, { kind: 'expand', id: 'child' })
-    state = reduceChoice(state, { kind: 'focus', id: 'leaf' })
-    expect(visibleChoiceIndices(state)).toEqual([0, 1, 2, 3])
-    // The label is never decorated: the painter draws the guides, so the label stays what a filter reads.
-    expect(admittedListItem(state.definition.items, 2)).toMatchObject({ id: 'leaf', label: 'Deep target' })
-    expect(choiceRow(state, 2)).toMatchObject({ depth: 2, last: true, expandable: false, open: false })
-    expect(choiceRow(state, 1)).toMatchObject({ depth: 1, last: true, expandable: true, open: true })
-    state = reduceChoice(state, { kind: 'expand', id: 'root' })
-    expect(state.focusedId).toBe('root')
-    expect(visibleChoiceIndices(state)).toEqual([0, 3])
-  })
-
-  it('shows matching descendants with ancestors and restores disclosure after clearing search', () => {
-    let state = reduceChoice(createChoiceState(tree), { kind: 'expand', id: 'root' })
-    state = reduceChoice(state, { kind: 'query', query: 'target' })
-    expect(visibleChoiceIndices(state)).toEqual([0, 1, 2])
-    expect(state.focusedId).toBe('leaf')
-    state = reduceChoice(state, { kind: 'clear-search' })
-    expect(visibleChoiceIndices(state)).toEqual([0, 1, 3])
-    expect(state.expandedIds).toEqual(['root'])
-  })
-
-  it('reveals the selected node ancestry on initialization', () => {
-    const selected = createChoiceState({ ...tree, selectedIds: ['leaf'] })
-    expect(selected.expandedIds).toEqual(['child', 'root'])
-    expect(visibleChoiceIndices(selected)).toEqual([0, 1, 2, 3])
-  })
-
-  it('contains malformed parent cycles and orphans without looping', () => {
-    const malformed = ui.list({ id: 'tree', role: 'browse', tree: true, selectedIds: [], items: [
-      { id: 'self', label: 'Self', parentId: 'self' },
-      { id: 'a', label: 'A', parentId: 'b' },
-      { id: 'b', label: 'B', parentId: 'a' },
-      { id: 'orphan', label: 'Orphan', parentId: 'missing' },
-    ] })
-    let state = createChoiceState(malformed)
-    expect(visibleChoiceIndices(state)).toEqual([])
-    state = reduceChoice(state, { kind: 'expand', id: 'a' })
-    state = reduceChoice(state, { kind: 'expand', id: 'b' })
-    expect(visibleChoiceIndices(state)).toEqual([])
-    state = reduceChoice(state, { kind: 'query', query: 'B' })
-    expect(visibleChoiceIndices(state)).toEqual([1, 2])
-    state = reduceChoice(state, { kind: 'query', query: 'Orphan' })
-    expect(visibleChoiceIndices(state)).toEqual([3])
-    expect(createChoiceState({ ...malformed, selectedIds: ['orphan'] }).expandedIds).toEqual(['missing'])
-  })
 
   it('reports parent disclosure and tolerates an absent derived tree index', () => {
     let state = createChoiceState(tree)
@@ -89,24 +33,6 @@ describe('flat choice reducer', () => {
     { id: 'two', label: 'Two', searchText: 'second alias' },
     { id: 'disabled', label: 'Disabled', disabled: true },
   ] })
-
-  it('initializes empty and filtered definitions and decorates flat items unchanged', () => {
-    expect(createChoiceState(ui.list({ id: 'empty', role: 'browse', selectedIds: [], items: [] }))).toMatchObject({ focusedIndex: -1, focusedId: undefined })
-    const unfiltered = createChoiceState(flat)
-    expect(choiceVisibleCount(unfiltered)).toBe(3)
-    expect(choiceVisiblePosition(unfiltered)).toBe(0)
-    expect(choiceVisibleIndex(unfiltered, 2)).toBe(2)
-    expect(choiceVisibleIndex(unfiltered, 3)).toBeUndefined()
-    expect(visibleChoiceIndices(unfiltered)).toEqual([0, 1, 2])
-    const filtered = createChoiceState({ ...flat, filter: 'alias' })
-    expect(filtered).toMatchObject({ focusedId: 'two', matches: [1] })
-    expect(admittedListItem(filtered.definition.items, 1)).toBe(filtered.definition.items[1])
-    expect(visibleChoiceIndices(filtered)).toEqual([1])
-    expect(choiceVisibleCount(filtered)).toBe(1)
-    expect(choiceVisibleIndex(filtered, 0)).toBe(1)
-    expect(createChoiceState({ ...flat, selectedIds: ['two'], filter: 'alias' }).focusedId).toBe('two')
-    expect(createChoiceState({ ...flat, filter: 'absent' })).toMatchObject({ focusedIndex: -1, focusedId: undefined })
-  })
 
   it('moves, focuses, searches, restores its anchor, and stops search idempotently', () => {
     let state = createChoiceState(flat)
@@ -411,16 +337,6 @@ describe('list rows beyond the label', () => {
     state = reduceChoice(state, { kind: 'query', query: 'B' })
     expect(choiceRow(state, 1)).toMatchObject({ open: true })
   })
-
-  it('expands and collapses every branch, keeping the cursor on a row that is still drawn', () => {
-    let state = reduceChoice(createChoiceState(tree), { kind: 'expand-all' })
-    expect(visibleChoiceIndices(state)).toEqual([0, 1, 2, 3])
-    state = reduceChoice(state, { kind: 'focus', id: 'leaf' })
-    state = reduceChoice(state, { kind: 'collapse-all' })
-    expect(visibleChoiceIndices(state)).toEqual([0, 3])
-    expect(state.focusedId).toBe('root')
-    expect(state.expandedIds).toEqual([])
-  })
 })
 
 describe('list rows: edges of the model', () => {
@@ -448,4 +364,15 @@ describe('list rows: edges of the model', () => {
     expect(choicePinned({ ...seeded, segments: { a: null } }, 'a')).toBeNull()
     expect(choicePinned({ ...seeded, segments: { a: 'gone' } }, 'a')).toBeNull()
   })
+})
+
+it('contains dangling and cyclic ancestry and restores the top ancestor on collapse', () => {
+  const orphan = ui.list({ id: 'orphan', role: 'choose', tree: true, selectedIds: ['child'], items: [{ id: 'child', label: 'Target', parentId: 'missing' }] })
+  expect(createChoiceState(orphan).visibleTreeIndices).toEqual([])
+  expect(createChoiceState({ ...orphan, filter: 'Target' }).visibleTreeIndices).toEqual([0])
+  const cycle = ui.list({ id: 'cycle', role: 'browse', tree: true, items: [{ id: 'a', label: 'A', parentId: 'b' }, { id: 'b', label: 'B', parentId: 'a' }] })
+  expect(reduceChoice(createChoiceState(cycle), { kind: 'expand-all' }).visibleTreeIndices).toEqual([])
+  const nested = createChoiceState({ ...tree, selectedIds: ['leaf'] })
+  expect(nested.focusedId).toBe('leaf')
+  expect(reduceChoice(nested, { kind: 'collapse-all' })).toMatchObject({ focusedId: 'root', expandedIds: [] })
 })

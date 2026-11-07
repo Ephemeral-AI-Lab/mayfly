@@ -26,6 +26,19 @@ export interface SourceAnalysis {
   readonly translatorKeys: readonly TranslatorKey[]
   /** Whether the file mentions a translator binding at all. */
   readonly translatorFile: boolean
+  /** Keys of the file's inline Chinese catalogs (`const zh = { … }` or `const *_ZH = { … }`); they are not literals. */
+  readonly catalogKeys: ReadonlySet<string>
+}
+
+const INLINE_CATALOG = /^(?:zh|[A-Z][A-Z0-9_]*_ZH)$/u
+
+/** The object literal an inline catalog declaration initializes, through `Object.freeze(…)` and `as` casts. */
+function inlineCatalog(node: ts.Node): ts.ObjectLiteralExpression | undefined {
+  if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !INLINE_CATALOG.test(node.name.text)) return undefined
+  let value = node.initializer
+  while (value !== undefined && (ts.isAsExpression(value) || ts.isSatisfiesExpression(value) || ts.isParenthesizedExpression(value))) value = value.expression
+  if (value !== undefined && ts.isCallExpression(value) && value.arguments.length === 1) value = value.arguments[0]
+  return value !== undefined && ts.isObjectLiteralExpression(value) ? value : undefined
 }
 
 /**
@@ -42,9 +55,20 @@ export function analyzeSource(program: ts.Program, fileName: string, text: strin
   const literals = new Set<string>()
   const translatorKeys: TranslatorKey[] = []
   const translatorFile = /(?:Translator|MayflyTranslate|contextHints)/u.test(text)
+  const catalogKeys = new Set<string>()
+  const catalogNames = new Set<ts.Node>()
 
   const visit = (node: ts.Node): void => {
-    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && !isModuleSpecifier(node)) {
+    const catalog = inlineCatalog(node)
+    if (catalog !== undefined) {
+      for (const property of catalog.properties) {
+        if (ts.isPropertyAssignment(property) && ts.isStringLiteral(property.name)) {
+          catalogKeys.add(property.name.text)
+          catalogNames.add(property.name)
+        }
+      }
+    }
+    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && !isModuleSpecifier(node) && !catalogNames.has(node)) {
       literals.add(node.text)
     }
     if (translatorFile && ts.isCallExpression(node)) {
@@ -59,7 +83,7 @@ export function analyzeSource(program: ts.Program, fileName: string, text: strin
     ts.forEachChild(node, visit)
   }
   visit(source)
-  return { literals, translatorKeys, translatorFile }
+  return { literals, translatorKeys, translatorFile, catalogKeys }
 }
 
 function calleeName(expression: ts.Expression): string | undefined {

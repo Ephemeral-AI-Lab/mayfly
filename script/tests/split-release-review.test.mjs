@@ -20,7 +20,7 @@ const row = (text, end = text.length - 1) => ({ text, styles: [{ from: 1, to: en
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'mayfly-release-review-'))
   t.after(() => rmSync(root, { recursive: true, force: true }))
-  for (const name of ['ui', 'mayfly', 'host', 'remote', 'cli']) {
+  for (const name of ['ui', 'mayfly', 'host', 'cli']) {
     mkdirSync(join(root, 'packages', name, 'lib'), { recursive: true })
     writeJson(join(root, 'packages', name, 'package.json'), { version: '0.1.5', dependencies: { '@deepseek-ai/dsh': '0.2.2-alpha.3' } })
     writeFileSync(join(root, 'packages', name, 'lib/entry.js'), 'export const fixture = true\n')
@@ -101,7 +101,7 @@ test('missing checkpoints, capture errors, stale builds and a different Harness 
     sample => { sample.suite.results.push(sample.result) },
     sample => { sample.suite.failures = [] },
     sample => { sample.result.status = 'passed' },
-    sample => { writeFileSync(join(sample.root, 'packages/remote/lib/entry.js'), 'changed') },
+    sample => { writeFileSync(join(sample.root, 'packages/mayfly/lib/entry.js'), 'changed') },
   ]) {
     const sample = fixture(t)
     mutate(sample)
@@ -121,6 +121,20 @@ test('content decisions bind an exact named row, its style, dimensions and ownin
   rejected(sample, /Required reviewed change/u)
   writeFileSync(path, 'changed')
   rejected(sample, /Reviewed source changed/u)
+})
+
+test('an owner-design decision reviews its exact row, and any other category is still refused', t => {
+  const sample = fixture(t)
+  const decision = { scenario: 'smoke', checkpoint: 'startup', cols: 40, rows: 2, row: 1, category: 'owner-design', reason: 'The owner accepted this exact row in a live review.', reference: { text: '  Esc close', styles: [] }, candidate: { text: '  Owner accepted', styles: [] } }
+  sample.update(grid => ({ ...grid, lines: [grid.lines[0], decision.candidate.text] }))
+  rejected(sample, /Unreviewed text\/style difference/u)
+  sample.policy.decisions.push(decision)
+  const result = reviewSplitReleaseSuite(sample)
+  assert.equal(result.status, 'passed-with-reviewed-differences')
+  assert.equal(result.results[0].reviewedDifferences.at(-1).rule, 'owner-design')
+  assert.equal(result.strictParityVerified, false)
+  decision.category = 'taste'
+  rejected(sample, /Missing or unknown exact row decision/u)
 })
 
 test('required release changes cannot silently revert to reference text and pass as strict exact', t => {

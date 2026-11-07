@@ -168,7 +168,7 @@ export type ListRenderExtras = Omit<ListPaintOptions, 'rows' | 'focused' | 'mark
   readonly cursorId?: string | undefined
 }
 
-export type { ListRowMemo } from './ui-list-paint.ts'
+
 
 /**
  * Render list rows (spec 4.4); `numberFrom` is the visible position of the first row so numbers stay stable while the

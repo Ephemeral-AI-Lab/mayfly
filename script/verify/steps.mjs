@@ -14,8 +14,8 @@ import { join } from 'node:path'
  * @property {string} command - the executable.
  * @property {string[]} args - its arguments.
  * @property {boolean} [blocking] - stop the tier when this step fails.
- * @property {'specs' | 'coverage' | 'scenarios' | 'perf' | 'split'} [kind] - a run whose results the report reads: vitest's JSON,
- *   the scenario results, or the perf results.
+ * @property {'specs' | 'coverage' | 'split'} [kind] - a run whose results the report reads: vitest's JSON or the split
+ *   results.
  */
 
 export const TIERS = ['round', 'pr', 'full']
@@ -23,12 +23,10 @@ export const TIERS = ['round', 'pr', 'full']
 /** Where a tier writes its report, logs, and the results the report reads. */
 export const OUTPUT = '.artifacts/verify'
 export const VITEST_RESULTS = `${OUTPUT}/vitest.json`
-export const SCENARIO_RESULTS = `${OUTPUT}/scenarios.json`
-export const PERF_RESULTS = `${OUTPUT}/perf.json`
 export const SPLIT_RESULTS = `${OUTPUT}/split.json`
 export const SPLIT_REVIEW_RESULTS = `${OUTPUT}/split-review.json`
 
-const split = (scenario, smokeOnly = false) => ({ name: smokeOnly ? 'split Host/Remote smoke' : 'published rc.2 comparison and release review', kind: 'split', command: 'node', args: ['script/split-parity.mjs', '--scenario', scenario, ...(smokeOnly ? ['--smoke-only'] : ['--review-release', '--review-results', SPLIT_REVIEW_RESULTS]), '--results', SPLIT_RESULTS] })
+const split = (scenario, smokeOnly = false) => ({ name: smokeOnly ? 'split Host/TUI smoke' : 'published rc.2 comparison and release review', kind: 'split', command: 'node', args: ['script/split-parity.mjs', '--scenario', scenario, ...(smokeOnly ? ['--smoke-only'] : ['--review-release', '--review-results', SPLIT_REVIEW_RESULTS]), '--results', SPLIT_RESULTS] })
 
 const pnpm = (name, ...args) => ({ name, command: 'pnpm', args })
 const vitest = (name, kind, args) => ({ name, kind, command: 'pnpm', args: ['exec', 'vitest', 'run', ...args, '--reporter=dot', '--reporter=json', `--outputFile.json=${VITEST_RESULTS}`, '--silent=passed-only'] })
@@ -56,7 +54,7 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
       ...(plan.checks.pack ? [pnpm('pack', 'run', 'check:pack'), pnpm('cli registry smoke', 'run', 'smoke:cli-registry')] : []),
       // One run: the suites with every retained-row hit painted again, the work budgets, and coverage against its floor.
       vitest('suites and coverage', 'coverage', ['--coverage']),
-      // The real Host and Remote use the build above. Network recovery is separately reported
+      // The real Host and TUI use the build above. Network recovery is separately reported
       // as behavior, while shared semantic cases compare immutable published rc.2 grids.
       split('all'),
     ]
@@ -87,13 +85,7 @@ export function stepsFor(plan, tier, { root = process.cwd(), coverageAdvice = fa
       : []
     steps.push(vitest(`specs (${String(plan.tests.specs.length)})`, coverage.length > 0 ? 'coverage' : 'specs', [...plan.tests.specs, ...coverage]))
   }
-  // The old in-process replay/perf CLI requires the rc.2 Harness. Runtime acceptance now
-  // drives the actual split executable; deterministic frame work budgets remain Vitest specs.
-  const terminalChange = plan.tests.scenarios.length > 0 || plan.tests.perf.length > 0 || plan.checks.smoke
-    || plan.files.some(file => /^packages\/(?:host|remote)\/src\//u.test(file))
-  if (terminalChange) steps.push(split(tier === 'pr' ? 'all' : 'smoke', tier === 'round'))
-  if (tier === 'pr' && plan.tests.perf.length > 0 && !plan.tests.specs.some(file => file.startsWith('packages/mayfly/tests/perf/'))) {
-    steps.push(vitest('renderer work budgets', 'specs', ['--project=perf']))
-  }
+  // Runtime acceptance drives the real split Host and TUI; deterministic frame work budgets are Vitest specs.
+  if (plan.checks.smoke) steps.push(split(tier === 'pr' ? 'all' : 'smoke', tier === 'round'))
   return steps
 }

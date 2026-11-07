@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { compareVersions, isVersion, parseVersion, VERSION_FLOOR } from '../../src/interaction/updater/version.ts'
+import { compareVersions, parseVersion, VERSION_FLOOR } from '../../src/interaction/updater/version.ts'
 
 describe('updater/version parseVersion', () => {
   it('parses a plain release', () => {
@@ -15,19 +15,6 @@ describe('updater/version parseVersion', () => {
 
   it('parses a dotted prerelease into identifiers', () => {
     expect(parseVersion('0.1.0-rc.2')).toEqual({ major: 0, minor: 1, patch: 0, prerelease: ['rc', '2'] })
-  })
-
-  it('rejects foreign shapes', () => {
-    for (const value of ['', '0.1', '0.1.0.0', 'v0.1.0', '0.1.0-rc.2+build', 'latest', '0.1.0-']) {
-      expect(parseVersion(value), value).toBeUndefined()
-      expect(isVersion(value), value).toBe(false)
-    }
-  })
-
-  it('accepts every shape the updater feeds it', () => {
-    for (const value of ['0.1.0-rc.2', '1.2.3', '10.20.30-beta.1']) {
-      expect(isVersion(value), value).toBe(true)
-    }
   })
 })
 

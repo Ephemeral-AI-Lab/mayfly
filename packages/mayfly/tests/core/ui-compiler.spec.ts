@@ -3,7 +3,7 @@ import { CURSOR_MARKER, HStack, ScrollView, stripTerminalSequences, type Compone
 import { renderLayoutFrame, type LayoutBox, type LayoutFrame } from '@earendil-works/pi-tui/dist/layout.js'
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { describe, expect, it, vi } from 'vitest'
-import { ui as wireUi } from '@ephemeral-ai/mayfly-ui'
+import { ui as wireUi, type MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import { browser, ui } from '../../../ui/src/index.ts'
 import {
   MayflyUiSurfaceRuntime,
@@ -71,6 +71,7 @@ function createTestEditor(): MayflyEditor {
     submit: () => { if (!editor.disableSubmit) editor.onSubmit?.(value) },
     getText: () => value,
     getExpandedText: () => value,
+    caretOffset: () => cursor,
     setText: (text: string) => { value = text; cursor = text.length },
     renderContent: (width: number, masked = false) => {
       const shown = masked ? '•'.repeat(value.length) : value
@@ -2688,6 +2689,33 @@ describe('control walk memoization (UX-34)', () => {
     model.dispose()
   })
 
+  it('shares list windows across walking and painting and invalidates on choice, height, and rebinding', () => {
+    const { model, runtime, f } = mountList()
+    const node = model.node as MayflyListNode
+    const first = runtime.listWindow(node, 1)
+    expect(runtime.listWindow(node, 1)).toBe(first)
+    model.updateChoice({ pagePath: [], controlId: 'items' }, { kind: 'move', direction: 1, count: 1 })
+    const moved = runtime.listWindow(node, 1)
+    expect(moved).not.toBe(first)
+    expect(runtime.listWindow(node, 1)).toBe(moved)
+    // The bound is clamped to the total: a larger limit with the same effective size shares the window.
+    expect(runtime.listWindow(node, 30)).toBe(moved)
+    const long = ui.list({ id: 'long', role: 'browse', items: Array.from({ length: 20 }, (_, index) => ({ id: String(index), label: String(index) })) })
+    const shortWindow = runtime.listWindow(long, 1)
+    expect(shortWindow).toHaveLength(5)
+    const tallerWindow = runtime.listWindow(long, 4)
+    expect(tallerWindow).not.toBe(shortWindow)
+    expect(tallerWindow).toHaveLength(8)
+    expect(runtime.listWindow(long, 4)).toBe(tallerWindow)
+    model.updateChoice({ pagePath: [], controlId: 'items' }, { kind: 'query', query: 'B' })
+    const filtered = runtime.listWindow(node, 1)
+    expect(filtered.map(row => row.item.id)).toEqual(['b'])
+    compiledSurface(model.node!, f.options, runtime)
+    expect(runtime.listWindow(node, 1)).not.toBe(filtered)
+    runtime.dispose()
+    model.dispose()
+  })
+
   it('walks at most once per input round, not once per reconcile call', () => {
     const { model, runtime, surface, windows } = mountList()
     // One arrow key drives handleInput's reconcile, the grammar read, and
@@ -2810,7 +2838,7 @@ describe('interactive prompt, slider, and list inputs', () => {
     model.dispose()
   })
 
-  it('types into a list row input, backspaces, and clears it with Ctrl+U', () => {
+  it('types into a list row input and backspaces it empty', () => {
     const node = ui.list({
       id: 'answers', role: 'choose', selectedIds: [],
       items: [{ id: 'q', label: 'Why?', input: { placeholder: 'answer' } }],
@@ -2824,7 +2852,7 @@ describe('interactive prompt, slider, and list inputs', () => {
     expect(model.choice({ pagePath: [], controlId: 'answers' })?.inputs?.['q']).toBe('ye')
     focus.handleInput?.('\x7f')
     expect(model.choice({ pagePath: [], controlId: 'answers' })?.inputs?.['q']).toBe('y')
-    focus.handleInput?.('\x15')
+    focus.handleInput?.('\x7f')
     // An empty row input is dropped from the drafts.
     expect(model.choice({ pagePath: [], controlId: 'answers' })?.inputs?.['q']).toBeUndefined()
     runtime.dispose()

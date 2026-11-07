@@ -1,16 +1,16 @@
 flowchart TB
-    BASE["dsh-base"]
-    subgraph GRAPH["flat Cordis sibling graph"]
-        SUPPORT["dsh support rows<br/>subagent settings · presets · host runner · workspace<br/>connection · file upload · session controller · session stats"]
-        UI["@ephemeral-ai/mayfly-ui provider<br/>four direct UI registries"]
-        RUNTIME["@ephemeral-ai/mayfly runtime rows<br/>frontend · conversation · app · core<br/>transcript · status · panes · interaction"]
-        PLUGINS["external Cordis plugins"]
+    HOST["native dsh Host<br/>dsh-base · dsh-web-app · mayfly-host"]
+    subgraph TUI["independent TUI Cordis tree"]
+        UI["@ephemeral-ai/mayfly-ui provider<br/>four frontend-local UI registries"]
+        CORE["@ephemeral-ai/mayfly core<br/>frontend · theme · core renderer"]
+        FEATURES["built-in features<br/>sessions · settings · commands · panes · status"]
+        PLUGINS["source-composition plugins<br/>run(argv, { plugins })"]
     end
-    NATIVE["native dsh services"]
+    CLIENT["official Client HTTP/WebSocket"]
 
-    BASE --> NATIVE
-    NATIVE --> SUPPORT
-    NATIVE --> RUNTIME
-    NATIVE --> PLUGINS
-    UI --> RUNTIME
+    UI --> CORE
+    CORE --> FEATURES
+    FEATURES --> PLUGINS
     UI --> PLUGINS
+    FEATURES --> CLIENT
+    CLIENT --> HOST

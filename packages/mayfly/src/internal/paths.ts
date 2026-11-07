@@ -3,7 +3,7 @@
  */
 import { posix, win32 } from 'node:path'
 
-export function platformPath(platform: NodeJS.Platform): typeof posix {
+function platformPath(platform: NodeJS.Platform): typeof posix {
   return platform === 'win32' ? win32 : posix
 }
 

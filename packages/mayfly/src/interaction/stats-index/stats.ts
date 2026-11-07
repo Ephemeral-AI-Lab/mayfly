@@ -134,7 +134,7 @@ export function aggregate(digests: readonly SessionDigest[], range: StatsRange, 
 }
 
 /** The activity grid: levels 0 to 4 per day, Sunday first, a day after today is null. */
-export interface HeatmapGrid {
+interface HeatmapGrid {
   readonly weeks: number
   /** One month name per week column, empty where the month did not change. */
   readonly monthLabels: readonly string[]
@@ -174,7 +174,7 @@ export function heatmapGrid(dayTurns: ReadonlyMap<string, number>, weeks: number
 }
 
 /** One drawn line of a per-day chart. */
-export interface DailySeries {
+interface DailySeries {
   readonly id: string
   readonly provider: string | undefined
   readonly model: string | undefined
@@ -182,7 +182,7 @@ export interface DailySeries {
 }
 
 /** A per-day chart: one value per model per day, `days` naming each. */
-export interface DailyChart {
+interface DailyChart {
   readonly days: readonly string[]
   readonly series: readonly DailySeries[]
 }

@@ -51,8 +51,9 @@ describe('Host creative preset composition', () => {
     // The roster truncates long descriptions: expose the current API gap first.
     expect(declaration.config!.description).toMatch(/^TUI 热挂载 API 暂缺；/u)
     expect(declaration.config!.description).toContain('前端扩展需源码集成并重启')
-    expect(persona).toContain('independent @ephemeral-ai/mayfly-remote')
-    expect(persona).toContain('no public Remote UI hot-load or external frontend plugin installation entry')
+    expect(persona).toContain('independent @ephemeral-ai/mayfly terminal frontend')
+    expect(persona).toContain('no TUI hot-load or external frontend plugin installer')
+    expect(persona).toContain('run(argv, { plugins }) from @ephemeral-ai/mayfly/bin')
     expect(persona).toContain('Current Harness model tools cannot create or run dynamic definitions')
     expect(persona).toContain('Do not load either plugin-development skill')
   })

@@ -29,6 +29,9 @@ export interface StatusTip {
 export const STATUS_TIPS: readonly StatusTip[] = [
   { text: 'Esc to interrupt the turn', priority: 2 },
   { text: 'Ctrl+O to expand tool details', priority: 2 },
+  { text: 'Enter on a spawn line moves to its view' },
+  { text: 'Alt+Down opens the view of what runs' },
+  { text: 'Alt+Up selects a call; Enter opens it' },
   { text: '/help: show commands' },
   { text: '/sessions to browse and resume earlier sessions' },
   { text: '/fork to branch the conversation and explore safely' },

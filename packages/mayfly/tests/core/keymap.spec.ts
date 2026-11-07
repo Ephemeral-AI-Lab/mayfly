@@ -6,6 +6,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { MayflyKeymapError, MayflyKeymapService, actionOwner } from '../../src/core/keymap.ts'
+import { displayKey, keyActionKeys } from '../../src/core/key-actions.ts'
 import type { MayflyKeyAction } from '../../src/core/types.ts'
 
 describe('MayflyKeymapService', () => {
@@ -424,6 +425,7 @@ describe('MayflyKeymapService', () => {
       keymap.setPreferPlain(false)
       keymap.setPreferPlain(true)
       expect(keymap.getKeys('ui.tab-next')).toEqual(['f3', 'alt+right'])
+      expect(keymap.list().find(action => action.id === 'ui.tab-next')?.keys).toEqual(['f3', 'alt+right'])
       keymap.notePlainKey('\x1bOQ')
       keymap.setPreferPlain(false)
       expect(keymap.preferPlain).toBe(true)
@@ -441,4 +443,9 @@ describe('MayflyKeymapService', () => {
       expect(keymap.getKeys('ui.tab-next')).toEqual(['f3', 'alt+right'])
     })
   })
+})
+
+it('prints modified Meta function keys and leaves an undeclared action unbound', () => {
+  expect(displayKey('meta+f3')).toBe('Meta+F3')
+  expect(keyActionKeys(undefined, 'unknown.action')).toEqual([])
 })

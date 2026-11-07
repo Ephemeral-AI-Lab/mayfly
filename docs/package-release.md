@@ -1,9 +1,8 @@
 # Mayfly package and release workflow
 
-The split runtime publishes five packages in lockstep:
-`@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly`,
-`@ephemeral-ai/mayfly-host`, `@ephemeral-ai/mayfly-remote`, and
-`@ephemeral-ai/mayfly-cli`. The exact release order lives in
+The split runtime publishes four packages in lockstep:
+`@ephemeral-ai/mayfly-ui`, `@ephemeral-ai/mayfly-host`,
+`@ephemeral-ai/mayfly`, and `@ephemeral-ai/mayfly-cli`. The exact release order lives in
 `script/package-contract.mjs`. The supported Harness line is `0.2.2-rc.1`.
 The published `@ephemeral-ai/mayfly@0.1.4-rc.2` remains an immutable parity
 reference; choose a new, unpublished version before releasing the split packages.
@@ -25,7 +24,9 @@ pnpm run check -- --tier full
 pnpm release:preflight --artifact "$VERSION"
 ```
 
-Immutable reference mentions and private historical skills are excluded from automatic version replacement. Exact internal dependency pins are validated and advanced with the five manifests.
+Immutable reference mentions and private historical skills are excluded from automatic version replacement. Exact internal dependency pins are validated and advanced with the four release manifests plus the Website manifest.
+
+The 0.1.6-rc.1 release targets the `rc` channel while npm `latest` stays at 0.1.5.
 
 The version bump supports `pnpm release:version <version> --dry-run` and checks
 all release markers before writing. Write a substantive first entry in the
@@ -51,17 +52,17 @@ before reviewing or changing a release policy.
 form additionally checks the packed package set. These commands do not
 publish or replace the registry-install matrix.
 
-`check:pack` writes `.artifacts/pack/index.json` and five tarballs, then runs
+`check:pack` writes `.artifacts/pack/index.json` and four tarballs, then runs
 manifest/export/bin/protocol checks, publint, AreTheTypesWrong, package budgets,
 and an external UI-kit install fixture. Release automation publishes those
 exact artifacts and does not rebuild.
 
-`@ephemeral-ai/mayfly-cli` ships one unified bin with exact matching Host, Remote,
+`@ephemeral-ai/mayfly-cli` ships one unified bin with exact matching Host, TUI,
 and official dsh runtime dependencies. It carries no runtime archives and does
 not change a separate global dsh installation. Existing initialized profiles
 refuse a recorded release mismatch. The supported managed upgrade uses the external installer followed by explicit server upgrade on the stopped original profile; see the bilingual Website upgrade guide. No silent profile upgrade is performed.
 
-The GitHub repository owns an `npm` environment. Until all five packages have
+The GitHub repository owns an `npm` environment. Until all four packages have
 trusted publishing configured, that environment must provide an `NPM_TOKEN`
 secret whose npm identity can publish under `@ephemeral-ai`. The release jobs
 use the environment for both the candidate publish and dist-tag promotion;

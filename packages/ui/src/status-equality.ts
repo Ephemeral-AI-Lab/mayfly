@@ -32,6 +32,7 @@ function equalSpan(left: MayflyInlineSpan, right: MayflyInlineSpan): boolean {
     && equalStrings(left.styles, right.styles)
     && left.motion === right.motion
     && left.variant === right.variant
+    && left.elastic === right.elastic
 }
 
 function equalField(left: MayflyField, right: MayflyField): boolean {

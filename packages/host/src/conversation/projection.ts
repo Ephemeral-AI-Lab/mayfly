@@ -18,7 +18,7 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
 import { everyAdmitted, identityAdmission } from './admission.ts'
 import { outputProgressSchema } from './output-progress.ts'
-import { foldAssistantStreamRecords, initialAssistantStream, type AssistantStreamState } from './stream-accumulator.ts'
+import { foldAssistantStreamRecords, initialAssistantStream, toolEntryId, type AssistantStreamState } from './stream-accumulator.ts'
 import type {
   ConversationCompactionEntry,
   ConversationEntry,
@@ -247,11 +247,6 @@ function boundedSettledSteps(steps: readonly string[], turn: number): readonly s
   const floor = turn - (SETTLED_TURN_WINDOW - 1)
   const retained = steps.filter(key => settledTurn(key) >= floor)
   return retained.length === steps.length ? steps : retained
-}
-
-/** The id of the entry a tool call opens and its result completes. */
-function toolEntryId(callId: string): string {
-  return `tool:${callId}`
 }
 
 /**

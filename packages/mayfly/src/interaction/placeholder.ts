@@ -10,7 +10,7 @@
 import type { MayflyTranslate } from '../frontend/locale.ts'
 
 /** What the displayed conversation lets the empty prompt say. */
-export type PlaceholderState =
+type PlaceholderState =
   | { readonly kind: 'main', readonly running: boolean }
   | { readonly kind: 'shell' }
   | { readonly kind: 'side-question' }

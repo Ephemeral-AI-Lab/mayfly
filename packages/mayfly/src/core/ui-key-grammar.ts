@@ -55,8 +55,8 @@ export type GrammarControl =
     readonly label?: string
     /** The row has a `←` of its own (a segment strip, a branch), but it would change nothing now. */
     readonly stuckLeft?: true
-    /** The row is a text typed in place: printable keys and Backspace edit it before any other binding sees them. */
-    readonly input?: true
+    /** The row is a text typed in place: its keys edit it before any other binding sees them. An empty text is at both ends. */
+    readonly input?: { readonly atStart: boolean, readonly atEnd: boolean }
   }
   | { readonly kind: 'empty-list' }
   /** The slider: `label` names `←`/`→`; `stuckLeft` means `←` would change nothing (the first level shows), `unpin` that `Delete` has a pin to drop. */
@@ -100,6 +100,8 @@ export interface GrammarState {
   readonly tabs: boolean
   /** The word the hint row uses for the tab switch (a tabs node's `hintLabel`); `tabs` when absent. */
   readonly tabsLabel?: string
+  /** The tabs are a wizard's steps: a row with no use for `←`/`→` walks them. */
+  readonly wizard?: boolean
   /** The surface has a rail the focused control is not on: a `←` no control used moves focus to it. */
   readonly railBack?: boolean
   /** The focused control is the first of its group, so a `←` along the group has nowhere to go. */
@@ -163,7 +165,7 @@ export type GrammarIntent =
   | { readonly kind: 'slider-edge', readonly end: 'start' | 'end' }
   | { readonly kind: 'slider-unpin' }
   | { readonly kind: 'slider-accept' }
-  | { readonly kind: 'row-input', readonly op: 'type' | 'backspace' | 'clear' }
+  | { readonly kind: 'row-input' }
 
 /** What a prompt key does; the compiler applies each to the prompt's draft or its editor. */
 export type PromptOperation =
@@ -219,6 +221,20 @@ function groupMoves(bindings: GrammarBinding[]): void {
   /* Tab and Shift+Tab leave a field that is being edited, committing its text or picker; the hint row does not name them. */
   push(bindings, action(ACTION_NEXT_CONTROL), { kind: 'group', delta: 1 })
   push(bindings, action(ACTION_SHIFT_TAB), { kind: 'group', delta: -1 })
+}
+
+/** `←`/`→` switching tabs, as `Alt+←/→` do; with `hinted`, the hint names the plain pair. */
+function arrowTabs(bindings: GrammarBinding[], state: GrammarState, hinted: boolean): void {
+  const hint = hinted ? { id: 'tabs', label: state.tabsLabel ?? 'tabs', priority: PRIORITY.accelerator + 1, actions: [ACTION_SEGMENT_LEFT, ACTION_SEGMENT_RIGHT] } : undefined
+  push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'tab-switch', delta: -1 }, hint)
+  push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'tab-switch', delta: 1 })
+}
+
+/** A wizard's option row with no text of its own: the plain arrows walk the steps, so the hint names them instead of `Alt`. */
+function arrowsWalkSteps(state: GrammarState): boolean {
+  const control = state.control
+  if (control.kind !== 'row' || state.wizard !== true || control.segment !== undefined || control.tree || control.expandable === true) return false
+  return control.input === undefined || (control.input.atStart && control.input.atEnd)
 }
 
 function tabSwitches(bindings: GrammarBinding[], state: GrammarState, hinted: boolean): void {
@@ -337,8 +353,6 @@ function listText(bindings: GrammarBinding[], state: GrammarState): void {
     list.searching ? undefined : { id: 'search', keys: 'Type', label: 'filter', priority: PRIORITY.filter })
 }
 
-/** A plain row (no segment, branch, or body) under a horizontal tab strip gives `←`/`→` to the strip. */
-
 function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: Extract<GrammarControl, { readonly kind: 'row' }>): void {
   // While a search is typing, arrows still move the cursor, but the hint names only what ends or clears the search.
   listMovement(bindings, control.label ?? 'options', state.list?.searching !== true && control.segment === undefined)
@@ -355,6 +369,9 @@ function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: E
     if (!stuck) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'branch', expand: false }, branch)
     push(bindings, action(ACTION_SEGMENT_RIGHT), { kind: 'branch', expand: true }, stuck ? branch : undefined)
     if (stuck) railLeft(bindings, state)
+  } else if (state.wizard === true) {
+    // An option row has nothing for the arrows to adjust, so in a wizard they walk its steps. A text in the row keeps its hint: the arrows are its caret's first.
+    arrowTabs(bindings, state, arrowsWalkSteps(state) && state.list?.searching !== true)
   } else {
     // Rows move vertically; left/right leave the list for the nearest control beside it.
     if (!railLeft(bindings, state)) push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'navigate', direction: 'left' })
@@ -364,6 +381,26 @@ function rowMovement(bindings: GrammarBinding[], state: GrammarState, control: E
     push(bindings, { kind: 'key', key: '*' }, { kind: 'branch-all', expand: true })
     push(bindings, { kind: 'key', key: '-' }, { kind: 'branch-all', expand: false })
   }
+}
+
+/**
+ * The keys of a text typed in a row. Its editor takes what edits: a text keeps the arrows, `Home` and `End` for its caret,
+ * and only `←` at its start goes on down the ladder. An empty row leaves them to the row. `Enter` still accepts the row
+ * and `↑`/`↓` still leave it, so a row never takes a line break from a key: only a paste brings one.
+ */
+function rowInputBindings(bindings: GrammarBinding[], caret: { readonly atStart: boolean, readonly atEnd: boolean }): void {
+  const edit: GrammarIntent = { kind: 'row-input' }
+  push(bindings, { kind: 'key', key: 'ctrl+u' }, edit)
+  push(bindings, { kind: 'backspace' }, edit)
+  push(bindings, { kind: 'text', space: true }, edit, { id: 'type', keys: 'Type', label: 'your answer', priority: PRIORITY.adjust })
+  push(bindings, action(ACTION_NEXT_CONTROL), { kind: 'swallow' })
+  push(bindings, action(ACTION_SHIFT_TAB), { kind: 'swallow' })
+  push(bindings, action(ACTION_NEWLINE), { kind: 'swallow' })
+  if (caret.atStart && caret.atEnd) return
+  if (!caret.atStart) push(bindings, action(ACTION_SEGMENT_LEFT), edit)
+  push(bindings, action(ACTION_SEGMENT_RIGHT), caret.atEnd ? { kind: 'swallow' } : edit)
+  push(bindings, action(ACTION_HOME), edit)
+  push(bindings, action(ACTION_END), edit)
 }
 
 /**
@@ -437,11 +474,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
   if (control.kind === 'select' && control.picker) { picker(bindings, state, control); return bindings }
 
   /* A row typed in place takes its text before digits, accelerators, and the filter see a key. */
-  if (control.kind === 'row' && control.input === true) {
-    push(bindings, { kind: 'key', key: 'ctrl+u' }, { kind: 'row-input', op: 'clear' })
-    push(bindings, { kind: 'backspace' }, { kind: 'row-input', op: 'backspace' })
-    push(bindings, { kind: 'text', space: true }, { kind: 'row-input', op: 'type' }, { id: 'type', keys: 'Type', label: 'your answer', priority: PRIORITY.adjust })
-  }
+  if (control.kind === 'row' && control.input !== undefined) rowInputBindings(bindings, control.input)
   const list = state.list
   if (list?.pasting === true) push(bindings, { kind: 'any' }, { kind: 'search-type' })
   if (list?.filterable === true) {
@@ -458,7 +491,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
   }
   // A search in progress hints only what ends or clears it.
   const onRail = control.kind === 'tab' && control.vertical === true
-  tabSwitches(bindings, state, !onRail && state.railBack !== true && list?.searching !== true)
+  tabSwitches(bindings, state, !onRail && !arrowsWalkSteps(state) && state.railBack !== true && list?.searching !== true)
   /* Outside editing, arrows leave a control at its edge, Alt+↑/↓ hop between groups and Esc goes home: Tab has nothing left to add. */
   focusLevels(bindings)
   if (list?.searching === true) push(bindings, { kind: 'backspace' }, { kind: 'search-type' })
@@ -507,6 +540,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
       push(bindings, action(ACTION_SUBMIT), control.enterSubmits ? { kind: 'enter-submits' } : { kind: 'text-begin' },
         { id: 'activate', label: control.enterSubmits ? 'submit' : 'edit', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
       push(bindings, { kind: 'text', space: true }, { kind: 'text-begin' })
+      push(bindings, { kind: 'backspace' }, { kind: 'text-begin' })
       if (control.field === 'number') {
         // A number steps with ←/→ and gives the key back to the row beside it at its limits.
         navigation(bindings, state, ['up', 'down'], 'fields')
@@ -544,6 +578,7 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
         push(bindings, action(ACTION_SEGMENT_LEFT), { kind: 'swallow' })
         break
       }
+      arrowTabs(bindings, state, false)
       push(bindings, action(ACTION_SUBMIT), { kind: 'tab-descend' }, { id: 'activate', label: 'open', priority: PRIORITY.primary, actions: [ACTION_SUBMIT] })
       break
     case 'toggle':
@@ -569,7 +604,8 @@ export function keyGrammar(state: GrammarState): readonly GrammarBinding[] {
       break
     }
   }
-  push(bindings, { kind: 'any' }, { kind: 'swallow' })
+  // What is left of a text row's keys (word moves, Delete, Ctrl+W) are its editor's.
+  push(bindings, { kind: 'any' }, control.kind === 'row' && control.input !== undefined ? { kind: 'row-input' } : { kind: 'swallow' })
   return bindings
 }
 
@@ -605,7 +641,7 @@ export function grammarHints(bindings: readonly GrammarBinding[]): readonly Gram
  */
 export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly action: string }[] = Object.freeze([
   { keys: '↑/↓', action: 'Move between rows and fields; scroll documents' },
-  { keys: '←/→', action: 'Cycle a select value, adjust a row setting, open or close a tree branch, or move along a tab strip' },
+  { keys: '←/→', action: 'Cycle a select value, adjust a row setting, open or close a tree branch, move along a tab strip, or change step from a wizard\'s option row' },
   { keys: 'Alt+←/→ or F2/F3', action: 'Switch tabs from anywhere on the surface; wizards validate the step being left' },
   { keys: 'Alt+↑/↓ or F4/F5', action: 'Move between controls from anywhere outside text editing and open pickers' },
   { keys: '←', action: 'Used by the focused control when it changes something; otherwise it moves focus to the surface\'s rail of labels, where it does nothing' },
@@ -613,6 +649,7 @@ export const SHARED_KEY_REFERENCE: readonly { readonly keys: string, readonly ac
   { keys: 'Alt+↓ or F5, F6', action: 'From an empty prompt, enter the views of the status bar (F6 enters them first, then the interactive panes); ←/→ switch views and Esc returns to the prompt' },
   { keys: 'PgUp/PgDn, Home/End', action: 'Page or jump in lists and documents' },
   { keys: 'Enter', action: 'Choose, run, open a picker, apply it, or start editing a field' },
+  { keys: 'Type or Backspace', action: 'Start editing a focused field, even where Enter submits; in a text row, ←/→ and Home/End move the caret' },
   { keys: 'Space', action: 'Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch' },
   { keys: 'Tab/Shift+Tab', action: 'Commit a text field or picker and move to the next or previous control (while editing a field)' },
   { keys: 'Esc', action: 'Leave the innermost layer: picker, editing, search, back, return to the first control, then close' },

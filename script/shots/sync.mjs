@@ -6,11 +6,10 @@
  * 数据源（单一来源）；生成的 SVG 一律由本脚本写入，勿手改。改动场景或渲染器后
  * 运行 `pnpm shots:sync` 重新生成。
  *
- * After the component loop, the app shots are painted from the accepted goldens
- * of their catalog scenarios (`app.mjs`): the real product, captured by the
- * scenario runner. Changing one means accepting a new golden first
- * (`pnpm run scenarios -- --update <scenario>`). Locale and timezone are pinned
- * so bytes never drift with the host environment.
+ * After the component loop, the app shots are painted from the accepted cell
+ * grids under `shots/grids/` (`app.mjs`): captures of the real product.
+ * Changing one means accepting a new grid first. Locale and timezone are
+ * pinned so bytes never drift with the host environment.
  *
  * Usage:
  *   node script/shots/sync.mjs          # regenerate every shot
@@ -67,7 +66,7 @@ for (const scenario of SCENARIOS) {
   settle(scenario.id, await paintTerminalSvg(term, { cols, rows }), `${cols}×${rows}`)
 }
 // App shots: the real product at its scenario checkpoints, painted from their goldens.
-for (const shot of APP_SHOTS) settle(shot.id, await paintAppShot(shot), `${shot.cols}×${shot.rows} from ${shot.scenario}/${shot.checkpoint}`)
+for (const shot of APP_SHOTS) settle(shot.id, await paintAppShot(shot), `${shot.cols}×${shot.rows} from ${shot.scene}/${shot.checkpoint}`)
 
 if (failures > 0) {
   process.exitCode = 1

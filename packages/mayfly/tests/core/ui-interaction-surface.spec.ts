@@ -227,12 +227,14 @@ describe('acknowledgements and fresh data', () => {
     ])
     const ackEvents = { prepare: (async (event: MayflyUiEvent, context: { operationId: string }) => ({
       reply: { kind: 'accepted' as const, node: accepted, source: [] },
-      publish: () => { model.receive({ ...snapshot(accepted), revision: ++revision, update: { reason: 'ack', operationId: context.operationId, draftRevision: event.kind === 'activate' ? event.inputs?.draftRevision ?? 0 : 0, source: [] } }); return true },
+      publish: () => { ackModel.receive({ ...snapshot(accepted), events: ackEvents, revision: ++revision, update: { reason: 'ack', operationId: context.operationId, draftRevision: event.kind === 'activate' ? event.inputs?.draftRevision ?? 0 : 0, source: [] } }); return true },
     })) as Prepare }
     const ackModel = new UiSurfaceModel('selection-ack', { ...snapshot(accepted), events: ackEvents })
     ackModel.emit({ kind: 'selection-accept', pagePath: [], controlId: 'pick', selectedIds: ['b'] })
     await flush(3)
     expect(ackModel.choice(list)?.selectedIds).toEqual(['b'])
+    expect(ackModel.operationSnapshot().at(-1)?.phase).toBe('succeeded')
+    expect(ackModel.feedbackSnapshot()).toEqual([])
     ackModel.dispose()
     model.dispose()
   })
@@ -462,4 +464,32 @@ describe('navigating actions and closed surfaces', () => {
     model.dispose()
     expect(() => model.requestClose()).not.toThrow()
   })
+})
+
+it('compares multiselect baselines independently of their declaration order', async () => {
+  const target = { pagePath: [], formId: 'multi' }
+  const node = ui.stack.column([
+    ui.form({ id: 'multi', fields: [{ id: 'choices', kind: 'multiselect', label: 'Choices', value: ['b', 'a'], options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }] }),
+    ui.actions({ id: 'actions', items: [{ id: 'save', label: 'Save', submit: [target] }] }),
+  ])
+  const { model } = surface(node, async () => ({ reply: { kind: 'accepted', node, source: [] }, publish: () => true }))
+  model.invoke('save')
+  await flush(3)
+  expect(model.operationSnapshot().at(-1)?.phase).toBe('succeeded')
+  model.dispose()
+})
+
+it('rejects a partial acknowledgement naming a missing field in a submitted form', async () => {
+  const target = { pagePath: [], formId: 'form' }
+  const node = ui.stack.column([
+    ui.form({ id: 'form', fields: [{ kind: 'input', id: 'name', label: 'Name', value: '' }] }),
+    ui.actions({ id: 'actions', items: [{ id: 'save', label: 'Save', submit: [target] }] }),
+  ])
+  const publish = vi.fn(() => true)
+  const { model } = surface(node, async () => ({ reply: { kind: 'failed', message: 'Partial', node, source: [], acceptedFields: [{ ...target, fieldId: 'missing' }] }, publish }))
+  model.invoke('save')
+  await flush(3)
+  expect(publish).not.toHaveBeenCalled()
+  expect(model.feedbackSnapshot().at(-1)?.message).toBe('The action could not be completed')
+  model.dispose()
 })

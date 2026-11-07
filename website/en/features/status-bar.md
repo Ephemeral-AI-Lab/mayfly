@@ -17,10 +17,11 @@ editor's top border. Bash mode keeps its left-edge `! shell mode` label.
 | git | 10 | branch and change summary; it goes whole once the row sheds to rank 30, after the item times, the provider, and the thinking level |
 | agents | 11 | `● agents 1/3 41s` — the subagents of this conversation; stays until a new conversation |
 | jobs | 12 | `● jobs 2 41s` — live (running/stopping) background jobs and how long the longest has run; `✓ jobs 3/3 41s` (`✕` when one failed) for five seconds when the last one settles, then it leaves; subagent jobs are the Agents item's |
-| goal | 13 | `● goal 2/8 1m 59s` — the mark is the state; hidden with no goal |
-| todo | 14 | `● todo 2/12 4m 12s`; hidden with no list |
+| workflow | 13 | `● workflow 2/7` — agents settled over started; holds five seconds after the last run settles |
+| goal | 14 | `● goal 2/8 1m 59s` — the mark is the state; hidden with no goal |
+| todo | 15 | `● todo 2/12 4m 12s`; hidden with no list |
 
-The facts come first and the items last (agents, jobs, goal, todo, after the directory and git).
+The facts come first and the items last (agents, jobs, workflow, goal, todo, after the directory and git).
 
 The row gives up detail in a set order when it is crowded, before it drops anything: the time of an item, the provider, the
 thinking level, the git facts, the directory's depth, the cache figure, the context meter, and last the model. Items are

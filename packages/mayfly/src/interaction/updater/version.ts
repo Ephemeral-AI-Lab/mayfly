@@ -83,13 +83,3 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
-/**
- * Whether a version parses at all — the gate every caller applies before
- * ordering, so an unparseable registry string blocks with a message
- * instead of reaching the comparison fallback.
- * @param value - the version string.
- * @returns `true` when {@link parseVersion} accepts the shape.
- */
-export function isVersion(value: string): boolean {
-  return parseVersion(value) !== undefined
-}

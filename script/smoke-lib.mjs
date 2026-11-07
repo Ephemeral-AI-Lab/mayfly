@@ -1,131 +1,20 @@
-// Shared bootstrap for the smoke scripts (D48): dsh discovery and version
-// alignment, the throwaway-profile install chain, output cleaning, and the
-// polling and node-pty loading every real-process smoke drives.
-// smoke-happy.mjs (CI, pipe stdio), smoke-pty-output-recovery.mjs (full
-// tier), smoke-pty.mjs (manual), and smoke-platform-pty.mjs (release) boot
-// the same real process through these helpers.
+/**
+ * Shared helpers for the real-process scripts: the pinned Harness line, a
+ * sleep, and node-pty loading. @module script/smoke-lib
+ */
 
-import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readManifest } from './package-contract.mjs'
 
 export const root = fileURLToPath(new URL('..', import.meta.url))
 
-/** The harness version Mayfly pins (S34 lesson: the smoke enforces it). */
-export const harnessLine = /HARNESS_LINE = '([^']+)'/.exec(
-  readFileSync(join(root, 'packages/mayfly/src/interaction/session-commands.ts'), 'utf8'),
-)?.[1]
-
-/** dsh discovery: $DSH_BIN, else PATH, else the workspace devDependency. */
-export function resolveDshBin() {
-  if (process.env.DSH_BIN !== undefined && process.env.DSH_BIN !== '') return process.env.DSH_BIN
-  const which = spawnSync('sh', ['-c', 'command -v dsh'], { encoding: 'utf8' })
-  if (which.status === 0 && which.stdout.trim() !== '') return which.stdout.trim()
-  const local = join(root, 'node_modules/.bin/dsh')
-  if (existsSync(local)) return local
-  console.error('FAIL: no dsh on PATH and no local devDependency — set DSH_BIN or pnpm install')
-  process.exit(1)
-}
-
-/** Refuse to boot against a CLI that drifted off Mayfly's pinned harness line. */
-export function assertDshVersion(dshBin) {
-  if (harnessLine === undefined) {
-    console.error('FAIL: HARNESS_LINE pin not found in packages/mayfly/src/interaction/session-commands.ts')
-    process.exit(1)
-  }
-  const version = spawnSync(dshBin, ['--version'], { encoding: 'utf8' })
-  const out = `${version.stdout ?? ''}${version.stderr ?? ''}`
-  if (!out.includes(harnessLine)) {
-    console.error(`FAIL: dsh version mismatch — expected ${harnessLine}, got: ${out.trim() || '(no output)'}`)
-    console.error(`      fix: pnpm add -g @deepseek-ai/dsh@${harnessLine} or point DSH_BIN at it`)
-    process.exit(1)
-  }
-}
-
-/**
- * A throwaway home with the Mayfly profile installed: link-installs the
- * complete package closure of the existing lib/ build via install-dev.sh
- * (the caller builds first, as the gate does), and isolates the
- * profile tree, the harness home, and pi-tui's log directory (pi-crash.log
- * and mayfly-overflow.log) under one temp root. The temp-HOME pnpm posture
- * (no purge prompts, no prepare re-builds, no frozen-lockfile refusal
- * against ensure-loader-entries' additions) rides along.
- * @returns the temp home path and an env carrying the isolation.
- */
-export function installIntoThrowawayProfile(dshBin, profile) {
-  if (!existsSync(join(root, 'packages/mayfly/lib/index.js'))) {
-    console.error('FAIL: packages/mayfly/lib/index.js missing — run pnpm build first')
-    process.exit(1)
-  }
-
-  const home = mkdtempSync(join(tmpdir(), 'mayfly-smoke-'))
-  const dshHome = join(home, '.dsh')
-  const piAgent = join(home, 'pi-agent')
-  mkdirSync(join(home, '.config/pnpm'), { recursive: true })
-  writeFileSync(join(home, '.config/pnpm/config.yaml'), [
-    'confirmModulesPurge: false',
-    'ignoreScripts: true',
-    '',
-  ].join('\n'))
-  const envFor = (extra = {}) => ({
-    ...process.env,
-    HOME: home,
-    DSH_HOME: dshHome,
-    PI_CODING_AGENT_DIR: piAgent,
-    ...extra,
-  })
-
-  console.log(`==> Installing Mayfly into throwaway profile '${profile}'`)
-  const install = spawnSync('bash', [join(root, 'script/install-dev.sh')], {
-    encoding: 'utf8',
-    env: envFor({ DSH_BIN: dshBin, PROFILE: profile, CI: 'true', PROFILE_INSTALL_FLAGS: '--no-frozen-lockfile', MAYFLY_SKIP_BUILD: '1' }),
-    timeout: 300_000,
-  })
-  if (install.status !== 0) {
-    console.error('FAIL: install-dev.sh failed')
-    console.error((install.stdout ?? '').slice(-2000))
-    console.error((install.stderr ?? '').slice(-2000))
-    process.exit(1)
-  }
-
-  return { home, dshHome, piAgent, envFor }
-}
-
-/** Drop writer-level control wrappers and ANSI so content asserts read rows. */
-export function cleanOutput(value) {
-  return value
-    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
-    .replace(/\x1b\]8;;[^\x07]*\x07/g, '')
-    .replace(/\r/g, '')
-}
-
-/** Remove the throwaway home; register on process exit so failures clean up too. */
-export function registerCleanup(home) {
-  process.on('exit', () => {
-    rmSync(home, { recursive: true, force: true })
-  })
-}
+/** The Harness line Mayfly pins: the Host's exact peer on the native Session package. */
+export const harnessLine = readManifest('packages/host').peerDependencies?.['@deepseek-ai/dsh-session']
 
 export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-
-/**
- * A `waitFor` bound to one deadline: the shared budget across all of a smoke's
- * polls. It reports `label` and returns false on timeout, so callers write
- * `if (!(await waitFor(...))) throw ...` when a wait is fatal.
- */
-export function waiter(deadline = Date.now() + 120_000, intervalMs = 200) {
-  return async (predicate, label) => {
-    while (Date.now() < deadline) {
-      if (predicate()) return true
-      await sleep(intervalMs)
-    }
-    console.error(`FAIL: timed out waiting for ${label}`)
-    return false
-  }
-}
 
 /**
  * Load node-pty, first restoring the spawn-helper's execute bit where a pnpm

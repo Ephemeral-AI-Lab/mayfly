@@ -18,14 +18,8 @@ import { appendFileSync, copyFileSync, mkdirSync, readFileSync, readdirSync, ren
 import { homedir as osHomedir } from 'node:os'
 import { dirname } from 'node:path'
 
-/** A program and fixed arguments, kept separate from operation arguments. */
-export interface ResolvedCommand {
-  readonly command: string
-  readonly args: readonly string[]
-}
-
 /** Options every spawn shape accepts. */
-export interface SpawnOptions {
+interface SpawnOptions {
   /** Working directory for the child. */
   cwd?: string
   /** Extra environment entries layered over the process environment. */
@@ -39,7 +33,7 @@ export interface SpawnOptions {
 }
 
 /** The outcome of a one-shot spawn, whatever way it ended. */
-export interface SpawnOutcome {
+interface SpawnOutcome {
   /** Exit code, or `null` when the child died to a signal. */
   code: number | null
   /** Terminating signal, when there was one. */
@@ -55,7 +49,7 @@ export interface SpawnOutcome {
 }
 
 /** An interactive child: streamed output, live stdin, caller-owned deadline. */
-export interface InteractiveChild {
+interface InteractiveChild {
   /** Write to the child's stdin. */
   write(data: string): void
   /** Output accumulated so far (raw stdout then stderr appended). */
@@ -246,15 +240,3 @@ export const updaterInternals = {
   env: process.env,
 }
 
-/**
- * Strip writer-level control wrappers and ANSI so marker matching reads
- * rows (the smoke-lib `cleanOutput` contract, ported for the boot smoke).
- * @param value - raw terminal output.
- * @returns the cleaned text.
- */
-export function cleanOutput(value: string): string {
-  return value
-    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
-    .replace(/\x1b\]8;;[^\x07]*\x07/g, '')
-    .replace(/\r/g, '')
-}

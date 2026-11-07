@@ -14,13 +14,12 @@ export function installedCli(env = process.env) {
 
 export function installedManifests(entry) {
   const cli = createRequire(entry)
-  const remotePath = cli.resolve('@ephemeral-ai/mayfly-remote/package.json')
-  const remote = createRequire(remotePath)
+  const tuiPath = cli.resolve('@ephemeral-ai/mayfly/package.json')
+  const tui = createRequire(tuiPath)
   return [
     cli.resolve('../package.json'),
     cli.resolve('@ephemeral-ai/mayfly-host/package.json'),
-    remotePath,
-    remote.resolve('@ephemeral-ai/mayfly/package.json'),
-    remote.resolve('@ephemeral-ai/mayfly-ui/package.json'),
+    tuiPath,
+    tui.resolve('@ephemeral-ai/mayfly-ui/package.json'),
   ]
 }

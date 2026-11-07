@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 // Exercise the same published Client packages as the split frontend. This is
 // deliberately not a mock of ctx.remote or ClientRemoteEvents.
-const clientRequire = createRequire(new URL('../../../remote/package.json', import.meta.url))
+const clientRequire = createRequire(new URL('../../../mayfly/package.json', import.meta.url))
 const registry = await import(pathToFileURL(clientRequire.resolve('@deepseek-ai/dsh-typert-registry/client')).href)
 const gateway = await import(pathToFileURL(clientRequire.resolve('@deepseek-ai/dsh-api-gateway/client')).href)
 

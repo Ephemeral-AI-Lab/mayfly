@@ -1,129 +1,280 @@
-/**
- * The Mayfly app's command-line provider over a real Loader tree: the optional
- * task and `--resume` become injected driver config, while help and parse
- * errors leave the consumer pending.
- */
-
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+/** Real launch-screen facts, keyboard ownership, clocks and native catalog lifetimes. @module */
 import { Context } from '@deepseek-ai/cordis'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
-import Include from '@deepseek-ai/cordis-plugin-include'
-import { internals, provideCmdline } from '@deepseek-ai/dsh-cmdline'
-import { afterEach, describe, expect, it } from 'vitest'
-import { apply, MAYFLY_STARTUP_SERVICE, type MayflyStartupValues } from '../../src/app/startup.ts'
-import { mkdtempTracked, registerTempDirCleanup } from '../core/temp-dir.ts'
+import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { MayflyScreenService } from '../../src/core/screen.ts'
+import * as Frontend from '../../src/frontend/index.ts'
+import * as Provider from '@ephemeral-ai/mayfly-ui/provider'
+import { DEFAULT_SETTINGS, type MayflySettings } from '../../src/frontend/settings.ts'
+import { FLY_IN_TOTAL_MS } from '../../src/core/quad-mark.ts'
+import { type SplashContent } from '../../src/transcript/splash.ts'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { HostKey, type HostClient, type SessionRef } from '../../src/client/types.ts'
+import { RemoteStartupController } from '../../src/app/startup.ts'
 
-
-registerTempDirCleanup()
-
-/** What one boot of the fixture tree observed. */
-interface Observed {
-  exits: number[]
-  out: string
-  driverConfig?: unknown
+const cleanups: Array<() => void | Promise<void>> = []
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.useRealTimers() })
+function deferred() {
+  let resolve!: () => void
+  let reject!: (error: Error) => void
+  const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
 }
-
-const disposers: (() => Promise<void>)[] = []
-
-afterEach(async () => {
-  for (const dispose of disposers.splice(0)) await dispose()
-  internals.stdout = process.stdout
-  internals.stderr = process.stderr
-})
-
-/**
- * Mount the real provider over a driver stand-in.
- * @param args - the invocation's inner arguments.
- * @returns the resolved service value and observed driver/process effects.
- */
-async function bootStartup(args: string[]): Promise<{ startup: MayflyStartupValues | undefined; observed: Observed }> {
-  const dir = mkdtempTracked('mayfly-startup-')
-  const observed: Observed = { exits: [], out: '' }
-  writeFileSync(join(dir, 'row.mjs'), 'export function apply(_ctx, config) { globalThis.__mayflyStartupObserved.driverConfig = config }\n')
-  // Loader imports through Node's resolver, so this fixture delegates to the
-  // source-plane plugin already imported by the test.
-  writeFileSync(join(dir, 'startup.mjs'), `
-export const name = 'mayfly-startup'
-export const inject = ['cmdlineArgs']
-export const apply = ctx => globalThis.__mayflyStartupApply(ctx)
-`)
-  const rowUrl = pathToFileURL(join(dir, 'row.mjs')).href
-  writeFileSync(join(dir, 'cordis.yml'), [
-    '- id: mayfly-app',
-    `  name: ${rowUrl}`,
-    `  inject: [${MAYFLY_STARTUP_SERVICE}]`,
-    '  config:',
-    '    task: !!js ctx.mayflyStartup.task',
-    '    resume: !!js ctx.mayflyStartup.resume',
-    '- id: mayfly-startup',
-    `  name: ${pathToFileURL(join(dir, 'startup.mjs')).href}`,
-    '',
-  ].join('\n'))
-  const observing = { write: (chunk: string) => { observed.out += chunk; return true } }
-  internals.stdout = observing
-  internals.stderr = observing
-  const globals = globalThis as unknown as {
-    __mayflyStartupApply: typeof apply
-    __mayflyStartupObserved: Observed
-  }
-  globals.__mayflyStartupApply = apply
-  globals.__mayflyStartupObserved = observed
-
-  const ctx = new Context()
-  await ctx.plugin(Loader)
-  ctx.loader.builtins.include = Include
-  provideCmdline(ctx, { args, exit: code => void observed.exits.push(code) })
-  await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
-  await ctx.loader.await()
-  disposers.push(async () => { await ctx.fiber.dispose() })
+function summary(id: string, overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return { id: SessionId(id), displayTitle: id, running: false, blank: false, updatedAt: Date.now(), retainedBy: { selected: 0, bound: 0, views: 0 }, ...overrides } as SessionSummary
+}
+function host(key: string, rows: readonly SessionSummary[] = []) {
+  const catalog = new Set<() => void>()
+  const connections = new Set<() => void>()
+  const refresh = vi.fn(async () => {})
+  let summaries = rows
+  let generation = 1
+  const client = {
+    key: HostKey(key),
+    sessions: {
+      refresh,
+      list: {
+        getSnapshot: () => ({ ids: summaries.map(row => row.id), byId: Object.fromEntries(summaries.map(row => [row.id, row])) }) as SessionListState,
+        subscribe: (listener: () => void) => { catalog.add(listener); return () => { catalog.delete(listener) } },
+      },
+    },
+    state: {
+      getSnapshot: () => ({ status: 'connected', generation }),
+      subscribe: (listener: () => void) => { connections.add(listener); return () => { connections.delete(listener) } },
+    },
+  } as unknown as HostClient
   return {
-    startup: ctx.get(MAYFLY_STARTUP_SERVICE) as MayflyStartupValues | undefined,
-    observed,
+    client, refresh, catalog, connections,
+    rows(next: readonly SessionSummary[]) { summaries = next; for (const listener of [...catalog]) listener() },
+    reconnect() { generation += 1; for (const listener of [...connections]) listener() },
+  }
+}
+async function fixture(options: { readonly settings?: Partial<MayflySettings>, readonly rows?: readonly SessionSummary[], readonly selected?: boolean } = {}) {
+  const ctx = new Context()
+  await ctx.plugin(Provider)
+  await ctx.plugin(Frontend)
+  const keys: Record<string, string> = { 'ui.up': 'up', 'ui.down': 'down', 'ui.accept': 'enter', 'ui.cancel': 'esc' }
+  ctx.provide('mayflyKeymap', { matches: (data: string, action: string) => data === keys[action] } as never)
+  let settings: MayflySettings = { ...DEFAULT_SETTINGS, startup: 'splash', reducedMotion: true, ...options.settings }
+  ctx.get('mayflyInteractionState')!.settingsSource = () => settings
+  const primary = host('one', options.rows)
+  let client: HostClient | undefined = primary.client
+  let current: SessionRef | undefined = options.selected ? { host: primary.client.key, sessionId: SessionId('existing') } : undefined
+  let autocomplete = false
+  const topology = new Set<() => void>()
+  const render = vi.fn()
+  const resume = vi.fn()
+  const localeSubscribe = vi.spyOn(ctx.mayflyLocale, 'subscribe')
+  const startup = new RemoteStartupController(ctx, { requestRender: render } as unknown as MayflyScreenService, {
+    client: () => client, current: () => current, directory: () => '/host/workspace', resume,
+    subscribe: listener => { topology.add(listener); return () => { topology.delete(listener) } },
+    autocomplete: () => autocomplete,
+  })
+  const localeCallbacks = localeSubscribe.mock.calls.map(([listener]) => listener)
+  localeSubscribe.mockRestore()
+  cleanups.push(() => ctx.fiber.dispose(), () => { startup.dispose() })
+  const emit = () => { for (const listener of [...topology]) listener() }
+  return {
+    ctx, startup, primary, render, resume, topology, keys, localeCallbacks,
+    splash: () => startup.splash() as SplashContent,
+    select(ref: SessionRef | undefined) { current = ref; emit() },
+    active(next: HostClient | undefined) { client = next; emit() },
+    settings(next: Partial<MayflySettings>) { settings = { ...settings, ...next }; ctx.emit('mayfly/settings-source-ready', settings) },
+    autocomplete(value: boolean) { autocomplete = value },
   }
 }
 
-describe('mayfly command-line provider', () => {
-  it('joins the task positional into the driver config', async () => {
-    const { startup, observed } = await bootStartup(['fix', 'the', 'build'])
-    expect(startup).toEqual({ task: 'fix the build' })
-    expect(observed.driverConfig).toEqual({ task: 'fix the build' })
-    expect(observed.exits).toEqual([])
+describe('Remote startup', () => {
+  it('defers startup, filters native blank/child entries and orders current workspace before other recent projects', async () => {
+    const f = await fixture({ rows: [
+      summary('other-new', { cwd: '/host/other', updatedAt: 300 }),
+      summary('here-old', { cwd: '/host/workspace', title: 'Project work', updatedAt: 100 }),
+      summary('here-new', { cwd: '/host/workspace', title: '  ', running: true, updatedAt: 200 }),
+      summary('blank', { blank: true }), summary('child', { parentId: SessionId('parent') }),
+      summary('orphan-child', { origin: 'subagent' }), summary('fourth'), summary('fifth'),
+    ] })
+    expect(f.startup.splash()).toBe('pending')
+    expect(f.primary.refresh).not.toHaveBeenCalled()
+    f.startup.start()
+    f.startup.start()
+    await vi.waitFor(() => { expect(f.splash().recent).toHaveLength(4) })
+    expect(f.splash().recent?.slice(0, 2).map(row => row.id)).toEqual(['here-new', 'here-old'])
+    expect(f.splash().recent?.[0]).toMatchObject({ title: 'Untitled', project: 'workspace', live: true, age: 'running' })
+    expect(f.splash().recent?.map(row => row.id)).not.toContain('blank')
+    expect(f.primary.refresh).toHaveBeenCalledOnce()
+    expect(f.primary.catalog.size).toBe(1)
+    f.ctx.mayflyLocale.setPreference('zh')
+    expect(f.splash().labels.recent).toBe('最近的会话')
   })
 
-  it('carries --resume alongside the task', async () => {
-    const { startup, observed } = await bootStartup(['--resume', 'abc123', 'continue', 'it'])
-    expect(startup).toEqual({ task: 'continue it', resume: 'abc123' })
-    expect(observed.driverConfig).toEqual({ task: 'continue it', resume: 'abc123' })
-    expect(observed.exits).toEqual([])
+  it('browses through named rebound keys, resumes once, and releases the cursor for typing/autocomplete/empty list', async () => {
+    const f = await fixture({ rows: [summary('one'), summary('two')] })
+    f.startup.start()
+    await vi.waitFor(() => { expect(f.splash().recent).toHaveLength(2) })
+    expect(f.startup.handleInput('up', 'draft')).toBe(false)
+    f.autocomplete(true)
+    expect(f.startup.handleInput('up', '')).toBe(false)
+    f.autocomplete(false)
+    expect(f.startup.handleInput('x', '')).toBe(false)
+    f.keys['ui.up'] = 'rebound'
+    expect(f.startup.handleInput('up', '')).toBe(false)
+    expect(f.startup.handleInput('rebound', '')).toBe(true)
+    expect(f.splash().focus).toBe(0)
+    expect(f.startup.handleInput('rebound', '')).toBe(true)
+    expect(f.splash().focus).toBe(0)
+    f.startup.handleInput('down', '')
+    expect(f.splash().focus).toBe(1)
+    f.startup.handleInput('down', '')
+    expect(f.splash().focus).toBeUndefined()
+    f.startup.handleInput('rebound', '')
+    expect(f.startup.handleInput('typed', '')).toBe(false)
+    expect(f.splash().focus).toBeUndefined()
+    f.startup.handleInput('rebound', '')
+    f.startup.handleInput('esc', '')
+    expect(f.splash().focus).toBeUndefined()
+    f.startup.handleInput('rebound', '')
+    f.startup.handleInput('enter', '')
+    expect(f.resume).toHaveBeenCalledExactlyOnceWith('one')
+    f.startup.handleInput('rebound', '')
+    f.startup.handleInput('down', '')
+    f.primary.rows([summary('one')])
+    expect(f.splash().focus).toBeUndefined()
+    f.primary.rows([])
+    expect(f.startup.handleInput('rebound', '')).toBe(false)
   })
 
-  it('publishes empty launch values for a bare interactive invocation', async () => {
-    const { startup, observed } = await bootStartup([])
-    expect(startup).toEqual({})
-    expect(observed.driverConfig).toEqual({})
-    expect(observed.exits).toEqual([])
+  it('releases catalogs on selection/settings changes and rejects late callbacks after unload', async () => {
+    const f = await fixture({ rows: [summary('one')] })
+    f.startup.start()
+    await vi.waitFor(() => { expect(f.splash().recent).toHaveLength(1) })
+    const late = [...f.primary.catalog][0]!
+    const topology = [...f.topology][0]!
+    const connection = [...f.primary.connections][0]!
+    f.select({ host: f.primary.client.key, sessionId: SessionId('one') })
+    expect(f.startup.splash()).toBeUndefined()
+    expect(f.primary.catalog.size).toBe(0)
+    expect(f.startup.handleInput('up', '')).toBe(false)
+    f.select(undefined)
+    await vi.waitFor(() => { expect(f.primary.refresh).toHaveBeenCalledTimes(2) })
+    f.settings({ startup: 'conversation' })
+    expect(f.primary.catalog.size).toBe(0)
+    expect(f.startup.splash()).toBeUndefined()
+    f.settings({ startup: 'splash' })
+    await vi.waitFor(() => { expect(f.primary.refresh).toHaveBeenCalledTimes(3) })
+    f.startup.dispose()
+    f.startup.dispose()
+    const renders = f.render.mock.calls.length
+    late()
+    topology()
+    connection()
+    for (const callback of f.localeCallbacks) callback(f.ctx.mayflyLocale.snapshot)
+    f.primary.rows([summary('late')])
+    f.primary.reconnect()
+    f.startup.start()
+    expect(f.startup.splash()).toBeUndefined()
+    expect(f.startup.handleInput('up', '')).toBe(false)
+    expect(f.render).toHaveBeenCalledTimes(renders)
+    expect(f.primary.connections.size).toBe(0)
+    expect(f.topology.size).toBe(0)
   })
 
-  it('treats a whitespace-only task as absent', async () => {
-    const { startup } = await bootStartup(['   '])
-    expect(startup).toEqual({})
+  it('reuses one catalog subscription and one refresh across repeated identical syncs while pending and loaded', async () => {
+    const f = await fixture({ rows: [summary('retained')] })
+    const pending = deferred()
+    f.primary.refresh.mockReturnValueOnce(pending.promise)
+    f.startup.start()
+    const subscription = [...f.primary.catalog][0]!
+    f.active(f.primary.client)
+    f.settings({ theme: 'tide' })
+    expect(f.primary.refresh).toHaveBeenCalledOnce()
+    expect([...f.primary.catalog]).toEqual([subscription])
+    pending.resolve()
+    await pending.promise
+    await vi.waitFor(() => { expect(f.splash().recent?.[0]?.id).toBe('retained') })
+    f.active(f.primary.client)
+    f.settings({ theme: 'dusk' })
+    expect(f.primary.refresh).toHaveBeenCalledOnce()
+    expect([...f.primary.catalog]).toEqual([subscription])
   })
 
-  it('prints its own help and leaves the driver pending', async () => {
-    const { startup, observed } = await bootStartup(['--help'])
-    expect(observed.out).toContain('dsh --profile mayfly')
-    expect(startup).toBeUndefined()
-    expect(observed.driverConfig).toBeUndefined()
-    expect(observed.exits).toEqual([0])
+  it('fences pending catalog success/failure across Host replacement, reconnect, selection and disposal', async () => {
+    const f = await fixture()
+    const pending = deferred()
+    f.primary.refresh.mockReturnValueOnce(pending.promise)
+    f.startup.start()
+    const other = host('two', [summary('same-id', { title: 'Other Host' })])
+    f.active(other.client)
+    await vi.waitFor(() => { expect(f.splash().recent?.[0]?.title).toBe('Other Host') })
+    pending.resolve()
+    await pending.promise
+    expect(f.splash().recent?.[0]?.title).toBe('Other Host')
+    const fail = deferred()
+    other.refresh.mockReturnValueOnce(fail.promise)
+    other.reconnect()
+    f.select({ host: other.client.key, sessionId: SessionId('selected') })
+    fail.reject(new Error('late failure'))
+    await fail.promise.catch(() => {})
+    expect(f.startup.splash()).toBeUndefined()
+    f.select(undefined)
+    const last = deferred()
+    other.refresh.mockReturnValueOnce(last.promise)
+    other.reconnect()
+    f.startup.dispose()
+    const renders = f.render.mock.calls.length
+    last.resolve()
+    await last.promise
+    expect(f.render).toHaveBeenCalledTimes(renders)
   })
 
-  it('rejects an unknown option and leaves the driver pending', async () => {
-    const { startup, observed } = await bootStartup(['--bogus'])
-    expect(observed.out).toContain('unknown option')
-    expect(startup).toBeUndefined()
-    expect(observed.driverConfig).toBeUndefined()
-    expect(observed.exits).toEqual([1])
+  it('keeps native load failures empty, handles disconnected startup, and refreshes after reconnect', async () => {
+    const f = await fixture()
+    f.active(undefined)
+    f.startup.start()
+    expect(f.splash().recent).toBeUndefined()
+    f.primary.refresh.mockRejectedValueOnce(new Error('catalog unavailable'))
+    f.active(f.primary.client)
+    await vi.waitFor(() => { expect(f.splash().recent).toEqual([]) })
+    f.primary.rows([summary('new')])
+    expect(f.splash().recent?.[0]?.id).toBe('new')
+    f.primary.reconnect()
+    await vi.waitFor(() => { expect(f.primary.refresh).toHaveBeenCalledTimes(2) })
+  })
+
+  it('plays the canonical fly-in once per start appearance and never replays on theme/settings refresh', async () => {
+    const f = await fixture({ settings: { startup: 'conversation', reducedMotion: false } })
+    expect(f.startup.flyInAt()).toBe(0)
+    vi.useFakeTimers()
+    f.startup.start()
+    expect(f.startup.flyInAt()).toBe(0)
+    vi.advanceTimersByTime(100)
+    expect(f.startup.flyInAt()).toBe(100)
+    f.settings({ theme: 'tide' })
+    expect(f.startup.flyInAt()).toBe(100)
+    vi.advanceTimersByTime(FLY_IN_TOTAL_MS)
+    expect(f.startup.flyInAt()).toBeUndefined()
+    f.select({ host: f.primary.client.key, sessionId: SessionId('first') })
+    f.select(undefined)
+    expect(f.startup.flyInAt()).toBe(0)
+    f.select({ host: f.primary.client.key, sessionId: SessionId('second') })
+    expect(f.startup.flyInAt()).toBeUndefined()
+    f.select(undefined)
+    f.settings({ reducedMotion: true })
+    expect(f.startup.flyInAt()).toBeUndefined()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('greets resumed Sessions at rest and releases pending failures after disposal', async () => {
+    const f = await fixture({ selected: true })
+    f.startup.start()
+    expect(f.startup.flyInAt()).toBeUndefined()
+    expect(f.primary.refresh).not.toHaveBeenCalled()
+    const failure = deferred()
+    f.primary.refresh.mockReturnValueOnce(failure.promise)
+    f.select(undefined)
+    f.startup.dispose()
+    const renders = f.render.mock.calls.length
+    failure.reject(new Error('retired'))
+    await failure.promise.catch(() => {})
+    expect(f.render).toHaveBeenCalledTimes(renders)
   })
 })

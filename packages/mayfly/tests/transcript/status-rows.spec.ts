@@ -12,6 +12,7 @@ import { ui, type MayflyStatusEntry, type MayflyUiNode } from '@ephemeral-ai/may
 import { MayflyStatusService } from '../../../ui/src/provider.ts'
 import { buildStatusFooter, mountStatusFooter } from '../../src/transcript/status-rows.ts'
 import { shedNode, SHED } from '../../src/transcript/status-shed.ts'
+import { buildCwdStatusNode } from '../../src/transcript/status-cwd-model.ts'
 import { fakeMayflyComponents } from './helpers.ts'
 import { footerRows } from './footer-fakes.ts'
 import { COLORS } from './status-fakes.ts'
@@ -34,6 +35,7 @@ describe('buildStatusFooter', () => {
       .toEqual(['first  tie-a  tie-b  last'])
     // No priority means priority zero, ahead of the ranked ones.
     expect(rows([entry('ranked', 'ranked', { priority: 1 }), entry('plain', 'plain')])).toEqual(['plain  ranked'])
+    expect(rows([entry('b', 'beta'), entry('a', 'alpha')])).toEqual(['alpha  beta'])
   })
 
   it('puts an entry in its band: the left cluster first, the right one at the edge', () => {
@@ -59,6 +61,14 @@ describe('buildStatusFooter', () => {
 })
 
 describe('shedNode', () => {
+  it('gives up the directory last, so the views in the row always fit', () => {
+    const deep = buildCwdStatusNode('~/work/mayfly') as unknown as { readonly narrower: readonly unknown[] }
+    expect(deep.narrower).toEqual([{ rank: SHED.cwd, node: { kind: 'text', content: 'mayfly', tone: 'muted' } }, { rank: SHED.directory, node: null }])
+    const flat = buildCwdStatusNode('mayfly') as unknown as { readonly narrower: readonly unknown[] }
+    expect(flat.narrower).toEqual([{ rank: SHED.directory, node: null }])
+    expect(buildCwdStatusNode('')).toBeNull()
+  })
+
   it('is the node itself when it has no narrower form, and a shed node with its forms when it has', () => {
     const full = ui.richText([{ text: 'cwd' }])
     expect(shedNode(full, [])).toBe(full)
@@ -67,7 +77,7 @@ describe('shedNode', () => {
   })
 
   it('ranks what the row gives up in the order the owner chose', () => {
-    expect(SHED).toEqual({ provider: 10, effort: 20, git: 30, cwd: 40, cache: 50, bar: 55, context: 60, model: 70 })
+    expect(SHED).toEqual({ provider: 10, effort: 20, git: 30, cwd: 40, cache: 50, bar: 55, context: 60, model: 70, directory: 80 })
     const ranks = Object.values(SHED)
     expect([...ranks].sort((a, b) => a - b)).toEqual(ranks)
   })

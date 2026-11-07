@@ -2,16 +2,14 @@
 
 English | [中文](README.zh.md)
 
-Shared terminal rendering and presentation for the independent Mayfly TUI.
-The package exposes explicit renderer, theme, transcript, editor, configuration,
-and status subpaths. It supplies the candidate UI used by
-`@ephemeral-ai/mayfly-remote`.
+The independent Mayfly TUI. It attaches to a native DeepSeek Harness Host
+carrying `@ephemeral-ai/mayfly-host` through the official HTTP/WebSocket Client
+and detaches on exit; Host Sessions and running work stay owned by Harness. The
+global `@ephemeral-ai/mayfly-cli` launcher starts it. The package has no
+installable dsh bundle, Host plugin entry, composition patch, or preset payload.
 
-Run the product as two processes: a native DeepSeek Harness Host carrying
-`@ephemeral-ai/mayfly-host`, and an independent TUI carrying
-`@ephemeral-ai/mayfly-remote`. The global `@ephemeral-ai/mayfly-cli` launcher
-starts the TUI. This shared package has no installable dsh bundle, root plugin
-entry, composition patch, or preset payload.
+Its public surface is the root (the application and `runRemoteFrontend`),
+`./client` (the official Client layer), and `./bin` (the `mayfly` entry).
 
 For this development branch, use the checkout's verified build:
 
@@ -19,17 +17,26 @@ For this development branch, use the checkout's verified build:
 DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
 /path/to/dsh --profile mayfly-split-accept
 # In another terminal, copy the authenticated URL printed by the Host:
-MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh
+MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-tui.sh
 ```
 
 The Host needs official Harness `0.2.2-rc.1`. Install model credentials on
-the Host. The TUI detaches on exit; Host sessions and running work remain
-owned by Harness. Rebuild the checkout after source changes.
+the Host. Rebuild the checkout after source changes.
 
-Frontend UI plugins contribute renderer-neutral nodes through `mayflyPanes`,
-`mayflyStatus`, `mayflyOverlays`, and `mayflyEditorExtensions`. Host plugins use
-native dsh services in the Host process. Shared presentation accepts readonly
-facts and structured actions; it never retains a native Agent or Session.
+TUI plugins contribute renderer-neutral nodes through `mayflyPanes`,
+`mayflyStatus`, `mayflyOverlays`, and `mayflyEditorExtensions` in the TUI's own
+Cordis tree. A source composition adds them to the ordinary startup:
+
+```ts
+import { run } from '@ephemeral-ai/mayfly/bin'
+import * as myPlugin from './my-plugin.ts'
+
+await run(process.argv.slice(2), { plugins: [myPlugin] })
+```
+
+Host plugins use native dsh services in the Host process. TUI plugins accept
+readonly facts and structured actions; they never retain a native Agent or
+Session.
 
 The published `0.1.4-rc.2` package is the immutable UI reference for this
 implementation. Passing a smoke test does not establish visual parity; see

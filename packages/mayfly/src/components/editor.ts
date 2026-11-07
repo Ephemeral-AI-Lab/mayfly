@@ -12,7 +12,7 @@
 import { ui, type MayflyUiNode } from '@ephemeral-ai/mayfly-ui'
 
 /** The facts of the editor's frame. */
-export interface EditorFacts {
+interface EditorFacts {
   /** The conversation's title, one line, final; none while it has none. */
   readonly title?: string
   /** The buffer is a shell command: the symbol is `!` and the border accent. */

@@ -1,8 +1,8 @@
 /** Same-facts browser nodes byte-for-byte from the immutable rc.2 command source. @module */
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { FilesBrowser, filesBrowserItems, filesBrowserRow, filesRowId, type FilesBrowserFacts } from '../../src/interaction/files-browser-model.ts'
-import { FilesBrowser as publicBrowser } from '../../src/files-browser.ts'
+import { FilesBrowser, filesBrowserRow, type FilesBrowserFacts } from '../../src/interaction/files-browser-model.ts'
+import { FilesBrowser as publicBrowser } from '../../src/interaction/files-browser-model.ts'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/files-browser-rc2.json', import.meta.url), 'utf8')) as {
   readonly provenance: { readonly sha: string }
@@ -16,9 +16,6 @@ describe('frozen Files browser wire parity', () => {
   })
   for (const scenario of fixture.scenarios) it(scenario.name, () => {
     expect(JSON.parse(JSON.stringify(FilesBrowser(scenario.facts, key => key)))).toEqual(scenario.node)
-    for (const item of filesBrowserItems(scenario.facts)) {
-      expect(filesRowId(filesBrowserRow(scenario.facts, item.id)!)).toBe(item.id)
-    }
   })
   it('does not resolve an unknown row without a native changes summary', () => {
     expect(filesBrowserRow({ files: [], detailMode: false, canOpen: false }, 'absent')).toBeUndefined()

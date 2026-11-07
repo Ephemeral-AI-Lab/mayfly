@@ -16,7 +16,7 @@ Mayfly runs a native dsh Host and an independent Remote TUI on Harness
 
 - core is the only pi-tui/raw-terminal owner;
 - status producers register directly on `mayflyStatus`;
-- activity, queue, todo, Agent, and workflow panes register on `mayflyPanes`;
+- activity and notification panes, and the agents, jobs, workflow, goal, and todo views, register on `mayflyPanes`;
 - BTW, subagents, and stored children all render in the one transcript pane; live ones drive the complete main layout, cold or one-shot ones are read from native history as read-only or resumable;
 - Remote jobs, `/jobs`, and `/agents` consume native transport facts and focused Host DTOs;
 - `mayflyOverlays` renders overlay contributions;

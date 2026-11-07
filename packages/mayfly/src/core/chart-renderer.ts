@@ -262,4 +262,4 @@ export function renderChartRows(node: MayflyChartNode, width: number, components
   }
 }
 
-export { compactChartNumber, formatChartNumber }
+

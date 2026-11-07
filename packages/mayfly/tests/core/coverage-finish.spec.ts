@@ -13,17 +13,10 @@
  * @module @ephemeral-ai/mayfly/tests/core/coverage-finish
  */
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { ui } from '../../../ui/src/index.ts'
-import { setClipboardTextWriter } from '../../src/interaction/clipboard-write.ts'
-import { planReviewAction } from '../../src/interaction/plan-review-panel.ts'
 import { placeholderLadder, placeholderState } from '../../src/interaction/placeholder.ts'
-import { sessionWorkspaces } from '../../src/interaction/session-workspaces-model.ts'
-import { usageNode, type SessionInfoFacts } from '../../src/interaction/session-info-model.ts'
-import { foldDigest } from '../../src/interaction/stats-index/digest.ts'
-import { slashCommandLabel } from '../../src/interaction/slash-filter.ts'
 import { themeIdea } from '../../src/interaction/theme-names.ts'
-import { agentCallLabel, agentPhasePresentation } from '../../src/transcript/agent-presentation.ts'
 import { elapsedText } from '../../src/transcript/process-activity.ts'
 import { AdmissionRow } from '../../src/core/ui-admission.ts'
 import { paintDrawer } from '../../src/core/completion-drawer.ts'
@@ -39,8 +32,6 @@ import { truncateToWidth, visibleWidth } from '../../src/core/width.ts'
 import { plainColors } from '../helpers.ts'
 
 const colors = plainColors()
-
-afterEach(() => { setClipboardTextWriter(undefined) })
 
 describe('width estimate guards', () => {
   it('prices a supplementary non-printing point at zero and still prices an emoji at two', () => {
@@ -154,61 +145,12 @@ describe('pure interaction labels', () => {
   it('leaves an unknown theme key with no picker idea', () => {
     expect(themeIdea('neon', key => key)).toBe('')
   })
-
-  it('appends the alias list to an alias match label', () => {
-    expect(slashCommandLabel({ command: { name: 'review', aliases: ['rv', 'rev'] }, viaAlias: true })).toBe('/review (rv, rev)')
-    expect(slashCommandLabel({ command: { name: 'review', aliases: ['rv'] }, viaAlias: false })).toBe('/review')
-  })
 })
 
 describe('transcript presentation helpers', () => {
-  it('labels the waiting phase with its warning marker', () => {
-    expect(agentPhasePresentation('waiting')).toEqual({ label: 'waiting', marker: '●', tone: 'warning' })
-  })
-
-  it('keeps raw arguments as the detail of a spawn call with no parsed name', () => {
-    expect(agentCallLabel('spawn_agent', undefined, '{"task":"x"}')).toEqual({ label: 'spawn_agent', detail: '{"task":"x"}' })
-  })
-
   it('reports a ten-second elapsed line in seconds below the minute', () => {
     expect(elapsedText(10_000)).toBe('10s')
     expect(elapsedText(60_000)).toBe('1m 0s')
-  })
-})
-
-describe('facts and settings projections', () => {
-  it('tones a warning context window and copies a plan with no detail as empty text', async () => {
-    const facts: SessionInfoFacts = {
-      id: 'id', createdAt: 0, status: 'idle', turns: 1, steps: 1,
-      usage: { buckets: { input: 10, cacheRead: 0, cacheWrite: 0, output: 0 }, context: { used: 600, window: 1000 } },
-    }
-    expect(JSON.stringify(usageNode(facts, key => key))).toContain('"tone":"warning"')
-
-    let copied: string | undefined
-    setClipboardTextWriter(async (text) => { copied = text })
-    const reply = await planReviewAction({ id: 'plan', question: 'Proceed?' } as never, { kind: 'activate', actionId: 'copy', pagePath: [] } as never, key => key)
-    expect(copied).toBe('')
-    expect(reply).toMatchObject({ kind: 'completed', feedback: { message: 'Plan copied to clipboard', severity: 'success' } })
-  })
-
-  it('folds a repeated model, an absent usage, and invalid token counts into one day', () => {
-    const at = Date.parse('2026-01-02T03:04:05.000Z')
-    const message = (usage?: Readonly<Record<string, unknown>>) => ({
-      type: 'assistant/message', seq: 2, time: at,
-      data: { ...usage === undefined ? {} : { usage }, message: { source: { provider: 'p', model: 'm' } } },
-    })
-    const events = [
-      { type: 'turn/start', seq: 1, time: at, data: {} },
-      message(),
-      message({ inputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 5 }),
-      message({ inputTokens: -1, cacheReadTokens: Number.NaN, cacheWriteTokens: 0, outputTokens: 2.5 }),
-    ]
-    const digest = foldDigest('s', '/repo', events as never)!
-    const day = [...digest.days.values()][0]!
-    const model = [...day.models.values()][0]!
-    expect(day.turns).toBe(1)
-    expect(model.peak.input + model.offPeak.input).toBe(10)
-    expect(model.peak.output + model.offPeak.output).toBe(7.5)
   })
 })
 
@@ -220,12 +162,5 @@ describe('placeholder and workspace fallbacks', () => {
   it('has no teaching ladder while quiet hints are off but keeps a condition state', () => {
     expect(placeholderLadder({ kind: 'main', running: false }, true, key => key)).toEqual([])
     expect(placeholderLadder({ kind: 'read-only' }, true, key => key)).toEqual(['Read-only conversation'])
-  })
-
-  it('uses a valid workspace creation time instead of the NaN fallback', () => {
-    const createdAt = '2026-02-03T04:05:06.000Z'
-    const workspace = { id: 'w', path: '/repo', title: 'Repo', sessionIds: [], createdAt, updatedAt: createdAt } as never
-    const [row] = sessionWorkspaces([workspace], [], new Map())
-    expect(row!.createdAt).toBe(Date.parse(createdAt))
   })
 })

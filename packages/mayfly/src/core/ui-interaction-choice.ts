@@ -276,11 +276,6 @@ export function choiceVisibleIndex(state: UiChoiceState, position: number): numb
     : visible[position]
 }
 
-/** Return visible raw item indexes, including matching ancestors for tree search. */
-export function visibleChoiceIndices(state: UiChoiceState): readonly number[] {
-  return indexedVisibility(state) ?? Array.from({ length: state.definition.items.length }, (_, index) => index)
-}
-
 /**
  * The painter's view of one visible row: its depth, whether it ends its parent's children, and whether it opens (a branch
  * or a body). A row is open when it is always open, expanded, the cursor row of an `expandFocused` list, or a search is

@@ -3,34 +3,20 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import type { MayflyListNode, MayflyStackNode, MayflySurfaceNode } from '@ephemeral-ai/mayfly-ui'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { apply as applyApi } from '../../../packages/ui/src/provider.ts'
-import { apply as applyBundle } from '../../mayfly-ecosystem/src/index.ts'
+import { plugins as composed, start } from '../../mayfly-ecosystem/src/index.ts'
 import * as bottomLog from '../../bottom-log/src/index.ts'
 import * as header from '../../header/src/index.ts'
 import * as overlay from '../../overlay/src/index.ts'
 import * as inspector from '../../right-inspector/src/index.ts'
 import * as uiGallery from '../../ui-gallery/src/index.ts'
 import { APPROVAL_ARM_MS, approvalCard, summaryMetric } from '../src/index.ts'
-import { MemorySettings } from '../../overlay/tests/settings.ts'
 
-interface CommandProbeDefinition {
-  readonly name: string
-  readonly description: string
-  readonly handler: (invocation: never) => unknown
-}
-
-class CommandProbe extends Service {
-  private readonly entries = new Map<string, CommandProbeDefinition>()
-  constructor(ctx: Context) { super(ctx, 'commands') }
-  register(definition: CommandProbeDefinition): () => void {
-    this.entries.set(definition.name, definition)
-    return this.ctx.effect(() => () => { this.entries.delete(definition.name) })
-  }
-  find(name: string): CommandProbeDefinition | undefined { return this.entries.get(name) }
-}
+const bin = vi.hoisted(() => ({ run: vi.fn(async () => {}) }))
+vi.mock('@ephemeral-ai/mayfly/bin', () => bin)
 
 async function directContext(): Promise<Context> {
   const ctx = new Context()
@@ -96,29 +82,20 @@ describe('direct plugin services and lifecycle', () => {
     }
   })
 
-  it('uses the native dsh command registry to open a direct Mayfly overlay', async () => {
+  it('opens a direct Mayfly overlay from its editor action', async () => {
     const ctx = await directContext()
     try {
-      await ctx.plugin(CommandProbe)
-      await ctx.plugin(MemorySettings)
       const fiber = await ctx.plugin(overlay)
-      ;(ctx.settings as unknown as MemorySettings).register(overlay.SETTINGS_NAMESPACE, overlay.Config, { owner: fiber.ctx })
-      const commands = ctx.commands as unknown as CommandProbe
-      const command = commands.find('example-overlay')
-      expect(command).toMatchObject({ name: 'example-overlay' })
-      const result = await command!.handler({
-        agent: {},
-        commandId: 'example-command' as never,
-        rawInput: '',
-        attachments: [],
-        signal: new AbortController().signal,
-      } as never)
-      expect(result).toEqual({ kind: 'success', text: 'opened the example overlay' })
-      expect(ctx.mayflyOverlays.list().map(entry => entry.id)).toEqual([overlay.overlayRequest.id])
+      const entry = ctx.mayflyEditorExtensions.list().find(extension => extension.id === 'example.overlay.open')!
+      expect(entry.decoration.actions).toEqual([{ id: 'open', label: 'Example settings', key: overlay.OPEN_KEY }])
+      await entry.definition.onEvent!.action!({ kind: 'activate', pagePath: [], controlId: 'open', actionId: 'open' }, {
+        surfaceId: entry.id, operationId: 'example-open', source: [], revision: entry.revision, signal: new AbortController().signal, report: vi.fn(),
+      })
+      expect(ctx.mayflyOverlays.list().map(overlayEntry => overlayEntry.id)).toEqual([overlay.overlayRequest.id])
       expect(ctx.mayflyOverlays.list()[0]!.node).toMatchObject({ kind: 'stack' })
 
       await fiber.dispose()
-      expect(commands.find('example-overlay')).toBeUndefined()
+      expect(ctx.mayflyEditorExtensions.list()).toEqual([])
       expect(ctx.mayflyOverlays.list()).toEqual([])
     } finally {
       await ctx.fiber.dispose()
@@ -146,10 +123,18 @@ describe('direct plugin services and lifecycle', () => {
     }
   })
 
-  it('ships five ordinary opt-in Cordis plugin rows', () => {
-    const patch = readFileSync(join(import.meta.dirname, '..', '..', 'mayfly-ecosystem', 'cordis.patch.yml'), 'utf8')
-    expect(patch.match(/^\s+- id: '@mayfly-example\//gmu)).toHaveLength(5)
-    const ctx = new Context()
-    applyBundle(ctx)
+  it('composes the five plugins into the ordinary TUI startup', async () => {
+    // The composition imports the published packages; the spec reads their sources, so plugins compare by name.
+    expect(composed.map(plugin => (plugin as { readonly name: string }).name)).toEqual([header, inspector, bottomLog, overlay, uiGallery].map(plugin => plugin.name))
+    await start(['--resume', 'example-session'])
+    expect(bin.run).toHaveBeenCalledWith(['--resume', 'example-session'], { plugins: composed })
+    const manifest = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'mayfly-ecosystem', 'package.json'), 'utf8')) as Record<string, unknown>
+    expect(manifest.dsh).toBeUndefined()
+    expect(manifest.bin).toEqual({ 'mayfly-ecosystem': 'lib/bin.js' })
   })
+})
+
+it('starts the installed ecosystem executable with the process arguments', async () => {
+  await import('../../mayfly-ecosystem/src/bin.ts')
+  expect(bin.run).toHaveBeenLastCalledWith(process.argv.slice(2), { plugins: composed })
 })

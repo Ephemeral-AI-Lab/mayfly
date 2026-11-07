@@ -9,6 +9,7 @@ import { createServer } from 'node:http'
 import { splitProbeInstruction } from './split-cases.mjs'
 import { splitNativeInstruction } from './split-native-fixture.mjs'
 import { splitAgentsInstruction } from './split-agents-fixture.mjs'
+import { toolDisplayInstruction } from './tool-display-fixture.mjs'
 
 const TITLE = 'Replay session'
 const REPLY = 'This is a replay session: the model is a stub. Type nothing; the conversation above is scripted.'
@@ -49,6 +50,35 @@ const toolSse = (name, input, id = 'toolu_stub1') => [
   { type: 'message_stop' },
 ].map(event => `data: ${JSON.stringify(event)}\n\n`).join('')
 
+const DEMO_PAGE = `# Rendering Lists\n\n${'Keys tell React which array item each component corresponds to.\n'.repeat(200)}`
+
+/** Write one scripted model step: reasoning, text, then its tool calls, paced so a person sees them arrive. */
+async function writeStep(response, step) {
+  const send = event => { if (!response.destroyed) response.write(`data: ${JSON.stringify(event)}\n\n`) }
+  const sleep = ms => new Promise(resolve => { setTimeout(resolve, ms) })
+  const pieces = (text, size) => Array.from({ length: Math.ceil(text.length / size) }, (_, index) => text.slice(index * size, (index + 1) * size))
+  send({ type: 'message_start', message: { id: 'stub', type: 'message', role: 'assistant', model: 'stub', content: [], usage: { input_tokens: 1200, output_tokens: 0 } } })
+  if (step.wait !== undefined) await sleep(step.wait)
+  let index = 0
+  const block = async (start, delta, text, pace) => {
+    send({ type: 'content_block_start', index, content_block: start })
+    for (const piece of pieces(text, 12)) {
+      send({ type: 'content_block_delta', index, delta: delta(piece) })
+      await sleep(pace)
+    }
+    send({ type: 'content_block_stop', index })
+    index += 1
+  }
+  if (step.think !== undefined) await block({ type: 'thinking', thinking: '' }, thinking => ({ type: 'thinking_delta', thinking }), step.think, 90)
+  if (step.say !== undefined) await block({ type: 'text', text: '' }, text => ({ type: 'text_delta', text }), step.say, step.pace ?? 30)
+  for (const [position, [name, input]] of (step.calls ?? []).entries()) {
+    await block({ type: 'tool_use', id: `toolu_demo_${String(Date.now())}_${String(position)}`, name, input: {} }, partial_json => ({ type: 'input_json_delta', partial_json }), JSON.stringify(input), step.pace ?? 4)
+  }
+  send({ type: 'message_delta', delta: { stop_reason: (step.calls ?? []).length > 0 ? 'tool_use' : 'end_turn', stop_sequence: null }, usage: { output_tokens: 180 } })
+  send({ type: 'message_stop' })
+  response.end()
+}
+
 const sse = text => [
   { type: 'message_start', message: { id: 'stub', type: 'message', role: 'assistant', model: 'stub', content: [], usage: { input_tokens: 0, output_tokens: 0 } } },
   { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
@@ -67,6 +97,12 @@ const BALANCES = {
 }
 const BALANCE_STATUS = { rejected: 401, down: 503 }
 
+const DEMO_SOURCES = [
+  { url: 'https://react.dev/learn/rendering-lists', title: 'Rendering Lists' },
+  { url: 'https://blog.example.dev/selection', title: 'Keeping selection by id' },
+  { url: 'https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Array/splice' },
+]
+
 /**
  * Start the stub. Requests without tools (title generation) get the title; the rest get the notice.
  * @param options - `balance`: the `/user/balance` answer (`ok`, `low`, `multi`, `insufficient`, or the statuses `rejected` and `down`).
@@ -74,6 +110,7 @@ const BALANCE_STATUS = { rejected: 401, down: 503 }
  *   only after the title the product asks for has arrived.
  */
 export async function startStubModel({ balance = 'ok', probe = false } = {}) {
+  const baseURL = () => `http://127.0.0.1:${String(server.address().port)}`
   const open = new Set()
   /** Responses held by `hold:<ms>`: a person-sized wait is not a request the runner settles on. */
   const held = new Set()
@@ -86,13 +123,25 @@ export async function startStubModel({ balance = 'ok', probe = false } = {}) {
       else response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(BALANCES[balance]))
       return
     }
+    if (request.method === 'GET' && (request.url ?? '').split('?')[0] === '/demo/rendering-lists') { response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(DEMO_PAGE); return }
     if (request.method !== 'POST' || !(request.url ?? '').split('?')[0].endsWith('/v1/messages')) { response.writeHead(404).end(); return }
     let raw = ''
     request.on('data', (data) => { raw += data })
     request.on('end', () => {
       let body = {}
       try { body = JSON.parse(raw) } catch { /* answered as a prompt */ }
+      // The search a demo's web_search makes: a Messages request of its own, answered whole.
+      if (Array.isArray(body.tools) && body.tools.some(tool => tool.type === 'web_search_20250305')) {
+        response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ content: [{ type: 'web_search_tool_result', content: DEMO_SOURCES.map(source => ({ type: 'web_search_result', ...source })) }] }))
+        return
+      }
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' })
+      const step = toolDisplayInstruction(body, `http://${request.headers.host}`)
+      if (step !== undefined) {
+        if (step.fail === true) response.destroy()
+        else void writeStep(response, step)
+        return
+      }
       const native = splitAgentsInstruction(body) ?? splitNativeInstruction(body)
       if (native !== undefined) {
         response.end(native.completed ? sse(native.reply) : toolSse(native.name, native.input, native.id))

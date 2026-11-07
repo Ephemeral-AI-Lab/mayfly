@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install-dev.sh — one-shot local development install of split Mayfly:
 # a dsh Host profile carrying the Mayfly Host bundle, plus the independent
-# Remote TUI launcher.
+# TUI launcher.
 #
 # The split deployment needs two things the single-process installer never did:
 #
@@ -9,7 +9,7 @@
 #      `dsh plugin add` maintains `dsh.profile.bundles` itself, but its install
 #      step hard-fails on unreviewed dependency build scripts, so the denied
 #      list must exist before the first install.
-#   2. A launcher for the TUI process. `packages/remote/lib/remote-bin.js` is
+#   2. A launcher for the TUI process. `packages/mayfly/lib/bin.js` is
 #      the real entry; the published `mayfly` bin is only a hand-off to it.
 #
 # Environment overrides:
@@ -21,7 +21,7 @@
 #
 # After it finishes:
 #   terminal 1:  dsh --profile <PROFILE>            # prints "mayfly host: <url>"
-#   terminal 2:  MAYFLY_DSH_STARTUP_URL='<url>' <REPO>/script/mayfly-remote.sh
+#   terminal 2:  MAYFLY_DSH_STARTUP_URL='<url>' <REPO>/script/mayfly-tui.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,7 +33,7 @@ case "$PROFILE" in
   *) printf 'error: use a dedicated mayfly-<tag> profile\n' >&2; exit 1 ;;
 esac
 HOST_PKG="$REPO_ROOT/packages/host"
-REMOTE_BIN="$REPO_ROOT/packages/remote/lib/remote-bin.js"
+TUI_BIN="$REPO_ROOT/packages/mayfly/lib/bin.js"
 
 say() { printf '==> %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -55,7 +55,7 @@ fi
 
 if [ "${MAYFLY_SKIP_BUILD:-}" = "1" ]; then
   say "Linking the existing build (MAYFLY_SKIP_BUILD=1)"
-  [ -f "$REMOTE_BIN" ] || die "no built Remote entry; run pnpm run build first"
+  [ -f "$TUI_BIN" ] || die "no built TUI entry; run pnpm run build first"
 else
   say "Building the workspace"
   pnpm --dir "$REPO_ROOT" run build
@@ -136,7 +136,7 @@ assert.equal(find('harness-dev-context')?.disabled, true, 'Web-only model prompt
 assert.equal(find('preset-mayfly-cordis')?.config?.id, 'mayfly-cordis', 'Mayfly creative preset must be registered')
 NODE
 
-chmod 755 "$REPO_ROOT/script/mayfly-remote.sh"
+chmod 755 "$REPO_ROOT/script/mayfly-tui.sh"
 
 cat <<EOF
 
@@ -145,10 +145,10 @@ Done. The split Mayfly is installed as profile '$PROFILE'.
   terminal 1 (Host):   $DSH_BIN --profile $PROFILE
                        it prints:  mayfly host: http://127.0.0.1:3080/?token=...
 
-  terminal 2 (TUI):    MAYFLY_DSH_STARTUP_URL='<that url>' $REPO_ROOT/script/mayfly-remote.sh
+  terminal 2 (TUI):    MAYFLY_DSH_STARTUP_URL='<that url>' $REPO_ROOT/script/mayfly-tui.sh
 
   or export it once:   export MAYFLY_DSH_STARTUP_URL='<that url>'
-                       $REPO_ROOT/script/mayfly-remote.sh
+                       $REPO_ROOT/script/mayfly-tui.sh
 
   Iterate: edit src -> pnpm run build -> restart both processes.
 EOF

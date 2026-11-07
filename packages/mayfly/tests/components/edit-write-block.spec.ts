@@ -164,13 +164,13 @@ describe('edit blocks', () => {
 describe('write blocks', () => {
   const created: TranscriptFileChangeModel = {
     path: 'notes/new.md', added: 3, removed: 0, hunks: [], hiddenLines: 0,
-    write: { bytes: 12, lines: 3, head: ['# Notes', 'first', 'second'] },
+    write: { bytes: 12, lines: 3, head: ['# Notes', 'first', 'second'], created: true },
   }
 
   it('draws a created file as its size and its numbered code, with no language row and no hunk', () => {
     const value = facts([write(created)], 'verbose')
     const block = blockOf(value)
-    expect(block).toMatchObject({ name: 'Write', target: 'notes/new.md', outcome: '3 lines · 12 B' })
+    expect(block).toMatchObject({ name: 'Write', target: 'notes/new.md', outcome: 'created · 3 lines · 12 B' })
     expect(block.code).toEqual({ text: '# Notes\nfirst\nsecond', language: 'markdown' })
     expect(block).not.toHaveProperty('stat')
     expect(block).not.toHaveProperty('diff')
@@ -179,7 +179,7 @@ describe('write blocks', () => {
 
   it('draws a large created file at most twelve rows of its head at Verbose, with the rows left out counted and named', () => {
     const lines = Array.from({ length: 40 }, (_, index) => `row ${String(index + 1)}`)
-    const large: TranscriptFileChangeModel = { path: 'src/big.ts', added: 900, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 4_096, lines: 900, head: lines } }
+    const large: TranscriptFileChangeModel = { path: 'src/big.ts', added: 900, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 4_096, lines: 900, head: lines, created: true } }
     const value = facts([write(large)], 'verbose')
     const block = blockOf(value)
     expect(block.code?.text.split('\n')).toHaveLength(VERBOSE_CHANGE_ROWS)
@@ -220,7 +220,7 @@ describe('change rows at the tiers', () => {
   })
 
   it('fits every change row in the width it is given, at 120 and 40 columns', () => {
-    const entries = [edit(longHunk('src/c.ts', 30)), write({ path: 'notes/new.md', added: 3, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 12, lines: 3, head: ['# Notes', 'first', 'second'] } })]
+    const entries = [edit(longHunk('src/c.ts', 30)), write({ path: 'notes/new.md', added: 3, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 12, lines: 3, head: ['# Notes', 'first', 'second'], created: true } })]
     for (const mode of ['compact', 'standard', 'detailed', 'verbose'] as const) {
       for (const width of [120, 40]) {
         const rows = drawn(facts(entries, mode), width)

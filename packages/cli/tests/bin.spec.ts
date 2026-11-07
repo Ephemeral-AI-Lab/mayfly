@@ -1,12 +1,12 @@
 /** Unified bin dispatch without touching real user profiles or service managers. @module */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-vi.mock('@ephemeral-ai/mayfly-remote/remote-bin', () => ({ run: vi.fn(), validateArguments: vi.fn() }))
+vi.mock('@ephemeral-ai/mayfly/bin', () => ({ run: vi.fn(), validateArguments: vi.fn() }))
 vi.mock('../src/manager.ts', () => ({ ensure: vi.fn(), manage: vi.fn(), ownBin: () => '/bin' }))
 vi.mock('../src/profiles.ts', () => ({ packageManifest: () => ({ version: '1' }) }))
 vi.mock('../src/supervisor.ts', () => ({ supervise: vi.fn() }))
 
-import { run, validateArguments } from '@ephemeral-ai/mayfly-remote/remote-bin'
+import { run, validateArguments } from '@ephemeral-ai/mayfly/bin'
 import { ensure, manage } from '../src/manager.ts'
 import { supervise } from '../src/supervisor.ts'
 
@@ -40,7 +40,7 @@ it('starts the local server and passes credentials only in memory', async () => 
   })
   await invoke(['--profile=work', 'task'])
   expect(ensure).toHaveBeenCalledWith(expect.objectContaining({ profile: 'work' }), '/bin', expect.any(Function))
-  expect(run).toHaveBeenCalledWith(['task'], 'http://localhost/?token=secret')
+  expect(run).toHaveBeenCalledWith(['task'], { localStartupUrl: 'http://localhost/?token=secret' })
 })
 it.each([[], ['--host=https://example.test']])('preserves explicit remote connection %j', async (...args) => {
   if (args.length === 0) vi.stubEnv('MAYFLY_DSH_STARTUP_URL', 'http://localhost/?token=secret')

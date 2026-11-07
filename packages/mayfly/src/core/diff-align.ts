@@ -377,3 +377,22 @@ export function paintDiffRows(ops: readonly DiffOp[], width: number, helpers: Di
   for (const segment of model.segments) for (const row of paintDiffSegment(segment, model.digits, columns, helpers, colors, { numbered: options.numbered !== false, start: options.start ?? 1, beforeStart: options.beforeStart ?? options.start ?? 1 })) out.push(row)
   return out
 }
+
+/** Unchanged lines a hunk keeps around its change: the Harness sends three, the diff body shows one. */
+const FILE_CHANGE_CONTEXT_LINES = 1
+
+/**
+ * A hunk with its unchanged lines around the change cut down to {@link FILE_CHANGE_CONTEXT_LINES} on each side, so the diff
+ * body needs no `⋯` for context it does not draw. A change still being written has no end to compare yet (`tail: false`).
+ */
+export function trimContext(before: string, after: string, tail = true): { readonly before: string, readonly after: string } {
+  const a = before === '' ? [] : before.split('\n')
+  const b = after === '' ? [] : after.split('\n')
+  let prefix = 0
+  while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix += 1
+  let suffix = 0
+  while (tail && suffix < a.length - prefix && suffix < b.length - prefix && a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix += 1
+  const dropHead = Math.max(0, prefix - FILE_CHANGE_CONTEXT_LINES)
+  const dropTail = Math.max(0, suffix - FILE_CHANGE_CONTEXT_LINES)
+  return { before: a.slice(dropHead, a.length - dropTail).join('\n'), after: b.slice(dropHead, b.length - dropTail).join('\n') }
+}

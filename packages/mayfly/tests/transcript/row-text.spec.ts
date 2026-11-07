@@ -30,6 +30,32 @@ describe('partText in text mode', () => {
     expect(text(entry(edit))).toBe('--- src/a.ts\n+++ src/a.ts\n@@\n-const 旧 = 1\n+const 新 = 2\n… 3 more changed lines')
   })
 
+  it('gives a patch every file under its own names, and says which side an added or deleted file lacks', () => {
+    const hunk = (before: string, after: string) => ({ before, after })
+    const files = [
+      { kind: 'A', path: 'src/new.ts', added: 1, removed: 0, hunks: [hunk('', 'added')], hiddenLines: 0 },
+      { kind: 'D', path: 'src/old.ts', added: 0, removed: 1, hunks: [hunk('gone', '')], hiddenLines: 0 },
+      { kind: 'R', path: 'src/to.ts', from: 'src/from.ts', added: 1, removed: 1, hunks: [hunk('a', 'b')], hiddenLines: 2 },
+      { kind: 'M', path: 'src/same.ts', added: 1, removed: 1, hunks: [hunk('c', 'd')], hiddenLines: 0 },
+    ]
+    const patch = tool({ name: 'apply_patch', change: { path: 'src/new.ts', added: 3, removed: 3, hunks: files.flatMap(file => file.hunks), hiddenLines: 2, files } })
+    expect(text(entry(patch))).toBe([
+      '--- /dev/null', '+++ src/new.ts', '@@', '+added',
+      '--- src/old.ts', '+++ /dev/null', '@@', '-gone',
+      '--- src/from.ts', '+++ src/to.ts', '@@', '-a', '+b', '… 2 more changed lines',
+      '--- src/same.ts', '+++ src/same.ts', '@@', '-c', '+d',
+    ].join('\n'))
+  })
+
+  it('gives a code run its code before what it printed, and no other tool the same field', () => {
+    expect(text(entry(tool({ name: 'run_code', detail: '', arguments: '{"code":"print(1)"}', result: { text: '1', isError: false, endedAt: 1 } })))).toBe('run_code\nprint(1)\n1')
+    expect(text(entry(tool({ name: 'custom', detail: '', arguments: '{"code":"print(1)"}', result: { text: '1', isError: false, endedAt: 1 } })))).toBe('custom\n1')
+  })
+
+  it('gives a call to an MCP tool the arguments its line shows, so a search finds them', () => {
+    expect(text(entry(tool({ name: 'mcp__s__t', activity: 'mcp', detail: '', arguments: '{"owner":"acme"}', result: { text: 'done', isError: false, endedAt: 1 } })))).toBe('mcp__s__t\n{"owner":"acme"}\ndone')
+  })
+
   it('gives a write as its new file head, and names the lines past the head', () => {
     const write = tool({ name: 'write', activity: 'write', change: { path: 'new.txt', added: 5, removed: 0, hunks: [], hiddenLines: 0, write: { bytes: 40, lines: 5, head: ['一', 'two'] } } })
     expect(text(entry(write))).toBe('--- /dev/null\n+++ new.txt\n+一\n+two\n… 3 more lines')

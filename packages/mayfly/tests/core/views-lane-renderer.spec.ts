@@ -309,6 +309,24 @@ describe('views lane through the direct pane renderer', () => {
     }
   })
 
+  it('announces leaving before it hands the focus back, so what takes it says last where the focus is', async () => {
+    const f = await fixture()
+    try {
+      f.register({ id: 'agents', placement: 'views', title: 'Agents', priority: 1, summary: item('Agents'), render: actions('a', 'Open agent') })
+      await flush(8)
+      const lane = f.runtime.surfaces.views
+      const order: string[] = []
+      const off = lane.onEnteredChange((entered) => { order.push(`entered:${String(entered)}:${String(f.runtime.focused() === f.runtime.editor)}`) })
+      f.root.mayflyScreen.enterViews('agents')
+      f.root.mayflyScreen.leaveViews()
+      off()
+      expect(order).toEqual(['entered:true:false', 'entered:false:false'])
+      expect(f.runtime.focused()).toBe(f.runtime.editor)
+    } finally {
+      await f.dispose()
+    }
+  })
+
   it('switches views with the arrows and routes each action to the registration of the active view', async () => {
     const f = await fixture()
     try {

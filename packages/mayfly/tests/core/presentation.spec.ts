@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DARK_COLORS, MayflyThemeService } from '../../src/core/theme-dark.ts'
-import { monochromeColors, noColor, presentedColors, readPresentation, resolvePresentation, samePresentation } from '../../src/core/presentation.ts'
+import { monochromeColors, noColor, presentedColors, readPresentation, resolvePresentation } from '../../src/core/presentation.ts'
 
 afterEach(() => { vi.unstubAllEnvs() })
 
@@ -18,14 +18,6 @@ describe('resolvePresentation', () => {
     expect(resolvePresentation({ glyphs: 'bogus' }, { NO_COLOR: '' }).monochrome).toBe(false)
     expect(noColor({ NO_COLOR: '0' })).toBe(true)
     expect(noColor({})).toBe(false)
-  })
-
-  it('compares presentations field by field', () => {
-    const base = resolvePresentation(undefined, {})
-    expect(samePresentation(base, resolvePresentation({}, {}))).toBe(true)
-    expect(samePresentation(base, { ...base, glyphs: 'ascii' })).toBe(false)
-    expect(samePresentation(base, { ...base, monochrome: true })).toBe(false)
-    expect(samePresentation(base, { ...base, reducedMotion: true })).toBe(false)
   })
 })
 

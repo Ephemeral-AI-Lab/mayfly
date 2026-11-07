@@ -1,15 +1,18 @@
-/** Authoritative Host conversation DTO ownership and renderer type reuse. @module */
-import { readFile } from 'node:fs/promises'
-import { expect, expectTypeOf, it } from 'vitest'
-import type * as Host from '../../../host/src/conversation/types.ts'
-import type * as Shared from '../../src/conversation/types.ts'
+/** Host is the only owner of the conversation wire types; the TUI imports them and declares none. @module */
+import { readFile, readdir } from 'node:fs/promises'
+import { join } from 'node:path'
+import { expect, it } from 'vitest'
 
-it('shares exact Host conversation wire types without a second declaration or runtime import', async () => {
-  expectTypeOf<Shared.ConversationProjection>().toEqualTypeOf<Host.ConversationProjection>()
-  expectTypeOf<Shared.ConversationFacts>().toEqualTypeOf<Host.ConversationFacts>()
-  expectTypeOf<Shared.ConversationAttachment>().toEqualTypeOf<Host.ConversationAttachment>()
-  expectTypeOf<Shared.ConversationProjectionState>().toEqualTypeOf<Host.ConversationProjectionState>()
-  const source = await readFile(new URL('../../src/conversation/types.ts', import.meta.url), 'utf8')
-  expect(source).toContain("export type * from '@ephemeral-ai/mayfly-host/types'")
-  expect(source).not.toMatch(/\b(?:interface|type)\s+Conversation\w*\s*(?:\{|=)/u)
+const SRC = new URL('../../src/', import.meta.url).pathname
+
+it('declares no conversation wire type of its own', async () => {
+  const files = (await readdir(SRC, { recursive: true })).filter(file => file.endsWith('.ts'))
+  const declared: string[] = []
+  for (const file of files) {
+    const source = await readFile(join(SRC, file), 'utf8')
+    for (const match of source.matchAll(/^\s*(?:export\s+)?(?:interface|type)\s+(Conversation\w*)\b/gmu)) declared.push(`${file}: ${match[1]}`)
+  }
+  expect(declared).toEqual([])
+  const users = await Promise.all(files.map(file => readFile(join(SRC, file), 'utf8')))
+  expect(users.some(source => source.includes("from '@ephemeral-ai/mayfly-host/types'"))).toBe(true)
 })

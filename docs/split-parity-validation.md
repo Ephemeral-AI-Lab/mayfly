@@ -242,13 +242,18 @@ Plain `node script/split-parity.mjs --scenario all` still exits unsuccessfully
 for any raw difference. There is no update or skip-reference option.
 
 `script/scenarios/split-release-policy.json` records the owner's accepted
-0.1.5 differences against rc.2. It is a release adjudication, not a claim of
+0.1.6-rc.1 differences against rc.2. It is a release adjudication, not a claim of
 equal-input renderer equivalence; the independent native-review command above
 retains its same-facts proof requirement. The policy pins Mayfly/Harness versions
-and owning source checksums. Its 59 row decisions name the scenario, checkpoint,
+and owning source checksums. Its 63 row decisions name the scenario, checkpoint,
 dimensions, row, exact before/after text, full style runs and reason. They cover
 the release notes at three widths, the version panel, native context/model
 facts, the explicit hot-load limitation, and the added `/changes` help entry.
+Four `owner-design` rows record the question-summary closing parenthesis at
+40 columns and the plain-arrow question-navigation hints on Route, Scopes and
+Review. The owner accepted those exact rows in the live dedicated profile,
+along with release content and the LAN Website, on 2026-11-08. These rows bind
+the owning source checksums and retain the complete before/after text and styles.
 They are not complete candidate screens and cannot supply a missing reference.
 
 Banner/splash versions use a narrow transformation instead of copying every

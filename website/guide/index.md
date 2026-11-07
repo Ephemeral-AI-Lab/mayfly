@@ -1,7 +1,7 @@
 # 快速上手
 
 ::: info 当前开发线与参照
-当前分体实现面向 Harness `0.2.2-rc.1`，需要原生 Host 与独立 Remote TUI。
+当前分体实现面向 Harness `0.2.2-rc.1`，需要原生 Host 与独立 TUI。
 已发布的 Mayfly `v0.1.4-rc.2` 是不可改写的 UI、按键和工作流参照，不代表下面的
 分体安装产物已经发布。开发产物从本工作区或经验证的匹配 tarball 安装。
 :::
@@ -18,7 +18,7 @@ pnpm run build
 node packages/cli/lib/bin.js --profile mayfly-dev
 ```
 
-匹配发布集发布后，使用 `npm install -g @ephemeral-ai/mayfly-cli` 安装，日常直接执行 `mayfly`。
+匹配发布集发布后，使用 `npm install -g @ephemeral-ai/mayfly-cli@0.1.6-rc.1` 安装，日常直接执行 `mayfly`。
 
 ```sh
 mayfly server              # 等同于 start，后台运行
@@ -66,14 +66,14 @@ DSH_BIN=/path/to/dsh PROFILE=mayfly-split-accept script/install-dev.sh
 DEEPSEEK_API_KEY='<your key>' /path/to/dsh --profile mayfly-split-accept
 
 # 终端 2：TUI；复制 Host 打印的认证 URL
-MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-remote.sh
+MAYFLY_DSH_STARTUP_URL='<Host URL>' script/mayfly-tui.sh
 ```
 
 认证 URL 只通过环境变量提供，不能放进命令行参数、日志或提交。Host 持有凭据、
 provider、权限与 Session；TUI 关闭只解除连接，Host 上的工作继续运行。
 
 不带任务或恢复 id 时，首条普通消息才创建 Session。也可以运行
-`script/mayfly-remote.sh '解释这个仓库'`，或加 `--resume <session-id>` 恢复会话；
+`script/mayfly-tui.sh '解释这个仓库'`，或加 `--resume <session-id>` 恢复会话；
 `--cwd <path>` 指定 Host 上的工作目录。`/new` 和 `/clear` 回到启动界面，不创建空会话。
 
 ## 开始使用

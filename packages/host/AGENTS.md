@@ -15,7 +15,7 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
   settled Job rows in registration order). Job history is a whole readonly
   snapshot; unfinished registrations stay absent and resident `job.list` rows
   take precedence in the frontend. The facts projection keeps
-  `stateVersion` 13 and must stay a pure immutable fold: renderers never fold a
+  `stateVersion` 14 and must stay a pure immutable fold: renderers never fold a
   second session log, and a semantics change increments the version with the
   fold change that caused it.
 - `src/remote/` owns the `mayflyHost` Remote service and its client-safe DTOs in
@@ -66,9 +66,10 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
   actual split boundary: Host services and Agent-preset scopes cannot inject
   the independent frontend's four UI services. Current native Cordis model
   tools inspect only; programmatic Host/browser dynamic runners are not a
-  Remote TUI hot-load or frontend plugin installation API. Do not copy legacy
-  in-process UI, dynamic model-tool, or directory-preset instructions into this
-  payload. The shared renderer does not publish it.
+  TUI hot-load or frontend plugin installation API; TUI plugins join through
+  a source composition (`run(argv, { plugins })` from `@ephemeral-ai/mayfly/bin`).
+  Do not copy legacy in-process UI, dynamic model-tool, or directory-preset
+  instructions into this payload. The TUI package does not publish it.
 
 ## Verification
 

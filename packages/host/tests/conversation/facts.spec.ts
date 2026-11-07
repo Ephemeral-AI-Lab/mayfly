@@ -30,7 +30,7 @@ function run(events: readonly never[]): ConversationFactsState {
 describe('foldConversationFacts', () => {
   it('declares the pinned state version and the facts key', () => {
     // A semantics change must bump the version with its fold change.
-    expect(conversationFactsProjectionDefinition.stateVersion).toBe(13)
+    expect(conversationFactsProjectionDefinition.stateVersion).toBe(14)
     expect(conversationFactsProjectionDefinition.key).toBe('mayflyConversationFacts')
   })
 
@@ -77,12 +77,12 @@ describe('foldConversationFacts', () => {
     expect(state.epochOutputTokens).toBe(50)
   })
 
-  it('tracks an in-flight call with its salient argument and retires it on result', () => {
+  it('tracks an in-flight call with when it started and retires it on result', () => {
     let state = run([
       event('turn/start', { turn: 1 }),
       event('tool/call', { turn: 1, step: 0, callId: 'c1', name: 'edit', arguments: '{"file_path":"/w/a.ts"}' }),
     ])
-    expect(state.inFlight).toEqual([{ callId: 'c1', name: 'edit', detail: '/w/a.ts', preparing: undefined }.valueOf() as never])
+    expect(state.inFlight).toEqual([{ callId: 'c1', name: 'edit', startedAt: expect.any(Number) as number }])
     state = foldConversationFacts(state, event('tool/result', { message: { toolCallId: 'c1', content: [{ type: 'text', text: 'ok' }] } }) as never)
     expect(state.inFlight).toEqual([])
   })

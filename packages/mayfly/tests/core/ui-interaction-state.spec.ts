@@ -548,6 +548,7 @@ it('projects registry entries and contains observers across service disposal', a
   const off = ctx.mayflyUiInteraction.subscribe(() => {})
   off()
   expect(() => ctx.mayflyUiInteraction.upsert('pane', snapshot)).toThrow('disposed')
+  expect(() => ctx.mayflyUiInteraction.endpoint('pane', 'late', () => snapshot.events)).toThrow('disposed')
   ;(ctx.mayflyUiInteraction as unknown as { changed(): void }).changed()
 })
 

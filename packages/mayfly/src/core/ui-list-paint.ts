@@ -7,7 +7,7 @@
  * @module @ephemeral-ai/mayfly/core/ui-list-paint
  */
 
-import { hasMotion } from './ui-motion-text.ts'
+import { fitSpans, hasMotion } from './ui-motion-text.ts'
 import type { MayflyInlineSpan, MayflyListCell, MayflyListItem, MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from './types.ts'
 import { scanContentLines, type ContentLineScan } from './content-segments.ts'
@@ -47,6 +47,8 @@ export interface ListPaintOptions {
   readonly selectedIds: readonly string[]
   /** The text typed into each `input` row, by item id. */
   readonly inputs?: Readonly<Record<string, string>> | undefined
+  /** Where in its text the cursor row's caret stands, when that is known; after the text otherwise. */
+  readonly inputCaret?: number | undefined
   /** A row's segment state, for the strip on the focused row. */
   readonly segment?: ((item: MayflyListItem) => SegmentView | undefined) | undefined
   /** The strip's caption in the reserved footer when the segment has no label of its own. */
@@ -195,6 +197,8 @@ interface RowState {
   readonly view: SegmentView | undefined
   /** The text of an `input` row; empty for every other row. */
   readonly text: string
+  /** Where the caret stands in `text`, while the cursor is on a focused `input` row. */
+  readonly caret: number | undefined
 }
 
 /** Columns between two cells of a row, and the least width a column gives up to before the row sheds a whole one. */
@@ -310,19 +314,31 @@ function prefixOf(state: RowState, colors: MayflySemanticColors): string {
   return `${gutter}${indent}${guides}${disclosure}${number}${check}`
 }
 
-/** An `input` row's label and what was typed after it, with a block where the next character lands while the cursor is on it. */
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+/** The character under a caret, or nothing where the caret stands after the last character of a line. */
+function underCaret(tail: string): string {
+  const [first] = GRAPHEMES.segment(tail)
+  return first === undefined || first.segment === '\n' ? '' : first.segment
+}
+
+/** An `input` row's label and what was typed after it, with a block on the character the caret stands on while the cursor is on it. */
 function inputOf(state: RowState, colors: MayflySemanticColors): string {
   const item = state.spec.item
   const label = state.on ? strong(colors.textStrong(item.label)) : colors.text(item.label)
-  if (state.text === '' && !(state.on && state.focused)) return label
-  const caret = state.on && state.focused ? '\x1b[7m \x1b[27m' : ''
-  return `${label}${colors.muted(':')} ${state.text === '' ? '' : state.on ? colors.textStrong(state.text) : colors.text(state.text)}${caret}`
+  const { text, caret } = state
+  if (text === '' && caret === undefined) return label
+  const paint = (part: string): string => part === '' ? '' : state.on ? colors.textStrong(part) : colors.text(part)
+  const lead = `${label}${colors.muted(':')} `
+  if (caret === undefined) return `${lead}${paint(text)}`
+  const under = underCaret(text.slice(caret))
+  return `${lead}${paint(text.slice(0, caret))}\x1b[7m${under === '' ? ' ' : paint(under)}\x1b[27m${paint(text.slice(caret + under.length))}`
 }
 
-function labelOf(state: RowState, colors: MayflySemanticColors): string {
+function labelOf(state: RowState, colors: MayflySemanticColors, room: number): string {
   const item = state.spec.item
   if (item.input !== undefined) return inputOf(state, colors)
-  if (item.labelSpans !== undefined) return spansText(item.labelSpans, colors)
+  if (item.labelSpans !== undefined) return spansText(item.wrap === true ? item.labelSpans : fitSpans(item.labelSpans, room), colors)
   if (item.disabled === true) return colors.muted(item.label)
   // One rule for every picker: the cursor row is bold white, the live row takes the theme color (bold when the cursor is on it).
   const painted = item.current === true ? colors.primary(item.label) : state.on ? colors.textStrong(item.label) : colors.text(item.label)
@@ -335,7 +351,7 @@ function headOf(state: RowState, colors: MayflySemanticColors): { readonly prefi
   const item = state.spec.item
   // A row with cells lines them up in the list's columns (the label is then its lead); its description follows them.
   const cells = cellsOf(item, state.plan, colors)
-  const head = `${prefix}${labelOf(state, colors)}${labelTail(item, colors)}${cells}`
+  const head = `${prefix}${labelOf(state, colors, state.width - visibleWidth(prefix))}${labelTail(item, colors)}${cells}`
   const placeholder = item.input?.placeholder !== undefined && state.text === '' ? colors.muted(item.input.placeholder) : undefined
   const description = state.width <= DETAIL_MIN_WIDTH ? '' : placeholder ?? descriptionOf(item, colors)
   if (description.length === 0) return { prefix, line: head }
@@ -388,7 +404,8 @@ function headLines(state: RowState, colors: MayflySemanticColors, translate: Lis
     const right = spansText(spans, colors)
     line = `${padTo(clipRow(line, Math.max(1, width - visibleWidth(right) - 1)), width - visibleWidth(right))}${right}`
   }
-  if (item.wrap === true) return wrapped(state, { prefix: head.prefix, line }, colors, translate)
+  // A typed text wraps, so all of it and its caret stay in sight.
+  if (item.wrap === true || state.text !== '') return wrapped(state, { prefix: head.prefix, line }, colors, translate)
   return [clipRow(line, width)]
 }
 
@@ -527,13 +544,15 @@ function paintItemEntries(context: ListPaintContext, spec: ListRowSpec, group: s
   const on = options.cursorId === item.id && item.disabled !== true
   const selected = options.selectedIds.includes(item.id)
   const view = options.segment?.(item)
+  const text = item.input === undefined ? '' : options.inputs?.[item.id] ?? ''
   const state: RowState = {
     node, plan, spec, on, focused: options.focused, width: available, marker: options.marker,
     check: checkOf(node, spec, selected, options.selectedIds),
     number: numbered ? String(spec.position + 1).padStart(digits) : '',
     column,
     view,
-    text: item.input === undefined ? '' : options.inputs?.[item.id] ?? '',
+    text,
+    caret: item.input !== undefined && on && options.focused ? Math.min(options.inputCaret ?? text.length, text.length) : undefined,
   }
   // The line under the rows names the focused row's level; a row without a segment leaves it blank.
   if (on && options.focused) { if (view === undefined) focusedWithout = true; else footerFor = view }
@@ -544,7 +563,7 @@ function paintItemEntries(context: ListPaintContext, spec: ListRowSpec, group: s
   const key = [
     available, column, state.marker, on ? 1 : 0, options.focused ? 1 : 0, node.marker ?? '', state.check, state.number,
     spec.depth, spec.last ? 1 : 0, spec.expandable ? 1 : 0, spec.open ? 1 : 0,
-    `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0, state.text, item.cells === undefined ? '' : plan?.signature ?? '',
+    `${String(view?.active)}\0${String(view?.pinned)}`, options.flow === true ? 1 : 0, state.text, state.caret ?? '', item.cells === undefined ? '' : plan?.signature ?? '',
   ].join('\x01')
   const leaded = item.bodyLead !== undefined && spec.open && item.body !== undefined
   const paintHead = (): readonly string[] => leaded ? leadedLines(state, colors, options.body) : headLines(state, colors, options.translate)
@@ -737,7 +756,7 @@ export interface FlowListModel {
 }
 
 /** One list paint: the node, its model, and the state the rows paint in. */
-export interface FlowListPaintInput {
+interface FlowListPaintInput {
   readonly node: ListNodeView
   readonly model: FlowListModel
   readonly width: number
@@ -838,7 +857,7 @@ export class FlowListPainter implements RowSource {
       available, node.mode ?? '', node.marks === true ? 1 : 0, node.marker ?? '', node.groupGap === true ? 1 : 0,
       node.tree === true ? 1 : 0, node.numbered === undefined || node.numbered === false ? 0 : String(node.numbered),
       node.highlight === undefined ? '' : JSON.stringify(node.highlight), model.signature, items.length,
-      options.cursorId ?? '', options.marker, options.selectedIds.join('\x01'), recordKey(options.inputs), options.focused ? 1 : 0,
+      options.cursorId ?? '', options.marker, options.selectedIds.join('\x01'), recordKey(options.inputs), options.inputCaret ?? '', options.focused ? 1 : 0,
     ].join('\x1e')
     const rebuilt = state !== this.signature || colors !== this.colors || options.memo?.cache !== this.cache
     const previous = this.blocks

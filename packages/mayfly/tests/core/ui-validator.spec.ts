@@ -937,3 +937,8 @@ describe('the status-row options of the wire', () => {
     expect(validateMayflyUiNode({ ...scroll, more: 1 })).toMatchObject({ ok: false, message: expect.stringContaining('boolean') })
   })
 })
+
+it('admits an inherited nullable toggle reset without coercing it to false', () => {
+  const node = ui.form({ id: 'nullable', fields: [{ id: 'enabled', kind: 'toggle', label: 'Enabled', value: true, resetValue: null }] })
+  expect(accepted(node)).toEqual(node)
+})

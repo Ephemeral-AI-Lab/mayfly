@@ -11,7 +11,9 @@
  * reconciliations, layout passes, clock ticks, keymap snapshots). W25 to W27 publish an unchanged pane or overlay again,
  * and one pane with a single section changed, through the real Cordis service, and gate the leaves they recompile. W18 to W20 are the content-at-any-size gates (slice
  * 2c.3): a PageDown, a resize, and an End inside megabyte content, bounded by the window they read. A budget row gates
- * the counters it names; W1 to W12 name the first four.
+ * the counters it names; W1 to W12 name the first four. W29 and W34 separately gate liveEntriesMapped at one:
+ * entriesMapped retains its durable-history meaning and zero ceiling during a live delta. The live counter was added
+ * when the split mapper began measuring transient attempts; every existing counter ceiling and baseline is retained.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import * as tips from '../../src/transcript/status-tips.ts'
 import { STATUS_TIPS, type StatusTip } from '../../src/transcript/tips-content.ts'
+import { ACTIVITY_LOCALE } from '../../src/transcript/locale.ts'
 
 describe('buildTipRotation', () => {
   it('degenerates to the identity sequence under all-equal weights', () => {
@@ -43,5 +44,8 @@ describe('buildTipRotation', () => {
     // The activity row's line teaches the interrupt and the tool detail once each; the footer keeps no key hint of its own.
     expect(texts.filter(text => /^Esc to interrupt/u.test(text))).toHaveLength(1)
     expect(texts.filter(text => /^Ctrl\+O to expand/u.test(text))).toHaveLength(1)
+  })
+  it('has Chinese copy for every tip in the catalog the activity row translates with', () => {
+    expect(STATUS_TIPS.filter(tip => ACTIVITY_LOCALE.zh?.[tip.text] === undefined)).toEqual([])
   })
 })
