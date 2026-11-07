@@ -5,13 +5,20 @@
 
 import type { ConversationFacts, ConversationProjection, OutputProgress } from '@ephemeral-ai/mayfly-host/types'
 import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { MayflyTranslate } from '@ephemeral-ai/mayfly-ui'
+import type { TranscriptModel } from '../../frontend/models.ts'
+import { toolActivity } from '../../transcript/process-activity.ts'
 import { formatTokens } from '../../transcript/status-context-model.ts'
+import { flightName } from '../../transcript/tool-calls.ts'
+import { mcpNameOf } from '../../transcript/tool-calls-mcp.ts'
+import { kindOf } from '../../transcript/tool-kinds.ts'
 
 /** One in-flight tool used by the activity label and detail line. */
 export interface RemoteActivityCall {
   readonly callId: string
   readonly name: string
-  readonly detail?: string
+  /** When it started; a call whose arguments still stream has not. */
+  readonly startedAt?: number
   readonly preparing: boolean
 }
 
@@ -55,12 +62,11 @@ export function deriveRemoteActivity(
       ...facts.turnStartedAt === undefined ? {} : { turnStartedAt: facts.turnStartedAt },
       ...facts.outputProgress === undefined ? {} : { outputProgress: facts.outputProgress },
       flowDownChars: facts.flowDownChars,
-      inFlight: (facts.inFlight ?? []).map(call => ({
-        callId: call.callId,
-        name: call.name,
-        ...call.detail === undefined ? {} : { detail: call.detail },
-        preparing: call.preparing === true,
-      })),
+      inFlight: [
+        ...(facts.inFlight ?? []).map(call => ({ callId: call.callId, name: call.name, startedAt: call.startedAt, preparing: false })),
+        // A spawn is in flight until the Harness acknowledges it; after that the Agents view has it.
+        ...facts.agentCalls.filter(call => call.turn === facts.turn && call.result === undefined).map(call => ({ callId: call.callId, name: call.name, startedAt: call.startedAt, preparing: false })),
+      ],
       ...facts.runOutcome === undefined ? {} : { latestOutcome: facts.runOutcome },
     }
   }
@@ -72,7 +78,7 @@ export function deriveRemoteActivity(
     return [{
       callId: entry.callId,
       name: entry.name,
-      ...entry.arguments.trim() === '' ? {} : { detail: entry.arguments.replace(/\s+/gu, ' ').slice(0, 160) },
+      startedAt: entry.startedAt,
       preparing: false,
     }]
   })
@@ -117,31 +123,75 @@ export function remoteOutputRate(progress: OutputProgress | undefined, now: numb
   return `${String(Math.round((progress.chars - progress.initialChars) / 4 * 1_000 / elapsed))} tok/s`
 }
 
-const LABELS: Readonly<Record<string, readonly [string, string]>> = {
-  read: ['Reading files', 'Preparing to read files'],
-  read_image: ['Reading images', 'Preparing to read images'],
-  write: ['Writing files', 'Preparing to write files'],
-  grep: ['Searching code', 'Preparing to search code'],
-  glob: ['Searching code', 'Preparing to search code'],
-  edit: ['Editing files', 'Preparing to edit files'],
-  apply_patch: ['Editing files', 'Preparing to edit files'],
-  bash: ['Running commands', 'Preparing to run commands'],
-  pwsh: ['Running commands', 'Preparing to run commands'],
-  run_code: ['Running code', 'Preparing to run code'],
-  web_search: ['Searching the web', 'Preparing to search the web'],
-  web_fetch: ['Visiting web pages', 'Preparing to visit web pages'],
-  todo_write: ['Updating the plan', 'Preparing to update the plan'],
-  ask_user_question: ['Waiting for your action', 'Preparing questions'],
+/** How long the oldest of several calls must have run before the row says so. */
+const OLDEST_SHOWN_MS = 10_000
+
+/** What a call's label is shared with: its category, or for an MCP tool its server. */
+function flightKey(name: string): string {
+  const activity = toolActivity(name)
+  return activity === 'mcp' ? `mcp:${mcpNameOf(name).server ?? ''}` : activity
 }
 
-/** Resolve the current Mayfly in-flight tool label. */
-export function remoteFlightLabel(calls: readonly RemoteActivityCall[]): { readonly key: string, readonly values?: { readonly count: number } } {
+/**
+ * The present-tense label of the calls in flight: their category's or server's when they share one, else how many.
+ * @param calls - the calls in flight.
+ * @returns the label's key and values.
+ */
+export function remoteFlightLabel(calls: readonly RemoteActivityCall[]): { readonly key: string, readonly values?: Readonly<Record<string, string | number>> } {
   const first = calls[0]
   if (first === undefined) return { key: 'Deep diving' }
   const preparing = calls.every(call => call.preparing)
-  if (calls.every(call => call.name === first.name)) {
-    const pair = LABELS[first.name] ?? ['Calling tools', 'Preparing tool calls']
-    return { key: pair[preparing ? 1 : 0] }
+  if (new Set(calls.map(call => flightKey(call.name))).size > 1) {
+    return { key: preparing ? 'Preparing {count} tool calls' : 'Running {count} tools', values: { count: calls.length } }
   }
-  return { key: preparing ? 'Preparing {count} tool calls' : 'Running {count} tools', values: { count: calls.length } }
+  const activity = toolActivity(first.name)
+  const server = activity === 'mcp' ? mcpNameOf(first.name).server : undefined
+  if (server !== undefined) return { key: preparing ? 'Preparing to call {server}' : 'Calling {server}', values: { server } }
+  return { key: kindOf(activity)[preparing ? 'preparing' : 'running'] }
+}
+
+/**
+ * What the row adds to that label: how many of one tool are in flight and how long the oldest has run, and under it the names
+ * of different tools. The stream's own lines say each call's arguments.
+ * @param calls - the calls in flight.
+ * @param now - the time.
+ * @param t - translator of the activity namespace.
+ * @returns the muted tail, and the line under the header when the tools differ.
+ */
+export function remoteFlightDetail(calls: readonly RemoteActivityCall[], now: number, t: MayflyTranslate): { readonly tail: readonly string[], readonly info?: string } {
+  const names = [...new Set(calls.map(call => flightName(call.name)))]
+  const starts = calls.flatMap(call => call.startedAt === undefined ? [] : [call.startedAt])
+  const oldest = starts.length === 0 ? 0 : now - Math.min(...starts)
+  const tail = calls.length < 2 ? [] : [
+    ...names.length === 1 ? [t('{count} in flight', { count: calls.length })] : [],
+    ...oldest >= OLDEST_SHOWN_MS ? [t('oldest {elapsed}', { elapsed: remoteCompactElapsedMs(oldest) })] : [],
+  ]
+  if (names.length < 2) return { tail }
+  return { tail, info: `${names.slice(0, 3).join(' · ')}${names.length > 3 ? ` ${t('+{count} more', { count: names.length - 3 })}` : ''}` }
+}
+
+/**
+ * The calls whose arguments still stream, read from the attempt's overlay.
+ * @param model - the displayed conversation.
+ * @returns each call's id and name.
+ */
+export function preparingCalls(model: TranscriptModel): readonly { readonly callId: string, readonly name: string }[] {
+  return (model.live?.entries ?? []).flatMap(entry => entry.kind === 'transcript-tool' && entry.preparing !== undefined ? [{ callId: entry.callId, name: entry.name }] : [])
+}
+
+/**
+ * Tell the activity row which calls are being prepared, only when that changes: a model is published per streamed chunk, and
+ * the row's label does not move with the characters.
+ * @param emit - where to announce them.
+ * @returns what to call with each published model.
+ */
+export function preparingAnnouncer(emit: (calls: ReturnType<typeof preparingCalls>) => void): (model: TranscriptModel) => void {
+  let shown = ''
+  return (model) => {
+    const calls = preparingCalls(model)
+    const shape = calls.map(call => call.callId).join('\0')
+    if (shape === shown) return
+    shown = shape
+    emit(calls)
+  }
 }

@@ -1,6 +1,6 @@
 /** Transient assistant presentation from one official Client attempt window. @module */
 import type { ConversationEntry, ConversationProjection } from '@ephemeral-ai/mayfly-host/types'
-import type { initialAssistantStream } from '@ephemeral-ai/mayfly-host/conversation'
+import { toolEntryId, type initialAssistantStream } from '@ephemeral-ai/mayfly-host/conversation'
 
 /** One attempt's folded visible output, as the shared Host stream fold returns it. */
 export type AssistantStreamDraft = ReturnType<typeof initialAssistantStream>
@@ -27,6 +27,10 @@ export function transientAssistantProjection(draft: AssistantStreamDraft, cursor
   if (draft.text !== '') entries.push({
     ...base, kind: 'assistant', id: `assistant:${String(turn)}:${String(step)}`,
     text: draft.text, streaming: draft.phase === 'composing',
+  })
+  for (const call of draft.preparing ?? []) entries.push({
+    ...base, kind: 'tool', id: toolEntryId(call.id), callId: call.id, name: call.name, arguments: call.arguments,
+    startedAt: call.startedAt, channel: 'transcript', preparing: { characters: call.characters },
   })
   return { entries, streaming: true, settledSteps: [], turns: [] }
 }

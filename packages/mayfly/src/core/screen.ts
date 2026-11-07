@@ -216,7 +216,7 @@ export class MayflyScreenService extends Service implements MayflyScreen {
       this.searchLine?.dispose()
       this.nodeSlots.dispose()
     })
-    // Entering a view of the status row moves focus to the bar; leaving it gives focus back to the prompt.
+    // Entering a view of the status row moves focus to the bar; leaving it gives focus back to the prompt, or to the conversation it was entered from, which then says so.
     ctx.effect(() => runtime.surfaces.views.onEnteredChange((entered) => { ctx.emit('mayfly/focus-mode-changed', entered ? 'view' : 'prompt') }))
     runtime.requestRender()
   }
@@ -273,12 +273,13 @@ export class MayflyScreenService extends Service implements MayflyScreen {
   }
 
   /**
-   * Enter the first view of the status row (the active one when it is still enterable): its panel replaces the row and
-   * takes focus. The prompt calls this on `Alt+↓`/`F5` with an empty buffer.
-   * @returns whether a view was entered; `false` leaves the key to the editor.
+   * Enter a view of the status row: its panel replaces the row and takes focus. The prompt calls this on `Alt+↓`/`F5` with
+   * an empty buffer; a stream line that a view owns names its view.
+   * @param id - the view; absent means the first (the active one when it is still enterable).
+   * @returns whether a view was entered; `false` leaves the key to the caller.
    */
-  enterViews(): boolean {
-    return this.runtime.surfaces.views.enter()
+  enterViews(id?: string): boolean {
+    return this.runtime.surfaces.views.enter(id)
   }
 
   /**

@@ -105,4 +105,11 @@ describe('findHits', () => {
     expect(result.hits.map(hit => hit.part)).toEqual(['user:1', 'assistant:2'])
     expect(result.hits.map(hit => hit.order)).toEqual([0, 1])
   })
+
+  it('finds nothing in a call the stream never draws, unless it failed', () => {
+    const hidden = (result: { text: string, isError: boolean, endedAt: number }): TranscriptEntryModel => ({ id: 'todo:1', kind: 'transcript-tool', seq: 1, updatedSeq: 1, turn: 1, step: 1, callId: 'c', name: 'todo_write', family: 'other', activity: 'todo', detail: 'needle', arguments: '{}', startedAt: 0, result })
+    const search = (entry: TranscriptEntryModel) => findHits(createTranscriptModel('spec', [entry]), readPattern('needle'))
+    expect(search(hidden({ text: 'needle', isError: false, endedAt: 1 })).hits).toEqual([])
+    expect(search(hidden({ text: 'none', isError: true, endedAt: 1 })).hits.map(hit => hit.part)).toEqual(['todo:1'])
+  })
 })

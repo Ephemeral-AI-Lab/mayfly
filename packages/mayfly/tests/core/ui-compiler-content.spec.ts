@@ -247,6 +247,13 @@ describe('the scroll region', () => {
 describe('motion rows', () => {
   const rich = (...spans: Parameters<typeof ui.richText>[0]): MayflyUiNode => ui.richText(spans)
 
+  it('takes the width of a truncating motion row from its elastic spans, counting the loader cell', () => {
+    vi.useFakeTimers()
+    const line = ui.richText([{ text: '', motion: 'loader', variant: 'bloom' }, { text: ' Bash' }, { text: '(pnpm run everything)', elastic: true }, { text: ' · 12s' }], { overflow: 'truncate' })
+    expect(mount(line, { width: 24 }).render()[0]).toBe('· Bash(pnpm run e… · 12s')
+    vi.useRealTimers()
+  })
+
   it('steps a loader cell and a shimmer with the one clock, and stops the clock when nothing moves', () => {
     vi.useFakeTimers()
     const surface = mount(rich({ text: '', motion: 'loader', variant: 'bloom' }, { text: ' Thinking' }))

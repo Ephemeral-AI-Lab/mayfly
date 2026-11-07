@@ -361,6 +361,24 @@ describe('node slot lease: spotlight, rows, and cursor', () => {
     expect(content.render(100)).toEqual([])
   })
 
+  it('keeps the cursor when the focused list grows past the rows the last compile had', async () => {
+    const accepted: string[][] = []
+    const tree = await boot()
+    tree.keys()
+    const { lease, keys } = extraSlot(tree, 'local.grows', { onEvent: (event) => { if (event.kind === 'selection-accept') accepted.push([...event.selectedIds]) } })
+    const list = (count: number) => ui.list({ id: 'stream', role: 'browse', items: Array.from({ length: count }, (_, index) => ({ id: `row-${String(index)}`, label: `row ${String(index)}` })) })
+    lease.set(list(3))
+    lease.focus()
+    tree.terminal.added[2]!.render(100)
+    lease.focusRow('stream', 'row-2')
+    tree.terminal.added[2]!.render(100)
+    lease.set(list(9))
+    expect(() => tree.terminal.added[2]!.render(100)).not.toThrow()
+    keys('\r')
+    await flush()
+    expect(accepted).toEqual([['row-2']])
+  })
+
   it('stands the focus on a row of its list once compiled, so the key that follows acts on that row', async () => {
     const accepted: string[][] = []
     const tree = await boot()

@@ -7,4 +7,4 @@
  */
 
 export { argumentDetail, toolDetail } from './conversation/activity-detail.ts'
-export { foldAssistantStreamRecords, initialAssistantStream } from './conversation/stream-accumulator.ts'
+export { foldAssistantStreamRecords, initialAssistantStream, toolEntryId } from './conversation/stream-accumulator.ts'

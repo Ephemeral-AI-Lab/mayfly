@@ -26,6 +26,7 @@ import { createRemoteSettingsEditor } from './features/settings-editor.ts'
 import { RemoteBannerComponent } from './banner.ts'
 import { mountRemoteConfigurationComposition, type RemoteConfigurationCompositionHandle } from './configuration-composition.ts'
 import { mayflyVersion } from './features/version.ts'
+import { preparingAnnouncer } from './status/activity.ts'
 import { mountEditorComposition, type EditorCompositionHandle } from './editor-composition.ts'
 import { mountRemoteCompletionDrawer } from './completion-drawer.ts'
 import { mountRemoteEditor, type RemoteEditorHandle } from './editor.ts'
@@ -132,7 +133,11 @@ export async function runRemoteFrontend(options: RemoteFrontendOptions): Promise
     // Presentation requests require an attached native Session; the App is
     // constructed before any source can receive that Session binding.
     toolPresentations = new RemoteToolPresentationCache(ref => resolveMayflyToolPresentation(() => app!.registry.list(), ref))
-    conversation = new RemoteConversationModelSource(toolPresentations, () => transcript?.refresh(), {
+    const announcePreparing = preparingAnnouncer(calls => ctx.emit('mayfly/preparing-calls', calls))
+    conversation = new RemoteConversationModelSource(toolPresentations, (model) => {
+      transcript?.refresh()
+      announcePreparing(model)
+    }, {
       defaultCwd: options.cwd ?? process.cwd(),
       onPresentation: () => {
         status?.refresh()

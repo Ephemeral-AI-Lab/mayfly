@@ -223,8 +223,8 @@ class SlotAttachment {
       this.applyPendingFocus()
       return this.compiled
     }
-    // Focus is applied through a reconcile of every control, so only a surface that holds it is toggled.
-    if (this.focusApplied) setCompiledFocus(this.compiled, false)
+    // Only the flag leaves the old compile: a reconcile would walk its node against the model's new list, which may be longer.
+    if (this.focusApplied) this.runtime.setFocused(false)
     const node = this.model.decisionNode ?? this.model.node
     const compiler = this.compiler
     if (node === null) {

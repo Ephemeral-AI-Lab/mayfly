@@ -21,12 +21,15 @@ const mcpClient = createRequire(resolve(root, 'packages/cli/package.json')).reso
 const mcpEntry = createRequire(mcpClient).resolve('@deepseek-ai/dsh-mcp-client')
 const mcpServer = fileURLToPath(new URL('./tool-display-mcp.mjs', import.meta.url))
 
-const overlay = ['github', 'linear', 'browser'].map(server => `- insert:\n    - id: demo-mcp-${server}\n      name: ${JSON.stringify(`file://${mcpEntry}`)}\n      config:\n        transport: stdio\n        serverName: ${server}\n        command: ${JSON.stringify(process.execPath)}\n        args: [${JSON.stringify(mcpServer)}, ${server}]`)
+// The presets leave `apply_patch` off, and their rows cannot be addressed from here, so a row of its own offers it. `TOOL_DISPLAY_PTC` swaps the tool executor, which is what offers `run_code`.
+const model = await startStubModel()
+const overlay = [`- id: web-search-deepseek\n  config:\n    apiKeyEnv: DEEPSEEK_API_KEY\n    baseURL: ${JSON.stringify(`${model.baseURL}/v1`)}`, "- insert:\n    - id: demo-tool-patch\n      name: '@deepseek-ai/dsh-tool-fs'\n      config:\n        read: false\n        readImage: false\n        write: false\n        edit: false\n        applyPatch: true", ...process.env.TOOL_DISPLAY_PTC === undefined ? [] : ['- id: tool-executor-native\n  disabled: true', '- id: tool-executor-ptc\n  disabled: false'], ...['github', 'linear', 'browser'].map(server => `- insert:\n    - id: demo-mcp-${server}\n      name: ${JSON.stringify(`file://${mcpEntry}`)}\n      config:\n        transport: stdio\n        serverName: ${server}\n        command: ${JSON.stringify(process.execPath)}\n        args: [${JSON.stringify(mcpServer)}, ${server}]`)]
+// A level to start at, so all four can be judged without going through the settings.
+if (process.env.TOOL_DISPLAY_LEVEL !== undefined) overlay.push(`- id: mayfly\n  config:\n    transcriptView: ${process.env.TOOL_DISPLAY_LEVEL}`)
 
 mkdirSync(artifacts, { recursive: true })
 const workspace = mkdtempSync(join(artifacts, 'workspace-'))
 seedToolDisplayWorkspace(workspace)
-const model = await startStubModel()
 const host = await launchSplitHost({ root, dshBin, artifacts, baseURL: model.baseURL, workspace, overlay, realtime: true })
 
 process.stdout.write(`Send these prompts in the TUI. Each plays one session:

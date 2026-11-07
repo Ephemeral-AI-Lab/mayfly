@@ -12,9 +12,11 @@ const member = (activity: ProcessMemberFact['activity'], overrides: Partial<Proc
 
 describe('process activity', () => {
   it('classifies by the upstream name table, then by presenter vocabulary', () => {
-    expect(['read', 'read_image', 'grep', 'glob', 'cordis_inspect', 'write', 'edit', 'apply_patch', 'bash', 'pwsh', 'terminal_x', 'run_code', 'web_search', 'web_fetch', 'subagent', 'subagent_fork', 'todo_write', 'get_goal', 'ask_user_question', 'request_user_input', 'mystery'].map(name => toolActivity(name)))
-      .toEqual(['read', 'readImage', 'search', 'search', 'search', 'write', 'edit', 'edit', 'commands', 'commands', 'commands', 'code', 'webSearch', 'webFetch', 'subagents', 'subagents', 'plan', 'plan', 'questions', 'questions', 'tools'])
+    expect(['read', 'read_image', 'grep', 'glob', 'cordis_inspect', 'write', 'edit', 'apply_patch', 'bash', 'pwsh', 'terminal_x', 'run_code', 'web_search', 'web_fetch', 'subagent', 'subagent_fork', 'workflow', 'job_output', 'job_kill', 'todo_write', 'create_goal', 'update_goal', 'get_goal', 'ask_user_question', 'request_user_input', 'mystery'].map(name => toolActivity(name)))
+      .toEqual(['read', 'readImage', 'search', 'search', 'search', 'write', 'edit', 'edit', 'commands', 'commands', 'commands', 'code', 'webSearch', 'webFetch', 'subagents', 'subagents', 'workflow', 'jobs', 'jobs', 'todo', 'goal', 'goal', 'goal', 'questions', 'questions', 'tools'])
+    expect(toolActivity('skill')).toBe('skill')
     expect(toolActivity('mcp_shell', { card: 'terminal', title: 'ls' })).toBe('commands')
+    expect(toolActivity('mcp__github__get_issue')).toBe('mcp')
     expect(toolActivity('str_replace_editor', { card: 'diff', title: 'x', diffs: [] })).toBe('edit')
     expect(toolActivity('reader', undefined, { card: 'read', path: 'a', offset: 1, lines: [], totalLines: 0 })).toBe('read')
     expect(toolActivity('finder', undefined, { card: 'search', shape: 'paths', paths: [], truncated: false, total: 0 })).toBe('search')

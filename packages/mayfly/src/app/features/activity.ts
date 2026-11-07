@@ -18,9 +18,11 @@ import { ActivityRow as RemoteActivityRow, type ActivityPhase as RemoteActivityP
 import {
   deriveRemoteActivity,
   remoteCompactElapsedMs,
+  remoteFlightDetail,
   remoteFlightLabel,
   remoteOutputCounter,
   remoteOutputRate,
+  type RemoteActivityCall,
   type RemoteActivitySnapshot,
 } from '../status/activity.ts'
 import { RemoteFeatureLifecycle } from './lifecycle.ts'
@@ -56,10 +58,12 @@ class RemoteActivityController {
   private readonly offLocale: () => void
   private readonly offDecision: () => void
   private readonly offPanel: () => void
+  private readonly offPreparing: () => void
   private readonly rotation = buildTipRotation(STATUS_TIPS)
   private readonly seen = new Set<string>()
   private subscriptions: readonly (() => void)[] = []
   private activity = EMPTY_ACTIVITY
+  private preparing: readonly RemoteActivityCall[] = []
   private waiting = false
   private decision: MayflyDecisionWait | undefined
   private dialog = false
@@ -104,6 +108,10 @@ class RemoteActivityController {
       this.dialog = open
       this.publishActivity()
     })
+    this.offPreparing = options.ctx.on('mayfly/preparing-calls', (calls) => {
+      this.preparing = calls.map(call => ({ ...call, preparing: true }))
+      this.publishActivity()
+    })
     this.lifecycle.start()
     this.timer = setInterval(() => {
       this.now = Date.now()
@@ -124,6 +132,7 @@ class RemoteActivityController {
     this.offLocale()
     this.offDecision()
     this.offPanel()
+    this.offPreparing()
     for (const dispose of this.subscriptions) dispose()
     this.subscriptions = []
     clearInterval(this.timer)
@@ -211,21 +220,20 @@ class RemoteActivityController {
     this.live = true
     this.turn = this.activity.turn
     // The inactive guard above excludes the derivation's idle snapshots.
-    const phase = waiting ? 'waiting' : this.activity.phase as RemoteActivityPhase
+    const flying = [...this.activity.inFlight, ...this.preparing]
+    const phase = waiting ? 'waiting' : this.preparing.length > 0 ? 'tool' : this.activity.phase as RemoteActivityPhase
     let stage: (typeof THINKING_STAGES)[number] | undefined
     if (phase === 'thinking') {
       this.phaseSeenAt ??= this.now
       const since = this.activity.outputProgress?.startedAt ?? this.phaseSeenAt
       stage = THINKING_STAGES.findLast(candidate => this.now - since >= candidate.from) ?? THINKING_STAGES[0]!
     } else this.phaseSeenAt = undefined
-    const flight = phase === 'tool' ? remoteFlightLabel(this.activity.inFlight) : { key: phase === 'waiting' ? this.decision?.kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer' : phase === 'writing' ? 'Writing' : 'Deep diving' }
+    const flight = phase === 'tool' ? remoteFlightLabel(flying) : { key: phase === 'waiting' ? this.decision?.kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer' : phase === 'writing' ? 'Writing' : 'Deep diving' }
     const since = phase === 'waiting' ? this.waitingSince : phase === 'thinking' ? this.activity.outputProgress?.startedAt ?? this.phaseSeenAt : this.activity.turnStartedAt
     const elapsed = since === undefined ? '' : remoteCompactElapsedMs(Math.max(0, this.now - since))
-    const tail = phase === 'tool' ? [] : [elapsed, phase === 'waiting' ? '' : remoteOutputCounter(this.activity.flowDownChars), phase === 'waiting' ? '' : remoteOutputRate(this.activity.outputProgress, this.now)].filter(text => text !== '')
-    const details = phase === 'tool'
-      ? [...new Set(this.activity.inFlight.flatMap(call => call.preparing === true || call.detail === undefined || call.detail === '' ? [] : [call.detail]))]
-      : []
-    const info = details.length === 0 ? undefined : `${details.slice(0, 3).join(' · ')}${details.length > 3 ? ` ${this.t('+{count} more', { count: details.length - 3 })}` : ''}`
+    const detail = phase === 'tool' ? remoteFlightDetail(flying, this.now, this.t) : undefined
+    const tail = detail?.tail ?? [elapsed, phase === 'waiting' ? '' : remoteOutputCounter(this.activity.flowDownChars), phase === 'waiting' ? '' : remoteOutputRate(this.activity.outputProgress, this.now)].filter(text => text !== '')
+    const info = detail?.info
     this.setRow({
       phase,
       label: this.t(stage?.label ?? flight.key, 'values' in flight ? flight.values : undefined),

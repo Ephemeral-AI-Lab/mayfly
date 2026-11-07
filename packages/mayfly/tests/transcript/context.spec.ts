@@ -23,6 +23,14 @@ describe('displayed transcript context', () => {
     }
   })
 
+  it('gives the displayed Session\'s directory from its own catalog row, and none from another Session\'s', () => {
+    const session = { ref: { host: HostKey('h'), sessionId: SessionId('p') }, values: {} } as unknown as Parameters<typeof remoteTranscriptContext>[0]
+    const of = (sessionId: string) => ({ ref: { host: HostKey('h'), sessionId: SessionId(sessionId) }, snapshot: { byId: { p: { cwd: '/w' } }, projectionsBySession: {} } }) as unknown as RemoteTranscriptCatalog
+    expect(remoteTranscriptContext(session, of('p'))?.cwd).toBe('/w')
+    expect(remoteTranscriptContext(session, of('other'))).not.toHaveProperty('cwd')
+    expect(remoteTranscriptContext(session)).not.toHaveProperty('cwd')
+  })
+
   it('finds each spawn call its child through the catalog: same description in spawn order, and a failed call claims nothing', () => {
     const call = (callId: string, description: unknown, isError?: boolean) => ({ seq: 1, turn: 1, step: 1, callId, name: 'subagent', arguments: JSON.stringify({ description }), startedAt: 0, ...isError === undefined ? {} : { result: { text: '', isError, endedAt: 1 } } })
     const catalog = [null, { id: 7, label: 'A' }, { id: 'no-label' }, { id: 'a1', label: 'A' }, { id: 'b1', label: 'B' }, { id: 'a2', label: 'A' }, { id: 'workflow-child', label: 'scan' }]

@@ -14,7 +14,7 @@ import { isSpawnToolName } from './tool-names.ts'
 import type { ProcessActivity } from '../frontend/models.ts'
 
 const COMMAND_TOOLS = new Set(['bash', 'pwsh', 'exec_command', 'write_stdin'])
-const PLAN_TOOLS = new Set(['todo_write', 'create_goal', 'update_goal', 'get_goal'])
+const GOAL_TOOLS = new Set(['create_goal', 'update_goal', 'get_goal'])
 
 /**
  * Classify one tool call: the upstream name table first, then the presenter
@@ -34,9 +34,14 @@ export function toolActivity(name: string, call?: ToolCallView, result?: ToolRes
   if (name === 'run_code') return 'code'
   if (name === 'web_search') return 'webSearch'
   if (name === 'web_fetch') return 'webFetch'
+  if (name === 'skill') return 'skill'
   if (isSpawnToolName(name)) return 'subagents'
-  if (PLAN_TOOLS.has(name)) return 'plan'
+  if (name === 'workflow') return 'workflow'
+  if (name.startsWith('job_')) return 'jobs'
+  if (name === 'todo_write') return 'todo'
+  if (GOAL_TOOLS.has(name)) return 'goal'
   if (name === 'ask_user_question' || name === 'request_user_input') return 'questions'
+  if (name.startsWith('mcp__')) return 'mcp'
   if (call?.card === 'terminal' || result?.card === 'terminal') return 'commands'
   if (call?.card === 'diff' || result?.card === 'diff') return 'edit'
   if (result?.card === 'read') return 'read'
@@ -121,6 +126,8 @@ export const PROCESS_ACTIVE_ZH: Readonly<Record<string, string>> = {
   'Visiting web pages': '正在访问网页',
   'Coordinating subagents': '正在协调子智能体',
   'Updating the plan': '正在更新计划',
+  'Running a workflow': '正在运行工作流',
+  'Checking jobs': '正在查看作业',
   'Waiting for your action': '等待你的操作',
   'Calling tools': '正在调用工具',
   'Preparing to read files': '准备读取文件',
@@ -134,6 +141,7 @@ export const PROCESS_ACTIVE_ZH: Readonly<Record<string, string>> = {
   'Preparing to visit web pages': '准备访问网页',
   'Preparing to coordinate subagents': '准备协调子智能体',
   'Preparing to update the plan': '准备更新计划',
+  'Preparing a workflow': '准备工作流',
   'Preparing questions': '准备提问',
   'Preparing tool calls': '准备调用工具',
 }
@@ -146,13 +154,23 @@ export const PROCESS_DONE_ZH: Readonly<Record<string, string>> = {
   ' · Ctrl+O': ' · 按 Ctrl+O',
   '{count} line': '{count} 行',
   '{count} lines': '{count} 行',
-  '{shown} of {total} lines': '{total} 行中的 {shown} 行',
+  '{first}-{last} of {total}': '{first}-{last} 行，共 {total} 行',
+  '{pattern} in {path}': '{path} 中的 {pattern}',
+  'include {glob}': '包含 {glob}',
+  'cwd {path}': '目录 {path}',
+  'background': '后台',
+  'created': '新建',
+  'Loading skills': '正在加载技能',
+  '{count} skill': '{count} 个技能',
+  '{count} skills': '{count} 个技能',
   '{count} file': '{count} 个文件',
   '{count} files': '{count} 个文件',
   '{matches} in {files}': '{matches}，分布在 {files}',
   'no matches': '无匹配',
   '{count} path': '{count} 个路径',
   '{count} paths': '{count} 个路径',
+  '{count} item': '{count} 项',
+  '{count} items': '{count} 项',
   '{count} source': '{count} 个来源',
   '{count} sources': '{count} 个来源',
   '{count} image': '{count} 张图片',

@@ -158,6 +158,7 @@ type MayflyInlineSpan = {
   emphasis?: 'normal' | 'strong'
   motion?: 'shimmer' | 'loader'                        // 一行只有一个动效通道
   variant?: 'bloom' | 'fill' | 'gap' | 'breath' | 'pulse'        // 配合 motion: 'loader'；默认 'gap'
+  elastic?: boolean                                    // 单行放不下时最先让位
 }
 ```
 
@@ -197,6 +198,10 @@ span 可以动。`motion: 'shimmer'` 让一个三字宽的窗口扫过 `text` �
 ![`richText` 的动效](/shots/richText-motion.svg)
 
 *闪动的标签与呼吸的单元，均为首帧（宽度 48）。*
+
+在放不下的单行上（`overflow: 'truncate'`，或列表行的 `labelSpans`），`elastic` span
+会先于行尾裁剪让位：最宽的一段以省略号缩短，若只剩不足 3 格，所有 `elastic` span
+一并隐去。长路径之后的失败原因就是这样保留下来的。
 
 ```ts
 ui.stack.column([

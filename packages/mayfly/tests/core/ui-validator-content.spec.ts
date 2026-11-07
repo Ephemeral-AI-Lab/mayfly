@@ -40,6 +40,7 @@ describe('inline motion', () => {
     expect(rejected(rich({ text: '', motion: 'loader' }, { text: 'label', motion: 'shimmer' }))).toContain('more than one motion channel')
     expect(rejected(rich({ text: '', motion: 'loader' }, { text: '', motion: 'loader' }))).toContain('more than one motion channel')
     expect(rejected(rich({ text: 'x', motion: 'loader' }))).toContain('must be empty')
+    expect(rejected(rich({ text: 'x', elastic: 'yes' }))).toContain('elastic must be a boolean')
     expect(rejected(rich({ text: '', motion: 'shimmer' }))).toContain('shimmer needs text')
     expect(rejected(rich({ text: 'x', motion: 'shimmer', variant: 'gap' }))).toContain('shimmer needs text')
     expect(rejected(rich({ text: 'x', variant: 'gap' }))).toContain('needs a loader motion')

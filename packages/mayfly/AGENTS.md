@@ -456,6 +456,15 @@ account methods; API-key balance credentials stay entirely on Host.
   step settles or turn closes. Timers animate labels; domain progress comes
   from native timestamps and projections.
 - The activity row owns live phase, elapsed time, action, and throughput.
+  Its labels come from `transcript/tool-kinds.ts`. It hears of calls the attempt
+  still writes through `mayfly/preparing-calls`, which fires only when that set
+  changes, because a model is published per streamed chunk. The attempt's
+  overlay carries those calls under their durable id, so the durable row wins.
+- A tool's `placement` and `owner` in `tool-kinds.ts` decide where its calls are
+  drawn: the stream records a call, the views own what outlives one. A failed
+  call or one waiting on the user is drawn whatever its placement. A field the
+  stream draws also belongs in `transcript/row-text.ts`, the text behind copy,
+  the editor, and search.
   Transcript rows show content and settled summaries. A surface without an
   activity row may opt into its running-turn header. Decision components use
   readonly queue facts supplied by the caller, never inspect an overlay.

@@ -73,6 +73,7 @@ describe('equalStatusNode', () => {
     expect(equal(rich([span()]), rich([span({ styles: undefined })]))).toBe(false)
     expect(equal(rich([span()]), rich([span({ motion: undefined })]))).toBe(false)
     expect(equal(rich([span()]), rich([span({ variant: 'pulse' })]))).toBe(false)
+    expect(equal(rich([span()]), rich([span({ elastic: true })]))).toBe(false)
     // Spans without styles are equal to spans without styles.
     expect(equal(rich([{ text: 'a' }]), rich([{ text: 'a' }]))).toBe(true)
     expect(equal(rich([span()], 'wrap'), rich([span()]))).toBe(false)

@@ -101,7 +101,9 @@ export function remoteTranscriptContext(facts: RemoteSessionFactsSnapshot, catal
     byId.set(id, state)
     if (child?.promptText !== undefined && !byPrompt.has(child.promptText)) byPrompt.set(child.promptText, state)
   }
+  const cwd = catalog?.ref.sessionId === facts.ref.sessionId ? catalog.snapshot.byId[facts.ref.sessionId]?.cwd : undefined
   return {
+    ...cwd === undefined ? {} : { cwd },
     ...Array.isArray(parent?.compactions) ? { marks: parent.compactions } : {},
     ...Array.isArray(parent?.approvals) ? { approvals: parent.approvals } : {},
     ...typeof window === 'number' ? { window } : {},

@@ -193,3 +193,18 @@ command registrations, direct profile writes, loader internals,
 session-browsing persistence reads, header cwd reads, and known prose/flag
 guesses. A new key or service must be added here with its native owner; a
 Mayfly-owned key must be justified under the rules above.
+
+## Tool display: facts the Harness does not offer
+
+Mayfly's stream shows what these calls report. These stay partial until the Harness offers them:
+
+| Would show | What exists | What Mayfly shows |
+| --- | --- | --- |
+| A typed count on an MCP result (`12 issues`) | The bridge flattens a result to text; `structuredContent` does not reach the durable result | `N items` for a JSON list, else the size |
+| A resource link as a link | The bridge writes `Resource link: name (uri)` into the text | That text |
+| Edit `3 replaced` | No replacement count in the result metadata | The diffstat |
+| Grep's case flag | `grep` takes `pattern`, `path`, `include` | Those |
+| A background command's job id on its line | Only the rendered `started background job <id>`, which is never parsed | `background`; the Jobs view has the job |
+| A spawn's foreground or background mode | No such mode; a spawn is answered at once | The Agents view holds the child; the activity row counts a spawn only until its answer |
+| Stopping a foreground workflow | No native call | `Esc` ends it with the turn; `x` does nothing on it |
+

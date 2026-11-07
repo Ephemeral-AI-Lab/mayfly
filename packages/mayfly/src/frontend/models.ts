@@ -33,15 +33,27 @@ interface TranscriptThinkingModel extends TranscriptEntryBase {
  * Upstream Chat process-activity vocabulary: the category one process member
  * contributes to group titles and turn counts.
  */
-export type ProcessActivity = 'read' | 'readImage' | 'write' | 'search' | 'edit' | 'commands' | 'code' | 'webSearch' | 'webFetch' | 'subagents' | 'plan' | 'questions' | 'tools'
+export type ProcessActivity = 'read' | 'readImage' | 'write' | 'search' | 'edit' | 'commands' | 'code' | 'webSearch' | 'webFetch' | 'skill' | 'subagents' | 'workflow' | 'jobs' | 'todo' | 'goal' | 'questions' | 'mcp' | 'tools'
 /** One turn's lifecycle times, copied from the conversation projection. */
 export interface TranscriptTurnModel { readonly turn: number; readonly startedAt: number; readonly endedAt?: number | undefined; readonly outcome?: string | undefined }
 /** Terminal-card facts of one command call. */
-export interface TranscriptTerminalModel { readonly command: string; readonly description?: string; readonly output?: string; readonly exitCode?: number; readonly signal?: string }
+export interface TranscriptTerminalModel { readonly command: string; readonly description?: string; /** The working directory the call asked for, when it named one. */ readonly cwd?: string; readonly output?: string; readonly exitCode?: number; readonly signal?: string }
 /** Web-card facts of one settled web call. */
 export type TranscriptWebModel =
   | { readonly kind: 'search'; readonly sources: readonly { readonly url: string; readonly title?: string }[]; readonly truncated: boolean }
   | { readonly kind: 'fetch'; readonly url: string; readonly statusCode: number; readonly truncated: boolean }
+/** One file of a patch: what happens to it (added, modified, deleted, renamed), where it ends up, and the lines it changes. */
+export interface TranscriptPatchFileModel {
+  readonly kind: 'A' | 'M' | 'D' | 'R'
+  readonly path: string
+  /** Where a renamed file was. */
+  readonly from?: string
+  readonly added: number
+  readonly removed: number
+  readonly hunks: readonly { readonly before: string; readonly after: string }[]
+  /** Lines of the file's hunks that were cut to bound them. */
+  readonly hiddenLines: number
+}
 /**
  * File-change facts of one settled edit or write call, bounded so a megabyte write or a huge replacement carries only its
  * head: the counts are taken before the cut, the hunks and the head lines after it.
@@ -56,7 +68,9 @@ export interface TranscriptFileChangeModel {
   /** Changed lines the cut hunks leave out. */
   readonly hiddenLines: number
   /** A write's new text: its size, its lines, and the first of them. */
-  readonly write?: { readonly bytes: number; readonly lines: number; readonly head: readonly string[] }
+  readonly write?: { readonly bytes: number; readonly lines: number; readonly head: readonly string[]; readonly created: boolean }
+  /** A patch's files, every one of them: `path` and the counts are then the first file's and the patch's. */
+  readonly files?: readonly TranscriptPatchFileModel[]
 }
 /**
  * How the Harness cut a tool call short, from the failure code of its result: `aborted` (the user stopped it while it ran,
@@ -90,7 +104,11 @@ export interface TranscriptToolModel extends TranscriptEntryBase {
   /** The presenter's call title, when the tool declares one. */
   readonly title?: string
   readonly terminal?: TranscriptTerminalModel
+  /** What a call that executes outside a terminal card was given: a background command and its description. */
+  readonly execute?: { readonly input: string; readonly note?: string }
   readonly web?: TranscriptWebModel
+  /** The pictures a call to an MCP tool answered with. */
+  readonly images?: readonly NonNullable<ReadCallModel['image']>[]
   /** The change an edit or write made, once it settled without an error. */
   readonly change?: TranscriptFileChangeModel
   readonly arguments: string
@@ -133,6 +151,8 @@ export interface ReadCallModel {
   /** Set when the error is the call being cut short rather than failing. */
   readonly interruption?: ToolInterruption
   readonly previewLines?: readonly ReadPreviewLine[]
+  /** The picture an image read returned. */
+  readonly image?: { readonly mediaType: string; readonly width: number; readonly height: number; readonly bytes: number }
 }
 /** A run of consecutive read calls collapsed into one transcript entry. */
 export interface TranscriptReadGroupModel extends TranscriptEntryBase { readonly kind: 'transcript-read-group'; readonly step: number; readonly reads: readonly ReadCallModel[] }
@@ -163,6 +183,10 @@ export interface SearchCallModel {
   readonly startedAt: number
   readonly endedAt?: number
   readonly pattern?: string
+  /** The path the call searched under, when it named one. */
+  readonly scope?: string
+  /** The glob filter the call gave, when it gave one. */
+  readonly include?: string
   readonly shape?: 'matches' | 'paths'
   readonly files?: readonly SearchFileMatchesModel[]
   readonly paths?: readonly string[]
@@ -200,6 +224,10 @@ export interface CommandCallModel {
   readonly command: string
   /** Every line of a command that spans several, bounded: what a running call shows as its input in place of its line's target. */
   readonly commandLines?: readonly string[]
+  /** What the call said the command is for. */
+  readonly description?: string
+  /** The working directory the call asked for, when it named one. */
+  readonly cwd?: string
   readonly state: 'pending' | 'ok' | 'error'
   readonly exitCode?: number
   readonly signal?: string

@@ -1,6 +1,6 @@
 # Bottom panes
 
-Between the transcript and the input editor sits the **bottom dock**: three passive panes stacked by priority, top to bottom workflow → activity → notification, so the notification row sits directly above the editor (the status bar stays below it). Agents, jobs, goal, and todo are not panes: they are the items of the status row ([Status bar](/en/features/status-bar)). Panes with nothing to say render zero rows, so the dock does not jump. BTW and sessions opened from `/agents` are not panes: they are side conversations shown in the transcript pane.
+Between the transcript and the input editor sits the **bottom dock**: two passive panes stacked by priority, activity above notification, so the notification row sits directly above the editor (the status bar stays below it). Agents, jobs, workflow, goal, and todo are not panes: they are the items of the status row ([Status bar](/en/features/status-bar)). Panes with nothing to say render zero rows, so the dock does not jump. BTW and sessions opened from `/agents` are not panes: they are side conversations shown in the transcript pane.
 
 ## Dock budget
 
@@ -14,20 +14,22 @@ The one live-status row for the current Agent: the transcript only records what 
 🌔 Deep diving · 3s · Tip: …
 ⠋ Thinking · 8s · ↓2 · ≈42 tok/s · Tip: …
 ⠋ Writing · 14s · ↓120 · ≈40 tok/s · Tip: …
-🌔 Running commands · 21s · ↑30k ↓4k · pnpm test
+● Running commands · Tip: …
+● Reading files · 3 in flight · oldest 12s
+● Calling github
 ```
 
 | Mode | Presentation |
 | --- | --- |
-| waiting | fill glyph + `Deep diving`; while a tool call's arguments still stream, its preparing label (`Preparing to write files`) |
-| tool | still `●` + the running category (`Running commands`, `Reading files`, `Calling tools`); a subagent spawn keeps `Deep diving` because the Agents item shows it |
+| waiting | fill glyph + `Deep diving` |
+| tool | still `●` + the running category (`Running commands`, `Reading files`, `Calling github`), or its preparing label while a call's arguments still stream (`Preparing to write files`); a spawn counts until the Harness answers it, which is at once, and then the row returns to `Deep diving` because the Agents item shows the child |
 | thinking | bloom glyph + `Thinking` |
 | composing | fill glyph + `Writing` — no output cursor; this line is the "writing" signal |
 | stopping | a static `■ interrupting...` while an interrupt drains |
 | idle | a one-row placeholder (stable dock edge) |
 | dialog open | the row hides (a panel holds the editor slot) |
 
-In Standard, the tip's slot carries the running action instead: the command, path, or query (a generic or MCP tool shows its name, `server › tool`), or the latest reasoning paragraph while thinking. Compact stays minimal, and Detailed and Verbose already show the running card in the transcript, so they carry no detail; neither does a file write or edit, whose diff card is on screen. As the terminal narrows, the row sheds the tail first (a long detail truncates before it goes), then the rate, the counters, the elapsed time, and finally the label; it never wraps.
+While tools run, the row says how many of one tool are in flight (`3 in flight`) and, from ten seconds on, how old the oldest is (`oldest 12s`). Tools that differ read `Running 2 tools`, with their names on the line under the row in place of the tip (`Read · github › get_issue`, three names and `+N more`). What a call was given and how long it has run are on its line in the stream, at every level. As the terminal narrows, the row sheds the tail first (a long detail truncates before it goes), then the rate, the counters, the elapsed time, and finally the label; it never wraps.
 
 ## Notification pane
 
@@ -63,10 +65,10 @@ Mayfly keeps the primary conversation and any number of side conversations open 
 
 ## Agents view
 
-The subagents of the conversation are the **Agents view** of the status row, not a dock pane. The row shows `● agents 1/3 41s` (settled over all, and how long the oldest working one has run), and it stays for the whole conversation: `✓ agents 3/3 41s`, or `✕` when one failed on its own; a subagent you stopped is no failure. Spawn-class calls (`subagent` and any `subagent_*` provider) are the members, so a subagent shows from the moment its call starts: a call without a result is a **foreground** subagent that blocks the turn (`fg`), one whose `started subagent` acknowledgement landed is a **background** one (`bg`). In the transcript the call's line follows its child: `● Subagent(…) · running in background`, then `✓ … 41s`, `✕ … failed`, or `⊘ … stopped`.
+The subagents of the conversation are the **Agents view** of the status row, not a dock pane. The row shows `● agents 1/3 41s` (settled over all, and how long the oldest working one has run), and it stays for the whole conversation: `✓ agents 3/3 41s`, or `✕` when one failed on its own; a subagent you stopped is no failure. Spawn-class calls (`subagent` and any `subagent_*` provider) are the members, so a subagent shows from the moment its call starts. The Harness has no foreground or background mode: it answers a spawn at once and the child runs on. In the transcript the call's line follows its child and `Enter` on it moves to this view: `● Subagent(…)`, then `✓ … 41s`, `✗ … failed`, or `⊘ … stopped`; several spawns read as one line that counts them (`● Subagent · 1/3`).
 
-`Alt+↓` opens the panel under the row: a list of every subagent of the conversation, the working ones first, one aligned line each — the mark (`●` working, `✓` done, `✕` failed, `⊘` stopped), the name, the task, `fg`/`bg`, tool count, tokens (total, `↑` in, `↓` out), the output rate while it streams, and the time last. A narrow row gives up columns in a set order (the rate, the `↑` count, the `↓` count, the tag, the tools) and keeps the name, the task, and the time. `↑/↓` choose a row, `Enter` opens its conversation exactly as `/agents` does (`F8` closes it and returns to the view that opened it; `/agents` opens its own browser, which does not return here), `x` stops a continuable child behind a Yes / No confirmation (No focused), and `b` (foreground to background) is listed but unavailable until Harness has a call that ends a running foreground call early. A side conversation (`/btw` or a subagent) lists only the subagents it spawned itself.
+`Alt+↓` opens the panel under the row: a list of every subagent of the conversation, the working ones first, one aligned line each — the mark (`●` working, `✓` done, `✕` failed, `⊘` stopped), the label from its spawn call, what it does now (`Using bash`, `Thinking…`), tokens (`↑` in, `↓` out), the output rate while it streams, and the time last. A narrow row gives up columns in a set order and keeps the label and the time. `↑/↓` choose a row, `Enter` opens its conversation exactly as `/agents` does (`F8` closes it and returns to the view that opened it; `/agents` opens its own browser, which does not return here), and `x` stops a continuable child behind a Yes / No confirmation (No focused). A side conversation (`/btw` or a subagent) lists only the subagents it spawned itself.
 
-## Workflow pane
+## Workflow view
 
-After native `workflow/*` lifecycle facts are attributed to the current Agent, this pane shows the workflow name, current phase, running/completed/failed child-Agent tree, and elapsed time updated once per second. A run with more than six agents lists its running agents first and counts the rest in a closing `… +K more` row. A settled summary remains until the next relevant state replacement; switching the displayed conversation switches this pane with every other session-scoped surface.
+The workflows of the conversation are the **Workflow view** of the status row, not a dock pane. The row shows `● workflow 2/7` (agents settled over agents started), with `✓` when all settled and `✕` when one failed; it holds for five seconds after the last run settles and then goes. `Alt+↓` opens the panel: one line per run (at most three) above its members, each a mark, a label, and a phase. `x` stops a background run through its job after a confirmation; a foreground run has no native stop, so `Esc` ends it with the turn. A background workflow's job is listed here and not in the Jobs view. In the transcript a run is one line (`✓ Workflow(name) · 20s`), and `Enter` on it moves to this view. Switching the displayed conversation switches this view with every other session-scoped surface.

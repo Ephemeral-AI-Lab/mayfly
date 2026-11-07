@@ -7,7 +7,7 @@
  * @module @ephemeral-ai/mayfly/core/ui-list-paint
  */
 
-import { hasMotion } from './ui-motion-text.ts'
+import { fitSpans, hasMotion } from './ui-motion-text.ts'
 import type { MayflyInlineSpan, MayflyListCell, MayflyListItem, MayflyListNode } from '@ephemeral-ai/mayfly-ui'
 import type { MayflySemanticColors } from './types.ts'
 import { scanContentLines, type ContentLineScan } from './content-segments.ts'
@@ -319,10 +319,10 @@ function inputOf(state: RowState, colors: MayflySemanticColors): string {
   return `${label}${colors.muted(':')} ${state.text === '' ? '' : state.on ? colors.textStrong(state.text) : colors.text(state.text)}${caret}`
 }
 
-function labelOf(state: RowState, colors: MayflySemanticColors): string {
+function labelOf(state: RowState, colors: MayflySemanticColors, room: number): string {
   const item = state.spec.item
   if (item.input !== undefined) return inputOf(state, colors)
-  if (item.labelSpans !== undefined) return spansText(item.labelSpans, colors)
+  if (item.labelSpans !== undefined) return spansText(item.wrap === true ? item.labelSpans : fitSpans(item.labelSpans, room), colors)
   if (item.disabled === true) return colors.muted(item.label)
   // One rule for every picker: the cursor row is bold white, the live row takes the theme color (bold when the cursor is on it).
   const painted = item.current === true ? colors.primary(item.label) : state.on ? colors.textStrong(item.label) : colors.text(item.label)
@@ -335,7 +335,7 @@ function headOf(state: RowState, colors: MayflySemanticColors): { readonly prefi
   const item = state.spec.item
   // A row with cells lines them up in the list's columns (the label is then its lead); its description follows them.
   const cells = cellsOf(item, state.plan, colors)
-  const head = `${prefix}${labelOf(state, colors)}${labelTail(item, colors)}${cells}`
+  const head = `${prefix}${labelOf(state, colors, state.width - visibleWidth(prefix))}${labelTail(item, colors)}${cells}`
   const placeholder = item.input?.placeholder !== undefined && state.text === '' ? colors.muted(item.input.placeholder) : undefined
   const description = state.width <= DETAIL_MIN_WIDTH ? '' : placeholder ?? descriptionOf(item, colors)
   if (description.length === 0) return { prefix, line: head }

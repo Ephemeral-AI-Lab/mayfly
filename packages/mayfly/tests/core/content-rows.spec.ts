@@ -305,6 +305,8 @@ describe('contentNodeSource', () => {
     expect(materialized).toEqual(['plain accented'])
     const truncated = source({ kind: 'rich-text', overflow: 'truncate', spans: [{ text: 'long '.repeat(30).trim() }] }, 10)
     expect(visibleWidth(truncated.rows[0]!)).toBeLessThanOrEqual(10)
+    const elastic = source({ kind: 'rich-text', overflow: 'truncate', spans: [{ text: 'path/to/a/long/file', elastic: true }, { text: ' · exit 1' }] }, 16)
+    expect(plainText(elastic.rows[0]!)).toBe('path/t… · exit 1')
   })
 
   it('is marker-free and declares a width without reading a row', () => {
