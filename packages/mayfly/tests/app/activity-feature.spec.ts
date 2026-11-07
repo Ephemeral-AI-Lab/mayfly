@@ -18,6 +18,9 @@ async function fixture(initial?: Readonly<Record<string, unknown>>, conversation
     const selection = current()
     return selection === undefined ? undefined : { ...selection, ...kind === undefined ? {} : { kind } }
   })
+  // The fold always carries the list of spawns; these facts are written by hand.
+  const setFacts = f.facts.set.bind(f.facts)
+  f.facts.set = (value: unknown) => { setFacts((value === undefined ? undefined : { agentCalls: [], ...value as object }) as never) }
   if (initial !== undefined) f.facts.set(initial)
   if (conversation !== undefined) f.conversation.set(conversation)
   const dispose = mountActivityFeature(f.options)
@@ -52,7 +55,7 @@ describe('Remote shared activity and approval waiting', () => {
     expect(f.rows()).toEqual([])
   })
   it.each([1, 8, 20, 39, 40, 80, 120])('preserves exactly three activity rows at width %s', async width => {
-    const f = await fixture(); f.active(1, { inFlight: [{ callId: 'long', name: 'Bash', detail: 'A very long native tool detail: 你好 '.repeat(20) }] })
+    const f = await fixture(); f.active(1, { inFlight: [{ callId: 'a', name: 'a_very_long_native_tool_name_你好'.repeat(4), startedAt: 0 }, { callId: 'b', name: 'bash', startedAt: 0 }] })
     const rows = f.rows(width)
     expect(rows).toHaveLength(3)
     expect(rows.every(row => visibleWidth(row) <= width)).toBe(true)
@@ -110,14 +113,29 @@ describe('Remote shared activity and approval waiting', () => {
     expect(f.rows()[1]).toContain('approval · 0s')
     f.model().requestClose(); await next
   })
-  it('prefers current tool argument details while preparing tools retain the shared tip', async () => {
+  it('names different tools under the row, while one tool leaves it the shared tip', async () => {
     const f = await fixture()
-    f.active(1, { inFlight: [{ callId: 'real', name: 'Bash', detail: 'printf safe' }] })
-    expect(f.rows()[2]).toContain('printf safe')
+    f.active(1, { inFlight: [{ callId: 'a', name: 'bash', startedAt: 0 }, { callId: 'b', name: 'read', startedAt: 0 }] })
+    expect(f.rows()[2]).toContain('Bash · Read')
     expect(f.rows()[2]).not.toContain('Tip:')
-    f.active(1, { inFlight: [{ callId: 'real', name: 'Bash', detail: 'not yet executing', preparing: true }] })
+    f.active(1, { inFlight: [{ callId: 'a', name: 'bash', startedAt: 0 }] })
     expect(f.rows()[2]).toContain('Tip: Esc to interrupt the turn')
-    expect(f.rows()[2]).not.toContain('not yet executing')
+  })
+  it('shows the calls an attempt still writes, joined with those committed, until the Host has them', async () => {
+    const f = await fixture()
+    f.active(1, { phase: 'waiting', inFlight: [] })
+    expect(f.rows()[1]).toContain('Deep diving')
+    f.ctx.emit('mayfly/preparing-calls', [{ callId: 'w', name: 'write' }])
+    expect(f.rows()[1]).toContain('Preparing to write files')
+    f.active(1, { phase: 'tool', inFlight: [{ callId: 'r', name: 'read', startedAt: 0 }] })
+    expect(f.rows()[1]).toContain('Running 2 tools')
+    expect(f.rows()[2]).toContain('Read · Write')
+    f.ctx.emit('mayfly/preparing-calls', [])
+    f.active(1, { phase: 'waiting', inFlight: [] })
+    expect(f.rows()[1]).toContain('Deep diving')
+    f.disposeActivity()
+    f.ctx.emit('mayfly/preparing-calls', [{ callId: 'late', name: 'write' }])
+    expect(f.node()).toBeNull()
   })
   it('keeps waiting visible above a decision and hides activity beneath an ordinary panel', async () => {
     const f = await fixture(); f.active()
@@ -239,12 +257,12 @@ describe('Remote shared activity and approval waiting', () => {
     expect(f.ctx.mayflyPanes.list()).toEqual([])
     expect(f.ctx.mayflyUiInteraction.notificationSnapshot()).toEqual([])
   })
-  it('bounds in-flight tool details, drops empty values, and summarizes additional calls', async () => {
+  it('bounds the names of the tools in flight and summarizes the others', async () => {
     const f = await fixture()
-    f.active(1, { inFlight: ['one', 'two', 'three', 'four', '', 'one'].map((detail, index) => ({ callId: String(index), name: index % 2 === 0 ? 'bash' : 'read', detail })) })
-    expect(f.rows()[1]).toContain('Running 6 tools')
-    expect(f.rows()[2]).toContain('one · two · three +1 more')
-    expect(f.rows()[2]).not.toContain('four')
+    f.active(1, { inFlight: ['bash', 'read', 'grep', 'glob', 'bash'].map((name, index) => ({ callId: String(index), name, startedAt: 0 })) })
+    expect(f.rows()[1]).toContain('Running 5 tools')
+    expect(f.rows()[2]).toContain('Bash · Read · Grep +1 more')
+    expect(f.rows()[2]).not.toContain('Glob')
   })
   it.each([
     [{ status: 429, reason: 'temporary pressure' }, 'rate limited · temporary pressure · retrying in 4s · 1/3'],

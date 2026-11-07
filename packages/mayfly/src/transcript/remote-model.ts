@@ -398,9 +398,7 @@ function withLiveOverlay(
     counters,
   )
   const durableIds = new Set(durable.entries.map(entry => entry.id))
-  // The shared converter produces identified transcript entries. A native
-  // transient assistant attempt contains only thinking/text, never tool rows;
-  // tool calls are durable Host facts and need no second live de-duplication.
+  // A call the attempt still writes is here only until the Host commits it: its durable row has the same id and wins.
   const entries = (liveModel.entries as readonly TranscriptEntryModel[]).filter(entry => !durableIds.has(entry.id))
   return freezeModel({
     ...durableModel,

@@ -19,7 +19,7 @@ import type { StreamRow } from '../components/transcript-view.ts'
 import type { ToolBodyRow, ToolDiffHunk, ToolLineState, ToolPatchFile, ToolStat } from '../components/tool-line.ts'
 import { compactElapsedMs } from './agent-presentation.ts'
 import { WRITE_HEAD_LINES } from './conversation-model.ts'
-import { elapsedText } from './process-activity.ts'
+import { elapsedText, toolActivity } from './process-activity.ts'
 import { partialStrings } from './partial-json.ts'
 import { patchFiles } from './patch-files.ts'
 import { ellipsize } from './present.ts'
@@ -181,6 +181,17 @@ function interruptionText(interruption: ToolInterruption | undefined, t: MayflyT
  */
 function nameOf(name: string): string {
   return name.split('_').filter(part => part !== '').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('')
+}
+
+/**
+ * A tool's name as the activity row says it, where nothing else names its server.
+ * @param name - the name as the model requested it.
+ * @returns `Read`, or `github › get_issue`.
+ */
+export function flightName(name: string): string {
+  if (toolActivity(name) !== 'mcp') return nameOf(name)
+  const { server, tool } = mcpNameOf(name)
+  return server === undefined ? tool : `${server} › ${tool}`
 }
 
 const NO_ROWS: Body = { rows: [], total: 0 }

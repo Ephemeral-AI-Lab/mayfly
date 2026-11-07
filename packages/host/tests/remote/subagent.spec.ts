@@ -46,7 +46,7 @@ describe('subagentTree', () => {
     const f = fixture([child('parent'), child('nested', 'parent'), diagnostic('broken'), child('cold'), child('external', 'root', 'external')])
     f.resident('parent', 'running')
     f.resident('nested')
-    f.values.set('parent', { mayflyConversationFacts: { epochTokens: 123, epochOutputTokens: 23, epochToolCount: 2, outputProgress: { step: 1 }, inFlight: [{ callId: 'p', name: 'read', preparing: true }, { callId: 'r', name: 'bash' }, { callId: 's', name: 'grep' }] }, subagentTiming: { settledMs: 30, active: { since: 40 } } })
+    f.values.set('parent', { mayflyConversationFacts: { epochTokens: 123, epochOutputTokens: 23, epochToolCount: 2, outputProgress: { step: 1 }, inFlight: [{ callId: 'r', name: 'bash' }, { callId: 's', name: 'grep' }] }, subagentTiming: { settledMs: 30, active: { since: 40 } } })
     const rows = await f.tree()
     expect(rows.map(row => row.id)).toEqual(['parent', 'nested', 'broken', 'cold', 'external'])
     expect(rows[0]).toMatchObject({ parentId: 'root', depth: 1, activity: 'running', live: true, tokens: 123, inputTokens: 100, outputTokens: 23, currentTool: 'bash', outputProgress: { step: 1 }, toolCount: 2, settledMs: 30, activeSince: 40, stopBlocked: 'live-descendants' })

@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   editorActions: undefined as { submit: (text: string) => Promise<void>, onError: (error: unknown) => void, cancel: () => Promise<void>, exit: () => void } | undefined,
   attachError: undefined as Error | undefined,
   coreError: undefined as Error | undefined,
-  refreshTranscript: undefined as (() => void) | undefined,
+  refreshTranscript: undefined as ((model: unknown) => void) | undefined,
   toolPresentation: undefined as { get: () => undefined } | undefined,
   transcriptSource: undefined as (() => unknown) | undefined,
   transcriptOptions: undefined as {
@@ -326,7 +326,9 @@ describe('runRemoteFrontend', () => {
     await vi.waitFor(() => { expect(mocks.editorActions).toBeDefined() })
     mocks.transcriptSource!()
     mocks.toolPresentation!.get()
-    mocks.refreshTranscript!()
+    mocks.refreshTranscript!({})
+    // A model with a call being written announces it; the row's own spec covers what it does with that.
+    mocks.refreshTranscript!({ live: { entries: [{ kind: 'transcript-tool', callId: 'p', name: 'write', preparing: { characters: 1 } }] } })
     await mocks.editorActions!.submit('hello')
     expect(mocks.apps[0]!.execute).toHaveBeenCalledWith('hello')
     await mocks.editorActions!.onError(new Error('offline'))

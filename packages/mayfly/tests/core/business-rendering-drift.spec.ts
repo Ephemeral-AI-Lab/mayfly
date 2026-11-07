@@ -51,6 +51,7 @@ const approvedPresentation = new Set([
   // renderer and have no business-owned padding.
   "padding:packages/mayfly/src/app/panels.ts:return missing > 0 ? `${row}${' '.repeat(missing)}` : row",
   "pointer:packages/mayfly/src/components/tool-line.ts:...(facts.server === undefined ? [] : [{ text: `${facts.server} \u203a `, tone: 'muted' } as const]),",
+  "pointer:packages/mayfly/src/transcript/tool-calls.ts:return server === undefined ? tool : `${server} \u203a ${tool}`",
   "pointer:packages/mayfly/src/interaction/update-model.ts:{ kind: 'divider', label: `v${fromVersion} \u2192 v${toVersion}` },",
   // A version transition caption in the shared decision strip, not a selection pointer.
   "pointer:packages/mayfly/src/app/operations/update.ts:`v${from} \u2192 v${to}`,",

@@ -564,6 +564,7 @@ function toolModel(resolved: ResolvedTool, family: TranscriptToolFamily, counter
     name: entry.name,
     family,
     ...processFacts(resolved),
+    ...(entry.preparing === undefined ? {} : { preparing: entry.preparing }),
     ...(call === undefined ? {} : { title: call.title }),
     ...(terminal === undefined ? {} : { terminal }),
     ...(execute === undefined ? {} : { execute }),
@@ -710,7 +711,8 @@ export function conversationTranscriptModel(
       resolved = resolveTool(entry, tools)
       caches?.tools.set(entry, resolved)
     }
-    const family = toolFamily(resolved)
+    // A call whose arguments still stream has no shape yet to group by.
+    const family = entry.preparing === undefined ? toolFamily(resolved) : 'other'
     const continuesRun = runFamily !== undefined
       && family === runFamily
       && entry.turn === run[0]!.entry.turn

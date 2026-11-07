@@ -38,6 +38,15 @@ describe('the facts of a call', () => {
     expect(modelOf('custom', {}, { content }, {})).not.toHaveProperty('images')
   })
 
+  it('keeps a call being written apart from any group, and says how far it has gone', () => {
+    const entry = { kind: 'tool', id: 'tool:p', seq: 1, updatedSeq: 1, turn: 1, step: 1, callId: 'p', name: 'read', arguments: '{"file_pa', startedAt: 0, channel: 'transcript', preparing: { characters: 9 } }
+    const settled = { ...entry, id: 'tool:s', callId: 's', arguments: '{"file_path":"a"}', preparing: undefined, result: { content: [], text: 'x', isError: false, endedAt: 1 } }
+    const reading: ToolPresentationSource = { get: () => ({ presentCall: () => ({ card: 'generic', title: 'Read', kind: 'read', locations: [{ path: 'a' }] }) }) }
+    const entries = conversationTranscriptModel({ streaming: true, entries: [settled, entry] } as unknown as ConversationProjection, reading).entries as readonly TranscriptEntryModel[]
+    expect(entries.map(item => item.kind)).toEqual(['transcript-read-group', 'transcript-tool'])
+    expect(entries[1]).toMatchObject({ preparing: { characters: 9 }, activity: 'read' })
+  })
+
   it('reads a search\'s scope and filter from its arguments, and an empty one as none', () => {
     const call = { card: 'generic', title: 'Grep', kind: 'search' }
     expect(modelOf('grep', { pattern: 'x', path: 'src', include: '*.ts' }, undefined, { call })).toMatchObject({ searches: [{ scope: 'src', include: '*.ts' }] })

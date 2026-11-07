@@ -19,7 +19,6 @@ import { everyAdmitted, identityAdmission } from './admission.ts'
 import { outputProgressSchema } from './output-progress.ts'
 import type { ApprovalMark, CompactionMark, ConversationAgentCall, ConversationFactsState } from './types.ts'
 import { foldAssistantStreamRecords, initialAssistantStream } from './stream-accumulator.ts'
-import { argumentDetail } from './activity-detail.ts'
 import { isSpawnToolName } from './projection.ts'
 
 /** Runtime schema for the persisted presentation facts state. */
@@ -44,7 +43,7 @@ export const conversationFactsSchema = z.object({
     name: z.string().optional(),
     preparing: z.boolean().optional(),
   }).optional(),
-  inFlight: z.array(z.object({ callId: z.string(), name: z.string(), detail: z.string().optional(), preparing: z.boolean().optional() })).optional(),
+  inFlight: z.array(z.object({ callId: z.string(), name: z.string(), startedAt: z.number() })).optional(),
   retrying: z.object({ retry: z.number(), maxRetries: z.number(), at: z.number(), delayMs: z.number(), reason: z.string().optional(), status: z.number().optional() }).optional(),
   compactions: z.array(z.object({ id: z.string(), before: z.number().nonnegative(), after: z.number().nonnegative().optional(), window: z.number().positive().optional() })).optional(),
   approvals: z.array(z.object({ id: z.string(), callId: z.string().optional(), outcome: z.enum(['allowed-once', 'rejected', 'cancelled', 'unavailable']).optional() })).optional(),
@@ -139,15 +138,6 @@ function withoutCleared(state: ConversationFactsState): ConversationFactsState {
     delete plain[key]
   }
   return plain === undefined ? state : plain as unknown as ConversationFactsState
-}
-
-/** The salient argument of a committed call's raw JSON arguments, `''` when they do not parse. */
-function detailOf(raw: string): string {
-  try {
-    return argumentDetail(JSON.parse(raw))
-  } catch {
-    return ''
-  }
 }
 
 /** The failure a retry record carries, as a short reason. */
@@ -298,7 +288,7 @@ function foldFacts(
         ...state, phase: 'tool', active: true, turn: event.data.turn, outputProgress: undefined,
         epochToolCount: (state.epochToolCount ?? 0) + 1,
         activity: { kind: 'tool', name: event.data.name },
-        inFlight: [...(state.inFlight ?? []), { callId: String(event.data.callId), name: event.data.name, detail: detailOf(event.data.arguments) }],
+        inFlight: [...(state.inFlight ?? []), { callId: String(event.data.callId), name: event.data.name, startedAt: event.time }],
       }
     case 'tool/result': {
       // Tool results are first-class tool-role messages; logs written before
@@ -405,5 +395,5 @@ export const conversationFactsProjectionDefinition: ConversationFactsProjectionD
     // matching summary-excluded mark.
     summary: false,
   },
-  stateVersion: 13,
+  stateVersion: 14,
 }

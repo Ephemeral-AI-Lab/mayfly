@@ -33,7 +33,7 @@ function transientAssistantConversation(stream: readonly AssistantStreamRecord[]
 describe('transient assistant conversation', () => {
   it('takes only the stream and detail helpers from the Host conversation subpath, never its durable fold', async () => {
     const names = await hostConversationImports(resolve(import.meta.dirname, '../../src'))
-    expect([...names].toSorted()).toEqual(['argumentDetail', 'foldAssistantStreamRecords', 'initialAssistantStream', 'toolDetail'])
+    expect([...names].toSorted()).toEqual(['argumentDetail', 'foldAssistantStreamRecords', 'initialAssistantStream', 'toolDetail', 'toolEntryId'])
   })
 
   it.each(([
@@ -59,6 +59,18 @@ describe('transient assistant conversation', () => {
     ])
     expect(projection.streaming).toBe(true)
     expect(projection.settledSteps).toEqual([])
+  })
+
+  it('carries a call the attempt still writes under the id its durable row will have, with what it has written so far', () => {
+    const projection = transientAssistantConversation([
+      { type: 'chunk', time: 10, chunk: { type: 'text-delta', index: 0, text: 'answer' } },
+      { type: 'chunk', time: 20, chunk: { type: 'tool-call-delta', index: 1, id: 'c1', name: 'write', argumentsDelta: '{"file' } },
+      { type: 'chunk', time: 30, chunk: { type: 'tool-call-delta', index: 1, id: 'c1', argumentsDelta: '_path":"a' } },
+    ] as readonly AssistantStreamRecord[], { seq: 7, time: 30, turn: 2, step: 3 })
+    expect(projection.entries.at(-1)).toEqual({
+      kind: 'tool', id: 'tool:c1', seq: 7, updatedSeq: 7, turn: 2, step: 3, callId: 'c1', name: 'write', arguments: '{"file_path":"a',
+      startedAt: 20, channel: 'transcript', preparing: { characters: 15 },
+    })
   })
 
   it('keeps an empty transient window empty', () => {

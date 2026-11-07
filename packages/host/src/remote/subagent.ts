@@ -124,7 +124,7 @@ export async function subagentTree(ctx: Context, request: MayflyHostSessionReque
     const facts = values.mayflyConversationFacts
     const timing = values.subagentTiming
     const blocked = stopBlocked(ctx, entries, entry)
-    const currentTool = facts?.inFlight?.find(call => call.preparing !== true)?.name
+    const currentTool = facts?.inFlight?.[0]?.name
     rows.push(Object.freeze({
       ...entry,
       ...label === undefined ? {} : { label },

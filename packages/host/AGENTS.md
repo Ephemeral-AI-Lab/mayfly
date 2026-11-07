@@ -15,7 +15,7 @@ process; it must never import the terminal UI, pi-tui, or a renderer.
   settled Job rows in registration order). Job history is a whole readonly
   snapshot; unfinished registrations stay absent and resident `job.list` rows
   take precedence in the frontend. The facts projection keeps
-  `stateVersion` 13 and must stay a pure immutable fold: renderers never fold a
+  `stateVersion` 14 and must stay a pure immutable fold: renderers never fold a
   second session log, and a semantics change increments the version with the
   fold change that caused it.
 - `src/remote/` owns the `mayflyHost` Remote service and its client-safe DTOs in

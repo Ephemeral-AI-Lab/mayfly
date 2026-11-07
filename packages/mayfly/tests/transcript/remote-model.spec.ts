@@ -718,6 +718,22 @@ describe('RemoteConversationModelSource', () => {
     source.dispose()
   })
 
+  it('overlays a call the attempt still writes, until the Host has its durable row', () => {
+    const events = new TestEventSource()
+    const source = new RemoteConversationModelSource(tools, vi.fn())
+    source.attach(events.binding())
+    events.append(turn(1, 1))
+    const entry = live('', 1, 2, 0)
+    events.append({ ...entry, event: { ...entry.event, data: { ...entry.event.data, chunk: { type: 'tool-call-delta', index: 0, id: 'c1', name: 'write', argumentsDelta: '{"file_path":"a' } } } } as unknown as SessionEventLikeEntry)
+    expect(source.snapshot().live?.entries).toMatchObject([{ kind: 'transcript-tool', id: 'tool:c1', preparing: { characters: 15 } }])
+    events.append({ type: 'event', event: { type: 'tool/call', seq: SessionSeq(3), time: 30, data: { turn: 1, step: 0, callId: 'c1', name: 'write', arguments: '{"file_path":"a"}' } } } as unknown as SessionEventLikeEntry)
+    expect(source.snapshot().live?.entries ?? []).toEqual([])
+    const durable = source.snapshot().entries.find(item => item.kind === 'transcript-tool')
+    expect(durable).toMatchObject({ id: 'tool:c1' })
+    expect(durable).not.toHaveProperty('preparing')
+    source.dispose()
+  })
+
   it('does not duplicate an unsettled durable assistant attempt when its final live frame arrives late', () => {
     const events = new TestEventSource()
     const source = new RemoteConversationModelSource(tools, vi.fn())
