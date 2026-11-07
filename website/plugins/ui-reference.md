@@ -1442,7 +1442,7 @@ TUI 通过同一套键位语法从 canonical control 角色推导操作，并用
 - `Tab` / `Shift-Tab` 在控制组间移动（在 tab 条上会下钻到当前页内容），记住组内
   焦点，并顺路提交文本与打开的选择器；在 form 或 action 行内逐个控件移动。
 - `↑` / `↓` 在行与字段间移动，永远不改值。`←` / `→` 沿 action 行和 tab 条移动、调整
-  聚焦的 select 或行内 segment、展开或折叠树节点。`Alt+←` / `Alt+→` 可在任意位置切换
+  聚焦的 select 或行内 segment、展开或折叠树节点；在向导的选项行上则切换步骤。`Alt+←` / `Alt+→` 可在任意位置切换
   tab；向导向前切换时会校验离开的步骤。
 - 移动不循环，disabled item 不可聚焦。single list 用 `Enter` 激活，multiple list
   用 `Space` 切换、`Enter` 确认，action 用 `Enter` 或 `Space`。

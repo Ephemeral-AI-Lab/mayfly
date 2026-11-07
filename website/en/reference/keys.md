@@ -21,7 +21,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | Key | Action |
 | --- | --- |
 | `↑/↓` | Move between rows and fields; scroll documents |
-| `←/→` | Cycle a select value, adjust a row setting, open or close a tree branch, or move along a tab strip |
+| `←/→` | Cycle a select value, adjust a row setting, open or close a tree branch, move along a tab strip, or change step from a wizard's option row |
 | `Alt+←/→ or F2/F3` | Switch tabs from anywhere on the surface; wizards validate the step being left |
 | `Alt+↑/↓ or F4/F5` | Move between controls from anywhere outside text editing and open pickers |
 | `←` | Used by the focused control when it changes something; otherwise it moves focus to the surface's rail of labels, where it does nothing |
@@ -29,6 +29,7 @@ Every panel, picker, and form follows one key grammar. The hint row at the botto
 | `Alt+↓ or F5, F6` | From an empty prompt, enter the views of the status bar (F6 enters them first, then the interactive panes); ←/→ switch views and Esc returns to the prompt |
 | `PgUp/PgDn, Home/End` | Page or jump in lists and documents |
 | `Enter` | Choose, run, open a picker, apply it, or start editing a field |
+| `Type or Backspace` | Start editing a focused field, even where Enter submits; in a text row, ←/→ and Home/End move the caret |
 | `Space` | Toggle a checkbox or multi-select row, open a multiselect, or fold a tree branch |
 | `Tab/Shift+Tab` | Commit a text field or picker and move to the next or previous control (while editing a field) |
 | `Esc` | Leave the innermost layer: picker, editing, search, back, return to the first control, then close |

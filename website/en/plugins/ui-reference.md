@@ -1595,8 +1595,9 @@ not repeat generic keyboard teaching in a surface footer:
   steps control by control.
 - Up/Down move between rows and fields and never change a value. Left/Right
   move along action rows and tab strips, adjust a focused select or row segment,
-  and open or close tree branches. Alt+Left/Right switch tabs from anywhere; in
-  a wizard, moving forward validates the step being left.
+  and open or close tree branches; on a wizard's option row they change step.
+  Alt+Left/Right switch tabs from anywhere; in a wizard, moving forward validates
+  the step being left.
 - Movement does not wrap, and disabled items never receive focus. Single lists
   activate with Enter; multiple lists toggle with Space and confirm with Enter;
   actions accept Enter or Space.

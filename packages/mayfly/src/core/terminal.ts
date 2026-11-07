@@ -21,6 +21,7 @@ import {
   type TUI,
   type TuiInputListener,
 } from '@earendil-works/pi-tui'
+import { decodePrintableKey } from '@earendil-works/pi-tui/dist/keys.js'
 import { LAYOUT_NODE, type LayoutNode } from '@earendil-works/pi-tui/dist/layout-node.js'
 import { clampFrame, clampFrameFrom, clampRow, createFileOverflowSink, defaultOverflowDirectory, type OverflowSink } from './frame-clamp.ts'
 import { createOutputRecovery, type AmbientOutput } from './output-recovery.ts'
@@ -57,7 +58,7 @@ const KEY_END = '\x1b[F'
 const KEY_INSERT = '\x1b[2~'
 const KEY_DELETE = '\x1b[3~'
 
-const NORMALIZED_NAVIGATION_INPUT = new Map<string, string>([
+const NORMALIZED_KEY_INPUT = new Map<string, string>([
   ['up', KEY_UP],
   ['down', KEY_DOWN],
   ['left', KEY_LEFT],
@@ -68,6 +69,10 @@ const NORMALIZED_NAVIGATION_INPUT = new Map<string, string>([
   ['end', KEY_END],
   ['insert', KEY_INSERT],
   ['delete', KEY_DELETE],
+  ['backspace', '\x7f'],
+  ['shift+backspace', '\x7f'],
+  ['escape', '\x1b'],
+  ['ctrl+c', '\x03'],
 ])
 
 /** Renderer choice kept inside core's L0 boundary. */
@@ -426,17 +431,22 @@ export function wheelReport(data: string): { readonly button: number, readonly x
 }
 
 /**
- * Normalize unmodified navigation events to the legacy sequences consumed by
- * Mayfly's raw-key paths. Enhanced Kitty releases and modified navigation keep
- * their original encoding so event-type and modifier semantics remain intact.
+ * Normalize unmodified navigation, Backspace, Esc and Ctrl+C events, and encoded
+ * printable keys, to the legacy bytes consumed by Mayfly's raw-key paths. Enhanced
+ * Kitty releases and modified navigation keep their original encoding so event-type
+ * and modifier semantics remain intact.
  * @param data - one decoded terminal input sequence.
- * @returns the canonical navigation sequence, or `undefined` when the input
+ * @returns the canonical sequence, or `undefined` when the input
  *   must pass through unchanged.
  */
-export function normalizeNavigationInput(data: string): string | undefined {
+export function normalizeKeyInput(data: string): string | undefined {
   if (isKeyRelease(data)) return undefined
   const key = parseKey(data)
-  return key === undefined ? undefined : NORMALIZED_NAVIGATION_INPUT.get(key)
+  const named = key === undefined ? undefined : NORMALIZED_KEY_INPUT.get(key)
+  if (named !== undefined) return named
+  // A key with no character of its own (a media key's private codepoint) stays encoded rather than becoming text.
+  const printable = decodePrintableKey(data)
+  return printable === undefined || /\p{C}/u.test(printable) ? undefined : printable
 }
 
 /** F1, F2, and F4 as kitty sends them unmodified (`CSI P`): pi-tui decodes only the SS3 forms. F3 is `CSI 13 ~`. */
@@ -861,9 +871,9 @@ export function startMayflyTerminal(
   if (viewportInput !== undefined) current.removeInputListener(viewportInput)
   // Herdr forwards Kitty functional-key codepoints while tmux commonly emits
   // legacy CSI forms. Canonicalize both before any Mayfly or viewport listener
-  // sees them so every raw-key path receives the same navigation vocabulary.
+  // sees them so every raw-key path receives the same key vocabulary.
   const removeNavigationNormalizer = current.addInputListener(data => {
-    const normalized = normalizeNavigationInput(data) ?? normalizeFunctionKeyInput(data)
+    const normalized = normalizeKeyInput(data) ?? normalizeFunctionKeyInput(data)
     return normalized === undefined ? undefined : { data: normalized }
   })
   // Track dock membership for contextual wheel routing. The editor's handler

@@ -853,7 +853,8 @@ against its theme background (a guard test in the implementation asserts it).
 ```
 
 `Alt+←`/`Alt+→` switch tabs from anywhere outside text editing and open pickers; plain
-`←`/`→` stay with the page (lists, scroll, search, detail). `Enter` on a focused strip
+`←`/`→` stay with the page (lists, scroll, search, detail), except that they move a focused
+strip and walk a wizard from its option rows (§5.8). `Enter` on a focused strip
 descends into the page; the strip's selected chip does not change when focus leaves it.
 A **wizard** keeps its ordered step marks and heavy rule and is not an ordinary tab. `Esc`
 walks back, and a forward switch runs the same validation as the step's own Next, so an
@@ -1791,7 +1792,7 @@ button.
 Questions takes the whole editor slot and hides the status row (`coverStatus: true`): the question is the only
 thing on screen below the conversation, with no status facts under it.
 
-**Built from:** `surface`, `tabs` (wizard), `list` (numbered or multiple), `form` (Other), `text`. Scene: Questions.
+**Built from:** `surface`, `tabs` (wizard), `list` (numbered or multiple, with an `input` row for Other), `text`. Scene: Questions.
 
 **Shared wizard.** Questions, onboarding (6c.4) and the provider forms (`/provider add|edit`, the price form) are
 all multi-step forms. They share one wizard pattern (`patterns.wizard`, built in Phase 6 round R5): a step strip, a
@@ -1818,9 +1819,10 @@ row typed in place.
 ╰──────────────────────────────────────────────────────────────────────╯
 ```
 
-**`←` and `→` move directly between questions** from any option row, because an option row has nothing for them to
-adjust. In the `Other` text field the arrows keep moving the caret (and `←` at the start of the field is the first
-key the ladder of §4.5 hands on), and `Alt+←`/`Alt+→` switch question from anywhere, including there.
+**`←` and `→` move directly between questions** from any option row and from an empty `Other`, because those rows have
+nothing for them to adjust. Once `Other` holds text the arrows move its caret (`←` at the start of the text is the first
+key the ladder of §4.5 hands on, and `→` at its end does nothing), and `Alt+←`/`Alt+→` switch question from anywhere,
+including there.
 The Review page lists every answer (`— skipped` in warning), `1`–`3` jump to a question,
 and `Submit answers` sends everything. Below 60 columns the strip collapses to
 `Region · 2/3 ›`. There are no `Back`/`Next`/`Cancel` buttons: `Alt+←→`, `Enter`, and `Esc`

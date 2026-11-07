@@ -229,6 +229,10 @@ export class FakeMayflyEditor implements MayflyEditor {
     return this.text
   }
 
+  caretOffset(): number {
+    return this.cursor
+  }
+
   /** Expand `[paste #N]` markers through the fake's paste table, like pi-tui. */
   getExpandedText(): string {
     let result = this.text
